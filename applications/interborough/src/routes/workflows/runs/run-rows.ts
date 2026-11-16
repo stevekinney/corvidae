@@ -84,6 +84,8 @@ export type RunOrigin =
   | { readonly kind: 'parent'; readonly parentRunId: string; readonly href: string }
   /** Interborough started it for its own bookkeeping, such as the schedule tick (COR-2009). */
   | { readonly kind: 'system' }
+  /** A plugin's trigger started a workflow run (COR-2163). */
+  | { readonly kind: 'trigger' }
   /** A task recorded before origins were kept, which nothing else names. */
   | { readonly kind: 'none' };
 
@@ -245,6 +247,8 @@ function recordedOrigin(
     }
     case 'system':
       return { kind: 'system' };
+    case 'trigger':
+      return { kind: 'trigger' };
     default:
       return undefined;
   }

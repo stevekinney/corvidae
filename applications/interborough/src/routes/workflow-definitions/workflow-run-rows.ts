@@ -89,6 +89,8 @@ export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined):
       };
     case 'system':
       return { kind: 'system' };
+    case 'trigger':
+      return { kind: 'trigger' };
   }
 }
 

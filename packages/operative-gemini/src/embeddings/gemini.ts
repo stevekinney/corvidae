@@ -15,6 +15,8 @@ export interface GeminiEmbeddingModel {
   embedContent(params: {
     model: string;
     contents: Array<{ parts: Array<{ text: string }> }>;
+    /** Request configuration; the SDK ends the request when `abortSignal` aborts. */
+    config?: { abortSignal?: AbortSignal };
   }): Promise<{ embeddings?: Array<{ values?: number[] }> | undefined }>;
 }
 
@@ -74,15 +76,19 @@ export function createGeminiEmbedder(options: GeminiEmbedderOptions = {}): Embed
     return clientPromise;
   }
 
-  return async (texts: string[]): Promise<EmbeddingVector[]> => {
+  return async (texts, callOptions): Promise<EmbeddingVector[]> => {
     const client = await getClient();
+    const signal = callOptions?.signal;
 
     try {
       const vectors: EmbeddingVector[] = [];
       for (const text of texts) {
+        // One request per text, so a caller that gave up stops before the next one starts.
+        signal?.throwIfAborted();
         const result = await client.models.embedContent({
           model,
           contents: [{ parts: [{ text }] }],
+          ...(signal === undefined ? {} : { config: { abortSignal: signal } }),
         });
         // `@google/genai` returns a batch whose entries and `values` are both
         // optional. A missing vector is a broken response, not an empty

@@ -410,7 +410,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
  * The envelope a `workflow` step starts its code workflow on (O6): the one a file run starts on,
  * `{ kind: 'manual', input, origin, workspaceAuthority? }`, with the step's `input`, the origin
  * and workspace authority of the instance running the step, and no `trigger` or `previous`. An
- * instance whose trigger carries no origin (a schedule fire, a contributed trigger) is a parent
+ * instance whose trigger carries no origin (a schedule fire) is a parent
  * task of the child, so the child is the step of that instance. Pure, so a re-issued step builds
  * the same input and re-attaches to the child it already started.
  */

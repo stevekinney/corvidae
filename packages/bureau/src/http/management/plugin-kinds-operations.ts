@@ -53,7 +53,11 @@ const kindsOutput = z.object({
         plugin: z.string().describe('The contributing plugin.'),
         id: z.string().describe('`plugin:name`, the `kind` a workflow file’s `trigger` names.'),
         description: z.string().describe('What the trigger listens for.'),
-        version: z.string().describe('The version a workflow revision that uses it pins.'),
+        version: z
+          .string()
+          .describe(
+            'The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.',
+          ),
         configuration: configurationSchema,
       }),
     )

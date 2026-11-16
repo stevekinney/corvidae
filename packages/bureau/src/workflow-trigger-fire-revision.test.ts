@@ -257,7 +257,12 @@ describe('a contributed trigger that fires', () => {
     const runs = await completedRuns(harness, 1);
     expect(runs.map((run) => run.workflowVersion)).toEqual([r1!]);
     const detail = await harness.bureau.workflows?.getRun(runs[0]!.id);
-    expect(detail?.trigger).toEqual({ kind: 'x:ticker', payload: { issue: 'COR-5' } });
+    expect(detail?.trigger).toEqual({
+      kind: 'x:ticker',
+      version: '1',
+      payload: { issue: 'COR-5' },
+      origin: { kind: 'trigger', plugin: 'x', workflowId: 'pipeline' },
+    });
     expect(detail?.result).toBe(activityAnswer('1', 'hello'));
   });
 });

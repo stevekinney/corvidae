@@ -89,7 +89,7 @@ describe('scoped theme tokens', () => {
 
     expectDeclarations(lightBlock, {
       'color-scheme': 'light',
-      '--cinder-surface-canvas': 'oklch(99.4% 0.002 265)',
+      '--cinder-surface-canvas': 'oklch(97.6% 0.004 265)',
       '--cinder-accent-solid-hover': 'oklch(from var(--cinder-accent-solid) calc(l - 0.08) c h)',
       '--cinder-accent-solid-active': 'oklch(from var(--cinder-accent-solid) calc(l - 0.15) c h)',
       '--cinder-accent-solid-active-on-fill':

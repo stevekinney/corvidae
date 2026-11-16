@@ -778,11 +778,30 @@ export type ProjectedValidatorOutcome =
   | { readonly kind: 'canceled' }
   | { readonly kind: 'indeterminate'; readonly reason: string };
 
+/**
+ * What judged an attempt (COR-2112), captured when the validator ran and never read again from the
+ * goal: the validator's identity, who it comes from, and the configuration it was given.
+ */
+export interface ValidatorJudge {
+  /** The name and version of the validator that ran. */
+  readonly validator: ValidatorIdentity;
+  /** Who the validator comes from: Bureau or a plugin, by name and version. */
+  readonly source: {
+    readonly kind: 'bureau' | 'plugin';
+    readonly name: string;
+    readonly version: string;
+  };
+  /** The configuration the validator was passed; `null` when it was passed none. */
+  readonly configuration: JSONValue | null;
+}
+
 export interface ProjectedValidatorResult {
   readonly identity: ValidatorIdentity;
   readonly startedAt: string;
   readonly completedAt: string;
   readonly outcome: ProjectedValidatorOutcome;
+  /** Absent when no validator ran, as for one the catalog no longer holds. */
+  readonly judgedBy?: ValidatorJudge | undefined;
 }
 
 /** The error as a durable record keeps it: `cause` projected to JSON, never dropped. */

@@ -1,0 +1,987 @@
+{
+  "asyncapi": "3.0.0",
+  "channels": {
+    "bureau/events": {
+      "address": "/v1/subscriptions/bureau.events",
+      "description": "Server-Sent Events stream channel for bureau.events. Responses use text/event-stream; charset=utf-8.",
+      "messages": {
+        "errorEvent": {
+          "$ref": "#/components/messages/bureau_events_errorEvent"
+        },
+        "eventEnvelopeEvent": {
+          "$ref": "#/components/messages/bureau_events_eventEnvelopeEvent"
+        },
+        "pingEvent": {
+          "$ref": "#/components/messages/bureau_events_pingEvent"
+        }
+      },
+      "title": "Subscribe to a bureau’s lifecycle events with replay-from-cursor",
+      "x-weft-operation-name": "bureau.events",
+      "x-weft-transport": "server-sent-events"
+    },
+    "bureau/settings/events": {
+      "address": "/v1/subscriptions/bureau.settings.events",
+      "description": "Server-Sent Events stream channel for bureau.settings.events. Responses use text/event-stream; charset=utf-8.",
+      "messages": {
+        "errorEvent": {
+          "$ref": "#/components/messages/bureau_settings_events_errorEvent"
+        },
+        "eventEnvelopeEvent": {
+          "$ref": "#/components/messages/bureau_settings_events_eventEnvelopeEvent"
+        },
+        "pingEvent": {
+          "$ref": "#/components/messages/bureau_settings_events_pingEvent"
+        }
+      },
+      "title": "Follow changes to the runtime settings",
+      "x-weft-operation-name": "bureau.settings.events",
+      "x-weft-transport": "server-sent-events"
+    },
+    "bureau/tasks/events": {
+      "address": "/v1/subscriptions/bureau.tasks.events",
+      "description": "Server-Sent Events stream channel for bureau.tasks.events. Responses use text/event-stream; charset=utf-8.",
+      "messages": {
+        "errorEvent": {
+          "$ref": "#/components/messages/bureau_tasks_events_errorEvent"
+        },
+        "eventEnvelopeEvent": {
+          "$ref": "#/components/messages/bureau_tasks_events_eventEnvelopeEvent"
+        },
+        "pingEvent": {
+          "$ref": "#/components/messages/bureau_tasks_events_pingEvent"
+        }
+      },
+      "title": "Follow one task’s lifecycle",
+      "x-weft-operation-name": "bureau.tasks.events",
+      "x-weft-transport": "server-sent-events"
+    },
+    "operative/runs/events": {
+      "address": "/v1/subscriptions/operative.runs.events",
+      "description": "Server-Sent Events stream channel for operative.runs.events. Responses use text/event-stream; charset=utf-8.",
+      "messages": {
+        "errorEvent": {
+          "$ref": "#/components/messages/operative_runs_events_errorEvent"
+        },
+        "eventEnvelopeEvent": {
+          "$ref": "#/components/messages/operative_runs_events_eventEnvelopeEvent"
+        },
+        "pingEvent": {
+          "$ref": "#/components/messages/operative_runs_events_pingEvent"
+        }
+      },
+      "title": "Subscribe to an agent run’s events with replay-from-cursor",
+      "x-weft-operation-name": "operative.runs.events",
+      "x-weft-transport": "server-sent-events"
+    }
+  },
+  "components": {
+    "messages": {
+      "bureau_events_errorEvent": {
+        "bindings": {
+          "http": {
+            "event": "error"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_events_errorEvent",
+        "payload": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "data": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE error event for bureau.events.",
+        "x-weft-sse-frame": "event: error\\ndata: <JSON Error>\\n\\n"
+      },
+      "bureau_events_eventEnvelopeEvent": {
+        "bindings": {
+          "http": {
+            "event": "<envelope.kind>"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_events_eventEnvelopeEvent",
+        "payload": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bureauId": {
+                  "type": "string"
+                },
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "kind": {
+                  "pattern": "^(?!feed\\.gap$)",
+                  "type": "string"
+                },
+                "payload": {
+                  "additionalProperties": {},
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "sequence": {
+                  "type": "number"
+                },
+                "source": {
+                  "description": "The plugin whose contribution emitted the event. Absent for an event from Bureau core. Not a payload field.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sequence",
+                "cursor",
+                "bureauId",
+                "kind",
+                "emittedAtMs",
+                "payload"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bureauId": {
+                  "type": "string"
+                },
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "kind": {
+                  "const": "feed.gap",
+                  "type": "string"
+                },
+                "payload": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "firstRetainedSequence": {
+                      "type": "number"
+                    },
+                    "requestedCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "requestedCursor",
+                    "firstRetainedSequence"
+                  ],
+                  "type": "object"
+                },
+                "sequence": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "sequence",
+                "cursor",
+                "bureauId",
+                "kind",
+                "emittedAtMs",
+                "payload"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "summary": "SSE event envelope for bureau.events.",
+        "x-weft-sse-frame": "id: <cursor>\\nevent: <envelope.kind>\\ndata: <JSON event envelope>\\n\\n"
+      },
+      "bureau_events_pingEvent": {
+        "bindings": {
+          "http": {
+            "event": "ping"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_events_pingEvent",
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "emittedAtMs": {
+              "type": "number"
+            },
+            "replayComplete": {
+              "const": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "emittedAtMs"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE ping keepalive for bureau.events.",
+        "x-weft-sse-frame": "event: ping\\ndata: {\"emittedAtMs\":<timestamp>[,\"replayComplete\":true]}\\n\\n"
+      },
+      "bureau_settings_events_errorEvent": {
+        "bindings": {
+          "http": {
+            "event": "error"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_settings_events_errorEvent",
+        "payload": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "data": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE error event for bureau.settings.events.",
+        "x-weft-sse-frame": "event: error\\ndata: <JSON Error>\\n\\n"
+      },
+      "bureau_settings_events_eventEnvelopeEvent": {
+        "bindings": {
+          "http": {
+            "event": "<envelope.kind>"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_settings_events_eventEnvelopeEvent",
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "cursor": {
+              "type": "string"
+            },
+            "emittedAtMs": {
+              "type": "number"
+            },
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "settings.changed",
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "cursor",
+            "emittedAtMs",
+            "revision",
+            "keys"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE event envelope for bureau.settings.events.",
+        "x-weft-sse-frame": "id: <cursor>\\nevent: <envelope.kind>\\ndata: <JSON event envelope>\\n\\n"
+      },
+      "bureau_settings_events_pingEvent": {
+        "bindings": {
+          "http": {
+            "event": "ping"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_settings_events_pingEvent",
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "emittedAtMs": {
+              "type": "number"
+            },
+            "replayComplete": {
+              "const": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "emittedAtMs"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE ping keepalive for bureau.settings.events.",
+        "x-weft-sse-frame": "event: ping\\ndata: {\"emittedAtMs\":<timestamp>[,\"replayComplete\":true]}\\n\\n"
+      },
+      "bureau_tasks_events_errorEvent": {
+        "bindings": {
+          "http": {
+            "event": "error"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_tasks_events_errorEvent",
+        "payload": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "data": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE error event for bureau.tasks.events.",
+        "x-weft-sse-frame": "event: error\\ndata: <JSON Error>\\n\\n"
+      },
+      "bureau_tasks_events_eventEnvelopeEvent": {
+        "bindings": {
+          "http": {
+            "event": "<envelope.kind>"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_tasks_events_eventEnvelopeEvent",
+        "payload": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "artifact": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artifactId": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "artifactId",
+                        "text",
+                        "truncated"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "finishReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "const": "task.snapshot",
+                  "type": "string"
+                },
+                "message": {
+                  "anyOf": [
+                    {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "submitted",
+                    "working",
+                    "input-required",
+                    "completed",
+                    "failed",
+                    "canceled"
+                  ],
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "cursor",
+                "emittedAtMs",
+                "kind",
+                "status",
+                "finishReason",
+                "message"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "artifact": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artifactId": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "artifactId",
+                        "text",
+                        "truncated"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "finishReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "const": "task.status",
+                  "type": "string"
+                },
+                "message": {
+                  "anyOf": [
+                    {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "submitted",
+                    "working",
+                    "input-required",
+                    "completed",
+                    "failed",
+                    "canceled"
+                  ],
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "cursor",
+                "emittedAtMs",
+                "kind",
+                "status",
+                "finishReason",
+                "message",
+                "artifact"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "artifact": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artifactId": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "artifactId",
+                        "text",
+                        "truncated"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "finishReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "const": "task.resynced",
+                  "type": "string"
+                },
+                "message": {
+                  "anyOf": [
+                    {
+                      "maxLength": 1000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "revision": {
+                  "type": "number"
+                },
+                "status": {
+                  "enum": [
+                    "submitted",
+                    "working",
+                    "input-required",
+                    "completed",
+                    "failed",
+                    "canceled"
+                  ],
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "cursor",
+                "emittedAtMs",
+                "kind",
+                "status",
+                "finishReason",
+                "message",
+                "artifact",
+                "revision"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "firstRetainedCursor": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "task.gap",
+                  "type": "string"
+                },
+                "requestedCursor": {
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "cursor",
+                "emittedAtMs",
+                "kind",
+                "requestedCursor",
+                "firstRetainedCursor"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "kind": {
+                  "const": "task.removed",
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "taskId",
+                "cursor",
+                "emittedAtMs",
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "summary": "SSE event envelope for bureau.tasks.events.",
+        "x-weft-sse-frame": "id: <cursor>\\nevent: <envelope.kind>\\ndata: <JSON event envelope>\\n\\n"
+      },
+      "bureau_tasks_events_pingEvent": {
+        "bindings": {
+          "http": {
+            "event": "ping"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "bureau_tasks_events_pingEvent",
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "emittedAtMs": {
+              "type": "number"
+            },
+            "replayComplete": {
+              "const": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "emittedAtMs"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE ping keepalive for bureau.tasks.events.",
+        "x-weft-sse-frame": "event: ping\\ndata: {\"emittedAtMs\":<timestamp>[,\"replayComplete\":true]}\\n\\n"
+      },
+      "operative_runs_events_errorEvent": {
+        "bindings": {
+          "http": {
+            "event": "error"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "operative_runs_events_errorEvent",
+        "payload": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "data": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE error event for operative.runs.events.",
+        "x-weft-sse-frame": "event: error\\ndata: <JSON Error>\\n\\n"
+      },
+      "operative_runs_events_eventEnvelopeEvent": {
+        "bindings": {
+          "http": {
+            "event": "<envelope.kind>"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "operative_runs_events_eventEnvelopeEvent",
+        "payload": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "kind": {
+                  "pattern": "^(?!run\\.gap$)",
+                  "type": "string"
+                },
+                "payload": {
+                  "additionalProperties": {},
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "runId": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "sequence",
+                "cursor",
+                "runId",
+                "kind",
+                "emittedAtMs",
+                "payload"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                },
+                "emittedAtMs": {
+                  "type": "number"
+                },
+                "kind": {
+                  "const": "run.gap",
+                  "type": "string"
+                },
+                "payload": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "firstRetainedSequence": {
+                      "type": "number"
+                    },
+                    "requestedCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "requestedCursor",
+                    "firstRetainedSequence"
+                  ],
+                  "type": "object"
+                },
+                "runId": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "sequence",
+                "cursor",
+                "runId",
+                "kind",
+                "emittedAtMs",
+                "payload"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "summary": "SSE event envelope for operative.runs.events.",
+        "x-weft-sse-frame": "id: <cursor>\\nevent: <envelope.kind>\\ndata: <JSON event envelope>\\n\\n"
+      },
+      "operative_runs_events_pingEvent": {
+        "bindings": {
+          "http": {
+            "event": "ping"
+          }
+        },
+        "contentType": "text/event-stream",
+        "name": "operative_runs_events_pingEvent",
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "emittedAtMs": {
+              "type": "number"
+            },
+            "replayComplete": {
+              "const": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "emittedAtMs"
+          ],
+          "type": "object"
+        },
+        "summary": "SSE ping keepalive for operative.runs.events.",
+        "x-weft-sse-frame": "event: ping\\ndata: {\"emittedAtMs\":<timestamp>[,\"replayComplete\":true]}\\n\\n"
+      }
+    },
+    "schemas": {
+      "JsonRpcError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "number"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Weft Workflow Engine",
+    "version": "0.0.0-golden"
+  },
+  "operations": {
+    "bureau_events": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/bureau~1events"
+      },
+      "messages": [
+        {
+          "$ref": "#/components/messages/bureau_events_eventEnvelopeEvent"
+        },
+        {
+          "$ref": "#/components/messages/bureau_events_pingEvent"
+        },
+        {
+          "$ref": "#/components/messages/bureau_events_errorEvent"
+        }
+      ],
+      "operationId": "bureau_events",
+      "summary": "Subscribe to a bureau’s lifecycle events with replay-from-cursor",
+      "tags": [
+        {
+          "name": "Events"
+        }
+      ]
+    },
+    "bureau_settings_events": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/bureau~1settings~1events"
+      },
+      "messages": [
+        {
+          "$ref": "#/components/messages/bureau_settings_events_eventEnvelopeEvent"
+        },
+        {
+          "$ref": "#/components/messages/bureau_settings_events_pingEvent"
+        },
+        {
+          "$ref": "#/components/messages/bureau_settings_events_errorEvent"
+        }
+      ],
+      "operationId": "bureau_settings_events",
+      "summary": "Follow changes to the runtime settings",
+      "tags": [
+        {
+          "name": "Settings"
+        }
+      ]
+    },
+    "bureau_tasks_events": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/bureau~1tasks~1events"
+      },
+      "messages": [
+        {
+          "$ref": "#/components/messages/bureau_tasks_events_eventEnvelopeEvent"
+        },
+        {
+          "$ref": "#/components/messages/bureau_tasks_events_pingEvent"
+        },
+        {
+          "$ref": "#/components/messages/bureau_tasks_events_errorEvent"
+        }
+      ],
+      "operationId": "bureau_tasks_events",
+      "summary": "Follow one task’s lifecycle",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ]
+    },
+    "operative_runs_events": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/operative~1runs~1events"
+      },
+      "messages": [
+        {
+          "$ref": "#/components/messages/operative_runs_events_eventEnvelopeEvent"
+        },
+        {
+          "$ref": "#/components/messages/operative_runs_events_pingEvent"
+        },
+        {
+          "$ref": "#/components/messages/operative_runs_events_errorEvent"
+        }
+      ],
+      "operationId": "operative_runs_events",
+      "summary": "Subscribe to an agent run’s events with replay-from-cursor",
+      "tags": [
+        {
+          "name": "Events"
+        }
+      ]
+    }
+  }
+}

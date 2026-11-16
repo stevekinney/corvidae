@@ -161,6 +161,7 @@ const unstartedHost: PluginHost = {
     list: () => Promise.reject(new Error(unstartedMessage)),
   },
   goals: { create: () => Promise.reject(new Error(unstartedMessage)) },
+  publish: () => Promise.reject(new Error(unstartedMessage)),
 };
 
 /**

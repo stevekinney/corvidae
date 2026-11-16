@@ -166,6 +166,8 @@
  * Comfortable also switches the light arm of the surface ladder to the
  * consumer ladder (COR-2308, owner decision 2026-11-10): a grey canvas under
  * white surfaces, a deeper well, and muted and subtle text at 42% and 50%.
+ * Since 2026-11-15 the default light arm has the same shape (a white surface
+ * on a 97.6% canvas over a 95.5% well); comfortable keeps the deeper steps.
  * Dark mode does not change across densities, so each `light-dark()` repeats
  * the shipped dark value exactly; comfortable-density.test.ts holds the two in
  * step.

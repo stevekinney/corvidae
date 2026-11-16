@@ -20,6 +20,7 @@ import {
   type OutputValidator,
   type ToolCallValidator,
 } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -29,8 +30,10 @@ import { z } from 'zod';
 import type { AgentDefinitions } from '../agent-catalog';
 import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import { createBureau } from '../create-bureau';
+import { DiagnosticEvent } from '../events';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../bureau-types/facade';
+import type { BureauDiagnostic } from '../bureau-types/options';
 import { composePlugins } from './compose-plugins';
 import {
   createPluginSecretGate,
@@ -44,6 +47,9 @@ import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const SECRET = 'sk-live-gate-0123456789';
 const KEY = 'kit-api-key';
+
+/** For a test that does not read the diagnostics a gate sends. */
+const ignoreDiagnostics = () => undefined;
 
 /** A secrets reader the test saves to and removes from, notifying watchers as a host would. */
 function secretsStore(initial: Record<string, string> = {}) {
@@ -367,6 +373,7 @@ describe('the secret-gating outcome matrix', () => {
       },
       gate,
       (name) => `kit:${name}`,
+      ignoreDiagnostics,
     );
     const calls: Record<string, () => unknown> = {
       activity: () => gatedResult.activities?.[0]?.execute({}, {} as never),
@@ -479,6 +486,7 @@ describe('the secret-gating outcome matrix', () => {
         { interceptors: [{ name: 'audit', ...declared }] },
         gate,
         (name) => `kit:${name}`,
+        ignoreDiagnostics,
       ).interceptors ?? [];
     const handlerOf = (point: (typeof INTERCEPTOR_POINTS)[number]) => {
       const hook = interceptor?.[point];
@@ -513,7 +521,9 @@ describe('the secret-gating outcome matrix', () => {
               name: 'inbox',
               description: 'Mail arrives.',
               configuration: z.object({}),
-              start: async () => {
+              start: async (received) => {
+                // The gate hands the trigger the whole context: its file and its storage too.
+                expect(received).toBe(context);
                 log.push('start');
                 return () => {
                   log.push('stop');
@@ -524,11 +534,14 @@ describe('the secret-gating outcome matrix', () => {
         },
         gate,
         (name) => `kit:${name}`,
+        ignoreDiagnostics,
       ).triggers ?? [];
     const controller = new AbortController();
     const context: PluginTriggerContext = {
       configuration: {},
-      fire: async () => undefined,
+      workflowId: 'watcher',
+      storage: new MemoryStorage(),
+      fire: async () => ({ outcome: 'skipped', reason: 'stopped' }),
       signal: controller.signal,
     };
     const stop = await kind!.start(context);
@@ -619,6 +632,7 @@ describe('a needs-setup plugin’s tool-call validator', () => {
       },
       gate,
       (name) => `kit:${name}`,
+      ignoreDiagnostics,
     );
     const hook = createToolCallGuardrail({
       validators: (gatedResult.guardrails?.tools ?? []) as readonly ToolCallValidator[],
@@ -663,6 +677,7 @@ describe('a needs-setup plugin’s input and output guardrails', () => {
       },
       gate,
       (name) => `kit:${name}`,
+      ignoreDiagnostics,
     );
     const conversation = new Conversation();
     conversation.appendUserMessage('hello');
@@ -722,6 +737,7 @@ describe('a needs-setup plugin’s guardrail factory', () => {
       },
       gate,
       (name) => `kit:${name}`,
+      ignoreDiagnostics,
     );
     const entry = gatedResult.guardrails!.output![0]!;
     expect(entry).toMatchObject({ action: 'warn' });
@@ -739,5 +755,240 @@ describe('a needs-setup plugin’s guardrail factory', () => {
       category: 'x',
       confidence: 0,
     });
+  });
+});
+
+/** COR-2185 — a gated embedder passes the caller's options, and so its signal, to the embedder it wraps. */
+describe('a gated embedder', () => {
+  it('forwards every argument it is called with once its plugin is available', async () => {
+    const { gate, secrets } = await gateOver();
+    const calls: { texts: string[]; signal: AbortSignal | undefined }[] = [];
+    const gatedResult = gatedContributions<PluginContributions>(
+      {
+        embedders: [
+          {
+            name: 'small',
+            dimensions: 1,
+            embed: async (texts, options) => {
+              calls.push({ texts, signal: options?.signal });
+              return texts.map(() => [1]);
+            },
+          },
+        ],
+      },
+      gate,
+      (name) => `kit:${name}`,
+      ignoreDiagnostics,
+    );
+    const embed = gatedResult.embedders![0]!.embed;
+    const controller = new AbortController();
+
+    expect(await rejectionOf(embed(['x'], { signal: controller.signal }))).toBeInstanceOf(
+      PluginNeedsSetupError,
+    );
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    await embed(['x', 'y'], { signal: controller.signal });
+    await embed(['z']);
+
+    expect(calls).toEqual([
+      { texts: ['x', 'y'], signal: controller.signal },
+      { texts: ['z'], signal: undefined },
+    ]);
+  });
+});
+
+/**
+ * COR-2191 — a needs-setup plugin's memory guardrail is skipped without a word, so the first skipped
+ * call of each guardrail sends one `warn` to scope `memory`, and a recovery re-arms it. No
+ * diagnostic carries the content that was scanned.
+ */
+describe('a needs-setup plugin’s memory guardrail diagnostics', () => {
+  const CONTENT = 'The customer card number is 4111-1111-1111-1111.';
+
+  async function gatedMemory() {
+    const { gate, secrets } = await gateOver();
+    const diagnostics: BureauDiagnostic[] = [];
+    const scanned: string[] = [];
+    const named = (name: string) => ({
+      name,
+      description: 'A test guardrail.',
+      detect: async (input: string) => {
+        scanned.push(input);
+        return { triggered: false, confidence: 0, category: 'none' };
+      },
+    });
+    const gatedResult = gatedContributions<PluginContributions>(
+      { guardrails: { memory: [named('first'), named('second')] } },
+      gate,
+      (name) => `kit:${name}`,
+      (diagnostic) => diagnostics.push(diagnostic),
+    );
+    const [first, second] = gatedResult.guardrails?.memory ?? [];
+    if (first === undefined || second === undefined) throw new Error('Two guardrails expected.');
+    return { gate, secrets, diagnostics, scanned, first, second };
+  }
+
+  it('warns once per guardrail at its first skipped call, and says nothing afterwards', async () => {
+    const { diagnostics, first, second, scanned } = await gatedMemory();
+
+    for (let call = 0; call < 3; call += 1) await first.detect(CONTENT, {} as never);
+    expect(diagnostics).toEqual([
+      {
+        level: 'warn',
+        scope: 'memory',
+        message: expect.stringContaining('"kit:first" is not available: plugin "kit" needs setup'),
+      },
+    ]);
+    expect(diagnostics[0]?.message).toContain('The memory guardrail was skipped.');
+
+    // Each guardrail has its own first call.
+    await second.detect(CONTENT, {} as never);
+    await second.detect(CONTENT, {} as never);
+    expect(diagnostics.map(({ message }) => message.includes('"kit:second"'))).toEqual([
+      false,
+      true,
+    ]);
+    expect(scanned).toEqual([]);
+  });
+
+  it('warns again after the plugin was available and needs setup again, even with no call in between', async () => {
+    const { gate, secrets, diagnostics, first, scanned } = await gatedMemory();
+    await first.detect(CONTENT, {} as never);
+    expect(diagnostics).toHaveLength(1);
+
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    secrets.remove(KEY);
+    await settleTo(gate, false);
+
+    await first.detect(CONTENT, {} as never);
+    await first.detect(CONTENT, {} as never);
+    expect(diagnostics).toHaveLength(2);
+
+    // While available the guardrail runs and sends nothing.
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    await first.detect(CONTENT, {} as never);
+    expect(diagnostics).toHaveLength(2);
+    expect(scanned).toEqual([CONTENT]);
+  });
+
+  it('reaches the host’s diagnostic sink through composePlugins, from each memory gate', async () => {
+    const secrets = secretsStore();
+    const diagnostics: BureauDiagnostic[] = [];
+    const handed: { admission: readonly InputDetector[]; recall: readonly InputDetector[] }[] = [];
+    const composed = await composePlugins({
+      plugins: [
+        {
+          descriptor: definePlugin({
+            name: 'kit',
+            version: '1.0.0',
+            description: 'Needs an API key.',
+            secrets: [KEY],
+            setup: () => ({
+              guardrails: {
+                memory: [
+                  {
+                    name: 'scan',
+                    description: 'A test guardrail.',
+                    detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
+                  },
+                ],
+              },
+            }),
+          }),
+          source: 'package',
+          location: '@example/kit',
+        },
+      ],
+      pluginSecrets: secrets,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      memory: (contributions) => {
+        handed.push(contributions.guardrails);
+        return undefined as never;
+      },
+    });
+    stops.push(composed.watchSecrets());
+
+    // One wrapper serves both gates, and the guardrail's warning is sent once for the pair.
+    await handed[0]?.admission[0]?.detect(CONTENT, {} as never);
+    await handed[0]?.recall[0]?.detect(CONTENT, {} as never);
+    expect(diagnostics).toEqual([
+      {
+        level: 'warn',
+        scope: 'memory',
+        message: expect.stringContaining('"kit:scan" is not available'),
+      },
+    ]);
+  });
+
+  it('reaches the host’s sink exactly once, and the event feed as a diagnostic event, through createBureau', async () => {
+    const secrets = secretsStore();
+    const diagnostics: BureauDiagnostic[] = [];
+    const events: Event[] = [];
+    const handed: { admission: readonly InputDetector[]; recall: readonly InputDetector[] }[] = [];
+    const kit = definePlugin({
+      name: 'kit',
+      version: '1.0.0',
+      description: 'Needs an API key.',
+      secrets: [KEY],
+      setup: () => ({
+        guardrails: {
+          memory: [
+            {
+              name: 'scan',
+              description: 'A test guardrail.',
+              detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
+            },
+          ],
+        },
+      }),
+    });
+    const bureau = await createBureau<AgentDefinitions>({
+      plugins: [{ descriptor: kit, source: 'package', location: '@example/kit' }],
+      pluginSecrets: secrets,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      onEvent: (emitted) => {
+        events.push(emitted);
+      },
+      memory: (contributions) => {
+        handed.push(contributions.guardrails);
+        return undefined as never;
+      },
+    });
+    bureaus.push(bureau);
+
+    await handed[0]?.admission[0]?.detect(CONTENT, {} as never);
+    await handed[0]?.recall[0]?.detect(CONTENT, {} as never);
+
+    const reported = diagnostics.filter(({ scope }) => scope === 'memory');
+    expect(reported).toEqual([
+      {
+        level: 'warn',
+        scope: 'memory',
+        message: expect.stringContaining('"kit:scan" is not available'),
+      },
+    ]);
+    const onFeed = events.filter(
+      (emitted): emitted is DiagnosticEvent =>
+        emitted instanceof DiagnosticEvent && emitted.scope === 'memory',
+    );
+    expect(onFeed.map(({ level, scope }) => ({ level, scope }))).toEqual([
+      { level: 'warn', scope: 'memory' },
+    ]);
+    expect(JSON.stringify(onFeed)).not.toContain('4111');
+  });
+
+  it('never carries the scanned content', async () => {
+    const { diagnostics, first, second } = await gatedMemory();
+    await first.detect(CONTENT, {} as never);
+    await second.detect(CONTENT, {} as never);
+
+    expect(diagnostics).toHaveLength(2);
+    for (const diagnostic of diagnostics) {
+      expect(JSON.stringify(diagnostic)).not.toContain('4111');
+      expect(diagnostic.cause).toBeUndefined();
+    }
   });
 });

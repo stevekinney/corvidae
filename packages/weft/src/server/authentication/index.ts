@@ -300,17 +300,23 @@ export async function createAuthenticator(
   const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
   const transportVerifiesClientCertificates = options.transportVerifiesClientCertificates === true;
 
-  const apiKeyEntries = config.apiKeys?.length
-    ? createConstantTimeApiKeyMatcher(config.apiKeys).entries
-    : null;
+  // Read everything the caller owns before the first `await`: the digests and
+  // the JWT import below are asynchronous.
+  const { apiKeys, jwt, mtls } = config;
   const resolver = config.resolveApiKeyPrincipal;
   const defaultApiKeyScopes = filterRecognizedScopes(
     config.defaultApiKeyScopes ?? [],
     additionalScopes,
   );
-  const jwtKey = config.jwt ? await importJWTKey(config.jwt) : null;
   const publicPaths = new Set(config.publicPaths ?? DEFAULT_PUBLIC_PATHS);
   const auditSink: AuthAuditSink = config.auditSink ?? defaultAuthAuditSink;
+
+  // Both start before either settles, so each reads its input synchronously.
+  const [apiKeyMatcher, jwtKey] = await Promise.all([
+    apiKeys?.length ? createConstantTimeApiKeyMatcher(apiKeys) : null,
+    jwt ? importJWTKey(jwt) : null,
+  ]);
+  const apiKeyEntries = apiKeyMatcher === null ? null : apiKeyMatcher.entries;
 
   return async (request: Request): Promise<AuthResult> => {
     // Public-path bypass is not an authentication decision — no credential is
@@ -329,7 +335,7 @@ export async function createAuthenticator(
       return auditDecision(auditSink, request, apiKeyAttempt.result);
     }
 
-    const jwtAttempt = await authenticateViaJwt(request, jwtKey, config.jwt, additionalScopes);
+    const jwtAttempt = await authenticateViaJwt(request, jwtKey, jwt, additionalScopes);
     if (jwtAttempt.result !== null) {
       return auditDecision(auditSink, request, jwtAttempt.result);
     }
@@ -337,9 +343,9 @@ export async function createAuthenticator(
     const explicitAuthAttempted =
       apiKeyAttempt.explicitAuthAttempted || jwtAttempt.explicitAuthAttempted;
     if (
-      config.mtls &&
+      mtls &&
       !explicitAuthAttempted &&
-      (await clientCertificateVerified(request, config.mtls, transportVerifiesClientCertificates))
+      (await clientCertificateVerified(request, mtls, transportVerifiesClientCertificates))
     ) {
       return auditDecision(auditSink, request, { authenticated: true, method: 'mtls' });
     }

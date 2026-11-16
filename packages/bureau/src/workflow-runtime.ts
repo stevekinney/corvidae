@@ -27,6 +27,7 @@ import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   buildWorkflowDocumentManifest,
   checkWorkflowCompatibility,
@@ -42,10 +43,17 @@ import {
   type WorkflowEvent,
   type WorkflowStatus,
 } from '@lostgradient/weft';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import type { PluginTriggerOutcome } from '@lostgradient/interborough-plugin';
 import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
-import { taskOriginTag, type TaskOrigin, type TaskPersonSurface } from './task-origin';
+import {
+  taskOriginTag,
+  type TaskOrigin,
+  type TaskPersonSurface,
+  type TriggerTaskOrigin,
+} from './task-origin';
 import { ownerOrLocal } from './owner-of-record';
 import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
@@ -82,7 +90,9 @@ import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflo
 import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
+  type TriggerFireRequest,
 } from './workflow-trigger-supervisor';
+import { sweepTriggerState } from './workflow-trigger-state';
 import { formatVersionedId } from './versioned-catalog';
 import {
   acceptContributedTriggers,
@@ -710,6 +720,17 @@ export interface WorkflowRuntimeOptions {
    * Absent for a Bureau without plugins.
    */
   readonly contributions?: WorkflowContributions | undefined;
+  /**
+   * The store the plugins' own storage is a prefix of (COR-2164): a contributed trigger keeps its
+   * per-file state under `plugin:<plugin>:trigger:<trigger-name>:<workflow-id>:` in it. One that
+   * lasts as long as the runtime when omitted.
+   */
+  readonly storage?: Storage | undefined;
+  /**
+   * The plugins that are loaded (COR-2164): the ones whose trigger state a reconcile sweeps for
+   * files that are gone. The state of a plugin not listed stays until it loads. None when omitted.
+   */
+  readonly loadedPlugins?: readonly string[] | undefined;
   /** Where snapshots live; durable in a Bureau, since this needs the durable engine. */
   readonly snapshotStore: WorkflowSnapshotStore;
   /**
@@ -772,6 +793,21 @@ function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefine
     input: trigger['input'] ?? undefined,
     paused: file.paused,
   };
+}
+
+/** A contributed trigger's fire that started nothing, and why. */
+function skippedFire(reason: 'stopped' | 'paused' | 'closed'): PluginTriggerOutcome {
+  return { outcome: 'skipped', reason };
+}
+
+/**
+ * The tag a run carries for the idempotency key its trigger fired with: `trigger:` and the SHA-256
+ * hex digest of the key under its workflow file and trigger kind. The digest fits a tag whatever
+ * the key's length, and keeps one file's or kind's key apart from another's, and from a manual
+ * start's or a hook's.
+ */
+function triggerKeyTag(workflowId: string, kind: string, key: string): string {
+  return `trigger:${sha256HexSync(`trigger:${workflowId}:${kind}:${key}`)}`;
 }
 
 export { createWorkflowSnapshotStore };
@@ -928,8 +964,60 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       holds: scheduleHolds,
       workspace: options.workspace,
     });
-    await triggers.reconcile(desiredTriggers(), unreadable);
+    // One read of the catalog serves the reconcile and the sweep: a file that changes while the
+    // reconcile awaits a stop is judged by the next reconcile, so state is never deleted under a
+    // trigger this reconcile left running.
+    const snapshot = triggerSnapshot();
+    await triggers.reconcile(snapshot.desired, unreadable);
+    await sweepOrphanedTriggerState(snapshot.files);
     await forgetVanishedHookOrigins();
+  }
+
+  /**
+   * What a reconcile of the triggers reads from the catalog, in one synchronous step: the
+   * triggers the files want listening, and every listed file with its trigger kind (`undefined`
+   * for a file that is `invalid` or unreadable). `files` is `undefined` when the latest scan did
+   * not succeed, because the catalog then keeps the entries of the last good scan, or none.
+   */
+  function triggerSnapshot(): {
+    readonly desired: Map<string, DesiredTrigger>;
+    readonly files: ReadonlyMap<string, string | undefined> | undefined;
+  } {
+    const desired = desiredTriggers();
+    const health = catalog.health();
+    if (health.lastScanAt === undefined || health.lastScanError !== undefined) {
+      return { desired, files: undefined };
+    }
+    const files = new Map<string, string | undefined>();
+    for (const listing of catalog.list()) {
+      files.set(listing.id, catalog.find(listing.id)?.document.trigger.kind);
+    }
+    return { desired, files };
+  }
+
+  /**
+   * Delete the trigger state nothing owns any more (COR-2164), once the triggers that no longer
+   * belong have stopped: a file that is gone, or whose trigger became another kind. The state is
+   * swept only when every party that could bring the file back is present and the file is still
+   * absent; see {@link sweepTriggerState} for how each party is checked. A scan that did not
+   * succeed sweeps nothing. A file that is `invalid` or unreadable keeps its state, as a paused
+   * one does.
+   */
+  async function sweepOrphanedTriggerState(
+    files: ReadonlyMap<string, string | undefined> | undefined,
+  ): Promise<void> {
+    if (closed || files === undefined) return;
+    // The plugins that are loaded, and the plugin each contributed trigger kind is named for, which
+    // also covers a kind a host's own catalog contributes with no plugin loaded for it.
+    const plugins = new Set(options.loadedPlugins);
+    for (const kind of contributions.triggers.keys()) plugins.add(kind.slice(0, kind.indexOf(':')));
+    await sweepTriggerState({
+      storage: triggerStorage,
+      plugins,
+      runningPlugins: new Set(options.loadedPlugins),
+      files,
+      diagnose: options.diagnose,
+    });
   }
 
   /** The contributed triggers the ready, unpaused files want listening (COR-1874). */
@@ -943,24 +1031,6 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return desired;
   }
 
-  /**
-   * A contributed trigger fired for workflow `id`: start an instance with the payload, as a signal
-   * trigger does. A payload the `inputSchema` refuses rejects with {@link WorkflowInputInvalidError},
-   * which the plugin that fired sees.
-   *
-   * The fire takes one snapshot, the file whose revision the engine has applied
-   * ({@link appliedFiles}), judges the payload by that revision's `inputSchema`, and starts that
-   * same revision: both happen under {@link withRegistration}, so no registration can move the
-   * engine's active revision in between. A fire that lands while a change to the files is queued or
-   * applying runs the revision applied before it; one after the change registered runs the new
-   * one. A revision that was paused, or whose trigger is another kind, starts nothing.
-   *
-   * It never waits for an apply. An apply that stops this trigger awaits the trigger's `stop`, and
-   * a trigger's `stop` may wait for its fires in flight (a webhook server's does), so a fire that
-   * waited for the apply would wait for itself. The registration lock holds only the registration,
-   * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
-   * rejects with {@link WorkflowApplyError} until an apply succeeds.
-   */
   async function triggerAuthority(authorizingOwner: string | undefined) {
     if (options.workspace === undefined) return {};
     const authority = await captureRunWorkspaceAuthority(
@@ -972,33 +1042,102 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return { workspaceAuthority: authority };
   }
 
-  async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
-    if (closed) return;
+  /**
+   * A contributed trigger fired for workflow `request.workflowId`: start an instance with the
+   * payload, as a signal trigger does, and say what became of the fire ({@link PluginTriggerOutcome}).
+   * A payload the `inputSchema` refuses rejects with {@link WorkflowInputInvalidError}, which the
+   * plugin that fired sees.
+   *
+   * The fire takes one snapshot, the file whose revision the engine has applied
+   * ({@link appliedFiles}), judges the payload by that revision's `inputSchema`, and starts that
+   * same revision: both happen under {@link withRegistration}, so no registration can move the
+   * engine's active revision in between. A fire that lands while a change to the files is queued or
+   * applying runs the revision applied before it; one after the change registered runs the new
+   * one. A file that is paused starts nothing and answers `skipped`.
+   *
+   * It never waits for an apply. An apply that stops this trigger awaits the trigger's `stop`, and
+   * a trigger's `stop` may wait for its fires in flight (a webhook server's does), so a fire that
+   * waited for the apply would wait for itself. The registration lock holds only the registration,
+   * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
+   * rejects with {@link WorkflowApplyError} until an apply succeeds.
+   *
+   * The checks run in this order, and the first that applies answers: the Bureau is closed; the
+   * file is not applied or is another trigger kind (`stopped`, because its listener is about to
+   * be); a run already carries the idempotency key (`duplicate`); the last apply failed; the file
+   * is paused; the payload is not JSON; the `inputSchema` refuses it. So a repeat of a delivery
+   * that already started a run is answered with that run, however the file has moved since.
+   *
+   * An idempotency key is a tag on the run it starts, `trigger:` and the SHA-256 digest of
+   * `trigger:<workflow>:<plugin:name>:<key>` (a key of any length fits a tag, and one workflow's
+   * or kind's key is never another's). The lookup of that tag and the start sit in one
+   * {@link withRegistration} section with no `await` between that lets another fire in, so two
+   * fires with one key start one run. The key is not given to Weft: its own key mapping outlives
+   * the run record, and a key lives exactly as long as the run it started. Only a fire that
+   * starts a run takes its key; a skipped or failed one leaves it free for the redelivery. Two
+   * Bureaus over one storage can both look up before either has started a run, and start two; the
+   * listener lease does not close that for a `receive`-only trigger.
+   */
+  async function fireTrigger(request: TriggerFireRequest): Promise<PluginTriggerOutcome> {
+    const { workflowId: id, kind, version, idempotencyKey } = request;
+    if (closed) return skippedFire('closed');
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== 'string' || idempotencyKey === '')
+    ) {
+      throw options.createError('The idempotency key must be a non-empty string.', 'BAD_REQUEST');
+    }
     // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
     // refused below, once the file it would start is known, as before.
-    const requested: unknown = payload ?? null;
+    const requested: unknown = request.payload ?? null;
     const isJson = z.json().safeParse(requested).success;
     const input: unknown = isJson ? structuredClone(requested) : requested;
-    await withRegistration(async () => {
-      if (closed) return;
+    const keyTag =
+      idempotencyKey === undefined ? undefined : triggerKeyTag(id, kind, idempotencyKey);
+    return withRegistration(async (): Promise<PluginTriggerOutcome> => {
+      if (closed) return skippedFire('closed');
+      const file = appliedFiles.get(id);
+      if (file === undefined || file.document.trigger.kind !== kind) return skippedFire('stopped');
+      if (keyTag !== undefined) {
+        const earlier = await engine.list({ type: weftNameOf(id), tags: [keyTag], limit: 1 });
+        const first = earlier.items[0];
+        if (first !== undefined) return { outcome: 'duplicate', runId: first.id };
+      }
       const failure = registrationFailure ?? applyFailure;
       if (failure !== undefined) throw new WorkflowApplyError(failure);
-      const file = appliedFiles.get(id);
-      if (file === undefined || file.paused || file.document.trigger.kind !== kind) return;
+      if (file.paused) return skippedFire('paused');
       if (!isJson) {
         throw options.createError('The trigger payload must be a JSON value.', 'BAD_REQUEST');
       }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-      const trigger = { kind, payload: input, ...(await triggerAuthority(undefined)) };
+      // The origin names the plugin that contributes the kind and the file it started; the kind
+      // itself is the run's `trigger.kind`.
+      const origin: TriggerTaskOrigin = {
+        kind: 'trigger',
+        plugin: contributions.triggers.get(kind)?.source.name ?? kind.slice(0, kind.indexOf(':')),
+        workflowId: id,
+      };
+      const trigger = {
+        kind,
+        version,
+        payload: input,
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+        origin,
+        ...(await triggerAuthority(undefined)),
+      };
       assertSendable('trigger payload', trigger);
-      await engine.start(weftNameOf(id), trigger);
+      const handle = await engine.start(weftNameOf(id), trigger, {
+        tags: [taskOriginTag(origin), ...(keyTag === undefined ? [] : [keyTag])],
+      });
+      return { outcome: 'started', runId: handle.id };
     });
   }
 
+  const triggerStorage = options.storage ?? new MemoryStorage();
   const triggers = createWorkflowTriggerSupervisor({
     fire: fireTrigger,
     diagnose: options.diagnose,
+    storage: triggerStorage,
   });
 
   /** The identifiers a write is between claiming the hook origin of and listing the file for. */

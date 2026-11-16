@@ -532,7 +532,9 @@ export type {
   BureauGoalUpdateOutcome,
   BureauGoalUpdateRejectionCode,
   BureauGoalUpdateRequest,
+  BureauGoalValidatorListing,
 } from './goal-types';
+export type { GoalValidatorSource } from './goal-validator-catalog';
 export type {
   LivenessSnapshotEnvelope,
   TaskDiagnosticsFilter,
@@ -615,6 +617,7 @@ export type {
   TaskOrigin,
   TaskOriginKind,
   TaskPersonSurface,
+  TriggerTaskOrigin,
 } from './task-origin';
 export type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 export { createScorerSampler } from './scorers';

@@ -26,6 +26,7 @@ import {
 } from '@lostgradient/weft';
 
 import { eventSourceOf } from './event-source.ts';
+import { PluginPublishedEvent } from './plugin-published-event.ts';
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
 import {
   ActionEvent,
@@ -469,6 +470,8 @@ export const publishedBureauEventKinds: readonly string[] = PROJECTIONS.map((ent
 export function projectBureauEvent(
   event: unknown,
 ): { kind: string; payload: Readonly<Record<string, unknown>> } | undefined {
+  // COR-2224: a plugin's declared kind is dynamic, so it has no entry in the registry above.
+  if (event instanceof PluginPublishedEvent) return { kind: event.type, payload: event.payload };
   for (const entry of PROJECTIONS) {
     const payload = entry.tryProject(event);
     if (payload !== undefined) return { kind: entry.kind, payload };

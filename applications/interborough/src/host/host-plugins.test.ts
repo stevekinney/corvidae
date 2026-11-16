@@ -1080,6 +1080,69 @@ describe('the host’s governed memory', () => {
     ]);
     await memory.close();
   });
+
+  test('records a contributed memory guardrail under its namespaced identity (COR-2190)', async () => {
+    const flagging = (name: string, marker: string) => ({
+      name,
+      description: 'Flags a marker.',
+      detect: async (input: string) => ({
+        triggered: input.includes(marker),
+        confidence: 1,
+        category: 'marker',
+      }),
+    });
+    const plugin = (name: string, guardrail: ReturnType<typeof flagging>): BureauPluginEntry => ({
+      descriptor: definePlugin({
+        name,
+        version: '1.0.0',
+        description: name,
+        setup: () => ({ guardrails: { memory: [guardrail] } }),
+      }),
+      source: 'package',
+      location: `@example/${name}`,
+    });
+    let memory: GovernedMemory | undefined;
+    const bureau = await createBureau({
+      plugins: [
+        plugin('acme', flagging('pii', 'ACME-SECRET')),
+        plugin('other', flagging('pii', 'OTHER-SECRET')),
+        plugin('third', flagging('memory-poisoning', 'THIRD-SECRET')),
+      ],
+      memory: (contributions) => {
+        memory = createHostMemory(new MemoryStorage(), contributions);
+        return memory;
+      },
+    });
+    try {
+      if (memory === undefined) throw new Error('The memory factory was not called.');
+      await memory.init();
+      const writer = createMemoryAuthority({
+        principal: { kind: 'user', id: 'owner:principal' },
+        tenantId: 'tenant',
+        ownerId: 'owner',
+        purpose: 'plugin-test',
+        capabilities: ['memory:write', 'memory:inspect'],
+        policyRevision: 'authorization:1',
+        projection: 'bureau',
+      });
+      for (const marker of ['ACME-SECRET', 'OTHER-SECRET', 'THIRD-SECRET']) {
+        const receipt = await memory.write(writer, `A note carrying ${marker}.`, {
+          collection: 'chat',
+          source: 'conversation',
+        });
+        expect(receipt.status).toBe('quarantined');
+      }
+      const events = await memory.listEvents(writer, { type: 'memory.write.quarantined' });
+      const detectors = events.map((event) => event.diagnostic?.detector ?? '');
+      expect(detectors.toSorted((left, right) => left.localeCompare(right))).toEqual([
+        'acme:memory/pii',
+        'other:memory/pii',
+        'third:memory/memory-poisoning',
+      ]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
 });
 
 test('workspace administrators edit writable remote plugin configuration without deployment powers', async () => {

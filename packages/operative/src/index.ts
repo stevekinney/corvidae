@@ -404,6 +404,7 @@ export type {
   ProjectedValidatorResult,
   ValidatorEvidence,
   ValidatorIdentity,
+  ValidatorJudge,
   ValidatorOutcome,
   ValidatorResult,
 } from './goal-decision';

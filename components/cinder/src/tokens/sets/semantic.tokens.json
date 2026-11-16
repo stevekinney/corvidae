@@ -2,11 +2,11 @@
   "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
   "surface": {
     "$type": "color",
-    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode is the app-shell ladder: `inset 0.958 -> surface 0.976 -> canvas 0.994 -> raised 1.000`, so a grouped surface separates from the near-white page by fill, with elevation still carried by border + shadow. A `data-density=\"comfortable\"` subtree switches the light arm to the consumer ladder (foundation.css). Dark mode is a neutral ladder (hue 265, chroma at most 0.014) built up from near-black: `canvas 0.145 -> surface 0.185 -> inset 0.210 -> raised 0.235`. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
+    "$description": "Cinder layers surfaces in three tiers, each with one job: `surface.raised` is the outer background of a card/container, `surface.base` is a card body (primary content area), and `surface.inset` is a sunken region inside a card body. A card root sets one background; nested regions inherit it unless the component deliberately changes tiers. Light mode is a white sheet on a grey page (owner decision, 2026-11-15): `inset 0.955 -> canvas 0.976 -> surface 1.000 = raised 1.000`, so a white panel separates from the page by fill and a well recedes inside it, with elevation still carried by border + shadow. A `data-density=\"comfortable\"` subtree switches the light arm to the deeper consumer ladder (foundation.css). Dark mode is a neutral ladder (hue 265, chroma at most 0.014) built up from near-black: `canvas 0.145 -> surface 0.185 -> inset 0.210 -> raised 0.235`. Hover/pressed derivatives mix toward the accent in light mode (proportional lightness mixes have no room left once the ramp is anchored at white) and toward white in dark mode (which still has headroom).",
     "base": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.007, 272]
+        "components": [1, 0, 255]
       },
       "$description": "Default semantic surface. Theme modifiers provide its dark value.",
       "$extensions": {
@@ -15,7 +15,7 @@
           "public": true,
           "category": "color",
           "contrastPairs": ["text.default"],
-          "cssRecipe": "light-dark(oklch(97.6% 0.007 272), oklch(18.5% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(100% 0 255), oklch(18.5% 0.012 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-base"
@@ -78,7 +78,7 @@
     "inset": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.958, 0.011, 275]
+        "components": [0.955, 0.005, 265]
       },
       "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
       "$extensions": {
@@ -86,7 +86,7 @@
           "cssProperty": "--cinder-surface-inset",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(95.8% 0.011 275), oklch(21% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(95.5% 0.005 265), oklch(21% 0.012 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-inset"
@@ -97,7 +97,7 @@
     "hover": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.94864, 0.02098, 272]
+        "components": [0.9712, 0.0144, 256.02]
       },
       "$description": "Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp.",
       "$extensions": {
@@ -112,7 +112,7 @@
     "pressed": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.92128, 0.03496, 272]
+        "components": [0.9424, 0.0288, 257.04]
       },
       "$description": "Pressed state of the default surface. Same accent-wash rationale as `surface.hover`, at a stronger mix percentage.",
       "$extensions": {
@@ -142,7 +142,7 @@
     "upcoming-marker": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.958, 0.011, 275]
+        "components": [0.955, 0.005, 265]
       },
       "$description": "Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it.",
       "$extensions": {
@@ -158,15 +158,15 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.994, 0.002, 265]
+        "components": [0.976, 0.004, 265]
       },
-      "$description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is the app-shell ladder: a near-white canvas (0.994) above the grey surface (0.976) and the inset well (0.958), with raised at pure white (1.000). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).",
+      "$description": "Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-surface-canvas",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(99.4% 0.002 265), oklch(14.5% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(97.6% 0.004 265), oklch(14.5% 0.012 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-canvas"
@@ -528,7 +528,7 @@
     "inverse": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.976, 0.007, 272]
+        "components": [1, 0, 255]
       },
       "$description": "Text color for use on `surface.inverse` (Tooltip).",
       "$extensions": {
