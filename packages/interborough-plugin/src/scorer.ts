@@ -1,10 +1,24 @@
-import type { RunResult, ValidatorOutcome } from '@lostgradient/operative';
+import type { RunResult, TokenUsage, ValidatorOutcome } from '@lostgradient/operative';
 
 /**
  * How a scorer judged a run: the `kind` of an Operative `ValidatorOutcome`, the vocabulary a goal's
  * validator already speaks (`pass`, `fail`, `error`, `unavailable`, `canceled`, `indeterminate`).
  */
 export type PluginScoreOutcome = ValidatorOutcome['kind'];
+
+/**
+ * A decision a scorer asked a model for while it scored (the `provider`, `model` and `usage` of an
+ * Operative `Decision`). The host records it on the score's audit record, so the spend a scorer
+ * made is on the same record as its verdict.
+ */
+export interface PluginScoreDecision {
+  /** The provider that answered, such as `anthropic`. */
+  provider: string;
+  /** The provider-native model that answered. */
+  model: string;
+  /** Tokens the decision spent, when the provider reported them. */
+  usage?: TokenUsage;
+}
 
 /** The result of scoring a single completed run against one scorer. */
 export interface PluginScore {
@@ -25,6 +39,13 @@ export interface PluginScore {
    * it raises an alert whatever the outcome is.
    */
   score?: number;
+  /**
+   * The decisions the scorer made while it scored, in the order it made them, when it made any.
+   * They are recorded on the audit record beside the score and never sent in an alert or an event.
+   * A list that is not an array of `{ provider, model, usage? }` with string names and a usage of
+   * finite counts, or that holds more than 64 entries, makes the whole score malformed.
+   */
+  decisions?: readonly PluginScoreDecision[];
 }
 
 /**
@@ -61,4 +82,13 @@ export interface PluginScorer {
    * whatever its score. Without a threshold only `fail` alerts.
    */
   alertThreshold?: number;
+  /**
+   * The share of eligible runs this scorer scores, from 0 to 1, in place of the host's rate (the
+   * `scorers.sampleRate` setting), while that rate is above 0. A host rate of 0 turns every scorer
+   * off, whatever rate a scorer asks for, so this never makes a scorer run when the owner has not
+   * turned scoring on. The scorer rolls for itself, so its rate does not depend on the other
+   * scorers'. A value that is not a number from 0 to 1 is ignored and the host's rate applies.
+   * Recorded beside every score as `sampleRate`.
+   */
+  sampleRate?: number;
 }

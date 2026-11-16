@@ -96,7 +96,7 @@ import { humanInputSchemasOf } from '../human-input-option';
 import { isTryAgentName } from '../agent-try';
 import { normalizeRunRequestContext, persistedRequestAuthority } from '../session-request-context';
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record';
-import { serializeRunState, serializeUnknownError } from '../serialization';
+import { chatRunAttribution, serializeRunState, serializeUnknownError } from '../serialization';
 
 /** The callables run creation reads from elsewhere in `constructBureau`. */
 export interface RunCreationPeers {
@@ -454,7 +454,7 @@ export function createRunCreation<D extends AgentDefinitions>(
       // (before `store.register`, so it's in place before any listRuns()/getRun()
       // call can observe this run) rather than relying on the tool-bubble-event
       // heuristic, which cannot see a run that never calls a tool.
-      runAttribution.set(runId, { agentName, principal: owner });
+      runAttribution.set(runId, chatRunAttribution(agentName, owner, sessionAgent));
       // COR-2009 — the audit log's "Started a run": who started it, the agent, and the chat it runs
       // in, which the log names by its title. Best effort and not awaited, so starting a run takes
       // no extra turn (AB-13 above); the trail tracks the write until it is disposed.

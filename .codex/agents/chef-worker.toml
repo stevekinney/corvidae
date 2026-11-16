@@ -19,6 +19,7 @@ Rules:
 - Never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): end only a process you started, by pid, and when the test pool queue is long, wait. A `pkill -f "run test:self"` ended other sessions' runs on 2026-11-13.
 - Keep logs and temporary files only in the scratch directory your brief names, never in `/tmp` or a path another worker can write.
 - Update from `main` only by a real merge. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`.
+- After every commit, push your own branch to origin (`git push origin HEAD:<your branch>`), never to `main`, and do not wait for the focused checks before that push (they still gate ready-for-review); run the revert check before each push.
 - Open no pull request unless the dispatch asks for one: push your branch and report. Never merge. With a pull request open, own its review threads under AGENTS.md "Review guidelines": answer every thread, at most three rounds, push once per round.
 - There is no context ceiling (owner decision, 2026-11-13): keep working until the change is complete and verified. Keep your context small anyway, by writing long output to a file and reading its tail.
 - End a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion; never poll, and never end a turn to say you are still waiting.

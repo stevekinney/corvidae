@@ -64,6 +64,7 @@ import {
   RunGuardrailRecordedEvent,
   RunRegisteredEvent,
   RunTripwireRecordedEvent,
+  ScorerThresholdBreachedEvent,
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
   RunRemovedEvent,
@@ -401,6 +402,24 @@ const EVENTS: Record<
         taskId: 'task-1',
       }),
   },
+  // Sparsest: a `fail` the scorer gave no score for. Fullest: every field set.
+  'scorer.threshold-breached': {
+    sparsest: () =>
+      new ScorerThresholdBreachedEvent({
+        runId: 'run-1',
+        scorerName: 'quality',
+        scorerVersion: '1.0.0',
+        outcome: 'fail',
+      }),
+    fullest: () =>
+      new ScorerThresholdBreachedEvent({
+        runId: 'run-1',
+        scorerName: 'quality',
+        scorerVersion: '1.0.0',
+        outcome: 'pass',
+        score: 0.2,
+      }),
+  },
 };
 
 function typeMatches(field: BureauEventField, value: unknown): boolean {
@@ -684,6 +703,13 @@ describe('the guardrail, budget and tool kinds (COR-2096)', () => {
     ],
     'tool.policy-denied': TOOL_FIELDS,
     'tool.error': [...TOOL_FIELDS, ['errorCode', false]],
+    'scorer.threshold-breached': [
+      ['runId', false],
+      ['scorerName', false],
+      ['scorerVersion', false],
+      ['outcome', false],
+      ['score', true],
+    ],
   } as const;
 
   it.each(Object.entries(FIELDS_BY_KIND))(

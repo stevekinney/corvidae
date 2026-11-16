@@ -45,6 +45,7 @@ import {
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
+  ScorerThresholdBreachedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   type TriggerEventKind,
@@ -306,6 +307,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   diagnostic: 'published',
   'memory.governance': 'published',
   'decision.made': 'published',
+  'scorer.threshold-breached': 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
 
 export type PublishedBureauEventKind = {
@@ -643,6 +645,17 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
       row: event.row,
       path: event.path,
       taskId: event.taskId,
+    }),
+  ),
+  // The run, the scorer's name and version, the outcome kind and the score when there is one: never
+  // the scorer's message, its threshold, its digest or anything of the run's content (COR-2251).
+  projection(ScorerThresholdBreachedEvent.type, isInstance(ScorerThresholdBreachedEvent), (event) =>
+    definedFields({
+      runId: event.runId,
+      scorerName: event.scorerName,
+      scorerVersion: event.scorerVersion,
+      outcome: event.outcome,
+      score: event.score,
     }),
   ),
 ];

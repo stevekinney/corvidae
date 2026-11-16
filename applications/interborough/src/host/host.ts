@@ -1303,6 +1303,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.capabilities),
+      // Scorers plugins contribute (COR-2202): passing the option is what registers them, so they
+      // are listed at once. No run is scored by any of them until the `scorers.sampleRate` setting,
+      // which defaults to 0, is raised: at 0 every scorer is off, whatever rate it asks for itself.
+      // There is no Settings control for it yet.
+      scorers: { list: [], sampleRate: 0 },
       ...(options.hookFetch === undefined
         ? {}
         : { webhooks: { targets: [], fetch: options.hookFetch } }),

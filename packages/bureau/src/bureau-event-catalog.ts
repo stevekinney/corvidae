@@ -770,6 +770,19 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['taskId?', 'string'],
     ],
   ),
+  'scorer.threshold-breached': entry(
+    'scorer.threshold-breached',
+    'run',
+    'A scorer’s score of a completed run breached its rule: a `fail` outcome, or a score below the scorer’s alert threshold. It names the run, the scorer and its version, the outcome kind and the score when the scorer gave one, never the scorer’s message, its threshold or anything of the run’s content; the scorer’s message is on its `scorer.recorded` audit record. A run that did not complete is never scored.',
+    [
+      ['runId', 'string'],
+      ['scorerName', 'string'],
+      ['scorerVersion', 'string'],
+      ['outcome', 'string'],
+      ['score?', 'number'],
+    ],
+    EVERY_SCOPE,
+  ),
 } satisfies Record<PublishedBureauEventKind, BureauEventCatalogEntry>);
 
 /**

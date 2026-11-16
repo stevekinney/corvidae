@@ -5144,24 +5144,60 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
   scheduledFireServicesHandler.resolve(registerScheduledFireReviews);
 
-  // Wire the online eval sampler (AB-53) now that the audit trail and webhook
-  // notifier exist (a sampled score is recorded to the former; a threshold
-  // breach is delivered through the latter). Only created when at least one
-  // judge is configured with a positive sample rate — the common case (no
-  // `options.scorers`) costs nothing beyond the `undefined` check inside
-  // `createScorerSampler`.
-  if (options.scorers && options.scorers.list.length > 0 && options.scorers.sampleRate > 0) {
+  // Wire the online eval sampler (AB-53) now that the audit trail exists (a sampled score is
+  // recorded to it; a threshold breach is published on the event feed, COR-2251). Created when at
+  // least one judge is configured, whatever the rate (COR-2202): the `scorers.sampleRate` setting
+  // is read as each run finishes, so a rate of 0 now can be raised later without a restart. The
+  // common case (no `options.scorers`) costs nothing beyond the `undefined` check.
+  const scorerOptions = options.scorers;
+  if (scorerOptions && scorerOptions.list.length > 0) {
     scorerSamplerInstance = createScorerSampler(
       bureau,
       auditTrailInstance,
-      webhookNotifierInstance,
       {
-        ...options.scorers,
+        ...scorerOptions,
         // AB-207: same bounded-abort wiring as the webhook notifier above, for
         // an in-flight judge invocation.
-        signal: withBackgroundShutdownSignal(options.scorers.signal),
+        signal: withBackgroundShutdownSignal(scorerOptions.signal),
       },
       runtimeServices,
+      {
+        // COR-2202: the code option is the setting's default, so a stored value replaces it.
+        sampleRate: () => currentSettings()['scorers.sampleRate'] ?? scorerOptions.sampleRate,
+        // COR-2205: no limit unless the setting holds one; the count is kept in the Bureau's store,
+        // so a restart or a second Bureau on that store continues it.
+        dailyBudget: () => currentSettings()['scorers.dailyBudget'],
+        ...(runtime.kv === undefined ? {} : { budgetStore: runtime.kv }),
+        diagnose: (message, cause) =>
+          diagnose({
+            level: 'error',
+            scope: 'scorers',
+            message,
+            ...(cause === undefined ? {} : { cause }),
+          }),
+        // COR-2200: the agent and the revision of its definition the run started with.
+        // COR-2203: only a run started on a chat is labeled `chat`. A goal's attempts and a
+        // workflow's steps run as catalog runs, which `catalogRunIds` keeps off the action stream
+        // (probed: a goal's attempt never reaches the sampler), and a run started any other way
+        // has no kind, so a non-empty `kinds` filter leaves it out rather than guess.
+        describeRun: (runId) => {
+          const attribution = runAttribution.get(runId);
+          return attribution === undefined
+            ? undefined
+            : {
+                agentName: attribution.agentName,
+                definitionRevision: attribution.definitionRevision,
+                kind: attribution.kind,
+              };
+        },
+        // COR-2251: a breach reaches the event feed, where a user's hook routes it.
+        published: (event) => emitter.dispatch(event),
+        // COR-2200: a plugin's scorers are in the contribution catalog under the plugin's source.
+        sourceOf: (name, version) => {
+          const found = options.contributionCatalog?.resolve('scorer', { name, version });
+          return found?.ok === true ? found.entry.source : undefined;
+        },
+      },
     );
   }
 

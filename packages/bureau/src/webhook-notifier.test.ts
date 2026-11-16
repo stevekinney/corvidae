@@ -22,6 +22,7 @@ import {
   createWebhookNotifier,
   type WebhookDeliveryRecord,
   type WebhookTriggerType,
+  WEBHOOK_TRIGGER_TYPES,
   worstAssessment,
   worstProgress,
   worstReachability,
@@ -811,26 +812,26 @@ describe('createWebhookNotifier', () => {
     const { bureau } = createStubBureau();
     const { fetch: fetchImpl, calls } = okFetch();
     const notifier = createWebhookNotifier(bureau, undefined, undefined, {
-      targets: [{ url: 'https://example.com/hook', events: ['eval.threshold-breached'] }],
+      targets: [{ url: 'https://example.com/hook', events: ['human-wait.parked'] }],
       fetch: fetchImpl,
       reviewQueueBaseUrl: 'https://gateway.example.com',
     });
 
     notifier.notify({
       runId: 'run-1',
-      subjectId: 'eval:run-1:quality-judge',
-      trigger: 'eval.threshold-breached',
-      detail: { judgeName: 'quality-judge', score: 0.2, threshold: 0.5 },
+      subjectId: 'wait:run-1:question',
+      trigger: 'human-wait.parked',
+      detail: { question: 'which one', attempts: 2 },
     });
     await notifier.flush();
 
     expect(calls).toHaveLength(1);
     const body = JSON.parse(calls[0]!.body);
     expect(body).toMatchObject({
-      trigger: 'eval.threshold-breached',
+      trigger: 'human-wait.parked',
       runId: 'run-1',
       deepLink: 'https://gateway.example.com/runs/run-1',
-      detail: { judgeName: 'quality-judge', score: 0.2, threshold: 0.5 },
+      detail: { question: 'which one', attempts: 2 },
     });
 
     await notifier.dispose();
@@ -846,8 +847,8 @@ describe('createWebhookNotifier', () => {
 
     notifier.notify({
       runId: 'run-1',
-      subjectId: 'eval:run-1:quality-judge',
-      trigger: 'eval.threshold-breached',
+      subjectId: 'wait:run-1:question',
+      trigger: 'human-wait.parked',
     });
     await notifier.flush();
 
@@ -858,13 +859,12 @@ describe('createWebhookNotifier', () => {
 
   it('a target that omits events receives every WebhookTriggerType', async () => {
     // `WebhookTarget.events` documents "omit to receive every trigger".
-    // The `satisfies` record makes adding a fifth trigger type a compile
+    // The `satisfies` record makes adding a fourth trigger type a compile
     // error here until this test (and that doc comment) account for it.
     const everyTrigger = Object.keys({
       'elicitation.requested': true,
       'approval-pending': true,
       'human-wait.parked': true,
-      'eval.threshold-breached': true,
     } satisfies Record<WebhookTriggerType, true>) as WebhookTriggerType[];
     const { bureau } = createStubBureau();
     const { fetch: fetchImpl, calls } = okFetch();
@@ -896,13 +896,13 @@ describe('createWebhookNotifier', () => {
 
     notifier.notify({
       runId: 'run-1',
-      subjectId: 'eval:run-1:judge-a',
-      trigger: 'eval.threshold-breached',
+      subjectId: 'wait:run-1:question',
+      trigger: 'human-wait.parked',
     });
     notifier.notify({
       runId: 'run-1',
-      subjectId: 'eval:run-1:judge-a',
-      trigger: 'eval.threshold-breached',
+      subjectId: 'wait:run-1:question',
+      trigger: 'human-wait.parked',
     });
     await notifier.flush();
 
@@ -916,11 +916,20 @@ describe('createWebhookNotifier', () => {
     const notifier = createWebhookNotifier(bureau, undefined, undefined, { targets: [] });
     notifier.notify({
       runId: 'run-1',
-      subjectId: 'eval:run-1:judge-a',
-      trigger: 'eval.threshold-breached',
+      subjectId: 'wait:run-1:question',
+      trigger: 'human-wait.parked',
     });
     await notifier.flush();
     await notifier.dispose();
+  });
+
+  it('lists exactly the three triggers that fire a webhook, none of them a scorer breach (COR-2201)', () => {
+    expect([...WEBHOOK_TRIGGER_TYPES]).toEqual([
+      'elicitation.requested',
+      'approval-pending',
+      'human-wait.parked',
+    ]);
+    expect(WEBHOOK_TRIGGER_TYPES as readonly string[]).not.toContain('scorer.threshold-breached');
   });
 
   // ── AB-220: per-delivery liveness ───────────────────────────────────

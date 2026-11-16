@@ -1571,6 +1571,24 @@
     "$.memory.trust",
     "$.memory.writer"
   ],
+  "output:bureau.memory.embedding": [
+    "$.active",
+    "$.active.dimension",
+    "$.active.embedder",
+    "$.active.model",
+    "$.embedders",
+    "$.embedders[].availability",
+    "$.embedders[].dimension",
+    "$.embedders[].id",
+    "$.job",
+    "$.job|anyOf[0].done",
+    "$.job|anyOf[0].error",
+    "$.job|anyOf[0].state",
+    "$.job|anyOf[0].target",
+    "$.job|anyOf[0].total",
+    "$.problem"
+  ],
+  "output:bureau.memory.embedding.cancel": ["$.cancelled"],
   "output:bureau.memory.export": [
     "$.exportId",
     "$.fileName",

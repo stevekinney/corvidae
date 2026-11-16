@@ -1,3 +1,4 @@
+import type { PluginScoreOutcome } from '@lostgradient/interborough-plugin';
 import type { EventMap } from '@lostgradient/lifecycle';
 import type { ScheduleMissedFireReason } from '@lostgradient/weft';
 import type {
@@ -935,6 +936,44 @@ export class DecisionMadeEvent extends Event {
 }
 
 /**
+ * Fired once a scorer's score of a run has been recorded on the audit trail and breaches the
+ * scorer's rule: a `fail`, or a score below its `alertThreshold` (COR-2251). It names the run, the
+ * scorer and its version, the outcome and the score when there is one. It names no message, no
+ * threshold, no digest and nothing of the run's content: the scorer's text stays on the
+ * `scorer.recorded` audit record.
+ */
+export class ScorerThresholdBreachedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'scorer.threshold-breached' as const;
+
+  /** The run that was scored. */
+  readonly runId: string;
+  /** The scorer's name. */
+  readonly scorerName: string;
+  /** The scorer's version. */
+  readonly scorerVersion: string;
+  /** How the scorer judged the run: a validator outcome kind. */
+  readonly outcome: PluginScoreOutcome;
+  /** The score from 0 to 1, when the scorer gave one. */
+  readonly score?: number | undefined;
+
+  constructor(breach: {
+    readonly runId: string;
+    readonly scorerName: string;
+    readonly scorerVersion: string;
+    readonly outcome: PluginScoreOutcome;
+    readonly score?: number | undefined;
+  }) {
+    super(ScorerThresholdBreachedEvent.type);
+    this.runId = breach.runId;
+    this.scorerName = breach.scorerName;
+    this.scorerVersion = breach.scorerVersion;
+    this.outcome = breach.outcome;
+    this.score = breach.score;
+  }
+}
+
+/**
  * Fired on the bureau emitter for each notification the governed memory in `BureauOptions.memory`
  * hands its subscribers (COR-1723): every ledger event a write, read, denial, share, quarantine,
  * deletion, retention sweep, or policy change appends, after the governed call that raised it has
@@ -1133,4 +1172,6 @@ export interface BureauEventMap extends EventMap {
   [MemoryGovernanceEvent.type]: MemoryGovernanceEvent;
   /** A decision was made and written to the audit trail (COR-2249). */
   [DecisionMadeEvent.type]: DecisionMadeEvent;
+  /** A scorer's score of a run breached the scorer's rule (COR-2251). */
+  [ScorerThresholdBreachedEvent.type]: ScorerThresholdBreachedEvent;
 }
