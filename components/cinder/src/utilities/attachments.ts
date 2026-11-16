@@ -9,8 +9,8 @@ import { lockBodyScroll } from '../_internal/overlay.ts';
  * on-screen keyboard), or the top of another docked bar such as a phone's tab bar, its top edge
  * counts towards the toast region's offset; the highest docked edge wins. It positions nothing:
  * the surface docks itself, and it is measured again when it changes size and when the viewport
- * or the keyboard does. A surface that is not drawn, or that sits further up the page, does not
- * count, so the toasts stay at the bottom.
+ * or the keyboard does. A surface further up the page lifts the toasts by its own height only, and
+ * one that is not drawn does not count.
  *
  * @example
  * ```svelte

@@ -65,8 +65,13 @@ describe('dockedToBottom', () => {
     expect(published()).toBe('196px');
   });
 
-  test('a composer inside a card further up the page does not lift the toasts', () => {
+  test('a composer inside a card further up the page lifts the toasts by its height only', () => {
     surface(200, 320);
+    expect(published()).toBe('120px');
+  });
+
+  test('a composer that is not drawn does not lift the toasts', () => {
+    surface(0, 0);
     expect(published()).toBe('');
   });
 });

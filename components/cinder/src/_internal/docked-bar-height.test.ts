@@ -70,12 +70,54 @@ describe('trackDockedBar', () => {
     expect(published()).toBe('200px');
   });
 
-  test('a bar further up the page (a sticky bar on a short page) does not count', () => {
+  test('a bar further up the page (a sticky bar on a short page) lifts the toasts by its height only', () => {
     const viewport = window.innerHeight;
     bar(300, 372);
-    expect(published()).toBe('');
+    expect(published()).toBe('72px');
+    // It is not docked, so it never stacks on the tab bar: the taller of the two heights wins.
     bar(viewport - 56, viewport);
-    expect(published()).toBe('56px');
+    expect(published()).toBe('72px');
+  });
+
+  test('a bar pushed down to the bottom by content is measured again when the page grows', () => {
+    const originalResizeObserver = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+    const observers: Array<{ targets: Element[]; callback: () => void }> = [];
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: class {
+        readonly record: { targets: Element[]; callback: () => void };
+        constructor(callback: () => void) {
+          this.record = { targets: [], callback };
+          observers.push(this.record);
+        }
+        observe(target: Element) {
+          this.record.targets.push(target);
+        }
+        disconnect() {
+          this.record.targets.length = 0;
+        }
+      },
+    });
+    try {
+      const viewport = window.innerHeight;
+      bar(viewport - 56, viewport);
+      const sticky = bar(300, 372);
+      expect(published()).toBe('72px');
+      // Content arrives above the sticky bar: the page grows and the bar now sits on the tab bar,
+      // with no change to its own size.
+      boxes.set(sticky, { top: viewport - 128, bottom: viewport - 56 });
+      const page = observers.find((record) => record.targets.includes(document.documentElement));
+      expect(page).toBeDefined();
+      page?.callback();
+      expect(published()).toBe('128px');
+    } finally {
+      for (const stop of stops.splice(0)) stop();
+      if (originalResizeObserver) {
+        Object.defineProperty(globalThis, 'ResizeObserver', originalResizeObserver);
+      } else {
+        Reflect.deleteProperty(globalThis, 'ResizeObserver');
+      }
+    }
   });
 
   test('a bar that is not drawn does not count', () => {
