@@ -98,6 +98,7 @@
     {/if}
     {#if listener.state === 'failed'}
       <Button
+        data-changes
         variant="secondary"
         size="sm"
         loading={retry.isPending}
