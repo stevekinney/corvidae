@@ -78,6 +78,7 @@ export type {
   MemoryDeletionPropagator,
   MemoryDeletionResult,
   MemoryEmbedderAvailability,
+  MemoryEmbedderListing,
   MemoryEmbeddingAdvanceOptions,
   MemoryEmbeddingJobStatus,
   MemoryEmbeddingProblem,
@@ -276,12 +277,14 @@ export type {
 export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 export {
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
+  MEMORY_EMBEDDING_FAILURES,
   MemoryVectorDimensionError,
   MemoryVectorProfileMissingError,
   createMemoryVectorStore,
 } from './memory-vector-store';
 export type {
   CreateMemoryVectorStoreOptions,
+  MemoryEmbeddingFailure,
   MemoryEmbeddingJob,
   MemoryEmbeddingJobState,
   MemoryEmbeddingProfile,

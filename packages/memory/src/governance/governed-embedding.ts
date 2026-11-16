@@ -7,13 +7,19 @@ import {
   type RegisteredEmbedder,
 } from '../embedder-registry';
 import {
+  MEMORY_EMBEDDING_FAILURES,
+  type MemoryEmbeddingFailure,
   type MemoryEmbeddingProfile,
   MemoryVectorDimensionError,
   type MemoryVectorReference,
   type MemoryVectorStore,
 } from '../memory-vector-store';
 import { raceAbort } from './abort-race';
-import type { MemoryEmbedderAvailability, MemoryEmbeddingStatus } from './governed-memory-types';
+import type {
+  MemoryEmbedderAvailability,
+  MemoryEmbedderListing,
+  MemoryEmbeddingStatus,
+} from './governed-memory-types';
 
 /**
  * The active profile as one operation reads it, with the embedder that made its vectors. An
@@ -104,6 +110,8 @@ export interface GovernedEmbedding {
   status(): Promise<MemoryEmbeddingStatus>;
   /** Whether `id` names an embedder memory could embed with now. */
   availability(id: string): MemoryEmbedderAvailability;
+  /** Every registered embedder with its availability as it is now, in registry order. */
+  embedders(): readonly MemoryEmbedderListing[];
   /**
    * Deletes the referenced records' vectors from every profile. Called after the records
    * themselves are deleted, so a vector never outlives a record a reader can still find.
@@ -136,6 +144,15 @@ export function modelMatches(
   registered: Pick<RegisteredEmbedder, 'model'>,
 ): boolean {
   return profile.model === undefined || profile.model === registered.model;
+}
+
+/**
+ * The code a stored switch error reports as. A switch since COR-2188 stores a code. One stored
+ * before it holds the text its embedder gave, which can carry a provider's response, so it reports
+ * as `embedder-failed` and its text goes no further.
+ */
+export function failureCodeOf(stored: string): MemoryEmbeddingFailure {
+  return MEMORY_EMBEDDING_FAILURES.find((code) => code === stored) ?? 'embedder-failed';
 }
 
 /**
@@ -269,13 +286,27 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
                 state: job.state,
                 done: job.done,
                 total: job.total,
-                ...(job.error === undefined ? {} : { error: job.error }),
+                ...(job.error === undefined ? {} : { error: failureCodeOf(job.error) }),
               },
             }),
       };
     },
     availability(id) {
       return registry.describe(id)?.availability ?? 'not-loaded';
+    },
+    embedders() {
+      return registry.ids.flatMap((id) => {
+        const registered = registry.describe(id);
+        return registered === undefined
+          ? []
+          : [
+              {
+                id: registered.id,
+                dimension: registered.dimension,
+                availability: registered.availability,
+              },
+            ];
+      });
     },
     forget: (references) => vectors.deleteMany(references),
   };

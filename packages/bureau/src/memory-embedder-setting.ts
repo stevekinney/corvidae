@@ -145,7 +145,7 @@ export function createMemoryEmbedderSetting(
       const status = await memory.embedding.status();
       if (status.job?.state === 'running') {
         return refuse(
-          `A switch to the embedder "${status.job.target}" is running (${status.job.done} of ${status.job.total} memories); cancel it or wait for it to finish`,
+          `A switch to the embedder "${status.job.target}" is running (${status.job.done} of ${status.job.total} memories); cancel it with bureau.memory.embedding.cancel or wait for it to finish`,
         );
       }
       if (requested === status.active.embedder) return [];

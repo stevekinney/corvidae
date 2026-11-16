@@ -111,6 +111,7 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     embedding: {
       status: () => embedding.status(),
       availability: (id) => embedding.availability(id),
+      embedders: () => embedding.embedders(),
       switchTo: (id) => switchEmbedder(governance, id),
       cancel: () => cancelSwitch(governance),
       async advance(advanceOptions) {

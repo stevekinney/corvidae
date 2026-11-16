@@ -40,6 +40,7 @@ import { waitForTaskState } from '../../test';
 import type { Bureau } from '../../bureau-types/facade.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { OPERATION_MAP } from '../operation-map.ts';
 import { memoryExportFileName } from './memory-history.ts';
 import { memoryRememberOperation } from './memory-operations.ts';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
@@ -67,6 +68,9 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'alice-key': { subject: 'alice', scopes: ['bureau.memory:read', 'bureau.memory:write'] },
   'bob-key': { subject: 'bob', scopes: ['bureau.memory:read', 'bureau.memory:write'] },
   'plain-key': { subject: 'plain', scopes: [] },
+  // COR-2188: the embedding operations take the settings scopes, not the memory ones.
+  'settings-reader-key': { subject: 'operator', scopes: ['bureau.settings:read'] },
+  'settings-writer-key': { subject: 'operator', scopes: ['bureau.settings:write'] },
   'reader-key': { subject: 'alice', scopes: ['bureau.memory:read'] },
   'writer-key': { subject: 'alice', scopes: ['bureau.memory:write'] },
   'governor-key': { subject: 'alice', scopes: ['bureau.memory:govern'] },
@@ -1820,6 +1824,171 @@ describe('workspace privacy for memory operations', () => {
       await opened.dispose();
     }
   });
+});
+
+/**
+ * COR-2188 — `bureau.memory.embedding` reads the embedding memory uses and the switch to another
+ * embedder, and `bureau.memory.embedding.cancel` cancels the switch. The cancel's own state
+ * transitions are in `packages/memory/test/governance/embedding-cancel.test.ts`.
+ */
+describe('bureau.memory.embedding and bureau.memory.embedding.cancel', () => {
+  /** Memory over `durable`, whose vector store the test can write a switch record into. */
+  function governedOver(durable: MemoryStorage) {
+    const runtime = createManualRuntimeServices({ identifierSeed: 'memory-embedding' });
+    return createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
+      ledger: createMemoryGovernanceLedger(durable),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(durable),
+      policy: createMemoryGovernancePolicy({ revision: 'governance:memory-embedding' }),
+      runtime,
+    });
+  }
+
+  it('registers both as administrator operations that delegate to the memory’s embedding (AC5)', () => {
+    const names = BUREAU_HANDLER_OPERATIONS.map((operation) => operation.name);
+    expect(names).toContain('bureau.memory.embedding');
+    expect(names).toContain('bureau.memory.embedding.cancel');
+    expect(OPERATION_MAP['bureau.memory.embedding']).toEqual({
+      workspaceClass: 'administrator-shared',
+      member: 'memory.embedding.status',
+    });
+    expect(OPERATION_MAP['bureau.memory.embedding.cancel']).toEqual({
+      workspaceClass: 'administrator-shared',
+      member: 'memory.embedding.cancel',
+    });
+  });
+
+  it('reads the active embedding, no problem, no switch, and every registered embedder (AC1)', async () => {
+    const { handler } = await open();
+
+    const read = await rpc(handler, 'bureau.memory.embedding', {}, 'settings-reader-key');
+
+    expect(resultOf(read)).toEqual({
+      active: { embedder: 'test', dimension: 64, model: 'test-model' },
+      problem: null,
+      job: null,
+      embedders: [
+        { id: 'hashing', dimension: 256, availability: 'available' },
+        { id: 'test', dimension: 64, availability: 'available' },
+      ],
+    });
+  });
+
+  it('reads a running switch, and the cancel cancels it (AC1)', async () => {
+    const memory = governedMemory();
+    const { bureau, handler } = await open({ memory });
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    expect(await memory.embedding.switchTo('hashing')).toMatchObject({ outcome: 'started' });
+
+    const running = await rpc(handler, 'bureau.memory.embedding', {}, 'settings-reader-key');
+    expect(resultOf(running)['job']).toEqual({
+      target: 'hashing',
+      state: 'running',
+      done: 0,
+      total: 0,
+      error: null,
+    });
+
+    const cancelled = await rpc(
+      handler,
+      'bureau.memory.embedding.cancel',
+      {},
+      'settings-writer-key',
+    );
+    expect(resultOf(cancelled)).toEqual({ cancelled: true });
+    const after = await rpc(handler, 'bureau.memory.embedding', {}, 'settings-reader-key');
+    expect(resultOf(after)['job']).toMatchObject({ target: 'hashing', state: 'cancelled' });
+    expect(resultOf(after)['active']).toMatchObject({ embedder: 'test' });
+
+    const again = await rpc(handler, 'bureau.memory.embedding.cancel', {}, 'settings-writer-key');
+    expect(resultOf(again)).toEqual({ cancelled: false });
+  });
+
+  it('cancels nothing when no switch runs', async () => {
+    const { handler } = await open();
+    const cancelled = await rpc(
+      handler,
+      'bureau.memory.embedding.cancel',
+      {},
+      'settings-writer-key',
+    );
+    expect(resultOf(cancelled)).toEqual({ cancelled: false });
+  });
+
+  it('names a failure by a code, never by the text a switch stored', async () => {
+    const durable = new MemoryStorage();
+    const memory = governedOver(durable);
+    const { handler } = await open({ memory });
+    const started = await memory.embedding.switchTo('hashing');
+    if (started.outcome !== 'started') throw new Error('The switch did not start.');
+    // A switch from before COR-2188 stored the text its embedder gave, which can carry a response.
+    const vectors = createMemoryVectorStore(durable);
+    const job = await vectors.getJob();
+    await vectors.replaceJob(job, {
+      ...job!,
+      state: 'failed',
+      error: 'Ollama API error: 500 sk-secret-body',
+    });
+
+    const read = await rpc(handler, 'bureau.memory.embedding', {}, 'settings-reader-key');
+
+    expect(resultOf(read)['job']).toMatchObject({ state: 'failed', error: 'embedder-failed' });
+    expect(JSON.stringify(read)).not.toContain('sk-secret-body');
+  });
+
+  it('is Forbidden without the settings scope, before anything about the memory is decided (AC2)', async () => {
+    for (const memory of [undefined, governedMemory()] as const) {
+      const { handler } = await open(memory === undefined ? { memory: null } : { memory });
+      const refusals: [string, string][] = [
+        ['bureau.memory.embedding', 'plain-key'],
+        ['bureau.memory.embedding', 'full-key'],
+        // The write scope does not read, and the read scope does not cancel.
+        ['bureau.memory.embedding', 'settings-writer-key'],
+        ['bureau.memory.embedding.cancel', 'plain-key'],
+        ['bureau.memory.embedding.cancel', 'full-key'],
+        ['bureau.memory.embedding.cancel', 'settings-reader-key'],
+      ];
+      for (const [method, key] of refusals) {
+        const refused = await rpc(handler, method, {}, key);
+        expect([method, key, faultOf(refused).status]).toEqual([method, key, 403]);
+        expect(JSON.stringify(refused)).toContain('bureau.settings:');
+      }
+    }
+  });
+
+  it('answers UnsupportedCapability to a caller with the scope when the Bureau keeps no memory', async () => {
+    const { handler } = await open({ memory: null });
+    for (const [method, key] of [
+      ['bureau.memory.embedding', 'settings-reader-key'],
+      ['bureau.memory.embedding.cancel', 'settings-writer-key'],
+    ] as const) {
+      const refused = await rpc(handler, method, {}, key);
+      expect([method, refused.error?.data?.httpStatus]).toEqual([method, 501]);
+      expect(refused.error?.data?.['capability']).toBe('governed-memory');
+    }
+  });
+
+  for (const operation of ['bureau.memory.embedding', 'bureau.memory.embedding.cancel'] as const) {
+    it(`${operation} exercises every workspace actor`, async () => {
+      const opened = await openWorkspacePrivacyBureau({
+        agents: { assistant: createAgent({ generate: recording() }) },
+        bureauOptions: { memory: governedMemory() },
+      });
+      try {
+        for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+          const response = await workspacePrivacyCall(opened, actor, operation, {});
+          witnesses.observeWire(operation, actor, response);
+          expect(response.text).not.toContain('MEMORY-WORKSPACE-SENTINEL');
+          if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+          else if (actor === 'administrator') expect(response.body?.error).toBeUndefined();
+          else expect(response.body?.error?.data?.httpStatus).toBe(403);
+        }
+      } finally {
+        await opened.dispose();
+      }
+    });
+  }
 });
 
 describe('memoryExportFileName', () => {

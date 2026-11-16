@@ -226,10 +226,14 @@ describe('memory.embedder', () => {
     expect(second.outcome === 'rejected' && second.message).toContain(
       `A switch to the embedder "${FAKE}" is running`,
     );
+    // COR-2188: the refusal names the operation that cancels it.
+    expect(second.outcome === 'rejected' && second.message).toContain(
+      'cancel it with bureau.memory.embedding.cancel or wait for it to finish',
+    );
     expect(await embedderSetting(bureau)).toBe(FAKE);
   });
 
-  it('sets the embedder back and deletes the partial profile when the switch is cancelled', async () => {
+  it('sets the embedder back on the next pass and deletes the partial profile when the switch is cancelled (COR-2188)', async () => {
     const { bureau, memory, durable } = await start();
     await remember(memory, 'alpha answer');
     await setEmbedder(bureau, FAKE);
@@ -292,7 +296,8 @@ describe('memory.embedder', () => {
     const status = await memory.embedding.status();
     expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
     expect(status.job).toMatchObject({ target: FAKE, state: 'failed', done: 0, total: 1 });
-    expect(status.job?.error).toBe('The fake embedder is down.');
+    // A code, never the text the embedder gave (COR-2188).
+    expect(status.job?.error).toBe('embedder-failed');
     expect(await embedderSetting(bureau)).toBe(HASHING_EMBEDDER_ID);
   });
 

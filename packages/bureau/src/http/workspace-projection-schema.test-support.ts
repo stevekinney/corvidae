@@ -191,6 +191,10 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The hold-release receipt contains the memory identifier, changed flag, and hold status, not memory content (holdOutput).',
   'bureau.memory.quarantine':
     'The quarantine receipt contains the memory identifier and affected and changed counts, not memory content (quarantineOutput).',
+  'bureau.memory.embedding':
+    'The embedding status contains embedder identifiers, dimensions, model names, availability, switch progress counts and a failure code from a closed set, never memory content or an embedder’s own error text (memoryEmbeddingOperation output schema).',
+  'bureau.memory.embedding.cancel':
+    'The cancel receipt contains only whether a switch was cancelled, not memory content (memoryEmbeddingCancelOperation output schema).',
   'bureau.assets.uploads.abort':
     'The abort receipt contains only the upload identity and whether an upload was aborted (upload abort output schema).',
   'bureau.workflows.signal':

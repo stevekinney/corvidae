@@ -77,6 +77,23 @@ export interface MemoryQueuedEmbed {
 export type MemoryEmbeddingJobState = 'running' | 'failed' | 'cancelled';
 
 /**
+ * Why a switch failed, named by a code and never by the text an embedder gave, which can carry a
+ * provider's response (COR-2188): its target is no longer registered or cannot embed
+ * (`target-unavailable`), its profile was deleted while it ran (`target-missing`), its embedder
+ * errored or gave a vector the profile refuses (`embedder-failed`), or did not answer within the
+ * bound (`embedder-timeout`).
+ */
+export const MEMORY_EMBEDDING_FAILURES = [
+  'target-unavailable',
+  'target-missing',
+  'embedder-failed',
+  'embedder-timeout',
+] as const;
+
+/** See {@link MEMORY_EMBEDDING_FAILURES}. */
+export type MemoryEmbeddingFailure = (typeof MEMORY_EMBEDDING_FAILURES)[number];
+
+/**
  * The durable record of a switch of the active embedding (COR-1898): the embedding it started
  * from, the profile it fills, and how far it got. A switch that completes leaves no record; one
  * that failed or was cancelled keeps it, so its state and error stay readable, until the next
@@ -93,7 +110,11 @@ export interface MemoryEmbeddingJob {
   readonly done: number;
   /** How many records were stored when last counted. */
   readonly total: number;
-  /** Why a `failed` switch failed: `target-unavailable`, or the error the target embedder gave. */
+  /**
+   * Why a `failed` switch failed. A switch since COR-2188 stores a {@link MemoryEmbeddingFailure}
+   * code; one stored before it holds the text its embedder gave, which is read back as written so a
+   * swap that expects the record still matches, and is reported as `embedder-failed`.
+   */
   readonly error?: string;
 }
 

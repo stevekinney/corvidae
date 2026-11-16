@@ -213,6 +213,15 @@ export const OPERATION_MAP = {
   },
   'bureau.memory.quarantine': { workspaceClass: 'private-owned', member: 'memory.quarantine' },
   'bureau.memory.export': { workspaceClass: 'private-owned', member: 'memory.export' },
+  // COR-2188: the deployment's embedding, guarded by the settings scopes, so an administrator's.
+  'bureau.memory.embedding': {
+    workspaceClass: 'administrator-shared',
+    member: 'memory.embedding.status',
+  },
+  'bureau.memory.embedding.cancel': {
+    workspaceClass: 'administrator-shared',
+    member: 'memory.embedding.cancel',
+  },
 
   'bureau.assets.get': { workspaceClass: 'explicit-share', member: 'assets.inspect' },
   'bureau.assets.uploads.create': { workspaceClass: 'private-owned', member: 'assets.beginUpload' },

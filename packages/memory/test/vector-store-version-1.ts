@@ -47,19 +47,27 @@ export async function snapshotVectorStore(storage: Storage): Promise<Record<stri
   return Object.fromEntries(entries.toSorted(([left], [right]) => (left < right ? -1 : 1)));
 }
 
+/** What a `conditionalBatch` is given: the conditions it expects, then the operations it commits. */
+export type ConditionalSwap = Parameters<NonNullable<Storage['conditionalBatch']>>;
+
 /**
  * `storage`, with each `conditionalBatch` handed to `intercept`, which decides whether and when
- * `run` (the real swap) happens: to hold it, to fail it, or to change what it read first.
+ * `run` (the real swap) happens: to hold it, to fail it, or to change what it read first. It is
+ * told which swap it is, by the conditions and the operations the swap carries.
  */
 export function intercepting(
   storage: Storage,
-  intercept: (run: () => Promise<boolean>) => Promise<boolean>,
+  intercept: (
+    run: () => Promise<boolean>,
+    conditions: ConditionalSwap[0],
+    operations: ConditionalSwap[1],
+  ) => Promise<boolean>,
 ): Storage {
   return new Proxy(storage, {
     get(target, property) {
       if (property === 'conditionalBatch') {
-        return (...parameters: Parameters<NonNullable<Storage['conditionalBatch']>>) =>
-          intercept(() => target.conditionalBatch!(...parameters));
+        return (...parameters: ConditionalSwap) =>
+          intercept(() => target.conditionalBatch!(...parameters), parameters[0], parameters[1]);
       }
       const value = Reflect.get(target, property);
       return typeof value === 'function' ? value.bind(target) : value;
