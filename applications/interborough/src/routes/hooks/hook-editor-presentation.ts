@@ -227,8 +227,20 @@ export function latestDelivery(
   };
 }
 
-/** What a test event came to: the line under the buttons and whether it was a success. */
-export type TestOutcome = { readonly ok: boolean; readonly text: string };
+/**
+ * What a test event came to: the line under the buttons and how it is drawn. `warning` is a test
+ * that is waiting for something, not one that failed.
+ */
+export type TestOutcome = {
+  readonly tone: 'success' | 'warning' | 'danger';
+  readonly text: string;
+  /**
+   * The link the result carries, in the Alert's actions: `payload` (See the payload) for a saved
+   * webhook's test that was sent, and `log` (Jump to log) for a test of a plugin action, whose
+   * attempts are in the delivery log. None when there is nothing to read there.
+   */
+  readonly link?: 'payload' | 'log';
+};
 
 /**
  * Reads the record of a test event the Bureau answered. `address` is the web address it was sent
@@ -243,13 +255,44 @@ export function testOutcome(delivery: HookDelivery, address: string, saved: bool
   if (delivery.status === 'delivered' && last !== undefined && status !== null) {
     const milliseconds = last.finishedAt === null ? undefined : last.finishedAt - last.startedAt;
     const sent = copy.testSent(host, statusAnswer(status), milliseconds);
-    return { ok: true, text: saved ? sent : `${sent} ${copy.testSentUnsaved}` };
+    return saved
+      ? { tone: 'success', text: sent, link: 'payload' }
+      : { tone: 'success', text: `${sent} ${copy.testSentUnsaved}` };
   }
   const reason =
     status === null
       ? copy.testFailedNoAnswer(host)
       : copy.testFailedAnswered(host, statusAnswer(status));
-  return { ok: false, text: `${copy.testFailed} ${reason}` };
+  return { tone: 'danger', text: `${copy.testFailed} ${reason}` };
+}
+
+/**
+ * Reads the record of a test of a plugin hook (COR-2183): what the action's own check of the event
+ * came to. A test still `pending` is waiting for its plugin's setup, so it is a warning and not a
+ * failure. The action's error is not repeated here, because a plugin writes its text and the
+ * delivery log under the form shows each attempt.
+ */
+export function pluginTestOutcome(
+  delivery: HookDelivery,
+  plugin: string,
+  kind: string,
+): TestOutcome {
+  const copy = COPY.check;
+  if (delivery.status === 'delivered') {
+    return { tone: 'success', text: copy.testPluginRan(kind), link: 'log' };
+  }
+  if (delivery.status === 'pending') {
+    return { tone: 'warning', text: copy.testPluginWaiting(plugin), link: 'log' };
+  }
+  return { tone: 'danger', text: copy.testPluginFailed, link: 'log' };
+}
+
+/**
+ * Whether the Bureau refused a test because the action's plugin needs setup. The refusal names it in
+ * its own words, which are not shown: the editor says it in its own (`testPluginNeedsSetup`).
+ */
+export function isNeedsSetupRefusal(error: unknown): boolean {
+  return /needs setup/i.test(faultTreatment(error).message);
 }
 
 /**

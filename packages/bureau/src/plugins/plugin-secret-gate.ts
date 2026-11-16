@@ -568,6 +568,11 @@ export function gatedContributions<T extends PluginContributions>(
           reactions: result.reactions.map((kind) => ({
             ...kind,
             run: gated(gate, idOf(kind.name), kind.run.bind(kind)),
+            // A test delivery's `dryRun` is as available as `run` is, and read from the kind
+            // itself: a method on a class instance is not copied by the spread above (COR-2183).
+            ...(kind.dryRun === undefined
+              ? {}
+              : { dryRun: gated(gate, idOf(kind.name), kind.dryRun.bind(kind)) }),
           })),
         }),
     ...(result.embedders === undefined

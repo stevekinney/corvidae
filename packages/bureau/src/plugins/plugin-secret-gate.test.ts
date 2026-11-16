@@ -411,6 +411,9 @@ describe('the secret-gating outcome matrix', () => {
             description: 'Pages',
             configuration: z.object({}),
             run: note('reaction', undefined),
+            // COR-2183: a test delivery runs `dryRun`, which is gated as `run` is.
+            dryRun: note('reaction-dry-run', undefined),
+            maxAttempts: 4,
           },
         ],
         embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
@@ -471,6 +474,7 @@ describe('the secret-gating outcome matrix', () => {
         ]),
       ),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
+      'reaction-dry-run': () => gatedResult.reactions?.[0]?.dryRun?.({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never),
       scorer: () => gatedResult.scorers?.[0]?.score({} as never, new AbortController().signal),
@@ -513,6 +517,8 @@ describe('the secret-gating outcome matrix', () => {
     expect(gatedResult.guardrails?.memory?.[0]?.gates).toEqual(['recall']);
     expect(gatedResult.guardrails?.input?.[0]).toMatchObject({ action: 'warn' });
     expect(gatedResult.guardrails?.tools?.[0]).toMatchObject({ name: 'cap', action: 'block' });
+    // A gated reaction keeps what it declares beside `run` and `dryRun`.
+    expect(gatedResult.reactions?.[0]).toMatchObject({ name: 'page', maxAttempts: 4 });
     expect(await gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never)).toMatchObject({
       triggered: false,
       confidence: 0,

@@ -57,6 +57,7 @@ import {
   createAgentContributions,
   guardrailContractFault,
 } from '../agent-contributions';
+import { REACTION_MAXIMUM_ATTEMPTS, isReactionMaxAttempts } from '../hooks/hook-types';
 import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
 import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
@@ -1078,6 +1079,14 @@ async function setUp(
     // A reaction's timeout builds its delivery's lease, so a value that is not a positive safe
     // integer skips this plugin here, and never reaches `createHooks`, which would fail the Bureau.
     for (const reaction of returned.reactions ?? []) {
+      // The same for its own attempt limit (COR-2183): an integer from 1 to 20, and not a value the
+      // host would refuse in `createHooks`, which fails the Bureau.
+      const { maxAttempts } = reaction;
+      if (maxAttempts !== undefined && !isReactionMaxAttempts(maxAttempts)) {
+        throw new Error(
+          `The reaction "${reaction.name}" has a maxAttempts of ${String(maxAttempts)}, which is not an integer from 1 to ${REACTION_MAXIMUM_ATTEMPTS}`,
+        );
+      }
       const { timeoutMilliseconds } = reaction;
       if (
         timeoutMilliseconds !== undefined &&
