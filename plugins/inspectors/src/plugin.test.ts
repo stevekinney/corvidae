@@ -20,9 +20,9 @@ describe('the inspectors plugin', () => {
     } finally {
       await host.dispose();
     }
-    expect(runInspector.uri).toBe('ui://bureau/run-inspector/v1');
-    expect(pendingReview.uri).toBe('ui://bureau/pending-review/v1');
-    expect(workflowRevisionReview.uri).toBe('ui://bureau/workflow-revision-review/v1');
+    expect(runInspector.uri).toBe('ui://inspectors/run-inspector/v1');
+    expect(pendingReview.uri).toBe('ui://inspectors/pending-review/v1');
+    expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
   });
 
   it('links each panel to the tool a client runs to open it, one it may call', () => {

@@ -39,8 +39,8 @@ export default definePlugin({
 `;
 
 /** An MCP app whose entry is `./app.ts` beside the plugin (written when `buildable`, else absent). */
-const appSource = (name: string, tool: string, entry = './app.ts'): string =>
-  `{ name: '${name}', title: '${name}', uri: 'ui://fixture/${name}/v1', entry: new URL('${entry}', import.meta.url),
+const appSource = (plugin: string, name: string, tool: string, entry = './app.ts'): string =>
+  `{ name: '${name}', title: '${name}', uri: 'ui://${plugin}/${name}/v1', entry: new URL('${entry}', import.meta.url),
     allowedTools: ['${tool}'], opensFromTool: '${tool}' }`;
 
 async function writeFolderPlugin(
@@ -84,20 +84,26 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
     'broken-entry',
     pluginSource(
       'broken-entry',
-      `{ panels: [${appSource('broken', 'bureau.tasks.events', './missing.ts')}] }`,
+      `{ panels: [${appSource('broken-entry', 'broken', 'bureau.tasks.events', './missing.ts')}] }`,
     ),
     false,
   );
   await writeFolderPlugin(
     plugins,
     'first-opener',
-    pluginSource('first-opener', `{ panels: [${appSource('first', 'bureau.tasks.cancel')}] }`),
+    pluginSource(
+      'first-opener',
+      `{ panels: [${appSource('first-opener', 'first', 'bureau.tasks.cancel')}] }`,
+    ),
     true,
   );
   await writeFolderPlugin(
     plugins,
     'second-opener',
-    pluginSource('second-opener', `{ panels: [${appSource('second', 'bureau.tasks.cancel')}] }`),
+    pluginSource(
+      'second-opener',
+      `{ panels: [${appSource('second-opener', 'second', 'bureau.tasks.cancel')}] }`,
+    ),
     true,
   );
   await writeFolderPlugin(plugins, 'bureau', pluginSource('bureau', '{}'), false);
@@ -143,8 +149,70 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
   const uris = (host.bureau.plugins.panels() as readonly { app: { uri: string } }[]).map(
     ({ app }) => app.uri,
   );
-  expect(uris).toContain('ui://bureau/run-inspector/v1');
-  expect(uris).toContain('ui://fixture/first/v1');
-  expect(uris).not.toContain('ui://fixture/broken/v1');
-  expect(uris).not.toContain('ui://fixture/second/v1');
+  expect(uris).toContain('ui://inspectors/run-inspector/v1');
+  expect(uris).toContain('ui://first-opener/first/v1');
+  expect(uris).not.toContain('ui://broken-entry/broken/v1');
+  expect(uris).not.toContain('ui://second-opener/second/v1');
+});
+
+test('a page whose bytes changed under a URI an earlier start served is listed as panel-changed, and still served (COR-2210)', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'interborough-panel-changed-'));
+  directories.push(home);
+  // The deployment identity exists before the folder does, as it does on a real machine.
+  (await openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } })).close();
+  const plugins = join(home, 'plugins');
+  await writeFolderPlugin(
+    plugins,
+    'drifting',
+    pluginSource(
+      'drifting',
+      `{ panels: [${appSource('drifting', 'page', 'bureau.tasks.cancel')}] }`,
+    ),
+    true,
+  );
+  const start = async () => {
+    const host = await startHost({
+      environment: { INTERBOROUGH_HOME: home },
+      port: 0,
+      log: () => {},
+    });
+    hosts.push(host);
+    const report = (await (await fetch(new URL('/host/plugins', host.url))).json()) as {
+      plugins: Standing[];
+    };
+    const panels = (await (await fetch(new URL('/host/panels', host.url))).json()) as {
+      apps: { plugin: string; app: string; uri: string }[];
+    };
+    const standing = report.plugins.find(({ descriptor }) => descriptor.name === 'drifting');
+    return { host, standing, panels: panels.apps.filter(({ plugin }) => plugin === 'drifting') };
+  };
+
+  const first = await start();
+  expect(first.standing).toMatchObject({ status: 'running', problems: [] });
+  expect(first.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
+  await first.host.close();
+  hosts.splice(hosts.indexOf(first.host), 1);
+
+  // The same start again is quiet; changed bytes under the same URI are not.
+  const same = await start();
+  expect(same.standing).toMatchObject({ status: 'running', problems: [] });
+  await same.host.close();
+  hosts.splice(hosts.indexOf(same.host), 1);
+
+  await writeFile(join(plugins, 'drifting', 'app.ts'), "document.body.textContent = 'changed';\n");
+  const changed = await start();
+  expect(changed.standing?.status).toBe('running');
+  expect(changed.standing?.problems).toEqual([
+    {
+      code: 'panel-changed',
+      app: 'page',
+      uri: 'ui://drifting/page/v1',
+      previousDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      contentDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    },
+  ]);
+  const [problem] = changed.standing?.problems ?? [];
+  expect(problem?.['previousDigest']).not.toBe(problem?.['contentDigest']);
+  // Still served.
+  expect(changed.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
 });

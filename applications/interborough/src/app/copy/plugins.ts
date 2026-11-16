@@ -329,6 +329,13 @@ export const PLUGINS_COPY = {
       body: (panel: string, message: string): string =>
         `The panel ${panel} is not served. ${message}`,
     },
+    /** A panel is served under a URI an earlier start served different bytes under (COR-2210). */
+    panelChanged: {
+      status: 'Loaded, a panel changed',
+      title: 'A panel the plugin adds changed under the same address',
+      body: (panel: string, previousDigest: string, contentDigest: string): string =>
+        `The panel ${panel} is still served, but its page is not the one an earlier start served at the same address. It was ${previousDigest} and is now ${contentDigest}.`,
+    },
   },
   /** The banner every page shows after a startup where a plugin or a folder did not load. */
   startupBanner: {

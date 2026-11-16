@@ -175,7 +175,9 @@ describe('the identity of every request', () => {
     const inspect = (tools as Array<{ name: string; _meta?: unknown }>).find(
       (tool) => tool.name === 'bureau.tasks.inspect',
     );
-    expect(inspect?._meta).toMatchObject({ ui: { resourceUri: 'ui://bureau/run-inspector/v1' } });
+    expect(inspect?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://inspectors/run-inspector/v1' },
+    });
     // Every tool a running panel lists in its `allowedTools` is visible to apps; every other tool
     // to the model alone (COR-2209).
     const panelTools = new Set([
@@ -203,10 +205,10 @@ describe('the identity of every request', () => {
     expect(names.some((name) => !panelTools.has(name))).toBe(true);
     const resources = await mcp(4, 'resources/list', {});
     expect(resources.result?.['resources']).toMatchObject([
-      { uri: 'ui://bureau/run-inspector/v1', mimeType: 'text/html;profile=mcp-app' },
-      { uri: 'ui://bureau/pending-review/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-inspector/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/pending-review/v1', mimeType: 'text/html;profile=mcp-app' },
       {
-        uri: 'ui://bureau/workflow-revision-review/v1',
+        uri: 'ui://inspectors/workflow-revision-review/v1',
         mimeType: 'text/html;profile=mcp-app',
       },
     ]);
@@ -215,13 +217,13 @@ describe('the identity of every request', () => {
       _meta?: unknown;
     };
     expect(reviewList._meta).toMatchObject({
-      ui: { resourceUri: 'ui://bureau/pending-review/v1' },
+      ui: { resourceUri: 'ui://inspectors/pending-review/v1' },
     });
-    const review = await mcp(6, 'resources/read', { uri: 'ui://bureau/pending-review/v1' });
+    const review = await mcp(6, 'resources/read', { uri: 'ui://inspectors/pending-review/v1' });
     expect(review.result?.['contents']).toMatchObject([
       { mimeType: 'text/html;profile=mcp-app', text: expect.stringContaining('<div id="root">') },
     ]);
-    const page = await mcp(5, 'resources/read', { uri: 'ui://bureau/run-inspector/v1' });
+    const page = await mcp(5, 'resources/read', { uri: 'ui://inspectors/run-inspector/v1' });
     expect(page.result?.['contents']).toMatchObject([
       {
         text: expect.stringContaining('<div id="root">'),

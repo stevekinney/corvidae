@@ -391,8 +391,11 @@ export interface PluginPanel {
   /** What the panel shows. */
   readonly description?: string;
   /**
-   * The `ui://` resource the page is served at, unique across plugins. The version is part of the
-   * URI: a changed contract is a new one.
+   * The `ui://` resource the page is served at. It begins `ui://<plugin>/`, the contributing
+   * plugin's own name, so two plugins never hold one URI: setup refuses any other prefix. The
+   * version is part of the URI: a changed contract is a new one, and a start that serves
+   * different bytes under a URI an earlier start served lists a `panel-changed` problem (the page
+   * is still served).
    */
   readonly uri: string;
   /** The browser entry module (TypeScript or JavaScript) the host bundles into the page. */

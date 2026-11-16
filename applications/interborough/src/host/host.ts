@@ -1333,6 +1333,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // which only a client that guessed the port could see.
     const mcpMounts = await panelMounts(
       bureau.plugins.panels(),
+      storage,
       environment[PANEL_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
     );
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
@@ -1340,6 +1341,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     for (const failure of mcpMounts.failures) {
       bureau.plugins.reportPanelFailure(failure.plugin, failure.app, failure.message);
       log(`Plugin ${failure.plugin}: its panel ${failure.app} did not build: ${failure.message}`);
+    }
+    // A page whose bytes differ from what an earlier start served under its URI is still served,
+    // and listed as a problem on the plugin (COR-2210).
+    for (const change of mcpMounts.changes) {
+      bureau.plugins.reportPanelChange(
+        change.plugin,
+        change.app,
+        change.uri,
+        change.previousDigest,
+        change.contentDigest,
+      );
+      log(
+        `Plugin ${change.plugin}: its panel ${change.app} at ${change.uri} changed from ${change.previousDigest} to ${change.contentDigest}.`,
+      );
     }
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {

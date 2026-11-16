@@ -388,6 +388,18 @@ describe('problemView', () => {
       status: { label: 'Loaded, a panel was not built', dot: 'warning' },
       body: 'The panel one is not served. no entry',
     });
+    expect(
+      problemView({
+        code: 'panel-changed',
+        app: 'one',
+        uri: 'ui://a/one/v1',
+        previousDigest: 'sha256:old',
+        contentDigest: 'sha256:new',
+      }),
+    ).toMatchObject({
+      status: { label: 'Loaded, a panel changed', dot: 'warning' },
+      body: expect.stringContaining('sha256:old'),
+    });
   });
 
   test('reads an empty field as the whole configuration, and a model list as its own problem', () => {

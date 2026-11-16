@@ -4,7 +4,9 @@
  * metadata that links a tool to the page, merged into the one pair the adapter accepts.
  */
 import type { BureauPlugins } from '@lostgradient/bureau';
+import type { Storage } from '@lostgradient/storage';
 import type { OperationMcpResource } from '@lostgradient/weft';
+import { z } from 'zod';
 
 import { buildPanelPage, type BuiltPanel } from './panel-build.ts';
 
@@ -34,6 +36,29 @@ const APP_VISIBILITY: readonly string[] = ['model', 'app'];
  * may not (COR-2209).
  */
 export const MODEL_ONLY_TOOL_META = { ui: { visibility: ['model'] } } as const;
+
+/**
+ * The storage key prefix of the record of the page last served under a URI (COR-2210). The record
+ * is `{ schemaVersion: 1, contentDigest }`, one key per URI, so the next start can tell that the
+ * bytes under a URI changed.
+ */
+export const PANEL_DIGEST_KEY_PREFIX = 'interborough-panel-digest:';
+
+const digestRecordSchema = z.object({
+  schemaVersion: z.literal(1),
+  contentDigest: z.string().min(1),
+});
+
+/** The digest an earlier start served under `uri`, or `undefined` when none, or an unreadable record. */
+async function servedDigest(storage: Storage, uri: string): Promise<string | undefined> {
+  const bytes = await storage.get(`${PANEL_DIGEST_KEY_PREFIX}${uri}`);
+  if (bytes === null) return undefined;
+  try {
+    return digestRecordSchema.parse(JSON.parse(new TextDecoder().decode(bytes))).contentDigest;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The apps `bureau.plugins.panels()` lists. */
 export type ContributedPanels = ReturnType<BureauPlugins['panels']>;
@@ -82,13 +107,37 @@ export type PanelFailure = {
   readonly message: string;
 };
 
+/** An app whose page is not the bytes an earlier start served under its URI (COR-2210). */
+export type PanelChange = {
+  /** The contributing plugin's name. */
+  readonly plugin: string;
+  /** The app's name within the plugin. */
+  readonly app: string;
+  /** The app's `ui://` resource URI. */
+  readonly uri: string;
+  /** The digest an earlier start served under the URI. */
+  readonly previousDigest: string;
+  /** The digest of the page served now. */
+  readonly contentDigest: string;
+};
+
 /**
  * Build every contributed app once and merge their resources and tool metadata. An app is linked
  * from its `opensFromTool`, which Bureau composition keeps to one app (a second plugin's app is
  * skipped with `name-clash`). An app whose page does not build is left out and reported in
  * `failures`, never thrown: a plugin's contribution must not stop the host from starting.
+ *
+ * Every page that built records its digest in `storage` under its URI, and one whose digest
+ * differs from the record an earlier start left is listed in `changes` and still served: a URI
+ * names a contract, so a change in its bytes is for a person to see, not a reason to refuse the
+ * page (COR-2210). An unreadable record counts as absent, and a page that did not build writes
+ * nothing.
  */
-export async function panelMounts(contributed: ContributedPanels, prebuiltDirectory?: string) {
+export async function panelMounts(
+  contributed: ContributedPanels,
+  storage: Storage,
+  prebuiltDirectory?: string,
+) {
   const built = await Promise.all(
     contributed.map(async ({ plugin, app }) => {
       try {
@@ -155,5 +204,28 @@ export async function panelMounts(contributed: ContributedPanels, prebuiltDirect
   for (const app of apps) {
     toolMeta[app.opensFromTool] = { ui: { resourceUri: app.uri, visibility: APP_VISIBILITY } };
   }
-  return { resources, toolMeta, defaultToolMeta: MODEL_ONLY_TOOL_META, failures, apps };
+  const changes: PanelChange[] = [];
+  for (const entry of built) {
+    if ('failure' in entry) continue;
+    const { plugin, app, page } = entry;
+    const previousDigest = await servedDigest(storage, app.uri);
+    if (previousDigest === page.contentDigest) continue;
+    // Recorded after the comparison, so the warning appears once per change, not on every start.
+    await storage.put(
+      `${PANEL_DIGEST_KEY_PREFIX}${app.uri}`,
+      new TextEncoder().encode(
+        JSON.stringify({ schemaVersion: 1, contentDigest: page.contentDigest }),
+      ),
+    );
+    if (previousDigest !== undefined) {
+      changes.push({
+        plugin,
+        app: app.name,
+        uri: app.uri,
+        previousDigest,
+        contentDigest: page.contentDigest,
+      });
+    }
+  }
+  return { resources, toolMeta, defaultToolMeta: MODEL_ONLY_TOOL_META, failures, apps, changes };
 }

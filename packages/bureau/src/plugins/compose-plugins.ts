@@ -417,6 +417,13 @@ function planOf(
         `setup returned the panel "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
       );
     }
+    // The URI is global to a host, so a plugin may serve only under its own name: that keeps two
+    // plugins from squatting each other's pages, and a name another plugin owns is never theirs (COR-2210).
+    if (!app.uri.startsWith(`ui://${plugin}/`)) {
+      throw new TypeError(
+        `setup returned the panel "${app.name}" with the URI "${app.uri}", which is outside the plugin's namespace: a panel URI begins ui://${plugin}/.`,
+      );
+    }
     if (!app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
         `setup returned the panel "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,

@@ -276,7 +276,7 @@ export default definePlugin({
 });
 ```
 
-An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. Put the version in the `uri`, so a changed contract is a new resource.
+An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
 
 ```ts
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
@@ -284,7 +284,7 @@ import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugi
 const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
-  uri: 'ui://example/run-inspector/v1',
+  uri: 'ui://inspector/run-inspector/v1',
   entry: new URL('./run-inspector/app.ts', import.meta.url),
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.cancel'],
   opensFromTool: 'bureau.tasks.inspect',
@@ -465,6 +465,7 @@ export default definePlugin({
 | `setup-failed` | `skipped` | `setup` threw, or returned something that cannot be registered. `message`. |
 | `start-failed` | `running` | `start` threw. `message`. |
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
+| `panel-changed` | `running` | A start served a page under a `uri` with a different `contentDigest` than an earlier start served under it. The page is still served. `app`, `uri`, `previousDigest`, `contentDigest`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |

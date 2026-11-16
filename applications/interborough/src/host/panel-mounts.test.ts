@@ -1,4 +1,5 @@
 import type { PluginPanel } from '@lostgradient/interborough-plugin';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,9 +10,14 @@ import { digestOf } from './panel-build.ts';
 import {
   MCP_APP_MIME_TYPE,
   MCP_APP_UI_META,
-  panelMounts,
+  PANEL_DIGEST_KEY_PREFIX,
+  panelMounts as mountPanels,
   type ContributedPanels,
 } from './panel-mounts.ts';
+
+/** `mountPanels` over storage of its own: a start that has served nothing before. */
+const panelMounts = (contributed: ContributedPanels, prebuiltDirectory?: string) =>
+  mountPanels(contributed, new MemoryStorage(), prebuiltDirectory);
 
 const directories: string[] = [];
 
@@ -177,6 +183,7 @@ describe('the MCP apps the host serves', () => {
       defaultToolMeta: { ui: { visibility: ['model'] } },
       failures: [],
       apps: [],
+      changes: [],
     });
   });
 
@@ -199,5 +206,89 @@ describe('the MCP apps the host serves', () => {
   it('reports nothing when every app builds', async () => {
     const { failures } = await panelMounts(contributed(await app('one')));
     expect(failures).toEqual([]);
+  });
+});
+
+describe('the digest the host keeps of the page it served under each URI (COR-2210)', () => {
+  const KEY = `${PANEL_DIGEST_KEY_PREFIX}ui://test/one/v1`;
+  const recordOf = async (storage: Storage, key = KEY) => {
+    const bytes = await storage.get(key);
+    return bytes === null ? null : JSON.parse(new TextDecoder().decode(bytes));
+  };
+
+  it('records the digest of a first start, and reports no change', async () => {
+    const storage = new MemoryStorage();
+    const { changes, resources } = await mountPanels(contributed(await app('one')), storage);
+    expect(changes).toEqual([]);
+    const digest = (resources[0]?._meta as { contentDigest: string }).contentDigest;
+    expect(await recordOf(storage)).toEqual({ schemaVersion: 1, contentDigest: digest });
+  });
+
+  it('reports no change when a later start serves the same bytes', async () => {
+    const storage = new MemoryStorage();
+    await mountPanels(contributed(await app('one')), storage);
+    const { changes } = await mountPanels(contributed(await app('one')), storage);
+    expect(changes).toEqual([]);
+  });
+
+  it('lists a different digest under a served URI with both digests, and still serves the page', async () => {
+    const storage = new MemoryStorage();
+    const first = await mountPanels(contributed(await app('one')), storage);
+    const previous = (first.resources[0]?._meta as { contentDigest: string }).contentDigest;
+    const changed = await mountPanels(
+      contributed(await app('one', { styles: 'body{margin:1px}' })),
+      storage,
+    );
+    const current = (changed.resources[0]?._meta as { contentDigest: string }).contentDigest;
+    expect(current).not.toBe(previous);
+    expect(changed.changes).toEqual([
+      {
+        plugin: 'test',
+        app: 'one',
+        uri: 'ui://test/one/v1',
+        previousDigest: previous,
+        contentDigest: current,
+      },
+    ]);
+    // The page is served: a change is a warning, never a refusal.
+    expect(changed.apps.map(({ name }) => name)).toEqual(['one']);
+    expect(changed.apps[0]?.html).toBe(changed.resources[0]?.text);
+    // Recorded now, so the next start with the same bytes is quiet: one warning per change.
+    expect(await recordOf(storage)).toEqual({ schemaVersion: 1, contentDigest: current });
+    const again = await mountPanels(
+      contributed(await app('one', { styles: 'body{margin:1px}' })),
+      storage,
+    );
+    expect(again.changes).toEqual([]);
+  });
+
+  it('counts an unreadable record as absent, and writes the current digest over it', async () => {
+    const storage = new MemoryStorage();
+    for (const bad of [
+      '{not-json',
+      '{"schemaVersion":2,"contentDigest":"x"}',
+      '{"schemaVersion":1}',
+    ]) {
+      await storage.put(KEY, new TextEncoder().encode(bad));
+      const { changes, resources } = await mountPanels(contributed(await app('one')), storage);
+      expect(changes).toEqual([]);
+      const digest = (resources[0]?._meta as { contentDigest: string }).contentDigest;
+      expect(await recordOf(storage)).toEqual({ schemaVersion: 1, contentDigest: digest });
+    }
+  });
+
+  it('writes nothing for a page that did not build, and keeps the record it had', async () => {
+    const storage = new MemoryStorage();
+    const first = await mountPanels(contributed(await app('one')), storage);
+    const previous = (first.resources[0]?._meta as { contentDigest: string }).contentDigest;
+    const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
+    const failed = await mountPanels(contributed(missing), storage);
+    expect(failed.changes).toEqual([]);
+    expect(failed.failures).toHaveLength(1);
+    expect(await recordOf(storage)).toEqual({ schemaVersion: 1, contentDigest: previous });
+    // A new URI that fails first never gets a record.
+    const unbuilt = await app('two', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
+    await mountPanels(contributed(unbuilt), storage);
+    expect(await storage.get(`${PANEL_DIGEST_KEY_PREFIX}ui://test/two/v1`)).toBeNull();
   });
 });

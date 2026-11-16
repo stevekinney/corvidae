@@ -33,7 +33,7 @@ describe('the panels the host lists', () => {
         plugin: 'inspectors',
         app: 'run-inspector',
         title: 'Run inspector',
-        uri: 'ui://bureau/run-inspector/v1',
+        uri: 'ui://inspectors/run-inspector/v1',
         opensFromTool: 'bureau.tasks.inspect',
       },
     ];

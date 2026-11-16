@@ -1893,7 +1893,7 @@ describe('the files on a row', () => {
     plugin: 'inspectors',
     app: 'workflow-revision-review',
     title: 'Review workflow revision',
-    uri: 'ui://bureau/workflow-revision-review/v1',
+    uri: 'ui://inspectors/workflow-revision-review/v1',
     opensFromTool: 'bureau.workflows.update',
     opensFromAgentTool: 'bureau:workflows-propose-update',
   };

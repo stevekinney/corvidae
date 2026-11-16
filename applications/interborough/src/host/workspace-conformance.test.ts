@@ -98,7 +98,7 @@ async function workspace(name: string, members: readonly string[]) {
                   {
                     name: 'fixture-panel',
                     title: 'Fixture panel',
-                    uri: 'ui://fixture/shared-panel/v1',
+                    uri: 'ui://shared-integration/shared-panel/v1',
                     entry: pathToFileURL(applicationEntry),
                     allowedTools: ['bureau.tasks.inspect'],
                     opensFromTool: 'bureau.tasks.inspect',

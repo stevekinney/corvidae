@@ -1088,19 +1088,50 @@ describe('MCP apps a plugin contributes', () => {
     expect(records[0]?.status).toBe('skipped');
   });
 
-  it('skips a plugin whose app has no ui:// URI, or whose URI another plugin holds', async () => {
+  it('skips a plugin whose app has no ui:// URI, or that serves one URI twice', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
         pluginEntry('a', () => ({ panels: [mcpApp('one', 'https://example.test/one')] })),
-        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://shared/v1', 'tool.b')] })),
-        pluginEntry('c', () => ({ panels: [mcpApp('two', 'ui://shared/v1', 'tool.c')] })),
+        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://b/shared/v1', 'tool.b')] })),
+        pluginEntry('c', () => ({
+          panels: [
+            mcpApp('one', 'ui://c/shared/v1', 'tool.c1'),
+            mcpApp('two', 'ui://c/shared/v1', 'tool.c2'),
+          ],
+        })),
       ],
     });
     expect(records.map(({ status }) => status)).toEqual(['skipped', 'running', 'skipped']);
     expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
     expect(records[2]?.problems).toEqual([
-      expect.objectContaining({ code: 'name-clash', name: 'ui://shared/v1' }),
+      expect.objectContaining({ code: 'name-clash', name: 'ui://c/shared/v1' }),
     ]);
+  });
+
+  it('skips a plugin whose app serves a URI outside ui://<plugin>/ (COR-2210)', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        // Another plugin's namespace, a prefix that is not a path segment, and no path at all.
+        pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://bureau/one/v1')] })),
+        pluginEntry('ab', () => ({ panels: [mcpApp('one', 'ui://abc/one/v1', 'tool.ab')] })),
+        pluginEntry('abc', () => ({ panels: [mcpApp('one', 'ui://abc', 'tool.abc')] })),
+        pluginEntry('fine', () => ({ panels: [mcpApp('one', 'ui://fine/one/v1', 'tool.fine')] })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual([
+      'skipped',
+      'skipped',
+      'skipped',
+      'running',
+    ]);
+    for (const record of records.slice(0, 3)) {
+      expect(record.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining("outside the plugin's namespace"),
+        }),
+      ]);
+    }
   });
 
   it('skips the later plugin whose app opens from a tool an earlier app already opens', async () => {
@@ -1137,6 +1168,30 @@ describe('MCP apps a plugin contributes', () => {
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([
       { code: 'panel-failed', app: 'one', message: 'The entry does not build.' },
+    ]);
+  });
+
+  it('lists a panel-changed problem with both digests and keeps serving the app (COR-2210)', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://a/one/v1')] }))],
+    });
+    const registry = createPluginRegistry(records);
+    registry.plugins.reportPanelChange('a', 'one', 'ui://a/one/v1', 'sha256:old', 'sha256:new');
+    // An absent plugin or app, and a repeat, are ignored.
+    registry.plugins.reportPanelChange('absent', 'one', 'ui://a/one/v1', 'sha256:x', 'sha256:y');
+    registry.plugins.reportPanelChange('a', 'absent', 'ui://a/one/v1', 'sha256:x', 'sha256:y');
+    registry.plugins.reportPanelChange('a', 'one', 'ui://a/one/v1', 'sha256:old', 'sha256:other');
+    expect(registry.plugins.panels().map(({ app }) => app.name)).toEqual(['one']);
+    const [listing] = await registry.plugins.list();
+    expect(listing?.status).toBe('running');
+    expect(listing?.problems).toEqual([
+      {
+        code: 'panel-changed',
+        app: 'one',
+        uri: 'ui://a/one/v1',
+        previousDigest: 'sha256:old',
+        contentDigest: 'sha256:new',
+      },
     ]);
   });
 });

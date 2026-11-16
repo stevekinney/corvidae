@@ -255,6 +255,13 @@ function referenceProblemsOf(plugin: string, agents: readonly AgentListing[]): P
 }
 
 /** The waiting runs of each unavailable pinned version, by plugin, then by `plugin:name@version`. */
+/** What a `panel-changed` problem carries besides its app: the URI and both digests. */
+type PanelChange = {
+  readonly uri: string;
+  readonly previousDigest: string;
+  readonly contentDigest: string;
+};
+
 type PinnedTally = Map<string, Map<string, { id: string; version: string; runs: Set<string> }>>;
 
 /**
@@ -352,6 +359,9 @@ export function createPluginRegistry(
   const laterProblems = new Map<string, PluginProblem[]>();
   // The panels the host could not build, by plugin name, then app name, with the message.
   const failedApps = new Map<string, Map<string, string>>();
+  // The panels the host served with different bytes than an earlier start served under their URI
+  // (COR-2210), by plugin name, then app name.
+  const changedApps = new Map<string, Map<string, PanelChange>>();
   const pinned: PinnedTally = new Map();
   let reads: PluginReferenceReads | undefined;
   const started = Promise.withResolvers<void>();
@@ -371,6 +381,11 @@ export function createPluginRegistry(
         code: 'panel-failed',
         app,
         message,
+      })),
+      ...[...(changedApps.get(name) ?? [])].map(([app, change]): PluginProblem => ({
+        code: 'panel-changed',
+        app,
+        ...change,
       })),
       ...(laterProblems.get(name) ?? []),
     ];
@@ -474,6 +489,17 @@ export function createPluginRegistry(
         const byApp = failedApps.get(plugin) ?? new Map<string, string>();
         failedApps.set(plugin, byApp);
         if (!byApp.has(app)) byApp.set(app, record.setup.redact(message));
+      },
+      reportPanelChange: (plugin, app, uri, previousDigest, contentDigest) => {
+        const record = records.find(
+          (candidate) =>
+            candidate.status === 'running' && candidate.entry.descriptor.name === plugin,
+        );
+        const declared = record?.setup?.result.panels?.some((each) => each.name === app);
+        if (declared !== true) return;
+        const byApp = changedApps.get(plugin) ?? new Map<string, PanelChange>();
+        changedApps.set(plugin, byApp);
+        if (!byApp.has(app)) byApp.set(app, { uri, previousDigest, contentDigest });
       },
       ready: () => started.promise,
     },
