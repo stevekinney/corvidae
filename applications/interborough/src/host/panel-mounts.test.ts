@@ -195,6 +195,8 @@ describe('the MCP apps the host serves', () => {
             } as never,
             stray,
             { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update', extra: 1 } as never,
+            // Bureau does not check an icon, so a value that is not text is left out.
+            { kind: 'page', path: 'icons', sidebar: { group: 'system', icon: 42 } } as never,
           ],
         }),
       ),
@@ -203,6 +205,7 @@ describe('the MCP apps the host serves', () => {
       { kind: 'page', path: 'reviews', sidebar: { group: 'build', icon: 'inbox' } },
       { kind: 'run' },
       { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+      { kind: 'page', path: 'icons', sidebar: { group: 'system' } },
     ]);
   });
 
@@ -261,13 +264,20 @@ describe('the digest the host keeps of the page it served under each URI (COR-22
     const bytes = await storage.get(key);
     return bytes === null ? null : JSON.parse(new TextDecoder().decode(bytes));
   };
+  /** The digest of the first page a mount served. */
+  const firstDigest = (mounted: { readonly resources: readonly { _meta?: unknown }[] }): string => {
+    const meta = mounted.resources[0]?._meta as { contentDigest?: string } | undefined;
+    return meta?.contentDigest ?? '';
+  };
 
   it('records the digest of a first start, and reports no change', async () => {
     const storage = new MemoryStorage();
-    const { changes, resources } = await mountPanels(contributed(await app('one')), storage);
-    expect(changes).toEqual([]);
-    const digest = (resources[0]?._meta as { contentDigest: string }).contentDigest;
-    expect(await recordOf(storage)).toEqual({ schemaVersion: 1, contentDigest: digest });
+    const mounted = await mountPanels(contributed(await app('one')), storage);
+    expect(mounted.changes).toEqual([]);
+    expect(await recordOf(storage)).toEqual({
+      schemaVersion: 1,
+      contentDigest: firstDigest(mounted),
+    });
   });
 
   it('reports no change when a later start serves the same bytes', async () => {
@@ -280,12 +290,12 @@ describe('the digest the host keeps of the page it served under each URI (COR-22
   it('lists a different digest under a served URI with both digests, and still serves the page', async () => {
     const storage = new MemoryStorage();
     const first = await mountPanels(contributed(await app('one')), storage);
-    const previous = (first.resources[0]?._meta as { contentDigest: string }).contentDigest;
+    const previous = firstDigest(first);
     const changed = await mountPanels(
       contributed(await app('one', { styles: 'body{margin:1px}' })),
       storage,
     );
-    const current = (changed.resources[0]?._meta as { contentDigest: string }).contentDigest;
+    const current = firstDigest(changed);
     expect(current).not.toBe(previous);
     expect(changed.changes).toEqual([
       {
@@ -316,17 +326,19 @@ describe('the digest the host keeps of the page it served under each URI (COR-22
       '{"schemaVersion":1}',
     ]) {
       await storage.put(KEY, new TextEncoder().encode(bad));
-      const { changes, resources } = await mountPanels(contributed(await app('one')), storage);
-      expect(changes).toEqual([]);
-      const digest = (resources[0]?._meta as { contentDigest: string }).contentDigest;
-      expect(await recordOf(storage)).toEqual({ schemaVersion: 1, contentDigest: digest });
+      const mounted = await mountPanels(contributed(await app('one')), storage);
+      expect(mounted.changes).toEqual([]);
+      expect(await recordOf(storage)).toEqual({
+        schemaVersion: 1,
+        contentDigest: firstDigest(mounted),
+      });
     }
   });
 
   it('writes nothing for a page that did not build, and keeps the record it had', async () => {
     const storage = new MemoryStorage();
     const first = await mountPanels(contributed(await app('one')), storage);
-    const previous = (first.resources[0]?._meta as { contentDigest: string }).contentDigest;
+    const previous = firstDigest(first);
     const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
     const failed = await mountPanels(contributed(missing), storage);
     expect(failed.changes).toEqual([]);

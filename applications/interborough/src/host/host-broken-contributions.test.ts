@@ -159,7 +159,11 @@ test('a page whose bytes changed under a URI an earlier start served is listed a
   const home = await mkdtemp(join(tmpdir(), 'interborough-panel-changed-'));
   directories.push(home);
   // The deployment identity exists before the folder does, as it does on a real machine.
-  (await openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } })).close();
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
+  bungalow.close();
   const plugins = join(home, 'plugins');
   await writeFolderPlugin(
     plugins,
@@ -177,10 +181,10 @@ test('a page whose bytes changed under a URI an earlier start served is listed a
       log: () => {},
     });
     hosts.push(host);
-    const report = (await (await fetch(new URL('/host/plugins', host.url))).json()) as {
-      plugins: Standing[];
-    };
-    const panels = (await (await fetch(new URL('/host/panels', host.url))).json()) as {
+    const pluginsResponse = await fetch(new URL('/host/plugins', host.url));
+    const report = (await pluginsResponse.json()) as { plugins: Standing[] };
+    const panelsResponse = await fetch(new URL('/host/panels', host.url));
+    const panels = (await panelsResponse.json()) as {
       apps: { plugin: string; app: string; uri: string }[];
     };
     const standing = report.plugins.find(({ descriptor }) => descriptor.name === 'drifting');

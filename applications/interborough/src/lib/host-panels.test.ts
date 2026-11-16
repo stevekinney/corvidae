@@ -2,7 +2,13 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
-import { chatToolsOf, getPanels, loadPluginApp, pluginToolCaller } from './host-panels.ts';
+import {
+  chatToolsOf,
+  getPanels,
+  loadPluginApp,
+  pluginToolCaller,
+  type HostPanel,
+} from './host-panels.ts';
 
 type Seen = { path: string; init: RequestInit | undefined };
 
@@ -28,7 +34,7 @@ const ABORT = { signal: new AbortController().signal };
 
 describe('the panels the host lists', () => {
   test('reads each panel’s plugin, app, title, URI, and the tool it opens from', async () => {
-    const apps = [
+    const apps: HostPanel[] = [
       {
         plugin: 'inspectors',
         app: 'run-inspector',

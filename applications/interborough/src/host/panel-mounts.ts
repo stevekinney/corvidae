@@ -76,7 +76,11 @@ function servedPlacement(placement: PluginPanelPlacement): PluginPanelPlacement 
           : {
               sidebar: {
                 group: placement.sidebar.group,
-                ...(placement.sidebar.icon === undefined ? {} : { icon: placement.sidebar.icon }),
+                // Bureau does not check the icon, and a value that is not text would fail the
+                // client's reading of the whole listing, so only text is listed.
+                ...(typeof placement.sidebar.icon === 'string'
+                  ? { icon: placement.sidebar.icon }
+                  : {}),
               },
             }),
       };

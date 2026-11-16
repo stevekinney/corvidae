@@ -322,12 +322,11 @@ function checkPlacement(
     sidebar?: { group?: unknown } | undefined;
     agentTool?: unknown;
   };
-  const refuse = (reason: string): never => {
-    throw new TypeError(`setup returned the panel "${app.name}" with ${reason}.`);
-  };
+  const refusal = (reason: string): TypeError =>
+    new TypeError(`setup returned the panel "${app.name}" with ${reason}.`);
   if (kind === 'page') {
     if (typeof path !== 'string' || !PANEL_PAGE_PATH_PATTERN.test(path)) {
-      refuse(
+      throw refusal(
         `a page placement at ${JSON.stringify(path)}, which is not a path of lowercase segments (letters, digits and hyphens, each starting with a letter) such as "reviews/queue"`,
       );
     }
@@ -335,13 +334,19 @@ function checkPlacement(
       sidebar !== undefined &&
       (typeof sidebar.group !== 'string' || !PANEL_SIDEBAR_GROUPS.includes(sidebar.group))
     ) {
-      refuse(
+      throw refusal(
         `a page placement in the sidebar group ${JSON.stringify(sidebar.group)}, which is not one of ${PANEL_SIDEBAR_GROUPS.join(', ')}`,
       );
     }
   } else if (kind === 'chat-tool') {
+    // The host lists the id to Chat, which reads it as text, so a value that is not would fail
+    // the whole listing for every panel.
+    if (typeof agentTool !== 'string' || agentTool === '') {
+      throw refusal(
+        `a chat-tool placement whose agent tool ${JSON.stringify(agentTool)} is not a name`,
+      );
+    }
     if (
-      typeof agentTool === 'string' &&
       agentTools !== undefined &&
       !Object.hasOwn(agentTools, agentTool) &&
       !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`)
@@ -351,7 +356,9 @@ function checkPlacement(
       );
     }
   } else if (kind !== 'run') {
-    refuse(`a placement of kind ${JSON.stringify(kind)}, which is not page, run or chat-tool`);
+    throw refusal(
+      `a placement of kind ${JSON.stringify(kind)}, which is not page, run or chat-tool`,
+    );
   }
 }
 

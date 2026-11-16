@@ -21,12 +21,12 @@ const placementSchema = z.discriminatedUnion('kind', [
     sidebar: z
       .object({
         group: z.enum(['work', 'build', 'system']),
-        icon: z.string().min(1).optional(),
+        icon: z.string().optional(),
       })
       .optional(),
   }),
   z.object({ kind: z.literal('run') }),
-  z.object({ kind: z.literal('chat-tool'), agentTool: z.string().min(1) }),
+  z.object({ kind: z.literal('chat-tool'), agentTool: z.string() }),
 ]);
 
 const appsSchema = z.object({

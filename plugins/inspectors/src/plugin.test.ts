@@ -28,14 +28,15 @@ describe('the inspectors plugin', () => {
   it('links each panel to the tool a client runs to open it, one it may call', () => {
     expect(runInspector.opensFromTool).toBe('bureau.tasks.inspect');
     expect(pendingReview.opensFromTool).toBe('bureau.reviews.list');
-    expect(runInspector.allowedTools).toContain(runInspector.opensFromTool);
-    expect(pendingReview.allowedTools).toContain(pendingReview.opensFromTool);
+    expect(runInspector.allowedTools).toContain('bureau.tasks.inspect');
+    expect(pendingReview.allowedTools).toContain('bureau.reviews.list');
     expect(runInspector.placements).toEqual([{ kind: 'run' }]);
     expect(pendingReview.placements).toBeUndefined();
     expect(workflowRevisionReview.placements).toEqual([
       { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
     ]);
-    expect(workflowRevisionReview.allowedTools).toContain(workflowRevisionReview.opensFromTool);
+    expect(workflowRevisionReview.opensFromTool).toBe('bureau.workflows.update');
+    expect(workflowRevisionReview.allowedTools).toContain('bureau.workflows.update');
   });
 
   it('lists every Bureau tool a page names in its source, so the list cannot drift', async () => {

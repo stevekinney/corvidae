@@ -1148,6 +1148,8 @@ describe('MCP apps a plugin contributes', () => {
       ['an empty path', { kind: 'page', path: '' }],
       ['no path', { kind: 'page' }],
       ['a path with a dot segment', { kind: 'page', path: 'reviews/../queue' }],
+      ['a chat tool with no agent tool', { kind: 'chat-tool' }],
+      ['a chat tool with an empty agent tool', { kind: 'chat-tool', agentTool: '' }],
       ['a kind this host does not know', { kind: 'dock' }],
       ['no kind', {}],
     ] as const)('fails setup for a placement with %s', async (_name, placement) => {
