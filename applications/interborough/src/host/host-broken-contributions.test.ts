@@ -12,6 +12,7 @@
  * - a stored provider allowlist that names a model its provider does not offer.
  */
 import { openBungalow } from '@lostgradient/bungalow';
+import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -242,7 +243,7 @@ test('a start that fails after the panels are built leaves the digest record alo
   // The port is held, so the host builds its panels and then cannot listen.
   const holder = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('held') });
   try {
-    await expect(start(holder.port)).rejects.toThrow();
+    expect(await rejectionOf(start(holder.port))).toBeInstanceOf(Error);
   } finally {
     await holder.stop(true);
   }

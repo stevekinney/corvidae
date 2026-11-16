@@ -286,10 +286,11 @@ describe('the digest the host keeps of the page it served under each URI (COR-22
     expect(await recordOf(storage)).toMatchObject({
       contentDigest: mounted.pendingDigests[0]?.contentDigest,
     });
-    expect(
-      (await mountOnly(contributed(await app('one', { styles: 'body{margin:1px}' })), storage))
-        .changes,
-    ).toHaveLength(1);
+    const again = await mountOnly(
+      contributed(await app('one', { styles: 'body{margin:1px}' })),
+      storage,
+    );
+    expect(again.changes).toHaveLength(1);
   });
   const recordOf = async (storage: Storage, key = KEY) => {
     const bytes = await storage.get(key);
