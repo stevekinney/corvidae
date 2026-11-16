@@ -155,22 +155,22 @@ export const WORKFLOW_COPY = {
         failed: 'Failed',
         stopped: 'Stopped',
       },
-      /** `when` is relative: "2m ago". */
-      listening: (when: string): string => `Listening since ${when}.`,
-      ready: (when: string): string => `Ready to receive deliveries since ${when}.`,
+      /** `time` is a clock time: "10:02 AM". */
+      listening: (time: string): string => `Listening since ${time}.`,
+      ready: (time: string): string => `Ready to receive deliveries since ${time}.`,
       standby:
         'Another Interborough that shares this storage runs this trigger. This one takes over if that one stops.',
       waitingForSecret: 'Waiting for a secret its plugin needs. Add it in Settings, under Plugins.',
-      /** `when` is relative: "in 4s". */
-      startFailedRetrying: (when: string): string =>
-        `The trigger could not start. It is tried again ${when}.`,
+      /** `time` is a clock time with seconds: "10:02:15 AM". */
+      startFailedRetrying: (time: string): string =>
+        `The trigger could not start. It is tried again at ${time}.`,
       startFailed: 'The trigger could not start.',
       configurationRefused:
         'The plugin refused this trigger’s settings, so it is not tried again until they change.',
       stopped: 'Stopped while the workflow is paused.',
       /** What the code beside a failed state is. */
       codeLabel: 'Code',
-      lastFired: (when: string): string => `Last fired ${when}.`,
+      lastFired: (time: string): string => `Last fired at ${time}.`,
       retry: 'Retry now',
       retrying: 'Retrying the trigger…',
       retryFailed: 'The trigger could not be retried.',

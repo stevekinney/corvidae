@@ -11,7 +11,7 @@
   import { createMutation } from '@tanstack/svelte-query';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
-  import { formatRelativeTime } from '../../lib/format/index.ts';
+  import { clockTime, clockTimeWithSeconds } from '../../lib/format/clock.ts';
   import { retryWorkflowTrigger, type WorkflowListener } from '../../lib/workflow-files.ts';
 
   interface Props {
@@ -45,17 +45,21 @@
     triggersUrl === undefined ? undefined : `${triggersUrl}${encodeURIComponent(workflowId)}`,
   );
 
-  function since(iso: string): string {
-    return formatRelativeTime(Date.parse(iso));
+  /**
+   * A time as a clock reads it, in the viewer's zone, so it stays true while the page is open; a
+   * retry is due within seconds, so its time carries them.
+   */
+  function at(iso: string): string {
+    return clockTime(Date.parse(iso));
   }
 
   /** The sentence beside the badge. */
   const sentence = $derived.by(() => {
     switch (listener.state) {
       case 'listening':
-        return copy.listening(since(listener.since));
+        return copy.listening(at(listener.since));
       case 'ready':
-        return copy.ready(since(listener.since));
+        return copy.ready(at(listener.since));
       case 'standby':
         return copy.standby;
       case 'waiting-for-secret':
@@ -66,7 +70,7 @@
         if (listener.code === 'configuration-refused') return copy.configurationRefused;
         return listener.retryAt === null
           ? copy.startFailed
-          : copy.startFailedRetrying(since(listener.retryAt));
+          : copy.startFailedRetrying(clockTimeWithSeconds(Date.parse(listener.retryAt)));
     }
   });
 
@@ -76,7 +80,11 @@
   }));
 </script>
 
-<section class="ib-workflow-trigger" aria-label={copy.label} data-testid="workflow-trigger-listener">
+<section
+  class="ib-workflow-trigger"
+  aria-label={copy.label}
+  data-testid="workflow-trigger-listener"
+>
   <p class="ib-workflow-trigger__line" data-state={listener.state}>
     <Badge variant={VARIANTS[listener.state]} size="sm">{copy.states[listener.state]}</Badge>
     <span>{sentence}</span>
@@ -86,7 +94,7 @@
       >
     {/if}
     {#if listener.lastFiredAt !== null}
-      <span>{copy.lastFired(since(listener.lastFiredAt))}</span>
+      <span>{copy.lastFired(at(listener.lastFiredAt))}</span>
     {/if}
     {#if listener.state === 'failed'}
       <Button

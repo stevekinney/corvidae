@@ -11,6 +11,7 @@ import { Window } from 'happy-dom';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { STUB_TRIGGERS_URL } from '../../lib/bureau-stub.test-support.ts';
+import { clockTimeWithSeconds } from '../../lib/format/clock.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
@@ -83,7 +84,12 @@ function open(listener: Listener | null, kind = 'inbox:message') {
           listener,
           schedule: null,
           text: JSON.stringify(
-            { name: 'digest', trigger, agent: 'writer', steps: [{ kind: 'sleep', duration: '1m' }] },
+            {
+              name: 'digest',
+              trigger,
+              agent: 'writer',
+              steps: [{ kind: 'sleep', duration: '1m' }],
+            },
             null,
             2,
           ),
@@ -139,7 +145,9 @@ describe('the trigger status on a workflow’s page', () => {
     expect(found.querySelector('[data-testid="workflow-trigger-code"]')?.textContent).toBe(
       'start-failed',
     );
-    expect(found.textContent).toContain('It is tried again in');
+    expect(found.textContent).toContain(
+      copy.startFailedRetrying(clockTimeWithSeconds(Date.parse(retryAt))),
+    );
     expect(getByRole('button', { name: copy.retry })).toBeTruthy();
   });
 
