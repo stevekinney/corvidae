@@ -20773,8 +20773,16 @@
                   {
                     "enum": [
                       "action",
+                      "run.tripwire",
+                      "run.guardrail",
+                      "budget.threshold",
+                      "tool.policy-denied",
+                      "tool.error",
                       "run.registered",
                       "run.settled",
+                      "run.completed",
+                      "run.error",
+                      "run.aborted",
                       "run.removed",
                       "run.abort-settled",
                       "bureau.disposed",
@@ -20825,7 +20833,8 @@
                       "task.cleanup-acknowledged",
                       "notification.created",
                       "diagnostic",
-                      "memory.governance"
+                      "memory.governance",
+                      "decision.made"
                     ],
                     "type": "string"
                   },
@@ -20842,8 +20851,16 @@
                     {
                       "enum": [
                         "action",
+                        "run.tripwire",
+                        "run.guardrail",
+                        "budget.threshold",
+                        "tool.policy-denied",
+                        "tool.error",
                         "run.registered",
                         "run.settled",
+                        "run.completed",
+                        "run.error",
+                        "run.aborted",
                         "run.removed",
                         "run.abort-settled",
                         "bureau.disposed",
@@ -20894,7 +20911,8 @@
                         "task.cleanup-acknowledged",
                         "notification.created",
                         "diagnostic",
-                        "memory.governance"
+                        "memory.governance",
+                        "decision.made"
                       ],
                       "type": "string"
                     },
@@ -20969,8 +20987,16 @@
                   {
                     "enum": [
                       "action",
+                      "run.tripwire",
+                      "run.guardrail",
+                      "budget.threshold",
+                      "tool.policy-denied",
+                      "tool.error",
                       "run.registered",
                       "run.settled",
+                      "run.completed",
+                      "run.error",
+                      "run.aborted",
                       "run.removed",
                       "run.abort-settled",
                       "bureau.disposed",
@@ -21021,7 +21047,8 @@
                       "task.cleanup-acknowledged",
                       "notification.created",
                       "diagnostic",
-                      "memory.governance"
+                      "memory.governance",
+                      "decision.made"
                     ],
                     "type": "string"
                   },
@@ -21038,8 +21065,16 @@
                     {
                       "enum": [
                         "action",
+                        "run.tripwire",
+                        "run.guardrail",
+                        "budget.threshold",
+                        "tool.policy-denied",
+                        "tool.error",
                         "run.registered",
                         "run.settled",
+                        "run.completed",
+                        "run.error",
+                        "run.aborted",
                         "run.removed",
                         "run.abort-settled",
                         "bureau.disposed",
@@ -21090,7 +21125,8 @@
                         "task.cleanup-acknowledged",
                         "notification.created",
                         "diagnostic",
-                        "memory.governance"
+                        "memory.governance",
+                        "decision.made"
                       ],
                       "type": "string"
                     },
@@ -32797,8 +32833,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -32849,7 +32893,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -33234,8 +33279,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -33286,7 +33339,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -33495,8 +33549,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -33547,7 +33609,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -33954,8 +34017,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -34006,7 +34077,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },

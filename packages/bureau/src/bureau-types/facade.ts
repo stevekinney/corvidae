@@ -28,6 +28,7 @@ import type { AuditTrail } from '../audit-trail';
 import type { BureauEventFeed } from '../bureau-event-feed.ts';
 import type { BureauChildren } from '../child-topology';
 import type { BureauEventMap } from '../events';
+import type { RunOutcomeDetails } from '../run-outcome-details';
 import type { BureauGoals } from '../goal-types';
 import type { BureauDecisions } from '../decisions/types';
 import type { BureauSettings } from '../settings/types';
@@ -290,6 +291,14 @@ export interface BureauInternals {
    * Read-only: entries are bureau's to create and remove.
    */
   readonly runEventFeeds: AgentRunEventRegistry;
+
+  /**
+   * COR-2095 — how many failed runs have told their `run.error` detail (the failing step, the
+   * error's code and kind) that no settlement has announced yet. An entry leaves when its
+   * settlement is announced, when its run is removed, and when the Bureau is disposed, so it is
+   * zero for a Bureau whose failures have all been announced.
+   */
+  readonly runOutcomeDetails: Pick<RunOutcomeDetails, 'size'>;
 
   readonly store: Store;
 

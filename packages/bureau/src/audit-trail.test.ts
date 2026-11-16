@@ -6,9 +6,11 @@
  */
 import * as lifecycle from '@lostgradient/lifecycle';
 import { CompletableEventTarget, createManualRuntimeServices } from '@lostgradient/lifecycle';
-import type { Action } from '@lostgradient/operative';
+import type { Action, InputDetector } from '@lostgradient/operative';
 import {
   AgentScheduledEvent,
+  createAgent,
+  stopWhen,
   ScheduleCancelledEvent,
   SchedulePausedEvent,
   ScheduleResumedEvent,
@@ -25,8 +27,17 @@ import {
   redactAuditDetail,
 } from './audit-trail';
 import { runTombstoneKey } from './chat-content-tombstone';
-import { ActionEvent, type BureauEventMap } from './events';
+import type { AgentDefinitions } from './agent-catalog';
+import { createBureau } from './create-bureau';
+import {
+  ActionEvent,
+  type BureauEventMap,
+  RunGuardrailRecordedEvent,
+  RunTripwireRecordedEvent,
+} from './events';
+import { createCheckValidator, goalRequest } from './testing/goal-fixtures.test-support';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Bureau } from './bureau-types/facade';
 
 // ── Minimal Bureau stub ──────────────────────────────────────────────
@@ -415,7 +426,9 @@ describe('createAuditTrail', () => {
       detail: { guardrailName: 'output-pii', category: 'pii', phase: 'output', confidence: 1 },
     };
 
-    emit(new ActionEvent(action));
+    // COR-2096: a guardrail's trip reaches the trail from its own event, which every run raises,
+    // and not from the action stream (see the tests for COR-2096 below).
+    emit(new RunTripwireRecordedEvent(action));
     // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
@@ -3764,6 +3777,118 @@ describe('COR-89 — omitted runtime', () => {
       expect(await trail.query({ runId: 'run-default-runtime' })).toHaveLength(1);
     } finally {
       factory.mockRestore();
+    }
+  });
+});
+
+describe('a guardrail’s trip in the trail (COR-2096)', () => {
+  const guardrailAction = (type: 'run.guardrail' | 'run.tripwire', runId: string): Action => ({
+    type,
+    timestamp: 5000,
+    sequence: 3,
+    runId,
+    detail: { step: 0, guardrailName: 'sentinel', category: 'pii', phase: 'input', confidence: 1 },
+  });
+
+  it.each(['run.guardrail', 'run.tripwire'] as const)(
+    'records %s from its own event, once, though the store’s run raises the action event too',
+    async (type) => {
+      const kv = textValueStore(new MemoryStorage());
+      const { bureau, emit } = createStubBureau();
+      const trail = createAuditTrail(bureau, kv);
+      const action = guardrailAction(type, 'run-store');
+      const event = type === 'run.guardrail' ? RunGuardrailRecordedEvent : RunTripwireRecordedEvent;
+
+      emit(new event(action));
+      emit(new ActionEvent(action));
+
+      const records = await trail.query({ runId: 'run-store' });
+      expect(records.map((record) => record.type)).toEqual([type]);
+      trail.dispose();
+    },
+  );
+
+  it('records the guardrail of a run whose actions never reach the action stream', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau, emit } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+
+    // A child, a goal attempt and a workflow step are not on the store: they raise the event alone.
+    emit(new RunGuardrailRecordedEvent(guardrailAction('run.guardrail', 'run-catalog')));
+
+    const records = await trail.query({ runId: 'run-catalog' });
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      type: 'run.guardrail',
+      actionSequence: 3,
+      detail: { guardrailName: 'sentinel', phase: 'input' },
+    });
+    trail.dispose();
+  });
+
+  it('still records every other qualifying action from the action stream', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau, emit } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+
+    emit(new ActionEvent({ ...guardrailAction('run.tripwire', 'run-other'), type: 'tool.error' }));
+
+    const records = await trail.query({ runId: 'run-other' });
+    expect(records.map((record) => record.type)).toEqual(['tool.error']);
+    trail.dispose();
+  });
+
+  it('stops listening for the two events when the trail is disposed', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau, emit } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+    await trail.dispose();
+
+    emit(new RunTripwireRecordedEvent(guardrailAction('run.tripwire', 'run-after')));
+    emit(new RunGuardrailRecordedEvent(guardrailAction('run.guardrail', 'run-after')));
+
+    expect(await trail.query({ runId: 'run-after' })).toEqual([]);
+  });
+
+  it('records the guardrail trip of a real goal attempt, which is not on the run store', async () => {
+    const trip: InputDetector = {
+      name: 'sentinel',
+      detect: async (input) => ({
+        triggered: input.includes('TRIP'),
+        category: 'prompt-injection',
+        confidence: 0.9,
+      }),
+    };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        worker: createAgent({
+          name: 'worker',
+          generate: async () => ({ content: 'done', toolCalls: [] }),
+          stopWhen: stopWhen.noToolCalls(),
+          guardrails: { mode: 'tripwire', input: { detectors: [trip] } },
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+      validators: [createCheckValidator()],
+      onDiagnostic: () => undefined,
+    });
+    try {
+      await bureau.goals.create(goalRequest({ goalRunId: 'g1', prompt: 'please TRIP' }));
+      await waitUntil(
+        async () => {
+          const task = await bureau.tasks.get('goal-g1-a0');
+          return task?.status === 'failed';
+        },
+        { message: 'the attempt tripped the guardrail and failed' },
+      );
+      await bureau.internals.taskRegistry.flush();
+
+      expect(bureau.internals.store.getRun('goal-g1-a0')).toBeUndefined();
+      const records = await bureau.internals.auditTrail!.query({ runId: 'goal-g1-a0' });
+      expect(records.filter((record) => record.type === 'run.tripwire')).toHaveLength(1);
+    } finally {
+      await bureau.dispose();
     }
   });
 });

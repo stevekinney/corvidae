@@ -142,7 +142,6 @@ import {
   ReviewDeniedEvent,
   ReviewRejectedEvent,
   RunRegisteredEvent,
-  RunSettledEvent,
   RunRemovedEvent,
   NotificationCreatedEvent,
   SessionTaintEvent,
@@ -179,6 +178,9 @@ import { createModels, validateModelsOptions, type Models } from './models/creat
 import { createScorerSampler, type ScorerSampler } from './scorers';
 import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
+import { recordedRunEvent as recordedRunEventOf } from './recorded-run-events.ts';
+import { announceRunOutcome } from './run-outcome-announcement.ts';
+import { createRunOutcomeDetails } from './run-outcome-details.ts';
 import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
@@ -722,6 +724,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
   const runEventFeeds = createAgentRunEventRegistry();
+  const runOutcomeDetails = createRunOutcomeDetails();
   // Snapshot `agents` synchronously, before the first `await` below — the
   // "fixed at createBureau() call time" catalog contract otherwise has a
   // real mutation window: a caller that mutates the SAME `agents` object it
@@ -1441,6 +1444,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     eventFeedSubscription,
     stopForwarding,
     runEventFeeds,
+    runOutcomeDetails,
     agentsSnapshot,
     goalWorkflowHost,
     goalAttemptFenceHost,
@@ -2359,6 +2363,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   } = createSessions<D>(core, peers);
   const {
     registerCatalogRun,
+    observeRunEvents,
     registerScheduledFireReviews,
     trackSubordinateRun,
     runWorkflowAgentStep,
@@ -2741,6 +2746,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         audit: async (entry) => {
           await auditTrailInstance?.record(entry);
         },
+        // COR-2249: sent once the decision's audit call has returned, as `onCreated` sends a notification's.
+        published: (event) => emitter.dispatch(event),
       }),
     );
     // COR-1710: the settings, over the record read at boot. A live engine key is applied through
@@ -3447,7 +3454,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
     onSettled: async (record) => {
-      emitter.dispatch(new RunSettledEvent(record.taskId));
+      announceRunOutcome(record, {
+        details: runOutcomeDetails,
+        dispatch: (event) => emitter.dispatch(event),
+      });
     },
     onCleanupAcknowledged: (taskId, cleanup) => {
       emitter.dispatch(new TaskCleanupAcknowledgedEvent(taskId, cleanup));
@@ -3681,6 +3691,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         recordTaskSettlement(storeActionEvent.action);
         recordTaskWakeup(storeActionEvent.action);
+        // COR-2096: a guardrail, a budget threshold and a tool's failure or refusal are published
+        // under their own kinds, for a run in the store whether or not its actions stay off the
+        // `'action'` stream below (a `bureau.run()` run's do).
+        const recordedRunEvent = recordedRunEventOf(storeActionEvent.action);
+        if (recordedRunEvent !== undefined) emitter.dispatch(recordedRunEvent);
         // COR-1302: a `bureau.run()` run is on `store` only so `getRun` and
         // `abortRun` resolve its id. Its actions stay off this bureau's
         // `'action'` stream and live frames, as they were before it was
@@ -3721,6 +3736,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         // lifetime signal, so a client still reading it ends cleanly rather
         // than parking on a generator that can never yield again.
         disposeRunEventFeed(removedRunId, runEventFeeds);
+        runOutcomeDetails.forget(removedRunId);
         catalogRunIds.delete(removedRunId);
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
@@ -4300,6 +4316,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       createBureauError: (message, code) => new BureauError(message, code),
       validateAgentRunInput,
       registerCatalogRun,
+      observeRunEvents,
       // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
       onCatalogRunEnded: ({ runId, principal, settled }) =>
         catalogSettlements.follow(
@@ -4619,6 +4636,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       hasDurableEngine: runCreationLedger !== undefined,
       eventFeed,
       runEventFeeds,
+      runOutcomeDetails,
       store,
       sessionStore: runtime.sessionStore,
       pendingScheduledTaintCount: () => runtime.pendingScheduledTaintCount(),

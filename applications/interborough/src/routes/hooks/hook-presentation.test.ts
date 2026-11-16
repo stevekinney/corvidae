@@ -151,6 +151,52 @@ describe('an event in plain words', () => {
   });
 });
 
+describe('the run outcome events (COR-2095, canvas row 84p)', () => {
+  const OUTCOMES: HookEventKind[] = [
+    {
+      kind: 'run.error',
+      origin: 'run',
+      description: 'A run failed.',
+      scopes: ['agent', 'workflow', 'schedule'],
+    },
+    {
+      kind: 'run.completed',
+      origin: 'run',
+      description: 'A run finished without failing.',
+      scopes: ['agent', 'workflow', 'schedule'],
+    },
+    {
+      kind: 'run.aborted',
+      origin: 'run',
+      description: 'A run was aborted.',
+      scopes: ['agent', 'workflow', 'schedule'],
+    },
+  ];
+
+  test('names run.error "A run fails" in the editor, with its raw kind beside it', () => {
+    const choice = eventChoices(OUTCOMES, 'webhook').find((entry) => entry.value === 'run.error');
+
+    expect(choice).toEqual({
+      value: 'run.error',
+      label: 'A run fails',
+      code: 'run.error',
+      description: '',
+      group: 'Runs',
+      disabled: false,
+    });
+    expect(eventOptionLabel('run.error')).toBe('A run fails');
+    expect(eventClause('run.error')).toBe('a run fails');
+  });
+
+  test('reads the other two outcomes in plain words, and lets a workflow hook listen to all three', () => {
+    expect(eventWords('run.completed')).toBe('Run completed');
+    expect(eventWords('run.aborted')).toBe('Run aborted');
+    expect(eventChoices(OUTCOMES, 'start-workflow').filter((choice) => choice.disabled)).toEqual(
+      [],
+    );
+  });
+});
+
 describe('the events an action may not listen to', () => {
   test('a notification hook may not listen to the event its own notification raises', () => {
     expect(eventRefusal('notify', KINDS[1]!)).toBeDefined();

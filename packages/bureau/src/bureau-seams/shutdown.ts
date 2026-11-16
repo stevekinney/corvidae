@@ -50,6 +50,7 @@ export function createShutdown<D extends AgentDefinitions>(
     eventFeedSubscription,
     stopForwarding,
     runEventFeeds,
+    runOutcomeDetails,
     runtime,
     diagnose,
     activeRuns,
@@ -563,6 +564,8 @@ export function createShutdown<D extends AgentDefinitions>(
           for (const feedRunId of runEventFeeds.runIds()) {
             disposeRunEventFeed(feedRunId, runEventFeeds);
           }
+          // A failure that no settlement announced before the Bureau went has no run left to read it (COR-2095).
+          runOutcomeDetails.clear();
           eventFeed.dispose();
           emitter.complete();
         } catch (error) {

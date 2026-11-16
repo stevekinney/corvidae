@@ -36,6 +36,7 @@ import {
   agentStepResultFromState,
   workflowStepRunId,
 } from '../workflow-agent-step';
+import { observeRecordedRunEvents } from '../recorded-run-events.ts';
 import { attachRunEventFeed } from '../run-event-feed-attachment.ts';
 import { createScheduledFireApprovalHook } from '../approval-state-records';
 import { findRunAgentName, serializeUnknownError } from '../serialization';
@@ -79,7 +80,9 @@ export function createChildRuns<D extends AgentDefinitions>(
     workspace,
     runtimeServices,
     store,
+    emitter,
     runEventFeeds,
+    runOutcomeDetails,
     runtime,
     diagnose,
     catalogRunIds,
@@ -119,6 +122,7 @@ export function createChildRuns<D extends AgentDefinitions>(
     catalogRunIds.add(runId);
     const detachRunEventFeed = attachRunEventFeed(runId, activeRun, runEventFeeds, {
       now: runtimeServices.clock.now,
+      outcomeDetails: runOutcomeDetails,
       onError: (error, kind) => {
         diagnose({
           level: 'error',
@@ -145,6 +149,30 @@ export function createChildRuns<D extends AgentDefinitions>(
         if (store.getRun(runId)?.activeRun === activeRun) store.removeRun(runId);
       }),
     );
+  }
+
+  /**
+   * COR-2096 — publishes what a run that is not in the store records: a child run, a goal attempt
+   * or a workflow step, each dispatched with the id its owner recorded and so never registered by
+   * {@link registerCatalogRun}. Their guardrails, budget thresholds and tool failures reach the
+   * Bureau's event feed and the audit trail through the same events the store's runs do, and their
+   * `run.error` leaves the failing step, code and kind for `run.error` (COR-2095).
+   */
+  function observeRunEvents(activeRun: ActiveRun): void {
+    const runId = activeRun.runId;
+    observeRecordedRunEvents(activeRun, {
+      dispatch: (event) => emitter.dispatch(event),
+      now: runtimeServices.clock.now,
+      outcomeDetails: runOutcomeDetails,
+      onError: (error, kind) => {
+        diagnose({
+          level: 'error',
+          scope: 'event-feed',
+          message: `[bureau] publishing a "${kind}" event for run ${runId} threw:`,
+          cause: error,
+        });
+      },
+    });
   }
 
   /**
@@ -473,6 +501,7 @@ export function createChildRuns<D extends AgentDefinitions>(
 
   return {
     registerCatalogRun,
+    observeRunEvents,
     registerScheduledFireReviews,
     trackSubordinateRun,
     runWorkflowAgentStep,

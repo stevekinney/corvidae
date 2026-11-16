@@ -473,6 +473,8 @@ export type {
   GoalEventKind,
   RecoveredRunVerdict,
   RecoveryRejectionReason,
+  RunFailureDetail,
+  RunSettledStatus,
 } from './events';
 export {
   ActionEvent,
@@ -483,6 +485,7 @@ export {
   DiagnosticEvent,
   GOAL_EVENT_KINDS,
   GoalLifecycleEvent,
+  DecisionMadeEvent,
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
@@ -491,8 +494,16 @@ export {
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
+  BudgetThresholdRecordedEvent,
+  RunAbortedOutcomeEvent,
   RunAbortSettledEvent,
+  RunCompletedOutcomeEvent,
+  RunFailedOutcomeEvent,
+  RunGuardrailRecordedEvent,
   RunRegisteredEvent,
+  RunTripwireRecordedEvent,
+  ToolErrorRecordedEvent,
+  ToolPolicyDeniedRecordedEvent,
   RunSettledEvent,
   RunRemovedEvent,
 } from './events';
