@@ -523,6 +523,7 @@
       .then(() => {
         // A frame that found nothing has replaced this page with its not-found state by now.
         frameStillFindsIt = true;
+        return undefined;
       });
   });
 

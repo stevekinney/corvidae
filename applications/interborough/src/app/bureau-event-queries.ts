@@ -93,17 +93,13 @@ export function invalidateBureauDrivenQueries(queryClient: QueryClient): void {
 }
 
 /**
- * Invalidates the entries one frame makes stale. Returns whether the frame was one the feed drives
- * a view from, so a caller can tell a handled frame from one it should leave alone.
- */
-/**
  * COR-2171: a workflow file's plugin trigger started, stopped, failed or fired, so its page's
  * status line, and on a fire its runs, are read again. The event names the file.
  */
 function invalidateTriggerQueries(queryClient: QueryClient, payload: unknown): void {
-  const workflowId =
+  const workflowId: unknown =
     payload !== null && typeof payload === 'object' && Object.hasOwn(payload, 'workflowId')
-      ? (payload as { readonly workflowId: unknown }).workflowId
+      ? Reflect.get(payload, 'workflowId')
       : undefined;
   if (typeof workflowId !== 'string') {
     void queryClient.invalidateQueries({ queryKey: WORKFLOW_DETAIL_KEY_PREFIX });
@@ -113,6 +109,10 @@ function invalidateTriggerQueries(queryClient: QueryClient, payload: unknown): v
   void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.headline(workflowId) });
 }
 
+/**
+ * Invalidates the entries one frame makes stale. Returns whether the frame was one the feed drives
+ * a view from, so a caller can tell a handled frame from one it should leave alone.
+ */
 export function invalidateForBureauEvent(
   queryClient: QueryClient,
   frame: Pick<BureauEventFrame, 'kind'> & { readonly payload?: unknown },
