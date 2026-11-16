@@ -219,6 +219,33 @@
     color: var(--cinder-text-disabled);
   }
 
+  /* A disabled item with a `disabledReason` (COR-2327): the label row, and the reason under it as a
+     second line in the muted text colour, starting where the label's text starts (the indent past
+     a leading icon is measured). It is drawn at every width, so touch reads it without a hover. */
+  .cinder-dropdown-item[data-cinder-reason] {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--cinder-space-0-5);
+  }
+
+  .cinder-dropdown-item__label {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-dropdown-item__reason {
+    max-inline-size: 16rem;
+    padding-inline-start: var(--_cinder-dropdown-item-reason-indent, 0px);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+    white-space: normal;
+  }
+
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
  * "stick" after tap. Placed before :active rules so press feedback wins on tap. */
   @media (hover: hover) {

@@ -12,6 +12,10 @@
       "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
       "suiteExitCode": 0
     },
+    "breadcrumbs": {
+      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
+      "suiteExitCode": 0
+    },
     "card": {
       "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
       "suiteExitCode": 0
@@ -34,6 +38,10 @@
     },
     "description-list": {
       "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "page-header": {
+      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
       "suiteExitCode": 0
     },
     "stacked-list-item": {

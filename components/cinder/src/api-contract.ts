@@ -294,6 +294,24 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: { children: s0(true) },
   },
 
+  // COR-2327: a disabled item says why on a second line under its label, and names it as its
+  // description, in place of a `title` that touch never shows.
+  'dropdown-item': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      itemRole: { optional: true, type_kind: 'TSTypeReference', default: L('menuitem') },
+      checked: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      inset: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      closeOnSelect: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      disabled: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      disabledReason: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+    },
+    snippets: { children: s0(true) },
+  },
+
   'empty-state': {
     kind: 'literal',
     props: {

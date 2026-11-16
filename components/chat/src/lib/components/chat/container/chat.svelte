@@ -106,6 +106,7 @@
   import {
     Button,
     ConfirmDialog,
+    dockedToBottom,
     EmptyState,
     MessageSquare,
     Quote,
@@ -2937,10 +2938,12 @@
         onJumpToLatest={handleJumpToLatest}
       />
 
-      <!-- Input Area -->
+      <!-- Input Area: docked at the bottom (the composer, and the reminder and blocked row above
+           it), so a toast sits above it; a centred composer is in the middle and not counted. -->
       <div
         class="chat-input-area"
         data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+        {@attach composerCentered ? undefined : dockedToBottom()}
       >
         {#if quotes.quotes.length > 0}
           <ChatQuoteChips

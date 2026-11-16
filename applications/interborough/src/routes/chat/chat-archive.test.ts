@@ -14,6 +14,7 @@ import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   callsTo,
+  describedBy,
   mount,
   openMenu,
   restoreBureau,
@@ -176,7 +177,9 @@ describe('the More menu', () => {
     expect(item.getAttribute('aria-disabled') === 'true' || item.hasAttribute('disabled')).toBe(
       true,
     );
-    expect(item.getAttribute('title')).toBe(MORE.archiveBlocked.running);
+    // The reason is a second line the item is described by, not a `title` touch never shows.
+    expect(item.hasAttribute('title')).toBe(false);
+    expect(describedBy(item)).toBe(MORE.archiveBlocked.running);
     await fireEvent.click(item);
     expect(callsTo(served, 'bureau.contexts.archive')).toHaveLength(0);
   });
@@ -209,7 +212,8 @@ describe('the More menu', () => {
     expect(item.getAttribute('aria-disabled') === 'true' || item.hasAttribute('disabled')).toBe(
       true,
     );
-    expect(item.getAttribute('title')).toBe(MORE.archiveBlocked.approval);
+    expect(item.hasAttribute('title')).toBe(false);
+    expect(describedBy(item)).toBe(MORE.archiveBlocked.approval);
     await fireEvent.click(item);
     expect(callsTo(served, 'bureau.contexts.archive')).toHaveLength(0);
   });

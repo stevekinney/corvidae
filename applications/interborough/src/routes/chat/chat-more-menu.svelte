@@ -149,7 +149,7 @@
     </Dropdown.Item>
     <Dropdown.Item
       data-changes
-      title={branchHint}
+      disabledReason={branchHint}
       disabled={branchHint !== undefined || branching}
       onclick={() => {
         if (branchTarget !== undefined) onBranch(branchTarget);
@@ -168,7 +168,7 @@
     </Dropdown.Item>
     <Dropdown.Item
       data-changes
-      title={archiveHint}
+      disabledReason={archiveHint}
       disabled={archiveHint !== undefined}
       onclick={() => onArchive(!archived)}
     >

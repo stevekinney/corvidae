@@ -194,7 +194,10 @@ for (const viewport of VIEWPORTS) {
       await expect(archive).toBeVisible();
       // Cinder's menu item marks itself disabled with `aria-disabled`, and stays focusable.
       await expect(archive).toHaveAttribute('aria-disabled', 'true');
-      await expect(archive).toHaveAttribute('title', MORE.archiveBlocked.approval);
+      // The reason is drawn under Archive, with no hover, and is the item's description.
+      await expect(archive).not.toHaveAttribute('title');
+      await expect(archive).toHaveAccessibleDescription(MORE.archiveBlocked.approval);
+      await expect(archive.getByText(MORE.archiveBlocked.approval, { exact: true })).toBeVisible();
       await expect(page.locator('.cinder-toast', { hasText: MORE.archiving.busy })).toHaveCount(0);
       await expect(archivedBar(page)).toHaveCount(0);
       await checkA11y(`Archive held back at ${viewport.width}px`);

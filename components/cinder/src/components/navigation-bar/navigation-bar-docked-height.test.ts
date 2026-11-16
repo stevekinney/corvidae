@@ -27,9 +27,14 @@ function published(): string {
   return document.documentElement.style.getPropertyValue(DOCKED_BAR_HEIGHT_PROPERTY);
 }
 
+/** The box of a bar `height` tall whose bottom edge is the bottom of the viewport. */
+function dockedBox(height: number): DOMRect {
+  return { height, top: window.innerHeight - height, bottom: window.innerHeight } as DOMRect;
+}
+
 describe('NavigationBar and the toast region', () => {
   test('a bottom bar publishes its height while mounted and takes it back on unmount', async () => {
-    HTMLElement.prototype.getBoundingClientRect = () => ({ height: 64.4 }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = () => dockedBox(64.4);
     const { unmount } = render(NavigationBar, {
       placement: 'bottom',
       items: textSnippet('tabs'),
@@ -42,7 +47,7 @@ describe('NavigationBar and the toast region', () => {
   });
 
   test('a top bar publishes nothing', () => {
-    HTMLElement.prototype.getBoundingClientRect = () => ({ height: 56 }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = () => dockedBox(56);
     render(NavigationBar, { items: textSnippet('links') });
     flushSync();
 
@@ -50,7 +55,7 @@ describe('NavigationBar and the toast region', () => {
   });
 
   test('a bar that moves from the bottom to the top takes its height back', async () => {
-    HTMLElement.prototype.getBoundingClientRect = () => ({ height: 64 }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = () => dockedBox(64);
     const { rerender } = render(NavigationBar, {
       placement: 'bottom',
       items: textSnippet('tabs'),
