@@ -270,5 +270,5 @@ Bureau builds one `DocumentWorkflowHost` per engine, with the `agent` activity a
 
 - Writes are not safe against another process editing the same file (see Writing).
 - Per-user directories and Git history of the directory are out of scope.
-- A trigger kind that defines `receive` is how an external request starts a run (COR-2168): the facade's `workflows.receiveTrigger(id, request)` hands the request to it. The kind is the one place that authenticates the sender, and an A2A message from another principal starts nothing. A signal is the other way in from outside. Lifecycle triggers are not planned.
+- A trigger kind that defines `receive` is how an external request starts a run (COR-2168): the facade's `workflows.receiveTrigger(id, request)` hands the request to it. The kind is the one place that authenticates the sender, and an A2A message from another principal starts nothing. A signal is the other way in from outside. There are no lifecycle triggers.
 - `runs.list` reads at most 1,000 instances of a workflow.

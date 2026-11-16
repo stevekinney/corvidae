@@ -57,6 +57,9 @@ import {
  *   `/api/reviews/<review>/decision`, their description at `/api/openapi.json`, and `/host/session`:
  *   Interborough's own API over the Bureau, each operation checked against the session's scopes
  *   (`api-routes.ts`, `api-description.ts`).
+ * - `POST /triggers/<workflow-id>`: a delivery to a workflow file whose trigger kind defines
+ *   `receive` (COR-2169). No session and no key; the trigger authenticates the sender, the body is
+ *   capped at 4 MiB, and the public origin reaches this route too (`trigger-routes.ts`).
  * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
  *   documents: Weft's engine operations, relayed to its server. `POST /jsonrpc` also answers a
  *   Bureau method, and `rpc.discover` over both catalogs, itself (`composed-json-rpc.ts`, COR-2269):
