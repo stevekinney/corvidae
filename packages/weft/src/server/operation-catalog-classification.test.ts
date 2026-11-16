@@ -22,6 +22,7 @@ import { describe, expect, it } from 'bun:test';
 import { WorkflowNotRegisteredError } from '../core/engine/errors.ts';
 import { classifyEngineError } from './operation-catalog.ts';
 import type { OperationFault } from './operation-fault.ts';
+import { weftFaultPolicy } from './weft-fault-policy.ts';
 
 describe('classifyEngineError', () => {
   it('classifies a thrown OperationFault by passing it through', () => {
@@ -52,7 +53,11 @@ describe('classifyEngineError', () => {
   });
 
   it('classifies WorkflowNotRegisteredError as InvalidParams instead of NotFound', () => {
-    const fault = classifyEngineError(new WorkflowNotRegisteredError('missing-workflow'));
+    const fault = classifyEngineError(
+      new WorkflowNotRegisteredError('missing-workflow'),
+      undefined,
+      weftFaultPolicy,
+    );
 
     expect(fault.code).toBe('InvalidParams');
     expect(fault.message).toContain('missing-workflow');

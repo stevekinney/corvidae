@@ -8,15 +8,7 @@
     "specifier": "../version.ts"
   },
   {
-    "file": "src/server/openapi-error-responses.ts",
-    "specifier": "../core/fault-code.ts"
-  },
-  {
     "file": "src/server/openrpc-errors.ts",
-    "specifier": "../core/fault-code.ts"
-  },
-  {
-    "file": "src/server/openrpc.ts",
     "specifier": "../core/fault-code.ts"
   },
   {
@@ -30,18 +22,6 @@
   {
     "file": "src/server/operation-catalog/index.ts",
     "specifier": "../../core/fault-code.ts"
-  },
-  {
-    "file": "src/server/operation-catalog/pipeline-helpers.ts",
-    "specifier": "../../core/engine/errors.ts"
-  },
-  {
-    "file": "src/server/operation-catalog/pipeline-helpers.ts",
-    "specifier": "../../core/weft-error.ts"
-  },
-  {
-    "file": "src/server/operation-catalog/pipeline-helpers.ts",
-    "specifier": "../../runtime/environment-configuration.ts"
   },
   {
     "file": "src/server/operation-catalog/raise-fault.ts",

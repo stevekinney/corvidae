@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { WorkflowAlreadyExistsError, WorkflowNotFoundError } from '../../core/engine/errors.ts';
+import { weftFaultPolicy } from '../weft-fault-policy.ts';
 import {
   classifyEngineError,
   transportToAvailabilityKey,
@@ -59,7 +60,9 @@ describe('classifyEngineError typed engine errors', () => {
   });
 
   it('classifies a missing workflow as a NotFound naming the workflow resource', () => {
-    expect(classifyEngineError(new WorkflowNotFoundError('wf-1'))).toEqual({
+    expect(
+      classifyEngineError(new WorkflowNotFoundError('wf-1'), undefined, weftFaultPolicy),
+    ).toEqual({
       code: 'NotFound',
       message: 'not found',
       data: { resource: 'workflow' },

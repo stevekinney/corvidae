@@ -4,6 +4,7 @@ import { snapshotOperationMetadata } from './operation-metadata.ts';
 import { UNSAFE_PROTOTYPE_KEYS } from './pipeline-helpers.ts';
 import {
   type ErasedOperation,
+  type FaultPolicy,
   type OperationRegistry,
   type RegistrableOperation,
   validateOperationName,
@@ -101,9 +102,25 @@ function eraseHost<Host>(operation: RegistrableOperation<Host>): ErasedOperation
   return operation.dispatch as ErasedOperation['dispatch'];
 }
 
-function freezeOperation<Host>(operation: RegistrableOperation<Host>): ErasedOperation {
+/**
+ * Puts the registry's fault policy on every dispatch, so no transport has to carry it. A context
+ * that already names a policy keeps its own.
+ */
+function withFaultPolicy(
+  dispatch: ErasedOperation['dispatch'],
+  faultPolicy: FaultPolicy | undefined,
+): ErasedOperation['dispatch'] {
+  if (faultPolicy === undefined) return dispatch;
+  return (rawInput, context) =>
+    dispatch(rawInput, context.faultPolicy === undefined ? { ...context, faultPolicy } : context);
+}
+
+function freezeOperation<Host>(
+  operation: RegistrableOperation<Host>,
+  faultPolicy: FaultPolicy | undefined,
+): ErasedOperation {
   const metadata = snapshotOperationMetadata(operation);
-  const dispatch = eraseHost(operation);
+  const dispatch = withFaultPolicy(eraseHost(operation), faultPolicy);
   if (operation.kind === 'stream' || operation.kind === 'subscription') {
     return Object.freeze({
       ...metadata,
@@ -118,9 +135,13 @@ function freezeOperation<Host>(operation: RegistrableOperation<Host>): ErasedOpe
 /**
  * Build an immutable registry. Throws on duplicate names, invalid names,
  * non-object input schemas, and unsafe top-level schema keys.
+ *
+ * `faultPolicy` is the host's say over thrown faults (see {@link FaultPolicy}); omitted, a
+ * thrown fault that its operation does not declare answers `EngineFailure`.
  */
 export function createOperationRegistry<Host = unknown>(
   operations: ReadonlyArray<RegistrableOperation<Host>>,
+  options: { readonly faultPolicy?: FaultPolicy | undefined } = {},
 ): OperationRegistry {
   const byName = new Map<string, ErasedOperation>();
   for (const operation of operations) {
@@ -132,7 +153,7 @@ export function createOperationRegistry<Host = unknown>(
     assertKindAndEventSchemaAgree(operation);
     assertDestructiveDeclared(operation);
     assertMcpMetadataAgrees(operation);
-    byName.set(operation.name, freezeOperation(operation));
+    byName.set(operation.name, freezeOperation(operation, options.faultPolicy));
   }
   const ordered = Object.freeze([...byName.values()]);
   return {
