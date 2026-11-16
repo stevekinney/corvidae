@@ -522,7 +522,7 @@
   },
   "control.background.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1461,8 +1461,8 @@
     "$type": "color"
   },
   "surface.inset": {
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
-    "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
+    "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-inset",
@@ -1512,7 +1512,7 @@
     "$type": "color"
   },
   "surface.upcoming-marker": {
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1991,8 +1991,8 @@
   },
   "overlay.backdrop": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2, 0.03, 245], "alpha": 0.5 },
-    "$description": "Overlay backdrop scrim color.",
+    "$value": { "colorSpace": "oklch", "components": [0.2, 0.03, 245], "alpha": 0.25 },
+    "$description": "Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-overlay-backdrop",
@@ -3899,7 +3899,7 @@
   },
   "code-block.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Code surface background: the recessed inset well in both themes (owner, 2026-11-16), so a code block inside a white card or panel reads as sunk into it rather than as a second white box. Shiki's github-light colors that fall under AA on the light inset are lifted to Cinder text roles in code-block.css; see check-token-contrast-code-block.test.ts.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4025,7 +4025,7 @@
   },
   "file-upload.progress.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Progress bar track background.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4151,7 +4151,7 @@
   },
   "modal.backdrop": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.2, 0.03, 245], "alpha": 0.5 },
+    "$value": { "colorSpace": "oklch", "components": [0.2, 0.03, 245], "alpha": 0.25 },
     "$description": "`::backdrop` fill color override point. A consumer override should target `::backdrop` directly for cross-engine reliability.",
     "$extensions": {
       "com.lostgradient.cinder": {
