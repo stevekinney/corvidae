@@ -124,9 +124,15 @@ describe('host.publish', () => {
 
     values.set(KEY, 'secret-value');
     for (const listener of watchers) listener();
-    await waitUntil(async () => (await listedPlugins(bureau))[0]?.status === 'running', {
-      message: 'the plugin to leave needs-setup',
-    });
+    await waitUntil(
+      async () => {
+        const [listing] = await listedPlugins(bureau);
+        return listing?.status === 'running';
+      },
+      {
+        message: 'the plugin to leave needs-setup',
+      },
+    );
     await host.publish('greeted', { greetingId: 'greeting-1' });
     expect(published(await recorded(bureau)).map(({ kind }) => kind)).toEqual(['demo:greeted']);
   });

@@ -37,7 +37,7 @@ export function createPluginEventPublisher(
     const declaration = declarations.find((candidate) => candidate.name === name);
     if (declaration === undefined) {
       throw new TypeError(
-        `Plugin "${plugin}" declared no event named "${String(name)}", so it cannot publish one.`,
+        `Plugin "${plugin}" declared no event named "${name}", so it cannot publish one.`,
       );
     }
     const kind = `${plugin}:${declaration.name}`;
