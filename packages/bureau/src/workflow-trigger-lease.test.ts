@@ -834,6 +834,7 @@ const rows: readonly LeaseRow[] = [
       const standby = await peer(shared);
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
+      expect(standby.status()?.state).toBe('standby');
       crash(holder);
       standby.passTime(PROCESS_LEASE_MILLISECONDS + 1);
       expect(standby.services.pendingTimers()).toHaveLength(0);
@@ -903,9 +904,11 @@ const rows: readonly LeaseRow[] = [
       const standby = await peer(shared);
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
+      expect(standby.status()?.state).toBe('standby');
       await takenBy(shared.kv, standby);
       await standby.tick();
       expect(standby.status()?.state).toBe('listening');
+      expect(standby.starts).toHaveLength(1);
       expect(standby.writes).toEqual([]);
     },
   },
@@ -1045,8 +1048,11 @@ const rows: readonly LeaseRow[] = [
       const p = await peer(shared);
       p.onStart = boom;
       await p.reconcile({ a: {} });
+      // The attempt took the record, and its failed start deleted it.
+      expect(p.reads).toEqual([RECORD]);
       expect(await shared.kv.get(RECORD)).toBeNull();
       await p.tick();
+      expect(p.reads).toEqual([RECORD]);
       expect(p.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(1)));
       expect(p.services.pendingTimers()).toHaveLength(1);
       expect(p.starts).toHaveLength(1);
@@ -1302,9 +1308,12 @@ const rows: readonly LeaseRow[] = [
       const shared = sharedStore();
       const p = await peer(shared);
       await p.reconcile({ a: {} });
+      expect(await shared.kv.get(RECORD)).toBe(p.own);
       const writes = p.writes.length;
+      const reads = p.reads.length;
       expect(await p.retry()).toEqual(status('listening', ORIGIN));
       expect(p.writes).toHaveLength(writes);
+      expect(p.reads).toHaveLength(reads);
       expect(p.starts).toHaveLength(1);
     },
   },
@@ -1333,10 +1342,13 @@ const rows: readonly LeaseRow[] = [
       const standby = await peer(shared);
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
+      expect(await shared.kv.get(RECORD)).toBe(holder.own);
+      expect(standby.status()?.state).toBe('standby');
       await holder.close();
       expect(await shared.kv.get(RECORD)).toBeNull();
       await standby.tick();
       expect(standby.status()?.state).toBe('listening');
+      expect(standby.starts).toHaveLength(1);
     },
   },
   {
@@ -1595,6 +1607,7 @@ const rows: readonly LeaseRow[] = [
       const standby = await peer(shared);
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
+      expect(await shared.kv.get(RECORD)).toBe(holder.own);
       await holder.reconcile({ a: { paused: true } });
       await standby.reconcile({ a: { paused: true } });
       await standby.tick();
@@ -1626,6 +1639,7 @@ const rows: readonly LeaseRow[] = [
       const shared = sharedStore();
       const p = await peer(shared);
       await p.reconcile({ a: {} });
+      expect(await shared.kv.get(RECORD)).toBe(p.own);
       await p.reconcile({});
       expect(p.status()).toBeUndefined();
       expect(await shared.kv.get(RECORD)).toBeNull();
@@ -1790,6 +1804,8 @@ const rows: readonly LeaseRow[] = [
       standby.answer = engine;
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
+      expect(standby.status()?.state).toBe('standby');
+      expect(standby.starts).toHaveLength(0);
       expect(await holder.starts[0]!.fire({}, { idempotencyKey: 'K' })).toEqual({
         outcome: 'started',
         runId: 'run-1',
