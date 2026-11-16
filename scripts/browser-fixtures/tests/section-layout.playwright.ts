@@ -106,6 +106,49 @@ test.describe('GroupedList layout', () => {
     expect(overlay.inset).toBe('0px');
   });
 
+  test('a time-led row keeps the basic row’s type, and its number sits on the title’s first line', async ({
+    page,
+  }) => {
+    const rows = page.getByTestId('grouped-list-timed').locator('.cinder-grouped-list-item');
+    const basic = rows.nth(0);
+    const type = (locator: typeof basic) =>
+      locator.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.fontSize, style.fontWeight, style.lineHeight].join(' ');
+      });
+    const basicTitle = await type(basic.locator('.cinder-grouped-list-item__title'));
+    const basicSubtitle = await type(basic.locator('.cinder-grouped-list-item__subtitle'));
+    // Rows 1 to 3 have a subtitle; row 4's title stands alone beside a taller number and unit.
+    for (const index of [1, 2, 3, 4]) {
+      const row = rows.nth(index);
+      const title = row.locator('.cinder-grouped-list-item__title');
+      expect(await type(title), `title of row ${index}`).toBe(basicTitle);
+      if (index < 4) {
+        expect(
+          await type(row.locator('.cinder-grouped-list-item__subtitle')),
+          `subtitle of row ${index}`,
+        ).toBe(basicSubtitle);
+      }
+      // The number's line is one title line, at the top of the title: the two share a first line.
+      const value = await row.locator('.cinder-grouped-list-item__lead-value').boundingBox();
+      const titleTop = (await title.boundingBox())!.y;
+      const titleLine = await title.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).lineHeight),
+      );
+      expect(Math.abs(value!.y - titleTop), `number of row ${index}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(value!.height - titleLine), `number of row ${index}`).toBeLessThanOrEqual(1);
+    }
+    // On a phone, where a row with a trailing value gives its subtitle a line of its own, a
+    // time-led row's subtitle still starts under its title, never under the number.
+    await page.setViewportSize({ width: 375, height: 800 });
+    for (const index of [1, 2, 3]) {
+      const row = rows.nth(index);
+      const title = await row.locator('.cinder-grouped-list-item__title').boundingBox();
+      const subtitle = await row.locator('.cinder-grouped-list-item__subtitle').boundingBox();
+      expect(Math.abs(subtitle!.x - title!.x), `subtitle of row ${index}`).toBeLessThanOrEqual(1);
+    }
+  });
+
   test('the grouped skeleton draws the grouped list surface, and its button block drops under the text on a phone (COR-2329)', async ({
     page,
   }) => {
