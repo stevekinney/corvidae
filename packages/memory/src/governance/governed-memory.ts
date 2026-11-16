@@ -31,10 +31,11 @@ import {
   changeShare,
   promoteRecord,
   quarantineRecord,
+  releaseQuarantine,
   revokeRecord,
 } from './governed-transitions';
 import { admitWrite } from './governed-writes';
-import { copyInlineVectors } from './profile-vectors';
+import { adoptActiveModel, copyInlineVectors } from './profile-vectors';
 
 /**
  * Hands `notification` to each listener registered when delivery starts, in order. A listener that
@@ -111,6 +112,7 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     embedding: {
       status: () => embedding.status(),
       availability: (id) => embedding.availability(id),
+      embedders: () => embedding.embedders(),
       switchTo: (id) => switchEmbedder(governance, id),
       cancel: () => cancelSwitch(governance),
       async advance(advanceOptions) {
@@ -139,6 +141,9 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     async init() {
       await options.storage.init();
       await options.textSearchProvider?.init();
+      // A profile stored before COR-2184 holds no model; it takes the one its embedder is
+      // registered with, before anything writes into it.
+      await adoptActiveModel(governance);
       // Records stored before COR-1898 held their vector inline; recall reads only the profile's.
       await copyInlineVectors(governance);
     },
@@ -163,6 +168,7 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     export: (authority, exportOptions) => exportRecords(governance, authority, exportOptions),
     quarantine: (authority, locator, reason) =>
       quarantineRecord(governance, authority, locator, reason),
+    releaseQuarantine: (authority, locator) => releaseQuarantine(governance, authority, locator),
     revoke: (authority, locator, reason) => revokeRecord(governance, authority, locator, reason),
     delete: (authority, locator) => deleteLocated(governance, deletion, authority, locator),
     forget: (authority, request) => forget(governance, deletion, authority, request),

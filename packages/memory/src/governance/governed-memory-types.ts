@@ -2,6 +2,7 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { EmbedderRegistry } from '../embedder-registry';
 import type { MemoryRecordStorage } from '../memory-record-storage';
 import type {
+  MemoryEmbeddingFailure,
   MemoryEmbeddingJobState,
   MemoryEmbeddingProfile,
   MemoryVectorStore,
@@ -103,6 +104,23 @@ export interface MemoryWriteReceipt {
 
 export type MemoryOperationStatus = 'applied' | 'unchanged' | 'not-found' | 'denied' | 'rejected';
 
+/**
+ * Every `reason` a rejected {@link GovernedMemory.releaseQuarantine} carries: the admission
+ * guardrails held the record (`verification-failed`), it is derived from another record
+ * (`derived-record`), a deletion has claimed it (`deletion-pending`), a correction superseded it
+ * (`superseded`), or its content no longer matches the digest recorded at admission (`tampered`).
+ */
+export const MEMORY_RELEASE_REJECTIONS = [
+  'verification-failed',
+  'derived-record',
+  'deletion-pending',
+  'superseded',
+  'tampered',
+] as const;
+
+/** One of {@link MEMORY_RELEASE_REJECTIONS}: why a quarantined record was not released. */
+export type MemoryReleaseRejection = (typeof MEMORY_RELEASE_REJECTIONS)[number];
+
 export interface MemoryOperationResult {
   readonly operationId: string;
   readonly status: MemoryOperationStatus;
@@ -116,6 +134,12 @@ export interface GovernedListOptions {
   readonly visibility?: MemoryVisibility | 'all';
   readonly limit?: number;
   readonly offset?: number;
+  /**
+   * Lists only the records in this state, before `limit` and `offset` apply. A record that is not
+   * `active` is listed only to a caller with `memory:inspect`, so for any other caller a state other
+   * than `active` lists nothing. Defaults to every record the caller may see.
+   */
+  readonly state?: 'active' | 'quarantined' | 'revoked';
 }
 
 export interface GovernedSearchOptions {
@@ -523,6 +547,16 @@ export interface CreateGovernedMemoryOptions {
  */
 export type MemoryEmbedderAvailability = 'available' | 'needs-setup' | 'not-loaded';
 
+/** One registered embedder, as {@link GovernedMemoryEmbedding.embedders} lists it. */
+export interface MemoryEmbedderListing {
+  /** The registry id a switch or the `memory.embedder` setting names. */
+  readonly id: string;
+  /** How many entries each vector it returns has. */
+  readonly dimension: number;
+  /** Whether memory could embed with it now. */
+  readonly availability: Exclude<MemoryEmbedderAvailability, 'not-loaded'>;
+}
+
 /** A switch of the active embedding, as {@link GovernedMemoryEmbedding.status} reports it. */
 export interface MemoryEmbeddingJobStatus {
   /** The registry id of the embedder the switch re-embeds memory with. */
@@ -533,20 +567,31 @@ export interface MemoryEmbeddingJobStatus {
   readonly done: number;
   /** How many records are stored. */
   readonly total: number;
-  /** Why a `failed` switch failed: `target-unavailable`, or the error its embedder gave. */
-  readonly error?: string;
+  /**
+   * Why a `failed` switch failed, as a code: never the text an embedder gave, which can carry a
+   * provider's response (COR-2188). A switch stored before that reports `embedder-failed`.
+   */
+  readonly error?: MemoryEmbeddingFailure;
 }
 
 /** What {@link GovernedMemoryEmbedding.status} reports. */
 export interface MemoryEmbeddingStatus {
-  /** The embedding recall and admission use: its embedder's registry id and its dimension. */
-  readonly active: { readonly embedder: string; readonly dimension: number };
+  /**
+   * The embedding recall and admission use: its embedder's registry id, its dimension, and the
+   * model that made its vectors (COR-2184). `model` is left out for a profile stored before COR-2184
+   * that no process has adopted a model for yet, such as one whose embedder is not registered.
+   */
+  readonly active: {
+    readonly embedder: string;
+    readonly dimension: number;
+    readonly model?: string;
+  };
   /** The switch that is running, or the last one, when it failed or was cancelled. */
   readonly job?: MemoryEmbeddingJobStatus;
   /**
    * What keeps the active embedding from working fully, when anything does:
-   * `embedder-unavailable` while its embedder is not loaded, is loaded with another dimension, or
-   * needs setup. Recall then scores by text alone, and admissions are queued until it is loaded.
+   * `embedder-unavailable` while its embedder is not loaded, is loaded with another dimension or
+   * another model than the one that made its vectors, or needs setup. Recall then scores by text alone, and admissions are queued until it is loaded.
    */
   readonly problem?: MemoryEmbeddingProblem;
 }
@@ -591,6 +636,8 @@ export interface GovernedMemoryEmbedding {
   status(): Promise<MemoryEmbeddingStatus>;
   /** Whether memory could embed with the embedder registered as `id` now. */
   availability(id: string): MemoryEmbedderAvailability;
+  /** Every registered embedder with its dimension and availability as it is now, in registry order. */
+  embedders(): readonly MemoryEmbedderListing[];
   /**
    * Starts a durable switch to the embedder registered as `id`: a new profile, with a generation no
    * profile has had, that {@link GovernedMemoryEmbedding.advance} fills with every stored record.
@@ -602,17 +649,31 @@ export interface GovernedMemoryEmbedding {
   switchTo(id: string): Promise<MemoryEmbeddingSwitchResult>;
   /**
    * Cancels the running switch and deletes the profile it was filling; recall keeps the active
-   * profile. Returns whether a switch was running.
+   * profile, which is never touched. Returns whether this call cancelled a running switch: `false`
+   * when none ran, when it had failed or been cancelled already, or when it completed (or was
+   * cancelled by another caller) first.
+   *
+   * The cancellation is one compare-and-swap of the switch record from `running`, as read, to
+   * `cancelled`: a step that moves the record's progress, or a completion, in the same moment
+   * either wins the swap or sends this call to read the record again, so exactly one of a
+   * completion and a cancellation takes effect, and two cancels return `true` once. The profile
+   * is deleted after the swap, which a stopped process leaves undone: the next switch takes a
+   * generation no profile has had and deletes that profile, so a profile a cancelled switch half
+   * filled is never mistaken for progress. A step still embedding when the swap lands finds its
+   * profile gone and leaves the record `cancelled`.
    */
   cancel(): Promise<boolean>;
   /**
    * Embeds records queued for the active profile (admitted while its embedder was unavailable, or
    * whose embed into it failed while a switch made it active), then records the running switch's
    * target lacks, `limit` in all, and completes the switch, in one step, once it holds every stored
-   * record. Queued records wait while the active embedder is unavailable. A switch whose embedder is no longer registered fails as
-   * `target-unavailable`; one whose embedder errors, or gives a vector of the wrong length or with
-   * an entry that is not a finite number, fails with that error. A failed switch's profile is
-   * deleted. Every step, a switch running or not, first finishes any profile deletion that stopped
+   * record. Queued records wait while the active embedder is unavailable. A switch whose embedder
+   * is no longer registered fails as `target-unavailable`. A batch whose embedder errors, or gives
+   * a vector of the wrong length or with an entry that is not a finite number, or the wrong number
+   * of vectors, is tried again one record per call (COR-2188), because a batch can exceed a limit
+   * each record alone is within; the switch fails as `embedder-failed` only when a record fails
+   * alone, and as `embedder-timeout` as soon as any embed does not answer within its bound. A
+   * failed switch's profile is deleted, and its error is the code, never the embedder's text. Every step, a switch running or not, first finishes any profile deletion that stopped
    * part-way. Memory runs nothing on a timer, so the host calls this, as it calls
    * {@link GovernedMemory.processDeletionPropagation}, whether or not a switch runs. Returns the
    * status after the step.
@@ -695,6 +756,24 @@ export interface GovernedMemory {
     authority: MemoryAuthority,
     locator: MemoryRecordLocator,
     reason: string,
+  ): Promise<MemoryOperationResult>;
+  /**
+   * Gives one quarantined record back to active use after inspection. It needs `memory:quarantine`
+   * and `memory:inspect`; a caller without `memory:inspect` is `denied` before the record is
+   * looked up, so the answer says nothing about whether it exists. An active record is `unchanged`,
+   * a revoked one is `not-found`, and a record that is derived, claimed by a deletion, superseded
+   * or tampered with is `rejected` with that `reason` ({@link MemoryReleaseRejection}). The
+   * content is then scanned again by the admission guardrails of the policy current now, with the
+   * record's own provenance, source, class and trust: one that trips or throws is `rejected` with
+   * `verification-failed`, and stays quarantined. Otherwise the record alone becomes `active`
+   * (never what was derived from it) in one write that declines unless the record is still
+   * quarantined and intact, and is indexed for text search. Each rejection records
+   * `memory.release.rejected`, a detector's name only in the protected diagnostic, and a release
+   * records `memory.released`. The scan has no deadline and takes no signal.
+   */
+  releaseQuarantine(
+    authority: MemoryAuthority,
+    locator: MemoryRecordLocator,
   ): Promise<MemoryOperationResult>;
   revoke(
     authority: MemoryAuthority,

@@ -56,6 +56,21 @@ describe('formatter event kinds', () => {
     expect(listing?.problems ?? []).toEqual([]);
   });
 
+  it('composes a plugin whose formatter lists scorer.threshold-breached, a published kind (COR-2251)', async () => {
+    const listing = await listFormatting(['scorer.threshold-breached']);
+    expect(listing?.status).toBe('running');
+    expect(listing?.problems ?? []).toEqual([]);
+  });
+
+  it('skips a plugin whose formatter lists the retired eval-prefixed kind (COR-2251)', async () => {
+    const retired = ['eval', 'threshold-breached'].join('.');
+    const listing = await listFormatting([retired]);
+    expect(listing?.status).toBe('skipped');
+    expect(listing?.problems).toEqual([
+      { code: 'formatter-unknown-kind', formatter: 'runs', kind: retired },
+    ]);
+  });
+
   it('names only catalog kinds in the README code fences', async () => {
     const readme = await Bun.file(
       new URL('../../../interborough-plugin/README.md', import.meta.url),

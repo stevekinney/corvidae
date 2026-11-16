@@ -490,6 +490,7 @@ export {
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
+  ScorerThresholdBreachedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,

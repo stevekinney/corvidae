@@ -254,7 +254,10 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.memory.hold', 'owner'],
       ['bureau.memory.hold.release', 'owner'],
       ['bureau.memory.quarantine', 'owner'],
+      ['bureau.memory.quarantine.release', 'owner'],
       ['bureau.memory.export', 'owner-collection'],
+      ['bureau.memory.embedding', 'administrator'],
+      ['bureau.memory.embedding.cancel', 'administrator'],
     ],
   },
   {

@@ -73,6 +73,13 @@ import { resolveMainCheckout } from './repository-locations.ts';
 export { UsageError };
 
 /**
+ * The push rule (COR-2464): a restart that strands a worker must leave its commits on the remote.
+ * The agent definitions restate its key phrase, and `brief.test.ts` pins both.
+ */
+export const pushRule =
+  'after every commit, push your own branch to origin (`git push origin HEAD:<your branch>`), never to `main`, and do not wait for the focused checks before that push (they still gate ready-for-review); run the revert check before each push.';
+
+/**
  * The delivery shape, stated once: every brief carries this sentence, and no other worker-facing
  * document restates it (`brief.test.ts` checks the agent definition and the Codex protocol).
  */
@@ -89,6 +96,7 @@ export const charterRules = [
   "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When your change reaches a browser suite, push, run `gh workflow run main.yml --ref <branch>`, and wait for it in a background command. Before any re-run, read the failing test names and download the failing shard's artifact: a re-run makes the first attempt's artifact unreachable.",
   '**Processes:** never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): a worker ends only a process it started, by pid, and when the test pool queue is long it waits (a `pkill -f "run test:self"` ended other sessions\' runs on 2026-11-13).',
   '**Scratch:** keep your logs and temporary files only in the scratch directory this brief names under `## Scratch directory`, never in `/tmp` or any path another worker can write.',
+  `**Push:** ${pushRule}`,
   '**Branch:** update from `main` only by a real merge (`git fetch origin main && git merge FETCH_HEAD`), never `git reset --soft` onto a newer `main`. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`; a file you did not mean to change means a stale tree.',
   `**Delivery:** ${deliveryRule}`,
   '**Review rounds, with a pull request open (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; then open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',

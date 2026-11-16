@@ -35,6 +35,7 @@ describe('the gemini plugin', () => {
     const result = await plugin.setup?.({ secrets } as never);
     const embedder = result?.embedders?.[0];
     expect(embedder?.name).toBe('gemini-embedding-001');
+    expect(embedder?.model).toBe('gemini-embedding-001');
     expect(embedder?.dimensions).toBe(3072);
     const failure = await Promise.resolve(embedder?.embed(['text'])).then(
       () => undefined,

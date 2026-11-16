@@ -13,10 +13,16 @@
    * server records it in the memory ledger under the caller's owner. This page says so after each.
    * A legal hold has no read of its own, so the hold state this page knows comes from here: a
    * hold or a release, in `holds`, shared with `memory-changes.svelte`, which records one a forget
-   * ran into. Quarantine asks first, names the memory that goes, and says it cannot be undone.
+   * ran into. Quarantine asks first, names the memory that goes, and says what releasing it
+   * afterwards does. Its outcome is the notice above the list, which names the memory by an excerpt
+   * and links to the Quarantined filter (`onSeeQuarantined`), where the memory now is. Releasing a
+   * quarantined memory (`release`) is started from that memory's details; `releasing` is the memory
+   * being released, and `releaseFault` what refused a release, for the details to show where the
+   * button was pressed. A release that went through is said in the notice, like every other change.
    */
   import { Alert, Button, Input, Modal, Textarea } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import { tick } from 'svelte';
   import type { SvelteMap } from 'svelte/reactivity';
 
   import { MEMORY_COPY } from '../../app/copy/memory.ts';
@@ -26,6 +32,7 @@
     exportMemories,
     memoryFaultOf,
     quarantineMemory,
+    releaseQuarantine,
     type Memory,
     type MemoryFault,
   } from '../../lib/memory-client.ts';
@@ -42,8 +49,16 @@
     pending?: boolean;
     /** True while an export is being made, for the Export button to say "Exporting…". */
     exporting?: boolean;
+    /** The memory being released, or `undefined`: the details show progress on its button. */
+    releasing?: string | undefined;
+    /** What refused the last release, and for which memory, until the next release is started. */
+    releaseFault?: { readonly id: string; readonly fault: MemoryFault } | undefined;
     /** Called once a memory is quarantined, so the page can close its details. */
     onQuarantined: (id: string) => void;
+    /** Called once a memory is released, so the page can close its details: it left the list it was in. */
+    onReleased: (id: string) => void;
+    /** Applies the Quarantined filter, where a memory just quarantined now is. */
+    onSeeQuarantined: () => void;
   };
 
   let {
@@ -51,7 +66,11 @@
     holds,
     pending = $bindable(false),
     exporting = $bindable(false),
+    releasing = $bindable(undefined),
+    releaseFault = $bindable(undefined),
     onQuarantined,
+    onReleased,
+    onSeeQuarantined,
   }: Props = $props();
 
   const words = MEMORY_COPY.govern;
@@ -61,7 +80,13 @@
 
   /** What the last change came to, in the words for it. */
   type Notice =
-    | { readonly kind: 'done'; readonly title: string; readonly description: string }
+    | {
+        readonly kind: 'done';
+        readonly title: string;
+        readonly description: string;
+        /** Whether the notice links to the Quarantined filter. */
+        readonly seeQuarantined: boolean;
+      }
     | { readonly kind: 'failed'; readonly fault: MemoryFault };
 
   let notice = $state<Notice | undefined>(undefined);
@@ -73,11 +98,17 @@
   let reason = $state('');
 
   /** Says what a change came to; the ledger line is only true of a change that was made. */
-  function done(title: string, description: string, changed: boolean): void {
+  function done(
+    title: string,
+    description: string,
+    changed: boolean,
+    seeQuarantined = false,
+  ): void {
     notice = {
       kind: 'done',
       title,
       description: changed ? `${description} ${words.recorded}` : description,
+      seeQuarantined,
     };
   }
 
@@ -128,19 +159,45 @@
     onError: failed,
   }));
 
+  const release = createMutation(() => ({
+    mutationFn: (change: { readonly id: string; readonly content: string }) =>
+      releaseQuarantine(agentId, change.id),
+    onMutate: (change) => {
+      releasing = change.id;
+      releaseFault = undefined;
+    },
+    onSuccess: (result, change) => {
+      const outcome = result.changed ? words.release.outcome.done : words.release.outcome.already;
+      done(outcome.title(excerpt(change.content)), outcome.description, result.changed);
+      void queryClient.invalidateQueries(memoryListingsFilter(agentId));
+      onReleased(change.id);
+    },
+    // A refusal is worded where the button was pressed, in the memory's details, not up here.
+    onError: (error, change) => {
+      releaseFault = { id: change.id, fault: memoryFaultOf(error) };
+    },
+    onSettled: () => {
+      releasing = undefined;
+    },
+  }));
+
   const quarantine = createMutation(() => ({
-    mutationFn: (change: { readonly id: string; readonly reason: string }) =>
-      quarantineMemory(agentId, change.id, change.reason),
-    onSuccess: (result) => {
+    mutationFn: (change: {
+      readonly id: string;
+      readonly content: string;
+      readonly reason: string;
+    }) => quarantineMemory(agentId, change.id, change.reason),
+    onSuccess: (result, change) => {
       quarantineOpen = false;
       const outcome = result.changed
         ? words.quarantine.outcome.done
         : words.quarantine.outcome.already;
       done(
-        outcome.title,
+        outcome.title(excerpt(change.content)),
         typeof outcome.description === 'function'
           ? outcome.description(result.affected)
           : outcome.description,
+        result.changed,
         result.changed,
       );
       void queryClient.invalidateQueries(memoryListingsFilter(agentId));
@@ -164,7 +221,11 @@
 
   /** Whether a change is being saved, read from the mutations themselves so a second press in the same tick is refused too. */
   const busy = (): boolean =>
-    share.isPending || hold.isPending || quarantine.isPending || exportation.isPending;
+    share.isPending ||
+    hold.isPending ||
+    quarantine.isPending ||
+    release.isPending ||
+    exportation.isPending;
 
   $effect(() => {
     pending = busy();
@@ -196,6 +257,26 @@
     quarantineOpen = true;
   }
 
+  /** The outcome notice's title, which takes the focus when the memory it was pressed in is gone. */
+  let outcomeElement = $state<HTMLElement | undefined>(undefined);
+
+  /** Puts the focus on the outcome notice once it is drawn. */
+  export async function focusOutcome(): Promise<void> {
+    await tick();
+    outcomeElement?.focus();
+  }
+
+  /**
+   * Releases the quarantined memory, once at a time: a second press while one is running does
+   * nothing. The details show the progress on their button (`releasing`) and any refusal
+   * (`releaseFault`).
+   */
+  export function releaseMemory(memory: Pick<Memory, 'id' | 'content'>): void {
+    if (busy()) return;
+    notice = undefined;
+    release.mutate({ id: memory.id, content: memory.content });
+  }
+
   /** Exports every memory of the agent to a file. */
   export function exportAll(): void {
     if (busy()) return;
@@ -213,7 +294,11 @@
     event.preventDefault();
     if (quarantining === undefined || quarantine.isPending || reason.trim() === '') return;
     notice = undefined;
-    quarantine.mutate({ id: quarantining.id, reason: reason.trim() });
+    quarantine.mutate({
+      id: quarantining.id,
+      content: quarantining.content,
+      reason: reason.trim(),
+    });
   }
 
   /** The words for a fault: the governance ones first, then the correction's shared ones. */
@@ -223,13 +308,32 @@
 </script>
 
 {#if notice?.kind === 'done'}
-  <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
-    <p class="ib-memory-governance__title" data-governance-outcome>{notice.title}</p>
+  <Alert
+    variant="success"
+    dismissible
+    onDismiss={() => (notice = undefined)}
+    {...notice.seeQuarantined ? { actions: seeQuarantined } : {}}
+  >
+    <!-- Focusable by the page, so the focus has somewhere to go when the detail it was in is gone. -->
+    <p
+      class="ib-memory-governance__title"
+      data-governance-outcome
+      tabindex="-1"
+      bind:this={outcomeElement}
+    >
+      {notice.title}
+    </p>
     <p class="ib-memory-governance__body">{notice.description}</p>
   </Alert>
 {:else if notice?.kind === 'failed' && !shareOpen && !quarantineOpen}
   {@render refused(notice.fault)}
 {/if}
+
+{#snippet seeQuarantined()}
+  <Button variant="secondary" size="sm" onclick={onSeeQuarantined}
+    >{words.quarantine.outcome.done.see}</Button
+  >
+{/snippet}
 
 {#snippet refused(fault: MemoryFault)}
   {@const refusedWords = refusal(fault)}

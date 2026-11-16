@@ -48,11 +48,16 @@ export function agentDuplicatePath(name: string): string {
 /**
  * What an agent remembers: its page's Memory tab, with the memory `selected` open beside the list
  * when one is named. The open memory is in the query (`?selected=`), so choosing one replaces the
- * address in place and the tab stays mounted.
+ * address in place and the tab stays mounted. The quarantined memories are a view of the same tab
+ * (`?view=quarantined`), kept in the address so a reload, Back or a copied link opens the same list.
  */
-export function agentMemoryPath(name: string, selected?: string): string {
+export function agentMemoryPath(name: string, selected?: string, view?: 'quarantined'): string {
   const tab = agentTabPath(name, 'memory');
-  return selected === undefined ? tab : `${tab}?${new URLSearchParams({ selected }).toString()}`;
+  const query = new URLSearchParams({
+    ...(view === undefined ? {} : { view }),
+    ...(selected === undefined ? {} : { selected }),
+  }).toString();
+  return query === '' ? tab : `${tab}?${query}`;
 }
 
 /**
