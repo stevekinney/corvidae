@@ -27,8 +27,9 @@ function bytesOfHex(hex: string): Uint8Array<ArrayBuffer> {
  * The comparison is Web Crypto's `crypto.subtle.verify`, which is constant time: the two digests
  * are never compared as strings. It resolves `false`, and never rejects, for a missing signature
  * (`null`), one of the wrong length or prefix, upper-case or non-hex digits, an empty secret, and
- * any input that is not the type declared. It checks no timestamp: a replayed delivery is answered
- * by the idempotency key `fire` is given.
+ * any input that is not the type declared. It takes its own copy of a byte array before it awaits,
+ * so a caller that reuses the buffer meanwhile changes nothing. It checks no timestamp: a replayed
+ * delivery is answered by the idempotency key `fire` is given.
  */
 export async function verifyHmacSignature(options: VerifyHmacSignatureOptions): Promise<boolean> {
   try {
@@ -38,6 +39,9 @@ export async function verifyHmacSignature(options: VerifyHmacSignatureOptions): 
     const match = SIGNATURE_PATTERN.exec(signature);
     if (match?.[1] === undefined) return false;
     const encoder = new TextEncoder();
+    // The caller owns `body`: take its bytes now, before anything awaits, so a buffer it reuses
+    // while the key is imported cannot change what is verified.
+    const bytes = typeof body === 'string' ? encoder.encode(body) : body.slice();
     const key = await crypto.subtle.importKey(
       'raw',
       encoder.encode(secret),
@@ -45,12 +49,7 @@ export async function verifyHmacSignature(options: VerifyHmacSignatureOptions): 
       false,
       ['verify'],
     );
-    return await crypto.subtle.verify(
-      'HMAC',
-      key,
-      bytesOfHex(match[1]),
-      typeof body === 'string' ? encoder.encode(body) : (body as Uint8Array<ArrayBuffer>),
-    );
+    return await crypto.subtle.verify('HMAC', key, bytesOfHex(match[1]), bytes);
   } catch {
     return false;
   }

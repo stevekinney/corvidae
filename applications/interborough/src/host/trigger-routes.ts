@@ -122,7 +122,10 @@ export function triggerRoutes(dependencies: TriggerRouteDependencies) {
   return {
     [TRIGGER_ROUTE]: {
       POST: async (request: Bun.BunRequest<typeof TRIGGER_ROUTE>): Promise<Response> => {
+        // The host owns `request`: take what the fresh one needs before anything awaits.
         const { workflow } = request.params;
+        const { method, url, signal: incoming } = request;
+        const headers = new Headers(request.headers);
         const workflows = bureau.workflows;
         if (workflows === undefined) {
           report(workflow, 'WorkflowsUnavailable');
@@ -136,21 +139,16 @@ export function triggerRoutes(dependencies: TriggerRouteDependencies) {
           // only until `receiveTrigger` settles: the host may abort the incoming request once its
           // response is sent, and that must not stop a `fire` an acknowledged delivery makes later.
           const controller = new AbortController();
-          const follow = (): void => controller.abort(request.signal.reason);
-          if (request.signal.aborted) follow();
-          else request.signal.addEventListener('abort', follow, { once: true });
+          const follow = (): void => controller.abort(incoming.reason);
+          if (incoming.aborted) follow();
+          else incoming.addEventListener('abort', follow, { once: true });
           try {
             return await workflows.receiveTrigger(
               workflow,
-              new Request(request.url, {
-                method: request.method,
-                headers: request.headers,
-                body: bytes,
-                signal: controller.signal,
-              }),
+              new Request(url, { method, headers, body: bytes, signal: controller.signal }),
             );
           } finally {
-            request.signal.removeEventListener('abort', follow);
+            incoming.removeEventListener('abort', follow);
           }
         } catch (error) {
           report(workflow, nameOf(error));

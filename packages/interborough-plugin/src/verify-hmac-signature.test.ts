@@ -137,6 +137,35 @@ describe('verifyHmacSignature', () => {
     }
   });
 
+  test('verifies the bytes it was given when it was called, not what the caller wrote over them while the key was imported', async () => {
+    const encoder = new TextEncoder();
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    let overwrite: Uint8Array | undefined;
+    let target: Uint8Array | undefined;
+    const imported = spyOn(crypto.subtle, 'importKey').mockImplementation(((
+      ...arguments_: Parameters<typeof importKey>
+    ) => {
+      // The caller reuses its buffer while the host is still importing the key.
+      if (target !== undefined && overwrite !== undefined) target.set(overwrite);
+      return importKey(...arguments_);
+    }) as typeof crypto.subtle.importKey);
+    spies.push(imported);
+
+    // Unsigned bytes overwritten with the signed ones during the import are still refused.
+    target = encoder.encode('unsigned');
+    overwrite = encoder.encode('approved');
+    expect(
+      await verifyHmacSignature({ secret: SECRET, body: target, signature: sign('approved') }),
+    ).toBe(false);
+
+    // Signed bytes overwritten with others during the import are still accepted.
+    target = encoder.encode('approved');
+    overwrite = encoder.encode('tampered');
+    expect(
+      await verifyHmacSignature({ secret: SECRET, body: target, signature: sign('approved') }),
+    ).toBe(true);
+  });
+
   test('compares through crypto.subtle.verify, never by comparing the two strings', async () => {
     const verify = spyOn(crypto.subtle, 'verify');
     spies.push(verify);
