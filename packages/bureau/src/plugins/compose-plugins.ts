@@ -724,6 +724,11 @@ class Contributed {
     [];
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
+  readonly scorerSources: {
+    plugin: string;
+    version: string;
+    scorer: NonNullable<PluginContributions['scorers']>[number];
+  }[] = [];
   readonly agents: Record<string, unknown> = {};
   readonly agentDetails: Record<string, CodeAgentDetails> = {};
   readonly memory: {
@@ -783,11 +788,14 @@ class Contributed {
     }
     for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
-      this.scorers.push({
+      const contributed: NonNullable<PluginContributions['scorers']>[number] = {
         ...judge,
         name: id(judge.name),
         score: (run, signal) => judge.score(run, signal),
-      });
+      };
+      this.scorers.push(contributed);
+      // COR-2200: the scorer catalog names each scorer's plugin and its version.
+      this.scorerSources.push({ plugin, version, scorer: contributed });
     }
     for (const item of result.agents ?? []) {
       this.agents[id(item.name)] = item.agent;
@@ -872,8 +880,9 @@ function catalogWith(
   host: VersionedCatalog | undefined,
   contributed: Contributed['activities'],
   validators: Contributed['validatorSources'],
+  scorers: Contributed['scorerSources'],
 ): VersionedCatalog | undefined {
-  if (contributed.length === 0 && validators.length === 0) return host;
+  if (contributed.length === 0 && validators.length === 0 && scorers.length === 0) return host;
   const catalog = createVersionedCatalog();
   for (const kind of VERSIONED_CATALOG_KINDS) {
     for (const entry of host?.entries(kind) ?? []) catalog.register(entry);
@@ -897,6 +906,28 @@ function catalogWith(
       name: validator.identity.name,
       version: validator.identity.version,
       value: validator,
+      source: { name: plugin, version },
+    });
+  }
+  // COR-2200: a plugin's scorers record who contributed them, which the sampler reads back as who
+  // judged each score.
+  for (const { plugin, version, scorer } of scorers) {
+    // An identity the catalog refuses is left out, as a validator's is: the scorer still runs, and
+    // its record then names no plugin.
+    if (
+      typeof scorer.name !== 'string' ||
+      scorer.name.length === 0 ||
+      typeof scorer.version !== 'string' ||
+      scorer.version.length === 0 ||
+      scorer.version.includes('@')
+    ) {
+      continue;
+    }
+    catalog.register({
+      kind: 'scorer',
+      name: scorer.name,
+      version: scorer.version,
+      value: scorer,
       source: { name: plugin, version },
     });
   }
@@ -981,6 +1012,7 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     options.contributionCatalog,
     contributed.activities,
     contributed.validatorSources,
+    contributed.scorerSources,
   );
   const agentContributions = agentContributionsWith(
     options.agentContributions,

@@ -366,6 +366,38 @@ describe('composePlugins', () => {
     expect(received[0]?.self).toBe(scorer);
   });
 
+  it('registers a scorer in the contribution catalog under the plugin that gave it (COR-2200)', async () => {
+    const scorer = {
+      name: 'judge',
+      version: '2',
+      sampleRate: 0.25,
+      score: () => ({ outcome: 'pass' as const, message: '' }),
+    };
+    const bad = { name: 'odd', version: '1@x', score: scorer.score };
+    const given: ComposableOptions = {
+      plugins: [pluginEntry('kit', () => ({ scorers: [scorer, bad] }))],
+      scorers: { list: [], sampleRate: 1 },
+    };
+    const { options } = await composePlugins(given);
+
+    const found = options.contributionCatalog?.resolve('scorer', {
+      name: 'kit:judge',
+      version: '2',
+    });
+    expect(found?.ok).toBe(true);
+    expect(found?.ok === true ? found.entry.source : undefined).toEqual({
+      name: 'kit',
+      version: '1.0.0',
+    });
+    // An identity the catalog refuses is left out; the scorer still runs.
+    expect(options.contributionCatalog?.entries('scorer').map(({ name }) => name)).toEqual([
+      'kit:judge',
+    ]);
+    expect(options.scorers?.list.map(({ name }) => name)).toEqual(['kit:judge', 'kit:odd']);
+    // A scorer's own rate (COR-2203) reaches the sampler with the scorer.
+    expect(options.scorers?.list[0]?.sampleRate).toBe(0.25);
+  });
+
   it('lists only the contributions whose option the host gave', async () => {
     const contributing = () =>
       pluginEntry('kit', () => ({

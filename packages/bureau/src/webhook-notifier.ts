@@ -14,14 +14,10 @@
  *   against the ids already notified.
  * - `human-wait.parked` — a NEW `human-wait` item appeared in
  *   `reviews.list()` (backed by operative's `HumanWaitParkedEvent`).
- * - `eval.threshold-breached` — fired out-of-band via {@link WebhookNotifier.notify}
- *   rather than derived from the action stream (there is no bureau event for
- *   it). AB-53's online eval sampler is the only current caller: a judge
- *   returns a `fail` outcome, or a score below its configured alert threshold
- *   (COR-2199), and calls `notify()` directly, reusing this module's
- *   persist/retry/backoff pipeline instead of duplicating it. Its `detail`
- *   names the judge, its digest, the outcome and the score, and never the
- *   judge's own message.
+ * A scorer's breach is not one of them: it reaches users through the hook event feed
+ * (`scorer.threshold-breached`, COR-2251), and the webhook trigger of that name is retired
+ * (COR-2201). {@link WebhookNotifier.notify} still delivers an out-of-band trigger through this
+ * module's persist/retry/backoff pipeline, and has no caller in the Bureau today.
  *
  * Both queue-backed triggers deep-link to `/reviews?id=<reviewId>` — the
  * AB-20 review queue's only route (`/reviews`, no `:id` segment), so the
@@ -79,9 +75,15 @@ import type { PendingReview } from './bureau-types/reviews';
 
 // ── Public surface ──────────────────────────────────────────────────
 
+/** The trigger types that fire a configured webhook, in the order they are documented. */
+export const WEBHOOK_TRIGGER_TYPES = [
+  'elicitation.requested',
+  'approval-pending',
+  'human-wait.parked',
+] as const;
+
 /** The trigger types that fire a configured webhook. */
-export type WebhookTriggerType =
-  'elicitation.requested' | 'approval-pending' | 'human-wait.parked' | 'eval.threshold-breached';
+export type WebhookTriggerType = (typeof WEBHOOK_TRIGGER_TYPES)[number];
 
 /** A configured webhook delivery target. */
 export interface WebhookTarget {
@@ -90,7 +92,7 @@ export interface WebhookTarget {
   /**
    * Restrict this target to a subset of trigger types. Omit to receive
    * every {@link WebhookTriggerType}: `elicitation.requested`,
-   * `approval-pending`, `human-wait.parked`, and `eval.threshold-breached`.
+   * and `approval-pending` and `human-wait.parked`.
    */
   events?: WebhookTriggerType[];
 }

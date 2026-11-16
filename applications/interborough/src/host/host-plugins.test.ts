@@ -367,6 +367,33 @@ describe('GET /host/plugins', () => {
     expect(keyed?.contributions.map((contribution) => contribution.kind)).toEqual(['embedder']);
   });
 
+  test('lists a scorer a plugin contributes, with no run scored until the rate is raised (COR-2202)', async () => {
+    const scored: BureauPluginEntry = {
+      descriptor: definePlugin({
+        name: 'scored',
+        version: '1.0.0',
+        description: 'Contributes a scorer.',
+        setup: () => ({
+          scorers: [
+            { name: 'quality', version: '1', score: () => ({ outcome: 'pass', message: 'fine' }) },
+          ],
+        }),
+      }),
+      source: 'package',
+      location: '@fixture/scored',
+    };
+    const host = await startAt(await scratch(), [scored]);
+
+    // The host passes the `scorers` option whenever a scorer is registered, so the listing holds it
+    // at the default rate of 0 and the sampler exists to take the rate up.
+    const listed = await host.bureau.plugins.list();
+    const listing = listed.find((plugin) => plugin.descriptor.name === 'scored');
+    expect(listing?.contributions).toMatchObject([{ kind: 'scorer', id: 'scored:quality' }]);
+    const settings = await host.bureau.settings.get();
+    expect(settings.effective['scorers.sampleRate']).toBe(0);
+    expect(host.bureau.internals.scorerSampler).toBeDefined();
+  });
+
   test('reports a refusal from a foreign origin without a body', async () => {
     const host = await startAt(await scratch());
     const response = await fetch(new URL('/host/plugins', host.url), {

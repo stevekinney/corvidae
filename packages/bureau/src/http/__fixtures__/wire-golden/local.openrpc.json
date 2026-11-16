@@ -20837,7 +20837,8 @@
                       "notification.created",
                       "diagnostic",
                       "memory.governance",
-                      "decision.made"
+                      "decision.made",
+                      "scorer.threshold-breached"
                     ],
                     "type": "string"
                   },
@@ -20915,7 +20916,8 @@
                         "notification.created",
                         "diagnostic",
                         "memory.governance",
-                        "decision.made"
+                        "decision.made",
+                        "scorer.threshold-breached"
                       ],
                       "type": "string"
                     },
@@ -21051,7 +21053,8 @@
                       "notification.created",
                       "diagnostic",
                       "memory.governance",
-                      "decision.made"
+                      "decision.made",
+                      "scorer.threshold-breached"
                     ],
                     "type": "string"
                   },
@@ -21129,7 +21132,8 @@
                         "notification.created",
                         "diagnostic",
                         "memory.governance",
-                        "decision.made"
+                        "decision.made",
+                        "scorer.threshold-breached"
                       ],
                       "type": "string"
                     },
@@ -33286,7 +33290,8 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -33732,7 +33737,8 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -34002,7 +34008,8 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -34470,7 +34477,8 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },

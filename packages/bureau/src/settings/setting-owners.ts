@@ -49,6 +49,14 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     reads: 'literal',
   },
   {
+    // COR-2202, COR-2205: the rate is read when each run finishes and the budget when each scorer
+    // is about to run, by the sampler `createBureau` builds.
+    name: 'scorer sampling',
+    module: 'create-bureau.ts',
+    keys: ['scorers.sampleRate', 'scorers.dailyBudget'],
+    reads: 'literal',
+  },
+  {
     name: 'compaction summarizer',
     module: 'models/create-models.ts',
     keys: ['context.summarizerModel'],

@@ -3,9 +3,10 @@
  * planted in a `fail` verdict's message, in the message of an error a scorer throws, and in the
  * message of a scorer-returned `error` whose score still breaches its threshold. It appears in no
  * body a webhook receives, no delivery record the Bureau keeps, no envelope the event feed holds
- * and no diagnostic, and it IS on the `eval.sample.recorded` audit record, read through the audit
- * trail. An alert carries `judgeName`, `judgeVersion`, `judgeDigest`, `outcome`, `score` and
- * `threshold`, with the run id beside them.
+ * and no diagnostic, and it IS on the `scorer.recorded` audit record, read through the audit
+ * trail, and on no response of the wire operation `bureau.audit.query` (COR-2200). A breach is
+ * published as `scorer.threshold-breached` (COR-2251; the webhook trigger is retired, COR-2201)
+ * with exactly `runId`, `scorerName`, `scorerVersion`, `outcome` and, when there is one, `score`.
  */
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -50,7 +51,7 @@ describe('a scorer’s text stays on the audit record (COR-2199)', () => {
       },
       hooks: {},
       webhooks: {
-        targets: [{ url: 'https://receiver.example/eval', events: ['eval.threshold-breached'] }],
+        targets: [{ url: 'https://receiver.example/eval' }],
         fetch: receiver.fetch,
         sleep: () => Promise.resolve(),
       },
@@ -82,7 +83,14 @@ describe('a scorer’s text stays on the audit record (COR-2199)', () => {
     bureaus.push(bureau);
     const hook = await bureau.hooks!.create({
       action: { type: 'webhook', url: 'https://receiver.example/hook' },
-      events: ['action', 'run.registered', 'run.error', 'run.settled', 'run.completed'],
+      events: [
+        'action',
+        'run.registered',
+        'run.error',
+        'run.settled',
+        'run.completed',
+        'scorer.threshold-breached',
+      ],
     });
 
     const started = await bureau.tasks.start('default', 'go', { principal: 'api-key:alice' });
@@ -99,33 +107,40 @@ describe('a scorer’s text stays on the audit record (COR-2199)', () => {
     await bureau.internals.webhookNotifier!.flush();
     await bureau.internals.taskRegistry.flush();
 
-    // Two scorers breach: the `fail`, and the `error` whose score is below its threshold.
-    const alerts = receiver.calls
-      .filter((call) => call.url === 'https://receiver.example/eval')
-      .map((call) => JSON.parse(call.body) as { trigger: string; runId: string; detail: object });
-    expect(alerts.map((alert) => (alert.detail as Record<string, unknown>)['judgeName'])).toEqual([
-      'verdict',
-      'low-error',
-    ]);
-    const identity = ['judgeDigest', 'judgeName', 'judgeVersion', 'outcome', 'score'];
-    for (const alert of alerts) {
-      expect(alert.trigger).toBe('eval.threshold-breached');
-      expect(alert.runId).toBe(started.id);
-      // Only the scorer with a threshold carries one.
-      const threshold = (alert.detail as Record<string, unknown>)['judgeName'] === 'low-error';
-      expect(Object.keys(alert.detail).toSorted()).toEqual(
-        (threshold ? [...identity, 'threshold'] : identity).toSorted(),
-      );
+    // Two scorers breach: the `fail`, and the `error` whose score is below its threshold. Each is
+    // published once, with exactly these keys.
+    const envelopes: { kind: string; payload: Record<string, unknown> }[] = [];
+    for await (const envelope of bureau.internals.eventFeed.feed.replay()) {
+      envelopes.push(envelope);
     }
+    const breaches = envelopes.filter((envelope) => envelope.kind === 'scorer.threshold-breached');
+    expect(breaches.map((breach) => breach.payload)).toEqual([
+      {
+        runId: started.id,
+        scorerName: 'verdict',
+        scorerVersion: '1.0.0',
+        outcome: 'fail',
+        score: 0.9,
+      },
+      {
+        runId: started.id,
+        scorerName: 'low-error',
+        scorerVersion: '1.0.0',
+        outcome: 'error',
+        score: 0.1,
+      },
+    ]);
+    // The retired webhook trigger delivers nothing to a target that listens to every trigger.
+    expect(receiver.calls.filter((call) => call.url === 'https://receiver.example/eval')).toEqual(
+      [],
+    );
 
-    // No webhook body (the alerts and the hook's), no delivery record, no envelope, no diagnostic.
+    // No webhook body (the hook's), no delivery record, no envelope, no diagnostic.
     const sent = receiver.calls.map((call) => call.body).join('\n');
     const kept = JSON.stringify([
       await bureau.internals.webhookNotifier!.listDeliveries(),
       await deliveriesOf(bureau, hook.id),
     ]);
-    const envelopes: unknown[] = [];
-    for await (const envelope of bureau.internals.eventFeed.feed.replay()) envelopes.push(envelope);
     const published = JSON.stringify(envelopes);
     const diagnosed = JSON.stringify(diagnostics);
     expect(envelopes.length).toBeGreaterThan(0);
@@ -139,7 +154,7 @@ describe('a scorer’s text stays on the audit record (COR-2199)', () => {
     // The text is on the audit record, read back through the audit trail.
     const recorded = await bureau.internals.auditTrail!.query({
       runId: started.id,
-      type: 'eval.sample.recorded',
+      type: 'scorer.recorded',
     });
     const messages = recorded.map(
       (record) => (record.detail as Record<string, unknown>)['message'] as string,
@@ -149,5 +164,12 @@ describe('a scorer’s text stays on the audit record (COR-2199)', () => {
       `Judge threw: provider failed ${CANARY.thrown}`,
       `broke ${CANARY.error}`,
     ]);
+
+    // No wire operation returns it: `bureau.audit.query` projects an allowlist of scalar fields, and
+    // none of a scorer's record is on it, so the records read back with no detail at all.
+    const read = await bureau.audit.query({ type: 'scorer.recorded', limit: 100 });
+    expect(read.records).toHaveLength(3);
+    expect(read.records.map((entry) => entry.detail)).toEqual([null, null, null]);
+    for (const canary of CANARIES) expect(JSON.stringify(read)).not.toContain(canary);
   });
 });
