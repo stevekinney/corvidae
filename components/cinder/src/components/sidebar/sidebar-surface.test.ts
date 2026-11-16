@@ -50,6 +50,39 @@ describe('Sidebar surface', () => {
     expect(focused.get('box-shadow')).toContain('var(--_cinder-navigation-item-pill-shadow');
   });
 
+  test('the selected row and the New chat button differ in background and shadow tokens (COR-2450 AC4)', async () => {
+    // In light the raised surface and the sidebar surface are both white, so the selected row
+    // and the primary action ("New chat", a raised button) read as one shape unless their tokens
+    // differ. `declarationsFor` splits `:is(a, button)` on its comma, so the button rule is read
+    // with a pattern.
+    const navigationItemCss = await Bun.file(
+      new URL('../navigation-item/navigation-item.css', import.meta.url),
+    ).text();
+    const sideNavigationCss = await Bun.file(
+      new URL('../side-navigation/side-navigation.css', import.meta.url),
+    ).text();
+    const selected = declarationsFor(
+      navigationItemCss,
+      ".cinder-navigation-item[data-variant='vertical'][data-active='true']",
+    );
+    const button = sideNavigationCss.match(
+      /\.cinder-side-navigation__primary-action > :is\(a, button\) \{([^}]*)\}/,
+    )?.[1];
+    if (button === undefined) throw new Error('No primary action rule in side-navigation.css');
+    const buttonBackground = button.match(/\bbackground:\s*([^;]+);/)?.[1];
+    const buttonShadow = button.match(/\bbox-shadow:\s*([^;]+);/)?.[1];
+
+    expect(selected.get('background-color')).toBe('var(--cinder-accent-background)');
+    expect(buttonBackground).toBe('var(--cinder-surface-raised)');
+    expect(selected.get('background-color')).not.toBe(buttonBackground);
+
+    // The selected row carries the hairline shadow token; the button carries none at rest (its
+    // edge is a border), so the two never share a shadow.
+    expect(selected.get('box-shadow')).toContain('var(--cinder-shadow-sm)');
+    expect(buttonShadow).toBeUndefined();
+    expect(button).toContain('border: 1px solid var(--cinder-border);');
+  });
+
   test('draws no inline-end border', () => {
     const column = declarationsFor(sidebarCss, '.cinder-sidebar');
     expect(column.get('border-inline-end')).toBe('none');

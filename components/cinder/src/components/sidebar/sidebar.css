@@ -20,8 +20,7 @@
     align-self: stretch;
     /* A tonal surface sets the sidebar apart from the page, so it needs no rule beside it
      * (COR-2315): `--cinder-surface` is white in light mode since 2026-11-15, a step above the grey
-     * 97.6% page canvas, and the selected row is a raised pill with the hairline shadow
-     * (`navigation-item.css`). */
+     * 97.6% page canvas, and the selected row takes the soft accent tint (`navigation-item.css`). */
     background: var(--cinder-surface);
     border-inline-end: none;
     overflow: hidden;

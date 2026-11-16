@@ -91,16 +91,18 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
 });
 
 describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
-  const RAISED_PILL = 'var(--cinder-surface-raised)';
+  // The soft accent tint (owner, 2026-11-16): the light surface and raised surface are both
+  // white, so a raised pill no longer reads on the sidebar.
+  const SELECTED_FILL = 'var(--cinder-accent-background)';
   // The pill's shadow reads a private hook first, so a surface that drops the pill (the phone
   // drawer, `sidebar.css`) sets the hook and never `box-shadow`, and keeps the focus ring.
   const SHADOW = 'var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm))';
 
-  test('is a raised white pill with the hairline shadow, default text and semibold weight (AC2, AC9)', () => {
+  test('is a soft accent pill with the hairline shadow, default text and semibold weight (AC2, AC9)', () => {
     const rule = rulesFor(navigationItemCss, ACTIVE).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
-    expect(declaration(rule, 'background-color')).toBe(RAISED_PILL);
+    expect(declaration(rule, 'background-color')).toBe(SELECTED_FILL);
     expect(declaration(rule, 'box-shadow')).toBe(SHADOW);
     expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
     expect(declaration(rule, 'font-weight')).toBe('var(--cinder-font-semibold)');
@@ -116,12 +118,11 @@ describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
     expect(shadow).toEndWith(SHADOW);
   });
 
-  test('never paints the accent: the accent is for actions and links', () => {
+  test('never colours its label with the accent: the accent text is for actions and links', () => {
     for (const rule of rulesFor(navigationItemCss, ACTIVE).concat(
       rulesFor(navigationItemCss, `${ACTIVE}:hover`),
     )) {
       if (isUnderForcedColors(rule)) continue;
-      expect(declaration(rule, 'background-color')).not.toContain('accent');
       expect(declaration(rule, 'color')).not.toContain('accent');
     }
   });
@@ -130,7 +131,7 @@ describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
     const rule = rulesFor(navigationItemCss, `${ACTIVE}:hover`).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
-    expect(declaration(rule, 'background-color')).toBe(RAISED_PILL);
+    expect(declaration(rule, 'background-color')).toBe(SELECTED_FILL);
     expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
   });
 
