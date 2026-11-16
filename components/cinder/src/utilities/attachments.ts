@@ -6,7 +6,8 @@ import { lockBodyScroll } from '../_internal/overlay.ts';
  * Marks a surface that is docked to the bottom of the page, such as a chat's composer, so a
  * bottom `ToastRegion` sits above it, as it sits above a `DockedActionBar` or a bottom
  * `NavigationBar`. While the surface's bottom edge is the bottom of the viewport (above the
- * on-screen keyboard), or the top of another docked bar such as a phone's tab bar, its top edge
+ * on-screen keyboard), or the top of another docked bar such as a phone's tab bar, or
+ * stops short of that edge by less than its own height (its page's bottom padding), its top edge
  * counts towards the toast region's offset; the highest docked edge wins. It positions nothing:
  * the surface docks itself, and it is measured again when it changes size and when the viewport
  * or the keyboard does. A surface further up the page lifts the toasts by its own height only, and

@@ -23,7 +23,8 @@ let stopListeningToViewport: (() => void) | null = null;
 /**
  * How far the toasts are lifted, or `undefined` when no tracked bar is drawn. It is the distance
  * from the viewport's bottom edge, above the keyboard, to the top of the highest bar docked there:
- * a bar is docked when its bottom edge reaches that edge or the top of a docked bar under it, so a
+ * a bar is docked when its bottom edge reaches that edge or the top of a docked bar under it, or
+ * stops short of it by less than the bar's own height (the page's padding under the bar), so a
  * tab bar with a docked action bar or a chat's composer stacked on it reaches the top of the higher
  * one. It is never less than the tallest drawn bar's own height, so a bar that is not docked at
  * this moment (a sticky bar resting at the end of a short page, or one moved by content that grew
@@ -42,7 +43,10 @@ function dockedDistance(): number | undefined {
   while (moved) {
     moved = false;
     for (const box of boxes) {
-      if (box.top < edge && box.bottom >= edge - DOCKING_TOLERANCE) {
+      // A gap shorter than the bar itself is the page's padding under it (a chat's composer sits
+      // above its page's bottom padding), not room that puts the bar further up the page.
+      const reach = Math.max(DOCKING_TOLERANCE, box.height - 1);
+      if (box.top < edge && box.bottom >= edge - reach) {
         edge = box.top;
         moved = true;
       }

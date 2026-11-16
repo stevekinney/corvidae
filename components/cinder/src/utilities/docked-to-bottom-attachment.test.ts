@@ -65,6 +65,22 @@ describe('dockedToBottom', () => {
     expect(published()).toBe('196px');
   });
 
+  test('a composer above its page padding still lifts the toasts above its top (COR-2327)', () => {
+    const viewport = window.innerHeight;
+    // 24px of page padding under a 78px composer area, as on the chat page at 1280.
+    surface(viewport - 102, viewport - 24);
+    expect(published()).toBe('102px');
+  });
+
+  test('a composer above its page padding and a tab bar lifts the toasts above its top', () => {
+    const viewport = window.innerHeight;
+    const tabBar = document.createElement('div');
+    boxes.set(tabBar, { top: viewport - 65, bottom: viewport });
+    stops.push(trackDockedBar(tabBar));
+    surface(viewport - 187, viewport - 89);
+    expect(published()).toBe('187px');
+  });
+
   test('a composer inside a card further up the page lifts the toasts by its height only', () => {
     surface(200, 320);
     expect(published()).toBe('120px');
