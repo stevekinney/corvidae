@@ -21,6 +21,7 @@
  * | tool (`execute`) | refuses; the call fails, after any approval | works | refuses |
  * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
  * | trigger kind (`start`) | waits: the real `start` is not called, and the listener is `waiting-for-secret` | the real `start` runs, and the listener is `listening`; a throw is `failed` | the trigger it started is aborted and stopped, its `fire` answers `skipped: 'stopped'`, and it waits again |
+ * | trigger kind (`receive`, COR-2168) | refuses with {@link PluginNeedsSetupError} before the real `receive` runs, so nothing fires; a kind that only receives has no `start`, so its listener is `ready` whatever its secrets | works | refuses; a call already in flight runs on |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run fails closed (COR-2300): the refusal is a `detector-failure` finding that blocks the input, reply or call it would judge, under a `warn` action too, and taints the session as a block does (a `tripwire` action halts the run) | works | refuses |
  * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run fails closed on it (COR-2300) | works | refuses |
@@ -284,10 +285,28 @@ function followAbort(source: AbortSignal, target: AbortController): () => void {
  * while a secret is missing, `listening` once the kind is running, and `failed` when a start after
  * the first throws. The first transition's failure is thrown instead, as a `start` that throws, so
  * it is handled once. A report never awaits, and none follows the host's stop of the gate.
+ *
+ * COR-2168 — a kind's `receive` refuses through the gate as any gated callable does, once, at
+ * entry: a call already in flight when a secret is removed runs on. A kind that only receives keeps
+ * no `start`, so the host sees no listener to wait for a secret, and reports it `ready`.
  */
-function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTrigger {
+function gatedTriggerKind(
+  gate: PluginSecretGate,
+  contribution: string,
+  kind: PluginTrigger,
+): PluginTrigger {
+  const rest: PluginTrigger = { ...kind };
+  delete rest.start;
+  delete rest.receive;
+  const gatedReceive =
+    kind.receive === undefined
+      ? {}
+      : { receive: gated(gate, contribution, kind.receive.bind(kind)) };
+  if (kind.start === undefined) return { ...rest, ...gatedReceive };
+  const ownStart = kind.start.bind(kind);
   return {
-    ...kind,
+    ...rest,
+    ...gatedReceive,
     start: async (context) => {
       let inner:
         | {
@@ -318,7 +337,7 @@ function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTr
                 : context.fire(payload, fireOptions),
           };
           try {
-            inner = { stop: await kind.start(innerContext), controller, unfollow };
+            inner = { stop: await ownStart(innerContext), controller, unfollow };
           } catch (error) {
             controller.abort();
             unfollow();
@@ -449,7 +468,7 @@ export function gatedContributions<T extends PluginContributions>(
     ...(result.triggers === undefined
       ? {}
       : {
-          triggers: result.triggers.map((kind) => gatedTriggerKind(gate, kind)),
+          triggers: result.triggers.map((kind) => gatedTriggerKind(gate, idOf(kind.name), kind)),
         }),
     ...(result.workflows === undefined
       ? {}

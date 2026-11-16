@@ -42,8 +42,9 @@ import {
  * reach the port, which is why the hostname is not an option. The one credential the host knows is
  * the operator's A2A key (COR-1904, `a2a-authentication.ts`): once it is stored, A2A requires it,
  * and it is the only way a request from beyond loopback, through a reverse proxy serving the public
- * origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`
- * and `/bureau/assets/*`.
+ * origin `INTERBOROUGH_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`,
+ * `/bureau/assets/*` and `POST /triggers/<workflow-id>` (COR-2169), the one route that needs no
+ * credential, because the trigger's own `receive` authenticates the sender (`trigger-routes.ts`).
  *
  * Weft's server would report its own shared `unauthenticated-local` caller for a request with no
  * credential, so it listens on a second, private loopback port that answers only a per-process
@@ -56,6 +57,9 @@ import {
  *   `/api/reviews/<review>/decision`, their description at `/api/openapi.json`, and `/host/session`:
  *   Interborough's own API over the Bureau, each operation checked against the session's scopes
  *   (`api-routes.ts`, `api-description.ts`).
+ * - `POST /triggers/<workflow-id>`: a delivery to a workflow file whose trigger kind defines
+ *   `receive` (COR-2169). No session and no key; the trigger authenticates the sender, the body is
+ *   capped at 4 MiB, and the public origin reaches this route too (`trigger-routes.ts`).
  * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
  *   documents: Weft's engine operations, relayed to its server. `POST /jsonrpc` also answers a
  *   Bureau method, and `rpc.discover` over both catalogs, itself (`composed-json-rpc.ts`, COR-2269):
@@ -187,8 +191,8 @@ import {
 import {
   DEFAULT_BUILD_DIRECTORY,
   processEnvironment,
-  resolveA2aPublicOrigin,
   resolvePort,
+  resolvePublicOrigin,
 } from './environment-configuration.ts';
 import {
   HOST_DEPENDENCIES,
@@ -245,7 +249,7 @@ import { providerAttention } from './provider-attention.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
-import { allowedHosts, createRequestGuard } from './request-guard.ts';
+import { allowedHosts, createRequestGuard, rawPathOf } from './request-guard.ts';
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
@@ -256,6 +260,7 @@ import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
+import { triggerRoutes } from './trigger-routes.ts';
 import { createWorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
@@ -707,10 +712,39 @@ async function delegationSecret(bungalow: Bungalow): Promise<string> {
   return created;
 }
 
-/** Where the `/bureau` prefix comes off a request before the Bureau handler sees it. */
-function withoutBureauPrefix(request: Request): Request {
+/**
+ * The guards the two public surfaces get: with no public origin, the loopback guard itself; with
+ * one, a guard that also admits that origin's `Host` for the paths of its own surface only, so no
+ * allowlist decides for a route that did not ask for an entry.
+ */
+function publicOriginGuards(
+  port: () => number,
+  publicOrigin: URL | undefined,
+  loopback: (request: Request) => Response | undefined,
+): {
+  readonly bureau: (request: Request) => Response | undefined;
+  readonly trigger: (request: Request) => Response | undefined;
+} {
+  if (publicOrigin === undefined) return { bureau: loopback, trigger: loopback };
+  return {
+    bureau: createRequestGuard(port, publicOrigin),
+    trigger: createRequestGuard(port, publicOrigin, ['triggers']),
+  };
+}
+
+/**
+ * Where the `/bureau` prefix comes off a request before the Bureau handler sees it, or `undefined`
+ * for a path that does not literally start with the prefix, which it never cuts a fixed number of
+ * characters off. It refuses nothing else: an identifier a client percent-encodes into a path (a
+ * thread id `team/standup` is `team%2Fstandup`) is the Bureau's to decode, for the local owner as
+ * before. A request through the public origin with an ambiguous path never gets here: the guard of
+ * `/bureau/*` refuses it first (`request-guard.ts`).
+ */
+function withoutBureauPrefix(request: Request): Request | undefined {
+  const raw = rawPathOf(request);
+  if (raw !== BUREAU_PATH_PREFIX && !raw.startsWith(`${BUREAU_PATH_PREFIX}/`)) return undefined;
   const url = new URL(request.url);
-  url.pathname = url.pathname.slice(BUREAU_PATH_PREFIX.length) || '/';
+  url.pathname = raw.slice(BUREAU_PATH_PREFIX.length) || '/';
   return new Request(url, request);
 }
 
@@ -836,9 +870,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const packagePlugins = [...(options.plugins ?? workspacePlugins())];
   const developmentPlugins = [...(options.developmentPlugins ?? [])];
   const log = options.log ?? ((message: string) => console.info(message));
-  // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
-  // and a malformed one stops the host before anything opens.
-  const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
+  // The public origin (COR-1904, COR-2169) is read from the caller's environment before it can
+  // change, and a malformed one, or the name it had before it was renamed, stops the host before
+  // anything opens.
+  const a2aPublicOrigin = resolvePublicOrigin(environment);
   // The tables are copied before the first await, like the other caller-owned options, so a later
   // change to the caller's objects cannot reach a lookup. The claimed Postgres storage below still
   // comes from the built-in Postgres factory, as the callback always did.
@@ -1377,11 +1412,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<HostSocketData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
-    // `/bureau/*` alone also answers the public origin, and only for its A2A paths (COR-1904).
-    const refuseBureau =
-      a2aExposure.publicOrigin === undefined
-        ? refuse
-        : createRequestGuard(() => listening?.port ?? 0, a2aExposure.publicOrigin);
+    // `/bureau/*` and the trigger route alone also answer the public origin, each with a guard of
+    // its own surface: the A2A and asset paths (COR-1904), and `/triggers/<workflow>` (COR-2169).
+    const { bureau: refuseBureau, trigger: refuseTrigger } = publicOriginGuards(
+      () => listening?.port ?? 0,
+      a2aExposure.publicOrigin,
+      refuse,
+    );
     // Who a request to Interborough's own operations acts as: the local person, holding every scope
     // of Interborough's API, unless the host was started with another (`scope-gate.ts`).
     const apiPrincipal = options.apiPrincipal ?? (() => localApiPrincipal(ANONYMOUS_LOCAL_OWNER));
@@ -1432,6 +1469,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return new Response('The Bureau is not serving yet.', { status: 503 });
         }
         const bureauRequest = withoutBureauPrefix(request);
+        if (bureauRequest === undefined) {
+          return new Response('Forbidden: this path is not accepted.', { status: 403 });
+        }
         // The scopes of Interborough's API, on the operations its pages call (`scope-gate.ts`).
         const forbidden = await bureauScopeRefusal(bureauRequest, apiPrincipal(request));
         if (forbidden !== undefined) return forbidden;
@@ -1443,6 +1483,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         }
         return bureauHandler(bureauRequest);
       },
+      // A trigger delivery (COR-2169): `POST /triggers/<workflow-id>`, from an external sender with
+      // no session. The route policy admits it as `trigger-receive`, checked by the public-origin
+      // guard alone; the trigger's own `receive` authenticates the sender (`trigger-routes.ts`).
+      ...triggerRoutes({ bureau, warn: options.warn, runtime: options.runtime }),
       // Whether the host can restart, and the command it was launched with (COR-2009), and the
       // restart request itself. The guard answers first, so a page on another origin cannot
       // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
@@ -1566,10 +1610,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // streams that are quiet for longer: the engine's event feed pings every 15 seconds, and a
       // chat run waiting on a person's answer sends nothing at all. A stream cut that way ends
       // without its terminating chunk, and Chromium logs `ERR_INCOMPLETE_CHUNKED_ENCODING` for each
-      // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
-      // that stays open costs nothing a timeout would save.
+      // one (COR-1643). The listener binds loopback, but a reverse proxy forwards a public origin's
+      // paths to it. The one route a stranger may call with no credential, `POST
+      // /triggers/<workflow>`, therefore has a total deadline on reading its body
+      // (`trigger-routes.ts`, 30 seconds): at the deadline its handler, its buffered bytes and its
+      // timer are released and it answers 408. The host does not close the socket, which this
+      // timeout being off leaves open, as on every route; the A2A paths the public origin also
+      // reaches need the A2A key before they hold anything.
       idleTimeout: 0,
-      routes: authorizeHostRoutes(publicRoutes, authority, refuse),
+      // A route admitted as `trigger-receive` is checked by the guard that also admits the public
+      // origin's `Host`; every other route, and every path no route names, by the loopback one.
+      routes: authorizeHostRoutes(publicRoutes, authority, refuse, refuseTrigger),
       async fetch(request, listener) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;

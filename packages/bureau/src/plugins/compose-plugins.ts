@@ -81,6 +81,7 @@ import {
   type PluginSecretGate,
 } from './plugin-secret-gate';
 import { pluginTool } from './plugin-tools';
+import { assertTriggerKindShape } from '../trigger-kind-shape';
 import type {
   BureauPluginEntry,
   BureauPluginSettings,
@@ -428,7 +429,12 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
+  for (const kind of contributions.triggers ?? []) {
+    // A malformed kind is the plugin's `setup-failed`, not a listener that retries forever, a 503
+    // for every request, or an error that stops the Bureau (COR-2168).
+    assertTriggerKindShape(formatToolId({ namespace: plugin, name: kind.name }), kind);
+    contribute('trigger', kind.name);
+  }
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
