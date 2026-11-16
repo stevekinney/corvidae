@@ -144,8 +144,8 @@
   /* ----------------------------------------
  * Vertical variant — sidebar / vertical-tab contexts
  *
- * Row geometry for sidebar edges. The active row is a neutral raised pill, never an
- * accent stripe (COR-1821), so toggling active state never shifts the label.
+ * Row geometry for sidebar edges. The active row is a filled pill, never an accent stripe
+ * (COR-1821), so toggling active state never shifts the label.
  * ---------------------------------------- */
 
   /* One control, one 30px row (COR-2010, rows 02m to 02p). Hover, focus and the active fill all
@@ -167,16 +167,18 @@
     border-radius: var(--cinder-radius-sm);
   }
 
-  /* The current page is a raised white pill with the hairline shadow on the retuned light ladder
-   * (COR-2315 AC9, COR-2308): the sidebar paints `--cinder-surface` and the selected row is
-   * `--cinder-surface-raised`, a step above the surface in dark. In light both are white since
-   * 2026-11-15, so the pill reads there by its hairline shadow and its semibold label. The text stays default and semibold, because the accent is for actions and links, so
-   * the place the person is in is never accent-coloured (owner, 2026-11-10; AC2). The ink tint
-   * (about 7%) remains where the row sits on a raised drawer panel (`sidebar.css`), where a raised
-   * pill would not read. */
+  /* The current page has a fill of its own (owner, 2026-11-16): the soft accent tint,
+   * `--cinder-accent-background`. In light the sidebar's `--cinder-surface` and
+   * `--cinder-surface-raised` are both white since 2026-11-15, so the raised pill the row used to
+   * take vanished; the tint (about oklch(94% 0.029 257) on white, 25% on the dark 18.5% surface)
+   * stands apart from the sidebar and from the neutral 4% ink hover below in both themes, wider
+   * than the dark raised pill did. The text stays default and semibold, because the accent is for
+   * actions and links, so the place the person is in is never accent-coloured text (owner,
+   * 2026-11-10; AC2). The ink tint (about 7%) remains where the row sits on a raised drawer panel
+   * (`sidebar.css`). */
   .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
     border-bottom-color: transparent;
-    background-color: var(--cinder-surface-raised);
+    background-color: var(--cinder-accent-background);
     box-shadow: var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm));
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-semibold);
@@ -205,10 +207,10 @@
     }
   }
 
-  /* The active row takes no hover change (row 02n): it keeps its pill and its text. */
+  /* The active row takes no hover change (row 02n): it keeps its fill and its text. */
   @media (hover: hover) {
     .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
-      background-color: var(--cinder-surface-raised);
+      background-color: var(--cinder-accent-background);
       color: var(--cinder-text-default);
     }
   }
