@@ -192,7 +192,8 @@ for (const viewport of VIEWPORTS) {
       await moreButton(page).click();
       const archive = page.getByRole('menuitem', { name: MORE.archive, exact: true });
       await expect(archive).toBeVisible();
-      await expect(archive).toBeDisabled();
+      // Cinder's menu item marks itself disabled with `aria-disabled`, and stays focusable.
+      await expect(archive).toHaveAttribute('aria-disabled', 'true');
       await expect(archive).toHaveAttribute('title', MORE.archiveBlocked.approval);
       await expect(page.locator('.cinder-toast', { hasText: MORE.archiving.busy })).toHaveCount(0);
       await expect(archivedBar(page)).toHaveCount(0);
