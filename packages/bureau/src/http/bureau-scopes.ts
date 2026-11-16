@@ -28,6 +28,11 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * a hook, or changing its events, also needs `bureau.events:observe-all`, because a hook observes
  * the whole Bureau's events.
  *
+ * `bureau.goals:content` (COR-2112) gates `bureau.goals.verdict`, the one read that returns what a
+ * goal's validator said about an attempt (its feedback and evidence). A goal's owner reads its own
+ * without it, and `bureau.goals:read` does not imply it: a caller holding only `read` is answered as
+ * if the goal were missing.
+ *
  * The three memory scopes are the exception to the rule above (COR-1546, COR-1809).
  * `bureau.memory:read`, `bureau.memory:write` and `bureau.memory:govern` do not grant cross-owner
  * access: a caller reaches `bureau.memory.*` only with the scope its operation needs, and then only
@@ -45,6 +50,7 @@ export const BUREAU_SCOPES = [
   'bureau.schedules:write',
   'bureau.goals:read',
   'bureau.goals:write',
+  'bureau.goals:content',
   'bureau.contexts:read',
   'bureau.contexts:write',
   'bureau.agents:read',

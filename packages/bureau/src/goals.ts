@@ -759,6 +759,13 @@ export function createBureauGoals<TName extends string = string>(
   }
 
   const goals = {
+    validators: () =>
+      catalog.entries().map(({ identity, descriptor, source }) => ({
+        name: identity.name,
+        version: identity.version,
+        determinism: descriptor.determinism ?? null,
+        source,
+      })),
     create: (request: BureauGoalRequest<TName>) => create(request),
     get: authorized,
     list,

@@ -56,8 +56,10 @@ describe('formatter event kinds', () => {
     ).text();
     const kinds: string[] = [];
     for (const fence of readme.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)) {
+      // An `events` array of kinds starts with a string; the `events` contribution (COR-2223) is an
+      // array of declarations, which start with an object and name no kind to check.
       for (const array of (fence[1] ?? '').matchAll(
-        /\b(?:eventKinds|events)\s*:\s*\[([^\]]*)\]/gu,
+        /\b(?:eventKinds|events)\s*:\s*\[\s*(?=['"`])([^\]]*)\]/gu,
       )) {
         for (const literal of (array[1] ?? '').matchAll(/(['"`])((?:(?!\1).)*)\1/gu)) {
           kinds.push(literal[2] ?? '');

@@ -16,10 +16,35 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 import type { Validator, ValidatorIdentity } from '@lostgradient/operative';
 
+import { BUREAU_VERSION } from './bureau-version';
+import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
 import { createVersionedCatalog, type VersionedCatalogSource } from './versioned-catalog';
 
-/** The source recorded for validators passed to Bureau's options rather than contributed by a plugin. */
-const GOAL_VALIDATOR_SOURCE: VersionedCatalogSource = Object.freeze({ name: 'bureau' });
+/**
+ * Who a validator comes from (COR-2111): a validator passed to Bureau's options is `bureau`,
+ * named `bureau` at Bureau's own version; one a plugin contributes is `plugin`, named for the
+ * plugin at the plugin's version.
+ */
+export interface GoalValidatorSource {
+  /** `bureau` for a validator the host passed to Bureau, `plugin` for a contributed one. */
+  readonly kind: 'bureau' | 'plugin';
+  /** `bureau`, or the contributing plugin's name. */
+  readonly name: string;
+  /** Bureau's own version, or the plugin's. */
+  readonly version: string;
+}
+
+/** The source of a validator passed to Bureau's options rather than contributed by a plugin. */
+const GOAL_VALIDATOR_SOURCE: GoalValidatorSource = Object.freeze({
+  kind: 'bureau',
+  name: BUREAU_PLUGIN_NAME,
+  version: BUREAU_VERSION,
+});
+
+/** Where a validator was contributed from, when it was not passed to Bureau's options. */
+export type GoalValidatorSourceOf = (
+  identity: ValidatorIdentity,
+) => VersionedCatalogSource | undefined;
 
 /** The serializable description of a registered validator. */
 export interface GoalValidatorDescriptor {
@@ -34,6 +59,8 @@ export interface GoalValidatorCatalogEntry {
   readonly identity: ValidatorIdentity;
   readonly validator: Validator;
   readonly descriptor: GoalValidatorDescriptor;
+  /** Who the validator comes from (COR-2111). Not part of the descriptor, so its digest is unchanged. */
+  readonly source: GoalValidatorSource;
 }
 
 export type GoalValidatorResolution =
@@ -116,6 +143,7 @@ export function decodeGoalValidatorDescriptor(value: unknown): GoalValidatorDesc
  */
 export function createGoalValidatorCatalog(
   validators: readonly Validator[] = [],
+  sourceOf?: GoalValidatorSourceOf,
 ): GoalValidatorCatalog {
   const catalog = createVersionedCatalog<GoalValidatorCatalogEntry>();
   const entries: GoalValidatorCatalogEntry[] = [];
@@ -135,13 +163,18 @@ export function createGoalValidatorCatalog(
       );
     }
     const descriptor = describeValidator(validator);
-    const entry = Object.freeze({ identity: descriptor.identity, validator, descriptor });
+    const contributed = sourceOf?.({ name, version });
+    const source: GoalValidatorSource =
+      contributed?.version === undefined
+        ? GOAL_VALIDATOR_SOURCE
+        : Object.freeze({ kind: 'plugin', name: contributed.name, version: contributed.version });
+    const entry = Object.freeze({ identity: descriptor.identity, validator, descriptor, source });
     const registered = catalog.register({
       kind: 'validator',
       name,
       version,
       value: entry,
-      source: GOAL_VALIDATOR_SOURCE,
+      source,
     });
     if (!registered.ok) {
       throw new Error(`Bureau goal validator "${name}@${version}" is registered more than once.`);

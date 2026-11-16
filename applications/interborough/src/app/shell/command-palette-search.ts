@@ -513,11 +513,14 @@ export async function searchConsole(
   const groups = PALETTE_COPY.groups;
   const [contexts, agents, definitions, tools, workflows, schedules, workers, reviews, tasks] =
     await Promise.all([
-      // Chats a person started: a goal's or a schedule's session is reached from its run.
+      // Chats a person started: a goal's or a schedule's session is reached from its run. An
+      // archived chat is put away, so it is not offered here either.
       reading(
         failed,
         groups.chats,
-        listContexts({ origin: 'chat', limit: CHATS_SEARCHED }).then((page) => page.contexts),
+        listContexts({ origin: 'chat', archived: 'exclude', limit: CHATS_SEARCHED }).then(
+          (page) => page.contexts,
+        ),
         [] as ChatContext[],
       ),
       reading(failed, groups.agents, listAgents(), [] as readonly AgentSummary[]),

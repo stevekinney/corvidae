@@ -241,11 +241,18 @@ import {
   type BureauTasksInspectOperationHost,
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
-import { eventsCatalogOperation } from './management/events-catalog-operation.ts';
+import {
+  type BureauEventsCatalogOperationHost,
+  eventsCatalogOperation,
+} from './management/events-catalog-operation.ts';
 import {
   type BureauGuardrailsOperationHost,
   guardrailsListOperation,
 } from './management/guardrails-operations.ts';
+import {
+  type BureauValidatorsOperationHost,
+  validatorsListOperation,
+} from './management/validators-operations.ts';
 import {
   type BureauEventFormatOperationHost,
   type BureauPluginKindsOperationHost,
@@ -422,7 +429,9 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauWorkerDeploymentsOperationHost &
   BureauHooksOperationHost &
   BureauPluginKindsOperationHost &
+  BureauEventsCatalogOperationHost &
   BureauGuardrailsOperationHost &
+  BureauValidatorsOperationHost &
   BureauEventFormatOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
@@ -841,6 +850,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   eventsFormatOperation,
   pluginKindsOperation,
   guardrailsListOperation,
+  validatorsListOperation,
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
   ...bureauSchedulesOperations,

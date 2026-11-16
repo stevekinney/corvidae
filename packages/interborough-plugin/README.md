@@ -5,11 +5,12 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | Export | What it is |
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
+| `defineTrigger` | Declares a trigger kind and types `start`'s `configuration` with what the kind's schema parses to. |
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
 | `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, and agents. |
+| `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, events, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Where a plugin lives
@@ -101,8 +102,104 @@ The descriptor's members:
 | `embedders` | Embedders the `memory.embedder` setting can name. |
 | `scorers` | Scorers that score a sample of completed runs. |
 | `panels` | Interface panels. |
-| `formatters` | Titles and bodies for the activity views. |
+| `formatters` | Titles and bodies for the activity views, and optionally a `tier` (`critical`, `warning` or `info`, which is also what the view gets when a formatter names none), an `icon` (a Lucide icon name) and a `link` (a router-relative path starting with one `/` and holding no whitespace or control character; the host drops any other value, a URL, a `//host` path or a path with a tab or line break among them). A formatter formats from the event alone, synchronously: `format(event)` is handed nothing else and returns no promise. The host keeps a `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000, cutting a longer one rather than refusing it, and drops a `body` that is not a string with a `warn` diagnostic. A formatter that lists one kind twice, or a kind another plugin's formatter holds, skips the plugin with `name-clash`. |
+| `events` | Event kinds the plugin declares, `{ name, description, payload, version? }` (`PluginEventDeclaration`). The kind is `plugin:name`; see [Declared events](#declared-events). |
 | `agents` | Agents defined in code. Each may carry a `title` (its listing's label), a `visibility` (`'chat'` by default; `'hidden'` keeps it in `bureau.agents.list`, which marks it `visibility: "hidden"`, and Chat does not offer it, while workflows, children and a direct start still run it by `plugin:name`) and a `version` (a run pins it in place of the plugin's version; a run recovered under a different one settles failed with `definition-drifted`). |
+
+### Trigger state
+
+A trigger's `start` receives the `workflowId` of the file it starts and a `storage` for that one file, confined to the key prefix `plugin:<name>:trigger:<trigger-name>:<workflow-id>:`. A plugin file `linear:sync` is written `linear__sync` in that prefix, so no file's prefix lies inside another's. Two files that use one kind see disjoint keys. The prefix lies inside the plugin's own `storage`, so a key the plugin writes itself that begins `trigger:` is reserved for this and may be deleted by the sweep below.
+
+The state survives a restart, a pause, a configuration edit and a plugin upgrade. The host deletes it at the next reconcile after the file is deleted, or after the file's trigger becomes another kind (including another kind of the same plugin), so the file starts the new kind with empty state. A file that is `invalid` or that this Bureau cannot read keeps it, and so does the state of a plugin that is not loaded: it stays until the plugin loads and a reconcile runs. So does the state of a file another plugin ships while that plugin is not running, because the file is absent for that start only.
+
+A cursor is advanced after the work it stands for, never before: fire first, then advance. A crash between the two fires that item again on the next start, which is an at-least-once start the workflow must tolerate, where advancing first would lose the item. Because a configuration edit does not reset state, a cursor that depends on the configuration (the account a poll reads, the query it runs) stores a hash of what it depends on beside it, and resets itself when the hash no longer matches. The host never resets a key for you. Hash only what the cursor depends on: an edit to anything else, such as how often the poll runs, keeps the cursor. The function `start` resolves with must not return while a write to `storage` is still pending: the host waits for it before it starts the replacement, so a write that outlives it could land after the replacement has reset the state.
+
+```ts
+import { defineTrigger } from '@lostgradient/interborough-plugin';
+import { textValueStore } from '@lostgradient/storage';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+
+/** The issues of `account` created after `after`, oldest first. */
+declare function issuesAfter(
+  account: string,
+  after: number,
+): Promise<readonly { readonly id: number }[]>;
+
+export const newIssues = defineTrigger({
+  name: 'new-issues',
+  description: 'Fires once for each issue created after the last one it reported.',
+  configuration: z.object({ account: z.string(), pollSeconds: z.number().int().positive() }),
+  async start({ configuration, storage, fire, signal }) {
+    const state = textValueStore(storage, { disposeUnderlyingStorage: false });
+
+    // The cursor is an id in one account, so a different account is a different cursor.
+    const dependsOn = createHash('sha256').update(configuration.account).digest('hex');
+    if ((await state.get('depends-on')) !== dependsOn) {
+      await state.delete('cursor');
+      await state.set('depends-on', dependsOn);
+    }
+
+    let polling: Promise<void> | undefined;
+    const poll = async (): Promise<void> => {
+      const cursor = Number((await state.get('cursor')) ?? '0');
+      for (const issue of await issuesAfter(configuration.account, cursor)) {
+        if (signal.aborted) return;
+        await fire({ id: issue.id });
+        await state.set('cursor', String(issue.id));
+      }
+    };
+
+    const timer = setInterval(() => {
+      if (polling !== undefined) return;
+      polling = poll()
+        .catch((error: unknown) => console.error('The issue poll failed.', error))
+        .finally(() => {
+          polling = undefined;
+        });
+    }, configuration.pollSeconds * 1000);
+
+    // Stopping waits for the poll in flight, so a write of the old account's cursor cannot land
+    // after the replacement trigger has reset the state.
+    return async () => {
+      clearInterval(timer);
+      await polling;
+    };
+  },
+});
+```
+
+### Declared events
+
+A plugin declares the event kinds it will publish with `events: [{ name, description, payload }]`, where `payload` is a Zod object. The kind is `<plugin>:<name>`, `name` follows the contribution name grammar, and `version` is optional and defaults to the plugin's.
+
+- **Kinds and clashes.** Because the kind carries the plugin's name, no plugin holds another's, and none holds a kind Bureau itself publishes (those have no `:`). A plugin that declares one name twice, or whose kind a host option already holds as an event kind, is `skipped` with `name-clash`.
+- **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload, wrappers and getter reads included; a payload that needs more, such as one whose getter builds a new schema on every read, is refused with `event-payload-content` at the path where the count ran out.
+- **Listing.** `bureau.events.catalog` lists each running plugin's declared kinds after Bureau's own, with the payload fields, `origin: 'unattributed'`, no scopes and `source: '<plugin>'`.
+- **Identity.** Its identity kind is `event`, with the id `plugin:name`, the event's version and a digest of its payload schema, so marking a field `identifier` or changing its type changes the digest.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
+
+export default definePlugin({
+  name: 'greetings',
+  version: '1.0.0',
+  description: 'Greets people.',
+  setup: () => ({
+    events: [
+      {
+        name: 'greeted',
+        description: 'Someone was greeted.',
+        payload: z.object({
+          greetingId: z.string().meta({ identifier: true }),
+          status: z.enum(['sent', 'failed']),
+        }),
+      },
+    ],
+  }),
+});
+```
 
 ### Code workflows
 
@@ -140,10 +237,10 @@ export default definePlugin({
 });
 ```
 
-Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
+Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it, and `defineTrigger` types its `start` with what the `configuration` schema parses to, so `configuration.seconds` below is a `number` with no second parse; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
 
 ```ts
-import { definePlugin } from '@lostgradient/interborough-plugin';
+import { definePlugin, defineTrigger } from '@lostgradient/interborough-plugin';
 import { z } from 'zod';
 
 export default definePlugin({
@@ -160,18 +257,17 @@ export default definePlugin({
       },
     ],
     triggers: [
-      {
+      defineTrigger({
         name: 'heartbeat',
         description: 'Fires every interval.',
         configuration: z.object({ seconds: z.number().int().positive() }),
         async start({ configuration, fire, signal }) {
-          const { seconds } = z.object({ seconds: z.number() }).parse(configuration);
           const timer = setInterval(() => {
             if (!signal.aborted) void fire({ at: Date.now() });
-          }, seconds * 1000);
+          }, configuration.seconds * 1000);
           return () => clearInterval(timer);
         },
-      },
+      }),
     ],
     reactions: [
       {
@@ -369,8 +465,17 @@ A plugin whose declared secret is missing still loads. Every contribution it reg
 A provider's API key is one of the plugin's declared secrets. Name it with the provider's optional `secretKey`, which must be a key the plugin declares:
 
 ```ts
-secrets: ['tracker-signing-key', 'acme-api-key'],
-setup: () => ({ providers: [{ ...acmeProvider, secretKey: 'acme-api-key' }] }),
+import { definePlugin, type PluginProvider } from '@lostgradient/interborough-plugin';
+
+declare const acmeProvider: PluginProvider;
+
+export default definePlugin({
+  name: 'acme',
+  version: '1.0.0',
+  description: 'Acme models.',
+  secrets: ['tracker-signing-key', 'acme-api-key'],
+  setup: () => ({ providers: [{ ...acmeProvider, secretKey: 'acme-api-key' }] }),
+});
 ```
 
 Without `secretKey`, a plugin that declares exactly one secret uses it as the key, and a plugin that declares several is refused with `provider-secret-ambiguous`, because the order of the declarations is never read as a choice. A `secretKey` the plugin does not declare is refused with `provider-secret-unknown`. A plugin that declares no secret has a keyless provider, such as a local Ollama or LM Studio server: its models are available whenever the plugin runs, and its definition is called with `apiKey` omitted.
@@ -426,6 +531,7 @@ export default definePlugin({
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |
+| `event-payload-content` | `skipped` | A declared event's payload has a field that could carry content, such as a string not marked `.meta({ identifier: true })` and not a `z.enum`. `event`, `field`. |
 | `provider-secret-unknown` | `skipped` | A provider's `secretKey` is not one of the plugin's declared `secrets`. `provider`, `key`. |
 | `provider-secret-ambiguous` | `skipped` | A provider has no `secretKey` and the plugin declares several secrets. `provider`, `secrets`. |
 | `provider-empty` | `running` | A provider gave no `rows` under a name Operative's static catalog has no rows for, so it contributes no model. `provider`. |

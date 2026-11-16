@@ -702,6 +702,26 @@ describe('createOperationHandlerAuthenticator', () => {
     expect((admitted as { method: string }).method).toBe('api-key');
   });
 
+  it('admits a static API key on a request made before it has awaited ready', async () => {
+    // The static keys are digested asynchronously inside the readiness the
+    // request path awaits, so the first request needs no wait of its own.
+    const authenticate = createOperationHandlerAuthenticator({
+      apiKeys: ['the-right-key'],
+      defaultApiKeyScopes: ['events:read' as const],
+      auditSink: quietAudit,
+    });
+
+    const admitted = await authenticate(
+      new Request('http://localhost/jsonrpc', {
+        headers: { Authorization: 'Bearer the-right-key' },
+      }),
+    );
+
+    expect(admitted).not.toBeInstanceOf(Response);
+    expect((admitted as { method: string }).method).toBe('api-key');
+    await authenticate.ready;
+  });
+
   it('has no public paths of its own, so a mount sees only what it declared', async () => {
     let reached = false;
     const handler = createOperationHandler({

@@ -30,6 +30,7 @@ import type {
   ProviderConfigurationBase,
   ProviderDefinition,
 } from '@lostgradient/operative/provider-kit';
+import type { Storage } from '@lostgradient/storage';
 import type { ActivityDefinition, WorkflowDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
@@ -277,28 +278,53 @@ export interface PluginInterceptor {
   readonly onError?: PluginInterceptorHook<OnErrorHook>;
 }
 
-/** What a trigger kind's `start` receives. */
-export interface PluginTriggerContext {
+/**
+ * What a trigger kind's `start` receives. `TConfiguration` is what the kind's `configuration`
+ * schema parses to, so a kind declared through `defineTrigger` reads it with no second parse.
+ */
+export interface PluginTriggerContext<TConfiguration = unknown> {
   /** The trigger's configuration, parsed with the kind's `configuration` schema. */
-  readonly configuration: unknown;
+  readonly configuration: TConfiguration;
+  /** The identifier of the workflow file this trigger starts: `stem`, or `plugin:stem` for a plugin's own file. */
+  readonly workflowId: string;
+  /**
+   * Durable state for this one file, confined to the key prefix
+   * `plugin:<name>:trigger:<trigger-name>:<workflow-id>:` (the Weft form of the identifier, so
+   * `plugin:stem` is written `plugin__stem`). It survives a restart, a pause, a configuration edit
+   * and a plugin upgrade, so a cursor kept here is not lost. It is deleted when the file is
+   * deleted, or when the file's trigger becomes another kind; a file that is `invalid` or cannot
+   * be read keeps it. Two files that use one kind see disjoint keys.
+   *
+   * A cursor that depends on the configuration (the account a poll reads, the query it runs)
+   * should store a hash of that configuration beside it and reset itself when the hash no longer
+   * matches: the host never resets a key on a configuration edit.
+   */
+  readonly storage: Storage;
   /** Reports that the trigger fired, with the payload the started work receives. */
   fire(payload: unknown): Promise<void>;
   /** Aborts when the host stops the trigger. */
   readonly signal: AbortSignal;
 }
 
-/** A new kind of trigger, an external source that starts work in the host. */
-export interface PluginTrigger {
+/**
+ * A new kind of trigger, an external source that starts work in the host. `TSchema` is the
+ * `configuration` schema and `start` receives what it parses to; declare a kind with
+ * `defineTrigger` to have it inferred from the entry.
+ */
+export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
   /** The kind's name, unique within the plugin. */
   readonly name: string;
-  /** The kind's own version; a record that pins it uses the plugin's version without one. */
+  /**
+   * The kind's own version; the plugin's version stands in without one. A change to it restarts
+   * the listener of every file that uses the kind.
+   */
   readonly version?: string;
   /** What the trigger listens for. */
   readonly description: string;
   /** The schema an instance's configuration is parsed with. */
-  readonly configuration: z.ZodType;
+  readonly configuration: TSchema;
   /** Starts listening; the function it resolves with stops it. */
-  start(context: PluginTriggerContext): Promise<() => void | Promise<void>>;
+  start(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;
 }
 
 /** What a hook action kind's `run` receives. */
@@ -420,6 +446,20 @@ export interface PluginFormatting {
   readonly title: string;
   /** More detail, when the event has any. */
   readonly body?: string;
+  /**
+   * How much the event matters to whoever reads the activity view. Without one, or with any other
+   * value, the event is `info`.
+   */
+  readonly tier?: 'critical' | 'warning' | 'info';
+  /** The name of a Lucide icon the view draws beside the title. */
+  readonly icon?: string;
+  /**
+   * Where the view sends the reader for more, as a path in the host's router: it starts with one
+   * `/` and holds no whitespace or control character. The host drops any other value (a URL, a
+   * `//host` path, a relative path, a path with a tab or line break), so a plugin cannot point the
+   * view at another origin.
+   */
+  readonly link?: string;
 }
 
 /** Formats the events of the kinds it names. */
@@ -428,7 +468,12 @@ export interface PluginFormatter {
   readonly name: string;
   /** The event kinds the formatter handles. */
   readonly eventKinds: readonly string[];
-  /** Formats one event of a kind in `eventKinds`. */
+  /**
+   * Formats one event of a kind in `eventKinds`, from the event alone and synchronously: it is
+   * handed no storage, no secrets and no other event, and returns no promise. The host keeps a
+   * `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000
+   * characters, cutting a longer one, and drops a `body` that is not a string.
+   */
   format(event: PluginEvent): PluginFormatting;
 }
 
@@ -505,6 +550,33 @@ export type PluginWorkflow = WorkflowDefinition<any, any, string, any> & {
 };
 
 /**
+ * An event kind a plugin declares. The kind is `<plugin>:<name>`, so no two plugins can hold one,
+ * and none can hold a kind Bureau itself publishes (those have no `:`). A declared kind is listed
+ * by `bureau.events.catalog` with the fields of its payload, and a plugin's own identity records
+ * it as an `event` with a digest of `payload`.
+ *
+ * A payload carries identifiers, statuses and counts, never content (an event reaches hooks,
+ * activity views and other plugins, and is not the place a document or a message travels). The
+ * host refuses a plugin whose payload could carry content, with `event-payload-content`. A field
+ * is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status),
+ * or a string marked `.meta({ identifier: true })`, an identifier of a thing held elsewhere; a
+ * nested object, array, union or optional of such values is accepted too. A free `z.string()`,
+ * `z.unknown()`, `z.any()`, `z.record()` and an object with a catchall are refused.
+ */
+export interface PluginEventDeclaration {
+  /** The event's name, unique within the plugin; its kind is `<plugin>:<name>`. */
+  readonly name: string;
+  /**
+   * The event's own version, which an identity records. Without one the plugin's version is used.
+   */
+  readonly version?: string;
+  /** What the event means and when the plugin publishes it. */
+  readonly description: string;
+  /** The shape of the event's payload: a Zod object whose fields hold no content. */
+  readonly payload: z.ZodObject;
+}
+
+/**
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
  * plugin names only the kinds it contributes.
  */
@@ -533,6 +605,8 @@ export interface PluginContributions {
   readonly panels?: readonly PluginPanel[];
   /** Event formatters. */
   readonly formatters?: readonly PluginFormatter[];
+  /** Event kinds the plugin declares, each `<plugin>:<name>`, with the shape of its payload. */
+  readonly events?: readonly PluginEventDeclaration[];
   /** Agents defined in code. */
   readonly agents?: readonly PluginAgent[];
   /** Workflows defined in code, registered as `plugin:name` beside the workflow files. */

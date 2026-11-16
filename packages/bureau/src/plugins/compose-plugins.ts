@@ -9,7 +9,7 @@
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
  * `formatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
- * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
+ * `memory` factory; a declared event is read from the plugin's record by `plugins.events()`), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
  * agents the agent catalog lists as `unavailable` (COR-2009); see `agentsOfDisabledPlugin`.
@@ -63,6 +63,7 @@ import {
   type VersionedCatalog,
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
+import { eventPayloadContent, isEventPayload } from './plugin-event-payload';
 import { lateHostApi, type PluginRecord } from './plugin-registry';
 import {
   createPluginSecretGate,
@@ -127,6 +128,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    * stops following. Called once construction can stop it again at shutdown.
    */
   readonly watchSecrets: () => () => void;
+  /**
+   * COR-2164 — the store every plugin's own storage (`plugin:<name>:`) is a prefix of: the Bureau's
+   * `storage`, or the in-memory one composition made when it has none. The workflow runtime keeps a
+   * trigger's per-file state in the same store, under the plugin's prefix.
+   */
+  readonly storage: Storage;
 }
 
 const HOST_PARTY: PluginClashParty = Object.freeze({ source: 'built-in', location: 'host' });
@@ -449,6 +456,39 @@ function planOf(
     contribute('formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
   }
+  for (const declaration of contributions.events ?? []) {
+    // The kind is `plugin:name`, so a plugin holds only kinds of its own: a clash is a name this
+    // plugin declares twice, or one a host formatter already claims (COR-2223).
+    if (!isPluginName(declaration.name)) {
+      throw new TypeError(
+        `setup returned an event named ${JSON.stringify(declaration.name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
+      );
+    }
+    // The catalog lists these two as text, so a value that is not would fail the operation for everyone.
+    const { description, version: ownVersion } = declaration as {
+      description?: unknown;
+      version?: unknown;
+    };
+    if (typeof description !== 'string' || description.trim() === '') {
+      throw new TypeError(
+        `setup returned the event "${declaration.name}" without a description: every event says what it means.`,
+      );
+    }
+    if (ownVersion !== undefined && (typeof ownVersion !== 'string' || ownVersion === '')) {
+      throw new TypeError(
+        `setup returned the event "${declaration.name}" with a version that is not a non-empty string.`,
+      );
+    }
+    if (!isEventPayload(declaration.payload)) {
+      throw new TypeError(
+        `setup returned the event "${declaration.name}" with a payload that is not a Zod object: an event's payload is z.object({ ... }).`,
+      );
+    }
+    claims.push({
+      space: 'event-kind',
+      name: formatToolId({ namespace: plugin, name: declaration.name }),
+    });
+  }
   for (const agent of contributions.agents ?? []) contribute('agent', agent.name);
   for (const item of contributions.workflows ?? []) {
     contribute('workflow', item.name, undefined, item.title);
@@ -574,6 +614,11 @@ class Contributed {
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
   readonly agentSources: { plugin: string; result: PluginSetupResult }[] = [];
   readonly validators: NonNullable<BureauOptions['validators']>[number][] = [];
+  readonly validatorSources: {
+    plugin: string;
+    version: string;
+    validator: NonNullable<BureauOptions['validators']>[number];
+  }[] = [];
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
@@ -609,11 +654,14 @@ class Contributed {
       this.agentSources.push({ plugin, result });
     }
     for (const validator of result.validators ?? []) {
-      this.validators.push({
+      const contributed: NonNullable<BureauOptions['validators']>[number] = {
         ...validator,
         identity: { ...validator.identity, name: id(validator.identity.name) },
         validate: (input, signal) => validator.validate(input, signal),
-      });
+      };
+      this.validators.push(contributed);
+      // COR-2111: the goal validator catalog names each validator's plugin and its version.
+      this.validatorSources.push({ plugin, version, validator: contributed });
     }
     for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
@@ -691,11 +739,34 @@ function providerEmptyProblems(
 function catalogWith(
   host: VersionedCatalog | undefined,
   contributed: Contributed['activities'],
+  validators: Contributed['validatorSources'],
 ): VersionedCatalog | undefined {
-  if (contributed.length === 0) return host;
+  if (contributed.length === 0 && validators.length === 0) return host;
   const catalog = createVersionedCatalog();
   for (const kind of VERSIONED_CATALOG_KINDS) {
     for (const entry of host?.entries(kind) ?? []) catalog.register(entry);
+  }
+  // COR-2111: a plugin's validators record who contributed them, which the goal validator
+  // catalog reads back as each validator's source.
+  for (const { plugin, version, validator } of validators) {
+    const own = validator.identity;
+    // An identity the goal validator catalog refuses is left for it to refuse, with its own message.
+    if (
+      typeof own.name !== 'string' ||
+      own.name.length === 0 ||
+      typeof own.version !== 'string' ||
+      own.version.length === 0 ||
+      own.version.includes('@')
+    ) {
+      continue;
+    }
+    catalog.register({
+      kind: 'validator',
+      name: validator.identity.name,
+      version: validator.identity.version,
+      value: validator,
+      source: { name: plugin, version },
+    });
   }
   for (const { plugin, version, result } of contributed) {
     const source = { name: plugin, version };
@@ -774,7 +845,11 @@ function shippedContentOf(
 
 /** Folds what the running plugins contributed into the options construction reads. */
 function optionsWith<O extends ComposableOptions>(options: O, contributed: Contributed): O {
-  const contributionCatalog = catalogWith(options.contributionCatalog, contributed.activities);
+  const contributionCatalog = catalogWith(
+    options.contributionCatalog,
+    contributed.activities,
+    contributed.validatorSources,
+  );
   const agentContributions = agentContributionsWith(
     options.agentContributions,
     contributed.agentSources,
@@ -1005,6 +1080,33 @@ function formatterUnknownKinds(contributions: PluginContributions): PluginProble
 }
 
 /**
+ * The `event-payload-content` problems of a plugin whose declared event has a payload field that
+ * could carry content (COR-2223): an event's payload holds identifiers, statuses and counts only.
+ */
+function eventPayloadProblems(
+  contributions: PluginContributions,
+  redact: (message: string) => string,
+): PluginProblem[] {
+  try {
+    return (contributions.events ?? []).flatMap((declaration) =>
+      eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
+        code: 'event-payload-content',
+        event: declaration.name,
+        field,
+      })),
+    );
+  } catch (error) {
+    // A schema that throws when read (a getter that fails) skips its plugin; it never rejects the host.
+    return [
+      {
+        code: 'setup-failed',
+        message: `setup returned an event whose payload could not be read: ${messageOf(error, redact)}`,
+      },
+    ];
+  }
+}
+
+/**
  * The `activity-field-missing` problems of a plugin whose activity has no title or no input schema
  * (D7), the two fields the workflow editor lists an activity by.
  */
@@ -1125,6 +1227,7 @@ export async function composePlugins<O extends ComposableOptions>(
       ...activityFieldProblems(outcome.result),
       ...workflowFieldProblems(outcome.result),
       ...formatterUnknownKinds(outcome.result),
+      ...eventPayloadProblems(outcome.result, outcome.redact),
       ...providerSecretProblems(entry, outcome.result),
     ];
     if (refusals.length > 0) {
@@ -1182,6 +1285,7 @@ export async function composePlugins<O extends ComposableOptions>(
     unavailableAgents,
     unavailableTools,
     agentDetails: contributed.agentDetails,
+    storage,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {

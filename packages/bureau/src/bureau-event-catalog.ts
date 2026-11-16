@@ -481,6 +481,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['validatorIdentity?', 'object'],
       ['outcomeKind?', 'string'],
       ['feedbackDigest?', 'string'],
+      ['judgedBy?', 'object'],
     ],
     AGENT_SCOPE,
   ),
@@ -614,6 +615,15 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     ],
   ),
 } satisfies Record<PublishedBureauEventKind, BureauEventCatalogEntry>);
+
+/**
+ * Whether `kind` is one a Bureau publishes: a kind of the core catalog, or one of `declaredKinds`,
+ * the `<plugin>:<name>` kinds the running plugins declare (COR-2223). A declared kind has a `:` no
+ * core kind has, so a plugin never takes a core kind's name.
+ */
+export function isPublishedEventKind(kind: string, declaredKinds: readonly string[]): boolean {
+  return Object.hasOwn(BUREAU_EVENT_CATALOG, kind) || declaredKinds.includes(kind);
+}
 
 /** The catalog as a list, in {@link PUBLISHED_BUREAU_EVENT_KINDS} order. */
 export function bureauEventCatalog(): readonly BureauEventCatalogEntry[] {

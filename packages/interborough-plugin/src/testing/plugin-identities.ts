@@ -369,6 +369,11 @@ export async function pluginIdentities(
         }),
       descriptor,
     ),
+    ...entriesOf(
+      contributions.events,
+      (declaration) => named(declaration, 'event', declaration.payload),
+      descriptor,
+    ),
     ...entriesOf(contributions.agents, (agent) => named(agent, 'agent'), descriptor),
   ];
   return {

@@ -123,6 +123,57 @@ describe('a blocked composer', () => {
   });
 });
 
+describe('an archived chat (COR-2285 V5)', () => {
+  test('is the Archived bar with its date, a secondary New chat and a primary Unarchive', () => {
+    let unarchived = 0;
+    const status = composerStatusOf(
+      facts({ archived: { when: 'Nov 3', unarchive: () => (unarchived += 1) } }),
+    );
+
+    expect(status).toMatchObject({
+      kind: 'archived',
+      when: 'Nov 3',
+      newChat: { label: 'New chat', href: '/chats/new' },
+      unarchive: { label: 'Unarchive', primary: true },
+    });
+    if (status?.kind !== 'archived') throw new Error('The composer is not archived.');
+    expect(status.newChat?.primary).toBeUndefined();
+    status.unarchive?.onclick?.();
+    expect(unarchived).toBe(1);
+  });
+
+  test('outranks a disabled plugin, an ended chat, no provider and every line under the box', () => {
+    const archived = { when: 'Nov 3', unarchive: () => undefined };
+    expect(
+      composerStatusOf(
+        facts({
+          archived,
+          unavailable: { agent: 'A', plugin: 'P', enable: () => undefined },
+          ended: true,
+          noProvider: true,
+          noWorkflowAgent: true,
+          reconnectAttempt: 2,
+          queuedFollowUps: 1,
+          note: 'Effort High applies.',
+          working: true,
+        }),
+      ),
+    ).toMatchObject({ kind: 'archived' });
+  });
+
+  test('gives way to an unreachable server and a restarting host, since Unarchive is a write', () => {
+    const archived = { when: 'Nov 3', unarchive: () => undefined };
+    expect(composerStatusOf(facts({ archived, unreachable: true }))).toEqual({
+      kind: 'blocked',
+      reason: 'Sending is off until Interborough is reachable',
+    });
+    expect(composerStatusOf(facts({ archived, restarting: true }))).toEqual({
+      kind: 'blocked',
+      reason: 'Sending resumes when Interborough is back.',
+    });
+  });
+});
+
 describe('the line under the composer', () => {
   test('is nothing, so the hint shows, for a quiet chat', () => {
     expect(composerStatusOf(QUIET)).toBeUndefined();

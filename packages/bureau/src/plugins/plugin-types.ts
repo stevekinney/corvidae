@@ -10,6 +10,7 @@ import type { PluginDescriptor, PluginPanel } from '@lostgradient/interborough-p
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
 
+import type { BureauEventField } from '../bureau-event-catalog.ts';
 import type { PluginProblemCode } from './plugin-problem-codes.ts';
 
 /**
@@ -199,6 +200,19 @@ export type PluginProblem =
       readonly formatter: string;
       /** The kind no event carries. */
       readonly kind: string;
+    }
+  | {
+      /**
+       * A declared event's payload has a field that could carry content (COR-2223): a string not
+       * marked `.meta({ identifier: true })` and not a `z.enum`, or any other value that lets free
+       * text through. A payload holds identifiers, statuses and counts only; the plugin is
+       * `skipped` and the host starts.
+       */
+      readonly code: 'event-payload-content';
+      /** The event's name within the plugin. */
+      readonly event: string;
+      /** The dotted path of the field, `*` for an object that accepts any other key. */
+      readonly field: string;
     }
   | {
       /**
@@ -419,7 +433,7 @@ export interface PluginTriggerListing {
   readonly id: string;
   /** What the trigger listens for. */
   readonly description: string;
-  /** The version a revision that uses it pins: the kind's own, else its plugin's. */
+  /** The version the listener runs at, the kind's own else its plugin's; a change restarts it. */
   readonly version: string;
   /**
    * The kind's configuration schema as JSON Schema (the fields a trigger holds besides `kind`), or
@@ -444,6 +458,23 @@ export interface PluginReactionListing {
   readonly version: string;
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
   readonly configuration: Readonly<Record<string, unknown>> | null;
+}
+
+/**
+ * An event kind a running plugin declares (COR-2223), as `bureau.events.catalog` lists it: the
+ * kind `<plugin>:<name>`, what it means, and the fields of its payload. Carries no function.
+ */
+export interface PluginEventListing {
+  /** The declaring plugin's name. */
+  readonly plugin: string;
+  /** The kind, `<plugin>:<name>`. */
+  readonly kind: string;
+  /** What the event means and when the plugin publishes it. */
+  readonly description: string;
+  /** The version an identity records: the declaration's own, else its plugin's. */
+  readonly version: string;
+  /** The fields of the payload, in the order the plugin declares them. */
+  readonly payload: readonly BureauEventField[];
 }
 
 /**
@@ -522,6 +553,11 @@ export interface BureauPlugins {
    * is built.
    */
   reactions(): readonly PluginReactionListing[];
+  /**
+   * The event kinds the running plugins declare (COR-2223), in load order: each `<plugin>:<name>`
+   * with the fields of its payload. Fixed once the Bureau is built.
+   */
+  events(): readonly PluginEventListing[];
   /**
    * Every installed guardrail (COR-2118): the host's (`BureauOptions.agentContributions`), then
    * the running plugins' in load order, each family of a plugin's in the order input, output,

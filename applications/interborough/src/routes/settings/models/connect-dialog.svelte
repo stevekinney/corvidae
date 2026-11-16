@@ -45,6 +45,8 @@
   const configuration = new ProviderConfigurationDraft({
     source: () => (provider === null ? undefined : configurations.get(provider)),
     onSaved: () => refreshAfterConfigurationSave(queryClient),
+    // Connect asks only for what the schema lists as `required`; the rest is Manage's.
+    requiredOnly: true,
   });
 
   const flow = new KeyFlow({

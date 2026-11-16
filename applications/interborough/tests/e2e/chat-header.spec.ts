@@ -199,6 +199,8 @@ for (const viewport of VIEWPORTS) {
       new RegExp(MORE.rename),
       new RegExp(MORE.branch),
       new RegExp(MORE.export),
+      // Anchored: "Archive" is also the end of "Unarchive".
+      new RegExp(`^\\s*${MORE.archive}\\s*$`),
       new RegExp(MORE.delete),
     ]);
     await checkA11y(`the chat's More menu, at ${viewport.width} pixels`);

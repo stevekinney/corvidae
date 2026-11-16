@@ -2,7 +2,7 @@
  * COR-851 — the goal record decoder refuses a record whose status, attempts, and
  * active work contradict each other, and the store can never write one.
  */
-import type { GoalRunTerminalReason } from '@lostgradient/operative';
+import type { GoalRunTerminalReason, ValidatorJudge } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
@@ -139,7 +139,7 @@ async function records(): Promise<Record<string, GoalState>> {
  * the retry's audit entry (seq 3) is an earlier, non-latest entry that genuinely
  * holds the `goal.attempt.validated` event that verdict implies.
  */
-async function recordWithValidatedRetry(): Promise<GoalState> {
+async function recordWithValidatedRetry(judgedBy?: ValidatorJudge): Promise<GoalState> {
   sequence = 0;
   const store = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(pendingGoal());
@@ -162,6 +162,7 @@ async function recordWithValidatedRetry(): Promise<GoalState> {
         completedAt: STARTED,
         outcome: { kind: 'fail', feedback: 'Try again.', evidence: [], retryable: true },
         decisionId: goalDecisionId(goalAttemptId(GOAL, 0)),
+        ...(judgedBy === undefined ? {} : { judgedBy }),
       },
     }),
     active: null,
@@ -463,6 +464,82 @@ describe('the goal record decoder', () => {
       expect(validated).toEqual(['goal.attempt.validated']);
       expect(record['transitionSeq']).toBe(4);
       expect(isGoalState(record)).toBe(true);
+    });
+
+    describe('what judged an attempt (COR-2112)', () => {
+      const JUDGE: ValidatorJudge = {
+        validator: VALIDATOR,
+        source: { kind: 'plugin', name: 'checks', version: '2.3.4' },
+        configuration: null,
+      };
+      const judged = async () =>
+        JSON.parse(JSON.stringify(await recordWithValidatedRetry(JUDGE))) as Record<
+          string,
+          unknown
+        >;
+      const validatedPayload = (record: Record<string, unknown>) =>
+        entryAt(record, 3).events[0]!['payload'] as Record<string, unknown>;
+      const validationOf = (record: Record<string, unknown>) =>
+        (attemptsOf(record)[0] as Record<string, any>)['validation'] as Record<string, unknown>;
+
+      it('decodes a record that names it, and its event reports it without the configuration', async () => {
+        const record = await judged();
+        expect(validatedPayload(record)['judgedBy']).toEqual({
+          validator: VALIDATOR,
+          source: JUDGE.source,
+        });
+        expect(isGoalState(record)).toBe(true);
+      });
+
+      it('decodes a record written before it, whose event has none either', async () => {
+        const record = JSON.parse(JSON.stringify(await recordWithValidatedRetry())) as Record<
+          string,
+          unknown
+        >;
+        expect(validationOf(record)['judgedBy']).toBeUndefined();
+        expect(validatedPayload(record)['judgedBy']).toBeUndefined();
+        expect(isGoalState(record)).toBe(true);
+      });
+
+      it.each([
+        [
+          'an event naming another judge',
+          (r: Record<string, unknown>) => {
+            validatedPayload(r)['judgedBy'] = {
+              validator: VALIDATOR,
+              source: { kind: 'bureau', name: 'bureau', version: '0.1.0' },
+            };
+          },
+        ],
+        [
+          'an event that carries a judge the record lacks',
+          (r: Record<string, unknown>) => {
+            delete validationOf(r)['judgedBy'];
+          },
+        ],
+        [
+          'a judge with a source of no known kind',
+          (r: Record<string, unknown>) => {
+            (validationOf(r)['judgedBy'] as Record<string, any>)['source']['kind'] = 'host';
+          },
+        ],
+        [
+          'a judge with a field it never has',
+          (r: Record<string, unknown>) => {
+            (validationOf(r)['judgedBy'] as Record<string, unknown>)['extra'] = 1;
+          },
+        ],
+        [
+          'a judge with no configuration',
+          (r: Record<string, unknown>) => {
+            delete (validationOf(r)['judgedBy'] as Record<string, unknown>)['configuration'];
+          },
+        ],
+      ])('treats a record with %s as corrupt', async (_name, mutate) => {
+        const record = await judged();
+        mutate(record);
+        expect(isGoalState(record)).toBe(false);
+      });
     });
 
     it('still decodes a goal whose log holds a genuine restart entry', async () => {

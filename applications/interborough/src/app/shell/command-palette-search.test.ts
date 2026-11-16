@@ -255,7 +255,8 @@ describe('searchConsole for chats and agents', () => {
       expect(results.agents.map((match) => match.name)).toEqual(['echo']);
       expect(results.newChats.map((match) => match.name)).toEqual(['echo']);
       // Only the chats a person started are searched, so a goal's session is not a chat result.
-      expect(listed).toEqual([expect.objectContaining({ origin: 'chat' })]);
+      // An archived chat is put away, so it is not searched either (COR-2285 V5).
+      expect(listed).toEqual([expect.objectContaining({ origin: 'chat', archived: 'exclude' })]);
     } finally {
       restore();
     }

@@ -101,7 +101,14 @@
       queryKey: queryKeys.contexts.filtered(id, { ...filters }),
       queryFn: ({ pageParam, signal }) =>
         listContexts(
-          { agentName: id, ...chatListRequest(filters), limit: PAGE_SIZE, offset: pageParam },
+          {
+            agentName: id,
+            ...chatListRequest(filters),
+            // An archived chat is put away: only the chat list's Archived segment lists it.
+            archived: 'exclude',
+            limit: PAGE_SIZE,
+            offset: pageParam,
+          },
           { signal },
         ),
       initialPageParam: 0,

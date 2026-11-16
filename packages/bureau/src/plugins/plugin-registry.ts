@@ -27,6 +27,7 @@ import type {
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
+  PluginEventListing,
   PluginReactionListing,
   PluginListing,
   PluginProviderListing,
@@ -35,6 +36,7 @@ import type {
   PluginTriggerListing,
 } from './plugin-types';
 import type { AgentListing } from '../agent-file-catalog';
+import { eventPayloadFields } from './plugin-event-payload';
 import type { PluginSecretGate } from './plugin-secret-gate';
 
 /** What composition found for one plugin. */
@@ -421,6 +423,18 @@ export function createPluginRegistry(
                   version: kind.version ?? record.entry.descriptor.version,
                   configuration: jsonSchemaOf(kind.configuration),
                 }))
+            : [],
+        ),
+      events: () =>
+        records.flatMap((record): PluginEventListing[] =>
+          record.status === 'running'
+            ? (record.setup?.result.events ?? []).map((declaration) => ({
+                plugin: record.entry.descriptor.name,
+                kind: `${record.entry.descriptor.name}:${declaration.name}`,
+                description: declaration.description,
+                version: declaration.version ?? record.entry.descriptor.version,
+                payload: eventPayloadFields(declaration.payload),
+              }))
             : [],
         ),
       guardrails: () => [

@@ -164,7 +164,7 @@ describe('additionalScopes — retention', () => {
 
   it('narrows a rotating-store principal to built-in and registered scopes', async () => {
     const store = createRotatingApiKeyStore();
-    store.add(API_KEY, {
+    await store.add(API_KEY, {
       subject: 'svc',
       scopes: ['weft.system:admin', TASKS_READ, TASKS_WRITE, 'system:read'],
     });

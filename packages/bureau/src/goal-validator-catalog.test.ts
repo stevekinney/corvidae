@@ -10,6 +10,8 @@ import {
   createGoalValidatorCatalog,
   decodeGoalValidatorDescriptor,
 } from './goal-validator-catalog';
+import { BUREAU_VERSION } from './bureau-version';
+import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
 
 function validator(
   name: string,
@@ -169,6 +171,30 @@ describe('createGoalValidatorCatalog construction', () => {
       'b@bureau',
       'a@bureau',
     ]);
+  });
+});
+
+describe('goal validator sources', () => {
+  it('names Bureau at its own version unless the validator was contributed', () => {
+    const catalog = createGoalValidatorCatalog(
+      [validator('host@bureau', '1.0.0'), validator('kit:tidy', '2')],
+      ({ name }) => (name === 'kit:tidy' ? { name: 'kit', version: '3.1.0' } : undefined),
+    );
+
+    expect(catalog.entries().map(({ source }) => source)).toEqual([
+      { kind: 'bureau', name: BUREAU_PLUGIN_NAME, version: BUREAU_VERSION },
+      { kind: 'plugin', name: 'kit', version: '3.1.0' },
+    ]);
+  });
+
+  it('leaves the descriptor and its digest as they were', () => {
+    const [plain] = createGoalValidatorCatalog([validator('a', '1')]).descriptors();
+    const [sourced] = createGoalValidatorCatalog([validator('a', '1')], () => ({
+      name: 'kit',
+      version: '3',
+    })).descriptors();
+
+    expect(sourced).toEqual(plain);
   });
 });
 

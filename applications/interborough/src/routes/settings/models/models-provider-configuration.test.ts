@@ -29,6 +29,19 @@ const OPENAI_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   properties: { baseURL: { type: 'string', description: 'Where the API is served.' } },
+  // Connect draws only what the schema lists as required (COR-2493).
+  required: ['baseURL'],
+  additionalProperties: false,
+};
+/** A required field and an optional one, so Connect draws the first and Manage both. */
+const GATEWAY_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    baseURL: { type: 'string', description: 'Where the API is served.' },
+    organization: { type: 'string', description: 'The organization to bill.' },
+  },
+  required: ['baseURL'],
   additionalProperties: false,
 };
 const ANTHROPIC_SCHEMA = {
@@ -208,6 +221,79 @@ describe('connecting a provider whose plugin has settings', () => {
     // The settings are not wrapped in a box of their own.
     expect(dialog.querySelector('[data-testid="provider-configuration"] .cinder-card')).toBeNull();
     expect(pluginWrites()).toEqual([]);
+  });
+
+  test('draws the required field and not the optional one', async () => {
+    const { container } = open({
+      providers: [{ plugin: 'openai', name: 'openai', configuration: GATEWAY_SCHEMA }],
+      plugins: [{ name: 'openai', title: 'OpenAI', configurationSchema: GATEWAY_SCHEMA }],
+    });
+    await loaded(container);
+
+    const dialog = await beginConnect(container);
+
+    expect(baseUrlField(dialog)).toBeDefined();
+    expect(within(dialog).queryByLabelText(/organization/i)).toBeNull();
+  });
+
+  test('shows no Settings heading and no field for a plugin whose settings are all optional, and writes none', async () => {
+    const { container } = open({
+      providers: [{ plugin: 'openai', name: 'openai', configuration: ANTHROPIC_SCHEMA }],
+      plugins: [{ name: 'openai', title: 'OpenAI', configurationSchema: ANTHROPIC_SCHEMA }],
+    });
+    await loaded(container);
+
+    await fireEvent.click(
+      within(providerOf(container, 'openai')!).getByRole('button', { name: /^Connect/ }),
+    );
+    const dialog = await dialogOf(container);
+    await waitFor(() => expect(within(dialog).getByLabelText(copy.keyLabel)).toBeDefined());
+    expect(within(dialog).queryByTestId('provider-configuration')).toBeNull();
+    expect(
+      within(dialog).queryByRole('heading', { name: MODELS_COPY.configuration.heading }),
+    ).toBeNull();
+    expect(within(dialog).queryByLabelText(/base ?url/i)).toBeNull();
+
+    await fireEvent.input(within(dialog).getByLabelText(copy.keyLabel), {
+      target: { value: KEY },
+    });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('provider-connect-success')).toBeDefined(),
+    );
+    expect(pluginWrites()).toEqual([]);
+    expect(order).toEqual(['PUT /host/providers/openai']);
+  });
+
+  test('keeps the stored optional fields when the required field is saved', async () => {
+    const { container } = open({
+      providers: [{ plugin: 'openai', name: 'openai', configuration: GATEWAY_SCHEMA }],
+      plugins: [
+        {
+          name: 'openai',
+          title: 'OpenAI',
+          configurationSchema: GATEWAY_SCHEMA,
+          configuration: { organization: 'org-7' },
+        },
+      ],
+    });
+    await loaded(container);
+    const dialog = await beginConnect(container);
+
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'http://localhost:1234/v1' } });
+    await fireEvent.input(within(dialog).getByLabelText(copy.keyLabel), {
+      target: { value: KEY },
+    });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('provider-connect-success')).toBeDefined(),
+    );
+    expect(pluginWrites()).toHaveLength(1);
+    expect(pluginWrites()[0]?.body).toMatchObject({
+      configuration: { baseURL: 'http://localhost:1234/v1', organization: 'org-7' },
+    });
+    expect(order).toEqual(['PUT /host/plugins/openai', 'PUT /host/providers/openai']);
   });
 
   test('stores the settings, tests the key against them, then stores the key', async () => {
@@ -440,6 +526,19 @@ describe('managing a provider whose plugin has settings', () => {
     expect(within(dialog).getByRole('button', { name: copy.done })).toBeDefined();
     expect(within(dialog).queryByRole('button', { name: copy.save })).toBeNull();
     expect(pluginWrites()).toEqual([]);
+  });
+
+  test('draws the optional fields as well as the required ones', async () => {
+    const { container } = open({
+      providers: [{ plugin: 'anthropic', name: 'anthropic', configuration: GATEWAY_SCHEMA }],
+      plugins: [{ name: 'anthropic', title: 'Anthropic', configurationSchema: GATEWAY_SCHEMA }],
+    });
+    await loaded(container);
+
+    const dialog = await beginManage(container);
+
+    expect(baseUrlField(dialog)).toBeDefined();
+    expect(within(dialog).getByLabelText(/organization/i)).toBeDefined();
   });
 
   test('turns Done into Save when a field changes, stores the settings with the undrawn stored fields kept, and says when they apply', async () => {

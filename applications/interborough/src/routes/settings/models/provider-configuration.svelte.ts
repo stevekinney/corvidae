@@ -21,6 +21,7 @@ import { refusedField } from '../plugins/plugin-configuration.ts';
 import {
   configurationObject,
   configurationWithoutEmpty,
+  requiredFieldsSchema,
   undrawnFields,
   type ProviderConfigurationSource,
 } from './provider-configuration.ts';
@@ -34,6 +35,11 @@ export type ProviderConfigurationOptions = {
   readonly source: () => ProviderConfigurationSource | undefined;
   /** Called once the host has stored the configuration, so the page reads the plugins again. */
   readonly onSaved: () => Promise<void>;
+  /**
+   * Whether the draft draws only the fields the schema lists under `required` (Connect), leaving
+   * the optional ones to Manage. The stored optional fields are kept as they are on a save.
+   */
+  readonly requiredOnly?: boolean;
 };
 
 /** The configuration draft of one dialog. Create one per dialog. */
@@ -67,7 +73,14 @@ export class ProviderConfigurationDraft {
   /** The schema as the form reads it. */
   get formSchema(): Record<string, unknown> | undefined {
     const source = this.source;
-    return source === undefined ? undefined : contributedFormSchema(this.kindId, source.schema);
+    return source === undefined ? undefined : contributedFormSchema(this.kindId, this.drawnSchema);
+  }
+
+  /** The source's schema, narrowed to its required fields when the dialog draws only those. */
+  get drawnSchema(): Readonly<Record<string, unknown>> | null {
+    const schema = this.source?.schema ?? null;
+    if (schema === null || this.#options.requiredOnly !== true) return schema;
+    return requiredFieldsSchema(schema) ?? null;
   }
 
   /** Whether the provider's plugin has a configuration schema the page cannot draw. */
