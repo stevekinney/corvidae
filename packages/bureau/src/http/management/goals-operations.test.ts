@@ -40,9 +40,12 @@ afterEach(async () => {
 
 async function serve(): Promise<OpenedBureau> {
   const opened = await openBureau({
-    agents: { worker: workerAgent(hangUntilAborted) },
+    agents: {
+      worker: workerAgent(hangUntilAborted),
+      helper: workerAgent(hangUntilAborted, 'helper'),
+    },
     // A key with no scope sets goals only for an agent that opts into A2A (COR-1904).
-    a2aAgents: ['worker'],
+    a2aAgents: ['worker', 'helper'],
     generate: hangUntilAborted,
     validators: [createCheckValidator()],
   });
@@ -200,7 +203,44 @@ describe('each goal operation, as the owner', () => {
     expect((listed.result!['goals'] as Array<Record<string, unknown>>)[0]).toMatchObject(named);
   });
 
-  it('reads and lists it, and leaves its prompt and instructions out of every view', async () => {
+  it('returns the prompt and validator to the owner of a goal and to no one else (COR-2425)', async () => {
+    const opened = await serve();
+    const gAlice = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
+
+    const own = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, 'alice-key');
+    expect(own.result).toMatchObject({
+      prompt: SECRET_PROMPT,
+      validator: CHECK,
+      identity: NEW_GOAL.identity,
+    });
+    // The instructions stay out of every view, the owner's included.
+    expect(JSON.stringify(own)).not.toContain('INSTRUCTIONS-SENTINEL-5e0c');
+
+    // Every other caller that may read the goal reads the view as it was: no prompt, no feedback.
+    for (const key of ['goals-reader-key', 'operator-key']) {
+      const read = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, key);
+      expect(read.result, key).toMatchObject({ goalRunId: gAlice, validator: CHECK });
+      expect(read.result, key).not.toHaveProperty('prompt');
+      expect(JSON.stringify(read), key).not.toContain(SECRET_PROMPT);
+      for (const attempt of read.result!['attempts'] as Array<Record<string, unknown>>) {
+        expect(attempt, key).not.toHaveProperty('feedback');
+      }
+    }
+    // A principal with no claim on the goal reads nothing at all.
+    const stranger = await rpc(
+      opened.handler,
+      'bureau.goals.get',
+      { goalRunId: gAlice },
+      'bob-key',
+    );
+    expect(status(stranger)).toBe(404);
+    expect(JSON.stringify(stranger)).not.toContain(SECRET_PROMPT);
+    // A list never carries it, for its owner either.
+    const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'alice-key');
+    expect(JSON.stringify(listed)).not.toContain(SECRET_PROMPT);
+  });
+
+  it('reads and lists it, and leaves its prompt and instructions out of every other view', async () => {
     const opened = await serve();
     const gAlice = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
 
@@ -217,8 +257,8 @@ describe('each goal operation, as the owner', () => {
       'alice-key',
     );
     expect(filtered.result!['goals']).toEqual([]);
+    expect(JSON.stringify(listed)).not.toContain(SECRET_PROMPT);
     for (const body of [read, listed]) {
-      expect(JSON.stringify(body)).not.toContain(SECRET_PROMPT);
       expect(JSON.stringify(body)).not.toContain('INSTRUCTIONS-SENTINEL-5e0c');
     }
   });
@@ -408,8 +448,37 @@ describe('bureau.goals.update', () => {
     expect(stored?.bounds.maximumAttempts).toBe(5);
     expect(stored?.attempts).toHaveLength(1);
     const read = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, 'alice-key');
-    expect(read.result).toMatchObject({ bounds: { maximumAttempts: 5 } });
-    expect(JSON.stringify(read)).not.toContain(NEW_PROMPT);
+    // The owner reads the edited prompt back, for the edit form; the receipt never carries it.
+    expect(read.result).toMatchObject({ bounds: { maximumAttempts: 5 }, prompt: NEW_PROMPT });
+    expect(JSON.stringify(updated)).not.toContain(NEW_PROMPT);
+  });
+
+  it('changes the agent of a goal whose attempt is in flight, which keeps the agent it ran as (COR-2425)', async () => {
+    const opened = await serve();
+    const gAlice = await runningGoalOfAlice(opened);
+    const before = await opened.bureau.goals.get(gAlice);
+    expect(before?.attempts[0]?.agentName).toBeUndefined();
+
+    const changed = await updateAtCurrentRevision(opened, 'alice-key', gAlice, {
+      agentName: 'helper',
+    });
+
+    expect(changed.error).toBeUndefined();
+    expect(changed.result).toMatchObject({ goalRunId: gAlice, outcome: 'updated' });
+    const stored = await opened.bureau.goals.get(gAlice);
+    expect(stored?.objective.agentName).toBe('helper');
+    // The attempt in flight was opened as `worker`, and its record says so: every ownership, fence
+    // and session check reads that, and the run is still the goal's.
+    expect(stored?.attempts[0]).toMatchObject({ agentName: 'worker', status: 'running' });
+    const read = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, 'alice-key');
+    expect(read.result).toMatchObject({ agentName: 'helper', status: 'running' });
+
+    // An agent the catalog lacks is not found; the goal keeps the one it has.
+    const missing = await updateAtCurrentRevision(opened, 'alice-key', gAlice, {
+      agentName: 'nobody',
+    });
+    expect(status(missing)).toBe(404);
+    expect(await opened.bureau.goals.get(gAlice)).toHaveProperty('objective.agentName', 'helper');
   });
 
   it('answers StaleRevision for another revision, writing nothing', async () => {

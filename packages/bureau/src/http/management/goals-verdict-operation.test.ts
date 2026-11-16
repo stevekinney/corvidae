@@ -161,15 +161,27 @@ describe('the owner reads a verdict', () => {
     });
   });
 
-  it('keeps the feedback and evidence out of the goal’s own view', async () => {
+  it('keeps the evidence out of the goal’s own view, and the feedback out of every view but the owner’s', async () => {
     const opened = await serve();
     const goalRunId = await create(opened, 'alice-key');
     await ended(opened, goalRunId);
 
     const view = await rpc(opened.handler, 'bureau.goals.get', { goalRunId }, 'alice-key');
-
-    expect(JSON.stringify(view)).not.toContain(FEEDBACK);
     expect(JSON.stringify(view)).not.toContain(EVIDENCE);
+    // The owner's `get` carries each attempt's feedback (COR-2425), for the goal's page.
+    expect(view.result).toMatchObject({
+      attempts: [{ attemptIndex: 0, feedback: FEEDBACK }],
+    });
+
+    // Neither a holder of every scope nor anyone else reads it: only the owner does.
+    for (const key of ['operator-key', 'goals-reader-key']) {
+      const other = await rpc(opened.handler, 'bureau.goals.get', { goalRunId }, key);
+      expect(other.error, key).toBeUndefined();
+      expect(JSON.stringify(other), key).not.toContain(FEEDBACK);
+      expect(JSON.stringify(other), key).not.toContain(EVIDENCE);
+    }
+    const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'alice-key');
+    expect(JSON.stringify(listed)).not.toContain(FEEDBACK);
   });
 });
 

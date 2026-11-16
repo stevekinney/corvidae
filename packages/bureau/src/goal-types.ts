@@ -340,16 +340,19 @@ export interface BureauGoalUpdateRequest<TName extends string = string> {
    */
   readonly expectedRevision: number;
   /**
-   * The prompt an attempt opened from now on is given. Under the `continue` conversation policy a
-   * retry's turn is the validator's feedback when it has some, so the prompt reaches a retry only
-   * when the feedback is absent; under `fork-from-baseline` it leads every retry's turn.
+   * The prompt an attempt opened from now on is given. Under the `continue` conversation policy the
+   * first retry opened after the change is turned with this prompt and then the validator's
+   * feedback, and every later retry is the feedback alone, as the transcript then holds the prompt;
+   * under `fork-from-baseline` it leads every retry's turn.
    */
   readonly prompt?: string | undefined;
   /**
-   * The catalog agent that runs the goal's attempts. Accepted only when it names the agent the goal
-   * already has, so a caller may send every field it shows; another agent is `agent-fixed`. A goal's
-   * sessions and its attempts' runs belong to the agent they started with, and its controller
-   * claims the first attempt's run as soon as the goal is created.
+   * The catalog agent that runs the attempts the goal opens from now on. An attempt already opened
+   * keeps the agent it was opened under, which its record carries, and every ownership, fence and
+   * session check reads that agent, never the goal's current one. The agent must be in the catalog
+   * and able to run durably (`agent-not-found`, `agent-not-durable`), and it changes only while an
+   * attempt is in flight (`agent-between-attempts` otherwise): between two attempts the controller
+   * may already have read the agent it is about to claim a run for.
    */
   readonly agentName?: TName | undefined;
   /** The validator each check from now on runs, resolved from `BureauOptions.validators` by exact name and version. */
@@ -378,8 +381,12 @@ export type BureauGoalUpdateRejectionCode =
   | 'terminal'
   /** A cancellation is recorded, so the goal is ending. */
   | 'cancellation-requested'
-  /** The request names an agent other than the goal's, which cannot change. */
-  | 'agent-fixed'
+  /** The request names an agent the catalog does not have. */
+  | 'agent-not-found'
+  /** The request names an agent that cannot run durably, so it cannot run a goal attempt. */
+  | 'agent-not-durable'
+  /** The request names another agent while no attempt is in flight: the next one may already be claimed. */
+  | 'agent-between-attempts'
   /** The goal's last allowed attempt is in flight, so its limit cannot change. */
   | 'attempt-limit-fixed'
   /** The new limit leaves no room for an attempt beyond those already opened. */

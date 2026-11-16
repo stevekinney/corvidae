@@ -92,6 +92,7 @@ import {
   verifyAttemptRun,
 } from './goal-ownership';
 import {
+  attemptAgentName,
   attemptSessionId,
   boundValidationOutcome,
   type DurableGoalAttempt,
@@ -272,7 +273,9 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     if (record === undefined) {
       return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal record is unavailable'));
     }
-    const { agentName } = record.objective;
+    // The agent this attempt runs as: the one its own record carries once it is opened (a start
+    // retried or recovered for an attempt in flight keeps it), the goal's current one before.
+    const agentName = attemptAgentName(record, request.attemptIndex);
     // Inside an engine activity the engine exists, so its absence is a fault of
     // this process, never a verdict on the goal: throwing lets the activity retry.
     const durable = getDurable();

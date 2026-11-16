@@ -14,7 +14,10 @@
  * shares `cancel`'s scope: `bureau.goals:write` changes another owner's goal.
  *
  * What a goal's views leave out: its prompt and instructions (the objective's text, like a task's
- * message), each attempt's validator feedback and evidence, and its audit log. An attempt's
+ * message), each attempt's validator feedback and evidence, and its audit log. The one exception is
+ * `get` for the goal's owner and no one else (COR-2425): it adds the prompt and each attempt's
+ * feedback, so the goal's edit form and page can show them; `list`, `create` and every other
+ * caller's `get` still leave them out. An attempt's
  * feedback and evidence are content, behind their own read (COR-2112): `verdict` serves them, with
  * what judged the attempt, to the goal's owner or to a caller holding `bureau.goals:content`.
  * `bureau.goals:read` does not imply it, and answers as a missing goal does. A view is the
@@ -38,6 +41,7 @@ import type { GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../bureau-types/facade.ts';
 import {
+  isOwnerOfResource,
   mayUseCrossOwnerScope,
   type BureauOwnershipHost,
   ownerOfPrincipal,
@@ -76,6 +80,19 @@ const usageSchema = z.object({
   costUsd: z.number().nullable(),
 });
 
+const attemptViewSchema = z.object({
+  attemptId: z.string(),
+  attemptIndex: z.number().int(),
+  runId: z.string(),
+  /** The context (session) the attempt ran in, which `bureau.contexts.get` reads. */
+  sessionId: z.string(),
+  status: z.enum(['running', 'evaluating', 'passed', 'failed', 'aborted']),
+  startedAt: z.string(),
+  completedAt: z.string().nullable(),
+  finishReason: z.string().nullable(),
+  usage: usageSchema,
+});
+
 const goalViewSchema = z.object({
   goalRunId: z.string(),
   owner: z.string(),
@@ -100,23 +117,48 @@ const goalViewSchema = z.object({
     maximumTotalCostUsd: z.number().nullable(),
   }),
   usage: usageSchema.extend({ attempts: z.number(), durationMs: z.number() }),
+  attempts: z.array(attemptViewSchema),
+});
+
+type GoalView = z.infer<typeof goalViewSchema>;
+
+/**
+ * What `bureau.goals.get` adds to the view for the goal's owner and no one else (COR-2425): the
+ * goal's prompt, and each attempt's validator feedback. A caller that is not the owner (a holder of
+ * `bureau.goals:read` included) reads the same view as before, with neither key present.
+ */
+const goalDetailSchema = goalViewSchema.extend({
+  prompt: z
+    .string()
+    .optional()
+    .describe('The goal’s prompt, as the owner last set it. Present for the goal’s owner only.'),
   attempts: z.array(
-    z.object({
-      attemptId: z.string(),
-      attemptIndex: z.number().int(),
-      runId: z.string(),
-      /** The context (session) the attempt ran in, which `bureau.contexts.get` reads. */
-      sessionId: z.string(),
-      status: z.enum(['running', 'evaluating', 'passed', 'failed', 'aborted']),
-      startedAt: z.string(),
-      completedAt: z.string().nullable(),
-      finishReason: z.string().nullable(),
-      usage: usageSchema,
+    attemptViewSchema.extend({
+      feedback: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'What the validator said was wrong with the attempt, `null` when it said nothing. Present for the goal’s owner only.',
+        ),
     }),
   ),
 });
 
-type GoalView = z.infer<typeof goalViewSchema>;
+type GoalDetail = z.infer<typeof goalDetailSchema>;
+
+/** The view with the owner-only content: the prompt, and each attempt's validator feedback. */
+function detailOf(goal: GoalState): GoalDetail {
+  const view = viewOf(goal);
+  return {
+    ...view,
+    prompt: goal.objective.prompt,
+    attempts: view.attempts.map((attempt, index) => ({
+      ...attempt,
+      feedback: goal.attempts[index]?.feedback ?? null,
+    })),
+  };
+}
 
 function viewOf(goal: GoalState): GoalView {
   const { bounds } = goal;
@@ -249,7 +291,7 @@ const getInput = z.object({
 
 export const goalsGetOperation = defineOperation<
   typeof getInput,
-  typeof goalViewSchema,
+  typeof goalDetailSchema,
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.get',
@@ -257,18 +299,22 @@ export const goalsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one goal',
   description:
-    'Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, and its attempts, and never its prompt or instructions.',
+    'Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt` and each attempt’s validator `feedback`, which an edit form shows; every other caller reads the view without those two keys. It never carries the goal’s instructions.',
   destructive: false,
   tags: ['Goals'],
   inputSchema: getInput,
-  outputSchema: goalViewSchema,
+  outputSchema: goalDetailSchema,
   producibleFaults: ['InvalidParams', 'NotFound'],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ input, host, principal }) =>
-    viewOf(await goalFor(host, principal, input.goalRunId, 'bureau.goals:read')),
+  invoke: async ({ input, host, principal }) => {
+    const goal = await goalFor(host, principal, input.goalRunId, 'bureau.goals:read');
+    return isOwnerOfResource(principal, ownerOrLocal(goal.principal))
+      ? detailOf(goal)
+      : viewOf(goal);
+  },
 });
 
 const verdictInput = z.object({
@@ -767,7 +813,7 @@ const updateInput = z.object({
     .max(256)
     .optional()
     .describe(
-      'The catalog agent that runs the goal’s attempts. Accepted only when it names the agent the goal already has; another agent is a `Conflict`.',
+      'The catalog agent that runs the attempts the goal opens from now on; an attempt already opened keeps the agent it ran as. It must be in the catalog and able to run durably, and it changes only while an attempt is in flight.',
     ),
   validator: z
     .strictObject({ name: z.string().min(1), version: z.string().min(1) })
@@ -794,8 +840,11 @@ const updateOutput = z.object({
 /** The fault a refused update is answered with. */
 function updateRefusal(
   outcome: Extract<BureauGoalUpdateOutcome, { outcome: 'rejected' }>,
+  agentName: string | undefined,
 ): OperationFault {
   switch (outcome.code) {
+    case 'agent-not-found':
+      return resourceNotFound('agent', agentName ?? '');
     case 'invalid-configuration':
     case 'objective-too-large':
       return {
@@ -805,7 +854,7 @@ function updateRefusal(
       };
     case 'terminal':
     case 'cancellation-requested':
-    case 'agent-fixed':
+    case 'agent-between-attempts':
     case 'attempt-limit-fixed':
     case 'attempt-limit-too-low':
       return { code: 'Conflict', message: outcome.reason, data: { reason: outcome.code } };
@@ -824,7 +873,7 @@ export const goalsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Change a goal',
   description:
-    'Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation a retry’s turn is the validator’s feedback when there is some, so a new prompt reaches a retry only when the feedback is absent. `agentName` is accepted only as the goal’s own agent, which cannot change: the goal’s sessions and runs belong to it. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent, a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name is `NotFound`; a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.',
+    'Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation the first retry opened after a prompt change is turned with the new prompt and then the validator’s feedback, and every later retry is the feedback alone, because the transcript then holds the prompt. `agentName` is the agent the attempts opened from now on run as: an attempt already opened keeps the agent it was opened under, which its record carries, and the ownership, fence and session checks read that agent. It changes only while an attempt is in flight, because a controller starting an attempt reads the agent and claims its run before the record says the attempt exists. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent while no attempt is in flight (`agent-between-attempts`), a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name, or the catalog lacks, is `NotFound`; an agent that cannot run durably, a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.',
   destructive: true,
   tags: ['Goals'],
   inputSchema: updateInput,
@@ -897,7 +946,7 @@ export const goalsUpdateOperation = defineOperation<
           },
         } satisfies OperationFault;
       case 'rejected':
-        throw updateRefusal(outcome);
+        throw updateRefusal(outcome, input.agentName);
       default:
         return {
           goalRunId: input.goalRunId,

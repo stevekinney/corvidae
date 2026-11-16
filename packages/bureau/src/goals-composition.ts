@@ -48,6 +48,7 @@ import {
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
 import { recoverGoalsAtBoot } from './goal-recovery';
 import {
+  attemptAgentName,
   goalAttemptRunId,
   type GoalState,
   goalWorkflowId,
@@ -145,7 +146,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       {
         goalRunId: record.goalRunId,
         attemptIndex,
-        agentName: record.objective.agentName,
+        agentName: attemptAgentName(record, attemptIndex),
         principal: record.principal,
       },
       runtimeServices.clock.nowISO(),
@@ -192,12 +193,12 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   // Who owns a goal is what its own record says, so a run that merely carries
   // a marker naming the goal is the goal's only if it was started as the goal's
   // agent and principal. A goal that cannot be read owns nothing.
-  const resolveGoalOwner: GoalOwnerResolver = async (goalRunId) => {
+  const resolveGoalOwner: GoalOwnerResolver = async (goalRunId, attemptIndex) => {
     const record = await store.get(goalRunId);
     return record === undefined
       ? undefined
       : {
-          agentName: record.objective.agentName,
+          agentName: attemptAgentName(record, attemptIndex),
           principal: record.principal,
           maximumAttempts: record.bounds.maximumAttempts,
         };

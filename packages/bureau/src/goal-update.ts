@@ -8,19 +8,23 @@
  *
  * - The prompt is read when an attempt is seated, so an attempt in flight keeps the one it started
  *   with, and the next attempt the goal opens has the new one. Under the `continue` conversation
- *   policy a retry's turn is the validator's feedback when there is some, so the new prompt reaches
- *   a retry only when the feedback is absent.
+ *   policy a retry's turn is the validator's feedback alone, because the transcript holds the
+ *   prompt, so the store records the index of the first attempt the edited prompt belongs to
+ *   (`objective.promptRevisedAtAttempt`) and that one retry is turned with the new prompt and then
+ *   the feedback (`goalAttemptInput`).
  * - The validator is read when a check begins. A check already running finishes with the validator
  *   it began with, and every check recorded keeps the identity it ran against (its validation
  *   carries it). An attempt still running when the validator changes is checked against the new one.
  * - The attempt limit is read when the controller decides whether a failed attempt is retried. The
  *   store allows a change only where that decision reads the same under both limits (see
  *   `evaluateConfigurationUpdate` in `goal-store.ts`).
- * - The agent cannot change at all, and is accepted only as it is. The goal's sessions and every
- *   attempt's run belong to the agent they started with, and each ownership check compares them with
- *   the agent the record names. Not even before the first attempt is recorded: the controller starts
- *   with the goal, and its start reads the agent and claims the first attempt's run before the record
- *   says that attempt exists.
+ * - The agent is the one the attempts opened from now on run as. Each attempt carries the agent it
+ *   was opened under (`DurableGoalAttempt.agentName`, written for every attempt already opened in
+ *   the same write that changes the goal's agent), and the ownership, fence and session checks
+ *   read that agent through `attemptAgentName`, never the goal's current one. It changes only
+ *   while an attempt is in flight: a controller starting an attempt reads the agent and claims the
+ *   attempt's run before the record says the attempt exists, so between attempts an agent could
+ *   change under a start already under way (`agent-between-attempts`).
  *
  * Everything that does not depend on the record as stored now (the validator is registered and
  * supplies what the goal requires, the limit is one the goal rules accept) is checked here, before
@@ -56,6 +60,10 @@ export interface GoalUpdateDependencies {
   readonly store: Pick<GoalStore, 'updateConfiguration'>;
   /** Resolves a new validator, and says what it promises about determinism. */
   readonly catalog: Pick<GoalValidatorCatalog, 'resolve'>;
+  /** `undefined` when the catalog has no agent by this name. */
+  readonly planAgent: (
+    agentName: string,
+  ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   readonly clock: Pick<RuntimeServices['clock'], 'nowISO'>;
 }
 
@@ -71,10 +79,10 @@ const STORE_REFUSALS: Readonly<
     code: 'cancellation-requested',
     reason: 'A cancellation is recorded, so the goal is ending.',
   },
-  'agent-fixed': {
-    code: 'agent-fixed',
+  'agent-between-attempts': {
+    code: 'agent-between-attempts',
     reason:
-      'A goal’s sessions and runs belong to the agent they started with, and its first attempt is claimed when the goal is created, so the agent cannot change.',
+      'No attempt is in flight, and the controller may already have read the agent it is about to claim the next attempt’s run for, so the agent cannot change until an attempt is running.',
   },
   'attempt-limit-fixed': {
     code: 'attempt-limit-fixed',
@@ -112,7 +120,7 @@ function rejected(
  * be written.
  */
 function refusalOf(
-  dependencies: Pick<GoalUpdateDependencies, 'catalog'>,
+  dependencies: Pick<GoalUpdateDependencies, 'catalog' | 'planAgent'>,
   record: GoalState,
   request: BureauGoalUpdateRequest,
 ): Rejection | undefined {
@@ -137,7 +145,21 @@ function refusalOf(
       return rejected('objective-too-large', new GoalObjectiveTooLargeError(bytes).message);
     }
   }
-  // Another agent is refused inside the write (`agent-fixed`), against the record it would replace.
+  // A new agent must be one the catalog has and that can run durably, as `create` requires; whether
+  // an attempt is in flight is decided inside the write (`agent-between-attempts`), against the
+  // record it would replace.
+  if (agentName !== undefined && agentName !== record.objective.agentName) {
+    const plan = dependencies.planAgent(agentName);
+    if (plan === undefined) {
+      return rejected('agent-not-found', `Unknown agent "${agentName}".`);
+    }
+    if (!plan.durable) {
+      return rejected(
+        'agent-not-durable',
+        `Agent "${agentName}" cannot run durably, so it cannot run a goal attempt.`,
+      );
+    }
+  }
   if (
     validator !== undefined &&
     (validator.name !== record.validator.name || validator.version !== record.validator.version)

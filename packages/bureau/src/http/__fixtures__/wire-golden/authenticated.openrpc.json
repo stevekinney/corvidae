@@ -26283,7 +26283,7 @@
       }
     },
     {
-      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, and its attempts, and never its prompt or instructions.",
+      "description": "Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, its `validator`, and its attempts. For the goal’s owner, and no one else (`bureau.goals:read` and `bureau.goals:content` do not widen it), it also carries the goal’s `prompt` and each attempt’s validator `feedback`, which an edit form shows; every other caller reads the view without those two keys. It never carries the goal’s instructions.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -26337,6 +26337,13 @@
                     "type": "integer"
                   },
                   "completedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "feedback": {
+                    "description": "What the validator said was wrong with the attempt, `null` when it said nothing. Present for the goal’s owner only.",
                     "type": [
                       "string",
                       "null"
@@ -26501,6 +26508,10 @@
               "type": "object"
             },
             "owner": {
+              "type": "string"
+            },
+            "prompt": {
+              "description": "The goal’s prompt, as the owner last set it. Present for the goal’s owner only.",
               "type": "string"
             },
             "revision": {

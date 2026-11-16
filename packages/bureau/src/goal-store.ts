@@ -175,8 +175,10 @@ export interface GoalConfigurationPatch {
   /** The prompt an attempt opened from now on is given. */
   readonly prompt?: string | undefined;
   /**
-   * The catalog agent that runs the goal's attempts. Accepted only when it names the agent the goal
-   * already has (`agent-fixed` otherwise), so a caller may send every field it shows.
+   * The catalog agent that runs the attempts the goal opens from now on. The attempts already
+   * opened are stamped with the agent they ran under in the same write, so no ownership, fence or
+   * session check ever reads one of them as the new agent. Refused while no attempt is in flight
+   * (`agent-between-attempts`).
    */
   readonly agentName?: string | undefined;
   /** The validator each check from now on runs. */
@@ -192,13 +194,13 @@ export type GoalConfigurationRejection =
   /** A cancellation is recorded: the goal is ending. */
   | 'cancellation-requested'
   /**
-   * The patch names another agent. A goal's sessions and its attempts' runs are bound to the agent
-   * they started with, and every ownership check compares them with the agent the record names, so
-   * a later agent would disown them. That holds even before the first attempt is recorded: the
-   * controller starts with the goal, and its start reads the agent and claims the first attempt's
-   * run before the record says the attempt exists.
+   * The patch names another agent while no attempt is in flight. A controller starting an attempt
+   * reads the goal's agent and claims the attempt's run under it before the record says the attempt
+   * exists, and that window is open exactly when no attempt is in flight (`active` is clear): a
+   * goal that has not opened its first attempt, or is between two. An agent that changed inside it
+   * would leave a run claimed under the old agent for an attempt recorded under the new one.
    */
-  | 'agent-fixed'
+  | 'agent-between-attempts'
   /**
    * The patch changes the attempt limit of a goal whose last allowed attempt is in flight. The
    * controller decides that attempt's ending against the limit it read, so a change now could
@@ -677,17 +679,36 @@ function evaluateConfigurationUpdate(
   ) {
     return done({ status: 'unchanged', record: current });
   }
-  if (agentName !== objective.agentName) return refuse('agent-fixed');
+  const agentChanged = agentName !== objective.agentName;
+  if (agentChanged && current.active === undefined) return refuse('agent-between-attempts');
   const opened = current.attempts.length;
   if (maximumAttempts !== bounds.maximumAttempts) {
     if (opened >= bounds.maximumAttempts) return refuse('attempt-limit-fixed');
     if (maximumAttempts <= opened) return refuse('attempt-limit-too-low');
   }
+  // The attempts already opened keep the agent they ran under, written into their own records in
+  // this same write: a record that carries no agent reads as the goal's one agent, which is about
+  // to change. A record that already carries one keeps it.
+  const attempts = agentChanged
+    ? current.attempts.map((attempt) =>
+        attempt.agentName === undefined ? { ...attempt, agentName: objective.agentName } : attempt,
+      )
+    : current.attempts;
+  // The next attempt that opens is the first to be given the edited prompt, which a retry under the
+  // `continue` policy reads (`goalAttemptInput`). The attempts opened so far keep the prompt they
+  // were given, and the one in flight keeps it too.
+  const promptEdited = prompt !== objective.prompt;
   const next: GoalState = {
     ...current,
-    objective: { ...objective, prompt, agentName },
+    objective: {
+      ...objective,
+      prompt,
+      agentName,
+      ...(promptEdited && opened > 0 ? { promptRevisedAtAttempt: opened } : {}),
+    },
     validator: { name: nextValidator.name, version: nextValidator.version },
     bounds: { ...bounds, maximumAttempts },
+    attempts,
     updatedAt: now,
   };
   return isGoalState(next) ? { outcome: 'write', next } : refuse('invalid-record');
@@ -719,7 +740,19 @@ function applyAttempt(
     return 'decision-already-recorded';
   }
   const attempts = [...current.attempts];
-  attempts[index] = patch;
+  // The agent an attempt runs as is the store's to record, not the controller's: a controller's
+  // patch carries none, and an attempt replaced must keep the agent it was opened under. A goal whose
+  // agent never changed carries none anywhere. Once one attempt carries an agent (the change
+  // stamps them all), an attempt that opens is stamped with the goal's agent as it stands in this
+  // same write, and an update that changes the agent only lands while an attempt is in flight, so
+  // no start is between reading the agent and opening its attempt.
+  const agentName =
+    existing?.agentName ??
+    patch.agentName ??
+    (current.attempts.some((attempt) => attempt.agentName !== undefined)
+      ? current.objective.agentName
+      : undefined);
+  attempts[index] = agentName === undefined ? patch : { ...patch, agentName };
   return attempts;
 }
 

@@ -140,10 +140,24 @@ export const goalDecisionId = (attemptId: string): string => `${attemptId}:decis
 // ---------------------------------------------------------------------------
 
 export interface GoalObjective {
-  /** The agent is resolved by NAME from the Bureau catalog on every use. */
+  /**
+   * The agent is resolved by NAME from the Bureau catalog on every use. It is the agent the goal's
+   * next attempt runs; an attempt already opened keeps the one it was opened under
+   * ({@link DurableGoalAttempt.agentName}, read through {@link attemptAgentName}).
+   */
   readonly agentName: string;
   readonly prompt: string;
   readonly instructions?: string | undefined;
+  /**
+   * COR-2425 — the index of the first attempt that is given the prompt as edited: the number of
+   * attempts the goal had opened when its prompt last changed, so the attempts before it, whose
+   * transcript holds the earlier prompt, are never read as having been given this one. Under the
+   * `continue` conversation policy the retry at this index is turned with the prompt and then the
+   * validator's feedback, where every other retry is the feedback alone. Absent when the prompt
+   * has not changed after an attempt opened, and on every record written before it, which reads as
+   * a prompt that has not changed.
+   */
+  readonly promptRevisedAtAttempt?: number | undefined;
 }
 
 export interface DurableGoalAttemptUsage {
@@ -185,6 +199,13 @@ export interface DurableGoalAttempt {
   readonly runId: string;
   /** The goal session the attempt's run is recorded in (`goalSessionId`): the trunk, or the fork or fresh session of a retry. */
   readonly sessionId: string;
+  /**
+   * COR-2425 — the agent the attempt's run was started as. Recorded only on a goal whose agent has
+   * changed: the change stamps every attempt already opened with the agent it ran under, and every
+   * attempt opened afterwards carries its own. Absent on a goal whose agent never changed, and on
+   * every record written before it, where {@link attemptAgentName} reads the goal's one agent.
+   */
+  readonly agentName?: string | undefined;
   readonly startedAt: string;
   readonly completedAt?: string | undefined;
   readonly finishReason?: FinishReason | undefined;
@@ -192,6 +213,19 @@ export interface DurableGoalAttempt {
   readonly feedback?: string | undefined;
   readonly usage: DurableGoalAttemptUsage;
   readonly status: DurableGoalAttemptStatus;
+}
+
+/**
+ * The agent attempt `attemptIndex` runs, or ran, as. An attempt that carries its agent says it; one
+ * that does not (the goal's agent never changed, or the record was written before attempts carried
+ * one) and an attempt not yet opened run the goal's agent. A change of agent stamps the attempts
+ * already opened in the same write, so a stamped goal never reads an old attempt as the new agent.
+ */
+export function attemptAgentName(
+  record: Pick<GoalState, 'objective' | 'attempts'>,
+  attemptIndex: number,
+): string {
+  return record.attempts[attemptIndex]?.agentName ?? record.objective.agentName;
 }
 
 /** What is in flight right now; cleared when its result commits. */
@@ -786,6 +820,7 @@ const ATTEMPT_KEYS = [
   'attemptIndex',
   'runId',
   'sessionId',
+  'agentName',
   'startedAt',
   'completedAt',
   'finishReason',
@@ -802,6 +837,7 @@ export function isDurableGoalAttempt(value: unknown): value is DurableGoalAttemp
     isNonNegativeInteger(value['attemptIndex']) &&
     isNonEmptyString(value['runId']) &&
     isNonEmptyString(value['sessionId']) &&
+    (value['agentName'] === undefined || isNonEmptyString(value['agentName'])) &&
     isTimestamp(value['startedAt']) &&
     isOptionalTimestamp(value['completedAt']) &&
     (value['finishReason'] === undefined || hasKey(FINISH_REASONS, value['finishReason'])) &&
@@ -889,10 +925,12 @@ function isIdentity(value: unknown): value is GoalIdentity {
 function isObjective(value: unknown): value is GoalObjective {
   return (
     isPlainRecord(value) &&
-    hasExactKeys(value, ['agentName', 'prompt', 'instructions']) &&
+    hasExactKeys(value, ['agentName', 'prompt', 'instructions', 'promptRevisedAtAttempt']) &&
     isNonEmptyString(value['agentName']) &&
     isString(value['prompt']) &&
     isOptionalString(value['instructions']) &&
+    (value['promptRevisedAtAttempt'] === undefined ||
+      isNonNegativeInteger(value['promptRevisedAtAttempt'])) &&
     objectiveByteLength(value as unknown as GoalObjective) <= GOAL_OBJECTIVE_MAXIMUM_BYTES
   );
 }
