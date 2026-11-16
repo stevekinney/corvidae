@@ -332,7 +332,8 @@ export interface PluginTriggerContext<TConfiguration = unknown> {
    * Aborts when the host stops the trigger, and when `start` threw: a `fire` after that resolves
    * `skipped`. For a plugin that declares a secret, the host gives `start` a context of its own
    * each time it runs it: its signal aborts when a secret is removed, and the next `start`
-   * receives a new one.
+   * receives a new one. For `receive`, it aborts when the request does or the host closes (see
+   * {@link PluginTrigger.receive}).
    */
   readonly signal: AbortSignal;
 }
@@ -359,12 +360,38 @@ export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
    * the listener of every file that uses the kind, and it is recorded on each run the kind starts.
    */
   readonly version?: string;
-  /** What the trigger listens for. */
+  /** What the trigger listens for or receives. */
   readonly description: string;
   /** The schema an instance's configuration is parsed with. */
   readonly configuration: TSchema;
-  /** Starts listening; the function it resolves with stops it. */
-  start(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;
+  /**
+   * Starts listening; the function it resolves with stops it. A kind defines `start`, `receive` or
+   * both: one with neither, or with a member that is present and not a function, is refused when its plugin loads (the plugin is skipped with `setup-failed`). A kind with only `receive` has no
+   * listener to run, and its files report the listener state `ready`.
+   */
+  start?(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;
+  /**
+   * Answers one inbound request for a workflow file of this kind, called by the host's
+   * `receiveTrigger(id, request)` (the `POST /triggers/<workflow-id>` route calls it). It receives
+   * the request as the host was given it, unread, and the same context `start` receives:
+   * `configuration` is the file's, parsed, `workflowId` its identifier, and `storage` the same
+   * state `start` sees. It authenticates the sender itself (see `verifyHmacSignature`) and
+   * resolves the `Response` the sender is answered with; the host returns that object as it is. It
+   * calls `context.fire` for each run it starts, with `options.idempotencyKey` for a delivery that
+   * may be repeated: the host reads no header and applies no key of its own. There is no timestamp
+   * window, so a captured signed delivery verifies again however late it is sent, and the key is
+   * the only replay protection: take it from data the signature covers (a field of the verified
+   * body, or a digest of its bytes), never from a header the signature does not cover.
+   *
+   * `context.signal` aborts when the request does and when the host closes, and for nothing else:
+   * a pause, an edit, a removal or a new version of the kind does not abort a call in flight. A
+   * `fire` after it aborted, or after the host closed, resolves `skipped` and starts nothing. A
+   * `fire` for a paused file resolves `skipped: 'paused'`, so `receive` still answers the sender.
+   * A rejection, including one for a secret the plugin declares and has not been given
+   * (`PluginNeedsSetupError`), goes back to the caller as it is, changes nothing about the file's
+   * listener, and is reported nowhere: the host's route answers a status with no text.
+   */
+  receive?(request: Request, context: PluginTriggerContext<z.output<TSchema>>): Promise<Response>;
 }
 
 /** What a hook action kind's `run` receives. */

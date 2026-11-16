@@ -2867,7 +2867,162 @@ describe('the listener state of a contributed trigger (COR-2165 outcome matrix)'
     },
   ];
 
-  for (const { row, run } of [...rows, ...retryRows, ...inFlightRows]) {
+  /**
+   * COR-2168 — a kind without a `start`, which only receives. Titled `M<row>` by its row of
+   * `tmp/chef/briefs/COR-2168-matrix.md`; the rows that call `receiveTrigger` are in
+   * `workflow-trigger-receive.test.ts`.
+   */
+  const receiveOnly = (kind: PluginTrigger): PluginTrigger => {
+    const { start: _start, ...rest } = kind;
+    return { ...rest, receive: async () => new Response(null, { status: 204 }) };
+  };
+
+  /** A rig over the kind that only receives, with its secret `x-token` set or missing. */
+  async function gatedReceiveRig(initially: 'missing' | 'set') {
+    const secrets = secretStore();
+    if (initially === 'set') secrets.save();
+    const secretGate = await createPluginSecretGate('x', [SECRET_KEY], secrets.reader);
+    cleanups.push(secretGate.watch());
+    const rig = listenerRig(
+      (trigger) =>
+        gatedContributions(
+          { triggers: [receiveOnly(trigger)] },
+          secretGate,
+          (name) => `x:${name}`,
+          () => undefined,
+        ).triggers[0]!,
+    );
+    return { rig, secrets };
+  }
+
+  const receiveRows: readonly ListenerRow[] = [
+    {
+      row: 'M5: a receive-only file is ready from none: no start, no timer, no problem, and a fire noted by id sets lastFiredAt',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.calls).toEqual([]);
+        await rig.passTime(3_000);
+        rig.supervisor.noteFired('a', KIND);
+        expect(rig.status()).toEqual(status('ready', ORIGIN, null, at(3)));
+        // The kind named is the entry's: another kind's fire writes nothing.
+        rig.supervisor.noteFired('a', 'x:other');
+        rig.supervisor.noteFired('b', KIND);
+        expect(rig.status()).toEqual(status('ready', ORIGIN, null, at(3)));
+      },
+    },
+    {
+      row: 'M6: a paused receive-only file is stopped, with nothing started',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'M7: a receive-only file is ready, never waiting-for-secret, with its secret missing, and a save or a removal changes nothing',
+      run: async () => {
+        const { rig, secrets } = await gatedReceiveRig('missing');
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        await rig.passTime(2_000);
+        secrets.save();
+        await quietFor(10);
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        secrets.remove();
+        await quietFor(10);
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'M8: a receive-only file whose configuration the kind refuses is failed configuration-refused with no timer, and ready once an edit passes',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: { account: 5 } });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.calls).toEqual(['report x/a']);
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('ready', at(1)));
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'M8: a receive-only file whose storage cannot be made is failed start-failed with the backoff, and a problem',
+      run: async () => {
+        const rig = listenerRig();
+        const kind: VersionedCatalogEntry<PluginTrigger> = {
+          kind: 'trigger',
+          name: 'Bad_Plugin:watch',
+          version: '1',
+          id: 'Bad_Plugin:watch@1',
+          source: { name: 'Bad_Plugin', version: '1' },
+          value: receiveOnly(baseKind(rig)),
+        };
+        await rig.supervisor.reconcile(
+          new Map([['a', { kind, trigger: { kind: kind.name } }]]),
+          new Set(),
+        );
+        expect(rig.supervisor.listener('a', 'Bad_Plugin:watch')).toEqual(
+          status('failed', ORIGIN, 'start-failed', null, at(1)),
+        );
+        expect(rig.calls).toEqual(['report Bad_Plugin/a']);
+        expect(rig.pendingTimers()).toHaveLength(1);
+      },
+    },
+    {
+      row: 'M9: a receive-only file follows main’s transitions: an edit that stays ready keeps since, a pause is stopped, an unpause is ready, a deletion drops the status',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: { account: 'one' } });
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { account: 'two', paused: true } });
+        expect(rig.status()).toEqual(status('stopped', at(2)));
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(rig.status()).toEqual(status('ready', at(3)));
+        await rig.reconcile({});
+        expect(rig.status()).toBeUndefined();
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'M11: retry on a ready receive-only listener is a no-op that answers it',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: {} });
+        await rig.passTime(5_000);
+        expect(await rig.retry()).toEqual(status('ready', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.pendingTimers()).toEqual([]);
+      },
+    },
+    {
+      row: 'M13: close retires a ready receive-only entry with nothing to stop and no timer, and a fire noted after it writes nothing',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: {} });
+        await rig.supervisor.close();
+        expect(rig.pendingTimers()).toEqual([]);
+        rig.supervisor.noteFired('a', KIND);
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        expect(rig.stops).toEqual([]);
+      },
+    },
+  ];
+
+  for (const { row, run } of [...rows, ...retryRows, ...inFlightRows, ...receiveRows]) {
     it(row, async () => {
       rigsOfTheRow.length = 0;
       await run();

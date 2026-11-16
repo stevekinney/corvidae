@@ -1,9 +1,9 @@
 import type { z } from 'zod';
 
-import type { DefinitionSchemaDirection } from '../core/types/definition-schema-to-json.ts';
 import { compareStrings } from './json-schema-utilities.ts';
 import type { ErasedOperation } from './operation-catalog.ts';
 import { externalApiPath, JSON_RPC_PATH } from './route-model.ts';
+import type { ZodJsonSchemaDirection } from './zod-json-schema.ts';
 
 const JSON_RPC_VERSION = '2.0';
 const EVENT_DELIVER_METHOD = 'weft.events.deliver';
@@ -122,7 +122,7 @@ export function buildWebSocketMessages(
   operation: ErasedOperation,
   definitionSchemaToJsonSchema: (
     schema: z.ZodType,
-    direction?: DefinitionSchemaDirection,
+    direction?: ZodJsonSchemaDirection,
   ) => Record<string, unknown>,
 ): Record<string, Record<string, unknown>> {
   const names = webSocketMessageNames(operation);
@@ -194,7 +194,7 @@ export function buildSseMessages(
   operation: ErasedOperation,
   definitionSchemaToJsonSchema: (
     schema: z.ZodType,
-    direction?: DefinitionSchemaDirection,
+    direction?: ZodJsonSchemaDirection,
   ) => Record<string, unknown>,
 ): Record<string, Record<string, unknown>> {
   const logicalEventSchema = eventJsonSchema(operation, definitionSchemaToJsonSchema);
@@ -486,7 +486,7 @@ function eventJsonSchema(
   operation: ErasedOperation,
   definitionSchemaToJsonSchema: (
     schema: z.ZodType,
-    direction?: DefinitionSchemaDirection,
+    direction?: ZodJsonSchemaDirection,
   ) => Record<string, unknown>,
 ): Record<string, unknown> {
   if (operation.eventSchema === undefined) return { type: 'object' };

@@ -1,9 +1,8 @@
 import type { FaultCode } from '../core/fault-code.ts';
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
 import { compareStrings, normalizeJsonObject } from './json-schema-utilities.ts';
 import type { ErasedOperation, OperationKind, TransportAvailability } from './operation-catalog.ts';
-import type { ParamSource, ResponseShape } from './rest-binding.ts';
-import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
+import type { ParamSource, ResponseShape, RestBindingDescription } from './rest-binding.ts';
+import { zodToJsonSchema } from './zod-json-schema.ts';
 
 /**
  * One operation's REST route as the catalog records it: the HTTP method and
@@ -147,34 +146,25 @@ export type CatalogSnapshot = {
 };
 
 /**
- * Capture the operation surface as a {@link CatalogSnapshot}, defaulting to
- * every operation this build registers.
+ * Capture a set of operations, and the REST routes that serve them, as a
+ * {@link CatalogSnapshot}.
  *
- * The result is deterministic — operations sorted by name, schemas normalised
- * — so two snapshots of the same build are byte-identical and a real surface
+ * The result is deterministic: operations sorted by name, schemas normalised,
+ * so two snapshots of the same surface are byte-identical and a real surface
  * change is the only thing that shows up in a diff. That is what makes it safe
  * to commit one and regenerate clients from it.
  *
- * Pass `sourceOperations` to snapshot a deliberately narrowed set, which is
- * mainly useful in tests that assert on one operation's recorded shape.
- *
- * @example
- * ```ts
- * import { createCatalogSnapshot } from '@lostgradient/weft';
- *
- * const snapshot = createCatalogSnapshot();
- * const destructive = snapshot.operations
- *   .filter((operation) => operation.destructive)
- *   .map((operation) => operation.name);
- *
- * console.log('guard these behind confirmation:', destructive);
- * ```
+ * A server supplies its own `operations` and `restBindings`. Weft's
+ * `createCatalogSnapshot` supplies every operation and route this build
+ * registers.
  */
-export function createCatalogSnapshot(
-  sourceOperations: ReadonlyArray<ErasedOperation> = createLiveOperationRegistry().list(),
-): CatalogSnapshot {
+export function snapshotOperationCatalog(options: {
+  readonly operations: ReadonlyArray<ErasedOperation>;
+  readonly restBindings: ReadonlyArray<RestBindingDescription>;
+}): CatalogSnapshot {
+  const sourceOperations = options.operations;
   const restBindings = new Map(
-    createLiveRestBindings().map((binding) => [binding.operationName, binding] as const),
+    options.restBindings.map((binding) => [binding.operationName, binding] as const),
   );
   const operations = sourceOperations
     .map((operation) =>
@@ -221,7 +211,7 @@ export function stringifyCatalogSnapshot(snapshot: CatalogSnapshot): string {
 
 function operationToSnapshot(
   operation: ErasedOperation,
-  restBinding: ReturnType<typeof createLiveRestBindings>[number] | undefined,
+  restBinding: RestBindingDescription | undefined,
 ): CatalogOperationSnapshot {
   const eventSchema = operation.eventSchema;
   return {
@@ -237,13 +227,11 @@ function operationToSnapshot(
       : { parameterizedAccess: parameterizedAccessToSnapshot(operation.parameterizedAccess) }),
     transports: { ...operation.transports },
     producibleFaults: [...(operation.producibleFaults ?? [])].toSorted(compareStrings),
-    inputSchema: normalizeJsonObject(definitionSchemaToJsonSchema(operation.inputSchema, 'input')),
-    outputSchema: normalizeJsonObject(
-      definitionSchemaToJsonSchema(operation.outputSchema, 'output'),
-    ),
+    inputSchema: normalizeJsonObject(zodToJsonSchema(operation.inputSchema, 'input')),
+    outputSchema: normalizeJsonObject(zodToJsonSchema(operation.outputSchema, 'output')),
     ...(eventSchema === undefined
       ? {}
-      : { eventSchema: normalizeJsonObject(definitionSchemaToJsonSchema(eventSchema, 'output')) }),
+      : { eventSchema: normalizeJsonObject(zodToJsonSchema(eventSchema, 'output')) }),
     ...(restBinding === undefined
       ? {}
       : {

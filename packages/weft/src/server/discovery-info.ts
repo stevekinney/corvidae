@@ -29,6 +29,16 @@
  * ```
  */
 export type DiscoveryInfo = {
+  /**
+   * Document title rendered in each document's `info.title`. Absent, the document carries the
+   * title of the server that generates it (Weft's own server uses `'Weft Workflow Engine'`).
+   */
+  title?: string;
+  /**
+   * Document version rendered in each document's `info.version`. Absent, the document carries the
+   * version of the server that generates it (Weft's own server uses the Weft package version).
+   */
+  version?: string;
   /** Long-form description rendered in each document's `info.description`. */
   description?: string;
   /** Contact details rendered in each document's `info.contact`. */
@@ -51,6 +61,22 @@ export type DiscoveryInfo = {
    */
   externalDocs?: { description?: string; url: string };
 };
+
+/**
+ * The `title` and `version` a document's `info` starts from: the generator's explicit option,
+ * else `info.title` and `info.version`, else a neutral `'API'` and `'0.0.0'`. A server that
+ * has its own name and version supplies them through `DiscoveryInfo`, so the generators name
+ * no server in particular.
+ */
+export function resolveDocumentTitleAndVersion(
+  explicit: { readonly title?: string | undefined; readonly version?: string | undefined },
+  info: DiscoveryInfo | undefined,
+): { title: string; version: string } {
+  return {
+    title: explicit.title ?? info?.title ?? 'API',
+    version: explicit.version ?? info?.version ?? '0.0.0',
+  };
+}
 
 /**
  * Merge `DiscoveryInfo` fields into a document's `info` object (or top-level

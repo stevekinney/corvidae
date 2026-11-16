@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import type { PluginTriggerContext } from '@lostgradient/interborough-plugin';
 import { decode, encode, KEYS, Engine, workflow } from '@lostgradient/weft';
 import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -999,6 +1000,71 @@ describe('a contributed trigger that fires while the Bureau closes (COR-1874)', 
     expect(ticker.stopped).toBe(1);
     const runs = await engine.list({ type: 'pipeline', limit: 10 });
     expect(runs.total).toBe(1);
+  });
+});
+
+describe('receiving through a contributed trigger kind (COR-2168 AC2)', () => {
+  /** A catalog with the receive-only kind `x:hook`, which records what it was called with. */
+  function receiving(seen: Array<{ request: Request; context: PluginTriggerContext }>) {
+    const catalog = contributionCatalog({ activityVersion: '1' });
+    catalog.register({
+      kind: 'trigger',
+      name: 'x:hook',
+      version: '1',
+      value: {
+        name: 'hook',
+        description: 'Receives a delivery.',
+        configuration: z.object({ channel: z.string() }).strict(),
+        receive: async (request: Request, context: PluginTriggerContext) => {
+          seen.push({ request, context });
+          await context.fire({ delivered: true }, { idempotencyKey: 'delivery-1' });
+          return new Response('accepted', { status: 202, headers: { 'x-answer': 'yes' } });
+        },
+      },
+      source: { name: 'x', version: '1' },
+    });
+    return createWorkflowContributions(catalog);
+  }
+
+  it('answers 404 for an unknown or invalid workflow and 405 for a trigger without receive, and otherwise returns the trigger’s Response with the file’s bindings', async () => {
+    const w = await world();
+    const seen: Array<{ request: Request; context: PluginTriggerContext }> = [];
+    await w.put('hook', {
+      trigger: { kind: 'x:hook', channel: 'alerts' },
+      steps: [{ kind: 'activity', handler: 'x:y', input: 'hello' }],
+    });
+    await w.put('scheduled', parked('scheduled', 'a'));
+    const { engine, runtime } = await w.boot({ contributions: receiving(seen) });
+    await runtime.workflows.refresh();
+    const request = new Request('https://hooks.example.test/triggers/hook', {
+      method: 'POST',
+      body: '{"ok":true}',
+    });
+
+    for (const [id, status] of [
+      ['ghost', 404],
+      ['scheduled', 405],
+    ] as const) {
+      const refusal = await runtime.workflows.receiveTrigger(id, request);
+      expect(refusal.status).toBe(status);
+      expect(refusal.body).toBeNull();
+    }
+    expect(seen).toEqual([]);
+
+    const answer = await runtime.workflows.receiveTrigger('hook', request);
+    expect(answer.status).toBe(202);
+    expect(answer.headers.get('x-answer')).toBe('yes');
+    expect(await answer.text()).toBe('accepted');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.request).toBe(request);
+    expect(seen[0]?.context.workflowId).toBe('hook');
+    expect(seen[0]?.context.configuration).toEqual({ channel: 'alerts' });
+    // Its fire started a run of the file it was received for.
+    const runs = await engine.list({ type: 'hook', limit: 10 });
+    expect(runs.total).toBe(1);
+    expect(runtime.workflows.list().find((entry) => entry.id === 'hook')?.listener).toMatchObject({
+      state: 'ready',
+    });
   });
 });
 

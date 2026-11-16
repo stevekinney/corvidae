@@ -69,7 +69,11 @@ import {
   type VersionedCatalog,
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
-import { eventPayloadContent, isEventPayload } from './plugin-event-payload';
+import {
+  EVENT_PAYLOAD_NODE_BUDGET,
+  isEventPayload,
+  judgeEventPayload,
+} from './plugin-event-payload';
 import { lateHostApi, type PluginRecord } from './plugin-registry';
 import {
   createPluginSecretGate,
@@ -77,6 +81,7 @@ import {
   type PluginSecretGate,
 } from './plugin-secret-gate';
 import { pluginTool } from './plugin-tools';
+import { assertTriggerKindShape } from '../trigger-kind-shape';
 import type {
   BureauPluginEntry,
   BureauPluginSettings,
@@ -424,7 +429,12 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
+  for (const kind of contributions.triggers ?? []) {
+    // A malformed kind is the plugin's `setup-failed`, not a listener that retries forever, a 503
+    // for every request, or an error that stops the Bureau (COR-2168).
+    assertTriggerKindShape(formatToolId({ namespace: plugin, name: kind.name }), kind);
+    contribute('trigger', kind.name);
+  }
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
@@ -1239,13 +1249,21 @@ function eventPayloadProblems(
   redact: (message: string) => string,
 ): PluginProblem[] {
   try {
-    return (contributions.events ?? []).flatMap((declaration) =>
-      eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
+    return (contributions.events ?? []).flatMap((declaration) => {
+      const { fields, budgetExhausted } = judgeEventPayload(declaration.payload);
+      return fields.map((field): PluginProblem => ({
         code: 'event-payload-content',
         event: declaration.name,
         field,
-      })),
-    );
+        ...(budgetExhausted
+          ? {
+              message: redact(
+                `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
+              ),
+            }
+          : {}),
+      }));
+    });
   } catch (error) {
     // A schema that throws when read (a getter that fails) skips its plugin; it never rejects the host.
     return [

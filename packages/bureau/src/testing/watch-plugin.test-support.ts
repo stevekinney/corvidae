@@ -36,8 +36,13 @@ export interface WatchPlugin {
   hold(account: string): () => void;
 }
 
-/** The plugin `x`; with `secret`, it declares {@link WATCH_TOKEN_KEY} and quotes it when it fails. */
-export function watchPlugin(options: { readonly secret?: boolean } = {}): WatchPlugin {
+/**
+ * The plugin `x`; with `secret`, it declares {@link WATCH_TOKEN_KEY} and quotes it when it fails;
+ * with `receive`, it also contributes `x:hook`, a kind with a `receive` and no `start` (COR-2168).
+ */
+export function watchPlugin(
+  options: { readonly secret?: boolean; readonly receive?: boolean } = {},
+): WatchPlugin {
   const contexts: PluginTriggerContext[] = [];
   const failing = new Set<string>();
   const startCounts = new Map<string, number>();
@@ -66,6 +71,16 @@ export function watchPlugin(options: { readonly secret?: boolean } = {}): WatchP
               return () => undefined;
             },
           }),
+          ...(options.receive === true
+            ? [
+                defineTrigger({
+                  name: 'hook',
+                  description: 'Receives a delivery.',
+                  configuration: z.object({ account: z.string().optional() }),
+                  receive: async () => new Response(null, { status: 202 }),
+                }),
+              ]
+            : []),
         ],
       };
     },

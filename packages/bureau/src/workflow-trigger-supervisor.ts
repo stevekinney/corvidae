@@ -22,6 +22,11 @@
  * never retried. Every attempt, a timer's, a manual retry's and a reconcile's, runs under the
  * runtime's serialization lock, so none interleaves with another.
  *
+ * COR-2168 — a kind that only receives has no `start`: its file is `ready` once the configuration
+ * parses and the storage can be made, `stopped` when paused, and `failed` as any file is when
+ * either step fails. The entry stays, with nothing to stop, so `noteFired` can record the runs its
+ * `receive` started.
+ *
  * @module workflow-trigger-supervisor
  */
 
@@ -53,8 +58,11 @@ export interface DesiredTrigger {
   readonly paused?: boolean | undefined;
 }
 
-/** What a listener is doing. */
-export type ListenerState = 'listening' | 'waiting-for-secret' | 'failed' | 'stopped';
+/**
+ * What a listener is doing. `ready` is a kind that only receives (COR-2168): it has no listener to
+ * run, and its file is ready for `receive` whatever its secrets, until the file is paused.
+ */
+export type ListenerState = 'listening' | 'waiting-for-secret' | 'failed' | 'stopped' | 'ready';
 
 /** Why a listener is `failed`. */
 export type ListenerCode = 'start-failed' | 'configuration-refused';
@@ -98,6 +106,14 @@ export interface WorkflowTriggerSupervisor {
    * what it answers after the supervisor is closed.
    */
   retry(id: string): Promise<ListenerStatus | undefined>;
+  /**
+   * A `receive` of kind `kind` for workflow `id` started a run: record when, on the entry that is
+   * the workflow's now, whatever state it is in, as a started fire of its own `start` does
+   * (COR-2168). Nothing is written when the workflow has no entry yet or any more, when its entry
+   * is of another kind, or after the supervisor closed. The state, `since` and `retryAt` are left as
+   * they are.
+   */
+  noteFired(id: string, kind: string): void;
   /** Stop every trigger, cancel every retry, and refuse to start another. */
   close(): Promise<void>;
 }
@@ -270,7 +286,13 @@ export function createWorkflowTriggerSupervisor(
     if (next.state === 'failed' && !alreadyReported) {
       options.reportFailure(entry.plugin, id, next.message ?? '');
     }
-    if (next.state === 'listening' || next.state === 'waiting-for-secret') entry.failures = 0;
+    if (
+      next.state === 'listening' ||
+      next.state === 'waiting-for-secret' ||
+      next.state === 'ready'
+    ) {
+      entry.failures = 0;
+    }
     listeners.set(id, {
       plugin: entry.plugin,
       kind: entry.kind,
@@ -432,6 +454,13 @@ export function createWorkflowTriggerSupervisor(
       fail(id, entry, 'start-failed', messageOf(error));
       return;
     }
+    // A kind that only receives has no listener to run: it is ready once its configuration and its
+    // storage are, whatever its secrets, and its entry stays so a fire noted by `receive` finds it.
+    if (kind.value.start === undefined) {
+      entry.settled = true;
+      record(id, entry, { state: 'ready', code: null });
+      return;
+    }
     const context: PluginTriggerContext = {
       configuration: parsed.data,
       workflowId: id,
@@ -577,6 +606,11 @@ export function createWorkflowTriggerSupervisor(
         await entry.queued;
       }
       return listeners.get(id)?.status;
+    },
+
+    noteFired(id, kind) {
+      const entry = running.get(id);
+      if (entry !== undefined && entry.kind === kind) noteFired(id, entry);
     },
 
     async close() {

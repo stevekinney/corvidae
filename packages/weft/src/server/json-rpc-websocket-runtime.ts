@@ -8,6 +8,7 @@ import {
 import type { OperationRegistry } from './operation-catalog.ts';
 import { anonymousPrincipal, type Principal } from './principal.ts';
 import type { ConnectionLease } from './runtime/context.ts';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import type { WorkflowEventFeed } from './workflow-event-feed.ts';
 
 export type ConnectionType = 'worker' | 'stream' | 'watch' | 'generic' | 'jsonrpc';
@@ -135,6 +136,7 @@ export function openJsonRpcWebSocketSession(options: {
       principal: options.ws.data.principal ?? anonymousPrincipal(),
       emitter: workspaceEmitter(options.ws),
       feed: options.feed,
+      discoverDocument: createWeftDiscoverDocument(options.registry, options.engine),
       ...(options.fleetFeed !== undefined ? { fleetFeed: options.fleetFeed } : {}),
       ...(options.acquireWorkflowSubscription !== undefined
         ? { acquireWorkflowSubscription: options.acquireWorkflowSubscription }

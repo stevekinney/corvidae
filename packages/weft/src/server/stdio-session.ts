@@ -34,6 +34,7 @@ import {
 import { isPlainObject } from './json-schema-utilities.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
 import { principalFromStdioLocal, type Principal } from './principal.ts';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import type { WorkflowEventFeed } from './workflow-event-feed.ts';
 
 export type StdioAdmission =
@@ -109,6 +110,7 @@ export async function runStdioSession(options: StdioSessionOptions): Promise<Std
     principal,
     emitter: io.emitter,
     feed: options.feed,
+    discoverDocument: createWeftDiscoverDocument(options.registry, options.engine),
     // Dispatch operations as `jsonRpcStdio`, not `jsonRpcWebSocket`,
     // so the transport-availability check in `executeOperation`
     // evaluates the right flag for this session. Operations

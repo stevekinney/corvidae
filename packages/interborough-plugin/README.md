@@ -6,6 +6,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
 | `defineTrigger` | Declares a trigger kind and types `start`'s `configuration` with what the kind's schema parses to. |
+| `verifyHmacSignature` | Whether a `sha256=<hex>` signature is the HMAC-SHA-256 of a body under a secret; a `receive` calls it with the bytes it read and the signature header. Constant time through Web Crypto, and `false`, never a throw, for a missing or malformed signature or an empty secret. |
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
@@ -106,6 +107,41 @@ The descriptor's members:
 | `events` | Event kinds the plugin declares, `{ name, description, payload, version? }` (`PluginEventDeclaration`). The kind is `plugin:name`; see [Declared events](#declared-events). |
 | `agents` | Agents defined in code. Each may carry a `title` (its listing's label), a `visibility` (`'chat'` by default; `'hidden'` keeps it in `bureau.agents.list`, which marks it `visibility: "hidden"`, and Chat does not offer it, while workflows, children and a direct start still run it by `plugin:name`) and a `version` (a run pins it in place of the plugin's version; a run recovered under a different one settles failed with `definition-drifted`). |
 
+### Receiving a request
+
+A trigger kind defines `start`, `receive` or both, and a kind with neither, or with a `start` or `receive` that is present but not a function, is refused when the plugin loads: the plugin is skipped with a `setup-failed` problem, as for any other malformed contribution. `receive(request, context)` answers one inbound request for a workflow file of the kind: it gets the `Request` as the host was given it, unread, and the context `start` gets (`configuration`, `workflowId`, `storage`, `fire`, `signal`). It authenticates the sender itself, calls `context.fire(payload, { idempotencyKey })` for each run the request starts, and resolves the `Response` the sender is answered with. The host reads no header, applies no key of its own and puts no limit on the body in this call. `signal` aborts when the request does and when the host closes, and a `fire` after that resolves `skipped`. A paused file still calls `receive`, and its `fire` resolves `skipped: 'paused'`. A kind that has only `receive` has no listener, and its files report the listener state `ready`. A plugin that declares a secret it has not been given makes `receive` reject with `PluginNeedsSetupError` before it runs.
+
+The host's `POST /triggers/<workflow-id>` route reads the body as bytes (at most 4 MiB), builds a fresh `Request` over them, and calls `receive`; nothing else authenticates the sender, so `receive` does. `verifyHmacSignature` checks the usual webhook signature:
+
+```ts
+import { defineTrigger, verifyHmacSignature } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
+
+export const inbox = defineTrigger({
+  name: 'inbox',
+  description: 'Receives a signed delivery.',
+  configuration: z.object({}),
+  async receive(request, { fire }) {
+    const body = new Uint8Array(await request.arrayBuffer());
+    const signature = request.headers.get('x-hub-signature-256');
+    if (
+      !(await verifyHmacSignature({ secret: process.env['INBOX_SECRET'] ?? '', body, signature }))
+    ) {
+      return new Response(null, { status: 401 });
+    }
+    // The key comes from the signed bytes, so a replay cannot change it: here, their digest.
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', body));
+    const idempotencyKey = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join(
+      '',
+    );
+    await fire(JSON.parse(new TextDecoder().decode(body)), { idempotencyKey });
+    return new Response(null, { status: 202 });
+  },
+});
+```
+
+The check is over the bytes, not a re-encoded string, and it has no timestamp window: a signature proves the sender signed these bytes, not when, so a captured delivery verifies again however late it is sent. Replay protection is the `idempotencyKey` `fire` is given, and the key must come from data the signature covers: a field of the verified body (an event identifier the sender put in it) or a digest of its bytes, as above. A key taken from a header the signature does not cover, such as `X-Delivery`, lets a replay carry a new key, or none, and start a second run.
+
 ### Trigger state
 
 A trigger's `start` receives the `workflowId` of the file it starts and a `storage` for that one file, confined to the key prefix `plugin:<name>:trigger:<trigger-name>:<workflow-id>:`. A plugin file `linear:sync` is written `linear__sync` in that prefix, so no file's prefix lies inside another's. Two files that use one kind see disjoint keys. The prefix lies inside the plugin's own `storage`, so a key the plugin writes itself that begins `trigger:` is reserved for this and may be deleted by the sweep below.
@@ -176,7 +212,7 @@ export const newIssues = defineTrigger({
 A plugin declares the event kinds it will publish with `events: [{ name, description, payload }]`, where `payload` is a Zod object. The kind is `<plugin>:<name>`, `name` follows the contribution name grammar, and `version` is optional and defaults to the plugin's.
 
 - **Kinds and clashes.** Because the kind carries the plugin's name, no plugin holds another's, and none holds a kind Bureau itself publishes (those have no `:`). A plugin that declares one name twice, or whose kind a host option already holds as an event kind, is `skipped` with `name-clash`.
-- **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload, wrappers and getter reads included; a payload that needs more, such as one whose getter builds a new schema on every read, is refused with `event-payload-content` at the path where the count ran out.
+- **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload: every schema it visits, every wrapper layer, and every getter read, which is charged before the getter runs. A payload that needs more, such as one whose getter builds a new schema on every read or a plain object of thousands of keys, is refused with `event-payload-content` at the path where the count ran out; that problem carries a `message` saying the budget ran out and no content was found there, and a refusal for content carries none.
 - **Listing.** `bureau.events.catalog` lists each running plugin's declared kinds after Bureau's own, with the payload fields, `origin: 'unattributed'`, no scopes and `source: '<plugin>'`.
 - **Publishing.** `host.publish(name, payload)` publishes `<plugin>:<name>` with `source: '<plugin>'`, so a plugin can publish only under its own name. It rejects, and publishes nothing, with a `TypeError` naming the full kind (`<plugin>:<name>`) for an undeclared name, a `TypeError` for a payload the declared schema refuses, the needs-setup error while a secret the plugin declared is not set, and `PluginHostDisposedError` once the Bureau is disposed. A published event replays after a `bureau.events` reconnect like any other, and a subscription's `kinds` filter accepts a kind a loaded plugin declares.
 - **Identity.** Its identity kind is `event`, with the id `plugin:name`, the event's version and a digest of its payload schema, so marking a field `identifier` or changing its type changes the digest.
@@ -555,7 +591,7 @@ export default definePlugin({
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |
-| `event-payload-content` | `skipped` | A declared event's payload has a field that could carry content, such as a string not marked `.meta({ identifier: true })` and not a `z.enum`. `event`, `field`. |
+| `event-payload-content` | `skipped` | A declared event's payload has a field that could carry content, such as a string not marked `.meta({ identifier: true })` and not a `z.enum`, or a payload larger than the 1,000-schema budget. `event`, `field`, and a `message` only when the budget ran out. |
 | `provider-secret-unknown` | `skipped` | A provider's `secretKey` is not one of the plugin's declared `secrets`. `provider`, `key`. |
 | `provider-secret-ambiguous` | `skipped` | A provider has no `secretKey` and the plugin declares several secrets. `provider`, `secrets`. |
 | `provider-empty` | `running` | A provider gave no `rows` under a name Operative's static catalog has no rows for, so it contributes no model. `provider`. |

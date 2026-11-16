@@ -28,6 +28,7 @@ import type { DocumentActivity, DocumentTriggerValidator } from '@lostgradient/w
 
 import { isNamespacedIdentifier, toWeftName } from './namespaced-identifier';
 import { assertWorkflowAvailable } from './plugins/plugin-secret-gate';
+import { assertTriggerKindShape } from './trigger-kind-shape';
 import type {
   VersionedCatalog,
   VersionedCatalogEntry,
@@ -205,14 +206,9 @@ export function createWorkflowContributions(
       throw new TypeError(`The activity "${entry.name}" has no inputSchema.`);
     }
   }
-  for (const entry of triggerEntries) {
-    const kind = entry.value;
-    if (typeof kind?.start !== 'function' || typeof kind.configuration?.safeParse !== 'function') {
-      throw new TypeError(
-        `The trigger "${entry.name}" needs a configuration schema and a start function.`,
-      );
-    }
-  }
+  // A plugin's kind was already checked where its plugin composes (and became `setup-failed`); a
+  // kind a host registered in the catalog directly is checked here.
+  for (const entry of triggerEntries) assertTriggerKindShape(entry.name, entry.value);
   const activities: Record<string, DocumentActivity> = {};
   const activityVersions: Record<string, string> = {};
   const activityTitles: Record<string, string> = {};

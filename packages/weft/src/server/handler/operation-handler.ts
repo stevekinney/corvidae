@@ -29,6 +29,7 @@ import {
   validateCorsOptions,
   type CorsOptions,
 } from '../runtime/cors.ts';
+import { weftDiscoveryInfo } from '../weft-documents.ts';
 import { authContextToPrincipal } from './auth-context-principal.ts';
 import type { OperationHandlerAuthenticate } from './operation-handler-authentication.ts';
 import {
@@ -243,7 +244,7 @@ export function createOperationHandler<Host>(
         resolveCorsPolicy(options.cors, authenticate !== undefined));
   const documents = createOperationHandlerDocuments({
     registry,
-    discoveryInfo: options.discoveryInfo,
+    discoveryInfo: weftDiscoveryInfo(options.discoveryInfo),
     authenticates: authenticate !== undefined,
     publicPaths,
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
+import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 import {
   aliasNameFor,
   assignAliasNames,

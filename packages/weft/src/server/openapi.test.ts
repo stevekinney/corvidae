@@ -11,8 +11,13 @@ import type { AccessPolicy } from './authorization.ts';
 import { emitBindings, generateOpenApiDocument } from './openapi.ts';
 import { createOperationRegistry, type ParameterizedAccessHint } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
+import {
+  createLiveOperationRegistry,
+  createLiveRestBindings,
+  type UnknownRestBinding,
+} from './rest-bindings.ts';
 import { DIRECT_HTTP_ROUTES, externalApiPath, toOpenApiPath, toRegex } from './route-model.ts';
+import { weftDiscoveryInfo } from './weft-documents.ts';
 
 function discoveryOperation(
   name: string,
@@ -48,7 +53,11 @@ function discoveryBinding(operationName: string, path: string): UnknownRestBindi
 }
 
 describe('OpenAPI document generation', () => {
-  const document = generateOpenApiDocument();
+  const document = generateOpenApiDocument({
+    registry: createLiveOperationRegistry(),
+    restBindings: createLiveRestBindings(),
+    discoveryInfo: weftDiscoveryInfo(undefined),
+  });
 
   it('/openapi.json is a full OpenAPI 3.1 contract for the REST-ish HTTP surface. It includes path and query parameters, request bodies, response schemas by status code, shared error objects, and security declarations.', () => {
     expect(document).toHaveProperty('openapi', '3.1.0');
@@ -88,10 +97,20 @@ describe('OpenAPI document generation', () => {
     expect(pathKeys.some((key) => key.startsWith('/api/api'))).toBe(false);
   });
 
-  it('uses default title and version', () => {
+  it("carries the title and version of the discovery info Weft's server supplies", () => {
     const info = document['info'] as Record<string, unknown>;
     expect(info['title']).toBe('Weft Workflow Engine');
     expect(info['version']).toBe(VERSION);
+  });
+
+  it('falls back to a neutral title and version when none is supplied', () => {
+    const neutral = generateOpenApiDocument({
+      registry: createOperationRegistry([]),
+      restBindings: [],
+    });
+    const info = neutral['info'] as Record<string, unknown>;
+    expect(info['title']).toBe('API');
+    expect(info['version']).toBe('0.0.0');
   });
 
   it('advertises every operation access policy without changing standard security declarations', () => {
@@ -138,6 +157,8 @@ describe('OpenAPI document generation', () => {
 
   it('accepts custom options', () => {
     const custom = generateOpenApiDocument({
+      registry: createLiveOperationRegistry(),
+      restBindings: createLiveRestBindings(),
       title: 'Custom API',
       version: '2.0.0',
       serverUrl: 'https://api.example.com',

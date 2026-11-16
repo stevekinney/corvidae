@@ -322,9 +322,16 @@ export * from './client/generated/operation-client.generated.ts';
 export type { JsonRpcCallResult, JsonRpcErrorObject } from './client/json-rpc-request.ts';
 export * from './client/operation-client-runtime.ts';
 export { CodegenEmitError, jsonSchemaToTypeScript } from './json-schema/codegen-emit.ts';
-export * from './server/operation-catalog-snapshot.ts';
+export { stringifyCatalogSnapshot } from './server/operation-catalog-snapshot.ts';
+export type {
+  CatalogAccessSnapshot,
+  CatalogOperationSnapshot,
+  CatalogRestBindingSnapshot,
+  CatalogSnapshot,
+} from './server/operation-catalog-snapshot.ts';
 export { staleRevisionFault } from './server/operation-fault.ts';
 export type { OperationFault } from './server/operation-fault.ts';
+export { createCatalogSnapshot } from './server/weft-catalog-snapshot.ts';
 
 export { REGISTRY_VERSION } from './core/registry-snapshot.ts';
 export type { RegistryActivityEntry } from './core/registry-snapshot.ts';
