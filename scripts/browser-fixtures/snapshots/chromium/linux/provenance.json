@@ -12,12 +12,20 @@
       "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
       "suiteExitCode": 0
     },
+    "breadcrumbs": {
+      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
+      "suiteExitCode": 0
+    },
     "card": {
       "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
       "suiteExitCode": 0
     },
     "chat": {
       "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "suiteExitCode": 0
+    },
+    "page-header": {
+      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
       "suiteExitCode": 0
     },
     "stacked-list-item": {
