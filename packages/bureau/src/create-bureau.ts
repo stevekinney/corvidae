@@ -749,6 +749,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   // startup error, and it should fail before the durable engine exists.
   const goalValidatorCatalog = createGoalValidatorCatalog(
     lateDecisions.bindValidators(options.validators),
+    // COR-2111: a plugin's validators are in the contribution catalog under the plugin's source.
+    (identity) => {
+      const found = options.contributionCatalog?.resolve('validator', identity);
+      return found?.ok === true ? found.entry.source : undefined;
+    },
   );
   // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
   // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.

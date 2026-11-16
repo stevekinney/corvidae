@@ -481,6 +481,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['validatorIdentity?', 'object'],
       ['outcomeKind?', 'string'],
       ['feedbackDigest?', 'string'],
+      ['judgedBy?', 'object'],
     ],
     AGENT_SCOPE,
   ),

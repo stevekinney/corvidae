@@ -27,6 +27,7 @@ const cases = [
   },
   { operation: 'bureau.plugins.contributions', input: {} },
   { operation: 'bureau.guardrails.list', input: {} },
+  { operation: 'bureau.validators.list', input: {} },
   { operation: 'bureau.skills.list', input: {} },
 ] as const;
 
