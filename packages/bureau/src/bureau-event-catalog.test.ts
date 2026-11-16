@@ -25,6 +25,7 @@ import {
   bureauEventCatalog,
   type BureauEventCatalogEntry,
   type BureauEventField,
+  isPublishedEventKind,
 } from './bureau-event-catalog.ts';
 import {
   PUBLISHED_BUREAU_EVENT_KINDS,
@@ -302,6 +303,29 @@ function wirePayload(event: unknown, kind: PublishedBureauEventKind): Record<str
   expect(projected?.kind).toBe(kind);
   return JSON.parse(JSON.stringify(projected?.payload)) as Record<string, unknown>;
 }
+
+describe('isPublishedEventKind (COR-2223)', () => {
+  it('is true for a core kind, with or without declared kinds', () => {
+    expect(isPublishedEventKind('run.settled', [])).toBe(true);
+    expect(isPublishedEventKind('run.settled', ['demo:greeted'])).toBe(true);
+  });
+
+  it('is true for a kind a plugin declares', () => {
+    expect(isPublishedEventKind('demo:greeted', ['demo:greeted'])).toBe(true);
+  });
+
+  it('is false for a kind nobody publishes or declares', () => {
+    expect(isPublishedEventKind('run.nonexistent', [])).toBe(false);
+    expect(isPublishedEventKind('demo:greeted', [])).toBe(false);
+    expect(isPublishedEventKind('demo:greeted', ['demo:other'])).toBe(false);
+  });
+
+  it('never reads an inherited key as a published kind', () => {
+    for (const kind of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(isPublishedEventKind(kind, [])).toBe(false);
+    }
+  });
+});
 
 describe('the Bureau event catalog', () => {
   it('lists exactly PUBLISHED_BUREAU_EVENT_KINDS, in order', () => {

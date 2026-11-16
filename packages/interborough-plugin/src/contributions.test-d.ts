@@ -60,6 +60,30 @@ export const renamedFormatters: PluginContributions = { formatters: [formatter] 
 // @ts-expect-error -- `eventFormatters` was renamed `formatters`
 export const staleEventFormatters: PluginContributions = { eventFormatters: [formatter] };
 
+// COR-2222 — a formatting may carry a tier, an icon and a link, and `format(event)` stays synchronous.
+export const tieredFormatter: PluginFormatter = {
+  name: 'tiered',
+  eventKinds: ['run.settled'],
+  format: () => ({ title: 'Run failed', tier: 'critical', icon: 'circle-alert', link: '/runs' }),
+};
+export const bareFormatter: PluginFormatter = {
+  name: 'bare',
+  eventKinds: ['run.settled'],
+  format: () => ({ title: 'Run failed' }),
+};
+export const unknownTier: PluginFormatter = {
+  name: 'unknown-tier',
+  eventKinds: ['run.settled'],
+  // @ts-expect-error -- a tier is `critical`, `warning` or `info`
+  format: () => ({ title: 'Run failed', tier: 'urgent' }),
+};
+export const asynchronousFormatter: PluginFormatter = {
+  name: 'asynchronous',
+  eventKinds: ['run.settled'],
+  // @ts-expect-error -- `format` is synchronous: a promise is not a formatting
+  format: async () => ({ title: 'Run failed' }),
+};
+
 declare const agent: PluginAgent;
 
 export const renamedAgents: PluginContributions = { agents: [agent] };

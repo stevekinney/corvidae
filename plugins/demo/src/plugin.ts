@@ -1,4 +1,5 @@
 import { definePlugin, type PluginDescriptor } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
 
 import { createDemoAgents, type DemoAgentName } from './agents.ts';
 import { createAuditInterceptor } from './audit.ts';
@@ -43,7 +44,8 @@ export interface DemoPluginOptions {
 
 /**
  * The demo plugin: eight scripted agents, two tools, two validators, an every-agent `audit`
- * interceptor set, a goal and a schedule, all of which answer without a model. It is off by default and the owner turns it on in Settings. The
+ * interceptor set, a goal and a schedule, all of which answer without a model, and one declared
+ * event, `demo:greeted`, whose payload names a greeting by its identifier. It is off by default and the owner turns it on in Settings. The
  * host creates `demo-approval-secret` on first enable in local mode; a remote host cannot, so the
  * plugin stays `needs-setup` until the deployment sets the variable.
  */
@@ -69,6 +71,14 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
         validators: createDemoValidators(),
         interceptors: [createAuditInterceptor(storage)],
         workflows: createDemoWorkflows(),
+        events: [
+          {
+            name: 'greeted',
+            description:
+              'The demo greeted someone. Its payload names the greeting, never its words.',
+            payload: z.object({ greetingId: z.string().meta({ identifier: true }) }),
+          },
+        ],
         ...(seedOnStart
           ? {
               start: (host, started) => seedDemo(host, started.storage),

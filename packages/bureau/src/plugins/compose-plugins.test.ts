@@ -663,6 +663,271 @@ describe('composePlugins', () => {
     });
   });
 
+  it('skips a plugin whose formatter lists one event kind twice, with name-clash (COR-2221)', async () => {
+    const { records, options } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('kit', () => ({
+          formatters: [
+            {
+              name: 'settled',
+              eventKinds: ['run.settled', 'run.settled'],
+              format: () => ({ title: 'settled' }),
+            },
+          ],
+        })),
+      ],
+    });
+
+    expect(records[0]?.status).toBe('skipped');
+    expect(records[0]?.problems).toEqual([
+      expect.objectContaining({ code: 'name-clash', name: 'run.settled' }),
+    ]);
+    expect(options.formatters ?? []).toEqual([]);
+  });
+
+  describe('events a plugin declares (COR-2223)', () => {
+    const greeted = (name = 'greeted') => ({
+      name,
+      description: 'Someone was greeted.',
+      payload: z.object({
+        greetingId: z.string().meta({ identifier: true }),
+        status: z.enum(['sent', 'failed']),
+        count: z.number().optional(),
+      }),
+    });
+
+    it('composes, and lists each kind as plugin:name with its payload fields', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [pluginEntry('kit', () => ({ events: [greeted(), greeted('left')] }))],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[0]?.problems).toEqual([]);
+      expect(createPluginRegistry(records).plugins.events()).toEqual([
+        {
+          plugin: 'kit',
+          kind: 'kit:greeted',
+          description: 'Someone was greeted.',
+          version: '1.0.0',
+          payload: [
+            { name: 'greetingId', type: 'string', optional: false },
+            { name: 'status', type: 'string', optional: false },
+            { name: 'count', type: 'number', optional: true },
+          ],
+        },
+        expect.objectContaining({ kind: 'kit:left' }),
+      ]);
+    });
+
+    it('lists the plugin’s version for a declaration with none, and its own otherwise', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            events: [greeted('plain'), { ...greeted('pinned'), version: '3.1.0' }],
+          })),
+        ],
+      });
+
+      expect(
+        createPluginRegistry(records)
+          .plugins.events()
+          .map(({ kind, version }) => [kind, version]),
+      ).toEqual([
+        ['kit:plain', '1.0.0'],
+        ['kit:pinned', '3.1.0'],
+      ]);
+    });
+
+    it('keeps the events of a plugin that declares a secret, whose contributions the gate wraps', async () => {
+      const descriptor = definePlugin({
+        name: 'kit',
+        version: '1.0.0',
+        description: 'kit',
+        secrets: ['api-key'],
+        setup: () => ({ events: [greeted()] }),
+      });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [{ descriptor, source: 'package', location: '@example/kit' }],
+        pluginSecrets: { get: async () => 'set', watch: () => () => undefined },
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(
+        createPluginRegistry(records)
+          .plugins.events()
+          .map(({ kind }) => kind),
+      ).toEqual(['kit:greeted']);
+    });
+
+    it('lists no event for a plugin that is skipped or disabled', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({ events: [greeted()] })),
+          pluginEntry('off', () => ({ events: [greeted()] })),
+        ],
+        pluginConfiguration: { off: { enabled: false } },
+      });
+
+      expect(records.map(({ status }) => status)).toEqual(['running', 'disabled']);
+      expect(
+        createPluginRegistry(records)
+          .plugins.events()
+          .map(({ plugin }) => plugin),
+      ).toEqual(['kit']);
+    });
+
+    it('skips a plugin that declares one name twice, with name-clash', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [pluginEntry('kit', () => ({ events: [greeted(), greeted()] }))],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({ code: 'name-clash', name: 'kit:greeted' }),
+      ]);
+      expect(createPluginRegistry(records).plugins.events()).toEqual([]);
+    });
+
+    it('skips a plugin that declares a kind another holds, with name-clash', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [pluginEntry('kit', () => ({ events: [greeted()] }))],
+        // A host formatter that already claims the kind holds it.
+        formatters: [
+          {
+            plugin: 'host',
+            formatter: {
+              name: 'greetings',
+              eventKinds: ['kit:greeted'],
+              format: () => ({ title: 'x' }),
+            },
+          },
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'name-clash',
+          name: 'kit:greeted',
+          first: { source: 'built-in', location: 'host' },
+        }),
+      ]);
+    });
+
+    it('refuses a free string field with event-payload-content, and runs no other plugin less', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            events: [
+              {
+                name: 'noted',
+                description: 'A note.',
+                payload: z.object({ id: z.string().meta({ identifier: true }), note: z.string() }),
+              },
+            ],
+          })),
+          pluginEntry('fine', () => ({ events: [greeted()] })),
+        ],
+      });
+
+      expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+      expect(records[0]?.problems).toEqual([
+        { code: 'event-payload-content', event: 'noted', field: 'note' },
+      ]);
+    });
+
+    it('never rejects the host for a payload that recurses or cannot be read', async () => {
+      const Node = z.object({
+        id: z.string().meta({ identifier: true }),
+        get children() {
+          return z.array(Node).optional();
+        },
+      });
+      const unreadable = z.object({
+        get id(): z.ZodString {
+          throw new Error('cannot read');
+        },
+      });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('tree', () => ({
+            events: [{ name: 'tree', description: 'A tree.', payload: z.object({ root: Node }) }],
+          })),
+          pluginEntry('broken', () => ({
+            events: [{ name: 'broken', description: 'Unreadable.', payload: unreadable }],
+          })),
+          pluginEntry('fine', () => ({ events: [greeted()] })),
+        ],
+      });
+
+      expect(records.map(({ status }) => status)).toEqual(['running', 'skipped', 'running']);
+      expect(records[1]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining('cannot read'),
+        }),
+      ]);
+    });
+
+    it('skips a plugin whose payload fans out without end, with event-payload-content, and the host starts', async () => {
+      const fresh = (): z.ZodObject =>
+        z.object({
+          get l() {
+            return fresh().optional();
+          },
+          get r() {
+            return fresh().optional();
+          },
+        });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('endless', () => ({
+            events: [{ name: 'endless', description: 'Never ends.', payload: fresh() }],
+          })),
+          pluginEntry('fine', () => ({ events: [greeted()] })),
+        ],
+      });
+
+      expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({ code: 'event-payload-content', event: 'endless' }),
+      ]);
+    });
+
+    it('accepts a z.enum status and a marked identifier, which a plugin’s payload may hold', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [pluginEntry('kit', () => ({ events: [greeted()] }))],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[0]?.problems).toEqual([]);
+    });
+
+    it('skips a plugin whose declaration is malformed, with setup-failed', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('badname', () => ({ events: [{ ...greeted(), name: 'Not A Name' }] })),
+          pluginEntry('badpayload', () => ({
+            events: [{ ...greeted(), payload: z.string() as never }],
+          })),
+          pluginEntry('nodescription', () => ({
+            events: [{ ...greeted(), description: undefined as never }],
+          })),
+          pluginEntry('badversion', () => ({
+            events: [{ ...greeted(), version: 3 as never }],
+          })),
+        ],
+      });
+
+      expect(records.map(({ status, problems }) => [status, problems[0]?.code])).toEqual([
+        ['skipped', 'setup-failed'],
+        ['skipped', 'setup-failed'],
+        ['skipped', 'setup-failed'],
+        ['skipped', 'setup-failed'],
+      ]);
+    });
+  });
+
   it('skips a malformed plugin instead of failing composition', async () => {
     const malformed: BureauPluginEntry = {
       // Not through `definePlugin`, which would refuse the name where the plugin is written.

@@ -69,6 +69,29 @@ export function hasSettingsToShow(source: ProviderConfigurationSource | undefine
   );
 }
 
+/**
+ * The schema narrowed to the fields it lists under `required`, which are the ones a provider needs
+ * before it can connect. The rest is left to Manage. Free keys (`additionalProperties`) are not
+ * drawn, so `undrawnFields` keeps them stored as they are.
+ */
+export function requiredFieldsSchema(
+  formSchema: Readonly<Record<string, unknown>> | undefined,
+): Record<string, unknown> | undefined {
+  if (formSchema === undefined) return undefined;
+  const { additionalProperties: _free, ...rest } = formSchema;
+  const required = Array.isArray(rest['required'])
+    ? rest['required'].filter((name): name is string => typeof name === 'string')
+    : [];
+  const properties = rest['properties'];
+  const listed = typeof properties === 'object' && properties !== null ? properties : {};
+  return {
+    ...rest,
+    properties: Object.fromEntries(
+      Object.entries(listed).filter(([name]) => required.includes(name)),
+    ),
+  };
+}
+
 /** A stored configuration as an object: anything else is `{}`, as the host reads it. */
 export function configurationObject(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? { ...value } : {};

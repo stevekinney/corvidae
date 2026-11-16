@@ -84,18 +84,34 @@ describe('GroupedListItem time-led row', () => {
     expect(css).toMatch(/__lead--timed \{[^}]*inline-size: 4\.5rem/);
     expect(css).toMatch(/__lead--timed \{[^}]*align-items: flex-end/);
     expect(css).toMatch(/__lead--timed \{[^}]*text-align: end/);
-    expect(css).toMatch(/__lead-value \{[^}]*font-size: var\(--cinder-text-3xl\)/);
-    expect(css).toMatch(/__lead-value \{[^}]*font-weight: 750/);
-    expect(css).toMatch(/__lead-value \{[^}]*line-height: 1\.1/);
+    expect(css).toMatch(/__lead-value \{[^}]*font-size: var\(--cinder-text-md\)/);
+    expect(css).toMatch(/__lead-value \{[^}]*font-weight: var\(--cinder-font-semibold\)/);
+    expect(css).toMatch(
+      /__lead-value \{[^}]*line-height: var\(--_cinder-grouped-list-item-title-line\)/,
+    );
     expect(css).toMatch(/__lead-value \{[^}]*font-variant-numeric: tabular-nums/);
     expect(css).toMatch(/__lead-unit \{[^}]*font-size: var\(--cinder-text-xs\)/);
+    expect(css).toMatch(/__lead-unit \{[^}]*color: var\(--cinder-text-muted\)/);
     expect(css).toMatch(
       /data-cinder-urgency='urgent'\] \{[^}]*var\(--cinder-status-warning-text\)/,
     );
-    expect(css).toMatch(/--timed \.cinder-grouped-list-item__title \{[^}]*font-size: 1\.0625rem/);
-    expect(css).toMatch(
-      /--timed \.cinder-grouped-list-item__subtitle \{[^}]*var\(--cinder-text-md\)/,
-    );
     expect(css).toMatch(/__photo \{[^}]*inline-size: 3\.5rem/);
+  });
+
+  // The owner's review (2026-11-15): a 24px lead at weight 750, a 17px title in the heading weight
+  // and a subtitle a size up put the time-led row off the type scale every other row uses.
+  test('the title and subtitle are the basic row’s, and every size, weight and leading is a token', () => {
+    const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8');
+    expect(css).not.toMatch(/--timed \.cinder-grouped-list-item__(title|subtitle)/);
+    expect(css).toMatch(/--timed > \.cinder-grouped-list-item__content \{[^}]*flex-start/);
+    // On a phone the subtitle stays in the text column, under the title rather than the number.
+    expect(css).toMatch(
+      /--timed\.cinder-grouped-list-item--trailing\s+\.cinder-grouped-list-item__text \{[^}]*display: flex/,
+    );
+    const declarations = [...css.matchAll(/(font-size|font-weight|line-height):\s*([^;]+);/g)];
+    expect(declarations.length).toBeGreaterThan(0);
+    for (const [declaration, , value] of declarations) {
+      expect(value!.trim(), declaration).toStartWith('var(--');
+    }
   });
 });

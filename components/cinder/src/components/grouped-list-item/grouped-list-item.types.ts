@@ -66,7 +66,7 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
   leadingKind?: GroupedListItemLeadingKind;
   /** A fixed-width column for a time or number, such as "45 min left", drawn before the title. Rows in one list line up. */
   lead?: Snippet;
-  /** The number or word of a time-led row's lead, such as `45` or `9:30`, drawn large. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. */
+  /** The number or word of a time-led row's lead, such as `45` or `9:30`, drawn in semibold on the title's first line. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. */
   leadValue?: string | number;
   /** The small unit under the lead number, from a closed vocabulary. Used with `leadValue`. */
   leadUnit?: GroupedListItemLeadUnit;

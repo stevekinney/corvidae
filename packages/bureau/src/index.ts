@@ -909,10 +909,12 @@ export {
   type BureauEventFormatter,
   type EventFormatterRegistration,
   type FormattedBureauEvent,
+  type FormattedEventTier,
 } from './bureau-event-formatting';
 export {
   BUREAU_EVENT_CATALOG,
   bureauEventCatalog,
+  isPublishedEventKind,
   type BureauEventCatalogEntry,
   type BureauEventField,
   type BureauEventFieldType,

@@ -5,6 +5,7 @@ export type {
   PluginContributions,
   PluginEmbedder,
   PluginEvent,
+  PluginEventDeclaration,
   PluginFormatter,
   PluginFormatting,
   PluginGuardrailDescription,
