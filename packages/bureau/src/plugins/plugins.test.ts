@@ -505,10 +505,19 @@ describe('plugin composition', () => {
     });
 
     // A guardrail with no `gates` runs at both; one gated to `recall` does not run at admission.
+    // Each is named by its identity, `plugin:memory/name`, which is what the ledger records (COR-2190).
     expect(received).toEqual([
       {
-        admission: ['both', 'also-both', 'writes'],
-        recall: ['both', 'also-both', 'reads'],
+        admission: [
+          'remembering:memory/both',
+          'remembering:memory/also-both',
+          'remembering:memory/writes',
+        ],
+        recall: [
+          'remembering:memory/both',
+          'remembering:memory/also-both',
+          'remembering:memory/reads',
+        ],
         embedders: [{ id: 'remembering:small', dimension: 4 }],
       },
     ]);

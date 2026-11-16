@@ -373,6 +373,7 @@ describe('composePlugins', () => {
     const validate = async () => ({ valid: true, confidence: 0, category: 'x' });
 
     it('claims a guardrail name per family, so one name serves input, output and memory', async () => {
+      const handed: Parameters<Extract<ComposableOptions['memory'], Function>>[0][] = [];
       const { options, records } = await composePlugins<ComposableOptions>({
         plugins: [
           pluginEntry('kit', () => ({
@@ -383,8 +384,17 @@ describe('composePlugins', () => {
             },
           })),
         ],
-        memory: () => undefined as never,
+        memory: (contributions) => {
+          handed.push(contributions);
+          return undefined as never;
+        },
       });
+
+      // The input family's `scan` and the memory family's `scan` coexist, and the ledger sees the
+      // memory one as `kit:memory/scan` (COR-2190).
+      expect(handed).toHaveLength(1);
+      expect(handed[0]?.guardrails.admission.map(({ name }) => name)).toEqual(['kit:memory/scan']);
+      expect(handed[0]?.guardrails.recall.map(({ name }) => name)).toEqual(['kit:memory/scan']);
 
       expect(records[0]?.status).toBe('running');
       expect(records[0]?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual([
@@ -398,6 +408,62 @@ describe('composePlugins', () => {
         chosen?.inputDetector && guardrailOf(chosen.inputDetector).name,
         chosen?.outputValidator && guardrailOf(chosen.outputValidator).name,
       ]).toEqual(['scan', 'scan']);
+    });
+
+    it('hands each memory gate its plugin-qualified guardrail names, and keeps a detector callable (COR-2190)', async () => {
+      const calls: string[] = [];
+      class Prototyped {
+        readonly name: string;
+        constructor(name: string) {
+          this.name = name;
+        }
+        async detect(input: string) {
+          calls.push(`${this.name}:${input}`);
+          return {} as never;
+        }
+      }
+      const handed: Parameters<Extract<ComposableOptions['memory'], Function>>[0][] = [];
+      await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('acme', () => ({
+            guardrails: {
+              memory: [
+                Object.assign(new Prototyped('pii'), { description: 'A test guardrail.' }),
+                // A plugin may name its own guardrail like the built-in one; it stays a plugin's.
+                {
+                  name: 'memory-poisoning',
+                  description: 'A test guardrail.',
+                  detect,
+                  gates: ['recall' as const],
+                },
+              ],
+            },
+          })),
+          pluginEntry('other', () => ({
+            guardrails: {
+              memory: [
+                { name: 'pii', description: 'A test guardrail.', detect, gates: ['admission'] },
+              ],
+            },
+          })),
+        ],
+        memory: (contributions) => {
+          handed.push(contributions);
+          return undefined as never;
+        },
+      });
+
+      const { admission, recall } = handed[0]?.guardrails ?? { admission: [], recall: [] };
+      expect(admission.map(({ name }) => name)).toEqual(['acme:memory/pii', 'other:memory/pii']);
+      expect(recall.map(({ name }) => name)).toEqual([
+        'acme:memory/pii',
+        'acme:memory/memory-poisoning',
+      ]);
+      // One wrapper serves both gates, and it still reaches the prototype's `detect`.
+      expect(admission[0]).toBe(recall[0]);
+      const context = { step: 0, conversationLength: 0, sessionTainted: false, provenance: 'x' };
+      await admission[0]?.detect('text', context as never);
+      expect(calls).toEqual(['pii:text']);
     });
 
     it('refuses a name contributed twice within one family', async () => {

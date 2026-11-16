@@ -12,6 +12,7 @@ import {
   MEMORY_POLICY_FILTERS,
 } from '../../src/governance/retrieval-plan';
 import { createTestEmbedders } from '../../src/test/index';
+import type { TextSearchProvider } from '../../src/text-search-provider';
 import {
   authority,
   createGovernedFixture,
@@ -60,6 +61,24 @@ const quiet: InputDetector = {
   name: 'quiet',
   detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
 };
+
+/**
+ * A text-search provider whose `search` throws for each query `failsFor` accepts, and finds nothing
+ * for any other: the failure a recall must fail closed on, unlike an embedder's.
+ */
+function throwingTextSearch(failsFor: (query: string) => boolean): TextSearchProvider {
+  return {
+    init: async () => undefined,
+    close: async () => undefined,
+    index: async () => undefined,
+    remove: async () => undefined,
+    clear: async () => undefined,
+    search: async (query) => {
+      if (failsFor(query)) throw new Error('index offline');
+      return new Map();
+    },
+  };
+}
 
 const ids = (bundle: MemoryEvidenceBundle): string[] => bundle.evidence.map((item) => item.id);
 const at = (id: string, collection = 'notes'): MemoryRecordLocator => ({ id, collection });
@@ -396,12 +415,11 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         const jazz = await write('The user enjoys jazz.');
         // An exact phrase match, so the first pass selects it before the reformulation fails.
         const exact = await write('Notes on what about the jazz club.');
-        const broken = fixture.restart(
-          createTestEmbedders((texts) => {
-            if (texts.includes('jazz')) throw new Error('embedder offline');
-            return texts.map(conceptVector);
-          }, CONCEPT_DIMENSION),
-        );
+        // A throwing text-search provider still fails the recall closed (COR-2186), unlike an
+        // embedder that throws, which degrades it to the text.
+        const broken = fixture.restart({
+          textSearchProvider: throwingTextSearch((query) => query === 'jazz'),
+        });
         const bundle = await broken.recallForModel(principalA, 'what about the jazz', {
           collection: 'notes',
           plan: { minimumScore: 1 },
@@ -425,6 +443,80 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         expect(bundle.spent.cost).toBe(1);
       });
 
+      it('charges one cost unit for each recall guardrail that runs (COR-2193)', async () => {
+        fixture = await createGovernedFixture(backend, {
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
+          policy: {
+            recall: { contributedDetectors: [quiet, { ...quiet, name: 'quieter' }] },
+          },
+        });
+        await write('The user drives an electric automobile.');
+        const bundle = await fixture.memory.recallForModel(principalA, 'automobile', {
+          collection: 'notes',
+          plan: { stages: ['exact-lexical', 'rank-fusion'] },
+        });
+        expect(bundle.evidence).toHaveLength(1);
+        // The built-in poisoning detector and the two contributed ones; the lexical pass costs none.
+        expect(bundle.spent.cost).toBe(3);
+      });
+
+      it('stops as exhausted before any guardrail runs when the budget cannot cover them all (COR-2193)', async () => {
+        const ran: string[] = [];
+        const counting: InputDetector = {
+          name: 'counting',
+          detect: async () => {
+            ran.push('counting');
+            return { triggered: false, confidence: 0, category: 'none' };
+          },
+        };
+        fixture = await createGovernedFixture(backend, {
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
+          policy: { recall: { contributedDetectors: [counting, counting] } },
+        });
+        await write('The user drives an electric automobile.');
+        const bundle = await fixture.memory.recallForModel(principalA, 'automobile', {
+          collection: 'notes',
+          // Three guardrails in all (the built-in one and two contributed).
+          plan: { stages: ['exact-lexical', 'rank-fusion'], budgets: { maxCost: 2 } },
+        });
+        expect(bundle).toMatchObject({ evidence: [], stopReason: 'exhausted' });
+        expect(bundle.spent.cost).toBe(0);
+        expect(ran).toEqual([]);
+      });
+
+      it('stops as canceled, without waiting, when the caller cancels during a guardrail that never settles (COR-2193)', async () => {
+        let started!: () => void;
+        const hasStarted = new Promise<void>((resolve) => (started = resolve));
+        const hanging: InputDetector = {
+          name: 'hanging',
+          detect: () => {
+            started();
+            return new Promise(() => undefined);
+          },
+        };
+        fixture = await createGovernedFixture(backend, {
+          governed: createTestEmbedders(conceptEmbedder, CONCEPT_DIMENSION),
+          policy: { recall: { contributedDetectors: [hanging] } },
+        });
+        const stored = await write('The user drives an electric automobile.');
+        const controller = new AbortController();
+        const recall = fixture.memory.recallForModel(principalA, 'vehicle', {
+          collection: 'notes',
+          signal: controller.signal,
+        });
+        // The abort comes only once the guardrail is known to be running.
+        await hasStarted;
+        controller.abort();
+
+        const bundle = await recall;
+        expect(bundle).toMatchObject({ evidence: [], stopReason: 'canceled' });
+        // The candidate was neither selected nor withheld, and stays recallable.
+        expect(bundle.exclusions).toEqual([]);
+        expect(bundle.candidates.map((item) => item.selection)).toEqual(['not-reached']);
+        const listed = await fixture.memory.list(principalA, { collection: 'notes' });
+        expect(listed.map((record) => record.id)).toEqual([stored]);
+      });
+
       it('stops as canceled when the caller’s signal has aborted', async () => {
         await write('The user drives an electric automobile.');
         const controller = new AbortController();
@@ -436,13 +528,28 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         expect(bundle).toMatchObject({ evidence: [], stopReason: 'canceled' });
       });
 
-      it('fails closed with no evidence when the embedder throws', async () => {
-        await write('The user drives an electric automobile.');
+      it('scores by text, and says why, when the embedder throws (COR-2186)', async () => {
+        const record = await write('The user drives an electric automobile.');
         const broken = fixture.restart(
           createTestEmbedders(() => {
             throw new Error('embedder offline');
           }, CONCEPT_DIMENSION),
         );
+        const bundle = await broken.recallForModel(principalA, 'automobile', {
+          collection: 'notes',
+        });
+        expect(ids(bundle)).toEqual([record]);
+        expect(bundle.stopReason).not.toBe('failed');
+        expect(bundle.stages.find((stage) => stage.stage === 'semantic')).toEqual({
+          stage: 'semantic',
+          status: 'unavailable',
+          detail: 'the active embedder failed, so candidates were scored by their text',
+        });
+      });
+
+      it('fails closed with no evidence when the text-search provider throws (COR-2186)', async () => {
+        await write('The user drives an electric automobile.');
+        const broken = fixture.restart({ textSearchProvider: throwingTextSearch(() => true) });
         const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
         expect(bundle).toMatchObject({ evidence: [], rendered: '', stopReason: 'failed' });
       });
@@ -631,15 +738,25 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('records no below-minimum exclusions when the first scoring pass fails', async () => {
         await write('The user drives an electric automobile.');
+        const broken = fixture.restart({ textSearchProvider: throwingTextSearch(() => true) });
+        const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
+        expect(bundle.stopReason).toBe('failed');
+        expect(bundle.exclusions).toEqual([]);
+        expect(bundle.candidates.map((item) => item.selection)).toEqual(['not-reached']);
+      });
+
+      it('records no below-minimum exclusions, and keeps the candidate, when only the embedder fails (COR-2186)', async () => {
+        const record = await write('The user drives an electric automobile.');
         const broken = fixture.restart(
           createTestEmbedders(() => {
             throw new Error('embedder offline');
           }, CONCEPT_DIMENSION),
         );
         const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
-        expect(bundle.stopReason).toBe('failed');
+        expect(bundle.stopReason).not.toBe('failed');
         expect(bundle.exclusions).toEqual([]);
-        expect(bundle.candidates.map((item) => item.selection)).toEqual(['not-reached']);
+        expect(ids(bundle)).toEqual([record]);
+        expect(bundle.candidates.map((item) => item.selection)).toEqual(['selected']);
       });
 
       it('compares counterevidence only within the candidate budget', async () => {
@@ -674,11 +791,7 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
 
       it('reports every selected stage on a bundle whose scoring failed', async () => {
         await write('The user drives an electric automobile.');
-        const broken = fixture.restart(
-          createTestEmbedders(() => {
-            throw new Error('embedder offline');
-          }, CONCEPT_DIMENSION),
-        );
+        const broken = fixture.restart({ textSearchProvider: throwingTextSearch(() => true) });
         const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
         expect(bundle.stopReason).toBe('failed');
         expect(bundle.stages.map((stage) => stage.stage)).toContain('reformulation');

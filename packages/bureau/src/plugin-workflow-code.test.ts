@@ -166,7 +166,12 @@ describe('a plugin code workflow in a Bureau', () => {
       onChange: () => () => undefined,
       watch: () => () => undefined,
     };
-    const gated = gatedContributions({ workflows: [sync()] }, needsSetup, (name) => `kit:${name}`);
+    const gated = gatedContributions(
+      { workflows: [sync()] },
+      needsSetup,
+      (name) => `kit:${name}`,
+      () => undefined,
+    );
     const catalog = createVersionedCatalog();
     catalog.register({
       kind: 'workflow',

@@ -573,9 +573,15 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-2118 — the guardrails the host gave, read before plugins' join them (and before any await),
   // so a listing tells them apart.
   const hostGuardrails = hostGuardrailRows(options.agentContributions);
+  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
+  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
+  // COR-2191 — made before plugins are composed, so a skipped memory guardrail reports through it.
+  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
+  const { diagnose } = diagnostics;
   const composedPlugins = await composePlugins({
     ...options,
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
+    onDiagnostic: diagnose,
   });
   options = composedPlugins.options;
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
@@ -584,10 +590,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
   });
-  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
-  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
-  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
-  const { diagnose } = diagnostics;
   // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
   const settingsLocked = validateSettingsOptions(options, toBadRequest);
   const settingsDefaults = settingsDefaultsOf(options);

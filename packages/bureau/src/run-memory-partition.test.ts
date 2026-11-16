@@ -17,7 +17,7 @@ import {
   createMemoryVectorStore,
   createTestEmbedders,
 } from '@lostgradient/memory';
-import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, type InputDetector } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -35,7 +35,10 @@ afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
 });
 
-function governedMemory(maxRecordsPerCollection?: number): GovernedMemory {
+function governedMemory(
+  maxRecordsPerCollection?: number,
+  admissionDetectors?: InputDetector[],
+): GovernedMemory {
   const runtime = createManualRuntimeServices({ identifierSeed: 'run-memory-partition' });
   return createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
@@ -44,7 +47,14 @@ function governedMemory(maxRecordsPerCollection?: number): GovernedMemory {
     vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({
       revision: 'governance:run-memory-partition',
-      ...(maxRecordsPerCollection === undefined ? {} : { admission: { maxRecordsPerCollection } }),
+      ...(maxRecordsPerCollection === undefined && admissionDetectors === undefined
+        ? {}
+        : {
+            admission: {
+              ...(maxRecordsPerCollection === undefined ? {} : { maxRecordsPerCollection }),
+              ...(admissionDetectors === undefined ? {} : { detectors: admissionDetectors }),
+            },
+          }),
     }),
     runtime,
   });
@@ -214,6 +224,44 @@ describe('an answer governed memory rejects (COR-1546)', () => {
     // Only the first answer was stored.
     const stored = await memory.list(ownerAuthority('api-key:alice'), { collection: 'alpha' });
     expect(stored).toHaveLength(1);
+  });
+});
+
+describe('an answer governed memory quarantines (COR-2191)', () => {
+  it('is reported once through the Bureau’s diagnostics, naming the run and agent and never the content', async () => {
+    const diagnostics: Array<{ scope: string; message: string }> = [];
+    const scanned: string[] = [];
+    const flagging: InputDetector = {
+      name: 'flagging',
+      detect: async (input) => {
+        scanned.push(input);
+        return { triggered: true, confidence: 1, category: 'flagged' };
+      },
+    };
+    const memory = governedMemory(undefined, [flagging]);
+    const bureau = await start(
+      memory,
+      { alpha: remembering('A secret answer one.', []) },
+      (diagnostic) => diagnostics.push(diagnostic),
+    );
+
+    const run = await bureau.tasks.start('alpha', 'Remember.', {
+      contextId: 'chat-1',
+      principal: 'api-key:alice',
+    });
+    await waitForTaskState(bureau, run.id);
+
+    const reported = diagnostics.filter((diagnostic) => diagnostic.scope === 'memory');
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toMatchObject({ level: 'warn', scope: 'memory' });
+    expect(reported[0]?.message).toContain('quarantined');
+    expect(reported[0]?.message).toContain(`"${run.id}"`);
+    expect(reported[0]?.message).toContain('"alpha"');
+    // The answer reached the detector, and neither it nor the detector's input is reported.
+    expect(scanned).toEqual(['A secret answer one.']);
+    expect(JSON.stringify(reported)).not.toContain('secret');
+    // Nothing was remembered.
+    expect(await memory.list(ownerAuthority('api-key:alice'), { collection: 'alpha' })).toEqual([]);
   });
 });
 
