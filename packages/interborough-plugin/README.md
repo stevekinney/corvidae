@@ -6,6 +6,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
 | `defineTrigger` | Declares a trigger kind and types `start`'s `configuration` with what the kind's schema parses to. |
+| `verifyHmacSignature` | Whether a `sha256=<hex>` signature is the HMAC-SHA-256 of a body under a secret; a `receive` calls it with the bytes it read and the signature header. Constant time through Web Crypto, and `false`, never a throw, for a missing or malformed signature or an empty secret. |
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
@@ -109,6 +110,36 @@ The descriptor's members:
 ### Receiving a request
 
 A trigger kind defines `start`, `receive` or both, and one with neither is a `TypeError` when the plugin loads. `receive(request, context)` answers one inbound request for a workflow file of the kind: it gets the `Request` as the host was given it, unread, and the context `start` gets (`configuration`, `workflowId`, `storage`, `fire`, `signal`). It authenticates the sender itself, calls `context.fire(payload, { idempotencyKey })` for each run the request starts, and resolves the `Response` the sender is answered with. The host reads no header, applies no key of its own and puts no limit on the body in this call. `signal` aborts when the request does and when the host closes, and a `fire` after that resolves `skipped`. A paused file still calls `receive`, and its `fire` resolves `skipped: 'paused'`. A kind that has only `receive` has no listener, and its files report the listener state `ready`. A plugin that declares a secret it has not been given makes `receive` reject with `PluginNeedsSetupError` before it runs.
+
+The host's `POST /triggers/<workflow-id>` route reads the body as bytes (at most 4 MiB), builds a fresh `Request` over them, and calls `receive`; nothing else authenticates the sender, so `receive` does. `verifyHmacSignature` checks the usual webhook signature:
+
+```ts
+import { defineTrigger, verifyHmacSignature } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
+
+export const inbox = defineTrigger({
+  name: 'inbox',
+  description: 'Receives a signed delivery.',
+  configuration: z.object({}),
+  async receive(request, { fire }) {
+    const body = new Uint8Array(await request.arrayBuffer());
+    const signature = request.headers.get('x-hub-signature-256');
+    if (
+      !(await verifyHmacSignature({ secret: process.env['INBOX_SECRET'] ?? '', body, signature }))
+    ) {
+      return new Response(null, { status: 401 });
+    }
+    const delivery = request.headers.get('x-delivery');
+    await fire(
+      JSON.parse(new TextDecoder().decode(body)),
+      delivery === null ? undefined : { idempotencyKey: delivery },
+    );
+    return new Response(null, { status: 202 });
+  },
+});
+```
+
+The check is over the bytes, not a re-encoded string, and it has no timestamp window: a replayed delivery is answered by the `idempotencyKey` `fire` is given.
 
 ### Trigger state
 

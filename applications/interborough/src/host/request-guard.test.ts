@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { createRequestGuard } from './request-guard.ts';
+import { createRequestGuard, PUBLIC_TRIGGERS_PATH_PREFIX } from './request-guard.ts';
 
 function request(headers: Record<string, string>): Request {
   return new Request('http://127.0.0.1/', { headers });
@@ -115,5 +115,45 @@ describe('a guard given a public origin on its default port (COR-1904)', () => {
 
   test('leaves an asset read on loopback to the Bureau, credential or not', () => {
     expect(statusAt('/bureau/assets/a/content', { host: 'localhost:7234' })).toBeUndefined();
+  });
+
+  test('lets a trigger delivery through with no credential, which the trigger then checks (COR-2169)', () => {
+    const host = { host: 'agents.example.test' };
+    expect(PUBLIC_TRIGGERS_PATH_PREFIX).toBe('/triggers/');
+    expect(statusAt('/triggers/hook', host)).toBeUndefined();
+    expect(
+      statusAt('/triggers/hook', { ...host, host: 'agents.example.test:443' }),
+    ).toBeUndefined();
+    expect(
+      statusAt('/triggers/hook', { ...host, origin: 'https://agents.example.test' }),
+    ).toBeUndefined();
+    expect(statusAt('/triggers/hook', { ...host, 'x-api-key': 'anything' })).toBeUndefined();
+  });
+
+  test('refuses the public origin for any other path near a trigger delivery, another port, or a foreign Origin', () => {
+    const host = { host: 'agents.example.test' };
+    for (const path of [
+      '/triggers',
+      '/trigger/hook',
+      '/Triggers/hook',
+      '/triggers/../bureau/jsonrpc',
+      '/triggers/%2e%2e/bureau/jsonrpc',
+      '/api/triggers/hook',
+      '/host/status',
+      '/',
+    ]) {
+      expect(statusAt(path, host), path).toBe(403);
+    }
+    expect(statusAt('/triggers/hook', { host: 'agents.example.test:8443' })).toBe(403);
+    expect(statusAt('/triggers/hook', { ...host, origin: 'https://attacker.example' })).toBe(403);
+    expect(statusAt('/triggers/hook', { ...host, origin: 'http://127.0.0.1:7234' })).toBe(403);
+  });
+
+  test('refuses a trigger path on a public origin the guard was not given', () => {
+    const plain = createRequestGuard(() => 7234);
+    const request = new Request('http://127.0.0.1/triggers/hook', {
+      headers: { host: 'agents.example.test' },
+    });
+    expect(plain(request)?.status).toBe(403);
   });
 });

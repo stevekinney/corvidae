@@ -1,14 +1,16 @@
 /**
  * COR-1904 — who reaches A2A on the Interborough host. An operator who stores an A2A key (the
  * Bungalow secret `a2a-api-key`) makes every A2A JSON-RPC call present it, and one who also names
- * the public origin a reverse proxy serves (`INTERBOROUGH_A2A_PUBLIC_ORIGIN`) lets a caller with
- * that `Host` reach `/bureau/a2a/*`, and nothing else. A host with neither is the loopback-only,
+ * the public origin a reverse proxy serves (`INTERBOROUGH_PUBLIC_ORIGIN`) lets a caller with
+ * that `Host` reach `/bureau/a2a/*`, `/bureau/assets/*` with the key and `POST /triggers/<workflow>`
+ * (COR-2169, the describe at the end of this file), and nothing else. A host with neither is the loopback-only,
  * anonymous host COR-1819 shipped.
  *
  * One table, one row per caller, configuration, credential, and path, each run against the host
  * the row's configuration starts.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { createHmac } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,7 +19,15 @@ import { openBungalow } from '@lostgradient/bungalow';
 import { rejectionOf } from '@lostgradient/testing';
 
 import { startHost, type Host } from './host.ts';
+import { workspacePlugins } from './plugins.ts';
 import { fakeProvider, writeProviderHome } from './stub-provider.ts';
+import {
+  HOOK_SECRET,
+  hookPlugin,
+  SIGNATURE_HEADER,
+  THROW_HEADER,
+  type HookPlugin,
+} from './trigger-plugin.test-support.ts';
 
 /** The operator's A2A key. The secret file ends in a newline, as one written by `echo` does. */
 const A2A_KEY = 'host-a2a-key-0123456789';
@@ -387,7 +397,7 @@ async function startConfigured(configuration: Configuration): Promise<Host> {
   return startHost({
     environment: {
       INTERBOROUGH_HOME: home,
-      ...(configuration === 'public' ? { INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN } : {}),
+      ...(configuration === 'public' ? { INTERBOROUGH_PUBLIC_ORIGIN: PUBLIC_ORIGIN } : {}),
     },
     port: 0,
     resolveProviderGenerate: fakeProvider('Answered.').resolver,
@@ -605,7 +615,7 @@ describe('the public origin', () => {
 
     const failure = await rejectionOf(
       startHost({
-        environment: { INTERBOROUGH_HOME: home, INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN },
+        environment: { INTERBOROUGH_HOME: home, INTERBOROUGH_PUBLIC_ORIGIN: PUBLIC_ORIGIN },
         port: 0,
       }),
     );
@@ -620,14 +630,32 @@ describe('the public origin', () => {
 
       const failure = await rejectionOf(
         startHost({
-          environment: { INTERBOROUGH_HOME: home, INTERBOROUGH_A2A_PUBLIC_ORIGIN: origin },
+          environment: { INTERBOROUGH_HOME: home, INTERBOROUGH_PUBLIC_ORIGIN: origin },
           port: 0,
         }),
       );
 
-      expect(String(failure)).toContain('INTERBOROUGH_A2A_PUBLIC_ORIGIN');
+      expect(String(failure)).toContain('INTERBOROUGH_PUBLIC_ORIGIN');
     },
   );
+
+  test('named by its old name stops the host with a renamed-to message, whatever the new name holds (COR-2169)', async () => {
+    const home = await makeHome(A2A_KEY);
+
+    for (const environment of [
+      { INTERBOROUGH_HOME: home, INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN },
+      {
+        INTERBOROUGH_HOME: home,
+        INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN,
+        INTERBOROUGH_PUBLIC_ORIGIN: PUBLIC_ORIGIN,
+      },
+    ]) {
+      const failure = await rejectionOf(startHost({ environment, port: 0 }));
+      expect(String(failure)).toContain(
+        'INTERBOROUGH_A2A_PUBLIC_ORIGIN was renamed to INTERBOROUGH_PUBLIC_ORIGIN',
+      );
+    }
+  });
 });
 
 describe('the A2A key', () => {
@@ -662,5 +690,361 @@ describe('the A2A key', () => {
     } finally {
       await host.close();
     }
+  });
+});
+
+/**
+ * COR-2169 — `POST /triggers/<workflow-id>` through a real host, its guards and a real plugin that
+ * authenticates with `verifyHmacSignature`. The handler's own rows (the cap on a stream, the bytes,
+ * the signal, the statuses) are `trigger-routes.test.ts`.
+ */
+describe('trigger deliveries (COR-2169)', () => {
+  /** What a started host collected, besides the host itself. */
+  interface TriggerHost {
+    readonly host: Host;
+    readonly plugin: HookPlugin;
+    readonly warnings: string[];
+    readonly logs: string[];
+  }
+
+  const hostsStarted: Host[] = [];
+
+  async function startTriggerHost(configuration: Configuration): Promise<TriggerHost> {
+    const home = await makeHome(configuration === 'unkeyed' ? undefined : `${A2A_KEY}\n`);
+    await mkdir(join(home, 'workflows'), { recursive: true });
+    const steps = [
+      {
+        kind: 'activity',
+        handler: 'agent',
+        input: { agent: 'open', message: 'a delivery arrived' },
+      },
+    ];
+    const files = {
+      hook: { trigger: { kind: 'hooks:hook' } },
+      paused: { trigger: { kind: 'hooks:hook' }, paused: true },
+      waiting: { trigger: { kind: 'gated:hook' } },
+      scheduled: { trigger: { kind: 'schedule', spec: '1h' } },
+    };
+    for (const [name, definition] of Object.entries(files)) {
+      await writeFile(
+        join(home, 'workflows', `${name}.json`),
+        JSON.stringify({ name, agent: 'open', steps, ...definition }),
+      );
+    }
+    const plugin = hookPlugin();
+    const warnings: string[] = [];
+    const logs: string[] = [];
+    const host = await startHost({
+      environment: {
+        INTERBOROUGH_HOME: home,
+        ...(configuration === 'public' ? { INTERBOROUGH_PUBLIC_ORIGIN: PUBLIC_ORIGIN } : {}),
+      },
+      port: 0,
+      plugins: [...workspacePlugins(), ...plugin.entries],
+      resolveProviderGenerate: fakeProvider('Answered.').resolver,
+      warn: (message) => warnings.push(message),
+      log: (message) => logs.push(message),
+    });
+    hostsStarted.push(host);
+    await host.bureau.workflows?.refresh();
+    return { host, plugin, warnings, logs };
+  }
+
+  afterAll(async () => {
+    for (const host of hostsStarted.splice(0)) await host.close();
+  });
+
+  const signed = (body: string | Uint8Array): string =>
+    `sha256=${createHmac('sha256', HOOK_SECRET).update(body).digest('hex')}`;
+
+  interface Delivery {
+    readonly path?: string;
+    readonly method?: string;
+    readonly body?: string | Uint8Array<ArrayBuffer>;
+    readonly signature?: string | null;
+    /** The `Host` header; the public origin's when the caller comes through the proxy. */
+    readonly host?: string;
+    readonly headers?: Record<string, string>;
+  }
+
+  async function deliver(
+    { host }: TriggerHost,
+    { path = '/triggers/hook', method = 'POST', body = '{"event":"push"}', ...rest }: Delivery = {},
+  ): Promise<{ status: number; text: string; response: Response }> {
+    const signature = rest.signature === undefined ? signed(body) : rest.signature;
+    const response = await fetch(new URL(path, host.url), {
+      method,
+      headers: {
+        ...(rest.host === undefined ? {} : { host: rest.host }),
+        ...(signature === null ? {} : { [SIGNATURE_HEADER]: signature }),
+        ...rest.headers,
+      },
+      ...(method === 'GET' || method === 'HEAD' ? {} : { body }),
+    });
+    return { status: response.status, text: await response.text(), response };
+  }
+
+  /** A request written to the socket as given, with no body unless one is given. */
+  async function raw(
+    { host }: TriggerHost,
+    lines: readonly string[],
+    body = '',
+  ): Promise<{ status: number; text: string }> {
+    const head = [...lines, 'Connection: close'].join('\r\n');
+    const text = await new Promise<string>((resolve, reject) => {
+      let received = '';
+      void Bun.connect({
+        hostname: host.url.hostname,
+        port: Number(host.url.port),
+        socket: {
+          open: (socket) => void socket.write(`${head}\r\n\r\n${body}`),
+          data: (_socket, chunk) => void (received += new TextDecoder().decode(chunk)),
+          close: () => resolve(received),
+          error: (_socket, error) => reject(error),
+        },
+      });
+    });
+    return {
+      status: Number(text.split(' ')[1]),
+      text: text.slice(text.indexOf('\r\n\r\n') + 4),
+    };
+  }
+
+  const runsOf = async ({ host }: TriggerHost, workflow = 'hook'): Promise<number> => {
+    const page = await host.bureau.workflows?.listRuns({ workflow, limit: 50, offset: 0 });
+    return page?.runs.length ?? 0;
+  };
+
+  describe('on loopback, and through the public origin', () => {
+    let served: TriggerHost;
+    beforeAll(async () => {
+      served = await startTriggerHost('public');
+    });
+
+    test('a correctly signed delivery reaches receive on loopback and starts a run', async () => {
+      const before = await runsOf(served);
+      const answer = await deliver(served, { headers: { 'x-delivery': 'loopback-1' } });
+      expect(answer.status).toBe(202);
+      expect(JSON.parse(answer.text)).toMatchObject({ outcome: 'started' });
+      expect(await runsOf(served)).toBe(before + 1);
+      expect(
+        served.host.routeInventory.find((e) => e.key === 'POST /triggers/:workflow'),
+      ).toMatchObject({
+        resourceClass: 'deployment-operator',
+        admission: 'trigger-receive',
+      });
+    });
+
+    test('a correctly signed delivery reaches receive through the public origin, with no key', async () => {
+      const answer = await deliver(served, {
+        host: PUBLIC_HOST,
+        headers: { 'x-delivery': 'public-1' },
+      });
+      expect(answer.status).toBe(202);
+      expect(JSON.parse(answer.text)).toMatchObject({ outcome: 'started' });
+      // The same delivery again is one run: the idempotency key is the plugin's, `fire`'s.
+      const again = await deliver(served, {
+        host: PUBLIC_HOST,
+        headers: { 'x-delivery': 'public-1' },
+      });
+      expect(JSON.parse(again.text)).toMatchObject({ outcome: 'duplicate' });
+    });
+
+    test('the origin the public host names is accepted, a foreign Origin is not', async () => {
+      const own = await deliver(served, {
+        host: PUBLIC_HOST,
+        headers: { origin: PUBLIC_ORIGIN, 'x-delivery': 'public-origin' },
+      });
+      expect(own.status).toBe(202);
+      const before = served.plugin.contexts.length;
+      for (const row of [
+        { host: PUBLIC_HOST, headers: { origin: 'https://attacker.example' } },
+        { headers: { origin: 'https://attacker.example' } },
+        { headers: { origin: PUBLIC_ORIGIN } },
+      ]) {
+        const answer = await deliver(served, row);
+        expect(answer.status).toBe(403);
+        expect(answer.text.startsWith('Forbidden:')).toBe(true);
+      }
+      expect(served.plugin.contexts).toHaveLength(before);
+    });
+
+    test('verifies the bytes it was sent: a body that is not UTF-8 arrives intact', async () => {
+      const bytes = Uint8Array.from([0xff, 0xfe, 0x00, 0x80, 0xc3, 0x28, 0x7f, 0x01]);
+      const answer = await deliver(served, {
+        body: bytes,
+        headers: { 'content-type': 'application/octet-stream', 'x-delivery': 'bytes-1' },
+      });
+      expect(answer.status).toBe(202);
+      expect(served.plugin.verified.at(-1)).toEqual(bytes);
+    });
+
+    test('a missing or wrong signature is the plugin’s refusal, and starts nothing', async () => {
+      const before = await runsOf(served);
+      for (const signature of [null, 'sha256=', signed('another body')]) {
+        const answer = await deliver(served, { signature });
+        expect(answer.status).toBe(401);
+        expect(answer.text).toBe('signature refused');
+      }
+      expect(await runsOf(served)).toBe(before);
+    });
+
+    test('a percent-encoded identifier is the decoded one, and one that names no workflow is a 404 that touches nothing', async () => {
+      const decoded = await deliver(served, {
+        path: '/triggers/ho%6Fk',
+        headers: { 'x-delivery': 'enc-1' },
+      });
+      expect(decoded.status).toBe(202);
+      const before = served.plugin.contexts.length;
+      for (const host of [undefined, PUBLIC_HOST]) {
+        for (const path of ['/triggers/..%2Fhost%2Fstatus', '/triggers/hook%00', '/triggers/%20']) {
+          const answer = await deliver(served, { path, ...(host === undefined ? {} : { host }) });
+          expect(answer.status, path).toBe(404);
+          expect(answer.text, path).toBe('');
+        }
+      }
+      expect(served.plugin.contexts).toHaveLength(before);
+    });
+
+    test('an unknown workflow, one whose trigger does not receive, and one whose plugin needs setup answer with a status and no body', async () => {
+      const before = served.plugin.contexts.length;
+      const unknown = await deliver(served, { path: '/triggers/ghost' });
+      const scheduled = await deliver(served, { path: '/triggers/scheduled' });
+      const waiting = await deliver(served, { path: '/triggers/waiting' });
+      expect([unknown.status, scheduled.status, waiting.status]).toEqual([404, 405, 503]);
+      expect([unknown.text, scheduled.text, waiting.text]).toEqual(['', '', '']);
+      for (const { response } of [unknown, scheduled, waiting]) {
+        // The server adds the length and the date; nothing says what the answer is about.
+        expect([...response.headers.keys()].toSorted()).toEqual(['content-length', 'date']);
+        expect(response.headers.get('content-length')).toBe('0');
+      }
+      expect(served.plugin.contexts).toHaveLength(before);
+      // The setup refusal names the workflow and the error, never the secret's name or any text.
+      const lines = served.warnings
+        .filter((warning) => warning.includes('host.trigger.failure'))
+        .map((warning) => JSON.parse(warning));
+      expect(lines).toContainEqual({
+        event: 'host.trigger.failure',
+        workflow: 'waiting',
+        error: 'PluginNeedsSetupError',
+      });
+      expect(JSON.stringify(lines)).not.toContain('gated-token');
+    });
+
+    test('a paused workflow still calls receive: the plugin answers, its fire is skipped, and no run starts', async () => {
+      const answer = await deliver(served, {
+        path: '/triggers/paused',
+        headers: { 'x-delivery': 'p-1' },
+      });
+      expect(answer.status).toBe(202);
+      expect(JSON.parse(answer.text)).toEqual({ outcome: 'skipped', reason: 'paused' });
+      expect(await runsOf(served, 'paused')).toBe(0);
+    });
+
+    test('M57: a thrown error’s text, the secret and the signature appear in no response, log line or event', async () => {
+      const signature = signed('{"event":"push"}');
+      const answer = await deliver(served, { signature, headers: { [THROW_HEADER]: '1' } });
+      expect(answer.status).toBe(500);
+      expect(answer.text).toBe('');
+      expect([...answer.response.headers.keys()].toSorted()).toEqual(['content-length', 'date']);
+      await served.host.bureau.internals.taskRegistry.flush();
+      const envelopes: unknown[] = [];
+      for await (const envelope of served.host.bureau.internals.eventFeed.feed.replay()) {
+        envelopes.push(envelope);
+      }
+      const everything = JSON.stringify([
+        answer.text,
+        [...answer.response.headers],
+        served.warnings,
+        served.logs,
+        envelopes,
+        await served.host.bureau.plugins.list(),
+      ]);
+      for (const canary of [HOOK_SECRET, signature, 'delivery failed']) {
+        expect(everything).not.toContain(canary);
+      }
+      expect(
+        served.warnings
+          .filter((warning) => warning.includes('host.trigger.failure'))
+          .map((warning) => JSON.parse(warning)),
+      ).toContainEqual({ event: 'host.trigger.failure', workflow: 'hook', error: 'Error' });
+    });
+
+    test('M54: a Content-Length over 4 MiB is answered 413 before any body is read, and receive is not called', async () => {
+      const before = served.plugin.contexts.length;
+      for (const hostHeader of [served.host.url.host, PUBLIC_HOST]) {
+        const answer = await raw(served, [
+          'POST /triggers/hook HTTP/1.1',
+          `Host: ${hostHeader}`,
+          `Content-Length: ${4 * 1024 * 1024 + 1}`,
+        ]);
+        expect(answer.status).toBe(413);
+        expect(answer.text).toBe('');
+      }
+      expect(served.plugin.contexts).toHaveLength(before);
+    });
+
+    test('every other path and method through the public origin is still refused by the guard', async () => {
+      const before = served.plugin.contexts.length;
+      const refusals: Array<[string, string]> = [
+        ['GET', '/triggers/hook'],
+        ['PUT', '/triggers/hook'],
+        ['DELETE', '/triggers/hook'],
+        ['POST', '/triggers/a/b'],
+        ['POST', '/triggers'],
+        ['POST', '/host/status'],
+        ['POST', '/host/restart'],
+        ['GET', '/host/status'],
+        ['GET', '/host/session'],
+        ['GET', '/api/runs'],
+        ['POST', '/bureau/jsonrpc'],
+        ['GET', '/'],
+        ['GET', '/openrpc.json'],
+      ];
+      for (const [method, path] of refusals) {
+        const answer = await deliver(served, { method, path, host: PUBLIC_HOST, signature: null });
+        expect(answer.status, `${method} ${path}`).toBe(403);
+        expect(answer.text.startsWith('Forbidden:'), `${method} ${path}`).toBe(true);
+      }
+      // A path written with dot segments, as the proxy might forward it, resolves before the guard.
+      const dotted = await raw(served, [
+        'POST /triggers/../bureau/jsonrpc HTTP/1.1',
+        `Host: ${PUBLIC_HOST}`,
+        'Content-Length: 0',
+      ]);
+      expect(dotted.status).toBe(403);
+      expect(served.plugin.contexts).toHaveLength(before);
+    });
+  });
+
+  describe('a host with an A2A key and no public origin', () => {
+    test('refuses the public Host for a trigger delivery, and still serves loopback', async () => {
+      const served = await startTriggerHost('keyed');
+      const refused = await deliver(served, { host: PUBLIC_HOST });
+      expect(refused.status).toBe(403);
+      expect(refused.text.startsWith('Forbidden:')).toBe(true);
+      const local = await deliver(served);
+      expect(local.status).toBe(202);
+    });
+  });
+
+  describe('the session, CSRF and A2A-key guards of every other route are unchanged', () => {
+    test('a cross-site page cannot post to loopback, and a request with no Origin is a local one', async () => {
+      const served = await startTriggerHost('unkeyed');
+      const forged = await deliver(served, {
+        headers: { origin: 'https://attacker.example', 'x-delivery': 'csrf' },
+      });
+      expect(forged.status).toBe(403);
+      for (const path of ['/host/status', '/host/session', '/api/agents']) {
+        const crossSite = await fetch(new URL(path, served.host.url), {
+          headers: { origin: 'https://attacker.example' },
+        });
+        expect(crossSite.status, path).toBe(403);
+        const remote = await fetch(new URL(path, served.host.url), {
+          headers: { host: PUBLIC_HOST },
+        });
+        expect(remote.status, path).toBe(403);
+      }
+    });
   });
 });

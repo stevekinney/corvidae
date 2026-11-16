@@ -42,8 +42,9 @@ import {
  * reach the port, which is why the hostname is not an option. The one credential the host knows is
  * the operator's A2A key (COR-1904, `a2a-authentication.ts`): once it is stored, A2A requires it,
  * and it is the only way a request from beyond loopback, through a reverse proxy serving the public
- * origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`
- * and `/bureau/assets/*`.
+ * origin `INTERBOROUGH_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`,
+ * `/bureau/assets/*` and `POST /triggers/<workflow-id>` (COR-2169), the one route that needs no
+ * credential, because the trigger's own `receive` authenticates the sender (`trigger-routes.ts`).
  *
  * Weft's server would report its own shared `unauthenticated-local` caller for a request with no
  * credential, so it listens on a second, private loopback port that answers only a per-process
@@ -187,8 +188,8 @@ import {
 import {
   DEFAULT_BUILD_DIRECTORY,
   processEnvironment,
-  resolveA2aPublicOrigin,
   resolvePort,
+  resolvePublicOrigin,
 } from './environment-configuration.ts';
 import {
   HOST_DEPENDENCIES,
@@ -256,6 +257,7 @@ import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
+import { triggerRoutes } from './trigger-routes.ts';
 import { createWorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
@@ -836,9 +838,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const packagePlugins = [...(options.plugins ?? workspacePlugins())];
   const developmentPlugins = [...(options.developmentPlugins ?? [])];
   const log = options.log ?? ((message: string) => console.info(message));
-  // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
-  // and a malformed one stops the host before anything opens.
-  const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
+  // The public origin (COR-1904, COR-2169) is read from the caller's environment before it can
+  // change, and a malformed one, or the name it had before it was renamed, stops the host before
+  // anything opens.
+  const a2aPublicOrigin = resolvePublicOrigin(environment);
   // The tables are copied before the first await, like the other caller-owned options, so a later
   // change to the caller's objects cannot reach a lookup. The claimed Postgres storage below still
   // comes from the built-in Postgres factory, as the callback always did.
@@ -1443,6 +1446,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         }
         return bureauHandler(bureauRequest);
       },
+      // A trigger delivery (COR-2169): `POST /triggers/<workflow-id>`, from an external sender with
+      // no session. The route policy admits it as `trigger-receive`, checked by the public-origin
+      // guard alone; the trigger's own `receive` authenticates the sender (`trigger-routes.ts`).
+      ...triggerRoutes({ bureau, warn: options.warn }),
       // Whether the host can restart, and the command it was launched with (COR-2009), and the
       // restart request itself. The guard answers first, so a page on another origin cannot
       // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
@@ -1569,7 +1576,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
       // that stays open costs nothing a timeout would save.
       idleTimeout: 0,
-      routes: authorizeHostRoutes(publicRoutes, authority, refuse),
+      // A route admitted as `trigger-receive` is checked by the guard that also admits the public
+      // origin's `Host`; every other route, and every path no route names, by the loopback one.
+      routes: authorizeHostRoutes(publicRoutes, authority, refuse, refuseBureau),
       async fetch(request, listener) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;

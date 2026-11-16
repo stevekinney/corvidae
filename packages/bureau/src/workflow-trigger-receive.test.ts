@@ -8,9 +8,10 @@
  * `workflow-trigger-supervisor.test.ts`, M12 in `http/management/workflows-operations.test.ts`.
  *
  * Not driven: M46 (two Bureaus over one storage may both start a run: a race the tests cannot
- * order; `fireTrigger` documents it), M52 and M53 (the lease and `standby` of COR-2167, which is
- * not on this branch), M54 and M57 (the host route of COR-2169, which holds the cap and maps a
- * rejection to a status).
+ * order; `fireTrigger` documents it), and M52 and M53 (the lease and `standby` of COR-2167, which
+ * is not on this branch). M54 and M57 are the host route's (COR-2169): the cap and the status a
+ * rejection maps to are in `applications/interborough/src/host/trigger-routes.test.ts`, and
+ * through a real host in `host-a2a-authorization.test.ts`.
  *
  * After every row the published invariant of COR-2166 is read again: a listener's `retryAt` is
  * non-null exactly while a retry timer is armed.
@@ -1381,8 +1382,8 @@ describe('receiving through a contributed trigger kind (COR-2168 outcome matrix)
   it('lists each row once, in the table of this file, with the rows the other files hold', () => {
     const own = rows.map((entry) => entry.row);
     expect(new Set(own).size).toBe(own.length);
-    const elsewhere = [1, 2, 3, 4, 5, 6, 7, 9, 12, 13];
-    const skipped = [46, 52, 53, 54, 57];
+    const elsewhere = [1, 2, 3, 4, 5, 6, 7, 9, 12, 13, 54, 57];
+    const skipped = [46, 52, 53];
     expect([...own, ...elsewhere, ...skipped].toSorted((a, b) => a - b)).toEqual(
       Array.from({ length: 59 }, (_value, index) => index + 1),
     );
