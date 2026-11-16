@@ -1324,13 +1324,12 @@
   const scrollAttachment = scrollState.createScrollAttachment();
   // Independent of the scroll/history-anchor attachments above — this owns
   // no chat scroll behavior, it only reads position to drive the shared
-  // cinder scroll-fade recipe's fallback attributes. Only active when
-  // scrollFadeVisible is set AND surfaceMode is 'default' (see chat.types.ts
-  // for why 'transparent' mode stays inert). $derived so its identity is
-  // stable across unrelated re-renders (Svelte tears down and re-runs an
-  // attachment whenever its reference changes).
+  // cinder scroll-fade recipe's fallback attributes, which the transparent surface's mask fade
+  // reads too. Only active when scrollFadeVisible is set (see chat.types.ts). $derived so its
+  // identity is stable across unrelated re-renders (Svelte tears down and re-runs an attachment
+  // whenever its reference changes).
   const timelineScrollFadeAttachment = $derived(
-    scrollFadeVisible && surfaceMode === 'default' ? overflowFadeEdges() : noopAttachment,
+    scrollFadeVisible ? overflowFadeEdges() : noopAttachment,
   );
   // ==========================================================================
   // Actions
@@ -1648,8 +1647,8 @@
   // was on screen; the estimate holds until the first read. It is not state: nothing renders from
   // it, and it only keeps the box the row is judged against the same with the reminder on and off.
   // One row of the neutral Callout: a small button (28px) between its 12px insets and a hairline
-  // each way, and 4px of margin above and below.
-  let approvalReminderBlockSize = 62;
+  // each way, 4px of margin above and the docked stack's 12px gap below.
+  let approvalReminderBlockSize = 70;
   /**
    * Reads the reminder from the page, not from state: what the transcript's box excludes is what is
    * drawn now, and a state update the page has not yet drawn would count the reminder twice.
@@ -2817,7 +2816,10 @@
         id={timelineId}
         class={classNames(
           'chat-timeline',
-          scrollFadeVisible && 'cinder-_scroll-fade cinder-_scroll-fade-start',
+          scrollFadeVisible &&
+            (surfaceMode === 'default'
+              ? 'cinder-_scroll-fade cinder-_scroll-fade-start'
+              : 'chat-timeline-mask-fade'),
         )}
         role="log"
         aria-label={chatLabels.messages}
@@ -3359,6 +3361,41 @@
    * also gated off entirely in that mode (see timelineScrollFadeAttachment). */
   .chat-container[data-surface-mode='default'] .chat-timeline.cinder-_scroll-fade {
     --_cinder-scroll-fade-color: var(--_cinder-chat-shared-surface);
+  }
+
+  /* A transparent surface paints no background, so it has no colour an opaque overlay could fade
+   * toward; it masks instead. The mask is right here, where the overlay's rule against masks is not
+   * at stake: the timeline paints nothing of its own, so the faded content shows the host's own
+   * background behind it, whatever that is. An edge fades only while there is content past it (the
+   * `data-cinder-overflows` attributes `overflowFadeEdges` sets), so a transcript at its end never
+   * dims its last message (COR-2327). */
+  .chat-timeline-mask-fade {
+    --_chat-timeline-fade-size: var(--cinder-space-6);
+    --_chat-timeline-fade-start: 0px;
+    --_chat-timeline-fade-end: 0px;
+
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black var(--_chat-timeline-fade-start),
+      black calc(100% - var(--_chat-timeline-fade-end)),
+      transparent
+    );
+  }
+
+  .chat-timeline-mask-fade[data-cinder-overflows-start] {
+    --_chat-timeline-fade-start: var(--_chat-timeline-fade-size);
+  }
+
+  .chat-timeline-mask-fade[data-cinder-overflows] {
+    --_chat-timeline-fade-end: var(--_chat-timeline-fade-size);
+  }
+
+  /* Reduced transparency and forced colours keep a plain edge rather than a dimmed one. */
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    .chat-timeline-mask-fade {
+      mask-image: none;
+    }
   }
 
   /* Prevent non-last messages from being scroll anchors */

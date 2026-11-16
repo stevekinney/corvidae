@@ -2123,6 +2123,7 @@
         streaming={session.streaming && !choosing}
         trailingAskPending={!session.streaming && session.humanRequests.length > 0}
         surfaceMode="transparent"
+        scrollFadeVisible
         variant="transcript"
         notSent={connection.unreachable
           ? {

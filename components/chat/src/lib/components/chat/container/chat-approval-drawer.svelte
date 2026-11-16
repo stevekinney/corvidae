@@ -57,8 +57,10 @@
 </Callout>
 
 <style>
+  /* The docked stack keeps one gap between its surfaces: the reminder stands --cinder-space-3 clear
+     of the composer or the blocked row under it, at every width (COR-2327). */
   :global(.chat-approval-drawer) {
-    margin-block: var(--cinder-space-1);
+    margin-block: var(--cinder-space-1) var(--cinder-space-3);
   }
 
   :global(.chat-approval-drawer-text) {
