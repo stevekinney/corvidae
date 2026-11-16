@@ -5,7 +5,8 @@
  * statuses and counts, never content. One walk over the Zod schema answers both questions the host
  * asks of it, so the refusal and the catalog's field list cannot disagree:
  *
- * - {@link eventPayloadContent}: the fields that could hold content, which the host refuses.
+ * - {@link judgeEventPayload}: the fields that could hold content, which the host refuses, and
+ *   whether the walk ran out of budget instead ({@link eventPayloadContent} is its paths alone).
  * - {@link eventPayloadFields}: the fields a payload lists, as `bureau.events.catalog` shows them.
  *
  * A value is accepted when every leaf it can hold is a number, a boolean, a literal, a `z.enum` (a
@@ -14,8 +15,12 @@
  * `z.any()`, a record, a tuple, a date, a lazy schema and an object with a catchall are refused:
  * each lets arbitrary text through. A schema that recurses through a getter is accepted when every
  * leaf passes (revisiting an object adds no leaf). The walk reads at most
- * {@link EVENT_PAYLOAD_NODE_BUDGET} schemas, getter reads included; a payload that needs more, such
- * as one that builds a new schema on every read, is refused at the path where the count ran out.
+ * {@link EVENT_PAYLOAD_NODE_BUDGET} schemas: each schema it visits, each wrapper layer, and each
+ * getter read, charged before the getter runs, so the cost of an object grows with the schemas it
+ * holds and a wide object of getters stops at the budget. A payload that needs more, such as one
+ * that builds a new schema on every read or a plain object of thousands of keys, is refused at the
+ * path where the count ran out; {@link judgeEventPayload} reports that it ran out of budget, which
+ * is not a finding that the field holds content.
  *
  * The schema is read through `_zod.def`, as `schemaDigest` reads it, never through `instanceof`: a
  * plugin may carry its own copy of Zod.
@@ -127,6 +132,26 @@ class NodeBudgetExhausted extends Error {
   }
 }
 
+/** What the walk found: the fields it refuses, and whether it stopped because the budget ran out. */
+export interface EventPayloadVerdict {
+  /** The dotted paths that could hold content; the one path reached when `budgetExhausted`. */
+  readonly fields: string[];
+  /** Whether the walk read its whole budget, so `fields` is where it stopped, not content found. */
+  readonly budgetExhausted: boolean;
+}
+
+/**
+ * An object schema's shape with its getters unread. Zod freezes `def.shape` by spreading it, which
+ * runs every getter at once; the accessor keeps the original in `raw`, so the walk reads it key by
+ * key and charges each getter. Once frozen, or for a shape Zod did not wrap, `def.shape` is it.
+ */
+function unreadShape(definition: Definition): Readonly<Record<string, unknown>> {
+  const accessor = Object.getOwnPropertyDescriptor(definition, 'shape')?.get as
+    | { raw?: Readonly<Record<string, unknown>> }
+    | undefined;
+  return accessor?.raw ?? definition.shape ?? {};
+}
+
 /** `rest` under the object key `key`: `note` under `customer` is `customer.note`, `[]` is `lines[]`. */
 function underKey(key: string, rest: string): string {
   if (rest === '') return key;
@@ -148,8 +173,10 @@ function distinct(paths: readonly string[]): string[] {
  * `*` for an object that accepts any other key), in the order the payload declares them. Empty
  * when the payload holds identifiers, statuses and counts only. At most 32 are named.
  *
- * The walk counts every schema it reads, a getter's included, against {@link
- * EVENT_PAYLOAD_NODE_BUDGET}; a payload that runs it out is refused with the one path it reached.
+ * The walk counts every schema it reads against {@link EVENT_PAYLOAD_NODE_BUDGET}, and charges each
+ * getter before it reads it; a payload that runs the budget out is refused with the one path it
+ * reached and `budgetExhausted` set, which says the payload is too large to check, not that the
+ * field holds content.
  * Each object schema is judged once: its offending paths are computed relative to it and prefixed
  * at every place it is used, so a subschema shared by three fields names three paths without being
  * read three times. An object reached again while it is being judged is a cycle: it adds nothing at
@@ -157,17 +184,20 @@ function distinct(paths: readonly string[]): string[] {
  * from inside a cycle may therefore leave out a path that runs back through it; whether the
  * payload holds content is never affected, since every leaf is reported by the object that holds it.
  */
-export function eventPayloadContent(payload: z.ZodObject): string[] {
+export function judgeEventPayload(payload: z.ZodObject): EventPayloadVerdict {
   const memo = new Map<unknown, string[]>();
   const active = new Set<unknown>();
   let remaining = EVENT_PAYLOAD_NODE_BUDGET;
 
+  /** Charges one read to the budget; `path` is where the walk is when it runs out. */
+  const charge = (path: string): void => {
+    remaining -= 1;
+    if (remaining < 0) throw new NodeBudgetExhausted(path);
+  };
+
   /** The offending paths under `schema`, relative to it; `path` only names where the walk is. */
   const walk = (schema: unknown, path: string): string[] => {
-    const { base, identifier } = unwrap(schema, () => {
-      remaining -= 1;
-      if (remaining < 0) throw new NodeBudgetExhausted(path);
-    });
+    const { base, identifier } = unwrap(schema, () => charge(path));
     const definition = definitionOf(base);
     if (definition === undefined) return [''];
     const { type } = definition;
@@ -187,10 +217,14 @@ export function eventPayloadContent(payload: z.ZodObject): string[] {
       try {
         const catchall = definitionOf(definition.catchall);
         const open = definition.catchall !== undefined && catchall?.type !== 'never';
+        const shape = unreadShape(definition);
         const found = distinct([
-          ...Object.entries(definition.shape ?? {}).flatMap(([key, member]) =>
-            walk(member, path === '' ? key : `${path}.${key}`).map((rest) => underKey(key, rest)),
-          ),
+          ...Object.keys(shape).flatMap((key) => {
+            const memberPath = path === '' ? key : `${path}.${key}`;
+            // A getter runs on read, so it is charged first: a wide object of getters stops here.
+            if (Object.getOwnPropertyDescriptor(shape, key)?.get !== undefined) charge(memberPath);
+            return walk(shape[key], memberPath).map((rest) => underKey(key, rest));
+          }),
           ...(open ? ['*'] : []),
         ]);
         memo.set(base, found);
@@ -203,11 +237,18 @@ export function eventPayloadContent(payload: z.ZodObject): string[] {
   };
 
   try {
-    return walk(payload, '');
+    return { fields: walk(payload, ''), budgetExhausted: false };
   } catch (error) {
-    if (error instanceof NodeBudgetExhausted) return [error.path === '' ? '*' : error.path];
+    if (error instanceof NodeBudgetExhausted) {
+      return { fields: [error.path === '' ? '*' : error.path], budgetExhausted: true };
+    }
     throw error;
   }
+}
+
+/** The paths of {@link judgeEventPayload} alone, for a caller that does not tell the two refusals apart. */
+export function eventPayloadContent(payload: z.ZodObject): string[] {
+  return judgeEventPayload(payload).fields;
 }
 
 /** The JSON type every one of `values` has, or `unknown` when they differ or are not scalars. */

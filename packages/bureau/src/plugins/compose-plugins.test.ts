@@ -832,8 +832,7 @@ describe('composePlugins', () => {
 
       expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
       expect(records[0]?.problems).toEqual([
-        { code: 'event-payload-content', event: 'noted', field: 'note' },
-      ]);
+        { code: 'event-payload-content', event: 'noted', field: 'note' },      ]);
     });
 
     it('never rejects the host for a payload that recurses or cannot be read', async () => {
@@ -890,7 +889,11 @@ describe('composePlugins', () => {
 
       expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
       expect(records[0]?.problems).toEqual([
-        expect.objectContaining({ code: 'event-payload-content', event: 'endless' }),
+        expect.objectContaining({
+          code: 'event-payload-content',
+          event: 'endless',
+          message: expect.stringContaining('ran out of budget'),
+        }),
       ]);
     });
 

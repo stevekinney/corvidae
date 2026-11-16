@@ -213,6 +213,11 @@ export type PluginProblem =
       readonly event: string;
       /** The dotted path of the field, `*` for an object that accepts any other key. */
       readonly field: string;
+      /**
+       * Present only when the host ran out of its schema budget before it finished the payload:
+       * `field` is where the count ran out, and the message says no content was found there.
+       */
+      readonly message?: string;
     }
   | {
       /**
