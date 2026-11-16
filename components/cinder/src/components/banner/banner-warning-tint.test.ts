@@ -2,17 +2,16 @@
  * COR-2450: a warning banner read beige beside a warning badge and a warning band. The shared
  * status-surface recipe painted it `oklch(from <warning solid> 94.5% 0.026 h)`, about
  * oklch(94.5% 0.026 77), while badges and bands paint `--cinder-status-warning-background`,
- * oklch(96.8% 0.035 88). In light, all three now paint that one token. The dark arm keeps the
- * recipe's value. happy-dom does not resolve `light-dark()` or `var()`, so the declarations are
- * pinned against the CSS source; `status-surface-recipe.playwright.ts` compares the painted colors
- * in a browser.
+ * oklch(96.8% 0.035 88). In light, all three now paint that one token: the banner names it as the
+ * recipe's light ground input. The dark arm keeps the recipe's value. happy-dom does not resolve
+ * `light-dark()` or `var()`, so the declarations are pinned against the CSS source;
+ * `status-surface-recipe.playwright.ts` compares the painted colors in a browser.
  */
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
-import { parse } from 'postcss';
 
 import { declarationsFor } from '../../test/css.ts';
 
@@ -28,7 +27,7 @@ const recipe = readFileSync(
 );
 
 const WARNING_TINT = 'var(--cinder-status-warning-background)';
-const BANNER_WARNING = ".cinder-banner.cinder-_status-surface[data-cinder-variant='warning']";
+const GROUND_INPUT = '--_cinder-status-ground-light';
 
 function normalise(value: string | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')').trim();
@@ -53,16 +52,37 @@ function arms(value: string | undefined): { light: string; dark: string } {
 }
 
 describe('COR-2450: the warning banner shares the warning tint of badges and bands', () => {
-  const warning = declarationsFor(banner, BANNER_WARNING);
-  const ground = arms(warning.get('--_cinder-banner-warning-ground'));
-
-  test('in light, the banner ground is the warning tint', () => {
-    expect(ground.light).toBe(WARNING_TINT);
-    expect(normalise(warning.get('background-color'))).toBe('var(--_cinder-banner-warning-ground)');
+  test('a warning banner names the warning tint as its light ground', () => {
+    const warning = declarationsFor(banner, ".cinder-banner[data-cinder-variant='warning']");
+    expect(normalise(warning.get(GROUND_INPUT))).toBe(WARNING_TINT);
   });
 
-  test('the banner border is its ground, so it draws no outline', () => {
-    expect(normalise(warning.get('border-color'))).toBe(normalise(warning.get('background-color')));
+  test('no other banner variant names a ground, so they keep the synthesized tint', () => {
+    for (const variant of ['info', 'success', 'danger']) {
+      const rule = declarationsFor(banner, `.cinder-banner[data-cinder-variant='${variant}']`);
+      expect(rule.has(GROUND_INPUT), variant).toBe(false);
+    }
+  });
+
+  test('the recipe paints the ground, in light only, as background and border', () => {
+    const surface = arms(
+      declarationsFor(recipe, '.cinder-_status-surface.cinder-_status-surface').get(
+        'background-color',
+      ),
+    );
+    const border = arms(
+      declarationsFor(recipe, '.cinder-_status-surface-border.cinder-_status-surface-border').get(
+        'border-color',
+      ),
+    );
+    expect(surface.light.startsWith(`var(${GROUND_INPUT}, `)).toBe(true);
+    expect(surface.dark).not.toContain(GROUND_INPUT);
+    expect(border).toEqual(surface);
+  });
+
+  test('every status surface resets the ground at zero specificity, so a nested one never inherits it', () => {
+    const reset = declarationsFor(recipe, ':where(.cinder-_status-surface)');
+    expect(reset.get(GROUND_INPUT)).toBe('initial');
   });
 
   test('a warning badge paints the same tint', () => {
@@ -82,29 +102,5 @@ describe('COR-2450: the warning banner shares the warning tint of badges and ban
         ).get('background'),
       ),
     ).toBe(WARNING_TINT);
-  });
-
-  test('in dark, the banner ground is the shared recipe, unchanged', () => {
-    const shared = arms(
-      declarationsFor(recipe, '.cinder-_status-surface.cinder-_status-surface').get(
-        'background-color',
-      ),
-    );
-    expect(ground.dark).toBe(shared.dark);
-  });
-
-  test('the forced-colors reset repeats the warning selector, so system colors still win', () => {
-    const reset = new Map<string, string>();
-    parse(banner).walkAtRules('media', (atRule) => {
-      if (atRule.params !== '(forced-colors: active)') return;
-      atRule.walkRules((rule) => {
-        if (normalise(rule.selector) !== BANNER_WARNING) return;
-        rule.walkDecls((declaration) => {
-          reset.set(declaration.prop, declaration.value);
-        });
-      });
-    });
-    expect(reset.get('background-color')).toBe('Canvas');
-    expect(reset.get('border-color')).toBe('CanvasText');
   });
 });

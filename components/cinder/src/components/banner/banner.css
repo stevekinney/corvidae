@@ -327,21 +327,10 @@
     --_cinder-status-base: var(--cinder-status-warning-solid);
     --_cinder-status-fg-chroma-light: 0.16;
     --_cinder-status-fg-chroma-dark: 0.14;
-  }
-
-  /* COR-2450: in light, the recipe's 94.5% warning ground read beige beside the amber of a warning
-   * badge or band. A warning banner paints the warning tint they share,
-   * `--cinder-status-warning-background`, as its ground and its border, so it draws no outline.
-   * The dark arm is the recipe's, unchanged; `banner-warning-tint.test.ts` holds the two equal.
-   * Three parts of specificity outrank the recipe's doubled class whatever order the stylesheets
-   * load in, so the forced-colors reset below repeats the same selector. */
-  .cinder-banner.cinder-_status-surface[data-cinder-variant='warning'] {
-    --_cinder-banner-warning-ground: light-dark(
-      var(--cinder-status-warning-background),
-      oklch(from var(--_cinder-status-base) 20% 0.03 h)
-    );
-    background-color: var(--_cinder-banner-warning-ground);
-    border-color: var(--_cinder-banner-warning-ground);
+    /* COR-2450: in light, the recipe's 94.5% warning ground read beige beside the amber of a
+     * warning badge or band. The banner paints the warning tint they share, as its ground and its
+     * border; the dark arm stays the recipe's. */
+    --_cinder-status-ground-light: var(--cinder-status-warning-background);
   }
 
   .cinder-banner[data-cinder-variant='danger'] {
@@ -429,12 +418,6 @@
   @media (forced-colors: active) {
     .cinder-banner {
       border-block: 1px solid CanvasText;
-    }
-
-    /* The warning ground above outranks the recipe's own forced-colors reset, so it yields here. */
-    .cinder-banner.cinder-_status-surface[data-cinder-variant='warning'] {
-      background-color: Canvas;
-      border-color: CanvasText;
     }
 
     /* The feature banner draws no border and paints its wash with color-mix, which forced colours

@@ -68,10 +68,20 @@
    * ceilings (0.098 and 0.045). Per-hue chroma would let each status use its full
    * headroom, but it means threading a new input through Alert, Banner and Callout
    * and re-reviewing all twelve surfaces — worth doing, deliberately not smuggled
-   * into a surface retune. Dark arm untouched. */
+   * into a surface retune. Dark arm untouched.
+   *
+   * COR-2450: a composer may name its own light ground in `--_cinder-status-ground-light`, which
+   * the light arm reads before the synthesized tint. A warning Banner sets it to the warning tint
+   * badges and bands paint. Every status surface resets the input at zero specificity, so a
+   * surface nested inside another never inherits its ground, and the composer's own variant rule
+   * still wins on its own element. */
+  :where(.cinder-_status-surface) {
+    --_cinder-status-ground-light: initial;
+  }
+
   .cinder-_status-surface.cinder-_status-surface {
     background-color: light-dark(
-      oklch(from var(--_cinder-status-base) 94.5% 0.026 h),
+      var(--_cinder-status-ground-light, oklch(from var(--_cinder-status-base) 94.5% 0.026 h)),
       oklch(from var(--_cinder-status-base) 20% 0.03 h)
     );
     color: light-dark(
@@ -86,7 +96,7 @@
    * keeps its CanvasText border below. */
   .cinder-_status-surface-border.cinder-_status-surface-border {
     border-color: light-dark(
-      oklch(from var(--_cinder-status-base) 94.5% 0.026 h),
+      var(--_cinder-status-ground-light, oklch(from var(--_cinder-status-base) 94.5% 0.026 h)),
       oklch(from var(--_cinder-status-base) 20% 0.03 h)
     );
   }
