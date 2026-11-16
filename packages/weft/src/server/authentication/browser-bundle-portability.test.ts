@@ -198,7 +198,8 @@ describe('authentication browser bundle portability', () => {
       inputs.some((key) => key.endsWith('server/authentication/constant-time-api-key.ts')),
     ).toBe(true);
     const output = [...healthy.files.values()].join('\n');
-    expect(output).toContain('API key authentication requires Bun or Node.js.');
+    // A literal that only the authentication source holds (`api-key.ts`).
+    expect(output).toContain('resolveApiKeyPrincipal threw:');
   });
 
   it('resolves node:crypto nowhere in the bundle', () => {

@@ -16,10 +16,14 @@
  * is rejected automatically without an explicit revoke.
  *
  * Registration hashes stored keys to fixed-length digests once. Authentication
- * lookups hash the presented key, then compare it with every stored digest via
- * `timingSafeEqual` without early exit. The digest step avoids raw length
- * checks, and scanning every digest avoids key-position leaks during the
- * overlap window.
+ * lookups hash the presented key, then compare it with every stored digest
+ * without early exit. The digest step avoids raw length checks, and scanning
+ * every digest avoids key-position leaks during the overlap window.
+ *
+ * Hashing is asynchronous, so every method returns a promise. The store runs
+ * its calls one at a time, in call order, so a call behaves as if the calls
+ * before it had finished: a key revoked after an `add` is never admitted, and
+ * `size` counts only the calls that have completed.
  *
  * @module server/authentication/rotating-api-key-store
  */
@@ -70,20 +74,28 @@ export type ApiKeyRegistration = {
  * import { createRotatingApiKeyStore, type RotatingApiKeyStore } from '@lostgradient/weft';
  *
  * const store: RotatingApiKeyStore = createRotatingApiKeyStore();
- * store.add('key-old', { subject: 'svc', scopes: ['workflows:read'] });
- * store.add('key-new', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('key-old', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('key-new', { subject: 'svc', scopes: ['workflows:read'] });
  * // Both authenticate during the overlap window.
- * store.revoke('key-old');
+ * await store.revoke('key-old');
  * ```
  */
 export type RotatingApiKeyStore = {
-  /** Register or replace a key. Replacing an existing key updates its registration in place. */
-  add(key: string, registration: ApiKeyRegistration): void;
-  /** Remove a key immediately. Returns `true` if the key was present. */
-  revoke(key: string): boolean;
+  /**
+   * Register or replace a key. Replacing an existing key updates its
+   * registration in place. Rejects an empty key by throwing synchronously,
+   * before it returns a promise. The promise settles once the key is
+   * registered.
+   */
+  add(key: string, registration: ApiKeyRegistration): Promise<void>;
+  /** Remove a key. Resolves to `true` if the key was present. */
+  revoke(key: string): Promise<boolean>;
   /** Whether `key` is currently registered and not expired (evaluated against `now()`). */
-  has(key: string): boolean;
-  /** Number of currently-registered keys (including not-yet-expired ones). */
+  has(key: string): Promise<boolean>;
+  /**
+   * Number of currently-registered keys (including not-yet-expired ones),
+   * counting only the calls that have completed.
+   */
   readonly size: number;
   /**
    * Resolve a presented key to a principal, or `null` when the key is unknown,
@@ -124,7 +136,7 @@ function isExpired(stored: StoredKey, currentTime: number): boolean {
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const store = createRotatingApiKeyStore();
- * store.add('initial-key', { subject: 'svc', scopes: ['workflows:read'] });
+ * await store.add('initial-key', { subject: 'svc', scopes: ['workflows:read'] });
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * await using server = serve({
@@ -136,50 +148,69 @@ function isExpired(stored: StoredKey, currentTime: number): boolean {
  */
 export function createRotatingApiKeyStore(now: () => number = Date.now): RotatingApiKeyStore {
   const keys = new Map<string, StoredKeyEntry>();
+  // Every call joins this chain, so each one runs to completion before the next
+  // begins, in call order. A call that fails settles its own promise and leaves
+  // the chain usable.
+  let tail: Promise<unknown> = Promise.resolve();
 
-  function findStoredKey(presentedKey: string): StoredKeyMatch | null {
-    return findConstantTimeApiKeyMatch(presentedKey, [...keys.values()])?.value ?? null;
+  function enqueue<T>(task: () => Promise<T> | T): Promise<T> {
+    const result = tail.then(task);
+    tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
-  // `resolve` closes over `keys` directly (not `this`), so it stays correct
-  // when detached and passed as `AuthConfig.resolveApiKeyPrincipal`.
+  async function findStoredKey(presentedKey: string): Promise<StoredKeyMatch | null> {
+    const match = await findConstantTimeApiKeyMatch(presentedKey, [...keys.values()]);
+    return match?.value ?? null;
+  }
+
+  // The methods close over `keys` and `tail` directly (not `this`), so they stay
+  // correct when detached and passed as `AuthConfig.resolveApiKeyPrincipal`.
   const store: RotatingApiKeyStore = {
     add(key, registration) {
       if (key.length === 0) {
         throw new Error('Cannot register an empty API key');
       }
+      // Snapshot the caller's registration now: the call runs later.
       const stored = {
         subject: registration.subject,
-        scopes: registration.scopes ?? [],
+        scopes: [...(registration.scopes ?? [])],
         expiresAt: registration.expiresAt,
       };
-      keys.set(key, createConstantTimeApiKeyEntry(key, { key, stored }));
+      return enqueue(async () => {
+        keys.set(key, await createConstantTimeApiKeyEntry(key, { key, stored }));
+      });
     },
     revoke(key) {
-      return keys.delete(key);
+      return enqueue(() => keys.delete(key));
     },
     has(key) {
-      const match = findStoredKey(key);
-      if (match === null) return false;
-      if (isExpired(match.stored, now())) {
-        // Lazily drop expired entries so the map does not accumulate them.
-        keys.delete(match.key);
-        return false;
-      }
-      return true;
+      return enqueue(async () => {
+        const match = await findStoredKey(key);
+        if (match === null) return false;
+        if (isExpired(match.stored, now())) {
+          // Lazily drop expired entries so the map does not accumulate them.
+          keys.delete(match.key);
+          return false;
+        }
+        return true;
+      });
     },
     get size() {
       return keys.size;
     },
     resolve(presentedKey) {
-      const match = findStoredKey(presentedKey);
-      if (match === null || isExpired(match.stored, now())) {
-        if (match !== null) keys.delete(match.key);
-        return Promise.resolve(null);
-      }
-      return Promise.resolve(
-        principalFromApiKey({ subject: match.stored.subject, scopes: match.stored.scopes }),
-      );
+      return enqueue(async () => {
+        const match = await findStoredKey(presentedKey);
+        if (match === null || isExpired(match.stored, now())) {
+          if (match !== null) keys.delete(match.key);
+          return null;
+        }
+        return principalFromApiKey({ subject: match.stored.subject, scopes: match.stored.scopes });
+      });
     },
   };
 
