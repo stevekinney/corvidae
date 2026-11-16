@@ -159,6 +159,13 @@ describe('describeInputRows', () => {
     expect(describeInputRows([])).toEqual([]);
   });
 
+  test('cuts a value longer than the preview budget, so a huge value never floods the card', () => {
+    const [row] = describeInputRows({ body: 'x'.repeat(10_000) });
+
+    expect(row?.text).toHaveLength(4_097);
+    expect(row?.text.endsWith('…')).toBe(true);
+  });
+
   test('a nested value JSON cannot write says how much it holds instead', () => {
     expect(describeInputRows({ sizes: [1n, 2n] })[0]?.text).toBe('2 items');
   });

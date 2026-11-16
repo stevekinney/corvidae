@@ -377,15 +377,25 @@ export function describeInputRows(value: unknown): InputRow[] {
         !isSecretValue(masked))
     )
       return [];
-    return [{ key: 'value', label: 'Value', ...describeScalarText(masked), structured: false }];
+    return [
+      boundRow({ key: 'value', label: 'Value', ...describeScalarText(masked), structured: false }),
+    ];
   }
-  return entries.map((entry) => ({
-    key: entry.key,
-    label: humanizeIdentifier(entry.key, { casing: 'sentence' }),
-    ...(entry.nested
-      ? { text: writeCompactJson(entry.value), muted: false, structured: true }
-      : { ...describeScalarText(entry.value), structured: false }),
-  }));
+  return entries.map((entry) =>
+    boundRow({
+      key: entry.key,
+      label: humanizeIdentifier(entry.key, { casing: 'sentence' }),
+      ...(entry.nested
+        ? { text: writeCompactJson(entry.value), muted: false, structured: true }
+        : { ...describeScalarText(entry.value), structured: false }),
+    }),
+  );
+}
+
+/** Cuts a value longer than the preview's character budget, so one huge value never floods the card. */
+function boundRow(row: InputRow): InputRow {
+  if (row.text.length <= ARGUMENTS_PREVIEW_MAX_CHARACTERS) return row;
+  return { ...row, text: `${row.text.slice(0, ARGUMENTS_PREVIEW_MAX_CHARACTERS)}…` };
 }
 
 /** A list or an object as one line of JSON; a hidden secret writes its mask. */
