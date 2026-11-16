@@ -617,9 +617,9 @@ export const CHAT_COPY = {
     label: 'More actions',
     rename: 'Rename',
     branch: 'Branch from the last reply',
-    /** Said as the hint on Branch when there is no finished reply to branch from. */
+    /** Said under Branch, as its second line, when there is no finished reply to branch from. */
     noBranchPoint: 'There is no finished reply to branch from yet.',
-    /** Said as the hint on Branch while a run is going. */
+    /** Said under Branch, as its second line, while a run is going. */
     branchWhileRunning: 'Wait for the run to finish, then branch from its last reply.',
     export: 'Export as Markdown',
     /** Said as the hint on Export when the chat has no messages. */
@@ -628,7 +628,7 @@ export const CHAT_COPY = {
     /** Archive puts the chat away, out of the list, until it is unarchived; an archived chat's menu offers Unarchive. */
     archive: 'Archive',
     /**
-     * Said as the hint on Archive while the chat cannot be archived yet, in the words of what holds
+     * Said under Archive, as its second line, while the chat cannot be archived yet, in the words of what holds
      * it: an approval or a question waiting on the person, or a run that is going.
      */
     archiveBlocked: {

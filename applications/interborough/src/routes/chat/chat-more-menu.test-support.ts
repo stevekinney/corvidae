@@ -108,3 +108,12 @@ export async function openMenu(view: Mounted): Promise<void> {
 
 export const callsTo = (served: ReturnType<typeof serve>, method: string) =>
   served.calls.filter((call) => call.method === method);
+
+/** The text a menu item is described by (`aria-describedby`): a disabled item's reason line. */
+export function describedBy(item: HTMLElement): string {
+  return (item.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+    .join(' ');
+}
