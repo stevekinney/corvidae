@@ -40,6 +40,25 @@ describe('identifierPath', () => {
     ).toEqual({ schedule: '_' });
   });
 
+  test('puts a goal run named new or dot-only back on its page and its edit page', () => {
+    for (const goalRunId of ['new', '.', '..']) {
+      const search = new URLSearchParams({ __weft_goal_id: goalRunId });
+      for (const pattern of ['/goals/:goal', '/goals/:goal/edit']) {
+        expect(
+          withEscapedIdentifier({ definition: { pattern }, params: { goal: '_' } }, search),
+          `${pattern} ${goalRunId}`,
+        ).toEqual({ goal: goalRunId });
+      }
+    }
+    // An identifier the route can carry is never taken from the query.
+    expect(
+      withEscapedIdentifier(
+        { definition: { pattern: '/goals/:goal/edit' }, params: { goal: '_' } },
+        new URLSearchParams({ __weft_goal_id: 'plain' }),
+      ),
+    ).toEqual({ goal: '_' });
+  });
+
   test('builds the chat path the router reads back', () => {
     expect(chatSessionPath('new')).toBe('/chats/_?__weft_session_id=new');
   });
