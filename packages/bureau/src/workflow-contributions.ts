@@ -207,9 +207,11 @@ export function createWorkflowContributions(
   }
   for (const entry of triggerEntries) {
     const kind = entry.value;
-    if (typeof kind?.start !== 'function' || typeof kind.configuration?.safeParse !== 'function') {
+    const listens = typeof kind?.start === 'function';
+    const receives = typeof kind?.receive === 'function';
+    if ((!listens && !receives) || typeof kind.configuration?.safeParse !== 'function') {
       throw new TypeError(
-        `The trigger "${entry.name}" needs a configuration schema and a start function.`,
+        `The trigger "${entry.name}" needs a configuration schema and a \`start\` or \`receive\` function.`,
       );
     }
   }

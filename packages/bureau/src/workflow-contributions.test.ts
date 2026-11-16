@@ -393,6 +393,50 @@ describe('the contributions a catalog holds', () => {
     expect(() => createWorkflowContributions(kinds)).toThrow('needs a configuration schema');
   });
 
+  it('M1: refuses a trigger kind with neither start nor receive, naming both, and registers nothing', () => {
+    const catalog = createVersionedCatalog();
+    catalog.register({
+      kind: 'trigger',
+      name: 'x:ticker',
+      version: '1',
+      value: { name: 'ticker', configuration: z.object({}) },
+      source: { name: 'x', version: '1' },
+    });
+    expect(() => createWorkflowContributions(catalog)).toThrow(TypeError);
+    expect(() => createWorkflowContributions(catalog)).toThrow(
+      'The trigger "x:ticker" needs a configuration schema and a `start` or `receive` function.',
+    );
+    // A non-function `receive` is not one either.
+    const wrong = createVersionedCatalog();
+    wrong.register({
+      kind: 'trigger',
+      name: 'x:ticker',
+      version: '1',
+      value: { name: 'ticker', configuration: z.object({}), receive: 'yes' },
+      source: { name: 'x', version: '1' },
+    });
+    expect(() => createWorkflowContributions(wrong)).toThrow('`start` or `receive`');
+  });
+
+  it('M2: loads a trigger kind that has only receive', () => {
+    const catalog = createVersionedCatalog();
+    catalog.register({
+      kind: 'trigger',
+      name: 'x:hook',
+      version: '1',
+      value: {
+        name: 'hook',
+        description: 'Receives.',
+        configuration: z.object({}),
+        receive: async () => new Response(null, { status: 204 }),
+      },
+      source: { name: 'x', version: '1' },
+    });
+    const contributions = createWorkflowContributions(catalog);
+    expect([...contributions.triggers.keys()]).toEqual(['x:hook']);
+    expect(contributions.triggers.get('x:hook')?.value.start).toBeUndefined();
+  });
+
   it('resolves exactly the loaded version, and says why otherwise', () => {
     const contributions = createWorkflowContributions(
       contributionCatalog({ activityVersion: '2' }),
