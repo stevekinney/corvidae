@@ -244,6 +244,39 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     ]);
   });
 
+  test('say what the check said on line two when the owner’s read carries it (rows 67i, 67l, 67r, 67v, 67x)', () => {
+    const goal = draftReleaseNotes();
+    const withReasons: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? { ...attempt, feedback: 'The notes\n  never mention the staging fix.' }
+          : attempt.attemptIndex === 3
+            ? { ...attempt, feedback: '   ' }
+            : attempt.attemptIndex === 2
+              ? { ...attempt, feedback: null }
+              : attempt,
+      ),
+    };
+    const rows = attemptRows(withReasons, {
+      agent: 'Assistant',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+    });
+    // Newest first: the reason is one line, after how long the attempt took; an attempt whose check
+    // said nothing, or whose read carried no feedback at all, is line two as it was.
+    expect(rows.map((row) => row.lineTwo)).toEqual([
+      'Assistant, took 6 s, the check said: The notes never mention the staging fix.',
+      'Assistant, took 7 s',
+      'Assistant, took 5 s',
+      'Assistant, took 6 s',
+      'Assistant, took 8 s',
+    ]);
+    // The word stays neutral: the reason is on line two, never red.
+    expect(new Set(rows.map((row) => row.word))).toEqual(new Set(['Check not met']));
+  });
+
   test('have a neutral note that says when it gave up, and opens its last attempt', () => {
     const note = goalNote(draftReleaseNotes(), { zone: ZONE, liveWait: undefined });
     expect(note?.tone).toBe('neutral');
@@ -470,6 +503,10 @@ describe('the addresses the page links to', () => {
   test('are the goal’s Edit page, New goal prefilled from it, and the review in Reviews', () => {
     expect(goalEditPath('summarize-open-refunds')).toBe('/goals/summarize-open-refunds/edit');
     expect(startAgainPath('summarize-open-refunds')).toBe('/goals/new?from=summarize-open-refunds');
+    // A goal run named `new` or `.` cannot be a path segment, so its edit page carries it in the query.
+    expect(goalEditPath('new')).toBe('/goals/_/edit?__weft_goal_id=new');
+    expect(goalEditPath('.')).toBe('/goals/_/edit?__weft_goal_id=.');
+    expect(goalEditPath('..')).toBe('/goals/_/edit?__weft_goal_id=..');
     expect(reviewPath('bureau:approval:run-1:call-1')).toBe(
       '/reviews?review=bureau%3Aapproval%3Arun-1%3Acall-1',
     );

@@ -8,9 +8,10 @@
  * check reads "Check not met", which is neutral, and every note is neutral but the one that says
  * an attempt waits on you, which is amber.
  *
- * A goal's view carries neither its prompt nor its validator's feedback (`goals-operations.ts`), so
- * the page says neither: line two names the agent and how long the attempt took, and the check is
- * said from the validator's name.
+ * Only the owner's read of a goal carries its prompt and its validator's feedback
+ * (`goals-operations.ts`, COR-2425). Without them the page says neither: line two names the agent
+ * and how long the attempt took, and the check is said from the validator's name. With them, an
+ * attempt that missed the check says what the check said at the end of line two.
  */
 import type { StatusDotWordLabel } from '@lostgradient/cinder';
 
@@ -19,6 +20,7 @@ import { goalHasEnded, type Goal } from '../../lib/bureau-goals.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import type { TaskView } from '../../lib/bureau-tasks.ts';
 import { clockTime } from '../../lib/format/clock.ts';
+import { goalPath } from '../../lib/identifier-paths.ts';
 import { durationWords, waitedWords } from '../workflows/runs/run-rows.ts';
 import { checkText, goalListWord } from './goal-rows.ts';
 
@@ -185,11 +187,22 @@ export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext
       break;
     }
     case 'passed':
-    case 'failed':
+    case 'failed': {
       if (took !== undefined) parts.push(copy.line.took(took));
+      // The owner's read carries what the check said; every other read leaves it out, and an
+      // attempt the check passed has nothing to say.
+      const said = attempt.status === 'failed' ? checkReason(attempt.feedback) : undefined;
+      if (said !== undefined) parts.push(copy.line.checkSaid(said));
       break;
+    }
   }
   return parts.join(', ');
+}
+
+/** What the check said, on one line: its words with each run of white space made one space, or `undefined` when it said nothing. */
+function checkReason(feedback: string | null | undefined): string | undefined {
+  const said = feedback?.replaceAll(/\s+/g, ' ').trim();
+  return said === undefined || said === '' ? undefined : said;
 }
 
 /** One attempt as a row of the goal's Attempts list. */
@@ -341,8 +354,8 @@ export type GoalFact = { readonly term: string; readonly definition: string };
 
 /**
  * The Details panel: the check, the agent, the attempt limit, when it stops, and when it was made
- * and by whom ("Fri, Oct 30, 8:12 AM by you"). The prompt is not among them: the goal's view does
- * not carry it.
+ * and by whom ("Fri, Oct 30, 8:12 AM by you"). The prompt is not among them: the page says it under
+ * "Asked" (`goal-asked.svelte`), for the owner whose read carries it.
  */
 export function goalFacts(
   goal: Pick<Goal, 'validator' | 'bounds' | 'createdAt' | 'owner'>,
@@ -406,7 +419,8 @@ export function stopDescription(goal: Pick<Goal, 'status' | 'attempts'>): string
 
 /** The goal's Edit page, which the goal form serves (`/goals/:goal/edit`). */
 export function goalEditPath(goalRunId: string): string {
-  return `/goals/${encodeURIComponent(goalRunId)}/edit`;
+  const [path = '', query] = goalPath(goalRunId).split('?');
+  return `${path}/edit${query === undefined ? '' : `?${query}`}`;
 }
 
 /** New goal, prefilled from the goal `goalRunId` (Start again). */

@@ -5,8 +5,10 @@
    * bar's last crumb), its status word with a qualifier for what it is doing ("Running, checking the
    * result"), a note that says how it ended or what its attempt waits on, then its attempts newest
    * first (`goal-attempts.svelte`) with a Details panel beside them. Every rule for what it says is
-   * in `goal-page-rows.ts`; the goal's view carries neither its prompt nor its check's feedback, so
-   * the page says neither.
+   * in `goal-page-rows.ts`. The goal's owner reads its prompt and each attempt's check feedback too
+   * (COR-2425): the prompt shows under "Asked" (`goal-asked.svelte`), held to three lines with
+   * Show all, and a failed attempt says what the check said on line two. A read without them says
+   * neither.
    *
    * The header's actions follow the goal, all secondary: Edit on every goal; Stop goal, the page's
    * main action, while it works, behind a confirmation; and Start again on a goal that ended without meeting its
@@ -54,6 +56,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import GoalAsked from './goal-asked.svelte';
   import GoalAttempts from './goal-attempts.svelte';
   import {
     attemptRows,
@@ -328,6 +331,10 @@
         statusPlacement="inline"
         actions={headerActions}
       />
+
+      {#if found.prompt !== undefined && found.prompt.trim() !== ''}
+        <GoalAsked prompt={found.prompt} />
+      {/if}
 
       {#if note !== undefined}
         <Callout

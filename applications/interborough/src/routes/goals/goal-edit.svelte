@@ -7,8 +7,9 @@
    * against. Edit is offered on every goal's page, and a goal that has ended or been asked to stop is
    * refused by the Bureau, which the page says above the buttons.
    *
-   * The goal's view never carries its prompt, so the prompt starts empty and an empty prompt keeps
-   * the one the goal has. Save names only what changed, against the revision the form was opened on:
+   * The goal's owner reads its prompt, which fills the field (a goal read without one starts the
+   * prompt empty, and an empty prompt keeps the one it has). Save names only what changed, against
+   * the revision the form was opened on:
    * a goal that moved since is refused and nothing is written. A save with nothing changed sends
    * nothing and goes back to the goal.
    *

@@ -15,8 +15,9 @@
  * - A goal needs a bound on all its attempts together besides how many it may make, so the form
  *   always names the steps.
  *
- * The goal's view never carries its prompt, so a goal opened for Edit has an empty prompt that means
- * "keep the current one", and Start again opens with the goal's name as the first line.
+ * The goal's own owner reads its prompt (`bureau.goals.get`, COR-2425), so Edit and Start again open
+ * with it in the field. A goal read without one (another caller's view) opens Edit with an empty
+ * prompt that means "keep the current one", and Start again with the goal's name as the first line.
  */
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import type { AgentSummary } from '../../lib/bureau-client.ts';
@@ -121,6 +122,9 @@ export function needsProvider(
 type Source = {
   readonly validator: Goal['validator'];
   readonly maximumAttempts: number;
+  /** The prompt the form opened with, when the goal's view carried one. */
+  readonly prompt: string | undefined;
+  readonly agentName: string;
 };
 
 export class GoalFormState {
@@ -142,17 +146,30 @@ export class GoalFormState {
   }
 
   /**
-   * Opens the form on `goal`: its agent, its check and its attempt limit. Start again also takes the
-   * goal's name as the first line of the prompt, because the view carries no more of it. Edit leaves
-   * the prompt empty, which keeps the one the goal has.
+   * Opens the form on `goal`: its prompt, its agent, its check and its attempt limit. A goal read
+   * without its prompt (only its owner's read carries it) opens Start again with the goal's name as
+   * the first line, and Edit with the prompt empty, which keeps the one the goal has.
    */
-  prefill(goal: Pick<Goal, 'agentName' | 'identity' | 'validator' | 'bounds'>): void {
+  prefill(goal: Pick<Goal, 'agentName' | 'identity' | 'validator' | 'bounds' | 'prompt'>): void {
     this.agentName = goal.agentName;
     this.currentName = goal.identity.name.trim();
     this.check = checkText(goal.validator.name);
     this.maximumAttempts = goal.bounds.maximumAttempts;
-    this.prompt = this.#mode === 'create' ? goal.identity.name.trim() : '';
-    this.#source = { validator: goal.validator, maximumAttempts: goal.bounds.maximumAttempts };
+    this.prompt = goal.prompt ?? (this.#mode === 'create' ? goal.identity.name.trim() : '');
+    this.#source = {
+      validator: goal.validator,
+      maximumAttempts: goal.bounds.maximumAttempts,
+      prompt: goal.prompt,
+      agentName: goal.agentName,
+    };
+  }
+
+  /**
+   * Whether an empty prompt means "keep the goal's own": Edit on a goal whose view carried no
+   * prompt. Once the form opened with the prompt in it, the field is required like New goal's.
+   */
+  get keepsCurrentPrompt(): boolean {
+    return this.#mode === 'edit' && this.#source?.prompt === undefined;
   }
 
   /** Whether the attempt limit is a whole number from 1 to 20. */
@@ -169,8 +186,10 @@ export class GoalFormState {
   /** What is wrong with each field now, whether or not a submit has been tried. */
   get problems(): GoalProblems {
     const problems: GoalProblems = {};
-    // Edit leaves the prompt empty to keep the one the goal has.
-    if (this.#mode === 'create' && this.prompt.trim() === '') problems.prompt = copy.promptRequired;
+    // Edit may leave the prompt empty to keep the one the goal has, unless it opened with one: then
+    // an emptied field is a mistake, because there is nothing to keep that the person can see.
+    if (!this.keepsCurrentPrompt && this.prompt.trim() === '')
+      problems.prompt = copy.promptRequired;
     if (this.check.trim() === '') problems.check = copy.checkRequired;
     if (this.agentName.trim() === '') problems.agent = copy.agentPlaceholder;
     if (!this.attemptsValid) problems.attempts = copy.maximumAttemptsInvalid;
@@ -247,16 +266,21 @@ export class GoalFormState {
 
   /**
    * What `bureau.goals.update` is sent: the fields the person changed, and nothing else. A prompt is
-   * named only when one was typed, a check only when its text is not the one the form opened with,
-   * and the attempt limit only when it moved. The agent is never named: a goal's agent cannot change.
+   * named only when one was typed that is not the one the form opened with, a check only when its
+   * text is not the one the form opened with, the attempt limit only when it moved, and the agent
+   * only when another was chosen.
    */
   toChange(): GoalChange {
     const source = this.#source;
     const prompt = this.prompt.trim();
     const validator = this.#validator();
     const attempts = this.maximumAttempts;
+    const agentName = this.agentName.trim();
     return {
-      ...(prompt === '' ? {} : { prompt }),
+      ...(prompt === '' || prompt === source?.prompt?.trim() ? {} : { prompt }),
+      ...(source === undefined || agentName === '' || agentName === source.agentName
+        ? {}
+        : { agentName }),
       ...(source !== undefined &&
       validator.name === source.validator.name &&
       validator.version === source.validator.version

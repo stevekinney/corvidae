@@ -74,6 +74,15 @@ const SUMMARIZE = goalFixture('goal-summarize', {
   },
 });
 
+const ASKED = 'Summarize open refunds.\nSay why each one is still waiting.';
+
+/** The same goal read by its owner (COR-2425): `bureau.goals.get` carries its prompt. */
+const ASKED_GOAL = goalFixture('goal-asked', {
+  ...SUMMARIZE,
+  goalRunId: 'goal-asked',
+  prompt: ASKED,
+});
+
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
   const promise = new Promise<Value>((_resolve) => {
@@ -91,7 +100,7 @@ type Options = {
 };
 
 function open(path: string, options: Options = {}) {
-  const goals = [SUMMARIZE];
+  const goals = [SUMMARIZE, ASKED_GOAL];
   stub = installBureauStub(
     {
       'bureau.agents.list': () => ({ agents: AGENTS }),
@@ -160,7 +169,7 @@ describe('the Edit goal page', () => {
     const page = await filledPage(view, copy.edit.title, 'tool-runner');
 
     expect(page.getByText(copy.edit.description)).not.toBeNull();
-    // The goal's view never carries its prompt, so the field is empty and says what that means.
+    // A goal read without its prompt (not its owner's read) leaves the field empty and says what that means.
     const prompt = page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement;
     expect(prompt.value).toBe('');
     expect(prompt.getAttribute('placeholder')).toBe(
@@ -214,7 +223,7 @@ describe('the Edit goal page', () => {
     await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.goals.update').length).toBe(1));
-    // The agent is not named: a goal's agent cannot change.
+    // The agent is not named while it is the one the form opened with.
     expect(stub?.callsTo('bureau.goals.update')[0]?.params).toEqual({
       goalRunId: 'goal-summarize',
       expectedRevision: 4,
@@ -351,7 +360,71 @@ describe('the Edit goal page', () => {
   });
 });
 
+describe('the Edit goal page on a goal read by its owner (COR-2425, row 68o)', () => {
+  test('opens with the goal’s prompt in the field, which is required, and sends nothing for a save that changed nothing', async () => {
+    const view = open('/goals/goal-asked/edit');
+    const page = await filledPage(view, copy.edit.title, 'tool-runner');
+
+    const prompt = page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement;
+    expect(prompt.value).toBe(ASKED);
+    expect(prompt.getAttribute('placeholder')).toBeNull();
+
+    await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
+
+    await waitFor(() => expect(router.pathname).toBe('/goals/goal-asked'));
+    expect(stub?.callsTo('bureau.goals.update')).toEqual([]);
+  });
+
+  test('says an emptied prompt is a problem and sends nothing, where a goal read without one keeps its prompt', async () => {
+    const view = open('/goals/goal-asked/edit');
+    const page = await filledPage(view, copy.edit.title, 'tool-runner');
+    await fireEvent.input(page.getByLabelText(copy.promptLabel), { target: { value: '   ' } });
+
+    await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
+
+    await waitFor(() => expect(page.getByText(copy.promptRequired)).not.toBeNull());
+    expect(stub?.callsTo('bureau.goals.update')).toEqual([]);
+    expect(router.pathname).toBe('/goals/goal-asked/edit');
+  });
+
+  test('names the prompt only when it changed, and the agent when another is chosen', async () => {
+    const view = open('/goals/goal-asked/edit');
+    const page = await filledPage(view, copy.edit.title, 'tool-runner');
+    await fireEvent.input(page.getByLabelText(copy.promptLabel), {
+      target: { value: `${ASKED}\nKeep it to five lines.` },
+    });
+    await chooseAgent(page, 'assistant');
+
+    await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.goals.update')[0]?.params).toEqual({
+      goalRunId: 'goal-asked',
+      expectedRevision: 4,
+      prompt: `${ASKED}\nKeep it to five lines.`,
+      agentName: 'assistant',
+    });
+  });
+});
+
 describe('Start again', () => {
+  test('opens New goal with the prompt the goal was asked, not only its name (COR-2425, row 67n)', async () => {
+    const view = open('/goals/new?from=goal-asked', {
+      hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }],
+    });
+    const page = await filledPage(view, copy.title, 'tool-runner');
+
+    expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).value).toBe(ASKED);
+
+    await fireEvent.click(page.getByRole('button', { name: copy.createAction }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.goals.create')[0]?.params).toMatchObject({
+      prompt: ASKED,
+      identity: { name: 'Summarize open refunds.', version: '1' },
+    });
+  });
+
   test('opens New goal with the goal’s agent, check and attempt limit, and its name as the prompt', async () => {
     const view = open('/goals/new?from=goal-summarize', {
       hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }],

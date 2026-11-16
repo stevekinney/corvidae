@@ -506,6 +506,27 @@ describe('a goal’s page', () => {
     expect(frameState(view.container)).toBe('ready');
   });
 
+  test('says what the goal was asked under “Asked” when the owner’s read carries the prompt, and nothing otherwise (rows 67j, 67o, 67t)', async () => {
+    const asked = 'Summarize open refunds.\nSay why each one is waiting.';
+    const owner = open(
+      [goal('goal-1', { status: 'succeeded', prompt: asked, attempts: ATTEMPTS })],
+      { path: '/goals/goal-1' },
+    );
+
+    const section = await owner.view.findByTestId('goal-asked');
+    expect(within(section).getByRole('heading', { level: 2, name: 'Asked' })).not.toBeNull();
+    expect(section.textContent).toContain('Summarize open refunds.');
+    expect(section.textContent).toContain('Say why each one is waiting.');
+    cleanup();
+
+    // Another caller's read of the goal carries no prompt: the page draws no "Asked" at all.
+    const other = open([goal('goal-1', { status: 'succeeded', attempts: ATTEMPTS })], {
+      path: '/goals/goal-1',
+    });
+    await other.view.findByRole('heading', { level: 1 });
+    expect(other.view.queryByTestId('goal-asked')).toBeNull();
+  });
+
   test('says the check was met in a note that opens the attempt, and offers Edit but not Start again', async () => {
     const { view } = open(
       [

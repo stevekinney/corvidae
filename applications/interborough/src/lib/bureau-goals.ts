@@ -2,9 +2,10 @@
  * The browser's view of the Bureau's goals: `bureau.goals.*` (COR-1482), parsed at the boundary.
  * A goal runs a catalog agent on a prompt until a validator the Bureau was configured with passes,
  * within bounds. A goal belongs to the principal that created it, and its view leaves out the
- * prompt and instructions: it is the goal's control-plane state, where it stands and what it has
- * used. It does name the goal (`identity`) and its check (`validator`), which a list titles a row
- * with and shows on line two.
+ * instructions, and a list leaves out its prompt too: it is the goal's control-plane state, where
+ * it stands and what it has used. `get` adds the prompt and each attempt's validator feedback for
+ * the goal's owner (COR-2425), which the edit form and the goal's page show. It does name the goal
+ * (`identity`) and its check (`validator`), which a list titles a row with and shows on line two.
  *
  * `cancel` names the revision of the goal the caller read. A goal's revision advances on every write
  * to its record, a controller transition included, so a goal that moved since is refused instead of
@@ -81,8 +82,20 @@ const goalSchema = z.object({
       completedAt: z.string().nullable(),
       finishReason: z.string().nullable(),
       usage: usageSchema,
+      /**
+       * What the validator said was wrong with the attempt (`null` when it said nothing). Only
+       * `bureau.goals.get` for the goal's owner carries it; a list, and any other caller's read,
+       * leave it out.
+       */
+      feedback: z.string().nullable().optional(),
     }),
   ),
+  /**
+   * The goal's prompt, as it was last set. Only `bureau.goals.get` for the goal's owner carries it;
+   * a list and any other caller's read leave it out, so a page treats its absence as unknown and
+   * never as an empty prompt.
+   */
+  prompt: z.string().optional(),
 });
 
 /** One goal as `bureau.goals.list`, `get`, and `create` show it. */
@@ -208,8 +221,9 @@ export async function cancelGoal(
 export type GoalChange = {
   readonly prompt?: string;
   /**
-   * Accepted only as the goal's own agent, so the form may send every field it shows; the Bureau
-   * refuses another agent as a `Conflict` (`agent-fixed`).
+   * The agent the goal's next attempts run as; an attempt already made keeps the agent it ran as.
+   * The Bureau changes it only while an attempt is in flight, and refuses it between attempts as a
+   * `Conflict` (`agent-between-attempts`).
    */
   readonly agentName?: string;
   /** Named by free text, exactly, as when the goal was created. */
