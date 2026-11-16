@@ -802,9 +802,8 @@ for (const pattern of ['/health/runs', '/workflows/:workflow/runs']) {
     await expect(table).toBeVisible();
 
     // One Updated column in place of Created and Updated, with the Created time in the titles.
-    const headers = (await table.locator('thead tr > *').allInnerTexts()).map((text) =>
-      text.trim(),
-    );
+    const headerTexts = await table.locator('thead tr > *').allInnerTexts();
+    const headers = headerTexts.map((text) => text.trim());
     expect(headers).toContain('Updated');
     expect(headers).not.toContain('Created');
     await expect(table.locator('thead th', { hasText: 'Updated' })).toHaveAttribute(
