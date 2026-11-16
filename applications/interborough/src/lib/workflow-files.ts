@@ -400,6 +400,36 @@ export async function getWorkflowFileRun(
   return runDetailSchema.parse(await callBureau('bureau.workflows.runs.get', { runId }, options));
 }
 
+const runHistorySchema = z.object({
+  events: z.array(
+    z.object({
+      type: z.string(),
+      timestamp: z.string(),
+      /** The step the event belongs to, by its index from zero, or `null`. */
+      step: z.string().nullable(),
+      summary: z.string(),
+    }),
+  ),
+  truncated: z.boolean(),
+});
+
+/** One event of an instance's history, as `bureau.workflows.runs.history` sanitizes it. */
+export type WorkflowRunHistoryEvent = z.infer<typeof runHistorySchema>['events'][number];
+
+/**
+ * The bounded, sanitized step history of one instance of a workflow file
+ * (`bureau.workflows.runs.history`): which step it started, when, and what each activity was.
+ * A not-found fault when the Bureau does not hold the instance.
+ */
+export async function getWorkflowRunHistory(
+  runId: string,
+  options?: Options,
+): Promise<z.infer<typeof runHistorySchema>> {
+  return runHistorySchema.parse(
+    await callBureau('bureau.workflows.runs.history', { runId, limit: 500 }, options),
+  );
+}
+
 /** The newest `limit` instances of one workflow file. */
 export async function listWorkflowFileRuns(
   id: string,

@@ -17,7 +17,10 @@
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { getContext, type ChatContext } from '../../../lib/bureau-client.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
+  import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';
+  import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
+  import { cadenceClauseOf } from './run-schedule-cadence.ts';
   import RunOrigin from './run-origin.svelte';
   import { buildRunRows, type RunAttempt, type RunOrigin as Origin } from './run-rows.ts';
 
@@ -29,6 +32,8 @@
     goal?: Goal | undefined;
     /** The chat the run ran in, when the page has read it. */
     chat?: ChatContext | undefined;
+    /** The schedule that started the run, when the page has read it. */
+    schedule?: BureauSchedule | undefined;
   }
 
   /** How many origins the list follows, this run's included. */
@@ -40,7 +45,7 @@
     readonly origin: Origin;
   }
 
-  let { runId, task, goal, chat }: RunLineageProps = $props();
+  let { runId, task, goal, chat, schedule }: RunLineageProps = $props();
 
   function rowOf(
     id: string,
@@ -70,7 +75,27 @@
     return origin.kind === 'agent' || origin.kind === 'parent' ? origin.parentRunId : undefined;
   }
 
-  const origin = $derived(originOf(runId, task, goal, chat));
+  const recordedOriginOfRun = $derived(originOf(runId, task, goal, chat));
+  // An instance of a workflow file a schedule fired records no origin of its own: the schedule the
+  // page read for it is what started it (COR-2424).
+  const origin: Origin = $derived(
+    recordedOriginOfRun.kind === 'none' && schedule !== undefined
+      ? {
+          kind: 'schedule',
+          title: '',
+          href: null,
+          scheduleId: schedule.id,
+          schedulePath: scheduleDetailPath(schedule.id),
+          manual: false,
+        }
+      : recordedOriginOfRun,
+  );
+  // The schedule as the chain says it: its name and when it runs, in the viewer's time (row 55i).
+  const scheduleLine = $derived(
+    origin.kind !== 'schedule' || schedule === undefined
+      ? undefined
+      : { name: schedule.description ?? schedule.id, cadence: cadenceClauseOf(schedule) },
+  );
   const attempt: RunAttempt | null = $derived(rowOf(runId, task, goal, chat)?.attempt ?? null);
   const parentRunId = $derived(parentOf(origin));
 
@@ -100,14 +125,16 @@
   );
 </script>
 
-<li class="ib-run-lineage__item" data-depth="1"><RunOrigin {origin} {attempt} /></li>
+<li class="ib-run-lineage__item" data-depth="1">
+  <RunOrigin {origin} {attempt} {scheduleLine} />
+</li>
 {#each ancestors.data ?? [] as ancestor, index (ancestor.runId)}
   <li class="ib-run-lineage__item" data-depth={index + 2}>
     <RunOrigin origin={ancestor.origin} />
   </li>
 {/each}
-<!-- The run's own row says where it sits in a chain, so it is drawn only when another run is in it. -->
-{#if (ancestors.data?.length ?? 0) > 0}
+<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal or a schedule, which are what the chain names (rows 55f, 55i, 54y). -->
+{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule'}
   <li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
     <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
     {RUN_DETAIL_COPY.lineage.thisRun}

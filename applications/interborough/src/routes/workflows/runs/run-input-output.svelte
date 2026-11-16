@@ -54,6 +54,11 @@
      * and the reply. The page turns it off when it shows them under How it ran.
      */
     showRaw?: boolean;
+    /**
+     * Whether the failure of the run is told elsewhere, on the step that failed (an instance of a
+     * workflow file, row 14t), so this section does not tell it a second time.
+     */
+    failureOnStep?: boolean;
   }
 
   /** The reply is held to this many characters of text before Show all. */
@@ -70,6 +75,7 @@
     startedAt,
     onShowRaw,
     showRaw = true,
+    failureOnStep = false,
   }: RunInputOutputProps = $props();
 
   const copy = RUN_DETAIL_COPY.io;
@@ -203,7 +209,7 @@
       <RunPayloadCards {workflow} {record} />
     {/if}
 
-    {#if workflow !== undefined && workflow.status === 'failed'}
+    {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}
       <div class="weft-overview-tab__failure">
         <div class="weft-overview-tab__failure-title">
           <CircleX aria-hidden="true" size={18} />

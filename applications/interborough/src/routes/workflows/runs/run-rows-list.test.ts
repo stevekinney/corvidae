@@ -30,6 +30,7 @@ import {
   runSegmentOf,
   runStatusWord,
   serializeRunFilter,
+  visibleRunSegments,
   waitedWords,
   type RunRow,
 } from './run-rows.ts';
@@ -347,6 +348,7 @@ describe('the status segments', () => {
     expect(runSegmentCounts(rows)).toEqual({
       all: 8,
       waiting: 1,
+      signal: 0,
       running: 2,
       done: 2,
       failed: 1,
@@ -355,6 +357,7 @@ describe('the status segments', () => {
     expect(runSegmentCounts([])).toEqual({
       all: 0,
       waiting: 0,
+      signal: 0,
       running: 0,
       done: 0,
       failed: 0,
@@ -551,6 +554,105 @@ describe('the Bureau’s own runs (COR-2423)', () => {
     expect(runLineTwo(row, context)).toBe(
       'Schedule, Release notes digest, failed at step 2 of 4, GitHub didn’t answer (HTTP 503), 3 s',
     );
+  });
+
+  test('an instance a schedule fired has no chat to link to, since it ran in no session (COR-2424)', () => {
+    const [instance, fire] = runListRows(
+      buildRunRows({
+        tasks: [
+          taskFixture({
+            id: 'release-notes-run',
+            contextId: 'release-notes-run',
+            kind: 'catalog',
+            agentName: null,
+            origin: {
+              kind: 'schedule',
+              scheduleId: 'release-notes-digest',
+              fireId: 'release-notes-run',
+            },
+            createdAt: '2026-10-30T11:00:00-05:00',
+            updatedAt: '2026-10-30T11:00:03-05:00',
+            workflow: workflowOf('release-notes', { scheduleId: 'release-notes-digest' }),
+          }),
+          // An agent schedule's fire is a task with a session, and keeps its link.
+          taskFixture({
+            id: 'fire-run',
+            contextId: 'fire-session',
+            kind: 'schedule-fire',
+            origin: { kind: 'schedule', scheduleId: 'daily-summary', fireId: 'fire-run' },
+            createdAt: '2026-10-29T04:00:00-05:00',
+            updatedAt: '2026-10-29T04:00:12-05:00',
+            workflow: workflowOf('agentRun', { scheduleId: 'daily-summary' }),
+          }),
+        ],
+        goals: [],
+        chats: [],
+      }),
+    );
+
+    expect(instance?.origin).toMatchObject({ kind: 'schedule', href: null });
+    expect(instance?.engineRun).toBe(true);
+    expect(fire?.origin).toMatchObject({ kind: 'schedule', href: '/chats/fire-session' });
+    expect(fire?.engineRun).toBe(false);
+  });
+
+  test('marks the schedule tick, an instance and the steps folded into an instance as the engine’s runs, and no task with a record (COR-2424)', () => {
+    const rows = runListRows(
+      buildRunRows({
+        tasks: [
+          taskFixture({
+            id: 'tick-1',
+            contextId: 'tick-1',
+            kind: 'catalog',
+            agentName: null,
+            workflow: workflowOf('scheduleTick'),
+          }),
+          taskFixture({ id: 'chat-run', workflow: workflowOf('agentRun') }),
+          taskFixture({
+            id: 'instance-step',
+            contextId: 'instance-step',
+            kind: 'catalog',
+            origin: { kind: 'parent', parentRunId: 'instance-1' },
+            workflow: workflowOf('agentRun'),
+          }),
+        ],
+        goals: [],
+        chats: [],
+      }),
+    );
+
+    const byId = new Map(rows.map((row) => [row.id, row.engineRun] as const));
+    expect(byId.get('tick-1')).toBe(true);
+    expect(byId.get('instance-1')).toBe(true);
+    expect(byId.get('chat-run')).toBe(false);
+  });
+
+  test('a run parked on a signal counts under Waiting, not Running, and the Waiting segment is drawn only while one is (row 56g)', () => {
+    const rows = buildRunRows({
+      tasks: [
+        taskFixture({
+          id: 'parked',
+          contextId: 'parked',
+          kind: 'catalog',
+          agentName: null,
+          status: 'working',
+          workflow: workflowOf('release-notes', { awaitingSignal: 'notes-approved' }),
+        }),
+        taskFixture({ id: 'going', workflow: workflowOf('agentRun'), status: 'working' }),
+      ],
+      goals: [],
+      chats: [],
+    });
+
+    const counts = runSegmentCounts(rows);
+    expect(counts).toMatchObject({ all: 2, running: 1, signal: 1, waiting: 0 });
+    expect(filterRunRows(rows, { status: 'signal' }).map((row) => row.id)).toEqual(['parked']);
+    expect(filterRunRows(rows, { status: 'running' }).map((row) => row.id)).toEqual(['going']);
+    expect(visibleRunSegments(counts, undefined)).toContain('signal');
+    // With none parked the segment is not drawn, unless it is the one chosen.
+    const none = runSegmentCounts(rows.filter((row) => row.id === 'going'));
+    expect(visibleRunSegments(none, undefined)).not.toContain('signal');
+    expect(visibleRunSegments(none, 'signal')).toContain('signal');
   });
 
   test('an instance with its own row is not folded into a second "Workflow run" by its steps', () => {

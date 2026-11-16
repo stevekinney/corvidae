@@ -108,6 +108,18 @@ Set `plain` to show a string as it is: text in a code block under the label, wit
 <PayloadInspector value={firstPartOfTheLog} label="Value, text, 2.1 MB" bare plain />
 ```
 
+### Keeping internals in the JSON view
+
+Name top-level properties in `jsonOnly` to leave them out of the Fields view while the JSON view still shows every one. The Fields list ends with a muted "1 more in JSON" line so nothing hides silently, and the header counts all the top-level fields and says how many are JSON only.
+
+```svelte
+<PayloadInspector
+  value={{ question: 'Where is order 4472?', maximumSteps: 8, runId: 'run-71c9d0' }}
+  label="Input"
+  jsonOnly={['runId']}
+/>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -121,6 +133,7 @@ Set `plain` to show a string as it is: text in a code block under the label, wit
 | `failed` | `boolean` | no | — | True when the payload failed to load. The card keeps its header, hides the switch, disables Copy, and shows `failedMessage` with a Try again button. |
 | `failedMessage` | `string` | no | — | What a failed load says. Defaults to "Couldn't load the full result." |
 | `initialDepth` | `number` | no | — | Initial collapse depth. In the JSON view, nodes deeper than this start collapsed; in the Fields view, an object nested deeper than this starts collapsed. Defaults to 1. |
+| `jsonOnly` | `string`[] | no | — | Top-level property names the Fields view leaves out and only the JSON view shows, such as a run's identifier or other internals. The Fields list ends with a muted "1 more in JSON" line so nothing hides silently, and the header counts every top-level field and says how many are JSON only ("3 fields, 1 in JSON only"). A name the value does not have is ignored, and so is the list for a value that is not an object. |
 | `label` | `string` | no | — | A heading drawn at the left of the header row, before the Fields / JSON switch, such as "Input" or "Output". It also names the card for assistive technology; without one the card is named "Payload". |
 | `maxBytes` | `number` | no | — | Maximum serialized size before nothing is rendered. A payload over it shows only its size, a Copy button and a Download JSON button. Defaults to 1,048,576 (1 MB). |
 | `maxDepth` | `number` | no | — | Hard depth cap. Nodes deeper than this never render their children. Defaults to 50. |

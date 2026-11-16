@@ -28,7 +28,7 @@ import {
   type BureauWorldStub,
 } from '../../../lib/bureau-world.test-support.ts';
 import { router } from '../../../lib/router.svelte.ts';
-import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
+import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import { filterLabelOf } from './run-rows.ts';
@@ -73,6 +73,8 @@ function open(
     readonly schedules?: readonly BureauSchedule[];
     /** Makes the Bureau refuse to list the schedules. */
     readonly schedulesFail?: boolean;
+    /** The scopes the caller holds; every one unless a test narrows them. */
+    readonly scopes?: readonly AuthorizationScope[];
   } = {},
 ) {
   stub = installBureauWorld(
@@ -116,7 +118,7 @@ function open(
   return render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
-      scopes: AUTHORIZATION_SCOPES,
+      scopes: options.scopes ?? AUTHORIZATION_SCOPES,
     },
   } as never);
 }
@@ -398,5 +400,49 @@ describe('opening from a row', () => {
     expect(router.pathname).toBe('/runs');
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/runs/run-2');
+  });
+});
+
+describe('a run only the workflow engine holds (COR-2424)', () => {
+  /** What the Bureau lists for the schedule tick: no agent, and its own identifier for a context. */
+  const TICK = taskFixture({
+    id: 'tick-1',
+    contextId: 'tick-1',
+    kind: 'catalog',
+    agentName: null,
+    status: 'completed',
+    origin: { kind: 'system' },
+    workflow: {
+      type: 'scheduleTick',
+      scheduleId: 'daily-summary',
+      scheduleName: 'Daily summary',
+      tick: { event: 'missed-runs', missedRuns: 4, whileStopped: true },
+      steps: null,
+      awaitingSignal: null,
+    },
+  });
+
+  test('opens its page for a caller who may read the engine, which serves it read-only', async () => {
+    const view = open('/runs', { tasks: [TICK] });
+    await waitFor(() => expect(rowIds(view.container)).toContain('tick-1'));
+
+    const link = view.container.querySelector<HTMLAnchorElement>('[data-run="tick-1"] a');
+    expect(link?.getAttribute('href')).toBe('/runs/tick-1');
+  });
+
+  test('does not open for a caller who may not, and says what it needs, so no row leads to a page that is not found', async () => {
+    const view = open('/runs', {
+      tasks: [TICK],
+      scopes: AUTHORIZATION_SCOPES.filter((scope) => scope !== 'workflows:read'),
+    });
+    await waitFor(() => expect(rowIds(view.container)).toContain('tick-1'));
+
+    const row = view.container.querySelector('[data-run="tick-1"]');
+    expect(row?.querySelector('a')).toBeNull();
+    expect(row?.textContent).toContain(TASK_COPY.list.engineRunLocked);
+    // The Bureau's own tasks still open: only the engine's runs need the engine.
+    expect(view.container.querySelector('[data-run="run-1"] a')?.getAttribute('href')).toBe(
+      '/runs/run-1',
+    );
   });
 });

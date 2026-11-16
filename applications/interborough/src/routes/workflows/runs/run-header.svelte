@@ -68,6 +68,8 @@
     phrases?: readonly string[] | undefined;
     /** The signals a run waits for, said after the phrases as "waiting for signal" and each name in code. */
     waitingForSignals?: readonly string[] | undefined;
+    /** Where a failed run failed ("at step 2 of 4"), said right after the status word. */
+    stepNote?: string | undefined;
     /** A short phrase after the status, such as "answer sent, undo for 5 s" while an answer can be undone. */
     note?: string | undefined;
     /**
@@ -79,8 +81,20 @@
     chat?: { readonly href: string; readonly label: string } | undefined;
     /** Where Open goal or Open schedule goes, for a run that belongs to one, and what it says. */
     owner?: { readonly href: string; readonly label: string } | undefined;
-    /** The page that sets up another run of this run's workflow: Run again goes there. */
-    runAgain?: string | undefined;
+    /**
+     * Run again: where it goes (a new chat, or the page that sets up another run of the workflow),
+     * or `onRun` when it starts the schedule's run now. While `blocked` (no model provider is
+     * connected and the run needs one) it is `aria-disabled`, and a link to Settings › Models beneath
+     * it says why, tied to it by `aria-describedby`.
+     */
+    runAgain?:
+      | {
+          readonly href?: string | undefined;
+          readonly onRun?: (() => void) | undefined;
+          readonly blocked?: boolean | undefined;
+          readonly busy?: boolean | undefined;
+        }
+      | undefined;
     /** The engine's status of the run, when the engine holds it: it sets the actions in More. */
     engineStatus?: WorkflowState['status'] | undefined;
     /** The action being carried out, which disables the others. */
@@ -103,6 +117,7 @@
     task,
     phrases = [],
     waitingForSignals = [],
+    stepNote,
     note,
     cancelRun = false,
     chat,
@@ -187,7 +202,9 @@
 {/snippet}
 
 {#snippet summary()}
-  {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
+  {#if status !== undefined}<StatusLabel
+      word={status}
+    />{/if}{#if stepNote !== undefined}{`, ${stepNote}`}{/if}{#if startedAt !== undefined}, <time
       datetime={new Date(startedAt).toISOString()}
       title={utcStamp(startedAt)}>{dayStamp(startedAt)}</time
     >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${phrase}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
@@ -216,14 +233,45 @@
       />
     {/if}
     {#if runAgain !== undefined}
-      <Button
-        variant="secondary"
-        href={router.href(runAgain)}
-        label={RUN_DETAIL_COPY.runAgain}
-        onclick={(event) => openLink(event, runAgain)}
-      >
-        {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
-      </Button>
+      {@const again = runAgain}
+      <span class="ib-run__again">
+        {#if again.blocked === true}
+          <Button
+            variant="secondary"
+            label={RUN_DETAIL_COPY.runAgain}
+            aria-disabled="true"
+            aria-describedby="ib-run-again-blocked"
+          >
+            {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+          </Button>
+          <a
+            id="ib-run-again-blocked"
+            class="ib-run__again-note"
+            href={router.href(RUN_DETAIL_COPY.providersPath)}
+            onclick={(event) => openLink(event, RUN_DETAIL_COPY.providersPath)}
+            >{RUN_DETAIL_COPY.connectProvider}</a
+          >
+        {:else if again.href !== undefined}
+          {@const path = again.href}
+          <Button
+            variant="secondary"
+            href={router.href(path)}
+            label={RUN_DETAIL_COPY.runAgain}
+            onclick={(event) => openLink(event, path)}
+          >
+            {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+          </Button>
+        {:else}
+          <Button
+            variant="secondary"
+            label={RUN_DETAIL_COPY.runAgain}
+            loading={again.busy === true}
+            onclick={() => again.onRun?.()}
+          >
+            {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+          </Button>
+        {/if}
+      </span>
     {/if}
     {#if task !== undefined}<RunCancel
         {task}

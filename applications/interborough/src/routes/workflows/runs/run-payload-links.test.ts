@@ -9,6 +9,7 @@ import { chatSessionPath } from '../../../lib/identifier-paths.ts';
 import { workflowDetailPath } from '../../../lib/router.svelte.ts';
 import {
   NO_LOOKUPS,
+  ownRunIdKeys,
   payloadLinkFor,
   payloadReferences,
   payloadValueText,
@@ -76,6 +77,27 @@ describe('payloadLinkFor and payloadValueText', () => {
     const untitled: PayloadLookups = { ...known, chats: new Map([['chat-1', '']]) };
     expect(payloadLinkFor(field('chatId', 'chat-1'), untitled)).toBe(chatSessionPath('chat-1'));
     expect(payloadValueText(field('chatId', 'chat-1'), untitled)).toBeUndefined();
+  });
+});
+
+describe('ownRunIdKeys (row 28e)', () => {
+  test('names the properties that hold the run’s own identifier, which only the JSON view shows', () => {
+    const input = { question: 'Where is order 4472?', maximumSteps: 8, runId: 'run-71c9d0' };
+    expect(ownRunIdKeys(input, 'run-71c9d0')).toEqual(['runId']);
+    expect(ownRunIdKeys({ ...input, taskId: 'run-71c9d0' }, 'run-71c9d0')).toEqual([
+      'runId',
+      'taskId',
+    ]);
+  });
+
+  test('leaves a property that names another run, which is a link, in the Fields view', () => {
+    expect(ownRunIdKeys({ runId: 'run-8f2c0d71' }, 'run-71c9d0')).toEqual([]);
+  });
+
+  test('names nothing for a payload that is not an object, or a run with no identifier', () => {
+    expect(ownRunIdKeys('text', 'run-71c9d0')).toEqual([]);
+    expect(ownRunIdKeys([{ runId: 'run-71c9d0' }], 'run-71c9d0')).toEqual([]);
+    expect(ownRunIdKeys({ runId: 'run-71c9d0' }, undefined)).toEqual([]);
   });
 });
 

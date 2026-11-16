@@ -255,7 +255,27 @@ export const RUN_DETAIL_COPY = {
   related: {
     heading: 'Related runs',
     noneInChat: 'No other runs came from this chat.',
+    /** The other attempts of the goal a run is an attempt of: "Attempt 1 of 5 (Check not met)". */
+    attempt: (number: number, of: number, outcome: string): string =>
+      `Attempt ${String(number)} of ${String(of)} (${outcome})`,
+    attemptOutcome: {
+      running: 'Running',
+      evaluating: 'Checking',
+      passed: 'Check met',
+      failed: 'Check not met',
+      aborted: 'Canceled',
+    },
+    /** No other attempt of the goal. */
+    noOtherAttempts: 'No other attempts of this goal.',
+    /** Said of the run that was the schedule's last, and how many occurrences it has missed since. */
+    scheduleLastRun: 'This was the schedule’s last run.',
+    scheduleMissedSince: (count: number): string =>
+      `It has missed ${String(count)} ${count === 1 ? 'occurrence' : 'occurrences'} since.`,
+    /** Said of a run a schedule started that is not its last. */
+    scheduleNotLast: 'The schedule has run since.',
   },
+  /** The Schedule row of the Details rail of a run a schedule started. */
+  schedule: 'Schedule',
   /** Labels the Details rail adds for a run a goal made, and what its Version reads for a built-in workflow. */
   facts: { goal: 'Goal', builtInVersion: 'Built in' },
   /** The last row of the Started by chain: the run itself, one level in from what started it. */
@@ -278,6 +298,33 @@ export const RUN_DETAIL_COPY = {
     /** Which attempt of its goal a run is, and how long the agent took inside it. */
     attempt: (number: number, of: number): string => `attempt ${String(number)} of ${String(of)}`,
     agentTook: (duration: string): string => `Agent took ${duration}`,
+  },
+  /**
+   * What the page says of an instance of a workflow file, from the history the Bureau keeps of it
+   * and the steps of the version it ran: how far it got, the step that failed, and which version.
+   */
+  instance: {
+    /** After the time of a run still going: "step 2 of 4". */
+    stepOf: (at: number, total: number): string => `step ${String(at)} of ${String(total)}`,
+    /** After the word Failed: "at step 2 of 4". */
+    failedAt: (at: number, total: number): string => `at step ${String(at)} of ${String(total)}`,
+    /** The block on the step that failed: "Step 2, Collect merged changes, failed after 2 tries". */
+    failureHeading: (at: number, name: string | undefined, tries: number): string =>
+      `Step ${String(at)}${name === undefined ? '' : `, ${name}`}, failed${
+        tries > 1 ? ` after ${String(tries)} tries` : ''
+      }`,
+    /** One step the run began, in what happened: "Step 2, Collect merged changes". */
+    stepEntry: (at: number, name: string | undefined): string =>
+      `Step ${String(at)}${name === undefined ? '' : `, ${name}`}`,
+    /** The block's heading for the reason, and the sentence that follows the reason. */
+    whyItFailed: 'Why it failed',
+    /** The sentence under the reason: where to look when it keeps failing, with Health as a link. */
+    checkHealth: { before: 'If it keeps failing, check ', link: 'Health', after: '.' },
+    /** The Version row: which version the run ran, and where it stands against the current one. */
+    versionCurrent: (version: string): string => `${version}, current version`,
+    versionOlder: (version: string): string => `${version}, older version`,
+    versionOlderNote: (current: string): string =>
+      `Ran on an older version of this workflow. The current one is ${current}.`,
   },
   /** The heading of a page whose run is not yet known: the run's identifier names it. */
   runHeading: (runId: string): string => `Run ${runId}`,
@@ -341,6 +388,64 @@ export const RUN_DETAIL_COPY = {
   openGoal: 'Open goal',
   openSchedule: 'Open schedule',
   runAgain: 'Run again',
+  /** The Run inspector card under How it ran: five rows about where the run stands for an operator. */
+  inspector: {
+    heading: 'Run inspector',
+    /** The badge beside the heading: the run is one of Interborough's own workflows. */
+    builtIn: 'Built in',
+    rows: {
+      progress: 'Progress',
+      waiting: 'Waiting on',
+      liveness: 'Liveness',
+      stream: 'Event stream',
+      cleanup: 'Cleanup',
+    },
+    nothing: 'Nothing',
+    progressOver: {
+      completed: 'Finished; nothing left to do',
+      failed: 'Stopped; it failed',
+      canceled: 'Stopped; it was canceled',
+    },
+    progressWaiting: 'Paused; it needs a person',
+    progressSubmitted: 'Queued; it has not started',
+    progressWorking: 'Working',
+    waitAnswer: 'Your answer',
+    waitApproval: 'Your approval',
+    waitSignal: (signals: readonly string[]): string => `The signal ${signals.join(', ')}`,
+    livenessOver: (ended: string | undefined): string =>
+      ended === undefined ? 'No signals; the run ended' : `No signals; the run ended ${ended}`,
+    livenessWaiting: 'Idle; it is waiting',
+    livenessWorking: 'Working; it is reporting progress',
+    stream: {
+      connecting: 'Connecting',
+      live: 'Live',
+      reconnecting: 'Reconnecting',
+      upToDate: 'Up to date',
+      unavailable: 'Not available',
+      'not-found': 'Not available',
+    },
+    cleanupNone: 'None needed',
+    cleanup: {
+      'cancel-requested': 'Cancel requested; the run has not stopped yet',
+      canceled: 'Canceled; nothing to clean up',
+      'cleanup-pending': 'Cleaning up after the cancel',
+      'cleaned-up': 'Cleaned up',
+      'cleanup-failed': 'Cleanup failed',
+      'cleanup-unresolved': 'Cleanup could not be confirmed',
+      'unknown-outcome': 'Not known whether the cancel finished everything',
+    },
+  },
+  /** The bar docked at the bottom of a chat's run that is going, to add something the agent reads next. */
+  sendMessage: {
+    label: 'Message the run',
+    field: 'Send a message',
+    send: 'Send',
+    sent: 'Message sent. The agent reads it at its next step.',
+    failed: 'The message was not sent',
+  },
+  /** Beneath Run again while no model provider is connected and the run needs one. */
+  connectProvider: 'Connect a provider',
+  providersPath: '/settings/models',
   /** The Input and output section: what each card is called, and the sentence under the heading. */
   io: {
     /** Under the heading of a run that answered a chat message. */

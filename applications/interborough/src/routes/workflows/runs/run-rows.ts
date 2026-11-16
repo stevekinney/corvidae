@@ -48,12 +48,13 @@ export type RunOrigin =
    * through its `actor`, and then there is no schedule to name. Either way the fire ran in a
    * session, which is linked (`href`) and titled by the text the schedule delivered when the caller
    * lists that session, and empty when it does not (an operator sees every owner's fires and lists
-   * only their own sessions).
+   * only their own sessions). An instance of a workflow file a schedule fired ran in no session, so
+   * it has no `href` (COR-2424).
    */
   | {
       readonly kind: 'schedule';
       readonly title: string;
-      readonly href: string;
+      readonly href: string | null;
       readonly scheduleId: string | null;
       readonly schedulePath: string | null;
       readonly manual: boolean;
@@ -138,13 +139,46 @@ export type RunRow = {
   readonly scheduleName?: string | null;
   /** When a run that asked to be woken is due, in epoch milliseconds, while it is still ahead. */
   readonly dueAt?: number | null;
+  /**
+   * Whether only the workflow engine holds the run: the schedule tick and an instance of a workflow
+   * file, which the Bureau builds from the engine when it lists them and has no task for. Its page
+   * is the engine's, so it opens for a caller who may read the engine (`workflows:read`).
+   */
+  readonly engineRun?: boolean;
 };
+
+/** The workflow types a task record is made for; every other type is a run only the engine holds. */
+const RECORDED_TASK_WORKFLOWS: readonly string[] = ['agentRun', 'goalRun'];
+
+/**
+ * Whether a task view stands for a run only the workflow engine holds (COR-2423): the Bureau builds
+ * these from the engine, with no agent and the run's own identifier for its context, so
+ * `bureau.tasks.get` answers NotFound for them (COR-2424).
+ */
+export function isEngineRunTask(
+  task: Pick<TaskView, 'id' | 'contextId' | 'agentName' | 'workflow'>,
+): boolean {
+  const type = task.workflow?.type;
+  return (
+    type !== undefined &&
+    !RECORDED_TASK_WORKFLOWS.includes(type) &&
+    task.agentName === null &&
+    task.contextId === task.id
+  );
+}
 
 /** What the Bureau says of the workflow a task ran on. */
 export type RunWorkflow = NonNullable<TaskView['workflow']>;
 
 /** The status segments of the filter bar, after All: each holds the runs of one status word. */
-export const RUN_STATUS_SEGMENTS = ['waiting', 'running', 'done', 'failed', 'canceled'] as const;
+export const RUN_STATUS_SEGMENTS = [
+  'waiting',
+  'signal',
+  'running',
+  'done',
+  'failed',
+  'canceled',
+] as const;
 
 /** One status segment a filter can narrow to. */
 export type RunStatusSegment = (typeof RUN_STATUS_SEGMENTS)[number];
@@ -155,6 +189,7 @@ export const RUN_SEGMENTS = ['all', ...RUN_STATUS_SEGMENTS] as const;
 /** One segment of the bar, All included. */
 export type RunSegment = (typeof RUN_SEGMENTS)[number];
 
+// `signal` is no state of a task: it is a run parked at an `await-signal` step, which `runSegmentOfRow` counts.
 const SEGMENT_OF_STATE: Readonly<Record<TaskState, RunStatusSegment>> = {
   submitted: 'running',
   working: 'running',
@@ -170,6 +205,30 @@ const SEGMENT_OF_STATE: Readonly<Record<TaskState, RunStatusSegment>> = {
  */
 export function runSegmentOf(status: TaskState): RunStatusSegment {
   return SEGMENT_OF_STATE[status];
+}
+
+/**
+ * The segment a row is counted under. A run parked at an `await-signal` step needs nobody at the
+ * page, so it counts under Waiting and not under Running (COR-2424, row 56g); every other run is
+ * counted by its status.
+ */
+export function runSegmentOfRow(
+  row: Pick<RunRow, 'status'> & { readonly workflow?: RunWorkflow | null | undefined },
+): RunStatusSegment {
+  return awaitingSignalOf(row) === null ? runSegmentOf(row.status) : 'signal';
+}
+
+/**
+ * The segments the bar draws: every one, but Waiting (a run parked on a signal) only while it
+ * holds a run or is the one chosen, since most workspaces never have one.
+ */
+export function visibleRunSegments(
+  counts: Readonly<Record<RunSegment, number>>,
+  chosen: RunSegment | undefined,
+): readonly RunSegment[] {
+  return RUN_SEGMENTS.filter(
+    (value) => value !== 'signal' || counts.signal > 0 || chosen === value,
+  );
 }
 
 export type RunFilter = {
@@ -226,7 +285,8 @@ function recordedOrigin(
       return {
         kind: 'schedule',
         title: chats.get(task.contextId)?.title ?? '',
-        href: chatSessionPath(task.contextId),
+        // A run only the engine holds has its own identifier for a context, and no session has it.
+        href: isEngineRunTask(task) ? null : chatSessionPath(task.contextId),
         scheduleId: scheduleId ?? null,
         schedulePath: scheduleId === undefined ? null : scheduleDetailPath(scheduleId),
         manual: Reflect.get(recorded, 'manual') === true,
@@ -388,6 +448,7 @@ function taskRow(
       workflow?.scheduleName ??
       null,
     dueAt: task.status === 'working' && !Number.isNaN(wake) ? wake : null,
+    engineRun: isEngineRunTask(task),
   };
 }
 
@@ -467,6 +528,8 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     durationMs: isTerminalState(status) ? Math.max(0, updatedAt - startedAt) : null,
     attempt: null,
     checkNotMet: false,
+    // No task is the instance, only its steps are: the engine holds the run a person started.
+    engineRun: true,
   };
 }
 
@@ -556,7 +619,7 @@ export function filterRunRows(
 ): RunRow[] {
   return rows.filter(
     (row) =>
-      (filter.status === undefined || runSegmentOf(row.status) === filter.status) &&
+      (filter.status === undefined || runSegmentOfRow(row) === filter.status) &&
       (filter.agent === undefined || row.agentName === filter.agent) &&
       (filter.startedBy === undefined || row.origin.kind === filter.startedBy) &&
       (filter.workflow === undefined || row.workflowType === filter.workflow) &&
@@ -572,12 +635,13 @@ export function runSegmentCounts(rows: readonly RunRow[]): Readonly<Record<RunSe
   const counts: Record<RunSegment, number> = {
     all: rows.length,
     waiting: 0,
+    signal: 0,
     running: 0,
     done: 0,
     failed: 0,
     canceled: 0,
   };
-  for (const row of rows) counts[runSegmentOf(row.status)] += 1;
+  for (const row of rows) counts[runSegmentOfRow(row)] += 1;
   return counts;
 }
 

@@ -47,6 +47,14 @@ const schema = {
       description:
         'Secret paths: values to hide in both views and in Copy, before anything is\nlaid out. Each path is dot-separated property names from the root, array\npositions count from 1, and `*` stands for any one name or position (`headers.authorization`,\n`attachments.*.token`). Read them from a JSON Schema with\n`readSecretPaths`. When this is not passed, a property whose name reads as\na secret (token, key, password, authorization) is hidden as a fallback;\npass `[]` to hide nothing.',
     },
+    jsonOnly: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        'Top-level property names the Fields view leaves out and only the JSON view shows, such as a\nrun\'s identifier or other internals. The Fields list ends with a muted "1 more in JSON" line\nso nothing hides silently, and the header counts every top-level field and says how many are\nJSON only ("3 fields, 1 in JSON only"). A name the value does not have is ignored, and so is\nthe list for a value that is not an object.',
+    },
     streaming: {
       type: 'boolean',
       description:

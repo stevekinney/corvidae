@@ -64,6 +64,17 @@ export function payloadReferences(value: unknown): PayloadReferences {
   };
 }
 
+/**
+ * The top-level properties of a payload that hold the run's own identifier: an internal the Fields
+ * view leaves out, so the JSON view alone shows it (row 28e). A property that names another run is a
+ * link and stays in the Fields view.
+ */
+export function ownRunIdKeys(value: unknown, ownRunId: string | undefined): string[] {
+  if (ownRunId === undefined || ownRunId === '') return [];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  return RUN_KEYS.filter((key) => Object.getOwnPropertyDescriptor(value, key)?.value === ownRunId);
+}
+
 /** What a run is called by its identifier: "Run 8f2c" for `run-8f2c0d71`, from the first four characters of what follows `run-`. */
 export function shortRunName(runId: string): string {
   const tail = runId.startsWith('run-') ? runId.slice('run-'.length) : runId;

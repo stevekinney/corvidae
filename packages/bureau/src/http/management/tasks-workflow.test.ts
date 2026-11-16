@@ -278,17 +278,20 @@ describe('the Bureau’s own runs, listed as tasks', () => {
       fireRunId: 'fire-a',
     });
     const listing = spyOn(engine, 'list');
+    // The types the engine was asked to list runs of; other reads of the engine are not the listing's.
+    const typesAsked = (): unknown[] =>
+      listing.mock.calls.map(([query]) => (query as { type?: unknown } | undefined)?.type);
     try {
       for (const workflow of ['agentRun', 'goalRun']) {
         expect(await tasksOf(served, { workflow })).toEqual([]);
       }
       expect(await tasksOf(served, { engineRuns: false })).toEqual([]);
-      expect(listing).not.toHaveBeenCalled();
+      expect(typesAsked()).not.toContain('scheduleTick');
       // A type an engine run can have still reads the engine.
       expect(
         (await tasksOf(served, { workflow: 'scheduleTick' })).map((task) => task.id),
       ).toHaveLength(1);
-      expect(listing).toHaveBeenCalled();
+      expect(typesAsked()).toContain('scheduleTick');
     } finally {
       listing.mockRestore();
     }

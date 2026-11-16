@@ -18,6 +18,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import {
+    ownRunIdKeys,
     payloadLinkFor,
     payloadReferences,
     payloadValueText,
@@ -30,9 +31,17 @@
     value: unknown;
     /** The card's heading, such as "Input" or "Output"; it also names the card. */
     label: string;
+    /**
+     * This run's own identifier. A top-level property that holds it (the run's ID in its own input)
+     * is an internal a person has no use for beside the others: it is shown in the JSON view only,
+     * and the Fields view says how many more are in JSON (COR-2424, row 28e).
+     */
+    ownRunId?: string | undefined;
   }
 
-  let { value, label }: RunPayloadProps = $props();
+  let { value, label, ownRunId = undefined }: RunPayloadProps = $props();
+
+  const jsonOnly = $derived(ownRunIdKeys(value, ownRunId));
 
   const references = $derived(payloadReferences(value));
 
@@ -107,6 +116,7 @@
     {value}
     {label}
     redact={[]}
+    {jsonOnly}
     {linkFor}
     {formatValue}
     bind:view={() => payloadViewPreference.view, (view) => payloadViewPreference.choose(view)}

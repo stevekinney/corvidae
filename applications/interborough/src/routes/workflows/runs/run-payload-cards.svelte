@@ -31,6 +31,7 @@
     <RunPayload
       value={workflow !== undefined ? workflow.input : record?.trigger}
       label={copy.input}
+      ownRunId={workflow?.id ?? record?.id}
     />
     {#if workflow !== undefined}
       {#if workflow.status === 'completed'}

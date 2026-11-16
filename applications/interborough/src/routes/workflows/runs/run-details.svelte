@@ -7,7 +7,7 @@
    * one (with a topology that opens in a drawer), and every line the run logged. The run's status is
    * not here: it is in the header, once.
    */
-  import { DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
+  import { DescriptionList, StatusDot, type DescriptionListItem } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -18,13 +18,17 @@
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
   import { goalPath } from '../../../lib/identifier-paths.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
-  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
   import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import { finalizerStatusPresentation } from '../detail/workflow-status.ts';
   import RunChatRelated from './run-chat-related.svelte';
+  import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
+  import type { VersionStanding } from './run-instance.ts';
+  import RunRelatedRuns from './run-related-runs.svelte';
+  import { scheduleRelatedSentence } from './run-related-lines.ts';
   import RunLineage from './run-lineage.svelte';
   import RunLogs from './run-logs.svelte';
   import RunRelated from './run-related.svelte';
@@ -51,6 +55,12 @@
     updatedAt?: number | undefined;
     /** Whether the run is over, so its time is the time it took. */
     over?: boolean;
+    /** Which version the run ran and whether it is the workflow's current one, when read (COR-2424). */
+    versionStanding?: VersionStanding | undefined;
+    /** The schedule that started the run, when the page has read it. */
+    schedule?: BureauSchedule | undefined;
+    /** How many occurrences that schedule missed and has not fired since. */
+    missedSince?: number | undefined;
   }
 
   let {
@@ -65,6 +75,9 @@
     startedAt,
     updatedAt,
     over = false,
+    versionStanding,
+    schedule,
+    missedSince,
   }: RunDetailsProps = $props();
 
   const principal = getPrincipalStore();
@@ -122,9 +135,22 @@
     router.navigate(path);
   }
 
+  // Whether the goal's other attempts or the schedule's last run have something to say under Related runs.
+  const relatedHasExtra = $derived(
+    goal !== undefined ||
+      (schedule !== undefined &&
+        startedAt !== undefined &&
+        scheduleRelatedSentence(schedule, startedAt, missedSince) !== undefined),
+  );
+
   const items = $derived.by((): DescriptionListItem[] => {
     const list: DescriptionListItem[] = [];
-    if (task !== undefined || goal !== undefined || workflowOrigin !== undefined) {
+    if (
+      task !== undefined ||
+      goal !== undefined ||
+      workflowOrigin !== undefined ||
+      schedule !== undefined
+    ) {
       list.push({
         id: 'started-by',
         term: RUN_PAGE_COPY.facts.startedBy,
@@ -143,6 +169,13 @@
         id: 'agent',
         term: RUN_PAGE_COPY.facts.agent,
         definition: agentLabel(agentName, undefined),
+      });
+    }
+    if (schedule !== undefined) {
+      list.push({
+        id: 'schedule',
+        term: RUN_DETAIL_COPY.schedule,
+        definition: scheduleLink,
       });
     }
     list.push({
@@ -181,8 +214,10 @@
             : RUN_PAGE_COPY.deadlinePassed,
       });
     }
-    if (workflow !== undefined) {
+    if (workflow !== undefined || versionStanding !== undefined) {
       list.push({ id: 'version', term: RUN_PAGE_COPY.facts.version, definition: version });
+    }
+    if (workflow !== undefined) {
       list.push({ id: 'revision', term: RUN_PAGE_COPY.facts.revision, definition: revision });
     }
     if (finalizer?.tooltip !== undefined) {
@@ -214,8 +249,21 @@
     </span>
   {:else}
     <ol class="ib-run-lineage" data-testid="run-lineage">
-      <RunLineage {runId} {task} {goal} {chat} />
+      <RunLineage {runId} {task} {goal} {chat} {schedule} />
     </ol>
+  {/if}
+{/snippet}
+
+{#snippet relatedExtra()}
+  <RunRelatedRuns {runId} {goal} {schedule} {missedSince} {startedAt} heading={false} />
+{/snippet}
+
+{#snippet scheduleLink()}
+  {#if schedule !== undefined}
+    {@const path = scheduleDetailPath(schedule.id)}
+    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
+      >{schedule.description ?? schedule.id}</a
+    >
   {/if}
 {/snippet}
 
@@ -245,6 +293,21 @@
 {#snippet version()}
   {#if workflowType !== undefined && isBuiltInWorkflow(workflowType)}
     <span class="ib-run-value">{RUN_DETAIL_COPY.facts.builtInVersion}</span>
+  {:else if versionStanding !== undefined && versionStanding.state !== 'unknown'}
+    <!-- The version the run ran, and whether it is the workflow's current one (rows 54p, 55d). -->
+    <span class="ib-run-value" data-version-state={versionStanding.state}>
+      <StatusDot
+        status={versionStanding.state === 'current' ? 'success' : 'neutral'}
+        label={versionStanding.state === 'current'
+          ? RUN_DETAIL_COPY.instance.versionCurrent(versionStanding.ran)
+          : RUN_DETAIL_COPY.instance.versionOlder(versionStanding.ran)}
+      />
+    </span>
+    {#if versionStanding.state === 'older' && versionStanding.current !== null}
+      <small class="ib-run-value">
+        {RUN_DETAIL_COPY.instance.versionOlderNote(versionStanding.current)}
+      </small>
+    {/if}
   {:else}
     <code class="ib-identifier ib-run-value">{versionSummary}</code>
   {/if}
@@ -269,8 +332,11 @@
   <DescriptionList {items} variant="default" />
   {#if engine !== undefined && workflow !== undefined}
     <RunTags client={engine.client} {workflow} {tagGate} />
-    <RunRelated client={engine.client} {workflow} />
+    <!-- The goal's other attempts and the schedule's last run are said inside the engine's one Related runs. -->
+    <RunRelated client={engine.client} {workflow} extra={relatedExtra} hasExtra={relatedHasExtra} />
     <RunLogs client={engine.client} workflowId={workflow.id} />
+  {:else}
+    <RunRelatedRuns {runId} {goal} {schedule} {missedSince} {startedAt} />
   {/if}
   {#if task !== undefined && workflow === undefined && task.kind === 'chat'}
     <RunChatRelated runId={task.id} contextId={task.contextId} title={chat?.title ?? undefined} />

@@ -15,9 +15,14 @@
     origin: RunOrigin;
     /** Which attempt of its goal the run is, when it is one. */
     attempt?: RunAttempt | null | undefined;
+    /**
+     * A schedule's name and when it runs, which a schedule's run says in place of the schedule's
+     * identifier: "Schedule Daily summary, every day at 3:00 AM (9:00 AM UTC)" (COR-2424).
+     */
+    scheduleLine?: { readonly name: string; readonly cadence: string } | undefined;
   }
 
-  let { origin, attempt = null }: RunOriginProps = $props();
+  let { origin, attempt = null, scheduleLine = undefined }: RunOriginProps = $props();
 
   /** Opens a link in place, and leaves a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
@@ -53,17 +58,29 @@
     {origin.surface === null
       ? STARTED_BY_LABELS.person
       : `${STARTED_BY_LABELS.person} ${TASK_COPY.personSurface[origin.surface]}`}
+  {:else if origin.kind === 'schedule' && scheduleLine !== undefined && origin.schedulePath !== null}
+    {@const schedulePath = origin.schedulePath}
+    <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.schedule}</span>
+    <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
+      >{scheduleLine.name}</a
+    >, {scheduleLine.cadence}{#if origin.manual}, {TASK_COPY.firedByHand}{/if}
   {:else if origin.kind === 'schedule'}
     {#if origin.scheduleId !== null && origin.schedulePath !== null}
       {@const schedulePath = origin.schedulePath}
       <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
         ><code class="ib-identifier">{origin.scheduleId}</code></a
       >
-      ({origin.manual ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}` : TASK_COPY.schedule}),
+      ({origin.manual
+        ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}`
+        : TASK_COPY.schedule}){#if origin.href !== null},{/if}
     {/if}
-    <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}
-      >{origin.title === '' ? TASK_COPY.untitledChat : origin.title}</a
-    >
+    <!-- A run only the engine holds ran in no session, so there is nothing to link to. -->
+    {#if origin.href !== null}
+      {@const sessionPath = origin.href}
+      <a href={router.href(sessionPath)} onclick={(event) => open(event, sessionPath)}
+        >{origin.title === '' ? TASK_COPY.untitledChat : origin.title}</a
+      >
+    {/if}
     {#if origin.scheduleId === null}({TASK_COPY.schedule}){/if}
   {:else if origin.kind === 'api'}
     {STARTED_BY_LABELS.api}

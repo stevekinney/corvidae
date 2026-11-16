@@ -43,10 +43,10 @@
   import { HOME_CLOCK_MILLISECONDS } from '../home/home-clock.svelte.ts';
   import {
     filterRunRows,
-    RUN_SEGMENTS,
     RUN_STATUS_SEGMENTS,
     runDayGroup,
     runSegmentCounts,
+    visibleRunSegments,
     type RunFilter,
     type RunRow,
   } from '../workflows/runs/run-rows.ts';
@@ -126,7 +126,7 @@
   );
 
   const segments = $derived<FilterSegment[]>(
-    RUN_SEGMENTS.map((value) => ({
+    visibleRunSegments(counts, filter.status).map((value) => ({
       value,
       label: TASK_COPY.list.segments[value],
       // The counts wait for the read: a segment is not 0 because the read has not arrived.

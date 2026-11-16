@@ -53,6 +53,7 @@
   import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
+  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../../home/home-clock.svelte.ts';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
   import MissedRunsRow from './missed-runs-row.svelte';
@@ -67,12 +68,12 @@
     isRunRowRunning,
     parseRunFilter,
     RUN_PAGE_SIZE,
-    RUN_SEGMENTS,
     runDayGroup,
     runListEntries,
     runListRows,
     runSegmentCounts,
     serializeRunFilter,
+    visibleRunSegments,
     type RunFilter,
     type RunListEntry,
   } from './run-rows.ts';
@@ -87,6 +88,8 @@
   const filter = $derived(parseRunFilter(router.current.search));
   const queryClient = useQueryClient();
   const connection = getConnection();
+  // A run only the workflow engine holds opens on the engine's page, for a caller who may read it.
+  const engineReadable = $derived(getPrincipalStore().hasScope('workflows:read'));
 
   // The queries below follow `bureau.events`: a run by `run.*` and `action`, a goal by `goal.*`,
   // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
@@ -227,7 +230,7 @@
   );
 
   const segments = $derived<FilterSegment[]>(
-    RUN_SEGMENTS.map((value) => ({
+    visibleRunSegments(counts, filter.status).map((value) => ({
       value,
       label: TASK_COPY.list.segments[value],
       // The counts wait for every read: a segment is not 0 because a read has not arrived.
@@ -466,7 +469,13 @@
           >
             {#snippet children(entry: RunListEntry)}
               {#if entry.kind === 'run'}
-                <RunListRow row={entry.row} {now} {zone} {agentLabel} />
+                <RunListRow
+                  row={entry.row}
+                  {now}
+                  {zone}
+                  {agentLabel}
+                  readable={entry.row.engineRun !== true || engineReadable}
+                />
               {:else}
                 <MissedRunsRow missed={entry.missed} {zone} {agentLabel} />
               {/if}

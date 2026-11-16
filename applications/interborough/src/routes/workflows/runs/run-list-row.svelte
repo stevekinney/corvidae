@@ -9,6 +9,7 @@
    */
   import { StackedListItem, StatusDot } from '@lostgradient/cinder';
 
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { runLineTwo, runStatusWord, type RunRow } from './run-rows.ts';
@@ -27,18 +28,28 @@
      * under the workflow it belongs to.
      */
     href?: string | undefined;
+    /**
+     * Whether the row opens. A run only the workflow engine holds is the engine's page, which a
+     * caller who may not read the engine would find missing; its row then does not open, and says why.
+     */
+    readable?: boolean;
   }
 
-  let { row, now, zone, agentLabel, href = undefined }: Props = $props();
+  let { row, now, zone, agentLabel, href = undefined, readable = true }: Props = $props();
 
   const word = $derived(runStatusWord(row, now));
-  const lineTwo = $derived(runLineTwo(row, { now, zone, agentLabel }));
+  const baseLineTwo = $derived(runLineTwo(row, { now, zone, agentLabel }));
+  const lineTwo = $derived(
+    readable
+      ? baseLineTwo
+      : `${baseLineTwo}${TASK_COPY.list.separator}${TASK_COPY.list.engineRunLocked}`,
+  );
 </script>
 
 <StackedListItem
   data-run={row.id}
   data-status={word}
-  href={router.href(href ?? workflowDetailPath(row.id))}
+  {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
 >

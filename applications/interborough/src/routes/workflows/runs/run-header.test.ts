@@ -91,7 +91,7 @@ describe('the run page header', () => {
     const view = renderHeader({
       chat: { href: '/chats/session-1', label: 'Open chat' },
       owner: { href: '/goals/goal-1', label: 'Open goal' },
-      runAgain: '/workflows/release-notes/run',
+      runAgain: { href: '/workflows/release-notes/run' },
     });
 
     expect(view.getByRole('link', { name: 'Open goal' }).getAttribute('href')).toBe(
@@ -102,6 +102,37 @@ describe('the run page header', () => {
     expect(await fireEvent.click(again, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(again, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('/workflows/release-notes/run');
+  });
+
+  test('holds Run again with aria-disabled while no provider is connected, and says where to connect one (row 54f)', async () => {
+    let started = 0;
+    const view = renderHeader({
+      runAgain: {
+        href: '/chats/new?agent=tool-runner',
+        blocked: true,
+        onRun: () => (started += 1),
+      },
+    });
+
+    const again = view.getByRole('button', { name: 'Run again' });
+    expect(again.getAttribute('aria-disabled')).toBe('true');
+    const connect = view.getByRole('link', { name: 'Connect a provider' });
+    expect(connect.getAttribute('href')).toBe('/settings/models');
+    expect(again.getAttribute('aria-describedby')).toBe(connect.id);
+    // It goes nowhere and starts nothing while it is held.
+    await fireEvent.click(again);
+    expect(started).toBe(0);
+    expect(view.queryByRole('link', { name: 'Run again' })).toBeNull();
+  });
+
+  test('starts the schedule’s run from Run again when it has no page to open (row 55j)', async () => {
+    let started = 0;
+    const view = renderHeader({ runAgain: { onRun: () => (started += 1) } });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Run again' }));
+
+    expect(started).toBe(1);
+    expect(view.queryByRole('link', { name: 'Connect a provider' })).toBeNull();
   });
 
   test('offers neither Run again nor a second link to a run that has none', () => {

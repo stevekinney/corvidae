@@ -7,6 +7,7 @@
   import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
+  import type { Snippet } from 'svelte';
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
@@ -31,9 +32,17 @@
     readonly client: RelatedRunsClient;
     readonly workflow: Pick<WorkflowState, 'id' | 'type' | 'status' | 'createdAt'> &
       RelatedRunSubject;
+    /**
+     * More that the run is related to, said under the heading by the page: the other attempts of the
+     * goal the run is one of, and what the schedule that started it has done since (COR-2424). A run
+     * with this and no relatives of the engine's says it, and not that it has none.
+     */
+    readonly extra?: Snippet | undefined;
+    /** Whether `extra` says anything, so a run with relatives of its own and nothing else says none. */
+    readonly hasExtra?: boolean;
   }
 
-  let { client, workflow }: RunRelatedProps = $props();
+  let { client, workflow, extra, hasExtra = false }: RunRelatedProps = $props();
 
   let topologyOpen = $state(false);
 
@@ -105,8 +114,13 @@
       onRetry={() => void related.refetch()}
     />
   {:else if !hasRelatedRuns(related.data)}
-    <p class="ib-run__note">{RUN_RELATED_COPY.none}</p>
+    {#if hasExtra && extra !== undefined}
+      {@render extra()}
+    {:else}
+      <p class="ib-run__note">{RUN_RELATED_COPY.none}</p>
+    {/if}
   {:else}
+    {#if hasExtra && extra !== undefined}{@render extra()}{/if}
     {#if related.data.parent !== undefined}
       <section
         class="ib-run-related__group"

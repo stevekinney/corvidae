@@ -167,6 +167,13 @@
     user-select: text;
   }
 
+  /* The line that ends a Fields list that leaves some fields to the JSON view. */
+  .cinder-payload-inspector__more {
+    margin: var(--cinder-space-2) 0 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
   /* ----------------------------------------
    * Fields view
    * ---------------------------------------- */

@@ -88,6 +88,14 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    */
   redact?: readonly string[];
   /**
+   * Top-level property names the Fields view leaves out and only the JSON view shows, such as a
+   * run's identifier or other internals. The Fields list ends with a muted "1 more in JSON" line
+   * so nothing hides silently, and the header counts every top-level field and says how many are
+   * JSON only ("3 fields, 1 in JSON only"). A name the value does not have is ignored, and so is
+   * the list for a value that is not an object.
+   */
+  jsonOnly?: readonly string[];
+  /**
    * Writes a value in the Fields view as the caller wants it, such as cents as
    * dollars. It receives the path and the stored value; return `undefined` to
    * keep the default. The JSON view and Copy always show the stored value.
@@ -197,6 +205,14 @@ export type PayloadInspectorSchemaProps = {
    * pass `[]` to hide nothing.
    */
   redact?: readonly string[];
+  /**
+   * Top-level property names the Fields view leaves out and only the JSON view shows, such as a
+   * run's identifier or other internals. The Fields list ends with a muted "1 more in JSON" line
+   * so nothing hides silently, and the header counts every top-level field and says how many are
+   * JSON only ("3 fields, 1 in JSON only"). A name the value does not have is ignored, and so is
+   * the list for a value that is not an object.
+   */
+  jsonOnly?: readonly string[];
   /**
    * True while the payload is still arriving. `value` is the JSON text received
    * so far: fields appear as they complete, the last one shows "Receiving…", the

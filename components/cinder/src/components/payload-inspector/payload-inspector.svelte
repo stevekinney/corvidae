@@ -44,8 +44,10 @@
     chooseFieldsLayout,
     headerCount,
     isTreePayload,
+    jsonOnlyKeysOf,
     LARGE_ARRAY_ABOVE,
     readPartialObject,
+    withoutKeys,
   } from './payload-inspector-model.ts';
   import {
     containsSecret,
@@ -70,6 +72,7 @@
     linkFor,
     redact,
     formatValue,
+    jsonOnly,
     streaming = false,
     failed = false,
     failedMessage = "Couldn't load the full result.",
@@ -190,9 +193,13 @@
   const copyDisabled = $derived(mode === 'failed' || mode === 'streaming');
   const showSwitch = $derived(mode === 'ready' || mode === 'streaming' || mode === 'invalid');
 
+  // The top-level fields only the JSON view shows, and the payload the Fields view lays out without them.
+  const hiddenFields = $derived(arriving ? [] : jsonOnlyKeysOf(shown, jsonOnly));
+  const fieldsShown = $derived(withoutKeys(shown, hiddenFields));
+
   const countText = $derived.by((): string | undefined => {
     if (bare) return undefined;
-    if (mode === 'ready') return headerCount(shown, { bytes });
+    if (mode === 'ready') return headerCount(shown, { bytes, jsonOnly: hiddenFields.length });
     if (mode === 'streaming') return headerCount(shown, { streaming: true });
     if (mode === 'invalid' || mode === 'text') return 'Text';
     if (mode === 'oversize' && bytes !== undefined) return formatBytes(bytes);
@@ -204,7 +211,7 @@
     formatValue,
     initialDepth,
     maxDepth,
-    tree: isTreePayload(shown),
+    tree: isTreePayload(fieldsShown),
   });
 
   // A payload that has said nothing whole yet has no field to list, only the wait.
@@ -215,15 +222,15 @@
 
   const chosenLayout = $derived.by(() => {
     if (
-      typeof shown !== 'object' ||
-      shown === null ||
-      Array.isArray(shown) ||
-      shown instanceof Date
+      typeof fieldsShown !== 'object' ||
+      fieldsShown === null ||
+      Array.isArray(fieldsShown) ||
+      fieldsShown instanceof Date
     ) {
       return 'rows' as const;
     }
     return chooseFieldsLayout(
-      Object.entries(shown).map(([key, entry]) => ({
+      Object.entries(fieldsShown).map(([key, entry]) => ({
         key,
         value: entry,
         linked:
@@ -376,13 +383,16 @@
           data-cinder-tree={fieldsOptions.tree || undefined}
         >
           <PayloadFields
-            source={shown}
+            source={fieldsShown}
             path={[]}
             depth={0}
             options={fieldsOptions}
             layout={rootLayout}
             pendingKey={mode === 'streaming' ? partial?.pendingKey : undefined}
           />
+          {#if hiddenFields.length > 0}
+            <p class="cinder-payload-inspector__more">{hiddenFields.length} more in JSON</p>
+          {/if}
         </div>
       {:else}
         <div class="cinder-payload-inspector__primitive">
