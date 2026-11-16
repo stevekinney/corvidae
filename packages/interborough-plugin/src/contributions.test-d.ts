@@ -11,6 +11,7 @@ import { defineTrigger } from './define-trigger.ts';
 import type {
   PluginAgent,
   PluginContributions,
+  PluginEmbedder,
   PluginFormatter,
   PluginGuardrailFactory,
   PluginGuardrails,
@@ -275,6 +276,23 @@ export const typedTriggers: PluginContributions = {
       },
     }),
   ],
+};
+
+declare const embedder: PluginEmbedder['embed'];
+
+// An embedder names the model it runs (COR-2184).
+export const modeledEmbedder: PluginContributions = {
+  embedders: [{ name: 'embed', model: 'nomic-embed-text', dimensions: 768, embed: embedder }],
+};
+
+export const unmodeledEmbedder: PluginContributions = {
+  // @ts-expect-error -- an embedder without a `model` is refused
+  embedders: [{ name: 'embed', dimensions: 768, embed: embedder }],
+};
+
+export const versionedEmbedder: PluginContributions = {
+  // @ts-expect-error -- an embedder has no version of its own: it takes its plugin's
+  embedders: [{ name: 'embed', model: 'm', version: '1.0.0', dimensions: 768, embed: embedder }],
 };
 
 // A kind written without the helper keeps an untyped `configuration`.

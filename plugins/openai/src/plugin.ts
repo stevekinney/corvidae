@@ -32,7 +32,7 @@ export const openaiConfiguration = z
 export default definePlugin({
   name: 'openai',
   title: 'OpenAI',
-  version: '0.1.2',
+  version: '0.2.0',
   description: 'OpenAI models for agents, and an embedder for memory.',
   configuration: openaiConfiguration,
   secrets: [OPENAI_API_KEY_SECRET],
@@ -54,7 +54,14 @@ export default definePlugin({
     };
     return {
       providers: [{ ...openaiProvider, rows: openAIRows() }],
-      embedders: [{ name: OPENAI_EMBEDDING_MODEL, dimensions: OPENAI_EMBEDDING_DIMENSIONS, embed }],
+      embedders: [
+        {
+          name: OPENAI_EMBEDDING_MODEL,
+          model: OPENAI_EMBEDDING_MODEL,
+          dimensions: OPENAI_EMBEDDING_DIMENSIONS,
+          embed,
+        },
+      ],
     };
   },
 });

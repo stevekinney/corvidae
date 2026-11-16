@@ -219,7 +219,12 @@ describe('a plugin missing a declared secret', () => {
                 }),
               ],
               embedders: [
-                { name: 'small', dimensions: 2, embed: async (texts) => texts.map(() => [1, 0]) },
+                {
+                  name: 'small',
+                  model: 'small-model',
+                  dimensions: 2,
+                  embed: async (texts) => texts.map(() => [1, 0]),
+                },
               ],
             }),
           }),
@@ -416,7 +421,9 @@ describe('the secret-gating outcome matrix', () => {
             maxAttempts: 4,
           },
         ],
-        embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
+        embedders: [
+          { name: 'small', model: 'small-model', dimensions: 1, embed: note('embedder', [[1]]) },
+        ],
         scorers: [
           {
             name: 'judge',
@@ -962,6 +969,7 @@ describe('a gated embedder', () => {
         embedders: [
           {
             name: 'small',
+            model: 'small-model',
             dimensions: 1,
             embed: async (texts, options) => {
               calls.push({ texts, signal: options?.signal });

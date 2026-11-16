@@ -149,7 +149,7 @@ describe('voyage plugin', () => {
     await bureau.maintain();
 
     expect(await memory.embedding.status()).toEqual({
-      active: { embedder: 'voyage:embed', dimension: DIMENSION },
+      active: { embedder: 'voyage:embed', dimension: DIMENSION, model: 'voyage-3' },
     });
     const inputs = fake.requests.flatMap((request) => request.body.input).toSorted();
     expect(inputs).toEqual(['alpha answer', 'beta answer']);

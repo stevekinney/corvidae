@@ -6,7 +6,7 @@ import {
 } from '../memory-vector-store';
 import type { MemoryRecord } from '../types';
 import type { GovernanceContext } from './governance-context';
-import type { ActiveEmbedding } from './governed-embedding';
+import { type ActiveEmbedding, modelMatches } from './governed-embedding';
 import type { MemoryEmbeddingSwitchResult } from './governed-memory-types';
 import { evictCachedContent, putRecordVector } from './profile-vectors';
 
@@ -112,17 +112,24 @@ export async function switchEmbedder(
     const existing = await vectors.getJob();
     if (existing?.state === 'running') return runningRefusal(existing);
     const from = await vectors.activeProfile(embedding.initialProfile);
-    if (from.embedderId === id) {
+    const registered = embedding.registry.describe(id)!;
+    // The same embedding is the same id, dimension and model: an embedder reconfigured to another
+    // model or dimension under its own id makes vectors the active profile's cannot be compared with.
+    if (
+      from.embedderId === id &&
+      from.dimension === registered.dimension &&
+      modelMatches(from, registered)
+    ) {
       return {
         outcome: 'refused',
         reason: 'already-active',
         message: `Memory already embeds with "${id}".`,
       };
     }
-    const { dimension } = embedding.registry.describe(id)!;
+    const { dimension, model } = registered;
     let target: MemoryEmbeddingProfile;
     do {
-      target = { embedderId: id, dimension, generation: await vectors.nextGeneration() };
+      target = { embedderId: id, dimension, model, generation: await vectors.nextGeneration() };
     } while (!(await vectors.createProfile(target)));
     const job: MemoryEmbeddingJob = { from, target, state: 'running', done: 0, total: 0 };
     if (await vectors.startJob(existing, job)) {

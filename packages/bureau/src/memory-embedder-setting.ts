@@ -11,7 +11,11 @@
  * @module memory-embedder-setting
  */
 
-import { DEFAULT_SWITCH_STEP_LIMIT, type GovernedMemory } from '@lostgradient/memory';
+import {
+  DEFAULT_SWITCH_STEP_LIMIT,
+  type GovernedMemory,
+  type MemoryEmbeddingStatus,
+} from '@lostgradient/memory';
 
 import type { SettingsFailure } from './settings/settings-validation.ts';
 import type { SettingKey, SettingsValues } from './settings/settings-schema.ts';
@@ -83,6 +87,24 @@ export function createMemoryEmbedderSetting(
   }
 
   /**
+   * Whether the setting names the active embedder and that embedder cannot serve the profile
+   * (COR-2184): its model or dimension changed under its own id, so a write of the same id asks for
+   * a switch that re-embeds memory under it. It needs the embedder to be loaded and set up: while
+   * it is not, the problem is the embedder's absence, which a switch cannot fix.
+   */
+  function needsSwitch(
+    target: GovernedMemory,
+    status: MemoryEmbeddingStatus,
+    requested: string,
+  ): boolean {
+    return (
+      requested === status.active.embedder &&
+      status.problem !== undefined &&
+      target.embedding.availability(requested) === 'available'
+    );
+  }
+
+  /**
    * Starts a switch to `requested`. Returns whether memory refused it outright: the embedder is not
    * loaded or needs setup, which a write checked but which may have changed since.
    */
@@ -100,12 +122,14 @@ export function createMemoryEmbedderSetting(
     const status = await target.embedding.advance({ limit: DEFAULT_SWITCH_STEP_LIMIT });
     const requested = settings()['memory.embedder'];
     const active = status.active.embedder;
-    if (requested === undefined || requested === active || status.job?.state === 'running') return;
+    if (requested === undefined || status.job?.state === 'running') return;
     if (status.job !== undefined && status.job.target === requested) {
-      // The switch the setting asked for failed or was cancelled.
-      await setBack(requested, active);
+      // The switch the setting asked for failed or was cancelled. Checked before the same-id case
+      // below, so a failed switch to the active id is never started again by every pass.
+      if (requested !== active) await setBack(requested, active);
       return;
     }
+    if (requested === active && !needsSwitch(target, status, requested)) return;
     // A write whose switch never started: this process stopped between the two.
     if (await start(target, requested)) await setBack(requested, active);
   }
@@ -142,7 +166,8 @@ export function createMemoryEmbedderSetting(
       const requested = settings()['memory.embedder'];
       if (requested === undefined) return;
       const status = await memory.embedding.status();
-      if (requested === status.active.embedder || status.job?.state === 'running') return;
+      if (status.job?.state === 'running') return;
+      if (requested === status.active.embedder && !needsSwitch(memory, status, requested)) return;
       // Runs inside the settings update, which `setBack` would wait on, so a refusal is set back
       // by the next maintenance pass instead.
       await start(memory, requested);

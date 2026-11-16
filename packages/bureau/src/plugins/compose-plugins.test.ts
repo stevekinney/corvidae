@@ -370,7 +370,14 @@ describe('composePlugins', () => {
       pluginEntry('kit', () => ({
         reactions: [actionKind('page')],
         scorers: [judge('judge')],
-        embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
+        embedders: [
+          {
+            name: 'small',
+            model: 'small-model',
+            dimensions: 4,
+            embed: async (texts) => texts.map(() => []),
+          },
+        ],
         guardrails: {
           memory: [
             { name: 'tags', description: 'A test guardrail.', detect: async () => ({}) as never },
@@ -1149,7 +1156,7 @@ describe('composePlugins', () => {
           ],
         })),
         pluginEntry('flat', () => ({
-          embedders: [{ name: 'zero', dimensions: 0, embed: async () => [] }],
+          embedders: [{ name: 'zero', model: 'zero-model', dimensions: 0, embed: async () => [] }],
         })),
         pluginEntry('fine', () => ({ interceptors: [{ name: 'audit' }] })),
       ],
@@ -1160,6 +1167,28 @@ describe('composePlugins', () => {
       ['skipped', 'setup-failed'],
       ['running', undefined],
       ['skipped', 'setup-failed'],
+    ]);
+  });
+
+  it('skips a plugin whose embedder names a blank model, and composes the others (COR-2184)', async () => {
+    const embed = async () => [];
+    const { records } = await composePlugins({
+      plugins: [
+        pluginEntry('blank', () => ({
+          embedders: [{ name: 'embed', model: '  ', dimensions: 4, embed }],
+        })),
+        pluginEntry('missing', () => ({
+          embedders: [{ name: 'embed', dimensions: 4, embed } as never],
+        })),
+        pluginEntry('named', () => ({
+          embedders: [{ name: 'embed', model: 'named-model', dimensions: 4, embed }],
+        })),
+      ],
+    });
+    expect(records.map(({ status, problems }) => [status, problems[0]?.code])).toEqual([
+      ['skipped', 'setup-failed'],
+      ['skipped', 'setup-failed'],
+      ['running', undefined],
     ]);
   });
 

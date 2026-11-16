@@ -1,12 +1,16 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { Embedder } from 'armorer';
 
-import { type EmbedderRegistry, EmbedderRegistryError } from '../embedder-registry';
+import {
+  type EmbedderRegistry,
+  EmbedderRegistryError,
+  type RegisteredEmbedder,
+} from '../embedder-registry';
 import {
   type MemoryEmbeddingProfile,
+  MemoryVectorDimensionError,
   type MemoryVectorReference,
   type MemoryVectorStore,
-  MemoryVectorDimensionError,
 } from '../memory-vector-store';
 import { raceAbort } from './abort-race';
 import type { MemoryEmbedderAvailability, MemoryEmbeddingStatus } from './governed-memory-types';
@@ -85,13 +89,15 @@ export interface GovernedEmbedding {
     readonly embedding?: ActiveEmbedding;
   }>;
   /**
-   * Whether `profile`'s embedder can embed now: it is registered, with the profile's dimension, and
-   * needs no setup. A profile that fails this is never embedded into; its embeds wait in a queue.
+   * Whether `profile`'s embedder can embed now: it is registered, with the profile's dimension and
+   * model (COR-2184), and needs no setup. A profile that fails this is never embedded into; its
+   * embeds wait in a queue.
    */
   canEmbed(profile: MemoryEmbeddingProfile): boolean;
   /**
    * `profile` with the embedder registered under its id. Throws {@link EmbedderRegistryError} when
-   * nothing is registered under it, or it is registered with another dimension than the profile's.
+   * nothing is registered under it, or it is registered with another dimension or model than the
+   * profile's.
    */
   bind(profile: MemoryEmbeddingProfile): ActiveEmbedding;
   /** What `memory.embedding.status()` reports. A read: it stores no active profile. */
@@ -121,6 +127,18 @@ export interface CreateGovernedEmbeddingInput {
 }
 
 /**
+ * Whether `registered` runs the model `profile` was made with. A profile with no model (stored
+ * before COR-2184, and not adopted yet) is made by whatever model its embedder is registered with:
+ * memory has no record of another.
+ */
+export function modelMatches(
+  profile: MemoryEmbeddingProfile,
+  registered: Pick<RegisteredEmbedder, 'model'>,
+): boolean {
+  return profile.model === undefined || profile.model === registered.model;
+}
+
+/**
  * Binds the registry to the vector store. A store with no active profile yet starts with
  * `initialEmbedder`'s, at generation 1. An active profile whose embedder is not registered, or is
  * registered with another dimension than the profile's, throws: memory never embeds into a profile
@@ -144,6 +162,7 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     embedderId: initial.id,
     dimension: initial.dimension,
     generation: 1,
+    model: initial.model,
   };
 
   function bind(profile: MemoryEmbeddingProfile): ActiveEmbedding {
@@ -156,6 +175,11 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     if (registered.dimension !== profile.dimension) {
       throw new EmbedderRegistryError(
         `The embedder "${profile.embedderId}" is registered with ${registered.dimension} dimensions, but the embedding it is asked for has ${profile.dimension}.`,
+      );
+    }
+    if (!modelMatches(profile, registered)) {
+      throw new EmbedderRegistryError(
+        `The embedder "${profile.embedderId}" is registered with the model "${registered.model}", but the embedding it is asked for was made by "${profile.model}".`,
       );
     }
     const embedder = registry.resolve(profile.embedderId);
@@ -214,6 +238,7 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     return (
       registered !== undefined &&
       registered.dimension === profile.dimension &&
+      modelMatches(profile, registered) &&
       registered.availability === 'available'
     );
   }
@@ -231,10 +256,10 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     async status() {
       // A store with no active profile yet reports the one its first write will store.
       const profile = (await vectors.getActiveProfile()) ?? initialProfile;
-      const { embedderId, dimension } = profile;
+      const { embedderId, dimension, model } = profile;
       const job = await vectors.getJob();
       return {
-        active: { embedder: embedderId, dimension },
+        active: { embedder: embedderId, dimension, ...(model === undefined ? {} : { model }) },
         ...(canEmbed(profile) ? {} : { problem: 'embedder-unavailable' as const }),
         ...(job === undefined
           ? {}

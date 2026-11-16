@@ -490,12 +490,20 @@ export type PluginProvider<Configuration = unknown> = ProviderDefinition<
   readonly version?: string;
 };
 
-/** An embedder the `memory.embedder` setting can name. */
+/**
+ * An embedder the `memory.embedder` setting can name. It is recorded in the plugin's identities
+ * with its `dimensions` and its `model`, and it takes its version from the plugin.
+ */
 export interface PluginEmbedder {
   /** The embedder's name, unique within the plugin. */
   readonly name: string;
-  /** The embedder's own version; a record that pins it uses the plugin's version without one. */
-  readonly version?: string;
+  /**
+   * The model the embedder runs, such as `nomic-embed-text` (COR-2184); never blank. Memory records
+   * it in the embedding profile, so an embedder reconfigured to another model under the same name
+   * is a different embedding and memory re-embeds under it. Renaming a plugin or an embedder
+   * orphans the active profile, which names its embedder by `plugin:name`.
+   */
+  readonly model: string;
   /** How many numbers each vector holds. */
   readonly dimensions: number;
   /** Turns texts into vectors, one per text and in order. */

@@ -476,6 +476,14 @@ function planOf(
         `setup returned the embedder "${embedder.name}" with dimension ${String(embedder.dimensions)}, which is not a positive integer.`,
       );
     }
+    // Memory records the model in the profile it embeds with, and its registry refuses a blank one
+    // inside the host's `memory` factory, where it would fail construction instead of skipping the
+    // plugin.
+    if (typeof embedder.model !== 'string' || embedder.model.trim() === '') {
+      throw new TypeError(
+        `setup returned the embedder "${embedder.name}" with a blank model: an embedder names the model it runs.`,
+      );
+    }
     contribute('embedder', embedder.name);
   }
   for (const detector of contributions.guardrails?.memory ?? []) {
@@ -807,6 +815,7 @@ class Contributed {
         id: id(embedder.name),
         embedder: embedder.embed,
         dimension: embedder.dimensions,
+        model: embedder.model,
         // COR-1898: `memory.embedder` may name it only while its plugin's secrets are set.
         ...(gate === undefined
           ? {}

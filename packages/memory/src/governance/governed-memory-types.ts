@@ -539,14 +539,22 @@ export interface MemoryEmbeddingJobStatus {
 
 /** What {@link GovernedMemoryEmbedding.status} reports. */
 export interface MemoryEmbeddingStatus {
-  /** The embedding recall and admission use: its embedder's registry id and its dimension. */
-  readonly active: { readonly embedder: string; readonly dimension: number };
+  /**
+   * The embedding recall and admission use: its embedder's registry id, its dimension, and the
+   * model that made its vectors (COR-2184). `model` is left out for a profile stored before COR-2184
+   * that no process has adopted a model for yet, such as one whose embedder is not registered.
+   */
+  readonly active: {
+    readonly embedder: string;
+    readonly dimension: number;
+    readonly model?: string;
+  };
   /** The switch that is running, or the last one, when it failed or was cancelled. */
   readonly job?: MemoryEmbeddingJobStatus;
   /**
    * What keeps the active embedding from working fully, when anything does:
-   * `embedder-unavailable` while its embedder is not loaded, is loaded with another dimension, or
-   * needs setup. Recall then scores by text alone, and admissions are queued until it is loaded.
+   * `embedder-unavailable` while its embedder is not loaded, is loaded with another dimension or
+   * another model than the one that made its vectors, or needs setup. Recall then scores by text alone, and admissions are queued until it is loaded.
    */
   readonly problem?: MemoryEmbeddingProblem;
 }

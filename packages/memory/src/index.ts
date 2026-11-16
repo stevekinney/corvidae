@@ -263,6 +263,7 @@ export {
 export {
   EmbedderRegistryError,
   HASHING_EMBEDDER_ID,
+  HASHING_EMBEDDER_MODEL,
   createEmbedderRegistry,
 } from './embedder-registry';
 export type {

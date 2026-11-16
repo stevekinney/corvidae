@@ -88,7 +88,12 @@ function fixturePlugins(): readonly BureauPluginEntry[] {
         secrets: [KEYED_SECRET],
         setup: () => ({
           embedders: [
-            { name: 'tiny', dimensions: 4, embed: async (texts) => texts.map(() => [0, 0, 0, 1]) },
+            {
+              name: 'tiny',
+              model: 'tiny-model',
+              dimensions: 4,
+              embed: async (texts) => texts.map(() => [0, 0, 0, 1]),
+            },
           ],
         }),
       }),
@@ -1031,6 +1036,7 @@ describe('the host’s governed memory', () => {
           id: 'keyed:tiny',
           embedder: async (texts) => texts.map(() => [0, 0, 0, 1]),
           dimension: 4,
+          model: 'tiny-model',
         },
       ],
     });

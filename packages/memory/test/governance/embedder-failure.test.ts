@@ -50,7 +50,7 @@ import {
   type MemoryEmbeddingProfile,
   MemoryVectorDimensionError,
 } from '../../src/memory-vector-store';
-import { createTestEmbedders, TEST_EMBEDDER_ID } from '../../src/test/index';
+import { createTestEmbedders, TEST_EMBEDDER_ID, TEST_EMBEDDER_MODEL } from '../../src/test/index';
 import {
   createGovernedFixture,
   type GovernedFixture,
@@ -67,6 +67,7 @@ const PROFILE: MemoryEmbeddingProfile = {
   embedderId: TEST_EMBEDDER_ID,
   dimension: DIMENSION,
   generation: 1,
+  model: TEST_EMBEDDER_MODEL,
 };
 const NOTES_SCOPE = {
   tenantId: principalA.tenantId,
@@ -439,7 +440,7 @@ describe('an embedder that fails during a switch', () => {
   async function switchingWith(failure: Failure) {
     const embedder = misbehaving(failure);
     const registry = createEmbedderRegistry([
-      { id: 'fake', embedder: embedder.embed, dimension: DIMENSION },
+      { id: 'fake', embedder: embedder.embed, dimension: DIMENSION, model: 'fake-model' },
     ]);
     const fixture = await createGovernedFixture('in-memory', {
       governed: {

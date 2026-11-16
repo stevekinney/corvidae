@@ -34,7 +34,7 @@ import {
   revokeRecord,
 } from './governed-transitions';
 import { admitWrite } from './governed-writes';
-import { copyInlineVectors } from './profile-vectors';
+import { adoptActiveModel, copyInlineVectors } from './profile-vectors';
 
 /**
  * Hands `notification` to each listener registered when delivery starts, in order. A listener that
@@ -139,6 +139,9 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     async init() {
       await options.storage.init();
       await options.textSearchProvider?.init();
+      // A profile stored before COR-2184 holds no model; it takes the one its embedder is
+      // registered with, before anything writes into it.
+      await adoptActiveModel(governance);
       // Records stored before COR-1898 held their vector inline; recall reads only the profile's.
       await copyInlineVectors(governance);
     },

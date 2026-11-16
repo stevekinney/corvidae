@@ -23,9 +23,10 @@ export const DEFAULT_MEMORY_VECTOR_KEY_PREFIX = 'app:agent-bureau:memory-vectors
 
 /**
  * One embedding of stored memory (COR-1898): the embedder that made its
- * vectors, their dimension, and the generation that tells apart two embeddings
- * by the same embedder. Every vector a profile holds came from `embedderId` and
- * has `dimension` entries, so a profile never mixes models or dimensions.
+ * vectors, their dimension, the model behind it (COR-2184), and the generation
+ * that tells apart two embeddings by the same embedder. Every vector a profile
+ * holds came from `embedderId` and has `dimension` entries, so a profile never
+ * mixes models or dimensions.
  */
 export interface MemoryEmbeddingProfile {
   /** The embedder registry id whose embedder made every vector in the profile. */
@@ -34,6 +35,14 @@ export interface MemoryEmbeddingProfile {
   readonly dimension: number;
   /** Positive; a new embedding by the same embedder takes a generation no profile has used. */
   readonly generation: number;
+  /**
+   * The model the embedder ran when it made the vectors, which the registry names for each embedder
+   * (COR-2184). Absent only on a profile stored before COR-2184 that no process has adopted a model
+   * for yet (see {@link MemoryVectorStore.adoptModel}); memory treats such a profile as made by
+   * whatever model its embedder is registered with. A model is not part of a profile's key: two
+   * profiles of one embedder at one dimension differ by generation.
+   */
+  readonly model?: string;
 }
 
 /** One record's vector in a profile, and the record `version` it was embedded at. */
@@ -149,6 +158,16 @@ export interface MemoryVectorStore {
   getActiveProfile(): Promise<MemoryEmbeddingProfile | undefined>;
   /** Every profile the store holds, the active one included. */
   listProfiles(): Promise<MemoryEmbeddingProfile[]>;
+  /**
+   * Records `model` on the active profile `profile`, which holds none because it was stored before
+   * COR-2184, by rewriting the active record and the profile's marker as one swap that expects the
+   * bytes just read (COR-2184). Returns `false`, changing nothing, when `profile` already has a
+   * model, is no longer the active profile or no longer has its marker, or when a switch runs: a
+   * running switch's record names the active profile as it is stored, and the swap also expects the
+   * switch record it read, so a switch that starts between the read and the write wins. A swap that
+   * never lands leaves every record as it was.
+   */
+  adoptModel(profile: MemoryEmbeddingProfile, model: string): Promise<boolean>;
   /**
    * Adds `profile` beside the others without making it active, so vectors can be written into it
    * while the active profile keeps serving recall. Returns `false`, and changes nothing, when the
@@ -268,26 +287,61 @@ export interface CreateMemoryVectorStoreOptions {
   readonly keyPrefix?: string;
 }
 
-const profileSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    embedderId: z.string().min(1),
-    dimension: z.number().int().positive(),
-    generation: z.number().int().positive(),
-  })
+const profileFields = {
+  embedderId: z.string().min(1),
+  dimension: z.number().int().positive(),
+  generation: z.number().int().positive(),
+};
+
+/**
+ * A profile record: version 1 holds no model (a profile stored before COR-2184, and any profile
+ * whose model is not known), version 2 holds one. A profile encodes as version 1 unless it has a
+ * model, so a record main wrote keeps the bytes a swap that expects it compares with.
+ */
+const profileVersion1 = z.object({ schemaVersion: z.literal(1), ...profileFields }).strict();
+const profileVersion2 = z
+  .object({ schemaVersion: z.literal(2), ...profileFields, model: z.string().min(1) })
+  .strict();
+const profileSchema = z.discriminatedUnion('schemaVersion', [profileVersion1, profileVersion2]);
+
+/** A profile inside a version 2 job: the model is optional, since a job can leave from a profile without one. */
+const jobProfileVersion2 = z
+  .object({ schemaVersion: z.literal(2), ...profileFields, model: z.string().min(1).optional() })
   .strict();
 
-const jobSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    from: profileSchema,
-    target: profileSchema,
-    state: z.enum(['running', 'failed', 'cancelled']),
-    done: z.number().int().nonnegative(),
-    total: z.number().int().nonnegative(),
-    error: z.string().optional(),
-  })
-  .strict();
+const jobFields = {
+  state: z.enum(['running', 'failed', 'cancelled']),
+  done: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  error: z.string().optional(),
+};
+
+/**
+ * A job record: version 1 when no profile it names has a model, version 2 when either has one, so a
+ * switch from a profile no process adopted a model for, into a target that has one, keeps both
+ * profiles' own form. Both versions are read; each encodes to one canonical byte string.
+ */
+const jobSchema = z.discriminatedUnion('schemaVersion', [
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      from: profileVersion1,
+      target: profileVersion1,
+      ...jobFields,
+    })
+    .strict(),
+  z
+    .object({
+      schemaVersion: z.literal(2),
+      from: jobProfileVersion2,
+      target: jobProfileVersion2,
+      ...jobFields,
+    })
+    .strict()
+    .refine((job) => job.from.model !== undefined || job.target.model !== undefined, {
+      message: 'A version 2 job names the model of at least one of its profiles.',
+    }),
+]);
 
 const generationSchema = z
   .object({ schemaVersion: z.literal(1), generation: z.number().int().positive() })
@@ -318,38 +372,53 @@ function encodeJson(value: unknown): Uint8Array {
   return textEncoder.encode(JSON.stringify(value));
 }
 
+/** The profile a decoded record names, with its model only when the record holds one. */
+function profileOf(record: {
+  readonly embedderId: string;
+  readonly dimension: number;
+  readonly generation: number;
+  readonly model?: string | undefined;
+}): MemoryEmbeddingProfile {
+  const { embedderId, dimension, generation, model } = record;
+  return { embedderId, dimension, generation, ...(model === undefined ? {} : { model }) };
+}
+
 function decodeProfile(bytes: Uint8Array): MemoryEmbeddingProfile {
-  const { embedderId, dimension, generation } = profileSchema.parse(
-    JSON.parse(textDecoder.decode(bytes)),
-  );
-  return { embedderId, dimension, generation };
+  return profileOf(profileSchema.parse(JSON.parse(textDecoder.decode(bytes))));
+}
+
+/**
+ * The record of `profile` at `version`, in one fixed field order, so a compare-and-swap can expect
+ * the bytes a record encodes to. A version 1 record has no model field, which the profile must not
+ * have either: that is the byte string main wrote.
+ */
+function profileRecord(profile: MemoryEmbeddingProfile, version: 1 | 2): Record<string, unknown> {
+  return {
+    schemaVersion: version,
+    embedderId: profile.embedderId,
+    dimension: profile.dimension,
+    generation: profile.generation,
+    ...(profile.model === undefined ? {} : { model: profile.model }),
+  };
 }
 
 function encodeProfile(profile: MemoryEmbeddingProfile): Uint8Array {
-  // `put` compares a profile's marker with these bytes, so the encoding never changes.
-  return encodeJson({
-    schemaVersion: 1,
-    embedderId: profile.embedderId,
-    dimension: profile.dimension,
-    generation: profile.generation,
-  });
+  // `put` compares a profile's marker with these bytes, so a profile's encoding never changes.
+  return encodeJson(profileRecord(profile, profile.model === undefined ? 1 : 2));
 }
 
-function profileRecord(profile: MemoryEmbeddingProfile): Record<string, unknown> {
-  return {
-    schemaVersion: 1,
-    embedderId: profile.embedderId,
-    dimension: profile.dimension,
-    generation: profile.generation,
-  };
+/** A job is a version 2 record once a profile it names has a model; otherwise it is main's bytes. */
+function jobVersion(job: MemoryEmbeddingJob): 1 | 2 {
+  return job.from.model === undefined && job.target.model === undefined ? 1 : 2;
 }
 
 /** One fixed field order, so a compare-and-swap can expect the bytes a record encodes to. */
 function encodeJob(job: MemoryEmbeddingJob): Uint8Array {
+  const version = jobVersion(job);
   return encodeJson({
-    schemaVersion: 1,
-    from: profileRecord(job.from),
-    target: profileRecord(job.target),
+    schemaVersion: version,
+    from: profileRecord(job.from, version),
+    target: profileRecord(job.target, version),
     state: job.state,
     done: job.done,
     total: job.total,
@@ -359,14 +428,9 @@ function encodeJob(job: MemoryEmbeddingJob): Uint8Array {
 
 function decodeJob(bytes: Uint8Array): MemoryEmbeddingJob {
   const parsed = jobSchema.parse(JSON.parse(textDecoder.decode(bytes)));
-  const strip = ({ embedderId, dimension, generation }: MemoryEmbeddingProfile) => ({
-    embedderId,
-    dimension,
-    generation,
-  });
   return {
-    from: strip(parsed.from),
-    target: strip(parsed.target),
+    from: profileOf(parsed.from),
+    target: profileOf(parsed.target),
     state: parsed.state,
     done: parsed.done,
     total: parsed.total,
@@ -375,7 +439,7 @@ function decodeJob(bytes: Uint8Array): MemoryEmbeddingJob {
 }
 
 function checkProfile(profile: MemoryEmbeddingProfile): void {
-  profileSchema.parse({ schemaVersion: 1, ...profile });
+  profileSchema.parse(profileRecord(profile, profile.model === undefined ? 1 : 2));
 }
 
 function profileComponent(profile: MemoryEmbeddingProfile): string {
@@ -408,6 +472,14 @@ function scopeComponent(scope: MemoryRecordScope): string {
  *   queuing process's clock in milliseconds. Written only while the profile's marker is held,
  *   removed with the record's vectors when it is forgotten, and with the profile when it is
  *   deleted.
+ *
+ * The profile records (`active`, `previous`, `p:`, `d:`) and the `job` record hold the profile's
+ * model (COR-2184) as `schemaVersion: 2`. A profile with a model encodes as version 2, and one
+ * without as the exact version 1 bytes a store written before COR-2184 holds; a job encodes as
+ * version 2 once either profile it names has a model. Both versions are read, and a store is never
+ * rewritten for being version 1 except by {@link MemoryVectorStore.adoptModel}. A build before
+ * COR-2184 reads version 1 only, so it throws on the first version 2 record it meets. The vector,
+ * queue and generation records stay version 1.
  *
  * Every component a caller supplies is percent-encoded, so no id can forge a
  * delimiter. Values are JSON, checked against a schema when read. The active
@@ -484,6 +556,28 @@ export function createMemoryVectorStore(
     },
 
     listProfiles,
+
+    async adoptModel(profile, model) {
+      if (profile.model !== undefined) return false;
+      const adopted: MemoryEmbeddingProfile = { ...profile, model };
+      checkProfile(adopted);
+      // Read before the swap, and expected by it: a switch that starts in between changes the
+      // switch record and leaves the active profile alone, so the active bytes cannot tell.
+      const switching = await storage.get(jobKey);
+      if (switching !== null && decodeJob(switching).state === 'running') return false;
+      return storageConditionalBatch(
+        storage,
+        [
+          { key: activeKey, expectedValue: encodeProfile(profile) },
+          { key: profileKey(profile), expectedValue: encodeProfile(profile) },
+          { key: jobKey, expectedValue: switching },
+        ],
+        [
+          { type: 'put', key: activeKey, value: encodeProfile(adopted) },
+          { type: 'put', key: profileKey(profile), value: encodeProfile(adopted) },
+        ],
+      );
+    },
 
     async createProfile(profile) {
       checkProfile(profile);

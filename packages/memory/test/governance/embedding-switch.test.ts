@@ -51,6 +51,7 @@ import {
   createEmbedderRegistry,
   type EmbedderRegistry,
   HASHING_EMBEDDER_ID,
+  HASHING_EMBEDDER_MODEL,
 } from '../../src/embedder-registry';
 import { withEmbeddingCache } from '../../src/embedding-cache';
 import {
@@ -83,6 +84,7 @@ import {
 } from './governed-memory-harness';
 
 const FAKE = 'fake';
+const FAKE_MODEL = 'fake-model';
 const NEEDS_SETUP = 'needs-setup-embedder';
 const DIMENSION = 8;
 const WORDS = ['alpha', 'beta', 'gamma', 'delta'];
@@ -222,11 +224,12 @@ function registryWith(
   embedder: Embedder = fake.embed,
 ): EmbedderRegistry {
   return createEmbedderRegistry([
-    ...(withFake ? [{ id: FAKE, embedder, dimension: DIMENSION }] : []),
+    ...(withFake ? [{ id: FAKE, embedder, dimension: DIMENSION, model: FAKE_MODEL }] : []),
     {
       id: NEEDS_SETUP,
       embedder: fake.embed,
       dimension: DIMENSION,
+      model: FAKE_MODEL,
       availability: () => 'needs-setup' as const,
     },
   ]);
@@ -312,7 +315,13 @@ function togglingRegistry(fake: FakeEmbedder): {
   let current: 'available' | 'needs-setup' = 'available';
   return {
     embedders: createEmbedderRegistry([
-      { id: FAKE, embedder: fake.embed, dimension: DIMENSION, availability: () => current },
+      {
+        id: FAKE,
+        embedder: fake.embed,
+        dimension: DIMENSION,
+        model: FAKE_MODEL,
+        availability: () => current,
+      },
     ]),
     setAvailability(availability) {
       current = availability;
@@ -436,11 +445,16 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       const before = await vectorsOf(fixture).getActiveProfile();
 
       const target = await started(fixture.memory);
-      expect(target).toEqual({ embedderId: FAKE, dimension: DIMENSION, generation: 2 });
+      expect(target).toEqual({
+        embedderId: FAKE,
+        dimension: DIMENSION,
+        generation: 2,
+        model: FAKE_MODEL,
+      });
       await advanceToEnd(fixture.memory);
 
       expect(await fixture.memory.embedding.status()).toEqual({
-        active: { embedder: FAKE, dimension: DIMENSION },
+        active: { embedder: FAKE, dimension: DIMENSION, model: FAKE_MODEL },
       });
       expect(fake.calls.toSorted()).toEqual(['alpha note', 'beta note']);
       expect(await vectorIn(fixture, target, alpha)).toEqual(axis('alpha'));
@@ -577,7 +591,11 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       expect(await fixture.memory.embedding.cancel()).toBe(true);
       expect(await fixture.memory.embedding.cancel()).toBe(false);
       expect(await fixture.memory.embedding.status()).toEqual({
-        active: { embedder: HASHING_EMBEDDER_ID, dimension: previous.dimension },
+        active: {
+          embedder: HASHING_EMBEDDER_ID,
+          dimension: previous.dimension,
+          model: HASHING_EMBEDDER_MODEL,
+        },
         job: { target: FAKE, state: 'cancelled', done: 1, total: 2 },
       });
       expect(await vectorsOf(fixture).listProfiles()).toEqual([previous]);
@@ -605,7 +623,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       await advanceToEnd(fixture.memory);
 
       expect(await fixture.memory.embedding.status()).toEqual({
-        active: { embedder: FAKE, dimension: DIMENSION },
+        active: { embedder: FAKE, dimension: DIMENSION, model: FAKE_MODEL },
       });
       expect(await vectorIn(fixture, second, beta)).toBeUndefined();
       expect(await vectorIn(fixture, first, beta)).toBeUndefined();
@@ -651,7 +669,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       await advanceToEnd(restarted);
 
       expect(await restarted.embedding.status()).toEqual({
-        active: { embedder: FAKE, dimension: DIMENSION },
+        active: { embedder: FAKE, dimension: DIMENSION, model: FAKE_MODEL },
       });
       expect(resumed.calls.toSorted()).toEqual(
         [
@@ -977,7 +995,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       });
       await unloaded.init();
       expect(await unloaded.embedding.status()).toEqual({
-        active: { embedder: FAKE, dimension: DIMENSION },
+        active: { embedder: FAKE, dimension: DIMENSION, model: FAKE_MODEL },
         problem: 'embedder-unavailable',
       });
       const beta = await writeNote(unloaded, 'beta note');
@@ -998,7 +1016,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       });
       await reloaded.init();
       expect(await reloaded.embedding.status()).toEqual({
-        active: { embedder: FAKE, dimension: DIMENSION },
+        active: { embedder: FAKE, dimension: DIMENSION, model: FAKE_MODEL },
       });
       await reloaded.embedding.advance();
 
@@ -1078,6 +1096,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
         embedderId: FAKE,
         dimension: DIMENSION,
         generation: 1,
+        model: FAKE_MODEL,
       };
       return { fixture, profile, setAvailability: toggling.setAvailability };
     }
