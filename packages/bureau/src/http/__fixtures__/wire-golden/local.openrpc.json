@@ -20682,7 +20682,7 @@
       }
     },
     {
-      "description": "Lists every Bureau event kind that `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) the fields of its `payload`, and its `scopes`, the kinds of subject (`agent`, `workflow`, `schedule`) a hook that lists it may be scoped to. It lists exactly the published kinds: a kind the Bureau publishes is described here. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only and static; any authenticated caller may read it.",
+      "description": "Lists the Bureau’s published event kinds, which `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) the fields of its `payload`, and its `scopes`, the kinds of subject (`agent`, `workflow`, `schedule`) a hook that lists it may be scoped to. Every kind the Bureau publishes is described here, in that order. After them come the kinds the running plugins declare, each `plugin:name` with the plugin as its `source`, its payload fields, the origin `unattributed` and no scopes; these are declarations only, which `bureau.events` does not serve and a hook may not yet list. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only; any authenticated caller may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -20707,7 +20707,7 @@
           "additionalProperties": false,
           "properties": {
             "events": {
-              "description": "Every published kind, in the order `bureau.events` documents them.",
+              "description": "Every kind the Bureau publishes, in the order `bureau.events` documents them, then the kinds the running plugins declare, in load order.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -20716,7 +20716,7 @@
                     "type": "string"
                   },
                   "kind": {
-                    "description": "The kind, as a hook’s `events` and `bureau.events` name it.",
+                    "description": "The kind, as a hook’s `events` and `bureau.events` name it; `plugin:name` for a kind a plugin declares.",
                     "type": "string"
                   },
                   "origin": {
@@ -20773,6 +20773,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "source": {
+                    "description": "The plugin that declares the kind (its `plugin:name` kind belongs to it); absent for a kind the Bureau itself publishes.",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -20809,7 +20813,7 @@
       }
     },
     {
-      "description": "Formats each event of `events`, in order. Each event is complete, as `bureau.events` delivered it (`kind`, `bureauId`, `emittedAtMs`, `payload`), and an incomplete one is refused, because a formatter would write its sentence from fields that were never there. The result is the sentence a plugin’s event formatter writes for its kind (`title`, `body`, and `formattedBy`, `<plugin>/<formatter>`), or the raw kind as the `title` for an event no formatter claims. `runId` is the run the payload names, so a view can link to it, and `source` is the plugin that caused the event. A formatter that fails is reported to the Bureau’s diagnostics and its event is shown raw. At most 200 events per call. Read-only; any authenticated caller may read it.",
+      "description": "Formats each event of `events`, in order. Each event is complete, as `bureau.events` delivered it (`kind`, `bureauId`, `emittedAtMs`, `payload`), and an incomplete one is refused, because a formatter would write its sentence from fields that were never there. The result is the sentence a plugin’s event formatter writes for its kind (`title`, `body`, `tier`, `icon`, `link`, and `formattedBy`, `<plugin>/<formatter>`), or the raw kind as the `title` for an event no formatter claims. `tier` is `critical`, `warning` or `info`, and is `info` when the formatter gives none; `icon` is a Lucide icon name; `link` is a router-relative path starting with `/`, and a formatter’s link that does not is dropped. A formatter’s `title` is at most 200 characters on one line and its `body` at most 2,000. `runId` is the run the payload names, so a view can link to it, and `source` is the plugin that caused the event. A formatter that fails is reported to the Bureau’s diagnostics and its event is shown raw. At most 200 events per call. Read-only; any authenticated caller may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -20892,8 +20896,16 @@
                     "description": "`<plugin>/<formatter>` when a contributed formatter wrote the title.",
                     "type": "string"
                   },
+                  "icon": {
+                    "description": "The name of a Lucide icon to draw beside the title, when the formatter gave one.",
+                    "type": "string"
+                  },
                   "kind": {
                     "description": "The event’s kind, always the raw one.",
+                    "type": "string"
+                  },
+                  "link": {
+                    "description": "A router-relative path, starting with `/`, the view links the event to, when the formatter gave one.",
                     "type": "string"
                   },
                   "runId": {
@@ -20904,6 +20916,15 @@
                     "description": "The plugin whose contribution emitted the event.",
                     "type": "string"
                   },
+                  "tier": {
+                    "description": "How much the event matters: `critical`, `warning` or `info`. `info` when the formatter gave none, and for an event shown raw.",
+                    "enum": [
+                      "critical",
+                      "warning",
+                      "info"
+                    ],
+                    "type": "string"
+                  },
                   "title": {
                     "description": "One line naming what happened: a formatter’s sentence, or the raw kind.",
                     "type": "string"
@@ -20911,7 +20932,8 @@
                 },
                 "required": [
                   "kind",
-                  "title"
+                  "title",
+                  "tier"
                 ],
                 "type": "object"
               },
@@ -21125,7 +21147,7 @@
                     "type": "string"
                   },
                   "version": {
-                    "description": "The version a workflow revision that uses it pins.",
+                    "description": "The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener.",
                     "type": "string"
                   }
                 },
@@ -21268,6 +21290,120 @@
       "tags": [
         {
           "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), and its `source`, the `bureau` kind for a validator the host gave the Bureau or the `plugin` kind for one a running plugin contributes, with that source’s name and version. The host’s come first, then the running plugins’ in load order. The catalog is built at startup, so a plugin enabled or disabled takes effect on the next restart. Read-only; any authenticated caller that can create a goal may read it.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        }
+      ],
+      "name": "bureau.validators.list",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "validators": {
+              "description": "Every validator a goal may name, in registration order.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "determinism": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "deterministic",
+                          "stochastic"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Whether it supplies deterministic evidence; `null` when it did not declare it. Only `deterministic` satisfies a goal that requires deterministic validation."
+                  },
+                  "name": {
+                    "description": "The name a goal’s `validator` names it by.",
+                    "type": "string"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "description": "Who the validator comes from.",
+                    "properties": {
+                      "kind": {
+                        "description": "`bureau` for a validator the host gave the Bureau; `plugin` otherwise.",
+                        "enum": [
+                          "bureau",
+                          "plugin"
+                        ],
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "`bureau`, or the contributing plugin’s name.",
+                        "type": "string"
+                      },
+                      "version": {
+                        "description": "Bureau’s version, or the plugin’s.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "name",
+                      "version"
+                    ],
+                    "type": "object"
+                  },
+                  "version": {
+                    "description": "The version a goal’s `validator` pins.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "version",
+                  "determinism",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "validators"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "List the goal validators",
+      "tags": [
+        {
+          "name": "Goals"
         }
       ],
       "x-weft-access": {
@@ -25540,6 +25676,283 @@
         },
         "required": [
           "goalRunId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns what the goal’s validator said about one attempt: the `outcome` kind, the `feedback` and `evidence` it gave, the `validator` that ran, the `configuration` it was passed, `judgedBy` (the validator, its `source`, and the configuration, captured when it ran and never read again from the goal, `null` for a record written before it), and when it started and finished. These are content, which goal views leave out: the goal’s owner reads their own, and another caller needs `bureau.goals:content`. `bureau.goals:read` alone answers as a missing goal does. An attempt that does not exist and an attempt with no verdict yet are both `NotFound`, told apart by `data.resource` (`attempt` or `verdict`, with `data.identifier` `goalRunId/attemptIndex`).",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.goals.verdict",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "attemptIndex",
+          "required": true,
+          "schema": {
+            "description": "The attempt’s `attemptIndex`, as the goal’s view lists it.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "goalRunId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the goal whose attempt is read.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "attemptId": {
+              "type": "string"
+            },
+            "attemptIndex": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "completedAt": {
+              "type": "string"
+            },
+            "configuration": {
+              "description": "The configuration the validator was passed; `null` when it was passed none, and for a record written before the verdict kept it."
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The validator’s error for an `error` or `unavailable` verdict, without its cause."
+            },
+            "evidence": {
+              "description": "What the validator showed for a `pass` or `fail`; empty for the other kinds.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "detail": {},
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source",
+                  "detail"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "feedback": {
+              "description": "What the validator said was wrong, for a `fail` verdict; `null` otherwise.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "goalRunId": {
+              "type": "string"
+            },
+            "judgedBy": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configuration": {},
+                    "source": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "bureau",
+                            "plugin"
+                          ],
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "name",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "validator": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "version"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "validator",
+                    "source",
+                    "configuration"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What judged the attempt, captured when the validator ran and never read again from the goal; `null` for a record written before it, and when no validator ran."
+            },
+            "outcome": {
+              "description": "The kind of verdict the validator gave.",
+              "enum": [
+                "pass",
+                "fail",
+                "error",
+                "unavailable",
+                "canceled",
+                "indeterminate"
+              ],
+              "type": "string"
+            },
+            "reason": {
+              "description": "Why the verdict is `unavailable` or `indeterminate`; `null` otherwise.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retryable": {
+              "description": "Whether a `fail` verdict is worth another attempt.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "startedAt": {
+              "type": "string"
+            },
+            "validator": {
+              "additionalProperties": false,
+              "description": "The validator that gave the verdict, as it was named when it ran.",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "version"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "goalRunId",
+            "attemptId",
+            "attemptIndex",
+            "outcome",
+            "feedback",
+            "retryable",
+            "evidence",
+            "reason",
+            "error",
+            "validator",
+            "configuration",
+            "judgedBy",
+            "startedAt",
+            "completedAt"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read an attempt’s verdict",
+      "tags": [
+        {
+          "name": "Goals"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptIndex": {
+            "description": "The attempt’s `attemptIndex`, as the goal’s view lists it.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goalRunId": {
+            "description": "The identifier of the goal whose attempt is read.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "goalRunId",
+          "attemptIndex"
         ],
         "type": "object"
       }

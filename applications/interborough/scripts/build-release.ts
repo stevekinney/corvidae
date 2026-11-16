@@ -234,12 +234,8 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
 `,
   );
   await writeFile(join(plugin, 'app.ts'), 'document.body.textContent = "external runtime";\n');
-  const reservation = Bun.serve({ port: 0, fetch: () => new Response() });
-  const port = reservation.port;
-  await fetch(`http://127.0.0.1:${port}/`);
-  await reservation.stop();
   const childProcess = Bun.spawn(
-    [join(root, 'bin', 'interborough'), 'start', '--port', String(port), '--home', home],
+    [join(root, 'bin', 'interborough'), 'start', '--port', '0', '--home', home],
     {
       cwd: '/tmp',
       env: { PATH: '', HOME: home, INTERBOROUGH_HOME: home, INTERBOROUGH_PORT: '0' },
@@ -247,7 +243,24 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       stderr: 'pipe',
     },
   );
-  const stdout = new Response(childProcess.stdout).text();
+  // The host binds port 0 itself and reports the port the operating system gave it, so no other
+  // process can take the port between choosing it and listening on it.
+  const reported = Promise.withResolvers<number | undefined>();
+  let sawPort = false;
+  const stdout = (async (): Promise<string> => {
+    const decoder = new TextDecoder();
+    let text = '';
+    for await (const chunk of childProcess.stdout) {
+      text += decoder.decode(chunk, { stream: true });
+      const match = text.match(/Interborough is listening on http:\/\/127\.0\.0\.1:(\d+)\n/);
+      if (match !== null && !sawPort) {
+        sawPort = true;
+        reported.resolve(Number(match[1]));
+      }
+    }
+    reported.resolve(undefined);
+    return text + decoder.decode();
+  })();
   const stderr = new Response(childProcess.stderr).text();
   let stopped = false;
   const stopChild = async (): Promise<void> => {
@@ -296,7 +309,14 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       throw new Error('Prebuilt inspector is missing');
     let listing: Record<string, unknown> | undefined;
     let snapshot: Record<string, unknown> | undefined;
+    // Wait for the host's own report of its port: an event, which ends when the host exits too.
+    const giveUp = Promise.withResolvers<undefined>();
+    const giveUpTimer = setTimeout(() => giveUp.resolve(undefined), 20_000);
+    const port = await Promise.race([reported.promise, giveUp.promise]);
+    clearTimeout(giveUpTimer);
     while (now() < deadline) {
+      // Without a reported port there is nothing to ask; `listing` stays undefined below.
+      if (port === undefined) break;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
         if (response.ok) {

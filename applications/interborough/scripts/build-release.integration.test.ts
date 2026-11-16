@@ -110,6 +110,7 @@ import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home') + 1];
 const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
+if (port !== 0) throw new Error('The release proof must ask the host for port 0');
 const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
 const marker = ${JSON.stringify(options.markerPath ?? '')};
@@ -135,6 +136,7 @@ const server = Bun.serve({ port, fetch(request) {
   return new Response('not found', { status: 404 });
 } });
 await writeFile(join(home, 'server-port'), String(server.port));
+console.info('Interborough is listening on http://127.0.0.1:' + server.port);
 await new Promise(() => {});
 `,
           { mode: 0o755 },
