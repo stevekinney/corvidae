@@ -153,6 +153,27 @@ describe('an agent that cannot be edited', () => {
     expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.loadFailed.title);
   });
 
+  test('shows the load-failed alert with Retry when the page’s read finds nothing but the frame’s second look finds the file again', async () => {
+    // Deleted and written back between the reads: the probe finds it, the page's read does not,
+    // and the frame's second look finds it again; Retry then reads it.
+    let reads = 0;
+    bureau(() => {
+      reads += 1;
+      if (reads === 2) throw faults.notFound('researcher');
+      return readyAgent();
+    });
+    landAt('/agents/researcher/edit');
+    const { container, findByText, getByRole, findByRole } = mountOutlet();
+
+    expect(await findByText(AGENT_EDITOR_COPY.loadFailed.title)).not.toBeNull();
+    expect(reads).toBe(3);
+    expect(frameOf(container).dataset['state']).toBe('ready');
+    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
+    expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
+    await waitFor(() => expect(container.querySelector('[data-editor="ready"]')).not.toBeNull());
+    expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.loadFailed.title);
+  });
+
   test('is failing, not not found, when the Bureau breaks', async () => {
     stub = installBureauStub({});
     landAt('/agents/researcher/edit');
