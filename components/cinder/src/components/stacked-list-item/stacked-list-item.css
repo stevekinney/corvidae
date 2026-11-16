@@ -210,7 +210,7 @@
           > .cinder-stacked-list-item__layout
             > .cinder-stacked-list-item__trailing
             :is(
-              a[href],
+              a,
               button,
               input,
               select,
@@ -237,7 +237,7 @@
           > .cinder-stacked-list-item__layout
             > .cinder-stacked-list-item__trailing
             :is(
-              a[href],
+              a,
               button,
               input,
               select,

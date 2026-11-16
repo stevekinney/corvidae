@@ -312,7 +312,9 @@ describe('StackedListItem trailing region in a narrow row (COR-2327)', () => {
     for (const rule of dropRules) {
       expect(rule).toContain(':where(');
       expect(rule).toContain('> .cinder-stacked-list-item__trailing');
-      expect(rule).toMatch(/:is\(\s*a\[href\],\s*button,\s*input,\s*select,\s*textarea,/);
+      // A link button drops its `href` while it is disabled, so any anchor counts as a control, and
+      // a row keeps its layout when its action is disabled.
+      expect(rule).toMatch(/:is\(\s*a,\s*button,\s*input,\s*select,\s*textarea,/);
       // A role that marks no control (an image, a status) does not move it.
       expect(rule).not.toMatch(/\[role\](?!=)/);
     }
