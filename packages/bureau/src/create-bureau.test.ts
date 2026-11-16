@@ -13133,7 +13133,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it("dispose() awaits shutdown({ policy: 'abort' }) to completion — the durable engine's teardown (the same finally block that closes raw storage) does not run before online-evals has settled its in-flight work", async () => {
-    // A controllable ("gated") judge: `evaluate()` does not resolve until the
+    // A controllable ("gated") judge: `score()` does not resolve until the
     // test calls `releaseJudge()`, so this deterministically proves ordering
     // instead of racing real timing.
     let releaseJudge!: () => void;
@@ -13180,10 +13180,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
           {
             name: 'gated-judge',
             version: '1.0.0',
-            async evaluate() {
+            async score() {
               evaluateCalls += 1;
               await judgeGate;
-              return { pass: true, score: 1, message: 'ok' };
+              return { outcome: 'pass' as const, score: 1, message: 'ok' };
             },
           },
         ],
@@ -18834,8 +18834,8 @@ describe('AB-260: BureauOptions.runtime composition', () => {
           {
             name: 'always-breaches',
             version: '1.0.0',
-            async evaluate() {
-              return { pass: false, score: 0, message: 'always fails' };
+            async score() {
+              return { outcome: 'fail' as const, score: 0, message: 'always fails' };
             },
           },
         ],

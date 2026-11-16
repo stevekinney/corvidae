@@ -32,7 +32,7 @@ const agent = () => createAgent({ generate: async () => ({ content: '', toolCall
 const judge = (name: string) => ({
   name,
   version: '1',
-  evaluate: () => ({ pass: true, score: 1, message: '' }),
+  score: () => ({ outcome: 'pass' as const, score: 1, message: '' }),
 });
 const actionKind = (name: string) => ({
   name,
@@ -246,7 +246,11 @@ describe('composePlugins', () => {
           },
         ],
         scorers: [
-          { name: 'judge', version: '1', evaluate: () => ({ pass: true, score: 1, message: '' }) },
+          {
+            name: 'judge',
+            version: '1',
+            score: () => ({ outcome: 'pass' as const, score: 1, message: '' }),
+          },
         ],
         agents: [
           {
@@ -330,6 +334,35 @@ describe('composePlugins', () => {
         ],
       });
     }
+  });
+
+  it('registers a scorer under its namespaced name and hands its score the run and the signal (COR-2199)', async () => {
+    const received: { run: unknown; signal: AbortSignal; self: unknown }[] = [];
+    const scorer = {
+      name: 'judge',
+      version: '1',
+      determinism: 'stochastic' as const,
+      score(run: unknown, signal: AbortSignal) {
+        received.push({ run, signal, self: this });
+        return { outcome: 'pass' as const, message: 'ok' };
+      },
+    };
+    const given: ComposableOptions = {
+      plugins: [pluginEntry('kit', () => ({ scorers: [scorer] }))],
+      scorers: { list: [], sampleRate: 1 },
+    };
+    const { options } = await composePlugins(given);
+    const composed = options.scorers?.list[0];
+    expect(composed?.name).toBe('kit:judge');
+    expect(composed?.determinism).toBe('stochastic');
+
+    const run = { content: 'a run' } as never;
+    const signal = new AbortController().signal;
+    await composed?.score(run, signal);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.run).toBe(run);
+    expect(received[0]?.signal).toBe(signal);
+    expect(received[0]?.self).toBe(scorer);
   });
 
   it('lists only the contributions whose option the host gave', async () => {

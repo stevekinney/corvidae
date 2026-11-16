@@ -16,10 +16,12 @@
  *   `reviews.list()` (backed by operative's `HumanWaitParkedEvent`).
  * - `eval.threshold-breached` — fired out-of-band via {@link WebhookNotifier.notify}
  *   rather than derived from the action stream (there is no bureau event for
- *   it). AB-53's online eval sampler is the only current caller: a judge's
- *   score breaches its configured alert threshold and calls `notify()`
- *   directly, reusing this module's persist/retry/backoff pipeline instead of
- *   duplicating it.
+ *   it). AB-53's online eval sampler is the only current caller: a judge
+ *   returns a `fail` outcome, or a score below its configured alert threshold
+ *   (COR-2199), and calls `notify()` directly, reusing this module's
+ *   persist/retry/backoff pipeline instead of duplicating it. Its `detail`
+ *   names the judge, its digest, the outcome and the score, and never the
+ *   judge's own message.
  *
  * Both queue-backed triggers deep-link to `/reviews?id=<reviewId>` — the
  * AB-20 review queue's only route (`/reviews`, no `:id` segment), so the

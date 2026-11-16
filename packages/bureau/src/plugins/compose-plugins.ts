@@ -764,7 +764,11 @@ class Contributed {
     }
     for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
-      this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
+      this.scorers.push({
+        ...judge,
+        name: id(judge.name),
+        score: (run, signal) => judge.score(run, signal),
+      });
     }
     for (const item of result.agents ?? []) {
       this.agents[id(item.name)] = item.agent;

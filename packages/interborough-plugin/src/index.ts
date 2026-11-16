@@ -53,4 +53,4 @@ export type {
 export { isPluginName, pluginNamePattern } from './plugin-name.ts';
 export { PluginReactionError } from './plugin-reaction-error.ts';
 export { createPluginStorage, pluginStoragePrefix } from './plugin-storage.ts';
-export type { PluginScore, PluginScorer } from './scorer.ts';
+export type { PluginScore, PluginScoreOutcome, PluginScorer } from './scorer.ts';
