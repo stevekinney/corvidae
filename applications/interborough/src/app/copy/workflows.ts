@@ -140,6 +140,45 @@ export const WORKFLOW_COPY = {
     recentRuns: 'Recent runs',
     runsFailed: 'The runs could not be loaded.',
     trigger: 'Trigger',
+    /**
+     * What a file's plugin trigger is doing (COR-2171): its state as a badge, a sentence beside
+     * it, Retry now for a failed one, and the address a trigger that receives is sent deliveries at.
+     */
+    listener: {
+      /** The name of the section, for the screen reader. */
+      label: 'Trigger status',
+      states: {
+        listening: 'Listening',
+        ready: 'Ready',
+        standby: 'Standby',
+        'waiting-for-secret': 'Waiting for a secret',
+        failed: 'Failed',
+        stopped: 'Stopped',
+      },
+      /** `when` is relative: "2m ago". */
+      listening: (when: string): string => `Listening since ${when}.`,
+      ready: (when: string): string => `Ready to receive deliveries since ${when}.`,
+      standby:
+        'Another Interborough that shares this storage runs this trigger. This one takes over if that one stops.',
+      waitingForSecret: 'Waiting for a secret its plugin needs. Add it in Settings, under Plugins.',
+      /** `when` is relative: "in 4s". */
+      startFailedRetrying: (when: string): string =>
+        `The trigger could not start. It is tried again ${when}.`,
+      startFailed: 'The trigger could not start.',
+      configurationRefused:
+        'The plugin refused this trigger’s settings, so it is not tried again until they change.',
+      stopped: 'Stopped while the workflow is paused.',
+      /** What the code beside a failed state is. */
+      codeLabel: 'Code',
+      lastFired: (when: string): string => `Last fired ${when}.`,
+      retry: 'Retry now',
+      retrying: 'Retrying the trigger…',
+      retryFailed: 'The trigger could not be retried.',
+      /** Before the address a trigger that receives is sent its deliveries at. */
+      address: 'Deliveries go to',
+      copyAddress: 'Copy the address',
+      copiedAddress: 'Address copied',
+    },
     schedulesHeading: 'Schedules',
     schedulesFailed: 'The schedules could not be loaded.',
     scheduleActive: 'Active',

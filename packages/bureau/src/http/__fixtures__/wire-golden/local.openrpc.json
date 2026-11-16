@@ -21642,6 +21642,10 @@
                     "description": "The contributing plugin.",
                     "type": "string"
                   },
+                  "receives": {
+                    "description": "Whether the kind receives requests: a file whose trigger is one is sent its deliveries at `POST /triggers/<workflow-id>` on the host.",
+                    "type": "boolean"
+                  },
                   "version": {
                     "description": "The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.",
                     "type": "string"
@@ -21652,6 +21656,7 @@
                   "id",
                   "description",
                   "version",
+                  "receives",
                   "configuration"
                 ],
                 "type": "object"

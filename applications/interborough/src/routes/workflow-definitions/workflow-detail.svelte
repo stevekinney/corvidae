@@ -79,7 +79,9 @@
     parseWorkflowText,
     pauseWorkflowFile,
     resumeWorkflowFile,
+    type WorkflowListener,
   } from '../../lib/workflow-files.ts';
+  import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
   import { cancelSchedule } from '../schedules/schedule-queries.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
   import DeleteWorkflowDialog, { type DeleteDialogSchedule } from './delete-workflow-dialog.svelte';
@@ -91,6 +93,7 @@
   import WorkflowHeaderLine from './workflow-header-line.svelte';
   import WorkflowMoreMenu from './workflow-more-menu.svelte';
   import WorkflowOverview from './workflow-overview.svelte';
+  import WorkflowTriggerListener from './workflow-trigger-listener.svelte';
   import {
     builtInLine,
     lastRunLine,
@@ -287,6 +290,32 @@
     }
     failWith(agentFaultOf(error), title);
   }
+
+  /** What a retry of the file's plugin trigger answered (COR-2171): the page shows it at once. */
+  function adoptListener(listener: WorkflowListener): void {
+    queryClient.setQueryData<WorkflowResolution | null>(detailKey, (previous) =>
+      previous?.kind === 'agent-authored'
+        ? { ...previous, file: { ...previous.file, listener } }
+        : previous,
+    );
+  }
+
+  // The plugin trigger kinds, read only for a file whose trigger has a listener, to say whether its
+  // kind receives deliveries, and so has an address to show (COR-2171).
+  const pluginKinds = createQuery(
+    () => ({
+      queryKey: queryKeys.pluginKinds(),
+      queryFn: ({ signal }) => listContributedKinds({ signal }),
+      enabled: file?.listener != null,
+      retry: false,
+    }),
+    undefined,
+  );
+  const receives = $derived(
+    (pluginKinds.data?.triggers ?? []).some(
+      (kind) => kind.id === document?.trigger.kind && kind.receives,
+    ),
+  );
 
   /** After a delete: the list of workflows, which no longer shows this one. */
   function leaveForTheList(): void {
@@ -770,6 +799,14 @@
     {#each lines as line (line.id)}
       <WorkflowHeaderLine {line} />
     {/each}
+    {#if file?.listener != null && !connection.unreachable}
+      <WorkflowTriggerListener
+        workflowId={type}
+        listener={file.listener}
+        triggersUrl={receives ? hostPaths.data?.triggersUrl : undefined}
+        onListener={adoptListener}
+      />
+    {/if}
   </div>
 
   {#if connection.unreachable && !restartActivity.active}

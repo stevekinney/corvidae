@@ -66,6 +66,14 @@ export type FileFixture = {
   } | null;
   text: string | null;
   schedule: { id: string; status: 'active' | 'paused'; nextFireAt: string | null } | null;
+  /** What the file's plugin trigger is doing (COR-2171). Left out, the file sends none. */
+  listener?: {
+    state: 'listening' | 'waiting-for-secret' | 'failed' | 'stopped' | 'ready' | 'standby';
+    since: string;
+    code: 'start-failed' | 'configuration-refused' | null;
+    lastFiredAt: string | null;
+    retryAt: string | null;
+  } | null;
 };
 
 export type ScheduleFixture = {

@@ -87,7 +87,20 @@
   {:else if origin.kind === 'system'}
     {STARTED_BY_LABELS.system}
   {:else if origin.kind === 'trigger'}
-    {STARTED_BY_LABELS.trigger}
+    {#if origin.plugin === null}
+      {STARTED_BY_LABELS.trigger}
+    {:else}
+      <!-- COR-2171: which trigger, by its plugin, linked to the file whose trigger it is. -->
+      <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.trigger}</span>
+      {#if origin.href !== null}
+        {@const triggerPath = origin.href}
+        <a href={router.href(triggerPath)} onclick={(event) => open(event, triggerPath)}
+          ><code class="ib-identifier">{origin.plugin}</code></a
+        >
+      {:else}
+        <code class="ib-identifier">{origin.plugin}</code>
+      {/if}
+    {/if}
   {:else}
     {TASK_COPY.originUnrecorded}
   {/if}

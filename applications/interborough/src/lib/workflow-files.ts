@@ -31,6 +31,26 @@ export type WorkflowProblem = z.infer<typeof problemSchema>;
 /** A JSON Schema as a workflow file declares it. */
 const jsonSchemaField = z.record(z.string(), z.unknown());
 
+/**
+ * What a ready file's contributed trigger is doing (COR-2165, COR-2167, COR-2168): `listening`
+ * once its `start` resolved, `ready` for a kind that only receives, `standby` while another Bureau
+ * sharing the storage runs it, `waiting-for-secret`, `failed` with a `code` and, for a start that
+ * threw, when it is tried again, and `stopped` for a paused file.
+ */
+const listenerSchema = z.object({
+  state: z.enum(['listening', 'waiting-for-secret', 'failed', 'stopped', 'ready', 'standby']),
+  /** When `state` last changed. */
+  since: z.string(),
+  code: z.enum(['start-failed', 'configuration-refused']).nullable(),
+  /** When a fire last started a run since the Bureau started, or `null`. */
+  lastFiredAt: z.string().nullable(),
+  /** When a `start-failed` listener is next tried, or `null`. */
+  retryAt: z.string().nullable(),
+});
+
+/** What a ready file's contributed trigger is doing, as `bureau.workflows.get` and `list` say. */
+export type WorkflowListener = z.infer<typeof listenerSchema>;
+
 const fileSchema = z.object({
   id: z.string(),
   state: z.enum(['ready', 'invalid']),
@@ -52,6 +72,11 @@ const fileSchema = z.object({
   /** The steps as written, for a file that loaded; each agent step names the agent it runs in `input.agent`. */
   steps: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   problem: problemSchema.nullable(),
+  /**
+   * What the file's contributed trigger is doing, or `null` for a built-in trigger kind, a file that
+   * is not ready, and a listener whose first start has not settled.
+   */
+  listener: listenerSchema.nullable().optional(),
 });
 
 const runCountsSchema = z.object({
@@ -473,6 +498,22 @@ export async function pauseWorkflowFile(
   return writeResultSchema.parse(
     await callBureau('bureau.workflows.pause', { id, expectedHash }, options),
   );
+}
+
+const retrySchema = z.object({ id: z.string(), listener: listenerSchema });
+
+/**
+ * Starts the failed listener of the workflow `id`'s contributed trigger at once
+ * (`bureau.workflows.triggers.retry`, COR-2166), and resolves with what it is doing once the
+ * attempt has settled: `listening`, `failed` again with its next `retryAt`, or `standby` when
+ * another Bureau runs it.
+ */
+export async function retryWorkflowTrigger(
+  id: string,
+  options?: Options,
+): Promise<WorkflowListener> {
+  return retrySchema.parse(await callBureau('bureau.workflows.triggers.retry', { id }, options))
+    .listener;
 }
 
 /** Sets `paused: false` in the workflow's file, if it still hashes to `expectedHash`. */
