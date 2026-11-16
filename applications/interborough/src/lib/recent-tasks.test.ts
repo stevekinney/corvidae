@@ -1,7 +1,17 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { TaskView } from './bureau-tasks.ts';
-import { chatsWithFailedRun, latestRunByChat } from './recent-tasks.ts';
+import {
+  emptyBureauWorld,
+  installBureauWorld,
+  type BureauWorldStub,
+} from './bureau-world.test-support.ts';
+import {
+  chatsWithFailedRun,
+  latestRunByChat,
+  RECENT_TASK_LIMIT,
+  recentTasksQuery,
+} from './recent-tasks.ts';
 
 const task = (id: string, contextId: string, status: TaskView['status'], updatedAt: string) =>
   ({

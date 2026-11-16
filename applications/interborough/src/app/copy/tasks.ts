@@ -123,6 +123,7 @@ export const TASK_COPY = {
       /** The adjective a status segment puts before "runs": "No failed runs". */
       statusWords: {
         waiting: 'waiting',
+        signal: 'waiting for a signal',
         running: 'running',
         done: 'finished',
         failed: 'failed',
