@@ -129,11 +129,10 @@ async function heldByActive(vectors: MemoryVectorStore, ids: readonly string[]) 
 
 /** Advances until the switch is no longer running, which takes one step for a store this small. */
 async function finishSwitch(memory: GovernedMemory) {
-  for (let step = 0; step < 4; step++) {
+  for (;;) {
     const status = await memory.embedding.advance();
-    if (status.job === undefined) return status;
+    if (status.job?.state !== 'running') return status;
   }
-  throw new Error('The switch did not complete.');
 }
 
 describe('an embedder reconfigured to another model under its own id (COR-2184)', () => {

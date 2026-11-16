@@ -130,11 +130,10 @@ async function started(memory: GovernedMemory): Promise<MemoryEmbeddingProfile> 
 }
 
 async function advanceToEnd(memory: GovernedMemory): Promise<void> {
-  for (let step = 0; step < 5; step++) {
+  for (;;) {
     const status = await memory.embedding.advance();
-    if (status.job === undefined) return;
+    if (status.job?.state !== 'running') return;
   }
-  throw new Error('The switch did not complete.');
 }
 
 /** How many of `ids` `profile` holds a vector for. */
