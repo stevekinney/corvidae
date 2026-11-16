@@ -67,9 +67,10 @@ for (const width of [375, 1280]) {
     // The indent past an icon is measured once the open menu is laid out, so the read waits for
     // the menu to settle with every reason line under its label's text, then reads it once.
     await expect
-      .poll(async () =>
-        (await readItems()).every((item) => Math.abs(item.reasonTextLeft - item.textLeft) < 1),
-      )
+      .poll(async () => {
+        const items = await readItems();
+        return items.every((item) => Math.abs(item.reasonTextLeft - item.textLeft) < 1);
+      })
       .toBe(true);
     const read = await readItems();
 
