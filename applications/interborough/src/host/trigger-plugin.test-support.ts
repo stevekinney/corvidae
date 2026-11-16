@@ -57,11 +57,12 @@ export function hookPlugin(): HookPlugin {
               return new Response('signature refused', { status: 401 });
             }
             verified.push(body);
-            const key = request.headers.get('x-delivery');
-            const outcome = await context.fire(
-              { bytes: body.byteLength },
-              key === null ? undefined : { idempotencyKey: key },
-            );
+            // The key comes from the signed bytes, never from a header the signature does not cover.
+            const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', body));
+            const idempotencyKey = Array.from(digest, (byte) =>
+              byte.toString(16).padStart(2, '0'),
+            ).join('');
+            const outcome = await context.fire({ bytes: body.byteLength }, { idempotencyKey });
             return Response.json(outcome, { status: 202 });
           },
         }),

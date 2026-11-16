@@ -129,17 +129,18 @@ export const inbox = defineTrigger({
     ) {
       return new Response(null, { status: 401 });
     }
-    const delivery = request.headers.get('x-delivery');
-    await fire(
-      JSON.parse(new TextDecoder().decode(body)),
-      delivery === null ? undefined : { idempotencyKey: delivery },
+    // The key comes from the signed bytes, so a replay cannot change it: here, their digest.
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', body));
+    const idempotencyKey = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join(
+      '',
     );
+    await fire(JSON.parse(new TextDecoder().decode(body)), { idempotencyKey });
     return new Response(null, { status: 202 });
   },
 });
 ```
 
-The check is over the bytes, not a re-encoded string, and it has no timestamp window: a replayed delivery is answered by the `idempotencyKey` `fire` is given.
+The check is over the bytes, not a re-encoded string, and it has no timestamp window: a signature proves the sender signed these bytes, not when, so a captured delivery verifies again however late it is sent. Replay protection is the `idempotencyKey` `fire` is given, and the key must come from data the signature covers: a field of the verified body (an event identifier the sender put in it) or a digest of its bytes, as above. A key taken from a header the signature does not cover, such as `X-Delivery`, lets a replay carry a new key, or none, and start a second run.
 
 ### Trigger state
 

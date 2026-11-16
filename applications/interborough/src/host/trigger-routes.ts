@@ -19,14 +19,16 @@
  *   the cap kept.
  * - **The answer** is Bureau's or the trigger's, passed through unchanged (its 404 for an id that
  *   is not an applied file, its 405 for a file whose trigger does not receive, and whatever
- *   `Response` `receive` resolved). Every answer the route authors, 413, 500 and 503, has no body.
- *   503 is for a Bureau without workflows and for a plugin that needs setup; any other rejection is
+ *   `Response` `receive` resolved). Every answer the route authors, 408, 413, 500 and 503, has no
+ *   body. 408 is for a body not fully read within {@link TRIGGER_BODY_DEADLINE_MILLISECONDS}. 503
+ *   is for a Bureau without workflows and for a plugin that needs setup; any other rejection is
  *   500. Neither says why: the log line holds the workflow id and the error's `name`, as JSON,
  *   and never its message, which a plugin may have written a secret into.
  *
  * @module trigger-routes
  */
 import type { BureauWorkflows } from '@lostgradient/bureau';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/operative';
 
 /** The route a trigger delivery is registered at. The identifier is Bun's decoded parameter. */
 export const TRIGGER_ROUTE = '/triggers/:workflow';
@@ -49,10 +51,22 @@ export interface TriggerRouteDependencies {
    * host's `warn` option, which defaults to `console.warn`.
    */
   readonly warn?: ((message: string) => void) | undefined;
+  /**
+   * The host's runtime services, whose timers the body deadline runs on: a test advances them with
+   * its manual clock. Omitted, the process's own.
+   */
+  readonly runtime?: Pick<RuntimeServices, 'timers'> | undefined;
 }
 
+/**
+ * How long a delivery's body may take to arrive, 30 seconds. The listener's own idle timeout is
+ * off because the pages hold quiet streams, and this route is the one a stranger can reach: a
+ * client that sends a byte a minute would hold a connection and its buffer for as long as it liked.
+ */
+export const TRIGGER_BODY_DEADLINE_MILLISECONDS = 30_000;
+
 /** An answer the route authors: a status and nothing else. */
-function statusResponse(status: 413 | 500 | 503): Response {
+function statusResponse(status: 408 | 413 | 500 | 503): Response {
   return new Response(null, { status });
 }
 
@@ -70,7 +84,8 @@ function declaredLength(request: Request): number | undefined {
 async function readBody(
   request: Request,
   maximum: number,
-): Promise<Uint8Array<ArrayBuffer> | 'too-large'> {
+  deadline: Promise<'timeout'>,
+): Promise<Uint8Array<ArrayBuffer> | 'too-large' | 'too-slow'> {
   const declared = declaredLength(request);
   if (declared !== undefined && declared > maximum) {
     // Best effort: nothing waits on the cancellation, and nothing is read.
@@ -82,7 +97,12 @@ async function readBody(
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    const next = await Promise.race([reader.read(), deadline]);
+    if (next === 'timeout') {
+      await reader.cancel().catch(() => undefined);
+      return 'too-slow';
+    }
+    const { done, value } = next;
     if (done) break;
     if (total + value.byteLength > maximum) {
       await reader.cancel().catch(() => undefined);
@@ -116,6 +136,7 @@ function nameOf(error: unknown): string {
 /** The Bun route of a trigger delivery. */
 export function triggerRoutes(dependencies: TriggerRouteDependencies) {
   const { bureau } = dependencies;
+  const timers = (dependencies.runtime ?? createDefaultRuntimeServices()).timers;
   const warn = dependencies.warn ?? ((message: string) => console.warn(message));
   const report = (workflow: string, error: string): void =>
     warn(JSON.stringify({ event: 'host.trigger.failure', workflow, error }));
@@ -132,8 +153,20 @@ export function triggerRoutes(dependencies: TriggerRouteDependencies) {
           return statusResponse(503);
         }
         try {
-          const bytes = await readBody(request, MAXIMUM_TRIGGER_BODY_BYTES);
+          // The deadline: a body not fully read in time is cut off, and the timer goes with it.
+          const expired = Promise.withResolvers<'timeout'>();
+          const timer = timers.setTimeout(
+            () => expired.resolve('timeout'),
+            TRIGGER_BODY_DEADLINE_MILLISECONDS,
+          );
+          let bytes: Awaited<ReturnType<typeof readBody>>;
+          try {
+            bytes = await readBody(request, MAXIMUM_TRIGGER_BODY_BYTES, expired.promise);
+          } finally {
+            timers.clearTimeout(timer);
+          }
           if (bytes === 'too-large') return statusResponse(413);
+          if (bytes === 'too-slow') return statusResponse(408);
           // A fresh request over the bytes that were read, so `receive` reads them as often as it
           // likes and the incoming stream is never shared. Its signal follows the incoming one
           // only until `receiveTrigger` settles: the host may abort the incoming request once its

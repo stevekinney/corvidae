@@ -21,7 +21,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import type { PluginTrigger, PluginTriggerContext } from '@lostgradient/interborough-plugin';
+import {
+  definePlugin,
+  type PluginTrigger,
+  type PluginTriggerContext,
+} from '@lostgradient/interborough-plugin';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
@@ -36,7 +40,9 @@ import {
 } from './plugins/plugin-secret-gate';
 import type { BureauPluginSecrets } from './plugins/plugin-types';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { listedPlugins } from './testing/plugin-listing.test-support';
 import { contributionCatalog } from './testing/workflow-contributions.test-support';
+import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import type { VersionedCatalogEntry } from './versioned-catalog';
 import { createWorkflowContributions, type WorkflowContributions } from './workflow-contributions';
@@ -465,6 +471,75 @@ const rows: readonly Row[] = [
       held.open();
       await Promise.all([applying, queued]);
       expect(second.control.receives).toEqual([]);
+    },
+  },
+  {
+    row: 17,
+    title:
+      'a file removed or edited invalid, scanned but not applied (queued, or its apply failed) while appliedFiles holds the old one, answers 404',
+    run: async () => {
+      for (const change of ['removed', 'invalid'] as const) {
+        // The apply fails: the engine keeps the old file registered and `appliedFiles` still holds it.
+        const failed = await boot();
+        await failed.put('hook');
+        await failed.apply();
+        expect(await failed.receive('hook')).toMatchObject({ status: 202 });
+        failed.engine.registerSource = () => {
+          throw new Error('registration refused');
+        };
+        if (change === 'removed') await failed.remove('hook');
+        else await failed.put('hook', { trigger: { kind: 'x:hook', channel: 7 }, steps: [] });
+        await failed.apply();
+        expectEmpty(await failed.receive('hook'), 404);
+        expect(failed.control.receives).toHaveLength(1);
+
+        // The apply is queued behind a held start: the scan has seen the change, the engine has not.
+        const queued = await boot();
+        await queued.put('hook');
+        await queued.apply();
+        const held = gate();
+        queued.control.start = () => held.promise;
+        await queued.put('first', hooking('x:both'));
+        const applying = queued.apply();
+        await waitUntil(() => queued.control.starts.length === 1, { message: 'the held start' });
+        if (change === 'removed') await queued.remove('hook');
+        else await queued.put('hook', { trigger: { kind: 'x:hook', channel: 7 }, steps: [] });
+        const refreshing = queued.apply();
+        await waitUntil(
+          () =>
+            queued.runtime.workflows.list().find((entry) => entry.id === 'hook')?.state !== 'ready',
+          { message: 'the catalog to hold the change' },
+        );
+        expectEmpty(await queued.receive('hook'), 404);
+        held.open();
+        await Promise.all([applying, refreshing]);
+        expect(queued.control.receives).toEqual([]);
+      }
+    },
+  },
+  {
+    row: 35,
+    title:
+      'a kind with both, while its first start is still pending: receive runs, and a started fire notes lastFiredAt on the unsettled entry, which the settled listener keeps',
+    run: async () => {
+      const rig = await boot();
+      const held = gate();
+      rig.control.start = () => held.promise;
+      await rig.put('hook', hooking('x:both'));
+      const applying = rig.apply();
+      await waitUntil(() => rig.control.starts.length === 1, { message: 'the held start' });
+      expect(rig.listener()).toBeNull();
+      await rig.services.advance(5_000);
+      const outcomes: unknown[] = [];
+      rig.control.receive = firing(outcomes);
+      expect(await rig.receive('hook')).toMatchObject({ status: 204 });
+      expect(outcomes).toEqual([{ outcome: 'started', runId: expect.any(String) }]);
+      held.open();
+      await applying;
+      expect(rig.listener()).toMatchObject({
+        state: 'listening',
+        lastFiredAt: '2026-11-16T00:00:05.000Z',
+      });
     },
   },
   {
@@ -1380,8 +1455,10 @@ const rows: readonly Row[] = [
 
 describe('receiving through a contributed trigger kind (COR-2168 outcome matrix)', () => {
   it('lists each row once, in the table of this file, with the rows the other files hold', () => {
-    const own = rows.map((entry) => entry.row);
-    expect(new Set(own).size).toBe(own.length);
+    // A row may have more than one test here (the matrix cell crosses two states), never two with one title.
+    const own = [...new Set(rows.map((entry) => entry.row))];
+    const titles = rows.map((entry) => `${entry.row}:${entry.title}`);
+    expect(new Set(titles).size).toBe(titles.length);
     const elsewhere = [1, 2, 3, 4, 5, 6, 7, 9, 12, 13, 54, 57];
     const skipped = [46, 52, 53];
     expect([...own, ...elsewhere, ...skipped].toSorted((a, b) => a - b)).toEqual(
@@ -1396,4 +1473,52 @@ describe('receiving through a contributed trigger kind (COR-2168 outcome matrix)
       for (const rig of rigsOfTheRow) expectRetryAtToMatchTheTimers(rig);
     });
   }
+
+  it.each([
+    ['a start that is not a function', { start: 'listen' }],
+    ['a receive that is not a function', { receive: 'answer' }],
+    [
+      'a start beside a receive that is not a function',
+      { start: async () => () => {}, receive: 7 },
+    ],
+    ['neither', {}],
+  ])(
+    'M1: a plugin whose trigger kind has %s is setup-failed, not a listener that retries or a 503',
+    async (_label, members) => {
+      const plugin = definePlugin({
+        name: 'broken',
+        version: '1.0.0',
+        description: 'Contributes a malformed trigger kind.',
+        setup: () => ({
+          triggers: [
+            {
+              name: 'hook',
+              description: 'Malformed.',
+              configuration: z.object({}),
+              ...members,
+            } as PluginTrigger,
+          ],
+        }),
+      });
+      const harness = await startWorkflowBureau({
+        overrides: {
+          plugins: [{ descriptor: plugin, source: 'package', location: '@example/broken' }],
+          onDiagnostic: () => undefined,
+        },
+      });
+      cleanups.push(() => harness.dispose());
+      const [listing] = await listedPlugins(harness.bureau);
+      expect(listing?.problems.map((problem) => problem.code)).toContain('setup-failed');
+      expect(listing?.status).not.toBe('running');
+      // No file can name the kind: it was never registered.
+      await harness.put(
+        'hook.json',
+        workflowFileText('hook', { trigger: { kind: 'broken:hook' } }),
+      );
+      await harness.bureau.workflows?.refresh();
+      expect(harness.bureau.workflows?.list().find((entry) => entry.id === 'hook')?.state).toBe(
+        'invalid',
+      );
+    },
+  );
 });

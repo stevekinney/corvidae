@@ -4,7 +4,12 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { createRequestGuard, PUBLIC_TRIGGERS_PATH_PREFIX } from './request-guard.ts';
+import {
+  createRequestGuard,
+  isAmbiguousPath,
+  PUBLIC_TRIGGERS_PATH_PREFIX,
+  rawPathOf,
+} from './request-guard.ts';
 
 function request(headers: Record<string, string>): Request {
   return new Request('http://127.0.0.1/', { headers });
@@ -117,36 +122,127 @@ describe('a guard given a public origin on its default port (COR-1904)', () => {
     expect(statusAt('/bureau/assets/a/content', { host: 'localhost:7234' })).toBeUndefined();
   });
 
-  test('lets a trigger delivery through with no credential, which the trigger then checks (COR-2169)', () => {
+  test('admits no trigger path: the guard of the Bureau route is not the trigger route’s (COR-2169)', () => {
     const host = { host: 'agents.example.test' };
+    expect(statusAt('/triggers/hook', host)).toBe(403);
+  });
+});
+
+/**
+ * COR-2169 — each public surface has a guard of its own, admitting only its own paths, and every
+ * public request is judged on its raw target, the path the router matches and the handler behind it
+ * is given. A request is built as a plain object because `new Request` resolves dot segments, which
+ * is exactly what the raw target must not be.
+ */
+describe('the guards of the public surfaces (COR-2169)', () => {
+  const publicOrigin = new URL('https://agents.example.test');
+  const host = { host: 'agents.example.test' };
+  const bureau = createRequestGuard(() => 7234, publicOrigin);
+  const trigger = createRequestGuard(() => 7234, publicOrigin, ['triggers']);
+
+  /** A request whose `url` is exactly `target`, as the server hands it to a route. */
+  function rawRequest(target: string, headers: Record<string, string> = host): Request {
+    return { url: target, headers: new Headers(headers) } as unknown as Request;
+  }
+
+  const statusOf = (
+    guard: (request: Request) => Response | undefined,
+    target: string,
+    headers?: Record<string, string>,
+  ): number | undefined => guard(rawRequest(`http://127.0.0.1${target}`, headers))?.status;
+
+  test('the trigger guard admits /triggers/<one segment> with no credential, under either Host form', () => {
     expect(PUBLIC_TRIGGERS_PATH_PREFIX).toBe('/triggers/');
-    expect(statusAt('/triggers/hook', host)).toBeUndefined();
+    expect(statusOf(trigger, '/triggers/hook')).toBeUndefined();
+    expect(statusOf(trigger, '/triggers/hook?x=1')).toBeUndefined();
     expect(
-      statusAt('/triggers/hook', { ...host, host: 'agents.example.test:443' }),
+      statusOf(trigger, '/triggers/hook', { host: 'agents.example.test:443' }),
     ).toBeUndefined();
     expect(
-      statusAt('/triggers/hook', { ...host, origin: 'https://agents.example.test' }),
+      statusOf(trigger, '/triggers/hook', { ...host, origin: 'https://agents.example.test' }),
     ).toBeUndefined();
-    expect(statusAt('/triggers/hook', { ...host, 'x-api-key': 'anything' })).toBeUndefined();
+    expect(
+      statusOf(trigger, '/triggers/hook', { ...host, 'x-api-key': 'anything' }),
+    ).toBeUndefined();
   });
 
-  test('refuses the public origin for any other path near a trigger delivery, another port, or a foreign Origin', () => {
-    const host = { host: 'agents.example.test' };
+  test('each guard admits only its own surface', () => {
+    expect(statusOf(trigger, '/bureau/a2a/open')).toBe(403);
+    expect(statusOf(trigger, '/bureau/assets/a/content', { ...host, 'x-api-key': 'k' })).toBe(403);
+    expect(statusOf(bureau, '/triggers/hook')).toBe(403);
+    expect(statusOf(bureau, '/bureau/a2a/open')).toBeUndefined();
+  });
+
+  test('the trigger guard refuses every other shape near a trigger delivery, another port, or a foreign Origin', () => {
     for (const path of [
       '/triggers',
+      '/triggers/',
+      '/triggers/a/b',
+      '/triggers/hook/',
       '/trigger/hook',
       '/Triggers/hook',
-      '/triggers/../bureau/jsonrpc',
-      '/triggers/%2e%2e/bureau/jsonrpc',
       '/api/triggers/hook',
       '/host/status',
       '/',
     ]) {
-      expect(statusAt(path, host), path).toBe(403);
+      expect(statusOf(trigger, path), path).toBe(403);
     }
-    expect(statusAt('/triggers/hook', { host: 'agents.example.test:8443' })).toBe(403);
-    expect(statusAt('/triggers/hook', { ...host, origin: 'https://attacker.example' })).toBe(403);
-    expect(statusAt('/triggers/hook', { ...host, origin: 'http://127.0.0.1:7234' })).toBe(403);
+    expect(statusOf(trigger, '/triggers/hook', { host: 'agents.example.test:8443' })).toBe(403);
+    expect(
+      statusOf(trigger, '/triggers/hook', { ...host, origin: 'https://attacker.example' }),
+    ).toBe(403);
+    expect(statusOf(trigger, '/triggers/hook', { ...host, origin: 'http://127.0.0.1:7234' })).toBe(
+      403,
+    );
+  });
+
+  const AMBIGUOUS = [
+    '/bureau/../triggers/x',
+    '/bureau/a2a/../../triggers/x',
+    '/bureau/%2e%2e/triggers/x',
+    '/bureau/%2E%2E/triggers/x',
+    '/bureau/./a2a/open',
+    '/bureau/a2a/./open',
+    '/bureau/a2a/open/..',
+    '/triggers/../bureau/jsonrpc',
+    '/triggers/x/../../bureau/jsonrpc',
+    '/triggers/%2e%2e/bureau/jsonrpc',
+    '/triggers//x',
+    '/bureau//triggers/x',
+    '/bureau/a2a//open',
+    '/triggers/x%2f..%2f..%2fbureau%2fjsonrpc',
+    '/triggers/x%2Fy',
+    '/triggers/x%5cy',
+    '/triggers/x%5Cy',
+    '/triggers/x\\y',
+    '/bureau/assets/..%2fjsonrpc',
+  ];
+
+  test.each(AMBIGUOUS)('a public request for %p is refused by either guard', (path) => {
+    expect(statusOf(trigger, path)).toBe(403);
+    expect(statusOf(bureau, path, { ...host, 'x-api-key': 'k' })).toBe(403);
+  });
+
+  test('an absolute-form target is judged on its path, not its authority', () => {
+    for (const target of [
+      'https://agents.example.test/bureau/../triggers/x',
+      'https://agents.example.test/triggers/../bureau/jsonrpc',
+      'https://agents.example.test/triggers//x',
+    ]) {
+      expect(trigger(rawRequest(target))?.status, target).toBe(403);
+      expect(bureau(rawRequest(target, { ...host, 'x-api-key': 'k' }))?.status, target).toBe(403);
+    }
+    expect(trigger(rawRequest('https://agents.example.test/triggers/x'))).toBeUndefined();
+    expect(rawPathOf(rawRequest('https://agents.example.test'))).toBe('/');
+    expect(rawPathOf(rawRequest('https://agents.example.test/a/../b?c=/../#d'))).toBe('/a/../b');
+  });
+
+  test('a loopback request is not judged by the public rules', () => {
+    expect(
+      statusOf(trigger, '/triggers/../bureau/jsonrpc', { host: 'localhost:7234' }),
+    ).toBeUndefined();
+    expect(isAmbiguousPath('/bureau/jsonrpc')).toBe(false);
+    expect(isAmbiguousPath('/bureau/assets/a-b_c.d/content')).toBe(false);
   });
 
   test('refuses a trigger path on a public origin the guard was not given', () => {

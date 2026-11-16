@@ -27,9 +27,15 @@ function bytesOfHex(hex: string): Uint8Array<ArrayBuffer> {
  * The comparison is Web Crypto's `crypto.subtle.verify`, which is constant time: the two digests
  * are never compared as strings. It resolves `false`, and never rejects, for a missing signature
  * (`null`), one of the wrong length or prefix, upper-case or non-hex digits, an empty secret, and
- * any input that is not the type declared. It takes its own copy of a byte array before it awaits,
- * so a caller that reuses the buffer meanwhile changes nothing. It checks no timestamp: a replayed
- * delivery is answered by the idempotency key `fire` is given.
+ * any input that is not the type declared. It takes its own copy of a byte array (a `Buffer`, or a
+ * view over part of a larger buffer, included) before it awaits, so a caller that reuses the buffer
+ * meanwhile changes nothing.
+ *
+ * There is no timestamp window. A signature proves the sender signed these bytes, not when, so a
+ * captured delivery verifies again however late it is sent, and replay protection is the
+ * idempotency key given to `fire`. That key must come from data the signature covers (a field of
+ * the verified body, or a digest of its bytes): a key taken from a header the signature does not
+ * cover, such as `X-Delivery`, lets a replay carry a new key, or none, and start a second run.
  */
 export async function verifyHmacSignature(options: VerifyHmacSignatureOptions): Promise<boolean> {
   try {
@@ -41,7 +47,8 @@ export async function verifyHmacSignature(options: VerifyHmacSignatureOptions): 
     const encoder = new TextEncoder();
     // The caller owns `body`: take its bytes now, before anything awaits, so a buffer it reuses
     // while the key is imported cannot change what is verified.
-    const bytes = typeof body === 'string' ? encoder.encode(body) : body.slice();
+    // `new Uint8Array(view)` copies; a Node `Buffer`'s own `slice` is a view over the same bytes.
+    const bytes = typeof body === 'string' ? encoder.encode(body) : new Uint8Array(body);
     const key = await crypto.subtle.importKey(
       'raw',
       encoder.encode(secret),

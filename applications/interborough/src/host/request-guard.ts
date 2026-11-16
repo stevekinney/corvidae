@@ -24,8 +24,12 @@
  * without one as the local owner. A trigger delivery carries none, because the trigger's own
  * `receive` authenticates the sender. Every other path refuses that `Host`; the Bureau then
  * requires the key on every A2A JSON-RPC call and checks it, and the asset's owner and scope, on
- * every asset read. The host hands this guard to `/bureau/*` and to the route of a trigger
- * delivery only; every other route and every unmatched path is checked by the loopback guard.
+ * every asset read. The host hands each public surface a guard of its own, admitting only that
+ * surface's paths: `/bureau/*` one for A2A and assets, the trigger route one for
+ * `/triggers/<one segment>`; every other route and every unmatched path is checked by the
+ * loopback guard. The guard decides on the raw request target, the path the router matches and the
+ * handler behind it is given, never on a resolved one, and refuses any public request whose raw
+ * target holds a dot segment, an encoded dot, slash or backslash, a backslash or a double slash.
  *
  * The guard reads `Host`, so the reverse proxy in front of a public origin must forward it. One
  * that rewrites it to `127.0.0.1:<port>` makes every request it forwards look local, and so
@@ -83,30 +87,71 @@ function presentsCredential(request: Request): boolean {
 }
 
 /**
- * Which public path `request` names, if any. The path is the parsed URL's, with `..` and `%2e%2e`
- * resolved, which is the path the Bureau handler is given; the raw request target is not, so
- * `/bureau/a2a/../jsonrpc` is `/bureau/jsonrpc` here.
+ * The path of the request target as the client wrote it: the query and the fragment cut off, an
+ * absolute-form target's scheme and authority cut off, and nothing resolved or decoded. The router
+ * matches this path, so a guard that decides on it sees what the handler behind the router is given.
  */
-function publicPathOf(request: Request): 'a2a' | 'assets' | 'triggers' | undefined {
-  const { pathname } = new URL(request.url);
-  if (pathname.startsWith(PUBLIC_A2A_PATH_PREFIX)) return 'a2a';
-  if (pathname.startsWith(PUBLIC_ASSETS_PATH_PREFIX)) return 'assets';
-  if (pathname.startsWith(PUBLIC_TRIGGERS_PATH_PREFIX)) return 'triggers';
+export function rawPathOf(request: Request): string {
+  const withoutOrigin = request.url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, '');
+  const end = withoutOrigin.search(/[?#]/);
+  const path = end === -1 ? withoutOrigin : withoutOrigin.slice(0, end);
+  return path === '' ? '/' : path;
+}
+
+/**
+ * Whether a raw path can name two places, one to the guard and another to a handler that resolves,
+ * strips or decodes it: a dot segment, an encoded dot, slash or backslash (any case), a backslash,
+ * or a double slash. A request through the public origin with such a path is refused, and the
+ * Bureau handler is given none.
+ */
+export function isAmbiguousPath(path: string): boolean {
+  return (
+    /(?:^|\/)\.{1,2}(?:\/|$)/.test(path) ||
+    /%(?:2e|2f|5c)/i.test(path) ||
+    path.includes('\\') ||
+    path.includes('//')
+  );
+}
+
+/** The public surfaces a guard may admit, each with the one shape of path that is its own. */
+export type PublicSurface = 'a2a' | 'assets' | 'triggers';
+
+/** One segment after `/triggers/`: the workflow identifier, and nothing below it. */
+const TRIGGER_PATH_PATTERN = /^\/triggers\/[^/]+$/;
+
+/**
+ * Which of `surfaces` the raw `path` names, if any. Each surface admits only its own prefix: a
+ * guard built for the trigger route never admits an A2A path, and the Bureau's never admits a
+ * trigger one.
+ */
+function publicSurfaceOf(
+  path: string,
+  surfaces: readonly PublicSurface[],
+): PublicSurface | undefined {
+  if (surfaces.includes('a2a') && path.startsWith(PUBLIC_A2A_PATH_PREFIX)) return 'a2a';
+  if (surfaces.includes('assets') && path.startsWith(PUBLIC_ASSETS_PATH_PREFIX)) return 'assets';
+  if (surfaces.includes('triggers') && TRIGGER_PATH_PATTERN.test(path)) return 'triggers';
   return undefined;
 }
 
 /**
  * The guard's answer to a request naming the public origin and one of its paths, or `null` for
- * any other request, which the loopback check answers.
+ * any other request, which the loopback check answers. A public request whose raw path is
+ * ambiguous is refused here, whatever surface it names, before any prefix is looked at.
  */
 function publicOriginAnswer(
   request: Request,
   requestHost: string,
   publicOrigin: URL,
   hosts: readonly string[],
+  surfaces: readonly PublicSurface[],
 ): Response | undefined | null {
   if (!hosts.includes(requestHost.toLowerCase())) return null;
-  const path = publicPathOf(request);
+  const rawPath = rawPathOf(request);
+  if (isAmbiguousPath(rawPath)) {
+    return new Response('Forbidden: this path is not accepted.', { status: 403 });
+  }
+  const path = publicSurfaceOf(rawPath, surfaces);
   // Any other path is the loopback check's, which refuses a `Host` that is not this listener's.
   if (path === undefined) return null;
   const origin = request.headers.get('origin');
@@ -126,17 +171,26 @@ function publicOriginAnswer(
  * A guard for the listener on `port()`. It returns the refusal to send, or `undefined` for a
  * request that may proceed. The port is read per request, because the listener is started before
  * its port is known when the caller asks for a free one. With `publicOrigin`, the guard also
- * accepts that origin for A2A, asset and trigger paths, as the module comment describes.
+ * accepts that origin for the paths of `surfaces` and no others: A2A and assets by default, which
+ * is what `/bureau/*` is given, and `['triggers']` for the trigger route. Each route gets a guard
+ * of its own surface, so no allowlist decides for a route that did not ask for an entry.
  */
 export function createRequestGuard(
   port: () => number,
   publicOrigin?: URL,
+  surfaces: readonly PublicSurface[] = ['a2a', 'assets'],
 ): (request: Request) => Response | undefined {
   const acceptedPublicHosts = publicOrigin === undefined ? [] : publicHosts(publicOrigin);
   return (request) => {
     const requestHost = request.headers.get('host');
     if (publicOrigin !== undefined && requestHost !== null) {
-      const answer = publicOriginAnswer(request, requestHost, publicOrigin, acceptedPublicHosts);
+      const answer = publicOriginAnswer(
+        request,
+        requestHost,
+        publicOrigin,
+        acceptedPublicHosts,
+        surfaces,
+      );
       if (answer !== null) return answer;
     }
     const hosts = allowedHosts(port());

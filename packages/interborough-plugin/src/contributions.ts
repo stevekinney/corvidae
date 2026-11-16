@@ -378,7 +378,10 @@ export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
    * state `start` sees. It authenticates the sender itself (see `verifyHmacSignature`) and
    * resolves the `Response` the sender is answered with; the host returns that object as it is. It
    * calls `context.fire` for each run it starts, with `options.idempotencyKey` for a delivery that
-   * may be repeated: the host reads no header and applies no key of its own.
+   * may be repeated: the host reads no header and applies no key of its own. There is no timestamp
+   * window, so a captured signed delivery verifies again however late it is sent, and the key is
+   * the only replay protection: take it from data the signature covers (a field of the verified
+   * body, or a digest of its bytes), never from a header the signature does not cover.
    *
    * `context.signal` aborts when the request does and when the host closes, and for nothing else:
    * a pause, an edit, a removal or a new version of the kind does not abort a call in flight. A

@@ -151,19 +151,45 @@ describe('verifyHmacSignature', () => {
     }) as typeof crypto.subtle.importKey);
     spies.push(imported);
 
-    // Unsigned bytes overwritten with the signed ones during the import are still refused.
-    target = encoder.encode('unsigned');
-    overwrite = encoder.encode('approved');
-    expect(
-      await verifyHmacSignature({ secret: SECRET, body: target, signature: sign('approved') }),
-    ).toBe(false);
+    // A plain array, a Node Buffer (whose `slice` is a view, not a copy), a view over the middle
+    // of a larger buffer, and a Buffer view of one.
+    const shapes: Array<[string, (text: string) => Uint8Array]> = [
+      ['a Uint8Array', (text) => encoder.encode(text)],
+      ['a Buffer', (text) => Buffer.from(text)],
+      [
+        'a subarray of a larger buffer',
+        (text) => {
+          const larger = new Uint8Array(text.length + 8);
+          larger.set(encoder.encode(text), 4);
+          return larger.subarray(4, 4 + text.length);
+        },
+      ],
+      [
+        'a Buffer over a larger buffer',
+        (text) => {
+          const larger = Buffer.alloc(text.length + 8);
+          larger.write(text, 4);
+          return larger.subarray(4, 4 + text.length);
+        },
+      ],
+    ];
+    for (const [label, make] of shapes) {
+      // Unsigned bytes overwritten with the signed ones during the import are still refused.
+      target = make('unsigned');
+      overwrite = encoder.encode('approved');
+      expect(
+        await verifyHmacSignature({ secret: SECRET, body: target, signature: sign('approved') }),
+        `${label}, unsigned overwritten with signed`,
+      ).toBe(false);
 
-    // Signed bytes overwritten with others during the import are still accepted.
-    target = encoder.encode('approved');
-    overwrite = encoder.encode('tampered');
-    expect(
-      await verifyHmacSignature({ secret: SECRET, body: target, signature: sign('approved') }),
-    ).toBe(true);
+      // Signed bytes overwritten with others during the import are still accepted.
+      target = make('approved');
+      overwrite = encoder.encode('tampered');
+      expect(
+        await verifyHmacSignature({ secret: SECRET, body: target, signature: sign('approved') }),
+        `${label}, signed overwritten with others`,
+      ).toBe(true);
+    }
   });
 
   test('compares through crypto.subtle.verify, never by comparing the two strings', async () => {

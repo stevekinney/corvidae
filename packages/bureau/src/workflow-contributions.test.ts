@@ -418,6 +418,38 @@ describe('the contributions a catalog holds', () => {
     expect(() => createWorkflowContributions(wrong)).toThrow('`start` or `receive`');
   });
 
+  it.each([
+    ['a start that is not a function', { start: 'listen' }],
+    ['a start that is an object', { start: {} }],
+    ['a start that is null', { start: null }],
+    ['a receive that is not a function', { receive: 'answer' }],
+    ['a receive that is null', { receive: null }],
+    [
+      'a valid start beside a receive that is not a function',
+      { start: async () => () => {}, receive: 7 },
+    ],
+    [
+      'a valid receive beside a start that is not a function',
+      { receive: async () => new Response(), start: 7 },
+    ],
+    ['neither', {}],
+  ])(
+    'refuses a trigger kind with %s, so it never reaches a listener or a request',
+    (_label, members) => {
+      const catalog = createVersionedCatalog();
+      catalog.register({
+        kind: 'trigger',
+        name: 'x:ticker',
+        version: '1',
+        value: { name: 'ticker', configuration: z.object({}), ...members },
+        source: { name: 'x', version: '1' },
+      });
+      expect(() => createWorkflowContributions(catalog)).toThrow(
+        'The trigger "x:ticker" needs a configuration schema and a `start` or `receive` function.',
+      );
+    },
+  );
+
   it('M2: loads a trigger kind that has only receive', () => {
     const catalog = createVersionedCatalog();
     catalog.register({

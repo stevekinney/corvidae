@@ -708,6 +708,7 @@ describe('trigger deliveries (COR-2169)', () => {
   }
 
   const hostsStarted: Host[] = [];
+  let deliveries = 0;
 
   async function startTriggerHost(configuration: Configuration): Promise<TriggerHost> {
     const home = await makeHome(configuration === 'unkeyed' ? undefined : `${A2A_KEY}\n`);
@@ -769,7 +770,13 @@ describe('trigger deliveries (COR-2169)', () => {
 
   async function deliver(
     { host }: TriggerHost,
-    { path = '/triggers/hook', method = 'POST', body = '{"event":"push"}', ...rest }: Delivery = {},
+    {
+      path = '/triggers/hook',
+      method = 'POST',
+      // A body of its own: the plugin keys a delivery by the digest of its signed bytes.
+      body = `{"event":"push","delivery":${(deliveries += 1)}}`,
+      ...rest
+    }: Delivery = {},
   ): Promise<{ status: number; text: string; response: Response }> {
     const signature = rest.signature === undefined ? signed(body) : rest.signature;
     const response = await fetch(new URL(path, host.url), {
@@ -836,18 +843,20 @@ describe('trigger deliveries (COR-2169)', () => {
     });
 
     test('a correctly signed delivery reaches receive through the public origin, with no key', async () => {
-      const answer = await deliver(served, {
-        host: PUBLIC_HOST,
-        headers: { 'x-delivery': 'public-1' },
-      });
+      const body = '{"event":"push","delivery":"public-1"}';
+      const answer = await deliver(served, { host: PUBLIC_HOST, body });
       expect(answer.status).toBe(202);
       expect(JSON.parse(answer.text)).toMatchObject({ outcome: 'started' });
-      // The same delivery again is one run: the idempotency key is the plugin's, `fire`'s.
+      // The same signed delivery again is one run: the key is a digest of the signed bytes, so a
+      // replay cannot change it, and a header it adds or drops does not matter.
       const again = await deliver(served, {
         host: PUBLIC_HOST,
-        headers: { 'x-delivery': 'public-1' },
+        body,
+        headers: { 'x-delivery': 'a-new-header' },
       });
       expect(JSON.parse(again.text)).toMatchObject({ outcome: 'duplicate' });
+      const bare = await deliver(served, { host: PUBLIC_HOST, body });
+      expect(JSON.parse(bare.text)).toMatchObject({ outcome: 'duplicate' });
     });
 
     test('the origin the public host names is accepted, a foreign Origin is not', async () => {
@@ -897,12 +906,19 @@ describe('trigger deliveries (COR-2169)', () => {
       expect(decoded.status).toBe(202);
       const before = served.plugin.contexts.length;
       for (const host of [undefined, PUBLIC_HOST]) {
-        for (const path of ['/triggers/..%2Fhost%2Fstatus', '/triggers/hook%00', '/triggers/%20']) {
+        for (const path of ['/triggers/hook%00', '/triggers/%20']) {
           const answer = await deliver(served, { path, ...(host === undefined ? {} : { host }) });
           expect(answer.status, path).toBe(404);
           expect(answer.text, path).toBe('');
         }
       }
+      // An encoded slash decodes to an identifier that names no workflow on loopback; through the
+      // public origin the guard refuses it before the router decodes it.
+      const slash = '/triggers/..%2Fhost%2Fstatus';
+      const local = await deliver(served, { path: slash });
+      expect([local.status, local.text]).toEqual([404, '']);
+      const remote = await deliver(served, { path: slash, host: PUBLIC_HOST });
+      expect(remote.status).toBe(403);
       expect(served.plugin.contexts).toHaveLength(before);
     });
 
@@ -1006,14 +1022,67 @@ describe('trigger deliveries (COR-2169)', () => {
         expect(answer.status, `${method} ${path}`).toBe(403);
         expect(answer.text.startsWith('Forbidden:'), `${method} ${path}`).toBe(true);
       }
-      // A path written with dot segments, as the proxy might forward it, resolves before the guard.
-      const dotted = await raw(served, [
-        'POST /triggers/../bureau/jsonrpc HTTP/1.1',
-        `Host: ${PUBLIC_HOST}`,
-        'Content-Length: 0',
-      ]);
-      expect(dotted.status).toBe(403);
       expect(served.plugin.contexts).toHaveLength(before);
+    });
+
+    // A guard and the handler it protects must see one path: a request whose raw target is
+    // ambiguous (a dot segment, an encoded dot, slash or backslash, a double slash) is refused by
+    // the guard before any prefix is stripped, whatever it resolves to.
+    const AMBIGUOUS_TARGETS = [
+      '/bureau/../triggers/x',
+      '/bureau/a2a/../../triggers/x',
+      '/bureau/%2e%2e/triggers/x',
+      '/bureau/%2E%2E/triggers/x',
+      '/bureau/%2e%2E/triggers/x',
+      '/bureau/./../triggers/x',
+      '/triggers/../bureau/jsonrpc',
+      '/triggers/x/../../bureau/jsonrpc',
+      '/triggers/%2e%2e/bureau/jsonrpc',
+      '/triggers//x',
+      '/bureau//triggers/x',
+      '/bureau/a2a//open',
+      '/triggers/x%2f..%2f..%2fbureau%2fjsonrpc',
+      '/triggers/x%2F..%2F..%2Fbureau%2Fjsonrpc',
+      '/triggers/x%5c..%5cbureau',
+      '/bureau/assets/..%2fjsonrpc',
+      'http://agents.example.test/bureau/../triggers/x',
+      'http://agents.example.test/triggers/../bureau/jsonrpc',
+    ];
+
+    test.each(AMBIGUOUS_TARGETS)(
+      'an ambiguous target %p is refused by the guard before the Bureau or receive',
+      async (target) => {
+        const before = served.plugin.contexts.length;
+        const answer = await raw(
+          served,
+          [`POST ${target} HTTP/1.1`, `Host: ${PUBLIC_HOST}`, 'Content-Length: 0'],
+          '',
+        );
+        // The guard's own 403: Bureau's answer to a path it was handed would be a 404 or a 200.
+        expect(answer.status).toBe(403);
+        expect(answer.text.startsWith('Forbidden:')).toBe(true);
+        expect(served.plugin.contexts).toHaveLength(before);
+      },
+    );
+
+    test('the positive rows hold: a trigger delivery, an A2A card and an asset behave as before', async () => {
+      const delivered = await deliver(served, {
+        host: PUBLIC_HOST,
+        headers: { 'x-delivery': 'rows-1' },
+      });
+      expect(delivered.status).toBe(202);
+      const card = await fetch(
+        new URL('/bureau/a2a/open/.well-known/agent-card.json', served.host.url),
+        {
+          headers: { host: PUBLIC_HOST },
+        },
+      );
+      expect(card.status).toBe(200);
+      const asset = await fetch(new URL('/bureau/assets/none/content', served.host.url), {
+        headers: { host: PUBLIC_HOST },
+      });
+      // An asset needs a credential at the guard: 401 here, never the 403 of a refused path.
+      expect(asset.status).toBe(401);
     });
   });
 

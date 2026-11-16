@@ -4,13 +4,18 @@
  * what its log line and its answers hold. The route through a real host, its guard and a real
  * plugin is `host-triggers.test.ts`.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, test } from 'bun:test';
+
+import { createManualRuntimeServices } from '@lostgradient/bureau';
 
 import {
   MAXIMUM_TRIGGER_BODY_BYTES,
+  TRIGGER_BODY_DEADLINE_MILLISECONDS,
   TRIGGER_ROUTE,
   triggerRoutes,
   type TriggerBureau,
+  type TriggerRouteDependencies,
 } from './trigger-routes.ts';
 
 const URL_OF = 'https://hooks.example.test/triggers/hook';
@@ -26,7 +31,10 @@ function incoming(
 }
 
 /** What `receiveTrigger` saw, and what it answers. */
-function rig(answer: (id: string, request: Request) => Promise<Response> | Response) {
+function rig(
+  answer: (id: string, request: Request) => Promise<Response> | Response,
+  runtime?: TriggerRouteDependencies['runtime'],
+) {
   const calls: Array<{ id: string; request: Request }> = [];
   const warnings: string[] = [];
   const bureau: TriggerBureau = {
@@ -37,9 +45,11 @@ function rig(answer: (id: string, request: Request) => Promise<Response> | Respo
       },
     },
   };
-  const { POST } = triggerRoutes({ bureau, warn: (message) => warnings.push(message) })[
-    TRIGGER_ROUTE
-  ];
+  const { POST } = triggerRoutes({
+    bureau,
+    warn: (message) => warnings.push(message),
+    ...(runtime === undefined ? {} : { runtime }),
+  })[TRIGGER_ROUTE];
   return { calls, warnings, post: POST };
 }
 
@@ -135,6 +145,104 @@ describe('M54: the body cap is the route’s, answered before Bureau is called (
     const response = await post(incoming({}));
     expect(await response.text()).toBe('');
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('the deadline on reading a body (COR-2169)', () => {
+  /** A body that sends `first` and then nothing, as a client that stalls does. */
+  function stalling(first: Uint8Array) {
+    const state = { pulled: 0, cancelled: false };
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          state.pulled += 1;
+          if (state.pulled === 1) controller.enqueue(first);
+          else return new Promise<void>(() => undefined);
+          return undefined;
+        },
+        cancel() {
+          state.cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    return { state, stream };
+  }
+
+  test('is 30 seconds', () => {
+    expect(TRIGGER_BODY_DEADLINE_MILLISECONDS).toBe(30_000);
+  });
+
+  test('a body not fully read within it is aborted and answered 408, without calling receive', async () => {
+    const services = createManualRuntimeServices();
+    const { calls, post } = rig(ok, services);
+    const { stream, state } = stalling(new Uint8Array([1, 2, 3]));
+    const pending = post(incoming({ body: stream, duplex: 'half' }));
+    await services.advance(TRIGGER_BODY_DEADLINE_MILLISECONDS - 1);
+    expect(state.cancelled).toBe(false);
+    expect(calls).toEqual([]);
+    await services.advance(1);
+    const response = await pending;
+    expect(response.status).toBe(408);
+    expect(response.body).toBeNull();
+    expect(state.cancelled).toBe(true);
+    expect(calls).toEqual([]);
+    expect(services.pendingTimers()).toEqual([]);
+  });
+
+  test('the timer is cancelled when the body completes: a slow receive is not a slow body', async () => {
+    const services = createManualRuntimeServices();
+    const release = Promise.withResolvers<void>();
+    const { calls, post } = rig(async () => {
+      await release.promise;
+      return ok();
+    }, services);
+    const pending = post(incoming({ body: 'complete' }));
+    await waitUntil(() => calls.length === 1, { message: 'receive to be called' });
+    expect(services.pendingTimers()).toEqual([]);
+    await services.advance(TRIGGER_BODY_DEADLINE_MILLISECONDS * 2);
+    expect(calls[0]?.request.signal.aborted).toBe(false);
+    release.resolve();
+    const answered = await pending;
+    expect(answered.status).toBe(202);
+  });
+
+  test('a body that fails is answered 500, and its timer is cancelled too', async () => {
+    const services = createManualRuntimeServices();
+    const { warnings, post } = rig(ok, services);
+    const broken = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new TypeError('the client went away');
+      },
+    });
+    const response = await post(incoming({ body: broken, duplex: 'half' }));
+    expect(response.status).toBe(500);
+    expect(services.pendingTimers()).toEqual([]);
+    expect(warnings.join()).not.toContain('went away');
+  });
+});
+
+describe('the request the route snapshots before it reads the body (COR-2169)', () => {
+  test('a header the host changes while the body is read does not reach receive', async () => {
+    const { calls, post } = rig(ok);
+    const request = incoming({
+      headers: { 'x-hub-signature-256': 'sha256=original' },
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          // The body is still arriving: the host's own headers object changes underneath.
+          request.headers.set('x-hub-signature-256', 'sha256=changed');
+          request.headers.set('x-added', 'late');
+          controller.enqueue(new Uint8Array([1]));
+          controller.close();
+        },
+      }),
+      duplex: 'half',
+    });
+    await post(request);
+    const forwarded = calls[0]?.request;
+    expect(forwarded?.headers.get('x-hub-signature-256')).toBe('sha256=original');
+    expect(forwarded?.headers.has('x-added')).toBe(false);
+    expect(new Uint8Array(await forwarded!.arrayBuffer())).toEqual(new Uint8Array([1]));
   });
 });
 
