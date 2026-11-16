@@ -23,11 +23,11 @@ import { generateMcpDiscovery } from './mcp-discovery.ts';
 import { emitBindings, generateOpenApiDocument } from './openapi.ts';
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
-import { createCatalogSnapshot } from './operation-catalog-snapshot.ts';
 import { createOperationRegistry } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
 import type { UnknownRestBinding } from './rest-bindings.ts';
-import { createLiveOperationRegistry } from './rest-bindings.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
+import { createCatalogSnapshot } from './weft-catalog-snapshot.ts';
 
 const DESCRIBED_OPERATION_DESCRIPTION =
   'Longer-form prose describing what this operation does, its key inputs, and notable faults.';
@@ -116,7 +116,10 @@ describe('operation catalog description — OpenAPI', () => {
   });
 
   it('carries real interactive-subset descriptions in the live /openapi.json', () => {
-    const document = generateOpenApiDocument();
+    const document = generateOpenApiDocument({
+      registry: createLiveOperationRegistry(),
+      restBindings: createLiveRestBindings(),
+    });
     const paths = document['paths'] as Record<string, Record<string, Record<string, unknown>>>;
     // weft.workflows.start is POST /api/v1/workflows.
     const startEntry = paths['/api/v1/workflows']?.['post'];

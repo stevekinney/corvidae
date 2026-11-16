@@ -69,26 +69,6 @@ function isReference(value: unknown): value is { readonly $ref: string } {
   return value !== null && typeof value === 'object' && '$ref' in value;
 }
 
-function makeDirectionalSchema(
-  vendor: string,
-  inputShape: Record<string, unknown>,
-  outputShape: Record<string, unknown>,
-): z.ZodType {
-  const schema = z.custom<unknown>();
-  Object.defineProperty(schema, '~standard', {
-    configurable: true,
-    value: {
-      version: 1,
-      vendor,
-      jsonSchema: {
-        input: () => inputShape,
-        output: () => outputShape,
-      },
-    },
-  });
-  return schema;
-}
-
 describe('extractComponentsSchemas', () => {
   it('hoists duplicate schemas to one component and returns refs for both owners', () => {
     const registry = createOperationRegistry([
@@ -188,16 +168,9 @@ describe('extractComponentsSchemas', () => {
   });
 
   it('uses output-direction JSON Schema for Output and Event slots', () => {
-    const outputSchema = makeDirectionalSchema(
-      'output-slot-test',
-      { type: 'object', properties: { accepted: { type: 'boolean' } } },
-      { type: 'string' },
-    );
-    const eventSchema = makeDirectionalSchema(
-      'event-slot-test',
-      { type: 'object', properties: { sequence: { type: 'number' } } },
-      { type: 'integer' },
-    );
+    // A defaulted field is optional on the input side and always present on the output side.
+    const outputSchema = z.object({ accepted: z.boolean().default(true) });
+    const eventSchema = z.object({ sequence: z.number().default(0) });
     const registry = createOperationRegistry([
       makeOperation({
         name: 'weft.directional.stream',
@@ -209,8 +182,12 @@ describe('extractComponentsSchemas', () => {
 
     const helper = extractComponentsSchemas(registry);
 
-    expect(helper.refFor('weft.directional.stream', 'Output')).toEqual({ type: 'string' });
-    expect(helper.refFor('weft.directional.stream', 'Event')).toEqual({ type: 'integer' });
+    expect(helper.refFor('weft.directional.stream', 'Output')).toMatchObject({
+      required: ['accepted'],
+    });
+    expect(helper.refFor('weft.directional.stream', 'Event')).toMatchObject({
+      required: ['sequence'],
+    });
   });
 
   it('suffixes colliding component names when different duplicate groups share one base name', () => {

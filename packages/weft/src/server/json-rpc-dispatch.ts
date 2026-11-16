@@ -16,7 +16,6 @@
  * appropriately.
  */
 
-import { listMcpTools } from '../mcp/tools.ts';
 import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { parseJsonRpcRequest, type ParsedBatchItem, type ParseResult } from './json-rpc-parse.ts';
 import {
@@ -44,10 +43,11 @@ export type DispatchJsonRpcContext = {
   readonly signal?: AbortSignal;
   /**
    * Produces the document `rpc.discover` answers with. Omitted, the
-   * dispatcher generates Weft's own (HTTP and WebSocket methods, with the MCP
-   * tools a duck-typed host can list). A handler that serves a narrower
-   * surface supplies the same document it serves at `/openrpc.json`, so the
-   * two never disagree.
+   * dispatcher generates a plain OpenRPC document of the registry (HTTP and
+   * WebSocket methods, no MCP tools, no server title). Weft's server supplies
+   * its own (`createWeftDiscoverDocument`), and a handler that serves a
+   * narrower surface supplies the same document it serves at `/openrpc.json`,
+   * so the two never disagree.
    */
   readonly discoverDocument?: () => Record<string, unknown>;
 };
@@ -170,11 +170,9 @@ async function dispatchOne(
     return { jsonrpc: JSON_RPC_VERSION, result: context.discoverDocument(), id };
   }
   if (request.method === DISCOVER_METHOD_NAME) {
-    const mcpToolProvider = asMcpToolProvider(context.host);
     const document = generateOpenRpcDocument({
       registry: context.registry,
       transports: ['http', 'websocket'],
-      ...(mcpToolProvider === null ? {} : { mcpTools: listMcpTools(mcpToolProvider) }),
     });
     return { jsonrpc: JSON_RPC_VERSION, result: document, id };
   }
@@ -194,16 +192,4 @@ async function dispatchOne(
     error: { code: error.code, message: error.message, data: error.data },
     id,
   };
-}
-
-function asMcpToolProvider(engine: unknown): Parameters<typeof listMcpTools>[0] | null {
-  if (
-    engine !== null &&
-    typeof engine === 'object' &&
-    'listWorkflowDefinitions' in engine &&
-    typeof engine.listWorkflowDefinitions === 'function'
-  ) {
-    return engine as Parameters<typeof listMcpTools>[0];
-  }
-  return null;
 }

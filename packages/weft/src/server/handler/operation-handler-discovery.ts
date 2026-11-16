@@ -59,7 +59,12 @@ export function createOperationHandlerDocuments(options: {
       }),
     ),
     asyncApi: lazily(() =>
-      generateAsyncApiDocument({ registry, subscriptionTransport: 'http-route', ...info }),
+      generateAsyncApiDocument({
+        registry,
+        restBindings: [],
+        subscriptionTransport: 'http-route',
+        ...info,
+      }),
     ),
   };
 }

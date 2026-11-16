@@ -56,6 +56,21 @@ export type ResponseShape =
       readonly mediaType: 'text/event-stream' | 'application/octet-stream' | 'application/x-ndjson';
     };
 
+/**
+ * The part of a REST binding the documents and the catalog snapshot describe: where the route is
+ * and how its input and response travel. Any {@link RestBinding} satisfies it whatever its input
+ * and output types, so the generic document generators take bindings without naming those types.
+ */
+export type RestBindingDescription = {
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly pathParamNames: ReadonlyArray<string>;
+  readonly operationName: string;
+  readonly transportKind?: 'unary' | 'sse' | 'websocket-subscription';
+  readonly inputSources: Partial<Record<string, ParamSource>>;
+  readonly success: ResponseShape;
+};
+
 export type RestInputContext = RestBodyReadOptions;
 
 /**

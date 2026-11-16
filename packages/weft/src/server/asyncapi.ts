@@ -4,8 +4,6 @@
  * @module server/asyncapi
  */
 
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
-import { VERSION } from '../version.ts';
 import {
   buildOperationEntry,
   buildSseChannel,
@@ -14,17 +12,22 @@ import {
   buildWebSocketMessages,
 } from './asyncapi-channels.ts';
 import { isDiscoverable } from './discovery-filter.ts';
-import { applyDiscoveryInfo, type DiscoveryInfo } from './discovery-info.ts';
+import {
+  applyDiscoveryInfo,
+  resolveDocumentTitleAndVersion,
+  type DiscoveryInfo,
+} from './discovery-info.ts';
 import { compareStrings, isPlainObject, normalizeJsonObject } from './json-schema-utilities.ts';
 import { canonicalJson } from './openapi-canonical-json.ts';
 import type { ErasedOperation, OperationRegistry } from './operation-catalog.ts';
-import { createLiveRestBindings, type UnknownRestBinding } from './rest-bindings.ts';
+import type { RestBindingDescription } from './rest-binding.ts';
 import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX, toOpenApiPath } from './route-model.ts';
+import { zodToJsonSchema } from './zod-json-schema.ts';
 
 export type AsyncApiOptions = {
   registry: OperationRegistry;
-  /** REST bindings used to resolve SSE channel addresses. Defaults to `createLiveRestBindings()`. */
-  restBindings?: ReadonlyArray<UnknownRestBinding>;
+  /** REST bindings used to resolve SSE channel addresses. Unused with `subscriptionTransport: 'http-route'`. */
+  restBindings: ReadonlyArray<RestBindingDescription>;
   title?: string;
   version?: string;
   discoveryInfo?: DiscoveryInfo;
@@ -72,7 +75,7 @@ export function generateAsyncApiDocument(options: AsyncApiOptions): Record<strin
     .filter((operation) => !httpRoute || isServedOverSubscriptionRoute(operation))
     .toSorted((left, right) => compareStrings(left.name, right.name));
 
-  const restBindings = httpRoute ? [] : (options.restBindings ?? createLiveRestBindings());
+  const restBindings = httpRoute ? [] : options.restBindings;
   const sseAddressByOperationName = new Map<string, string>();
   for (const binding of restBindings) {
     if (binding.transportKind === 'sse') {
@@ -126,10 +129,7 @@ export function generateAsyncApiDocument(options: AsyncApiOptions): Record<strin
 
 function buildAsyncApiInfo(options: AsyncApiOptions): Record<string, unknown> {
   return applyDiscoveryInfo(
-    {
-      title: options.title ?? 'Weft Workflow Engine',
-      version: options.version ?? VERSION,
-    },
+    resolveDocumentTitleAndVersion(options, options.discoveryInfo),
     options.discoveryInfo,
   );
 }
@@ -182,20 +182,20 @@ function describeAsyncOperation(
         (path) => path,
       ),
       messageKind: 'stream',
-      operationMessages: buildSseMessages(operation, definitionSchemaToJsonSchema),
+      operationMessages: buildSseMessages(operation, zodToJsonSchema),
     };
   }
   if (operation.kind === 'subscription') {
     return {
       channel: buildWebSocketChannel(operation),
       messageKind: 'subscription',
-      operationMessages: buildWebSocketMessages(operation, definitionSchemaToJsonSchema),
+      operationMessages: buildWebSocketMessages(operation, zodToJsonSchema),
     };
   }
   return {
     channel: buildSseChannel(operation, sseAddressByOperationName.get(operation.name)),
     messageKind: 'stream',
-    operationMessages: buildSseMessages(operation, definitionSchemaToJsonSchema),
+    operationMessages: buildSseMessages(operation, zodToJsonSchema),
   };
 }
 
