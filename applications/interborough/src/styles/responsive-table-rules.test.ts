@@ -33,7 +33,7 @@ describe('the tables that hold long values', () => {
     expect(table).toMatch(/<Table\.HeaderCell>Tags<\/Table\.HeaderCell>/);
   });
 
-  test('a model name ends each line with an ellipsis and keeps the whole of it in the title', async () => {
+  test('a model name ends each line with an ellipsis and keeps the whole of it reachable by focus', async () => {
     const name = await read('../routes/settings/models/model-name.svelte');
     expect(name).toMatch(/<Text as="span" truncate="end" text=\{name\} \/>/);
     expect(name).toMatch(/<Text as="span" truncate="end" text=\{identifier\} \/>/);

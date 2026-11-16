@@ -21,10 +21,13 @@
    * table fits its container at every width (Cinder's `fit`, row 16c): a
    * column whose content never wraps (a status badge with its icon, a
    * shortened ID with its copy button, a time) is a fixed rem width that holds
-   * it, so the ID is never cut a second time; Revision wraps a shortened
-   * revision onto two lines at most, and its comparison badge ends with an
-   * ellipsis beside its own tooltip; Type and Tags share what is left, and each ends a long value with
-   * an ellipsis.
+   * it, so the ID is never cut a second time; Revision holds a shortened
+   * revision (the repeated `sha256:` prefix dropped) on one line, and its
+   * comparison badge ends with an ellipsis beside its own tooltip. One Updated
+   * column carries the run's age and, in its title and for assistive
+   * technology, when it was created, which leaves Type a share of the width
+   * (17%) that tells runs apart at 768px; Tags takes what is left, and each
+   * ends a long value with an ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -47,7 +50,7 @@
   import { Badge, CopyButton, Table, Tooltip } from '@lostgradient/cinder';
   import type { WorkflowSummary } from '@lostgradient/weft';
 
-  import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
+  import { formatRelativeTime, truncateId, truncateRevision } from '../../../lib/format/index.ts';
   import { router, workflowDetailPath, workflowRunPath } from '../../../lib/router.svelte.ts';
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
@@ -132,10 +135,9 @@
     {#if selectionEnabled}<col style="width: 36px" />{/if}
     <col style="width: 7rem" />
     <col style="width: 10.25rem" />
+    <col style="width: 17%" />
+    <col style="width: 6.5rem" />
     <col />
-    <col style="width: 5.5rem" />
-    <col />
-    <col style="width: 4.75rem" />
     <col style="width: 4.75rem" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
@@ -145,8 +147,10 @@
       <Table.HeaderCell>Type</Table.HeaderCell>
       <Table.HeaderCell>Revision</Table.HeaderCell>
       <Table.HeaderCell>Tags</Table.HeaderCell>
-      <Table.HeaderCell align="right">Created</Table.HeaderCell>
-      <Table.HeaderCell align="right">Updated</Table.HeaderCell>
+      <Table.HeaderCell
+        align="right"
+        title="Updated: hover a time to see when the run was created too">Updated</Table.HeaderCell
+      >
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -197,7 +201,7 @@
           {#if row.revision !== undefined}
             <span class="weft-workflows-table__revision-cell">
               <Tooltip text={`Revision (exact executable artifact): ${row.revision}`}>
-                <code class="weft-workflows-table__revision">{truncateId(row.revision)}</code>
+                <code class="weft-workflows-table__revision">{truncateRevision(row.revision)}</code>
               </Tooltip>
               {#if revisionComparison}
                 <RevisionComparisonBadge comparison={revisionComparison(row.type, row.revision)} />
@@ -217,13 +221,14 @@
           {/if}
         </Table.Cell>
         <Table.Cell align="right">
-          <span class="weft-workflows-table__time" title={new Date(row.createdAt).toISOString()}>
-            {formatRelativeTime(row.createdAt)}
-          </span>
-        </Table.Cell>
-        <Table.Cell align="right">
-          <span class="weft-workflows-table__time" title={new Date(row.updatedAt).toISOString()}>
+          <span
+            class="weft-workflows-table__time"
+            title={`Updated ${new Date(row.updatedAt).toISOString()}. Created ${new Date(row.createdAt).toISOString()}.`}
+          >
             {formatRelativeTime(row.updatedAt)}
+            <span class="weft-workflows-table__created"
+              >, created {formatRelativeTime(row.createdAt)}</span
+            >
           </span>
         </Table.Cell>
       </Table.Row>

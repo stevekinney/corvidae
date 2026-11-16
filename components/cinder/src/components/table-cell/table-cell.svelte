@@ -20,6 +20,7 @@
   import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import Tooltip from '../tooltip/tooltip.svelte';
 
   let {
     align = 'left',
@@ -46,6 +47,16 @@
   // cell's content changes.
   let renderedText = $state<string | undefined>();
 
+  // The cut text is focusable and opens a tooltip with the whole text, so a keyboard or touch user
+  // reaches it too, in a row as well as in a link inside the cell.
+  let textElement = $state<HTMLElement | null>(null);
+  const holdTextElement: Attachment<HTMLElement> = (element) => {
+    textElement = element;
+    return () => {
+      if (textElement === element) textElement = null;
+    };
+  };
+
   const readRenderedText: Attachment<HTMLElement> = (element) => {
     const read = (): void => {
       const text = element.textContent?.trim();
@@ -70,9 +81,16 @@
   data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
 >
   {#if truncate}
-    <span class="cinder-table__cell-text" title={title ?? renderedText} {@attach readRenderedText}>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
+    <span
+      class="cinder-table__cell-text"
+      tabindex="0"
+      {@attach readRenderedText}
+      {@attach holdTextElement}
+    >
       {@render children?.()}
     </span>
+    <Tooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

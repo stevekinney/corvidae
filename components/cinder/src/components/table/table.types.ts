@@ -115,7 +115,7 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * Fits the table to its container's width so a long value never makes it scroll sideways. The
    * columns share the width (a fixed table layout: set a column's width on its header cell or a
    * `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full
-   * text in the `title`, and any other cell wraps its text. Leave it off for a table whose columns
+   * text in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns
    * should keep their natural widths and scroll when they do not fit.
    * @default false
    */

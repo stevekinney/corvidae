@@ -41,7 +41,7 @@ const schema = {
     fit: {
       type: 'boolean',
       description:
-        "Fits the table to its container's width so a long value never makes it scroll sideways. The\ncolumns share the width (a fixed table layout: set a column's width on its header cell or a\n`<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full\ntext in the `title`, and any other cell wraps its text. Leave it off for a table whose columns\nshould keep their natural widths and scroll when they do not fit.",
+        "Fits the table to its container's width so a long value never makes it scroll sideways. The\ncolumns share the width (a fixed table layout: set a column's width on its header cell or a\n`<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full\ntext in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns\nshould keep their natural widths and scroll when they do not fit.",
       default: false,
     },
     stackBelow: {

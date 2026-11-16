@@ -338,11 +338,11 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
   '/settings/models': async (page) => {
     await expect(
-      page.locator(`.ib-model-name__identifier .cinder-text[title="${LONG_MODEL}"]`),
+      page.locator('.ib-model-name__identifier .cinder-text', { hasText: LONG_MODEL }),
     ).toBeVisible();
   },
   '/health/runs': async (page) => {
-    await expect(page.locator(`.cinder-badge__label[title="${LONG_TAG}"]`).first()).toBeVisible();
+    await expect(page.locator('.cinder-badge__label', { hasText: LONG_TAG }).first()).toBeVisible();
   },
   // The test delivery's line opens to the tries, each of which got no answer from the address.
   '/hooks/:hook': async (page) => {
@@ -792,6 +792,86 @@ test.describe('the measurement', () => {
     expect(clipped.join('\n')).toContain('cut off: div holds');
   });
 });
+
+for (const pattern of ['/health/runs', '/workflows/:workflow/runs']) {
+  test(`${pattern} at 768 pixels: one Updated column, a Type that tells runs apart, one line for the revision`, async ({
+    page,
+  }) => {
+    await settle(page, pattern, 768);
+    const table = page.locator('table.weft-workflows-table');
+    await expect(table).toBeVisible();
+
+    // One Updated column in place of Created and Updated, with the Created time in the titles.
+    const headers = (await table.locator('thead tr > *').allInnerTexts()).map((text) =>
+      text.trim(),
+    );
+    expect(headers).toContain('Updated');
+    expect(headers).not.toContain('Created');
+    await expect(table.locator('thead th', { hasText: 'Updated' })).toHaveAttribute(
+      'title',
+      /created/i,
+    );
+    const times = table.locator('tbody .weft-workflows-table__time');
+    expect(await times.count()).toBeGreaterThan(0);
+    for (const title of await times.evaluateAll((all) =>
+      all.map((element) => element.getAttribute('title') ?? ''),
+    )) {
+      expect(title).toMatch(/Created \d{4}-\d{2}-\d{2}T/);
+    }
+
+    // Type shows enough of its text that two runs of different types never read the same.
+    const typeColumn = headers.indexOf('Type');
+    expect(typeColumn).toBeGreaterThanOrEqual(0);
+    const shown = await table.locator('tbody tr').evaluateAll((rows, column) => {
+      return rows.map((row) => {
+        const text = row.children[column]?.querySelector<HTMLElement>('.cinder-table__cell-text');
+        if (text === null || text === undefined) return { full: '', visible: '' };
+        const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node !== null && (node.textContent ?? '').trim() === '') node = walker.nextNode();
+        const full = (node?.textContent ?? '').trim();
+        if (node === null || text.scrollWidth <= text.clientWidth) return { full, visible: full };
+        // A character is shown when it ends inside the box, less room for the ellipsis.
+        const box = text.getBoundingClientRect();
+        const room = box.right - Number.parseFloat(getComputedStyle(text).fontSize);
+        const characters = (node.textContent ?? '').trimStart();
+        const offset = (node.textContent ?? '').length - characters.length;
+        let count = 0;
+        for (let index = 0; index < full.length; index += 1) {
+          const range = document.createRange();
+          range.setStart(node, offset + index);
+          range.setEnd(node, offset + index + 1);
+          if (range.getBoundingClientRect().right > room) break;
+          count += 1;
+        }
+        return { full, visible: `${full.slice(0, count)}…` };
+      });
+    }, typeColumn);
+    expect(shown.length).toBeGreaterThan(0);
+    const visibleByType = new Map<string, string>();
+    for (const { full, visible } of shown) visibleByType.set(full, visible);
+    expect(
+      new Set(visibleByType.values()).size,
+      `Type shows ${JSON.stringify([...visibleByType])}`,
+    ).toBe(visibleByType.size);
+
+    // The shortened revision is one line in its column.
+    const revision = table.locator('.weft-workflows-table__revision').first();
+    await expect(revision).toBeVisible();
+    const measured = await revision.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        whiteSpace: style.whiteSpace,
+        height: element.getBoundingClientRect().height,
+        fontSize: Number.parseFloat(style.fontSize),
+        clipped: element.scrollWidth > element.clientWidth,
+      };
+    });
+    expect(measured.whiteSpace).toBe('nowrap');
+    expect(measured.height).toBeLessThan(measured.fontSize * 2);
+    expect(measured.clipped).toBe(false);
+  });
+}
 
 for (const route of routes) {
   if (route.redirect !== undefined) continue;

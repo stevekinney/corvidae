@@ -500,14 +500,14 @@ describe('the open event', () => {
     expect(detail.querySelector('button')?.textContent?.trim()).toBe(AUDIT_COPY.copyKey);
     // The whole value is shown once, under its heading, and not again as a fact.
     expect(detail.querySelectorAll('dl')).toHaveLength(0);
-    // The table cell keeps the full text in its title and ends it with an ellipsis, on one line.
+    // The table cell keeps the full text, reachable by focus, and ends it with an ellipsis, on one line.
     const cell = container.querySelector(
       'tbody td:last-child, tbody tr[data-cinder-row-id] td:last-child',
     );
     expect(cell?.textContent).toContain('Storage › ');
-    expect(cell?.querySelector('.cinder-table__cell-text')?.getAttribute('title')).toBe(
-      `Storage › ${key}`,
-    );
+    const cutText = cell?.querySelector('.cinder-table__cell-text');
+    expect(cutText?.textContent?.trim()).toBe(`Storage › ${key}`);
+    expect(cutText?.getAttribute('tabindex')).toBe('0');
   });
 
   test('the pane says to select an event when none is open, after the filters change', async () => {

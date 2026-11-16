@@ -76,7 +76,7 @@ describe('WorkflowTable', () => {
       props: { rows: [summary({ revision: 'order-processing-rev-abcdefghijk' })] },
     });
 
-    expect(getByText('order-pr…hijk')).not.toBeNull();
+    expect(getByText('order-…hijk')).not.toBeNull();
     expect(
       getByText('Revision (exact executable artifact): order-processing-rev-abcdefghijk'),
     ).not.toBeNull();

@@ -344,7 +344,7 @@
 
   /* ----------------------------------------
  * Truncation — a cell with `truncate` keeps its text on one line and ends it
- * with an ellipsis, with the full text in the `title`. The text sits in a block
+ * with an ellipsis, with the full text in a tooltip. The text sits in a block
  * with a maximum inline size, which bounds the width the column asks for: a
  * 2,000px value cannot widen the table, whatever the table layout.
  * ---------------------------------------- */
@@ -356,6 +356,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The cut text takes focus to open its tooltip with the whole text. */
+  .cinder-table__cell-text:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* ----------------------------------------

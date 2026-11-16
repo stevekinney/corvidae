@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -8,8 +8,13 @@ import { setupHappyDom } from '@lostgradient/testing';
 // so we register happy-dom's globals first and then dynamic-import testing-library below.
 setupHappyDom();
 
-const { render, waitFor } = await import('@testing-library/svelte');
+const { render, waitFor, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Badge } = await import('./badge.svelte');
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
 // createRawSnippet must be imported dynamically so Bun's svelte plugin (which patches
 // the svelte package to resolve to the client build) applies before this import resolves.
 // A top-level static import of 'svelte' resolves to svelte/index-server.js in Bun's
@@ -250,13 +255,45 @@ describe('Badge — hugs its text inside a grid or flex parent (COR-1821)', () =
 describe('Badge truncate', () => {
   const longTag = `responsive-tag-${'t'.repeat(200)}`;
 
-  test('wraps the label so it can end with an ellipsis, with the whole label in the title', async () => {
+  test('wraps the label so it can end with an ellipsis, focusable, with no native title', async () => {
     const { container } = render(Badge, { truncate: true, children: textSnippet(longTag) });
     const badge = container.querySelector('.cinder-badge');
     expect(badge?.hasAttribute('data-cinder-truncate')).toBe(true);
-    const label = badge?.querySelector('.cinder-badge__label');
-    expect(label?.textContent?.trim()).toBe(longTag);
-    await waitFor(() => expect(label?.getAttribute('title')).toBe(longTag));
+    const label = badge?.querySelector('.cinder-badge__label') as HTMLElement;
+    expect(label.textContent?.trim()).toBe(longTag);
+    expect(label.hasAttribute('title')).toBe(false);
+    expect(label.getAttribute('tabindex')).toBe('0');
+  });
+
+  test('opens the whole label in a tooltip on keyboard focus', async () => {
+    const { container } = render(Badge, { truncate: true, children: textSnippet(longTag) });
+    const label = container.querySelector('.cinder-badge__label') as HTMLElement;
+    await fireEvent.focus(label);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longTag),
+    );
+  });
+
+  test('is reachable by focus inside a link', async () => {
+    const link = document.createElement('a');
+    link.href = '#tag';
+    document.body.append(link);
+    render(Badge, { target: link, props: { truncate: true, children: textSnippet(longTag) } });
+    const label = link.querySelector('.cinder-badge__label') as HTMLElement;
+    await fireEvent.focus(label);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longTag),
+    );
+  });
+
+  test('inside a Tooltip it shows that tooltip alone: one hover text, no title', async () => {
+    const { default: Fixture } = await import('./badge-in-tooltip.fixture.svelte');
+    const { container } = render(Fixture, { label: longTag });
+    const label = container.querySelector('.cinder-badge__label') as HTMLElement;
+    expect(label.hasAttribute('title')).toBe(false);
+    await fireEvent.focus(label);
+    await waitFor(() => expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1));
+    expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe('Outer hint');
   });
 
   test('leaves a badge without truncate as it was', () => {

@@ -23,7 +23,7 @@ const schema = {
     truncate: {
       type: 'boolean',
       description:
-        'Keeps the badge within the width it is given and ends a long label with an ellipsis, with the\nfull label in the `title`.',
+        'Keeps the badge within the width it is given and ends a long label with an ellipsis, with the\nfull label in a tooltip on hover and focus.',
       default: false,
     },
     subscriptionState: {
