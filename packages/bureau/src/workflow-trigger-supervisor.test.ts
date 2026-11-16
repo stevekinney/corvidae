@@ -3122,6 +3122,41 @@ describe('the trigger events a supervisor publishes (COR-2250)', () => {
     expect(JSON.stringify(events)).not.toContain('sk-live');
   });
 
+  for (const [name, thrown, code] of [
+    [
+      'a failed apply',
+      new WorkflowApplyError(new Error('the engine sk-live-0123')),
+      'WORKFLOW_APPLY_FAILED',
+    ],
+    [
+      'a code that is free text',
+      Object.assign(new Error('boom'), { code: 'not an identifier sk-live-0123' }),
+      'INTERNAL_ERROR',
+    ],
+    ['an error with no code', new Error('no code sk-live-0123'), 'INTERNAL_ERROR'],
+    ['a thrown value that is not an error', 'sk-live-0123', 'INTERNAL_ERROR'],
+  ] as const) {
+    it(`names ${name} as ${code}`, async () => {
+      const events: TriggerEventRecord[] = [];
+      const contexts: PluginTriggerContext[] = [];
+      const kind = stateKind(contexts);
+      const supervisor = createWorkflowTriggerSupervisor({
+        fire: async () => {
+          throw thrown;
+        },
+        diagnose: () => undefined,
+        storage: new MemoryStorage(),
+        ...unobserved,
+        publish: (event) => void events.push(event),
+      });
+      cleanups.push(() => supervisor.close());
+      await supervisor.reconcile(wantedKind(kind, { a: {} }), new Set());
+      await rejectionOf(contexts[0]!.fire({}));
+      expect(events.at(-1)).toMatchObject({ outcome: 'refused', errorCode: code });
+      expect(JSON.stringify(events)).not.toContain('sk-live');
+    });
+  }
+
   it('carries exactly workflowId, trigger, version, outcome, runId and errorCode: never the payload or the idempotency key (AC2)', async () => {
     let answer: PluginTriggerOutcome = { outcome: 'started', runId: 'run-1' };
     const rig = publishing(async () => answer);
