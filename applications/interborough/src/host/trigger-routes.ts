@@ -155,6 +155,7 @@ export function triggerRoutes(dependencies: TriggerRouteDependencies) {
         try {
           // The deadline: a body not fully read in time is cut off, and the timer goes with it.
           const expired = Promise.withResolvers<'timeout'>();
+          // poll-reason: timer
           const timer = timers.setTimeout(
             () => expired.resolve('timeout'),
             TRIGGER_BODY_DEADLINE_MILLISECONDS,
