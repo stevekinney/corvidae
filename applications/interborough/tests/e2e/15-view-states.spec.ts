@@ -979,3 +979,271 @@ test('a miss on an asset, the Bureau, or the host is still a 404, not the shell'
     expect(response.status(), path).toBe(404);
   }
 });
+
+/*
+ * COR-2171: what a workflow file's plugin trigger is doing, for the design review, which
+ * `--grep "trigger state"` selects. The e2e host loads no plugin with a trigger kind, so a real
+ * file (`TRIGGER_FILE`, made with a built-in schedule) is answered as one whose trigger is a plugin
+ * kind: `bureau.workflows.get` gets the kind and the listener, and `bureau.plugins.contributions`
+ * gets the kinds. Every other read is the host's own.
+ */
+const TRIGGER_FILE = 'e2e-trigger-state';
+const LISTENING_KIND = 'linear:issues';
+const RECEIVING_KIND = 'github:webhook';
+
+/** A listener of each state, as `bureau.workflows.get` carries it. */
+function triggerListener(state: string): Record<string, unknown> {
+  const since = '2026-11-16T09:30:00.000Z';
+  return state === 'failed'
+    ? {
+        state,
+        since,
+        code: 'start-failed',
+        lastFiredAt: null,
+        retryAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      }
+    : { state, since, code: null, lastFiredAt: null, retryAt: null };
+}
+
+/**
+ * Answers some Bureau methods with what the host answered, changed by `changes`, and lets every
+ * other request through.
+ */
+async function changeBureau(
+  page: Page,
+  changes: Readonly<Record<string, (result: unknown, params: Record<string, unknown>) => unknown>>,
+): Promise<void> {
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      params?: Record<string, unknown>;
+    };
+    const change = body.method === undefined ? undefined : changes[body.method];
+    if (change === undefined) {
+      await route.fallback();
+      return;
+    }
+    try {
+      const response = await route.fetch();
+      const answer = (await response.json()) as { result?: unknown };
+      await route.fulfill({
+        response,
+        json: { ...answer, result: change(answer.result, body.params ?? {}) },
+      });
+    } catch {
+      await route.abort().catch(() => undefined);
+    }
+  });
+}
+
+/** The changes that make `TRIGGER_FILE` a file whose trigger is `kind`, with `listener`. */
+function asPluginTrigger(
+  kind: string,
+  listener: Record<string, unknown>,
+): Readonly<Record<string, (result: unknown, params: Record<string, unknown>) => unknown>> {
+  const withKind = (file: Record<string, unknown>) => {
+    const text = typeof file['text'] === 'string' ? file['text'] : '{}';
+    const document = JSON.parse(text) as Record<string, unknown>;
+    return {
+      ...file,
+      trigger: { kind },
+      listener,
+      text: `${JSON.stringify({ ...document, trigger: { kind } }, null, 2)}\n`,
+    };
+  };
+  return {
+    'bureau.workflows.get': (result, params) =>
+      params['id'] === TRIGGER_FILE ? withKind(result as Record<string, unknown>) : result,
+    'bureau.plugins.contributions': (result) => {
+      const kinds = result as { triggers: unknown[] };
+      return {
+        ...kinds,
+        triggers: [
+          ...kinds.triggers,
+          {
+            plugin: 'linear',
+            id: LISTENING_KIND,
+            description: 'An issue changes in Linear.',
+            version: '1.0.0',
+            receives: false,
+            configuration: null,
+          },
+          {
+            plugin: 'github',
+            id: RECEIVING_KIND,
+            description: 'GitHub sends a push or a pull request.',
+            version: '1.0.0',
+            receives: true,
+            configuration: null,
+          },
+        ],
+      };
+    },
+  };
+}
+
+test.describe('trigger state', () => {
+  test.beforeAll(async ({ request }) => {
+    await bureauCall(request, 'bureau.workflows.create', {
+      id: TRIGGER_FILE,
+      definition: {
+        trigger: { kind: 'schedule', spec: '24h' },
+        steps: [{ kind: 'await-signal', signal: 'never-sent' }],
+      },
+    });
+  });
+
+  test.afterAll(async ({ request }) => {
+    const read = (await bureauCall(request, 'bureau.workflows.get', { id: TRIGGER_FILE })) as
+      { hash?: string | null } | undefined;
+    if (typeof read?.hash === 'string') {
+      await bureauCall(request, 'bureau.workflows.delete', {
+        id: TRIGGER_FILE,
+        expectedHash: read.hash,
+      });
+    }
+  });
+
+  const path = `/workflows/${TRIGGER_FILE}`;
+  const status = (page: Page) => page.getByTestId('workflow-trigger-listener');
+
+  for (const width of WIDTHS) {
+    for (const state of [
+      'listening',
+      'ready',
+      'standby',
+      'waiting-for-secret',
+      'failed',
+      'stopped',
+    ] as const) {
+      test(`trigger state: the workflow page's status line, ${state}, at ${width} pixels`, async ({
+        page,
+        checkA11y,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await changeBureau(page, asPluginTrigger(LISTENING_KIND, triggerListener(state)));
+        await page.goto(path);
+        await expect(status(page).locator('[data-state]')).toHaveAttribute('data-state', state);
+        await expect(status(page)).toHaveAttribute('data-kinds', 'loaded');
+        if (state === 'failed') {
+          await expect(status(page).getByTestId('workflow-trigger-code')).toHaveText(
+            'start-failed',
+          );
+          await expect(status(page).getByRole('button', { name: 'Retry now' })).toBeVisible();
+        }
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow',
+          state: `trigger-${state}`,
+          source: '15-view-states.spec.ts',
+        });
+        await checkA11y(`trigger state ${state} at ${width}px`);
+      });
+    }
+
+    test(`trigger state: a trigger that receives, with its address and a copy control, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await changeBureau(page, asPluginTrigger(RECEIVING_KIND, triggerListener('ready')));
+      await page.goto(path);
+      await expect(status(page).getByTestId('workflow-trigger-address')).toHaveText(
+        new RegExp(`/triggers/${TRIGGER_FILE}$`),
+      );
+      await expect(status(page).getByRole('button', { name: 'Copy the address' })).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow',
+        state: 'trigger-receives',
+        source: '15-view-states.spec.ts',
+      });
+      await checkA11y(`trigger state receives at ${width}px`);
+    });
+
+    test(`trigger state: a workflow with no plugin trigger shows no status line, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(page.locator('[data-view="workflows"]')).toHaveAttribute('data-state', 'ready');
+      await expect(status(page)).toHaveCount(0);
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow',
+        state: 'trigger-none',
+        source: '15-view-states.spec.ts',
+      });
+      await checkA11y(`trigger state none at ${width}px`);
+    });
+
+    test(`trigger state: a trigger-started run on the workflow's Runs tab, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const run = {
+        id: 'trigger-started-run',
+        workflow: TRIGGER_FILE,
+        workflowVersion: '1.0.0',
+        status: 'completed',
+        createdAt: '2026-11-16T09:31:00.000Z',
+        updatedAt: '2026-11-16T09:31:04.000Z',
+        origin: { kind: 'trigger', plugin: 'github', workflowId: TRIGGER_FILE },
+      };
+      await changeBureau(page, {
+        ...asPluginTrigger(RECEIVING_KIND, triggerListener('ready')),
+        'bureau.workflows.runs.list': (result, params) =>
+          params['workflow'] === TRIGGER_FILE ? { ...(result as object), runs: [run] } : result,
+      });
+      await page.goto(`${path}?tab=runs`);
+      await expect(
+        page.locator('main').getByText(TASK_COPY.list.triggerStarted('github')).first(),
+      ).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/workflows/:workflow?tab=runs',
+        state: 'trigger-started-run',
+        source: '15-view-states.spec.ts',
+      });
+      await checkA11y(`trigger state workflow runs tab at ${width}px`);
+    });
+
+    test(`trigger state: a trigger-started run on /runs, with Started by and line two, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      // A run shaped as the Bureau shapes a task, from one the host lists, started by a trigger.
+      let listed = (await bureauCall(request, 'bureau.tasks.list', { limit: 1 })) as {
+        tasks: Record<string, unknown>[];
+      };
+      if (listed.tasks.length === 0) {
+        await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('trigger-state'), 'Hello');
+        listed = (await bureauCall(request, 'bureau.tasks.list', { limit: 1 })) as {
+          tasks: Record<string, unknown>[];
+        };
+      }
+      const task = {
+        ...listed.tasks[0],
+        id: 'trigger-started-task',
+        agentName: null,
+        origin: { kind: 'trigger', plugin: 'github', workflowId: TRIGGER_FILE },
+        status: 'completed',
+        finishReason: 'stop',
+        statusMessage: null,
+        openWaits: [],
+      };
+      await changeBureau(page, {
+        'bureau.tasks.list': (result) => ({ ...(result as object), tasks: [task] }),
+      });
+      await page.goto('/runs');
+      await expect(page.getByText(TASK_COPY.list.triggerStarted('github')).first()).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/runs',
+        state: 'trigger-started-run',
+        source: '15-view-states.spec.ts',
+      });
+      await checkA11y(`trigger state runs list at ${width}px`);
+    });
+  }
+});
