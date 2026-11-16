@@ -284,6 +284,7 @@ const m1StaleGuardRemovedTwice = await scenario(async (root) => {
   const dInside = gate();
   const releaseD = gate();
   let d: Promise<Settled<Admission>> | undefined;
+  let bPaused = false;
   let dReclaiming = false;
   let guardAfterBRemoval: boolean | undefined;
   let readsBesideD = 0;
@@ -293,9 +294,11 @@ const m1StaleGuardRemovedTwice = await scenario(async (root) => {
         methods: ['rm', 'rmdir'],
         matches: ([path]) => path === guard,
         before: async () => {
+          bPaused = true;
           await real.rmdir(guard);
           d = settle(admission(directory, 'A', 'D'));
           await Promise.race([dInside.opened, d]);
+          bPaused = false;
         },
         after: async () => {
           guardAfterBRemoval = await exists(guard);
@@ -303,7 +306,7 @@ const m1StaleGuardRemovedTwice = await scenario(async (root) => {
       },
       {
         methods: ['readFile'],
-        matches: ([path]) => path === ownerFile,
+        matches: ([path]) => path === ownerFile && bPaused,
         before: async () => {
           dReclaiming = true;
           dInside.open();
@@ -354,6 +357,7 @@ const m1GuardReplacedWhileInside = await scenario(async (root) => {
   const dInside = gate();
   const releaseD = gate();
   let d: Promise<Settled<Admission>> | undefined;
+  let bPaused = false;
   let dReclaiming = false;
   let counting = false;
   let readsBesideD = 0;
@@ -363,14 +367,16 @@ const m1GuardReplacedWhileInside = await scenario(async (root) => {
         methods: ['readFile'],
         matches: ([path]) => path === ownerFile,
         before: async () => {
+          bPaused = true;
           await real.rm(guard, { recursive: true, force: true });
           d = settle(admission(directory, 'A', 'D'));
           await Promise.race([dInside.opened, d]);
+          bPaused = false;
         },
       },
       {
         methods: ['readFile'],
-        matches: ([path]) => path === ownerFile,
+        matches: ([path]) => path === ownerFile && bPaused,
         before: async () => {
           dReclaiming = true;
           dInside.open();
@@ -423,6 +429,7 @@ const m2StaleGuardRemovedTwice = await scenario(async (root) => {
   const dInside = gate();
   const releaseD = gate();
   let d: Promise<Settled<unknown>> | undefined;
+  let bPaused = false;
   let dReclaiming = false;
   let guardAfterBRemoval: boolean | undefined;
   let readsBesideD = 0;
@@ -432,9 +439,11 @@ const m2StaleGuardRemovedTwice = await scenario(async (root) => {
         methods: ['rm', 'rmdir'],
         matches: ([path]) => path === guard,
         before: async () => {
+          bPaused = true;
           await real.rmdir(guard);
           d = settle(reclaimAbandoned(lock, 10_000));
           await Promise.race([dInside.opened, d]);
+          bPaused = false;
         },
         after: async () => {
           guardAfterBRemoval = await exists(guard);
@@ -442,7 +451,7 @@ const m2StaleGuardRemovedTwice = await scenario(async (root) => {
       },
       {
         methods: ['readFile'],
-        matches: ([path]) => path === ownerFile,
+        matches: ([path]) => path === ownerFile && bPaused,
         before: async () => {
           dReclaiming = true;
           dInside.open();
@@ -490,21 +499,24 @@ const m2GuardReplacedWhileInside = await scenario(async (root) => {
   expect(await installDirectly(lock, goneHolder('gone'))).toBe(true);
   const dInside = gate();
   let d: Promise<Settled<unknown>> | undefined;
+  let bPaused = false;
   let dReclaimedBesideB = false;
   const dispose = interceptFileSystem([
     {
       methods: ['readFile'],
       matches: ([path]) => path === ownerFile,
       before: async () => {
+        bPaused = true;
         await age(guard);
         await real.rmdir(guard).catch(() => undefined);
         d = settle(reclaimAbandoned(lock, 10_000));
         await Promise.race([dInside.opened, d]);
+        bPaused = false;
       },
     },
     {
       methods: ['readFile'],
-      matches: ([path]) => path === ownerFile,
+      matches: ([path]) => path === ownerFile && bPaused,
       before: async () => {
         dReclaimedBesideB = true;
         dInside.open();
@@ -654,6 +666,7 @@ const m4StalledInstaller = await scenario(async (root) => {
 
 const m5ReleaseKilledPidReused = await scenario(async (root) => {
   const directory = join(root, 'places');
+  await real.mkdir(directory, { recursive: true });
   const lock = join(directory, 'admission');
   const releaseRan = hostTable([
     [600, entry(300, 'bun scripts/host-sessions.ts release', 'Mon Nov 16 10:00:00 2026')],
@@ -684,7 +697,6 @@ const m5ReleaseKilledPidReused = await scenario(async (root) => {
   } finally {
     dispose();
   }
-  expect(recorded?.pidStartedAt).toBe('Mon Nov 16 10:00:00 2026');
   // The release was killed holding the lock, and its pid now runs something else.
   expect(recorded !== undefined && (await installDirectly(lock, recorded))).toBe(true);
   const time = boundedClock(5);
@@ -695,10 +707,11 @@ const m5ReleaseKilledPidReused = await scenario(async (root) => {
       sleep: time.sleep,
     }),
   );
-  expect({ admitted: admitted(next), waits: time.state.sleeps }).toEqual({
-    admitted: true,
-    waits: 0,
-  });
+  expect({
+    recordedStartTime: recorded?.pidStartedAt,
+    admitted: admitted(next),
+    waits: time.state.sleeps,
+  }).toEqual({ recordedStartTime: 'Mon Nov 16 10:00:00 2026', admitted: true, waits: 0 });
 });
 
 // --- M6: an owner record from an older checkout, without a start time ---------------------------
@@ -803,10 +816,12 @@ function explore(
 }
 
 const m8ExplorationCoversExpiryAndRelease = await scenario(async () => {
-  expect(explore('expired')).toEqual([]);
-  expect(explore('released')).toEqual([]);
-  expect(explore('expired', without('expire')).length).toBeGreaterThan(0);
-  expect(explore('released', without('release')).length).toBeGreaterThan(0);
+  expect({
+    expiry: explore('expired'),
+    release: explore('released'),
+    withoutExpiryFails: explore('expired', without('expire')).length > 0,
+    withoutReleaseFails: explore('released', without('release')).length > 0,
+  }).toEqual({ expiry: [], release: [], withoutExpiryFails: true, withoutReleaseFails: true });
 });
 
 describe('the COR-2463 outcome matrix', () => {

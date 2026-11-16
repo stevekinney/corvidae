@@ -593,6 +593,8 @@ describe('the hook', () => {
 
   test('events appended at once each land whole, in one order', async () => {
     const directory = await scratch();
+    // An append never creates a ledger; recording the session's holder does, which this skips.
+    await mkdir(join(directory, 'sessions', 'session-A'), { recursive: true });
     const appends = Array.from({ length: 20 }, (_, index) =>
       appendEvent(directory, 'session-A', {
         kind: 'admit',

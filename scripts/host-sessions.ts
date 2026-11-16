@@ -29,7 +29,7 @@
  * `--directory=<path>` uses another places directory, for a check by hand.
  */
 
-import { link, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -54,10 +54,11 @@ import {
   ancestorsOf,
   enqueue,
   gitCommonDirectory,
-  readOwner,
   readTicket,
+  reclaimAbandoned,
   removeLock,
   tryInstall,
+  type LivenessJudge,
   type OwnerRecord,
 } from './run-exclusively.ts';
 
@@ -119,19 +120,25 @@ async function readJson<T>(path: string): Promise<T | undefined> {
   }
 }
 
+/**
+ * One ledger as it stands. The events are read before the holder: every ledger records its holder
+ * before its first event and replaces it only by a rename, so a ledger read with events and no
+ * holder has none, and is not one caught between its holder and its first event.
+ */
 async function readLedger(path: string): Promise<SessionLedger | undefined> {
-  const holder = await readJson<OwnerRecord & { sessionId?: string }>(join(path, holderFileName));
   const names = await readdir(join(path, eventsDirectoryName)).catch(() => [] as string[]);
   const events: SessionEvent[] = [];
-  let sessionId = holder?.sessionId;
+  let eventSessionId: string | undefined;
   for (const name of names.filter((entry) => eventFile.test(entry)).toSorted()) {
     const event = await readJson<SessionEvent & { sessionId?: string }>(
       join(path, eventsDirectoryName, name),
     );
     if (event === undefined) continue;
-    sessionId ??= event.sessionId;
+    eventSessionId ??= event.sessionId;
     events.push(event);
   }
+  const holder = await readJson<OwnerRecord & { sessionId?: string }>(join(path, holderFileName));
+  const sessionId = holder?.sessionId ?? eventSessionId;
   if (holder === undefined && events.length === 0) return undefined;
   return {
     sessionId: sessionId ?? '',
@@ -153,22 +160,31 @@ export async function readSessions(directory: string): Promise<SessionLedger[]> 
   return ledgers;
 }
 
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
 /**
- * Appends one event to a session's ledger as the next numbered file. The file is written aside and
- * linked into place, which fails if another hook took that number first, so every event lands
- * whole and in one order.
+ * Appends one event to a session's ledger as the next numbered file, and resolves to whether it
+ * did. The file is written aside and linked into place, which fails if another hook took that
+ * number first, so every event lands whole and in one order. An append never creates a ledger: a
+ * ledger is created by recording its holder, and one removed meanwhile (its process gone, or
+ * released by hand) holds nothing, so the event is dropped rather than recreating it without its
+ * holder (COR-2463).
  */
 export async function appendEvent(
   directory: string,
   sessionId: string,
   event: SessionEvent,
-): Promise<void> {
+): Promise<boolean> {
   const ledger = ledgerDirectory(directory, sessionId);
   const events = join(ledger, eventsDirectoryName);
-  await mkdir(events, { recursive: true });
   const staged = join(ledger, `staged-${crypto.randomUUID()}.json`);
-  await writeFile(staged, JSON.stringify({ ...event, sessionId }));
   try {
+    await mkdir(events).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    });
+    await writeFile(staged, JSON.stringify({ ...event, sessionId }));
     for (;;) {
       const listed = await readdir(events);
       const names = listed.filter((name) => eventFile.test(name));
@@ -176,25 +192,61 @@ export async function appendEvent(
       const next = (last === undefined ? 0 : Number(last.slice(0, 12))) + 1;
       try {
         await link(staged, join(events, `${String(next).padStart(12, '0')}.json`));
-        return;
+        return true;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       }
     }
+  } catch (error) {
+    if (isMissing(error)) return false;
+    throw error;
   } finally {
     await rm(staged, { force: true });
   }
 }
 
-/** Records the session's process, in one rename, unless the ledger already names that process. */
+/**
+ * Records the session's process, in one rename, unless the ledger already names that process.
+ * This is what creates a ledger; a ledger removed while the holder was being written is created
+ * again, since the holder is current.
+ */
 async function recordHolder(directory: string, sessionId: string, holder: OwnerRecord) {
   const ledger = ledgerDirectory(directory, sessionId);
   const current = await readJson<OwnerRecord>(join(ledger, holderFileName));
   if (current?.pid === holder.pid && current.pidStartedAt === holder.pidStartedAt) return;
-  await mkdir(ledger, { recursive: true });
   const staged = join(ledger, `${holderFileName}.${holder.token}`);
-  await writeFile(staged, JSON.stringify({ ...holder, sessionId }));
-  await rename(staged, join(ledger, holderFileName));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await mkdir(ledger, { recursive: true });
+      await writeFile(staged, JSON.stringify({ ...holder, sessionId }));
+      await rename(staged, join(ledger, holderFileName));
+      return;
+    } catch (error) {
+      if (!isMissing(error) || attempt >= 2) throw error;
+    }
+  }
+}
+
+/** Where removed ledgers go before they are deleted; anything left in it is garbage. */
+function removedDirectory(directory: string): string {
+  return join(directory, 'removed');
+}
+
+/**
+ * Removes a ledger in one rename, out of the sessions directory, then deletes it, so an append
+ * racing the removal finds the ledger whole or gone, never half-deleted.
+ */
+async function removeLedger(directory: string, ledger: string): Promise<void> {
+  const removed = removedDirectory(directory);
+  await mkdir(removed, { recursive: true });
+  const aside = join(removed, crypto.randomUUID());
+  try {
+    await rename(ledger, aside);
+  } catch (error) {
+    if (isMissing(error)) return;
+    throw error;
+  }
+  await rm(aside, { recursive: true, force: true });
 }
 
 /** Whether a session's process lives; a table that cannot be read, or no recorded process, judges it alive. */
@@ -209,7 +261,9 @@ export function hostPlaces(ledgers: readonly SessionLedger[]): number {
 
 /**
  * The live ledgers, after reclaiming the rest: a ledger whose session process is gone is removed,
- * and an admitted dispatch with no start after the limit is expired. Run under the admission lock.
+ * and so is one without its holder, which no live session can be (an older checkout's append
+ * recreated it after its removal); an admitted dispatch with no start after the limit is expired.
+ * Run under the admission lock.
  */
 export async function surveySessions(
   directory: string,
@@ -217,10 +271,16 @@ export async function surveySessions(
   now: number,
   limit = neverStartedLimitMilliseconds,
 ): Promise<SessionLedger[]> {
+  // Ledgers a killed hook moved aside and never deleted. The directory stays, for a removal that
+  // is about to move a ledger into it.
+  const removed = removedDirectory(directory);
+  for (const name of await readdir(removed).catch(() => [] as string[])) {
+    await rm(join(removed, name), { recursive: true, force: true });
+  }
   const live: SessionLedger[] = [];
   for (const ledger of await readSessions(directory)) {
-    if (!sessionAlive(ledger, table)) {
-      await rm(ledger.directory, { recursive: true, force: true });
+    if (ledger.holder === undefined || !sessionAlive(ledger, table)) {
+      await removeLedger(directory, ledger.directory);
       continue;
     }
     let state = ledger.state;
@@ -431,8 +491,26 @@ function ownerFor(
 }
 
 /**
+ * How long an admission lock directory without an owner file may stand before it is removed.
+ * Installs are whole, so such a directory was left by something else.
+ */
+const ownerlessAdmissionLockMilliseconds = 30_000;
+
+/**
+ * Judges recorded processes from a process table read when the judge is asked for, so a hook that
+ * wrote its token before the listing is in it. A table that cannot be read judges every one alive.
+ */
+function tableJudge(readTable: () => ProcessTable | undefined): LivenessJudge {
+  return () => {
+    const table = readTable();
+    return (record) => table === undefined || isHolderAlive(record, table);
+  };
+}
+
+/**
  * Runs `decide` holding the admission lock, a directory installed by one rename and naming the
- * hook's process, which the next hook removes once that process is gone. Never held across a wait.
+ * hook's process, which the next hook removes once that process is gone, through the reclaim guard
+ * every lock shares (`reclaimAbandoned` in `scripts/run-exclusively.ts`). Never held across a wait.
  */
 async function withAdmissionLock<T>(
   directory: string,
@@ -441,6 +519,7 @@ async function withAdmissionLock<T>(
   decide: () => Promise<T>,
 ): Promise<T> {
   const lock = join(directory, 'admission');
+  const judge = tableJudge(options.readProcessTable);
   for (;;) {
     const mine = { ...owner, token: crypto.randomUUID() };
     if (await tryInstall(lock, mine)) {
@@ -450,58 +529,11 @@ async function withAdmissionLock<T>(
         await removeLock(lock, mine);
       }
     }
-    if (await reclaimAbandonedLock(lock, options)) continue;
+    const claimant = { ...owner, token: crypto.randomUUID() };
+    if (await reclaimAbandoned(lock, ownerlessAdmissionLockMilliseconds, { judge, claimant })) {
+      continue;
+    }
     await options.sleep(admissionLockRetryMilliseconds);
-  }
-}
-
-/** How long a reclaim guard may stand before it counts as left by a reclaimer that died. */
-const reclaimGuardStaleMilliseconds = 30_000;
-
-/**
- * Removes the admission lock when its owner is gone, judged while holding a reclaim guard, so the
- * lock judged is the lock removed: a reclaimer acting on a stale reading could otherwise move
- * aside a live lock another hook had just installed. Resolves to whether the lock was removed.
- */
-async function reclaimAbandonedLock(
-  lock: string,
-  options: Pick<AdmitOptions, 'readProcessTable'>,
-): Promise<boolean> {
-  const guard = `${lock}.reclaiming`;
-  try {
-    await mkdir(guard);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    const stale = await stat(guard).then(
-      ({ mtimeMs }) => Date.now() - mtimeMs >= reclaimGuardStaleMilliseconds,
-      () => false,
-    );
-    if (stale) await rm(guard, { recursive: true, force: true });
-    return false;
-  }
-  try {
-    const holder = await readOwner(lock);
-    if (holder === undefined) {
-      // No owner file: the lock was released, and a hook may have installed another since the
-      // failed install, which `removeLock` would move aside. Installs are whole, so a directory
-      // without an owner was left by something else, and is removed only once it has stood a while.
-      const ageMilliseconds = await stat(lock).then(
-        ({ mtimeMs }) => Date.now() - mtimeMs,
-        () => undefined,
-      );
-      if (ageMilliseconds === undefined) return true;
-      if (ageMilliseconds < reclaimGuardStaleMilliseconds) return false;
-      await removeLock(lock, undefined);
-      return true;
-    }
-    const table = options.readProcessTable();
-    if (table !== undefined && !isHolderAlive(holder, table)) {
-      await removeLock(lock, holder);
-      return true;
-    }
-    return false;
-  } finally {
-    await rm(guard, { recursive: true, force: true });
   }
 }
 
@@ -761,7 +793,7 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
   let own = ledgers.find((ledger) => ledger.sessionId === sessionId);
   if (own !== undefined && !sessionAlive(own, table)) {
     // The session was resumed in a new process: what the old one ran ended with it.
-    await rm(own.directory, { recursive: true, force: true });
+    await removeLedger(context.directory, own.directory);
     own = undefined;
   }
   if (own === undefined && session === undefined) return;
@@ -852,7 +884,9 @@ export async function releasePlace(
   target: string,
   options: Pick<AdmitOptions, 'readProcessTable' | 'sleep' | 'now'> & { readonly pid: number },
 ): Promise<string[]> {
-  const owner = ownerFor({ pid: options.pid }, `release ${target}`, process.cwd(), options.now());
+  // With its start time, so a `release` killed holding the lock does not hold it under a reused pid.
+  const own = identity(options.pid, options.readProcessTable()?.get(options.pid));
+  const owner = ownerFor(own, `release ${target}`, process.cwd(), options.now());
   return withAdmissionLock(directory, owner, options, async () => {
     const ledgers = await readSessions(directory);
     const sessions = ledgers.filter(
@@ -865,7 +899,7 @@ export async function releasePlace(
     const [session] = sessions;
     if (session !== undefined) {
       const held = sessionPlaces(session.state);
-      await rm(session.directory, { recursive: true, force: true });
+      await removeLedger(directory, session.directory);
       return [`released session ${session.sessionId}: ${held} place(s)`];
     }
     for (const ledger of ledgers) {
