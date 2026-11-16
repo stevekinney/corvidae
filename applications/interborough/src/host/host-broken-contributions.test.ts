@@ -155,7 +155,11 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
   expect(uris).not.toContain('ui://second-opener/second/v1');
 });
 
-test('a page whose bytes changed under a URI an earlier start served is listed as panel-changed, and still served (COR-2210)', async () => {
+/**
+ * A home with one folder plugin, `drifting`, whose panel the test can change between starts, and a
+ * `start` that runs a host on it and reads back what it lists for that plugin.
+ */
+async function driftingHome() {
   const home = await mkdtemp(join(tmpdir(), 'interborough-panel-changed-'));
   directories.push(home);
   // The deployment identity exists before the folder does, as it does on a real machine.
@@ -174,10 +178,10 @@ test('a page whose bytes changed under a URI an earlier start served is listed a
     ),
     true,
   );
-  const start = async () => {
+  const start = async (port = 0) => {
     const host = await startHost({
       environment: { INTERBOROUGH_HOME: home },
-      port: 0,
+      port,
       log: () => {},
     });
     hosts.push(host);
@@ -190,20 +194,28 @@ test('a page whose bytes changed under a URI an earlier start served is listed a
     const standing = report.plugins.find(({ descriptor }) => descriptor.name === 'drifting');
     return { host, standing, panels: panels.apps.filter(({ plugin }) => plugin === 'drifting') };
   };
+  const stop = async (host: Host) => {
+    await host.close();
+    hosts.splice(hosts.indexOf(host), 1);
+  };
+  const change = () =>
+    writeFile(join(plugins, 'drifting', 'app.ts'), "document.body.textContent = 'changed';\n");
+  return { start, stop, change };
+}
 
+test('a page whose bytes changed under a URI an earlier start served is listed as panel-changed, and still served (COR-2210)', async () => {
+  const { start, stop, change } = await driftingHome();
   const first = await start();
   expect(first.standing).toMatchObject({ status: 'running', problems: [] });
   expect(first.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
-  await first.host.close();
-  hosts.splice(hosts.indexOf(first.host), 1);
+  await stop(first.host);
 
   // The same start again is quiet; changed bytes under the same URI are not.
   const same = await start();
   expect(same.standing).toMatchObject({ status: 'running', problems: [] });
-  await same.host.close();
-  hosts.splice(hosts.indexOf(same.host), 1);
+  await stop(same.host);
 
-  await writeFile(join(plugins, 'drifting', 'app.ts'), "document.body.textContent = 'changed';\n");
+  await change();
   const changed = await start();
   expect(changed.standing?.status).toBe('running');
   expect(changed.standing?.problems).toEqual([
@@ -219,4 +231,29 @@ test('a page whose bytes changed under a URI an earlier start served is listed a
   expect(problem?.['previousDigest']).not.toBe(problem?.['contentDigest']);
   // Still served.
   expect(changed.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
+});
+
+test('a start that fails after the panels are built leaves the digest record alone, so the next start reports the change (COR-2210)', async () => {
+  const { start, stop, change } = await driftingHome();
+  const first = await start();
+  await stop(first.host);
+  await change();
+
+  // The port is held, so the host builds its panels and then cannot listen.
+  const holder = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('held') });
+  try {
+    await expect(start(holder.port)).rejects.toThrow();
+  } finally {
+    await holder.stop(true);
+  }
+
+  const reported = await start();
+  expect(reported.standing?.problems).toEqual([
+    expect.objectContaining({ code: 'panel-changed', uri: 'ui://drifting/page/v1' }),
+  ]);
+  await stop(reported.host);
+
+  // Recorded now that a start succeeded: one warning per change.
+  const quiet = await start();
+  expect(quiet.standing).toMatchObject({ status: 'running', problems: [] });
 });

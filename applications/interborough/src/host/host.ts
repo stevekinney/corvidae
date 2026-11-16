@@ -231,6 +231,7 @@ import {
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
 import {
+  commitPanelDigests,
   PANEL_PREBUILT_DIRECTORY_VARIABLE,
   panelMounts,
   reportPanelChanges,
@@ -1715,6 +1716,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.server = server;
     await server.ready;
+    // Recorded only now that the host is listening, so a start that failed earlier leaves the
+    // record alone and the next one still reports the change (COR-2210).
+    await commitPanelDigests(storage, mcpMounts.pendingDigests);
     engineUpstream?.({ url: server.url, key });
     // Both catalogs are known here. A name they both define stops the host from starting.
     bureauMethods?.(

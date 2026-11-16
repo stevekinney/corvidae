@@ -321,28 +321,34 @@ function checkPlacement(
   placement: PluginPanelPlacement,
   agentTools: AgentSource['tools'] | undefined,
 ): void {
-  // A plugin's value may hold what the type forbids, so each field is read as unknown first.
-  const { kind, path, sidebar, agentTool } = placement as {
-    kind?: unknown;
-    path?: unknown;
-    sidebar?: { group?: unknown } | undefined;
-    agentTool?: unknown;
-  };
   const refusal = (reason: string): TypeError =>
     new TypeError(`setup returned the panel "${app.name}" with ${reason}.`);
+  // A plugin's value may hold what the type forbids: an entry that is no object has no fields to
+  // read, so it is refused before they are.
+  const entry: unknown = placement;
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+    throw refusal(`a placement that is not an object (${JSON.stringify(entry) ?? String(entry)})`);
+  }
+  const { kind, path, sidebar, agentTool } = entry as {
+    kind?: unknown;
+    path?: unknown;
+    sidebar?: unknown;
+    agentTool?: unknown;
+  };
   if (kind === 'page') {
     if (typeof path !== 'string' || !PANEL_PAGE_PATH_PATTERN.test(path)) {
       throw refusal(
         `a page placement at ${JSON.stringify(path)}, which is not a path of lowercase segments (letters, digits and hyphens, each starting with a letter) such as "reviews/queue"`,
       );
     }
-    if (
-      sidebar !== undefined &&
-      (typeof sidebar.group !== 'string' || !PANEL_SIDEBAR_GROUPS.includes(sidebar.group))
-    ) {
-      throw refusal(
-        `a page placement in the sidebar group ${JSON.stringify(sidebar.group)}, which is not one of ${PANEL_SIDEBAR_GROUPS.join(', ')}`,
-      );
+    if (sidebar !== undefined) {
+      const group: unknown =
+        typeof sidebar === 'object' && sidebar !== null ? Reflect.get(sidebar, 'group') : undefined;
+      if (typeof group !== 'string' || !PANEL_SIDEBAR_GROUPS.includes(group)) {
+        throw refusal(
+          `a page placement in the sidebar group ${JSON.stringify(group)}, which is not one of ${PANEL_SIDEBAR_GROUPS.join(', ')}`,
+        );
+      }
     }
   } else if (kind === 'chat-tool') {
     // The host lists the id to Chat, which reads it as text, so a value that is not would fail

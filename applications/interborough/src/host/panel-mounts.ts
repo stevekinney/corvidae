@@ -152,6 +152,14 @@ export type PanelChange = {
   readonly contentDigest: string;
 };
 
+/** The digest of the page served under a URI, waiting to be recorded once the host is up. */
+export type PanelDigest = {
+  /** The app's `ui://` resource URI. */
+  readonly uri: string;
+  /** The digest of the page served under it. */
+  readonly contentDigest: string;
+};
+
 /**
  * Lists each of `changes` as a `panel-changed` problem on its plugin and logs it. The pages stay
  * served: the host starts, and a person sees that the bytes under a URI changed (COR-2210).
@@ -181,11 +189,12 @@ export function reportPanelChanges(
  * skipped with `name-clash`). An app whose page does not build is left out and reported in
  * `failures`, never thrown: a plugin's contribution must not stop the host from starting.
  *
- * Every page that built records its digest in `storage` under its URI, and one whose digest
- * differs from the record an earlier start left is listed in `changes` and still served: a URI
- * names a contract, so a change in its bytes is for a person to see, not a reason to refuse the
- * page (COR-2210). An unreadable record counts as absent, and a page that did not build writes
- * nothing.
+ * A page whose digest differs from the record an earlier start left in `storage` under its URI is
+ * listed in `changes` and still served: a URI names a contract, so a change in its bytes is for a
+ * person to see, not a reason to refuse the page (COR-2210). An unreadable record counts as
+ * absent. This writes nothing: the digests to record, for each page that built and differs from
+ * its record, come back in `pendingDigests` for {@link commitPanelDigests}, which the host runs
+ * once its listener is up.
  */
 export async function panelMounts(
   contributed: ContributedPanels,
@@ -259,18 +268,15 @@ export async function panelMounts(
     toolMeta[app.opensFromTool] = { ui: { resourceUri: app.uri, visibility: APP_VISIBILITY } };
   }
   const changes: PanelChange[] = [];
+  const pendingDigests: PanelDigest[] = [];
   for (const entry of built) {
     if ('failure' in entry) continue;
     const { plugin, app, page } = entry;
     const previousDigest = await servedDigest(storage, app.uri);
     if (previousDigest === page.contentDigest) continue;
-    // Recorded after the comparison, so the warning appears once per change, not on every start.
-    await storage.put(
-      `${PANEL_DIGEST_KEY_PREFIX}${app.uri}`,
-      new TextEncoder().encode(
-        JSON.stringify({ schemaVersion: 1, contentDigest: page.contentDigest }),
-      ),
-    );
+    // Not written here: the host commits it once its listener is up, so a start that fails
+    // after this leaves the record alone and the next start reports the change.
+    pendingDigests.push({ uri: app.uri, contentDigest: page.contentDigest });
     if (previousDigest !== undefined) {
       changes.push({
         plugin,
@@ -281,5 +287,30 @@ export async function panelMounts(
       });
     }
   }
-  return { resources, toolMeta, defaultToolMeta: MODEL_ONLY_TOOL_META, failures, apps, changes };
+  return {
+    resources,
+    toolMeta,
+    defaultToolMeta: MODEL_ONLY_TOOL_META,
+    failures,
+    apps,
+    changes,
+    pendingDigests,
+  };
+}
+
+/**
+ * Records the digests `panelMounts` found new or changed, one key per URI. The host calls it once
+ * its listener is up: a record written earlier would be spent by a start that then fails, and the
+ * start after it would report nothing (COR-2210).
+ */
+export async function commitPanelDigests(
+  storage: Storage,
+  pending: readonly PanelDigest[],
+): Promise<void> {
+  for (const { uri, contentDigest } of pending) {
+    await storage.put(
+      `${PANEL_DIGEST_KEY_PREFIX}${uri}`,
+      new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, contentDigest })),
+    );
+  }
 }

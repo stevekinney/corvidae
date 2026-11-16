@@ -11,13 +11,14 @@ import {
   MCP_APP_MIME_TYPE,
   MCP_APP_UI_META,
   PANEL_DIGEST_KEY_PREFIX,
-  panelMounts as mountPanels,
+  commitPanelDigests,
+  panelMounts as mountOnly,
   type ContributedPanels,
 } from './panel-mounts.ts';
 
-/** `mountPanels` over storage of its own: a start that has served nothing before. */
+/** `mountOnly` over storage of its own: a start that has served nothing before. */
 const panelMounts = (contributed: ContributedPanels, prebuiltDirectory?: string) =>
-  mountPanels(contributed, new MemoryStorage(), prebuiltDirectory);
+  mountOnly(contributed, new MemoryStorage(), prebuiltDirectory);
 
 const directories: string[] = [];
 
@@ -233,6 +234,7 @@ describe('the MCP apps the host serves', () => {
       failures: [],
       apps: [],
       changes: [],
+      pendingDigests: [],
     });
   });
 
@@ -260,6 +262,35 @@ describe('the MCP apps the host serves', () => {
 
 describe('the digest the host keeps of the page it served under each URI (COR-2210)', () => {
   const KEY = `${PANEL_DIGEST_KEY_PREFIX}ui://test/one/v1`;
+  /** A start that got as far as listening: the mount, then the commit the host runs after it. */
+  const mountPanels = async (panels: ContributedPanels, storage: Storage) => {
+    const mounted = await mountOnly(panels, storage);
+    await commitPanelDigests(storage, mounted.pendingDigests);
+    return mounted;
+  };
+
+  it('writes nothing itself, and lists the digests to record once the host is listening', async () => {
+    const storage = new MemoryStorage();
+    const mounted = await mountOnly(contributed(await app('one')), storage);
+    expect(await storage.get(KEY)).toBeNull();
+    expect(mounted.pendingDigests).toEqual([
+      { uri: 'ui://test/one/v1', contentDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) },
+    ]);
+    // A start that never committed leaves the next one to report the change.
+    await commitPanelDigests(storage, mounted.pendingDigests);
+    const changed = await mountOnly(
+      contributed(await app('one', { styles: 'body{margin:1px}' })),
+      storage,
+    );
+    expect(changed.changes).toHaveLength(1);
+    expect(await recordOf(storage)).toMatchObject({
+      contentDigest: mounted.pendingDigests[0]?.contentDigest,
+    });
+    expect(
+      (await mountOnly(contributed(await app('one', { styles: 'body{margin:1px}' })), storage))
+        .changes,
+    ).toHaveLength(1);
+  });
   const recordOf = async (storage: Storage, key = KEY) => {
     const bytes = await storage.get(key);
     return bytes === null ? null : JSON.parse(new TextDecoder().decode(bytes));
