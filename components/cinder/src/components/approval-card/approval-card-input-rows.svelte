@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { INPUT_SUMMARY_ROWS } from './approval-card-state.ts';
+  import DescriptionList from '../description-list/description-list.svelte';
+  import type { DescriptionListItem } from '../description-list/description-list.types.ts';
+  import { INPUT_SUMMARY_ROWS, INPUT_WIDE_CHARACTERS } from './approval-card-state.ts';
   import type { InputRow } from './approval-card-state.ts';
 
   type ApprovalCardInputRowsProps = {
@@ -14,42 +16,39 @@
   let { id, label, rows }: ApprovalCardInputRowsProps = $props();
 
   let showAll = $state(false);
-  const summaryRows = $derived(rows.slice(0, INPUT_SUMMARY_ROWS));
-  const restRows = $derived(rows.slice(INPUT_SUMMARY_ROWS));
   const restId = $derived(`${id}-rest`);
+
+  /** One pair as a DescriptionList item: a long, multi-line or structured value takes the row. */
+  function toItem(row: InputRow): DescriptionListItem {
+    return {
+      id: row.key,
+      term: row.label,
+      definition: row.muted
+        ? { type: 'empty', label: row.text }
+        : row.structured
+          ? { type: 'code', value: row.text }
+          : row.text,
+      wide: row.structured || row.text.includes('\n') || row.text.length > INPUT_WIDE_CHARACTERS,
+    };
+  }
+
+  const summaryItems = $derived(rows.slice(0, INPUT_SUMMARY_ROWS).map(toItem));
+  const restItems = $derived(rows.slice(INPUT_SUMMARY_ROWS).map(toItem));
 </script>
 
-<!-- The input in the open, at the card's content edge: each pair a row of its own, the label over
-     the value, so the value starts on the title's edge and a long one wraps there instead of in a
-     column beside its label. No chevron and no box. A long input shows its first rows and a plain
-     "Show all" under them. -->
-{#snippet inputRow(row: InputRow)}
-  <div class="cinder-approval-card__input-row">
-    <dt class="cinder-approval-card__pair-label" dir="auto">{row.label}</dt>
-    {' '}
-    <dd
-      class="cinder-approval-card__pair-value"
-      data-cinder-muted={row.muted || undefined}
-      data-cinder-monospace={row.structured || undefined}
-      dir="auto"
-    >
-      {row.text}
-    </dd>
-  </div>
-{/snippet}
-
+<!-- The input in the open, at the card's content edge with no chevron and no box: DescriptionList's
+     grid, which fits as many columns as the card is wide, each label over its value, and gives a
+     long value the whole row. A long input shows its first pairs and a plain "Show all" under them. -->
 <div {id} class="cinder-approval-card__input-list" role="group" aria-label={label}>
-  <dl class="cinder-approval-card__input-rows">
-    {#each summaryRows as row (row.key)}
-      {@render inputRow(row)}
-    {/each}
-  </dl>
-  {#if restRows.length > 0}
-    <dl id={restId} class="cinder-approval-card__input-rows" hidden={!showAll}>
-      {#each restRows as row (row.key)}
-        {@render inputRow(row)}
-      {/each}
-    </dl>
+  <DescriptionList items={summaryItems} variant="grid" class="cinder-approval-card__input-rows" />
+  {#if restItems.length > 0}
+    <DescriptionList
+      id={restId}
+      items={restItems}
+      variant="grid"
+      class="cinder-approval-card__input-rows"
+      hidden={!showAll}
+    />
     <button
       type="button"
       class="cinder-approval-card__show-all"

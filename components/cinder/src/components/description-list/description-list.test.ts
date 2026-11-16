@@ -420,4 +420,54 @@ describe('DescriptionList formatted values', () => {
       /data-cinder-variant='default'\]\s*\.cinder-description-list__row:not\(:first-child\)\s*\{[^}]*border-block-start/,
     );
   });
+
+  test('code is shown whole in a code element, and an empty field as a quiet word', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        { term: 'Payload', definition: { type: 'code', value: '{"orderId":4471}' } },
+        { term: 'Note', definition: { type: 'empty', label: 'None' } },
+      ],
+    });
+    const code = container.querySelector('.cinder-description-list__code');
+    expect(code?.tagName).toBe('CODE');
+    expect(code?.textContent).toBe('{"orderId":4471}');
+    expect(container.querySelector('.cinder-description-list__empty')?.textContent).toBe('None');
+  });
+});
+
+describe('DescriptionList grid variant', () => {
+  const flat = descriptionListCss.replace(/\s+/g, ' ');
+
+  test('flows the pairs in as many equal columns as its own width fits, a term over each value', () => {
+    const grid =
+      /\.cinder-description-list\[data-cinder-variant='grid'\] \{([^}]*)\}/.exec(flat)?.[1] ?? '';
+    // Tracks from the list's own inline size (auto-fill), never a viewport query, at a token width.
+    expect(grid).toContain('display: grid;');
+    expect(grid).toMatch(
+      /grid-template-columns: repeat\( auto-fill, minmax\(min\(100%, var\(--_cinder-description-list-column-min\)\), 1fr\) \);/,
+    );
+    expect(grid).toContain(
+      '--_cinder-description-list-column-min: calc(var(--cinder-space-32) + var(--cinder-space-4));',
+    );
+    expect(grid).toContain('gap: var(--cinder-space-2) var(--cinder-space-3);');
+    // No rules and no fill: neither the list nor its rows draw a border or a background.
+    expect(flat).not.toMatch(/variant='grid'\][^{]*\{[^}]*(border|background)/);
+    expect(flat).not.toMatch(/@media[^{]*\{[^}]*variant='grid'/);
+  });
+
+  test('a wide item takes the whole row, in the grid and facts variants', () => {
+    const { container } = render(DescriptionList, {
+      variant: 'grid',
+      items: [
+        { term: 'Order ID', definition: '4471' },
+        { term: 'Reason', definition: 'A long reason that runs past two lines', wide: true },
+      ],
+    });
+    const rows = [...container.querySelectorAll('.cinder-description-list__row')];
+    expect(rows.map((row) => row.hasAttribute('data-cinder-wide'))).toEqual([false, true]);
+    expect(container.querySelector('dl')?.getAttribute('data-cinder-variant')).toBe('grid');
+    expect(flat).toContain(
+      ".cinder-description-list:is([data-cinder-variant='facts'], [data-cinder-variant='grid']) .cinder-description-list__row[data-cinder-wide] { grid-column: 1 / -1; }",
+    );
+  });
 });

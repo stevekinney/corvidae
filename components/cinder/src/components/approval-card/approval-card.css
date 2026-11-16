@@ -10,6 +10,7 @@
 @import '../checkbox/checkbox.css';
 @import '../code-block/code-block.css';
 @import '../copy-button/copy-button.css';
+@import '../description-list/description-list.css';
 @import '../json-editor/json-editor.css';
 @import '../json-viewer/json-viewer.css';
 @import '../link/link.css';
@@ -770,53 +771,23 @@
     font-style: italic;
   }
 
-  /* The input in the open, at the card's content edge with no chevron, no label column and no
-   * box: each pair is a row of its own, the label in the secondary ink on its line and the value in
-   * the body ink under it, so the value starts on the title's edge and a long one wraps there too.
-   * "Show all" sits under the rows. */
-  .cinder-approval-card__input-list,
-  .cinder-approval-card__input-rows {
+  /* The input in the open, at the card's content edge with no chevron and no box: DescriptionList's
+   * grid lays the pairs out (as many columns as the card is wide, each label over its value), and
+   * "Show all" sits under the grid. */
+  .cinder-approval-card__input-list {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
-    min-inline-size: 0;
-    margin: 0;
-  }
-
-  .cinder-approval-card__input-list {
     align-items: flex-start;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
   }
 
-  .cinder-approval-card__input-rows {
+  .cinder-approval-card__input-list > .cinder-approval-card__input-rows {
     align-self: stretch;
   }
 
-  .cinder-approval-card__input-rows[hidden] {
+  .cinder-approval-card__input-list > .cinder-approval-card__input-rows[hidden] {
     display: none;
-  }
-
-  .cinder-approval-card__input-row {
-    overflow-wrap: anywhere;
-    text-align: start;
-  }
-
-  .cinder-approval-card__input-row > dt,
-  .cinder-approval-card__input-row > dd {
-    display: block;
-    margin: 0;
-  }
-
-  .cinder-approval-card__input-row > dt {
-    color: var(--cinder-text-muted);
-  }
-
-  .cinder-approval-card__input-row > dd {
-    color: var(--cinder-text-default);
-  }
-
-  .cinder-approval-card__input-row > dd[data-cinder-monospace] {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
   }
 
   .cinder-approval-card__show-all {

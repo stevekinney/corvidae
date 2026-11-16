@@ -704,7 +704,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(queryByRole('button', { name: /^Input/ })).toBeNull();
     expect(container.querySelector('.cinder-approval-card__row-input')).toBeNull();
-    expect(input.querySelectorAll('.cinder-approval-card__input-row').length).toBeGreaterThan(0);
+    expect(input.querySelectorAll('.cinder-description-list__row').length).toBeGreaterThan(0);
     // The group sits straight in the card, after the facts, not inside a button or a box.
     expect(input.parentElement?.classList.contains('cinder-approval-card--decision')).toBe(true);
   });
@@ -719,7 +719,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
 
     expect(container.querySelector('.cinder-approval-card__facts')).toBeNull();
-    expect(container.querySelector('.cinder-approval-card__input-row')).not.toBeNull();
+    expect(container.querySelector('.cinder-description-list__row')).not.toBeNull();
   });
 
   // C#14 (chat stress sweep): "Input: Command refund order 4471" repeated the Command fact.
@@ -735,7 +735,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
 
     expect(queryByRole('group', { name: 'Input' })).toBeNull();
-    expect(container.querySelector('.cinder-approval-card__input-row')).toBeNull();
+    expect(container.querySelector('.cinder-description-list__row')).toBeNull();
   });
 });
 
@@ -821,24 +821,18 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/__body > \.cinder-approval-card__actions \{ margin-block-start:/);
   });
 
-  test('the input rows start at the content edge: label over value, no column, no box', () => {
+  test('the input is DescriptionList’s grid at the content edge, with no indent and no box', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
+    // The card aggregates DescriptionList's styles, so its grid variant lays the pairs out.
+    expect(css).toContain("@import '../description-list/description-list.css';");
+    const list = /\.cinder-approval-card__input-list \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(list).not.toMatch(/padding-inline|margin-inline-start|border|background/);
     expect(css).toContain(
-      '.cinder-approval-card__input-row > dt, .cinder-approval-card__input-row > dd { display: block; margin: 0; }',
+      '.cinder-approval-card__input-list > .cinder-approval-card__input-rows[hidden] { display: none; }',
     );
-    expect(css).toContain(
-      '.cinder-approval-card__input-row > dt { color: var(--cinder-text-muted); }',
-    );
-    expect(css).toContain(
-      '.cinder-approval-card__input-row > dd { color: var(--cinder-text-default); }',
-    );
-    for (const part of ['__input-list', '__input-rows', '__input-row']) {
-      const rule = new RegExp(`\\.cinder-approval-card${part} \\{([^}]*)\\}`).exec(css)?.[1] ?? '';
-      expect(rule, part).not.toMatch(/padding-inline|margin-inline-start|border|background|grid/);
-    }
     // The card's arguments summary takes the line under its name at the content edge, never a
     // column past the chevron.
     expect(css).not.toMatch(

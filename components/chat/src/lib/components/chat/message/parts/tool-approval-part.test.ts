@@ -79,7 +79,7 @@ describe('ToolApprovalPart', () => {
     // The input is in the open as one row per pair, under the command, with no disclosure.
     expect(
       Array.from(
-        getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-approval-card__input-row'),
+        getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
         (row) => row.textContent?.replace(/\s+/g, ' ').trim(),
       ),
     ).toEqual(['Environment production', 'Replicas 3']);

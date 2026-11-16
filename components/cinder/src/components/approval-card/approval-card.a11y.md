@@ -11,7 +11,7 @@ Repeatable approval unit rendered as an `<article>` with native button controls.
 | Root `<article>` | `article` | Heading text, for example `Approval required for deploy-cloud` | `data-cinder-state`, `data-cinder-risk` |
 | Header status | text + `StatusDot` | State label such as `Expired` or `Unavailable` | Shown for anything but an answerable pending approval |
 | Risk glyph | `img` (`tabindex="0"` in the `card` layout) | Risk label, e.g. `High risk` (via `aria-label`) | `Tooltip` shows the same label on hover/focus in the `card` layout; the muted risk word is also written in text |
-| Input rows (`row`, `decision`) | `group` of a definition list | `Input` (or `inputLabel`) | One label and value pair per line, in the open |
+| Input rows (`row`, `decision`) | `group` of a definition list | `Input` (or `inputLabel`) | `DescriptionList` grid in the open: each term over its value, reading order the order of the arguments |
 | Show all (`row`, `decision`) | button | `Show all <count>`, then `Show less` | Only with more than four pairs; `aria-expanded`, `aria-controls` the rows past the first four |
 | Arguments toggle (`card`) | button | `Arguments` (or `inputLabel`) and the summary pairs | Collapsed by default; `aria-expanded`, `aria-controls` the disclosed region |
 | Touched file | list item | The path, read whole | The file glyph is decorative (`aria-hidden`); the copy button is named `Copy path <path>` |

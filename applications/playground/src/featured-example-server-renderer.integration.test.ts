@@ -128,7 +128,7 @@ describe('featured example server renderer', () => {
     // Chat draws a waiting approval as Cinder's decision layout (COR-2282).
     expect(chat.body).toContain('data-cinder-layout="decision"');
     // The arguments are rows in the open, a group named Input, with no disclosure around them.
-    expect(chat.body).toContain('cinder-approval-card__input-row');
+    expect(chat.body).toContain('cinder-description-list__row');
     expect(chat.body).toContain('aria-label="Input"');
     expect(chat.body).toContain('Environment');
     expect(chat.body).toContain('data-cinder-state="pending"');

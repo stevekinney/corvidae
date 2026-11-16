@@ -1383,13 +1383,15 @@ describe('ApprovalCard row layout', () => {
       }),
     });
 
-    const labels = [...container.querySelectorAll('.cinder-approval-card__pair-label')];
-    expect(labels.map((label) => label.textContent)).toEqual(['Order ID', 'Order ID']);
-    expect(
-      [...container.querySelectorAll('.cinder-approval-card__input-row')].map((row) =>
-        squash(row.textContent),
-      ),
-    ).toEqual(['Order ID 4471', 'Order ID 4472']);
+    const rows = [...container.querySelectorAll('.cinder-description-list__row')];
+    expect(rows.map((row) => squash(row.querySelector('dt')?.textContent))).toEqual([
+      'Order ID',
+      'Order ID',
+    ]);
+    expect(rows.map((row) => squash(row.querySelector('dd')?.textContent))).toEqual([
+      '4471',
+      '4472',
+    ]);
   });
 
   test('renders the shared approval row: question, irreversible marker, command, Input, note, Deny and Approve', () => {
@@ -1422,7 +1424,7 @@ describe('ApprovalCard row layout', () => {
     expect(container.querySelector('.cinder-approval-card__input-toggle')).toBeNull();
     const input = getByRole('group', { name: 'Input' });
     expect(
-      [...input.querySelectorAll('.cinder-approval-card__input-row')].map((row) =>
+      [...input.querySelectorAll('.cinder-description-list__row')].map((row) =>
         squash(row.textContent),
       ),
     ).toEqual(['Order ID 4471', 'Amount $42.00', 'Reason Arrived damaged']);
@@ -1496,9 +1498,7 @@ describe('ApprovalCard row layout', () => {
     expect(container.querySelector('.cinder-approval-card__command')).not.toBeNull();
     expect(
       [
-        ...getByRole('group', { name: 'Input' }).querySelectorAll(
-          '.cinder-approval-card__input-row',
-        ),
+        ...getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
       ].map((row) => squash(row.textContent)),
     ).toEqual(['Command refund-order --id 4471', 'Order ID 4471']);
   });
@@ -1605,18 +1605,51 @@ describe('ApprovalCard row layout', () => {
     expect(input.closest('button')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__input-chevron')).toBeNull();
     expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
-    const rows = [...input.querySelectorAll('.cinder-approval-card__input-row')];
-    expect(rows.map((row) => row.querySelector('dt')?.textContent)).toEqual([
+    const rows = [...input.querySelectorAll('.cinder-description-list__row')];
+    // DescriptionList's grid: a real dl, each term over its value, in DOM order.
+    expect(
+      input.querySelector('dl.cinder-description-list')?.getAttribute('data-cinder-variant'),
+    ).toBe('grid');
+    expect(rows.map((row) => squash(row.querySelector('dt')?.textContent))).toEqual([
       'Order ID',
       'Amount',
       'Note',
     ]);
-    expect(rows.map((row) => row.querySelector('dd')?.textContent)).toEqual([
+    expect(rows.map((row) => squash(row.querySelector('dd')?.textContent))).toEqual([
       '4471',
       '$42.00',
       'None',
     ]);
-    expect(rows[2]?.querySelector('dd')?.hasAttribute('data-cinder-muted')).toBe(true);
+    // An empty field reads as a quiet word, not a value someone typed.
+    expect(rows[2]?.querySelector('.cinder-description-list__empty')?.textContent).toBe('None');
+    // Short values share the row's columns.
+    expect(rows.some((row) => row.hasAttribute('data-cinder-wide'))).toBe(false);
+  });
+
+  test('a long, multi-line or structured value takes the whole row of the grid', () => {
+    const { getByRole } = render(ApprovalCard, {
+      props: refundRow({
+        operation: {
+          kind: 'other',
+          argsPreview: {
+            orderId: 4471,
+            reason: 'Arrived damaged, the box was crushed and the mug inside it broke',
+            note: 'first line\nsecond line',
+            items: [{ sku: 'A-1' }],
+          },
+        },
+      }),
+    });
+    const rows = [
+      ...getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
+    ];
+
+    expect(rows.map((row) => row.hasAttribute('data-cinder-wide'))).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
   });
 
   test('writes a nested value whole, in the code font, with a secret inside it masked', () => {
@@ -1630,8 +1663,9 @@ describe('ApprovalCard row layout', () => {
     });
     const values = [...getByRole('group', { name: 'Input' }).querySelectorAll<HTMLElement>('dd')];
 
-    expect(values[0]?.textContent).toBe('[{"sku":"A-1","quantity":2}]');
-    expect(values[0]?.hasAttribute('data-cinder-monospace')).toBe(true);
+    const code = values[0]?.querySelector('.cinder-description-list__code');
+    expect(code?.tagName).toBe('CODE');
+    expect(code?.textContent).toBe('[{"sku":"A-1","quantity":2}]');
     expect(values[1]?.textContent).not.toContain('sk-live-123');
   });
 
@@ -1649,10 +1683,10 @@ describe('ApprovalCard row layout', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.getAttribute('aria-controls')).toBe('long-row-input-rest');
     expect(rest.hidden).toBe(true);
-    expect(rest.querySelectorAll('.cinder-approval-card__input-row')).toHaveLength(5);
+    expect(rest.querySelectorAll('.cinder-description-list__row')).toHaveLength(5);
     expect(
       input.querySelectorAll(
-        '.cinder-approval-card__input-rows:not([hidden]) .cinder-approval-card__input-row',
+        '.cinder-approval-card__input-rows:not([hidden]) .cinder-description-list__row',
       ),
     ).toHaveLength(4);
     // The toggle is under the rows, inside the group.

@@ -360,6 +360,12 @@ export type InputRow = InputSummaryPair & {
 export const INPUT_SUMMARY_ROWS = 4;
 
 /**
+ * A value longer than this many characters takes the whole row of the input's grid: it would wrap
+ * past about two lines in a 9rem column of small text.
+ */
+export const INPUT_WIDE_CHARACTERS = 36;
+
+/**
  * Reads the arguments preview as the rows the approver reads in the open, one per field: "Order
  * ID" then "4471". Unlike the one-line summary, a nested value is written whole, as compact JSON
  * with any secret inside it masked, so nothing the call carries is out of reach. A preview that is

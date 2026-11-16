@@ -46,7 +46,8 @@
   onResolve={() => undefined}
 />
 
-<!-- The decision layout with nine pairs: the first four show, then "Show all 9" under them. -->
+<!-- The decision layout with nine pairs: the first four show, then "Show all 9" under them; the long
+     reference takes the whole row of the grid. -->
 <ApprovalCard
   id="approval-card-decision-long"
   layout="decision"
@@ -58,13 +59,13 @@
     argsPreview: {
       orderId: 4471,
       carrier: 'Parcel Post',
+      reference: 'Replacement for a damaged delivery, sent at no charge to the customer',
       service: 'Ground',
       weightGrams: 1250,
       lengthCentimetres: 30,
       widthCentimetres: 20,
       heightCentimetres: 12,
       insured: true,
-      reference: 'Replacement for a damaged delivery, sent at no charge to the customer',
     },
   }}
   policyVersion="policy-2026-06"
