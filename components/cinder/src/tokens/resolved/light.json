@@ -522,7 +522,7 @@
   },
   "control.background.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1461,8 +1461,8 @@
     "$type": "color"
   },
   "surface.inset": {
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
-    "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
+    "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-inset",
@@ -1512,7 +1512,7 @@
     "$type": "color"
   },
   "surface.upcoming-marker": {
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4025,7 +4025,7 @@
   },
   "file-upload.progress.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.955, 0.005, 265] },
+    "$value": { "colorSpace": "oklch", "components": [0.955, 0.002, 265] },
     "$description": "Progress bar track background.",
     "$extensions": {
       "com.lostgradient.cinder": {

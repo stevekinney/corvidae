@@ -238,8 +238,8 @@
     color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 12%),
     color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 6%)
   );
-  /* Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole. */
-  --cinder-surface-inset: light-dark(oklch(95.5% 0.005 265), oklch(21% 0.012 265));
+  /* Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole. */
+  --cinder-surface-inset: light-dark(oklch(95.5% 0.002 265), oklch(21% 0.012 265));
   /* Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp. */
   --cinder-surface-hover: light-dark(
     color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%),
@@ -1002,7 +1002,7 @@
     var(--cinder-surface-raised),
     var(--cinder-accent-solid) 12%
   );
-  --cinder-surface-inset: oklch(95.5% 0.005 265);
+  --cinder-surface-inset: oklch(95.5% 0.002 265);
   --cinder-surface-hover: color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%);
   --cinder-surface-pressed: color-mix(
     in oklch,

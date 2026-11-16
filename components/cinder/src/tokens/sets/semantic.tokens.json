@@ -78,15 +78,15 @@
     "inset": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.955, 0.005, 265]
+        "components": [0.955, 0.002, 265]
       },
-      "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
+      "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-surface-inset",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(95.5% 0.005 265), oklch(21% 0.012 265))",
+          "cssRecipe": "light-dark(oklch(95.5% 0.002 265), oklch(21% 0.012 265))",
           "palette": {
             "family": "neutral",
             "role": "surface-inset"
@@ -142,7 +142,7 @@
     "upcoming-marker": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.955, 0.005, 265]
+        "components": [0.955, 0.002, 265]
       },
       "$description": "Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it.",
       "$extensions": {

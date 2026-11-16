@@ -41,7 +41,7 @@
     "inset": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.955, 0.005, 265]
+        "components": [0.955, 0.002, 265]
       }
     },
     "hover": {

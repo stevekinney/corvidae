@@ -19,6 +19,10 @@
  * chose the consumer ladder for the default light arm too: the surface is pure white like raised,
  * the canvas a grey page at 97.6% (3.51:1 for the focus ring; 97.0% would read 3.45:1), and the well
  * 95.5%. The hover, pressed and soft accent washes now mix from white, so they follow.
+ *
+ * COR-2450 made the light well neutral: chroma 0.005 read as a blue-grey band inside a white
+ * panel, so it drops to 0.002 at the same 95.5% (the faint hairline needs the well at 95.2% or
+ * lighter). The light overlay backdrop drops to alpha 0.25.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -61,7 +65,7 @@ const LIGHT_VALUES: readonly ExpectedColor[] = [
   ['--cinder-surface-canvas', [0.976, 0.004, 265]],
   ['--cinder-surface', [1, 0, 255]],
   ['--cinder-surface-raised', [1, 0, 255]],
-  ['--cinder-surface-inset', [0.955, 0.005, 265]],
+  ['--cinder-surface-inset', [0.955, 0.002, 265]],
   ['--cinder-surface-hover', [0.9712, 0.0144, 256.02]],
   ['--cinder-surface-pressed', [0.9424, 0.0288, 257.04]],
   ['--cinder-surface-raised-hover', [0.9664, 0.0168, 256.19]],
@@ -210,6 +214,14 @@ describe('COR-2450: the light overlay backdrop dims the page by a quarter', () =
   });
 });
 
+describe('COR-2450: the light well is neutral', () => {
+  test('the light inset keeps 95.5% lightness at chroma 0.004 or less', () => {
+    const [lightness, chroma] = contexts.light.get('--cinder-surface-inset')?.components ?? [];
+    expect(lightness).toBe(0.955);
+    expect(chroma).toBeLessThanOrEqual(0.004);
+  });
+});
+
 describe('COR-1552 and COR-2308: the structural and control border tiers', () => {
   for (const arm of ['light', 'dark'] as const) {
     for (const [property, alphas] of INK_TIERS) {
@@ -244,7 +256,7 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
   // L#3 (light sweep): the disabled field fill aliased `fill.disabled` (86%) in light, darker than
   // the white enabled control beside it. It is now the inset, the fill a disabled Button uses.
   test('the disabled control fill is the inset in light and fill.disabled in dark', () => {
-    expectColor('light', ['--cinder-control-background-disabled', [0.955, 0.005, 265]]);
+    expectColor('light', ['--cinder-control-background-disabled', [0.955, 0.002, 265]]);
     expectColor('dark', ['--cinder-control-background-disabled', [0.3, 0.015, 245]]);
   });
 
