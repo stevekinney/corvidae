@@ -10,7 +10,7 @@ import { z } from 'zod';
 export default definePlugin({
   name: 'ollama',
   title: 'Ollama',
-  version: '1.0.0',
+  version: '1.1.0',
   description: 'Embeds memory with an Ollama server, by default one on this machine.',
   configuration: z.object({
     /** The Ollama embedding model. */
@@ -27,6 +27,7 @@ export default definePlugin({
       embedders: [
         {
           name: 'embed',
+          model,
           dimensions,
           async embed(requested, options): Promise<EmbeddingVector[]> {
             // Snapshot: the caller owns the array, and it is read after the first await.

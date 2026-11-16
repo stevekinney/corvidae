@@ -900,10 +900,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
-   * durable audit trail, and fires a webhook (via `options.webhooks`, AB-21's
-   * durable delivery infra) when a judge returns a `fail` outcome or a score
-   * below its configured alert threshold. Omit, pass no judges, or pass `sampleRate: 0` to
-   * disable — the default.
+   * durable audit trail, and publishes `scorer.threshold-breached` on the hook event feed when a
+   * judge returns a `fail` outcome or a score below its configured alert threshold. Omit or pass
+   * no judges to disable — the default. A `sampleRate` of 0 turns every judge off, whatever rate a
+   * judge asks for itself (a judge's own `sampleRate` applies only while this one is above 0); the
+   * `scorers.sampleRate` setting replaces it, at the next run to finish.
    */
   scorers?: ScorerSamplerOptions;
   /**

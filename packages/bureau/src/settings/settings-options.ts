@@ -43,6 +43,7 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
     'decisions.model': options.decisions?.model,
     'decisions.fallbackModel': options.decisions?.fallbackModel,
     'decisions.maximumPerTask': options.decisions?.maximumPerTask,
+    'scorers.sampleRate': options.scorers?.sampleRate,
     'retention.audit': options.retention?.audit,
     'retention.events': options.retention?.events,
     'retention.tasks': options.retention?.tasks,

@@ -29,7 +29,7 @@ export const geminiConfiguration = z
 export default definePlugin({
   name: 'gemini',
   title: 'Gemini',
-  version: '0.1.1',
+  version: '0.2.0',
   description: 'Gemini models for agents, and an embedder for memory.',
   configuration: geminiConfiguration,
   secrets: [GEMINI_API_KEY_SECRET],
@@ -51,7 +51,14 @@ export default definePlugin({
     };
     return {
       providers: [{ ...geminiProvider, rows: geminiRows() }],
-      embedders: [{ name: GEMINI_EMBEDDING_MODEL, dimensions: GEMINI_EMBEDDING_DIMENSIONS, embed }],
+      embedders: [
+        {
+          name: GEMINI_EMBEDDING_MODEL,
+          model: GEMINI_EMBEDDING_MODEL,
+          dimensions: GEMINI_EMBEDDING_DIMENSIONS,
+          embed,
+        },
+      ],
     };
   },
 });

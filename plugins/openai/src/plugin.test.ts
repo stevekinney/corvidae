@@ -35,6 +35,7 @@ describe('the openai plugin', () => {
     const result = await plugin.setup?.({ secrets } as never);
     const embedder = result?.embedders?.[0];
     expect(embedder?.name).toBe('text-embedding-3-small');
+    expect(embedder?.model).toBe('text-embedding-3-small');
     expect(embedder?.dimensions).toBe(1536);
     const failure = await Promise.resolve(embedder?.embed(['text'])).then(
       () => undefined,

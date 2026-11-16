@@ -28,6 +28,7 @@ export const SETTING_VALUES: Record<string, unknown> = {
   modelPolicy: { policyRevision: 0 },
   'decisions.fallbackModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 20,
+  'scorers.sampleRate': 0,
   'retention.audit': 'forever',
   'retention.runs': 'forever',
   'retention.chats': 'forever',

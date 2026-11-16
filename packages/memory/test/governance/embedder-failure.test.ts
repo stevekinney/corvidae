@@ -19,11 +19,11 @@
  * | recall    | caller aborts   | the recall waits on the embedder      | `canceled`, no evidence, no embedder fault| same                                           |
  * | recall    | wrong dimension | stop reason `failed`, no evidence     | same                                      | same                                           |
  * | recall    | empty vector    | stop reason `failed`, no evidence     | same                                      | same                                           |
- * | advance   | throws          | the switch ends `failed` with error   | same                                      | same                                           |
- * | advance   | times out       | the advance hangs                     | the switch ends `failed`, error names the bound | same                                     |
+ * | advance   | throws          | the switch ends `failed` with error   | same                                      | same; the error is the code `embedder-failed` (COR-2188), never the embedder's text |
+ * | advance   | times out       | the advance hangs                     | the switch ends `failed`, error names the bound | same; the code `embedder-timeout`       |
  * | advance   | caller aborts   | not applicable: no signal on advance  | same                                      | same                                           |
- * | advance   | wrong dimension | the switch ends `failed` with error   | same                                      | same                                           |
- * | advance   | empty vector    | the switch ends `failed` with error   | same                                      | same                                           |
+ * | advance   | wrong dimension | the switch ends `failed` with error   | same                                      | same; `embedder-failed`                        |
+ * | advance   | empty vector    | the switch ends `failed` with error   | same                                      | same; `embedder-failed`                        |
  * | search    | throws          | the search rejects with the error     | same                                      | same: COR-2186 names admission and recall only |
  * | search    | times out       | the search hangs                      | rejects with the bound's `TimeoutError`   | same                                           |
  *
@@ -47,10 +47,11 @@ import type {
 import { collectionNamespace } from '../../src/governance/record-governance';
 import {
   createMemoryVectorStore,
+  type MemoryEmbeddingFailure,
   type MemoryEmbeddingProfile,
   MemoryVectorDimensionError,
 } from '../../src/memory-vector-store';
-import { createTestEmbedders, TEST_EMBEDDER_ID } from '../../src/test/index';
+import { createTestEmbedders, TEST_EMBEDDER_ID, TEST_EMBEDDER_MODEL } from '../../src/test/index';
 import {
   createGovernedFixture,
   type GovernedFixture,
@@ -67,6 +68,7 @@ const PROFILE: MemoryEmbeddingProfile = {
   embedderId: TEST_EMBEDDER_ID,
   dimension: DIMENSION,
   generation: 1,
+  model: TEST_EMBEDDER_MODEL,
 };
 const NOTES_SCOPE = {
   tenantId: principalA.tenantId,
@@ -439,7 +441,7 @@ describe('an embedder that fails during a switch', () => {
   async function switchingWith(failure: Failure) {
     const embedder = misbehaving(failure);
     const registry = createEmbedderRegistry([
-      { id: 'fake', embedder: embedder.embed, dimension: DIMENSION },
+      { id: 'fake', embedder: embedder.embed, dimension: DIMENSION, model: 'fake-model' },
     ]);
     const fixture = await createGovernedFixture('in-memory', {
       governed: {
@@ -454,11 +456,12 @@ describe('an embedder that fails during a switch', () => {
     return { fixture, embedder };
   }
 
-  const rows: { failure: Failure; error: RegExp }[] = [
-    { failure: 'throws', error: /embedder offline/ },
-    { failure: 'times out', error: new RegExp(`did not answer within ${BOUND}`) },
-    { failure: 'wrong dimension', error: /./ },
-    { failure: 'empty vector', error: /./ },
+  // The error is a code and never the embedder's text (COR-2188): `embedder offline` is not in it.
+  const rows: { failure: Failure; error: MemoryEmbeddingFailure }[] = [
+    { failure: 'throws', error: 'embedder-failed' },
+    { failure: 'times out', error: 'embedder-timeout' },
+    { failure: 'wrong dimension', error: 'embedder-failed' },
+    { failure: 'empty vector', error: 'embedder-failed' },
   ];
 
   it.each(rows)('$failure (COR-2185)', async ({ failure, error }) => {
@@ -475,7 +478,7 @@ describe('an embedder that fails during a switch', () => {
 
     const status = await fixture.memory.embedding.status();
     expect(status.job).toMatchObject({ target: 'fake', state: 'failed' });
-    expect(status.job?.error).toMatch(error);
+    expect(status.job?.error).toBe(error);
     expect(timersOf(fixture)).toBe(timersBefore);
     expect(embedder.calls[0]?.signal).toBeInstanceOf(AbortSignal);
   });

@@ -55,6 +55,8 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'decisions.fallbackModel': 'anthropic/claude-haiku',
   'context.summarizerModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 3,
+  'scorers.sampleRate': 0.25,
+  'scorers.dailyBudget': 40,
   'retention.audit': { olderThan: 86_400_000 },
   'retention.runs': { olderThan: 2_592_000_000 },
   'retention.chats': { olderThan: 5_184_000_000 },
