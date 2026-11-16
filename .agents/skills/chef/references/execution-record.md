@@ -1,6 +1,6 @@
 # Execution record
 
-A run keeps one note at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` and a sibling `<note name>-log.md`. Take the main checkout from the parent of `git rev-parse --path-format=absolute --git-common-dir`, never the current directory, because a worktree's `tmp/` vanishes with it; write with Bash when the Write tool refuses a path outside the session's directories. Use the local timestamp, add a session suffix on a collision, and never overwrite another run's note. Persist the run identifier before dispatch, and reconcile a resumed note with live workers, revisions, and Linear before trusting it.
+A run keeps one note at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` and a sibling `<note name>-log.md`. Take the main checkout from the parent of `git rev-parse --path-format=absolute --git-common-dir`, since a worktree's `tmp/` vanishes with it; write with Bash when the Write tool refuses a path outside the session's directories. Use the local timestamp and never overwrite another run's note. Persist the run identifier before dispatch, and reconcile a resumed note with live workers and Linear.
 
 ## The note
 
@@ -15,6 +15,10 @@ The note holds current state and stays under about 300 lines, because a resuming
 - **Corrections:** attempts per defect/acceptance criterion across workers and follow-ups, which no replacement resets, and the causal reassessment after two unsuccessful attempts.
 - **Resources:** spend from `bun scripts/chef/transcript-usage.ts <transcript>`, tokens per merged change from the `deliver.ts --usage-log` file, every Opus or Fable implementer with its reason, plan-window readings, and the connectors turned off at run start.
 - **Final state:** evidence per requirement, merge revisions, read-back issue and project states, worker disposition, and anything unresolved.
+
+## Worker entries
+
+Log `worker-start agent=<id> issue=<COR-n> worktree=<path> branch=<branch> [transcript=<path>]` at dispatch and `worker-end agent=<id>` on return.
 
 ## Worker charter
 
