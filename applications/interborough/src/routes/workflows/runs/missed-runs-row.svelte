@@ -33,7 +33,7 @@
   tooltip={missed.title}
   metaTooltip={lineTwo}
 >
-  {#snippet status()}<StatusDot word="Missed runs" />{/snippet}
+  {#snippet status()}<StatusDot word="Missed runs" qualifier={missed.count} />{/snippet}
   {#snippet title()}{missed.title}{/snippet}
   {#snippet time()}
     <time datetime={new Date(missed.since).toISOString()}>{missedDay(missed.since, zone)}</time>

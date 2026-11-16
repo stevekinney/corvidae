@@ -315,6 +315,21 @@ describe('the runs a schedule missed', () => {
     ).toBe('/schedules/daily-summary');
   });
 
+  test('say how many in the status, as "Missed runs, 2" and never with a middle dot (row 09q)', async () => {
+    const view = open('/runs', { schedules: [DAILY_SUMMARY] });
+    const row = await waitFor(() => {
+      const found = view.container.querySelector<HTMLElement>(
+        '[data-missed-schedule="daily-summary"]',
+      );
+      if (found === null) throw new Error('The missed row is not listed yet.');
+      return found;
+    });
+    const status = within(row).getByRole('img', { name: 'Missed runs, 2' });
+    expect(status.textContent?.trim()).toBe('Missed runs, 2');
+    expect(status.textContent).not.toContain('·');
+    expect(status.getAttribute('data-cinder-status')).toBe('warning');
+  });
+
   test('are left out of a filtered list, which is about runs', async () => {
     const view = open('/runs?status=failed', { schedules: [DAILY_SUMMARY] });
     await waitFor(() => expect(rowIds(view.container)).toEqual(['run-2']));
