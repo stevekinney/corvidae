@@ -47,4 +47,47 @@ export default [
       },
     },
   },
+  {
+    // The Settings rows a plugin's configuration is drawn as: one control at the inline end, and a
+    // group under its row. At 320px the rows stack, and nothing overflows.
+    name: 'setting-rows',
+    props: {
+      id: 'schema-form-setting-rows',
+      variant: 'setting-rows',
+      submitLabel: 'Save configuration',
+      schema: {
+        type: 'object',
+        properties: {
+          searchAddress: {
+            type: 'string',
+            title: 'Search address',
+            description: 'The service the search goes to.',
+          },
+          region: { type: 'string', enum: ['us', 'eu'], description: 'Where the work runs.' },
+          includeSnippets: { type: 'boolean', description: 'Show an excerpt with each result.' },
+          cacheMs: { type: 'number', description: 'How long a result is kept.' },
+          blockedSites: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Sites that are never searched.',
+          },
+          account: {
+            type: 'object',
+            title: 'Account',
+            description: 'Who the work is billed to.',
+            properties: { owner: { type: 'string', title: 'Owner' } },
+          },
+        },
+        required: ['searchAddress'],
+      },
+      value: {
+        searchAddress: 'https://search.example',
+        region: 'eu',
+        includeSnippets: true,
+        cacheMs: 300000,
+        blockedSites: ['example.com'],
+        account: { owner: 'Operations' },
+      },
+    },
+  },
 ];

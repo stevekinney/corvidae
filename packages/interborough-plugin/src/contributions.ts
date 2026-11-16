@@ -308,8 +308,11 @@ export interface PluginTriggerContext<TConfiguration = unknown> {
    * and trigger kind, for as long as the run it started exists, so a second fire with the same key
    * starts nothing and resolves `duplicate` with the first run's id, whatever state that run is in
    * and whatever its payload was. Once that run is purged, the key is forgotten. Only a fire that
-   * starts a run uses its key: a fire the host skipped, or one that rejected, leaves the key free
-   * for the redelivery. A key that is empty or not a string rejects.
+   * starts a run uses its key: a fire the host skipped leaves it free for the redelivery, and so
+   * does one that rejected before the run was created (a payload the file refuses, or a start the
+   * engine refused). A fire that rejected because the engine's start threw after it had committed
+   * the run took the key, so its redelivery resolves `duplicate` with that run. A key that is empty
+   * or not a string rejects.
    *
    * A fire after the host stopped the trigger resolves `skipped` and starts nothing; so does one
    * for a file that is paused, or after the host closed. A payload the file's `inputSchema`
@@ -325,7 +328,13 @@ export interface PluginTriggerContext<TConfiguration = unknown> {
       readonly idempotencyKey?: string;
     },
   ): Promise<PluginTriggerOutcome>;
-  /** Aborts when the host stops the trigger. */
+  /**
+   * Aborts when the host stops the trigger, and when `start` threw: a `fire` after that resolves
+   * `skipped`. For a plugin that declares a secret, the host gives `start` a context of its own
+   * each time it runs it: its signal aborts when a secret is removed, and the next `start`
+   * receives a new one. For `receive`, it aborts when the request does or the host closes (see
+   * {@link PluginTrigger.receive}).
+   */
   readonly signal: AbortSignal;
 }
 
@@ -351,12 +360,38 @@ export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
    * the listener of every file that uses the kind, and it is recorded on each run the kind starts.
    */
   readonly version?: string;
-  /** What the trigger listens for. */
+  /** What the trigger listens for or receives. */
   readonly description: string;
   /** The schema an instance's configuration is parsed with. */
   readonly configuration: TSchema;
-  /** Starts listening; the function it resolves with stops it. */
-  start(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;
+  /**
+   * Starts listening; the function it resolves with stops it. A kind defines `start`, `receive` or
+   * both: one with neither, or with a member that is present and not a function, is refused when its plugin loads (the plugin is skipped with `setup-failed`). A kind with only `receive` has no
+   * listener to run, and its files report the listener state `ready`.
+   */
+  start?(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;
+  /**
+   * Answers one inbound request for a workflow file of this kind, called by the host's
+   * `receiveTrigger(id, request)` (the `POST /triggers/<workflow-id>` route calls it). It receives
+   * the request as the host was given it, unread, and the same context `start` receives:
+   * `configuration` is the file's, parsed, `workflowId` its identifier, and `storage` the same
+   * state `start` sees. It authenticates the sender itself (see `verifyHmacSignature`) and
+   * resolves the `Response` the sender is answered with; the host returns that object as it is. It
+   * calls `context.fire` for each run it starts, with `options.idempotencyKey` for a delivery that
+   * may be repeated: the host reads no header and applies no key of its own. There is no timestamp
+   * window, so a captured signed delivery verifies again however late it is sent, and the key is
+   * the only replay protection: take it from data the signature covers (a field of the verified
+   * body, or a digest of its bytes), never from a header the signature does not cover.
+   *
+   * `context.signal` aborts when the request does and when the host closes, and for nothing else:
+   * a pause, an edit, a removal or a new version of the kind does not abort a call in flight. A
+   * `fire` after it aborted, or after the host closed, resolves `skipped` and starts nothing. A
+   * `fire` for a paused file resolves `skipped: 'paused'`, so `receive` still answers the sender.
+   * A rejection, including one for a secret the plugin declares and has not been given
+   * (`PluginNeedsSetupError`), goes back to the caller as it is, changes nothing about the file's
+   * listener, and is reported nowhere: the host's route answers a status with no text.
+   */
+  receive?(request: Request, context: PluginTriggerContext<z.output<TSchema>>): Promise<Response>;
 }
 
 /** What a hook action kind's `run` receives. */
@@ -365,7 +400,11 @@ export interface PluginReactionContext {
   readonly event: PluginEvent;
   /** The action's configuration, parsed with the kind's `configuration` schema. */
   readonly configuration: unknown;
-  /** Aborts when the host stops the delivery. */
+  /**
+   * Aborts when the host stops the delivery (a shutdown), when the reaction's `timeoutMilliseconds`
+   * have passed, and when the hook is disabled or deleted. The attempt ends when it aborts, whether
+   * or not `run` looks at it: pass it to whatever `run` waits on so the work stops too.
+   */
   readonly signal: AbortSignal;
   /** The id of the delivery this attempt belongs to; every attempt of one delivery shares it. */
   readonly deliveryId: string;
@@ -376,6 +415,16 @@ export interface PluginReactionContext {
    * idempotency key, or a lookup of what it already did) to make the repeat a no-op.
    */
   readonly idempotencyKey: string;
+  /** The id of the hook this attempt runs for. */
+  readonly hookId: string;
+  /** The principal that owns the hook: `api-key:<subject>` or `anonymous:local`. */
+  readonly owner: string;
+  /**
+   * Which attempt of the delivery this is, 1-based. An attempt the process was interrupted in counts,
+   * so the attempt after a restart is the next number. An attempt dropped because the plugin needs
+   * setup is not recorded, so the next one carries the same number again.
+   */
+  readonly attempt: number;
 }
 
 /** A new kind of hook action, what a hook does when one of its events happens. */
@@ -386,10 +435,56 @@ export interface PluginReaction {
   readonly version?: string;
   /** What the action does. */
   readonly description: string;
-  /** The schema an action's configuration is parsed with. */
+  /**
+   * How long one attempt of `run` may take, in milliseconds: a positive safe integer, or the host
+   * skips the plugin (a `setup-failed` problem naming the reaction and the value). When it passes,
+   * the context's `signal` aborts, the attempt ends in error
+   * (`The reaction timed out after N ms`) and is tried again. Absent, an attempt gets the host's
+   * webhook request timeout (10 seconds unless the host sets another). A delivery's lease lasts at
+   * least this long, so a second process never takes over a `run` still inside its timeout.
+   */
+  readonly timeoutMilliseconds?: number;
+  /**
+   * How many attempts a new delivery of this reaction may make before it is exhausted: an integer
+   * from 1 to 20, or the host skips the plugin (a `setup-failed` problem naming the reaction and
+   * the value). Absent, a delivery gets the host's own limit (8 for a Bureau that sets none). A
+   * delivery keeps the number it was made with, so a plugin upgrade changes only deliveries made
+   * after it, and a test delivery (`dryRun`) makes one attempt whatever this says.
+   */
+  readonly maxAttempts?: number;
+  /**
+   * The schema an action's configuration is parsed with. Mark a field that holds a secret (an API
+   * key, a webhook token) with `.meta({ secret: true })`: a hook then stores `{ "$secret": "<key>" }`
+   * in that field, where the key names a secret the workspace has published, and never the value; a
+   * plain value in the field is refused when the hook is written. Each attempt of a delivery
+   * resolves the key to the value published then, and `run` receives the value in `configuration`,
+   * as the schema declares it (a string). An attempt whose key has no value fails and is tried
+   * again, and never falls back to another value. Mark only fields reached through an object's
+   * properties, optional or not: a marker under an array or a record, and a marked field that
+   * is a union, are refused, because a reference has no single place to be kept there. `.nullable()`
+   * makes a union, so both `.meta({ secret: true }).nullable()` and `.nullable().meta({ secret: true })`
+   * are refused; use `.optional()` instead. A `{ secret: true }` inside a `default` or `examples`
+   * value is data, not a marker.
+   */
   readonly configuration: z.ZodType;
-  /** Carries out the action for one event; a rejection is a failed delivery. */
+  /**
+   * Carries out the action for one event. A rejection fails that attempt, and the delivery is tried
+   * again until it runs out of attempts. Reject with a `PluginReactionError` whose `permanent`
+   * is `true` when a retry cannot change the answer (the channel does not exist, the service
+   * refuses the input for good): the delivery then ends `failed` after that one attempt.
+   */
   run(context: PluginReactionContext): Promise<void>;
+  /**
+   * What `hooks.test` runs instead of `run`: the same checks and the same effect, without the part
+   * a person cannot take back (a message not sent, a record not written). It gets the same context
+   * as `run`, and it is a one-attempt test delivery that is not retried: an attempt a shutdown
+   * interrupted counts as that attempt, so a restart does not call `dryRun` again, though a person
+   * can retry the delivery by hand. A test that never made its attempt (its plugin needed setup)
+   * makes it when the plugin is set up. Absent, a hook of this reaction cannot be tested, and
+   * `hooks.test` is refused: a test would otherwise call `run` for a real effect. A rejection, a
+   * timeout and a `PluginReactionError` are handled as for `run`.
+   */
+  dryRun?(context: PluginReactionContext): Promise<void>;
 }
 
 /**
@@ -435,6 +530,40 @@ export interface PluginEmbedder {
 }
 
 /**
+ * Where a panel appears in the host (COR-2212). A panel declares each place it opens, so a page
+ * panel needs no MCP tool to open from, and a place several plugins can fill takes no claim.
+ * Setup refuses a placement with another `kind`, a `page` group outside `work`, `build` and
+ * `system`, and a `page` path outside `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`.
+ */
+export type PluginPanelPlacement =
+  | {
+      /** The panel is a page of its own in the host's router. */
+      readonly kind: 'page';
+      /** The route path under the host, in lowercase segments of letters, digits and hyphens. */
+      readonly path: string;
+      /** A sidebar entry for the page; without one the page is reachable only by its path. */
+      readonly sidebar?: {
+        /** The sidebar group the entry sits in. */
+        readonly group: 'work' | 'build' | 'system';
+        /** The name of a Lucide icon drawn beside the entry. */
+        readonly icon?: string;
+      };
+    }
+  | {
+      /** The panel shows on a run's page, beside the run it belongs to. */
+      readonly kind: 'run';
+    }
+  | {
+      /** The panel opens inline in Chat from a tool call of the agent tool `agentTool`. */
+      readonly kind: 'chat-tool';
+      /**
+       * The agent tool id whose call opens the panel. A Bureau given its agent tools refuses an
+       * id it does not hold, except the workflow tools it adds itself.
+       */
+      readonly agentTool: string;
+    };
+
+/**
  * An interface panel, an MCP App page, that renders inside the host. The host bundles `entry` into one
  * self-contained page and serves it as the `ui://` resource `uri`, under a content security policy
  * that denies every origin and permission.
@@ -449,8 +578,11 @@ export interface PluginPanel {
   /** What the panel shows. */
   readonly description?: string;
   /**
-   * The `ui://` resource the page is served at, unique across plugins. The version is part of the
-   * URI: a changed contract is a new one.
+   * The `ui://` resource the page is served at. It begins `ui://<plugin>/`, the contributing
+   * plugin's own name, so two plugins never hold one URI: setup refuses any other prefix. The
+   * version is part of the URI: a changed contract is a new one, and a start that serves
+   * different bytes under a URI an earlier start served lists a `panel-changed` problem (the page
+   * is still served).
    */
   readonly uri: string;
   /** The browser entry module (TypeScript or JavaScript) the host bundles into the page. */
@@ -459,17 +591,26 @@ export interface PluginPanel {
   readonly styles?: string;
   /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
   readonly allowedTools: string[];
-  /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
+  /**
+   * Bureau operations callable only by this host panel, outside the generic MCP inventory. Each
+   * is one of `allowedTools`, and must be in the Bureau's `HOST_PANEL_OPERATIONS`: setup refuses
+   * any other name, and the host answers 403 for it.
+   */
   readonly hostOnlyTools?: string[];
-  /** An agent tool id that may open this app in an inline Chat tool call. */
-  readonly opensFromAgentTool?: string;
+  /**
+   * Where the panel appears in the host. A panel that declares none is served and linked from
+   * `opensFromTool` alone. Two plugins' panels can both have a `run` placement: a placement is no
+   * claim on a name.
+   */
+  readonly placements?: readonly PluginPanelPlacement[];
   /**
    * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
    * It is one of `allowedTools`, and unique across plugins: a tool links to one page, so a plugin
-   * whose app opens from a tool another app already opens is skipped with `name-clash`. An app
-   * whose entry does not build leaves the plugin running with a `panel-failed` problem.
+   * whose app opens from a tool another app already opens is skipped with `name-clash`. Without
+   * one, no tool links to the page and nothing is claimed, so a page panel needs no MCP opener. An
+   * app whose entry does not build leaves the plugin running with a `panel-failed` problem.
    */
-  readonly opensFromTool: string;
+  readonly opensFromTool?: string;
 }
 
 /** A rendering of one event for the host's activity views. */

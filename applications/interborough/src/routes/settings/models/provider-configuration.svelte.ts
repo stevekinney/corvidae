@@ -102,7 +102,11 @@ export class ProviderConfigurationDraft {
   /** What the form shows for the stored configuration, which an untouched dialog holds. */
   get #baseline(): Record<string, unknown> {
     const schema = this.formSchema;
-    const shown = schema === undefined ? undefined : schemaFormInitialDraft(schema, this.stored);
+    // The dialogs draw the rows variant, which starts an optional choice unset, so the baseline is read as it.
+    const shown =
+      schema === undefined
+        ? undefined
+        : schemaFormInitialDraft(schema, this.stored, 'setting-rows');
     return configurationWithoutEmpty(configurationObject(shown ?? this.stored));
   }
 

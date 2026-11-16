@@ -33,6 +33,7 @@ import { createBureau } from '../create-bureau';
 import { DiagnosticEvent } from '../events';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../bureau-types/facade';
+import type { HookActionKindRegistration } from '../hooks/hook-types';
 import type { BureauDiagnostic } from '../bureau-types/options';
 import { composePlugins } from './compose-plugins';
 import {
@@ -44,6 +45,7 @@ import {
 } from './plugin-secret-gate';
 import type { BureauPluginSecrets } from './plugin-types';
 import { listedPlugins } from '../testing/plugin-listing.test-support';
+import { listenForReports } from '../workflow-trigger-reports';
 
 const SECRET = 'sk-live-gate-0123456789';
 const KEY = 'kit-api-key';
@@ -246,12 +248,77 @@ describe('a plugin missing a declared secret', () => {
   });
 });
 
+describe('a reaction’s registration (COR-2176)', () => {
+  it('exposes its plugin gate’s availability and when it changes, and a plugin with no secret has none', async () => {
+    const secrets = secretsStore();
+    const reaction = (name: string) => ({
+      name,
+      description: 'Pages.',
+      configuration: z.object({}),
+      run: async () => undefined,
+    });
+    const composed = await composePlugins({
+      plugins: [
+        {
+          descriptor: definePlugin({
+            name: 'kit',
+            version: '1.0.0',
+            description: 'Needs an API key.',
+            secrets: [KEY],
+            setup: () => ({ reactions: [reaction('page')] }),
+          }),
+          source: 'package',
+          location: '@example/kit',
+        },
+        {
+          descriptor: definePlugin({
+            name: 'plain',
+            version: '1.0.0',
+            description: 'Needs nothing.',
+            setup: () => ({ reactions: [reaction('ping')] }),
+          }),
+          source: 'package',
+          location: '@example/plain',
+        },
+      ],
+      pluginSecrets: secrets,
+      hooks: {},
+    });
+    stops.push(composed.watchSecrets());
+    const hooks = composed.options.hooks as
+      { readonly actionKinds?: readonly HookActionKindRegistration[] } | undefined;
+    const registrations = hooks?.actionKinds ?? [];
+    const kit = registrations.find((registration) => registration.plugin === 'kit');
+    const plain = registrations.find((registration) => registration.plugin === 'plain');
+    expect(plain?.availability).toBeUndefined();
+    expect(plain?.onAvailabilityChange).toBeUndefined();
+
+    expect(kit?.availability?.()).toBe('needs-setup');
+    let changes = 0;
+    const stop = kit?.onAvailabilityChange?.(() => {
+      changes += 1;
+    });
+    secrets.save(KEY, SECRET);
+    await waitForCondition(
+      () => kit?.availability?.() === 'available',
+      'the kind stayed unavailable',
+    );
+    expect(changes).toBeGreaterThanOrEqual(1);
+    stop?.();
+    secrets.remove(KEY);
+    await waitForCondition(
+      () => kit?.availability?.() === 'needs-setup',
+      'the kind stayed available',
+    );
+  });
+});
+
 /** A gate over one key, with the store that drives it. */
-async function gateOver(): Promise<{
+async function gateOver(initial: Record<string, string> = {}): Promise<{
   gate: PluginSecretGate;
   secrets: ReturnType<typeof secretsStore>;
 }> {
-  const secrets = secretsStore();
+  const secrets = secretsStore(initial);
   const gate = await createPluginSecretGate('kit', [KEY], secrets);
   stops.push(gate.watch());
   return { gate, secrets };
@@ -344,6 +411,9 @@ describe('the secret-gating outcome matrix', () => {
             description: 'Pages',
             configuration: z.object({}),
             run: note('reaction', undefined),
+            // COR-2183: a test delivery runs `dryRun`, which is gated as `run` is.
+            dryRun: note('reaction-dry-run', undefined),
+            maxAttempts: 4,
           },
         ],
         embedders: [{ name: 'small', dimensions: 1, embed: note('embedder', [[1]]) }],
@@ -351,7 +421,7 @@ describe('the secret-gating outcome matrix', () => {
           {
             name: 'judge',
             version: '1',
-            evaluate: note('scorer', { pass: true, score: 1, message: '' }),
+            score: note('scorer', { outcome: 'pass' as const, score: 1, message: '' }),
           },
         ],
         formatters: [
@@ -404,9 +474,10 @@ describe('the secret-gating outcome matrix', () => {
         ]),
       ),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
+      'reaction-dry-run': () => gatedResult.reactions?.[0]?.dryRun?.({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never),
-      scorer: () => gatedResult.scorers?.[0]?.evaluate({} as never),
+      scorer: () => gatedResult.scorers?.[0]?.score({} as never, new AbortController().signal),
       formatter: () => gatedResult.formatters?.[0]?.format(event),
       agent: () => gatedResult.agents?.[0]?.agent.run('Go.'),
       // The definition resolver Bureau starts, recovers and claims a durable run through.
@@ -446,6 +517,8 @@ describe('the secret-gating outcome matrix', () => {
     expect(gatedResult.guardrails?.memory?.[0]?.gates).toEqual(['recall']);
     expect(gatedResult.guardrails?.input?.[0]).toMatchObject({ action: 'warn' });
     expect(gatedResult.guardrails?.tools?.[0]).toMatchObject({ name: 'cap', action: 'block' });
+    // A gated reaction keeps what it declares beside `run` and `dryRun`.
+    expect(gatedResult.reactions?.[0]).toMatchObject({ name: 'page', maxAttempts: 4 });
     expect(await gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never)).toMatchObject({
       triggered: false,
       confidence: 0,
@@ -513,6 +586,7 @@ describe('the secret-gating outcome matrix', () => {
   it('starts a trigger kind once the secret is saved, stops it on removal, and starts it again on a second save', async () => {
     const { gate, secrets } = await gateOver();
     const log: string[] = [];
+    const received: PluginTriggerContext[] = [];
     const [kind] =
       gatedContributions<PluginContributions>(
         {
@@ -521,9 +595,8 @@ describe('the secret-gating outcome matrix', () => {
               name: 'inbox',
               description: 'Mail arrives.',
               configuration: z.object({}),
-              start: async (received) => {
-                // The gate hands the trigger the whole context: its file and its storage too.
-                expect(received).toBe(context);
+              start: async (given) => {
+                received.push(given);
                 log.push('start');
                 return () => {
                   log.push('stop');
@@ -541,11 +614,14 @@ describe('the secret-gating outcome matrix', () => {
       configuration: {},
       workflowId: 'watcher',
       storage: new MemoryStorage(),
-      fire: async () => ({ outcome: 'skipped', reason: 'stopped' }),
+      fire: async () => ({ outcome: 'started', runId: 'run-1' }),
       signal: controller.signal,
     };
-    const stop = await kind!.start(context);
+    const reports: string[] = [];
+    listenForReports(context, (report) => void reports.push(report.state));
+    const stop = await kind!.start!(context);
     expect(log).toEqual([]);
+    expect(reports).toEqual(['waiting-for-secret']);
 
     secrets.save(KEY, SECRET);
     await waitForCondition(
@@ -561,6 +637,225 @@ describe('the secret-gating outcome matrix', () => {
     await waitForCondition(() => log.length === 3, 'the trigger did not start again');
     await stop();
     expect(log).toEqual(['start', 'stop', 'start', 'stop']);
+    // The gate follows the listener: waiting, then listening, waiting, listening; its own stop is
+    // the host's doing, and reports nothing.
+    expect(reports).toEqual(['waiting-for-secret', 'listening', 'waiting-for-secret', 'listening']);
+
+    // Each start got its own context, the file and the storage the host gave, a signal that is
+    // not the host's, and a `fire` that is the host's until the secret goes.
+    const [first, second] = received;
+    expect(received).toHaveLength(2);
+    expect(first).not.toBe(context);
+    expect(first!.workflowId).toBe('watcher');
+    expect(first!.storage).toBe(context.storage);
+    expect(first!.configuration).toBe(context.configuration);
+    expect(first!.signal).not.toBe(context.signal);
+    // Removing the secret aborted the first listener's signal, and fenced its fire. The second
+    // was stopped by the host's own stop, which aborts nothing of the host's.
+    expect(first!.signal.aborted).toBe(true);
+    expect(await first!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+    expect(controller.signal.aborted).toBe(false);
+    expect(second!.signal.aborted).toBe(true);
+    expect(await second!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+  });
+
+  it('M3: gates the receive of a receive-only kind, leaves its start undefined, and calls nothing while a secret is missing', async () => {
+    const { gate, secrets } = await gateOver();
+    const calls: string[] = [];
+    const [kind] =
+      gatedContributions<PluginContributions>(
+        {
+          triggers: [
+            {
+              name: 'inbox',
+              description: 'Mail arrives.',
+              configuration: z.object({}),
+              receive: async (request, given) => {
+                calls.push(`${request.method}:${given.workflowId}`);
+                return new Response('seen', { status: 202 });
+              },
+            },
+          ],
+        },
+        gate,
+        (name) => `kit:${name}`,
+        ignoreDiagnostics,
+      ).triggers ?? [];
+    expect(kind!.start).toBeUndefined();
+    expect(Object.hasOwn(kind!, 'start')).toBe(false);
+    const context: PluginTriggerContext = {
+      configuration: {},
+      workflowId: 'watcher',
+      storage: new MemoryStorage(),
+      fire: async () => ({ outcome: 'started', runId: 'run-1' }),
+      signal: new AbortController().signal,
+    };
+    const request = new Request('https://hooks.example.test/triggers/watcher', { method: 'POST' });
+    const refused = await rejectionOf(kind!.receive!(request, context));
+    expect(refused).toBeInstanceOf(PluginNeedsSetupError);
+    expect(refused).toMatchObject({ plugin: 'kit', contribution: 'kit:inbox', keys: [KEY] });
+    expect(calls).toEqual([]);
+
+    secrets.save(KEY, SECRET);
+    await waitForCondition(() => gate.available(), 'the gate did not open');
+    const answer = await kind!.receive!(request, context);
+    expect(answer.status).toBe(202);
+    expect(calls).toEqual(['POST:watcher']);
+
+    secrets.remove(KEY);
+    await waitForCondition(() => !gate.available(), 'the gate did not close');
+    expect(await rejectionOf(kind!.receive!(request, context))).toBeInstanceOf(
+      PluginNeedsSetupError,
+    );
+    expect(calls).toEqual(['POST:watcher']);
+  });
+
+  it('M4: gates both the start and the receive of a kind that has both', async () => {
+    const { gate, secrets } = await gateOver();
+    const log: string[] = [];
+    const [kind] =
+      gatedContributions<PluginContributions>(
+        {
+          triggers: [
+            {
+              name: 'inbox',
+              description: 'Mail arrives.',
+              configuration: z.object({}),
+              start: async () => {
+                log.push('start');
+                return () => undefined;
+              },
+              receive: async () => {
+                log.push('receive');
+                return new Response(null, { status: 204 });
+              },
+            },
+          ],
+        },
+        gate,
+        (name) => `kit:${name}`,
+        ignoreDiagnostics,
+      ).triggers ?? [];
+    const context: PluginTriggerContext = {
+      configuration: {},
+      workflowId: 'watcher',
+      storage: new MemoryStorage(),
+      fire: async () => ({ outcome: 'started', runId: 'run-1' }),
+      signal: new AbortController().signal,
+    };
+    const reports: string[] = [];
+    listenForReports(context, (report) => void reports.push(report.state));
+    const request = new Request('https://hooks.example.test/triggers/watcher', { method: 'POST' });
+    const stop = await kind!.start!(context);
+    expect(reports).toEqual(['waiting-for-secret']);
+    expect(await rejectionOf(kind!.receive!(request, context))).toBeInstanceOf(
+      PluginNeedsSetupError,
+    );
+    expect(log).toEqual([]);
+    secrets.save(KEY, SECRET);
+    await waitForCondition(() => log.length === 1, 'the trigger did not start');
+    const answered = await kind!.receive!(request, context);
+    expect(answered.status).toBe(204);
+    expect(log).toEqual(['start', 'receive']);
+    await stop();
+  });
+
+  it('delegates a fire to the host while the listener runs, and aborts the listener with the host’s signal', async () => {
+    const { gate, secrets } = await gateOver({ [KEY]: SECRET });
+    const received: PluginTriggerContext[] = [];
+    const [kind] =
+      gatedContributions<PluginContributions>(
+        {
+          triggers: [
+            {
+              name: 'inbox',
+              description: 'Mail arrives.',
+              configuration: z.object({}),
+              start: async (given) => {
+                received.push(given);
+                return () => undefined;
+              },
+            },
+          ],
+        },
+        gate,
+        (name) => `kit:${name}`,
+        ignoreDiagnostics,
+      ).triggers ?? [];
+    const controller = new AbortController();
+    const fired: unknown[] = [];
+    const context: PluginTriggerContext = {
+      configuration: {},
+      workflowId: 'watcher',
+      storage: new MemoryStorage(),
+      fire: async (payload) => {
+        fired.push(payload);
+        return { outcome: 'started', runId: 'run-1' };
+      },
+      signal: controller.signal,
+    };
+    await kind!.start!(context);
+    expect(await received[0]!.fire({ n: 1 })).toEqual({ outcome: 'started', runId: 'run-1' });
+    expect(fired).toEqual([{ n: 1 }]);
+
+    // The host stopped the listener: its signal follows, and the fire is the host's answer.
+    controller.abort();
+    expect(received[0]!.signal.aborted).toBe(true);
+    secrets.remove(KEY);
+    await waitForCondition(() => gate.missing().length === 1, 'the secret was not removed');
+    expect(await received[0]!.fire({ n: 2 })).toEqual({ outcome: 'started', runId: 'run-1' });
+    expect(fired).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it('reports a start that throws after the secret is saved again, and throws the first one to the host', async () => {
+    const { gate, secrets } = await gateOver();
+    let failing = true;
+    const [kind] =
+      gatedContributions<PluginContributions>(
+        {
+          triggers: [
+            {
+              name: 'inbox',
+              description: 'Mail arrives.',
+              configuration: z.object({}),
+              start: async () => {
+                if (failing) throw new Error('the mailbox refused the connection');
+                return () => undefined;
+              },
+            },
+          ],
+        },
+        gate,
+        (name) => `kit:${name}`,
+        ignoreDiagnostics,
+      ).triggers ?? [];
+    const context: PluginTriggerContext = {
+      configuration: {},
+      workflowId: 'watcher',
+      storage: new MemoryStorage(),
+      fire: async () => ({ outcome: 'skipped', reason: 'stopped' }),
+      signal: new AbortController().signal,
+    };
+    const reports: Array<{ state: string; error?: unknown }> = [];
+    listenForReports(context, (report) => void reports.push(report));
+    await kind!.start!(context);
+    expect(reports).toEqual([{ state: 'waiting-for-secret' }]);
+
+    // The secret is saved, and the plugin's own start throws: reported, not swallowed.
+    secrets.save(KEY, SECRET);
+    await waitForCondition(() => reports.length === 2, 'the failed start was not reported');
+    expect(reports[1]).toMatchObject({ state: 'failed' });
+    expect((reports[1]!.error as Error).message).toBe('the mailbox refused the connection');
+
+    // The first transition's failure is the host's to see, as a `start` that throws, unreported.
+    const secondContext = { ...context, signal: new AbortController().signal };
+    const secondReports: string[] = [];
+    listenForReports(secondContext, (report) => void secondReports.push(report.state));
+    expect(await rejectionOf(kind!.start!(secondContext))).toMatchObject({
+      message: 'the mailbox refused the connection',
+    });
+    expect(secondReports).toEqual([]);
+    failing = false;
   });
 
   it('applies only the latest read of a key, so a save then an immediate removal ends missing', async () => {

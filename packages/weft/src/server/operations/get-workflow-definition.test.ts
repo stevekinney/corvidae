@@ -11,7 +11,7 @@ import { generateOpenApiDocument } from '../openapi.ts';
 import { generateOpenRpcDocument } from '../openrpc.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';
-import { createLiveOperationRegistry } from '../rest-bindings.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
 import {
   getWorkflowDefinitionOperation,
   getWorkflowDefinitionRestBinding,
@@ -210,7 +210,10 @@ describe('weft.workflows.definitions.get: GET /v1/registry/definitions/:name', (
     const rpc = generateOpenRpcDocument({ registry: live, transports: ['http'] }) as {
       methods: { name: string }[];
     };
-    const openApi = generateOpenApiDocument() as { paths: Record<string, unknown> };
+    const openApi = generateOpenApiDocument({
+      registry: live,
+      restBindings: createLiveRestBindings(),
+    }) as { paths: Record<string, unknown> };
 
     expect(rpc.methods.map((method) => method.name)).toContain('weft.workflows.definitions.get');
     expect(Object.keys(openApi.paths)).toContain('/api/v1/registry/definitions/{name}');

@@ -29,9 +29,11 @@ import {
   type AgentRunEventFeed,
   createAgentRunEventFeed,
   PUBLISHED_RUN_EVENT_KINDS,
+  RunErrorEvent,
 } from '@lostgradient/operative';
 
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
+import type { RunOutcomeDetailRecorder } from './run-outcome-details.ts';
 
 /** The mutable half of operative's registry, as this module needs it. */
 export type MutableAgentRunEventRegistry = {
@@ -47,6 +49,11 @@ export type RunEventFeedAttachmentOptions = {
   now?: () => number;
   /** Where a throwing projection is reported. Without one it is swallowed. */
   onError?: (error: unknown, kind: string) => void;
+  /**
+   * Told what the run's `RunErrorEvent` said, so the Bureau's `run.error` can name the failing step
+   * and the error's code and kind, which the task's settlement does not keep (COR-2095).
+   */
+  outcomeDetails?: RunOutcomeDetailRecorder;
 };
 
 /**
@@ -112,6 +119,21 @@ export function attachRunEventFeed(
     };
     activeRun.addEventListener(kind, listener);
     disposers.push(() => activeRun.removeEventListener(kind, listener));
+  }
+
+  const outcomeDetails = options.outcomeDetails;
+  if (outcomeDetails !== undefined) {
+    // Guarded like the listeners above, for the same reason: a throw here would surface inside the
+    // run's own `run.error` dispatch.
+    const recordFailure = (event: RunErrorEvent): void => {
+      try {
+        outcomeDetails.record(runId, event);
+      } catch (error) {
+        options.onError?.(error, RunErrorEvent.type);
+      }
+    };
+    activeRun.addEventListener(RunErrorEvent.type, recordFailure);
+    disposers.push(() => activeRun.removeEventListener(RunErrorEvent.type, recordFailure));
   }
 
   return () => {

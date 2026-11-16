@@ -11,10 +11,8 @@ import {
 
 import { MAX_BATCH_OPERATIONS, MAX_SCAN_LIMIT } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import {
-  createCatalogSnapshot,
-  stringifyCatalogSnapshot,
-} from '../src/server/operation-catalog-snapshot.ts';
+import { stringifyCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
+import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 import { assignAliasNames } from './operation-client-aliases.ts';
 import { canonicalKey, schemaToNode } from './operation-client-schema.ts';
 

@@ -498,6 +498,7 @@ describe('plugin composition', () => {
         received.push({
           admission: contributions.guardrails.admission.map(({ name }) => name),
           recall: contributions.guardrails.recall.map(({ name }) => name),
+          sources: contributions.guardrails.sources,
           embedders: contributions.embedders.map(({ id, dimension }) => ({ id, dimension })),
         });
         return undefined as never;
@@ -517,6 +518,33 @@ describe('plugin composition', () => {
           'remembering:memory/both',
           'remembering:memory/also-both',
           'remembering:memory/reads',
+        ],
+        // One source per detector in load order, with canonical gates (COR-2192).
+        sources: [
+          {
+            id: 'remembering:memory/both',
+            plugin: 'remembering',
+            version: '1.0.0',
+            gates: ['admission', 'recall'],
+          },
+          {
+            id: 'remembering:memory/also-both',
+            plugin: 'remembering',
+            version: '1.0.0',
+            gates: ['admission', 'recall'],
+          },
+          {
+            id: 'remembering:memory/writes',
+            plugin: 'remembering',
+            version: '1.0.0',
+            gates: ['admission'],
+          },
+          {
+            id: 'remembering:memory/reads',
+            plugin: 'remembering',
+            version: '1.0.0',
+            gates: ['recall'],
+          },
         ],
         embedders: [{ id: 'remembering:small', dimension: 4 }],
       },

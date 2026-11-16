@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { createAgent } from '@lostgradient/operative';
 import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
+import { watchPlugin } from '../../testing/watch-plugin.test-support.ts';
 import { waitForCondition } from '../../test';
 import { serveWorkflows } from './workflows-fixtures.test-support.ts';
 import {
@@ -29,6 +30,7 @@ const cases = [
   ['bureau.workflows.pause', 'administrator'],
   ['bureau.workflows.resume', 'administrator'],
   ['bureau.workflows.delete', 'administrator'],
+  ['bureau.workflows.triggers.retry', 'administrator'],
   ['bureau.workflows.get', 'shared'],
   ['bureau.workflows.list', 'shared'],
   ['bureau.workflows.catalog', 'shared'],
@@ -45,12 +47,21 @@ const cases = [
 
 for (const [operation, access] of cases) {
   test(`${operation} executes all six authenticated actor cases`, async () => {
+    const retrying = operation === 'bureau.workflows.triggers.retry';
     const served = await serveWorkflows(cleanups, {
       workspace: workspacePrivacyDirectory(),
       authentication: workspacePrivacyAuthentication,
+      // A retry acts on a contributed trigger's listener, so the shared file for it is one.
+      ...(retrying ? { plugins: [watchPlugin().entry] } : {}),
     });
     const fixture = { handler: served.keyed };
     const created = await served.bureau.workflows!.create('workspace-flow', definition);
+    if (retrying) {
+      await served.bureau.workflows!.create('workspace-watcher', {
+        trigger: { kind: 'x:watch' },
+        steps: [AGENT_STEP],
+      });
+    }
     const started = await workspacePrivacyCall(fixture, 'owner', 'bureau.workflows.start', {
       id: 'workspace-flow',
       input: { secret: 'PRIVATE-WORKFLOW-INPUT-d24a' },
@@ -97,7 +108,9 @@ for (const [operation, access] of cases) {
                           'bureau.workflows.delete',
                         ].includes(operation)
                       ? { id: 'workspace-flow', expectedHash: created.hash }
-                      : { id: 'workspace-flow' };
+                      : retrying
+                        ? { id: 'workspace-watcher' }
+                        : { id: 'workspace-flow' };
     const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
     for (const actor of [
       ...actors.filter((value) => value !== 'administrator'),

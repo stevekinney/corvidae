@@ -30,7 +30,10 @@ describe('run.settled', () => {
       const envelopes = await collect(bureau.internals.eventFeed.feed.replay());
 
       expect(settled).toEqual([run.id]);
-      expect(envelopes.at(-1)).toMatchObject({ kind: 'run.settled', payload: { runId: run.id } });
+      expect(envelopes.at(-1)).toMatchObject({
+        kind: 'run.settled',
+        payload: { runId: run.id, status: 'completed' },
+      });
       expect(bureau.internals.store.getRun(run.id)).toBeDefined();
       expect(bureau.internals.runEventFeeds.get(run.id)).toBeDefined();
     } finally {

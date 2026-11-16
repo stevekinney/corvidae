@@ -14,6 +14,13 @@ import { evictCachedContent, putRecordVector } from './profile-vectors';
 export const DEFAULT_SWITCH_STEP_LIMIT = 500;
 
 /**
+ * How many records one call of the embedder embeds in a switch step or a queue drain (COR-2187).
+ * A batch never goes past the step's limit, so a step of `DEFAULT_SWITCH_STEP_LIMIT` records makes
+ * five calls and not five hundred.
+ */
+export const DEFAULT_SWITCH_BATCH_SIZE = 100;
+
+/**
  * How long a queued embed whose record is not stored is kept, in milliseconds. An admission while
  * the active embedder is unavailable queues its record before storing it, and between the two it
  * makes one record write, so an entry this old whose record is still absent belongs to an admission
@@ -201,8 +208,6 @@ async function survey(
   return { total, pending };
 }
 
-type EmbedOutcome = 'held' | 'withdrawn' | 'stopped';
-
 /**
  * Writes `vector` as the record's vector in `profile`, conditioned on the record: the vector carries
  * the `version` the record had when it was read, then the record is read again, and a record
@@ -228,34 +233,50 @@ async function putConditioned(
   return 'deleted';
 }
 
+/** Whether `error` is an embed's bound running out (COR-2185): the embedder did not answer in time. */
+function isTimeout(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && 'name' in error && error.name === 'TimeoutError'
+  );
+}
+
 /**
- * Embeds one record into the switch's target, as a write conditioned on the record (see
- * `putConditioned`). An embedder that errors fails the switch, and so does a target deleted
- * meanwhile.
+ * Embeds `batch` into the switch's target: one call of the embedder for every text, then each
+ * vector as a write conditioned on its record (see `putConditioned`), in order, so the deletion
+ * fence holds per record. Returns how many records now hold their vector, which excludes one
+ * deleted or changed while the batch was in flight.
+ *
+ * An embedder that errors, times out, or answers with the wrong number of vectors fails the
+ * switch, and so does a target deleted meanwhile: it returns `stopped`. A failed batch has stored
+ * nothing, so no record of it counts as embedded, and the switch is not resumed: the target profile
+ * is deleted with it, and the next switch embeds every record again. A target deleted part-way
+ * through the writes leaves the earlier records' vectors in a profile that goes with the switch.
  */
-async function embedPending(
+async function embedPendingBatch(
   context: GovernanceContext,
   target: ActiveEmbedding,
   job: MemoryEmbeddingJob,
-  item: PendingRecord,
-): Promise<EmbedOutcome> {
-  let vector: Float32Array;
+  batch: readonly PendingRecord[],
+): Promise<number | 'stopped'> {
+  let vectors: Float32Array[];
   try {
-    [vector] = (await target.embed([item.record.content])) as [Float32Array];
+    vectors = await target.embed(batch.map((item) => item.record.content));
   } catch (error) {
     await endSwitch(context, job, { state: 'failed', error: messageOf(error) });
     return 'stopped';
   }
-  try {
-    return (await putConditioned(context, job.target, item, vector)) === 'held'
-      ? 'held'
-      : 'withdrawn';
-  } catch (error) {
-    if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
-    // Cancelled meanwhile, which deleted the profile; otherwise something else deleted it.
-    await endSwitch(context, job, { state: 'failed', error: TARGET_MISSING });
-    return 'stopped';
+  let held = 0;
+  for (const [index, item] of batch.entries()) {
+    try {
+      if ((await putConditioned(context, job.target, item, vectors[index]!)) === 'held') held += 1;
+    } catch (error) {
+      if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
+      // Cancelled meanwhile, which deleted the profile; otherwise something else deleted it.
+      await endSwitch(context, job, { state: 'failed', error: TARGET_MISSING });
+      return 'stopped';
+    }
   }
+  return held;
 }
 
 /**
@@ -280,6 +301,10 @@ const queueCursors = new WeakMap<
  * entry is older than {@link QUEUED_EMBED_GRACE_MILLISECONDS}; a younger one may belong to an
  * admission that has queued its record and not stored it yet, and stays. An entry whose embed
  * errors stays queued for a later pass.
+ *
+ * Entries are embedded in batches of {@link DEFAULT_SWITCH_BATCH_SIZE} in the order they are read,
+ * a batch flushed when it is full and when the page ends, so a step makes one call per batch. See
+ * {@link drainBatch} for how a failed batch is retried.
  */
 async function embedQueued(context: GovernanceContext, limit: number): Promise<number> {
   const { embedding } = context;
@@ -291,6 +316,7 @@ async function embedQueued(context: GovernanceContext, limit: number): Promise<n
   const after =
     cursor !== undefined && sameProfile(cursor.profile, profile) ? cursor.after : undefined;
   let embedded = 0;
+  let batch: PendingRecord[] = [];
   for (const { reference, queuedAt } of await vectors.listQueuedEmbeds(profile, limit, after)) {
     queueCursors.set(context, { profile, after: reference });
     const record = await context.storage.get(reference.id, reference.scope);
@@ -303,26 +329,79 @@ async function embedQueued(context: GovernanceContext, limit: number): Promise<n
         : await vectors.getMany(profile, reference.scope, [reference.id]);
     if (record !== undefined && held?.get(reference.id)?.version !== record.version) {
       embedded += 1;
-      let vector: Float32Array;
-      try {
-        [vector] = (await active.embed([record.content])) as [Float32Array];
-      } catch {
-        continue;
+      batch.push({ reference, record });
+      if (batch.length >= DEFAULT_SWITCH_BATCH_SIZE) {
+        if ((await drainBatch(context, profile, active, batch)) === 'stop') return embedded;
+        batch = [];
       }
-      let outcome: Awaited<ReturnType<typeof putConditioned>>;
-      try {
-        outcome = await putConditioned(context, profile, { reference, record }, vector);
-      } catch (error) {
-        if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
-        // A switch completed meanwhile and replaced this profile; the next step reads the new one.
-        return embedded;
-      }
-      // A record changed meanwhile stays queued, and is embedded at its new `version` next step.
-      if (outcome === 'withdrawn') continue;
+      continue;
     }
     await vectors.dequeueEmbed(profile, reference);
   }
+  if (batch.length > 0) await drainBatch(context, profile, active, batch);
   return embedded;
+}
+
+/**
+ * Embeds `batch`, records queued for `profile`, in one call of the embedder, and stores each vector
+ * as a write conditioned on its record (see `putConditioned`), dequeuing the entry once its vector
+ * is held. Returns `stop` when the drain should end, and `continue` otherwise.
+ *
+ * A batch that fails for any reason but its bound running out is tried again one entry per call (a
+ * batch of one already was), so an entry that keeps failing stays queued and holds back no other
+ * entry of its batch. A batch or an entry that times out ends the drain with every entry still
+ * queued: the embedder is not answering, and waiting on its bound once for each remaining entry
+ * is what a batch exists to avoid. An entry whose record changed meanwhile stays queued as well.
+ * A switch that completed meanwhile and replaced `profile` ends the drain: the next step reads the
+ * new one.
+ */
+async function drainBatch(
+  context: GovernanceContext,
+  profile: MemoryEmbeddingProfile,
+  active: ActiveEmbedding,
+  batch: readonly PendingRecord[],
+): Promise<'continue' | 'stop'> {
+  const embedAll = async (items: readonly PendingRecord[]) => {
+    try {
+      return await active.embed(items.map((item) => item.record.content));
+    } catch (error) {
+      return isTimeout(error) ? 'timed-out' : 'failed';
+    }
+  };
+  const answered = await embedAll(batch);
+  if (answered === 'timed-out') return 'stop';
+  if (answered !== 'failed') return storeDrained(context, profile, batch, answered);
+  if (batch.length === 1) return 'continue';
+  for (const item of batch) {
+    const alone = await embedAll([item]);
+    if (alone === 'timed-out') return 'stop';
+    if (alone === 'failed') continue;
+    if ((await storeDrained(context, profile, [item], alone)) === 'stop') return 'stop';
+  }
+  return 'continue';
+}
+
+/** Stores the vectors a drain embedded for `items`, in order, and dequeues each entry that holds one. */
+async function storeDrained(
+  context: GovernanceContext,
+  profile: MemoryEmbeddingProfile,
+  items: readonly PendingRecord[],
+  vectors: readonly Float32Array[],
+): Promise<'continue' | 'stop'> {
+  for (const [index, item] of items.entries()) {
+    let outcome: Awaited<ReturnType<typeof putConditioned>>;
+    try {
+      outcome = await putConditioned(context, profile, item, vectors[index]!);
+    } catch (error) {
+      if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
+      // A switch completed meanwhile and replaced this profile; the next step reads the new one.
+      return 'stop';
+    }
+    // A record changed meanwhile stays queued, and is embedded at its new `version` next step.
+    if (outcome !== 'withdrawn')
+      await context.embedding.vectors.dequeueEmbed(profile, item.reference);
+  }
+  return 'continue';
 }
 
 /**
@@ -342,7 +421,8 @@ export async function advanceEmbedding(context: GovernanceContext, limit: number
 
 /**
  * One step of the running switch (see `GovernedMemoryEmbedding.advance`): embeds up to `limit`
- * records its target lacks, and completes it, making its target active in one compare-and-swap,
+ * records its target lacks, in batches of {@link DEFAULT_SWITCH_BATCH_SIZE} (never past `limit`;
+ * a batch that fails fails the switch, see {@link embedPendingBatch}), and completes it, making its target active in one compare-and-swap,
  * once a survey finds nothing pending. A `limit` of 0 still counts the switch's progress, and
  * completes it when nothing is pending. On completion the profiles other than the new active one
  * and the one it replaced are deleted, so the embedding two switches back goes.
@@ -371,13 +451,21 @@ async function advanceSwitch(context: GovernanceContext, limit: number): Promise
         await deleteOtherProfiles(context, [job.target, job.from], job.target.generation);
       return;
     }
-    for (const item of pending) {
+    for (let next = 0; next < pending.length;) {
       if (embedded >= limit) return;
-      embedded += 1;
-      const outcome = await embedPending(context, target, job, item);
-      if (outcome === 'stopped') return;
-      if (outcome === 'withdrawn') continue;
-      const progressed: MemoryEmbeddingJob = { ...job, done: Math.min(job.done + 1, job.total) };
+      // A batch never goes past the step's limit, which counts records and not calls.
+      const size = Math.min(DEFAULT_SWITCH_BATCH_SIZE, limit - embedded, pending.length - next);
+      const batch = pending.slice(next, next + size);
+      next += size;
+      embedded += size;
+      const held = await embedPendingBatch(context, target, job, batch);
+      if (held === 'stopped') return;
+      if (held === 0) continue;
+      // One record write for the batch, raising `done` by the records that hold their vector.
+      const progressed: MemoryEmbeddingJob = {
+        ...job,
+        done: Math.min(job.done + held, job.total),
+      };
       if (!(await vectors.replaceJob(job, progressed))) return;
       job = progressed;
     }

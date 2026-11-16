@@ -342,7 +342,7 @@
     }
   },
   "info": {
-    "title": "Weft Workflow Engine",
+    "title": "Bureau",
     "version": "0.0.0-golden"
   },
   "methods": [
@@ -16353,7 +16353,149 @@
       }
     },
     {
-      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
+      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped` or `ready`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/Unavailable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.workflows.triggers.retry",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the workflow.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "listener": {
+              "additionalProperties": false,
+              "description": "What the listener is doing once the attempt has settled: the state it was in, when it was not failed.",
+              "properties": {
+                "code": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "start-failed",
+                        "configuration-refused"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Why it is `failed`, else `null`."
+                },
+                "lastFiredAt": {
+                  "description": "When a fire last started a run since this process started, or `null`. A restart clears it.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryAt": {
+                  "description": "When the next attempt to start a `failed` listener is due (1 second after a failure, doubling to 300), or `null`: for a listener that is not failed, one whose kind refused the configuration, and while an attempt is in flight.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "since": {
+                  "description": "When `state` last changed. A change of `code` alone keeps it.",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                  "enum": [
+                    "listening",
+                    "waiting-for-secret",
+                    "failed",
+                    "stopped",
+                    "ready"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "state",
+                "since",
+                "code",
+                "lastFiredAt",
+                "retryAt"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "listener"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Retry a failed trigger now",
+      "tags": [
+        {
+          "name": "Workflows"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the workflow.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped` or `ready`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16422,6 +16564,70 @@
                   "propertyNames": {
                     "type": "string"
                   },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "listener": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "start-failed",
+                            "configuration-refused"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Why it is `failed`, else `null`."
+                    },
+                    "lastFiredAt": {
+                      "description": "When a fire last started a run since this process started, or `null`. A restart clears it.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retryAt": {
+                      "description": "When the next attempt to start a `failed` listener is due (1 second after a failure, doubling to 300), or `null`: for a listener that is not failed, one whose kind refused the configuration, and while an attempt is in flight.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "since": {
+                      "description": "When `state` last changed. A change of `code` alone keeps it.",
+                      "type": "string"
+                    },
+                    "state": {
+                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                      "enum": [
+                        "listening",
+                        "waiting-for-secret",
+                        "failed",
+                        "stopped",
+                        "ready"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "since",
+                    "code",
+                    "lastFiredAt",
+                    "retryAt"
+                  ],
                   "type": "object"
                 },
                 {
@@ -16603,6 +16809,7 @@
             "outputSchema",
             "version",
             "trigger",
+            "listener",
             "steps",
             "problem",
             "text",
@@ -16637,7 +16844,7 @@
       }
     },
     {
-      "description": "Lists every workflow file by identifier, `ready` and `invalid` alike, then the code workflows plugins contributed, each with `kind: \"code\"`, its `id` (`plugin:name`), `name`, `title`, `plugin` and `version` and none of a file’s members (a code workflow starts and reads its runs back through the same operations as a file). Each file has its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.",
+      "description": "Lists every workflow file by identifier, `ready` and `invalid` alike, then the code workflows plugins contributed, each with `kind: \"code\"`, its `id` (`plugin:name`), `name`, `title`, `plugin` and `version` and none of a file’s members (a code workflow starts and reads its runs back through the same operations as a file). Each file has its `description`, its `trigger`, its `listener` (see `bureau.workflows.get`; none on a code workflow), and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16777,6 +16984,70 @@
                             "propertyNames": {
                               "type": "string"
                             },
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "listener": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "code": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "start-failed",
+                                      "configuration-refused"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "description": "Why it is `failed`, else `null`."
+                              },
+                              "lastFiredAt": {
+                                "description": "When a fire last started a run since this process started, or `null`. A restart clears it.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "retryAt": {
+                                "description": "When the next attempt to start a `failed` listener is due (1 second after a failure, doubling to 300), or `null`: for a listener that is not failed, one whose kind refused the configuration, and while an attempt is in flight.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "since": {
+                                "description": "When `state` last changed. A change of `code` alone keeps it.",
+                                "type": "string"
+                              },
+                              "state": {
+                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                                "enum": [
+                                  "listening",
+                                  "waiting-for-secret",
+                                  "failed",
+                                  "stopped",
+                                  "ready"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "since",
+                              "code",
+                              "lastFiredAt",
+                              "retryAt"
+                            ],
                             "type": "object"
                           },
                           {
@@ -16952,6 +17223,7 @@
                       "outputSchema",
                       "version",
                       "trigger",
+                      "listener",
                       "steps",
                       "problem",
                       "runs"
@@ -20504,8 +20776,16 @@
                   {
                     "enum": [
                       "action",
+                      "run.tripwire",
+                      "run.guardrail",
+                      "budget.threshold",
+                      "tool.policy-denied",
+                      "tool.error",
                       "run.registered",
                       "run.settled",
+                      "run.completed",
+                      "run.error",
+                      "run.aborted",
                       "run.removed",
                       "run.abort-settled",
                       "bureau.disposed",
@@ -20556,7 +20836,8 @@
                       "task.cleanup-acknowledged",
                       "notification.created",
                       "diagnostic",
-                      "memory.governance"
+                      "memory.governance",
+                      "decision.made"
                     ],
                     "type": "string"
                   },
@@ -20573,8 +20854,16 @@
                     {
                       "enum": [
                         "action",
+                        "run.tripwire",
+                        "run.guardrail",
+                        "budget.threshold",
+                        "tool.policy-denied",
+                        "tool.error",
                         "run.registered",
                         "run.settled",
+                        "run.completed",
+                        "run.error",
+                        "run.aborted",
                         "run.removed",
                         "run.abort-settled",
                         "bureau.disposed",
@@ -20625,7 +20914,8 @@
                         "task.cleanup-acknowledged",
                         "notification.created",
                         "diagnostic",
-                        "memory.governance"
+                        "memory.governance",
+                        "decision.made"
                       ],
                       "type": "string"
                     },
@@ -20700,8 +20990,16 @@
                   {
                     "enum": [
                       "action",
+                      "run.tripwire",
+                      "run.guardrail",
+                      "budget.threshold",
+                      "tool.policy-denied",
+                      "tool.error",
                       "run.registered",
                       "run.settled",
+                      "run.completed",
+                      "run.error",
+                      "run.aborted",
                       "run.removed",
                       "run.abort-settled",
                       "bureau.disposed",
@@ -20752,7 +21050,8 @@
                       "task.cleanup-acknowledged",
                       "notification.created",
                       "diagnostic",
-                      "memory.governance"
+                      "memory.governance",
+                      "decision.made"
                     ],
                     "type": "string"
                   },
@@ -20769,8 +21068,16 @@
                     {
                       "enum": [
                         "action",
+                        "run.tripwire",
+                        "run.guardrail",
+                        "budget.threshold",
+                        "tool.policy-denied",
+                        "tool.error",
                         "run.registered",
                         "run.settled",
+                        "run.completed",
+                        "run.error",
+                        "run.aborted",
                         "run.removed",
                         "run.abort-settled",
                         "bureau.disposed",
@@ -20821,7 +21128,8 @@
                         "task.cleanup-acknowledged",
                         "notification.created",
                         "diagnostic",
-                        "memory.governance"
+                        "memory.governance",
+                        "decision.made"
                       ],
                       "type": "string"
                     },
@@ -21254,6 +21562,10 @@
                     "description": "What the action does.",
                     "type": "string"
                   },
+                  "dryRun": {
+                    "description": "Whether the kind has a `dryRun`, which `bureau.hooks.test` calls instead of the action: a hook of a kind without one cannot be tested.",
+                    "type": "boolean"
+                  },
                   "kind": {
                     "description": "The kind’s name within the plugin: the `kind` of the action.",
                     "type": "string"
@@ -21272,6 +21584,7 @@
                   "kind",
                   "description",
                   "version",
+                  "dryRun",
                   "configuration"
                 ],
                 "type": "object"
@@ -27241,7 +27554,7 @@
       }
     },
     {
-      "description": "Lists what the agent `agentId` remembers of the caller’s chats with it, newest first. Requires `bureau.memory:read`, which grants no one else’s memory: a caller without it is `Forbidden`. A memory that was corrected is not listed, its correction is; a quarantined or revoked one is not either. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A Bureau with no governed memory answers `UnsupportedCapability`.",
+      "description": "Lists what the agent `agentId` remembers of the caller’s chats with it, newest first. Requires `bureau.memory:read`, which grants no one else’s memory: a caller without it is `Forbidden`. A memory that was corrected is not listed, its correction is; a quarantined or revoked one is not either. With `state` `quarantined` it lists instead the caller’s quarantined memories, newest first, each with `quarantine`: `at` (when it was quarantined), `by` (`admission` when the admission checks held it as it was written, `owner` when the caller or an earlier quarantine of what it derives from did, `recall` when a recall guardrail withheld it), and `detector` and `category`, the guardrail that held it and the category it reported, both `null` when `by` is `owner`; `quarantine` is absent when the ledger does not explain the memory. They are the memories `bureau.memory.quarantine.release` can release. Inspecting flagged content is a governance act, so `state` `quarantined` requires `bureau.memory:govern` instead of `bureau.memory:read`: a caller without it is `Forbidden` whether or not it has quarantined memories, and a caller that holds only `bureau.memory:read` still lists what is in use as before. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A Bureau with no governed memory answers `UnsupportedCapability`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -27291,6 +27604,17 @@
             "minimum": 0,
             "type": "integer"
           }
+        },
+        {
+          "name": "state",
+          "required": false,
+          "schema": {
+            "description": "Lists only the memories in this state. Without it the list is what is in use. `quarantined` lists the caller’s quarantined memories, each with why it was quarantined, and needs `bureau.memory:govern`.",
+            "enum": [
+              "quarantined"
+            ],
+            "type": "string"
+          }
         }
       ],
       "result": {
@@ -27329,6 +27653,41 @@
                       "resource"
                     ],
                     "type": "string"
+                  },
+                  "quarantine": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "type": "string"
+                      },
+                      "by": {
+                        "enum": [
+                          "admission",
+                          "owner",
+                          "recall"
+                        ],
+                        "type": "string"
+                      },
+                      "category": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "detector": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "by",
+                      "detector",
+                      "category"
+                    ],
+                    "type": "object"
                   },
                   "sessionId": {
                     "type": [
@@ -27429,6 +27788,13 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "state": {
+            "description": "Lists only the memories in this state. Without it the list is what is in use. `quarantined` lists the caller’s quarantined memories, each with why it was quarantined, and needs `bureau.memory:govern`.",
+            "enum": [
+              "quarantined"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -27903,7 +28269,7 @@
       }
     },
     {
-      "description": "Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and no other operation reaches it), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
+      "description": "Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and only `bureau.memory.quarantine.release`, once it passes the admission checks again, returns it to use), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -29021,7 +29387,7 @@
       }
     },
     {
-      "description": "Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). Bureau offers no way back to active use from here; the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
+      "description": "Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). `bureau.memory.quarantine.release` is the way back to active use; until then the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -29135,6 +29501,107 @@
           "agentId",
           "id",
           "reason"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns one quarantined memory of the agent `agentId` to active use after inspection, when the admission checks that apply now pass it: governed memory scans its text again, as the record’s own source and kind of memory, with the guardrails of the policy in force at the time of the call. The memory alone becomes active, is searchable and listed again, and a `memory.released` ledger event is recorded under the caller’s owner; memories derived from it stay quarantined. A memory the checks hold stays quarantined and is `Unprocessable` with `data.reason` `memory-verification-failed`, and the ledger’s `memory.release.rejected` event names the guardrail that held it for an inspector. Other refusals are `Unprocessable` too, with `data.reason` `memory-derived-record` (a memory derived from another record is never released, and releasing the one it came from leaves it quarantined), `memory-deletion-pending` (a deletion has claimed it), `memory-superseded` (a correction replaced it) and `memory-tampered` (its text no longer matches what was admitted); each records `memory.release.rejected`. Releasing a memory that is already active is not an error: `changed` is `false`. A memory that was revoked, another owner’s memory and a missing one are `NotFound`. Releasing again after a memory is quarantined again, whether by `bureau.memory.quarantine` or because recall withheld it, runs the checks again. Requires `bureau.memory:govern`, which no other memory scope implies; a caller without it is `Forbidden`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.memory.quarantine.release",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "agentId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the agent whose memory this addresses.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the memory.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Release one quarantined memory",
+      "tags": [
+        {
+          "name": "Memory"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "description": "The identifier of the agent whose memory this addresses.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The identifier of the memory.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId",
+          "id"
         ],
         "type": "object"
       }
@@ -32528,8 +32995,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -32580,7 +33055,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -32965,8 +33441,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -33017,7 +33501,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -33226,8 +33711,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -33278,7 +33771,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -33685,8 +34179,16 @@
             "items": {
               "enum": [
                 "action",
+                "run.tripwire",
+                "run.guardrail",
+                "budget.threshold",
+                "tool.policy-denied",
+                "tool.error",
                 "run.registered",
                 "run.settled",
+                "run.completed",
+                "run.error",
+                "run.aborted",
                 "run.removed",
                 "run.abort-settled",
                 "bureau.disposed",
@@ -33737,7 +34239,8 @@
                 "task.cleanup-acknowledged",
                 "notification.created",
                 "diagnostic",
-                "memory.governance"
+                "memory.governance",
+                "decision.made"
               ],
               "type": "string"
             },
@@ -34812,7 +35315,7 @@
       }
     },
     {
-      "description": "Sends one signed `hook.test` delivery to a webhook hook (any other action is `InvalidParams`, because a test would start a real run or write a real notification), with one attempt and no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: \"exhausted\"`), not a fault.",
+      "description": "Sends one `hook.test` delivery to a webhook hook (signed), or to a plugin hook whose reaction has a `dryRun` (`bureau.plugins.contributions` says which; the reaction’s `dryRun` is called with the usual context, and its `run` never is). Any other action, and a plugin hook whose reaction has no `dryRun`, is not registered or needs setup, is `InvalidParams`, because a test would start a real run, write a real notification or run a real plugin action. It makes one attempt with no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: \"exhausted\"`), not a fault.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"

@@ -167,6 +167,10 @@ export const OPERATION_MAP = {
   'bureau.workflows.pause': { workspaceClass: 'administrator-shared', member: 'workflows.pause' },
   'bureau.workflows.resume': { workspaceClass: 'administrator-shared', member: 'workflows.resume' },
   'bureau.workflows.delete': { workspaceClass: 'administrator-shared', member: 'workflows.delete' },
+  'bureau.workflows.triggers.retry': {
+    workspaceClass: 'administrator-shared',
+    member: 'workflows.retryTrigger',
+  },
   'bureau.workflows.get': { workspaceClass: 'member-shared-read', member: 'workflows.get' },
   'bureau.workflows.list': { workspaceClass: 'member-shared-read', member: 'workflows.list' },
   'bureau.workflows.catalog': {
@@ -208,6 +212,10 @@ export const OPERATION_MAP = {
     member: 'memory.releaseLegalHold',
   },
   'bureau.memory.quarantine': { workspaceClass: 'private-owned', member: 'memory.quarantine' },
+  'bureau.memory.quarantine.release': {
+    workspaceClass: 'private-owned',
+    member: 'memory.releaseQuarantine',
+  },
   'bureau.memory.export': { workspaceClass: 'private-owned', member: 'memory.export' },
 
   'bureau.assets.get': { workspaceClass: 'explicit-share', member: 'assets.inspect' },

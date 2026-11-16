@@ -2518,7 +2518,13 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
 
   const runSettledListener = (event: RunSettledEvent): void => {
     if (signal?.aborted) return;
-    sink({ kind: 'run', id: event.runId }, 'run.settled', { runId: event.runId });
+    // The outcome kinds are not recorded: the run's own `run.error`, `run.completed` and
+    // `run.aborted` actions are already in this history (COR-2095).
+    sink({ kind: 'run', id: event.runId }, 'run.settled', {
+      runId: event.runId,
+      status: event.status,
+      ...(event.finishReason === undefined ? {} : { finishReason: event.finishReason }),
+    });
   };
   bureau.addEventListener('run.settled', runSettledListener);
 

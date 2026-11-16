@@ -7,7 +7,7 @@ import type { DiscoveryInfo } from './discovery-info.ts';
 import { serve, type WeftServer } from './index.ts';
 import { generateOpenApiDocument } from './openapi.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
-import { createLiveOperationRegistry } from './rest-bindings.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 
 const discoveryInfo: DiscoveryInfo = {
   description: 'Public Weft API for durable workflows.',
@@ -29,13 +29,14 @@ const discoveryInfo: DiscoveryInfo = {
 describe('DiscoveryInfo', () => {
   it('applies shared discovery metadata to OpenAPI, OpenRPC, and AsyncAPI documents', () => {
     const registry = createLiveOperationRegistry();
-    const openApiDocument = generateOpenApiDocument({ registry, discoveryInfo });
+    const restBindings = createLiveRestBindings();
+    const openApiDocument = generateOpenApiDocument({ registry, restBindings, discoveryInfo });
     const openRpcDocument = generateOpenRpcDocument({
       registry,
       transports: ['http', 'websocket'],
       discoveryInfo,
     });
-    const asyncApiDocument = generateAsyncApiDocument({ registry, discoveryInfo });
+    const asyncApiDocument = generateAsyncApiDocument({ registry, restBindings, discoveryInfo });
 
     expect(openApiDocument['info']).toEqual(
       expect.objectContaining({

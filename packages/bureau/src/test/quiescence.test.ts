@@ -816,8 +816,8 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
           {
             name: 'instant-judge',
             version: '1.0.0',
-            async evaluate() {
-              return { pass: true, score: 1, message: 'ok' };
+            async score() {
+              return { outcome: 'pass' as const, score: 1, message: 'ok' };
             },
           },
         ],

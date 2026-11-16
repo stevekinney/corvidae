@@ -22,7 +22,7 @@ export const BUILD_DIRECTORY_VARIABLE = 'INTERBOROUGH_BUILD_DIRECTORY';
 
 /**
  * The process environment, which the host reads for `INTERBOROUGH_HOME` (through Bungalow), for
- * `INTERBOROUGH_PORT`, for `INTERBOROUGH_BUILD_DIRECTORY`, and for `INTERBOROUGH_A2A_PUBLIC_ORIGIN`. This is the only module in the application's source that touches
+ * `INTERBOROUGH_PORT`, for `INTERBOROUGH_BUILD_DIRECTORY`, and for `INTERBOROUGH_PUBLIC_ORIGIN`. This is the only module in the application's source that touches
  * `process.env`; everything else receives an environment as a value, which is also how tests
  * inject one.
  */
@@ -58,20 +58,34 @@ export function resolveBuildDirectory(environment: BungalowEnvironment): string 
 }
 
 /**
- * The environment variable that names the public origin a reverse proxy serves A2A at, such as
- * `https://agents.example.com` (COR-1904). Unset, A2A is reachable on loopback only.
+ * The environment variable that names the public origin a reverse proxy serves the host's public
+ * paths at, such as `https://agents.example.com`: A2A and a trigger's `POST /triggers/<workflow>`
+ * (COR-1904, COR-2169). Unset, the host is reachable on loopback only.
  */
-export const A2A_PUBLIC_ORIGIN_VARIABLE = 'INTERBOROUGH_A2A_PUBLIC_ORIGIN';
+export const PUBLIC_ORIGIN_VARIABLE = 'INTERBOROUGH_PUBLIC_ORIGIN';
 
 /**
- * The public origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, or `undefined` when it is unset or
- * empty. It must be an `https` origin and nothing more (no path, query, fragment, or user name),
- * because a remote A2A caller sends its key to it: a plain `http` origin would carry the key in
- * the clear, and a path would name an address the host does not serve. Anything else stops the
- * host rather than falling back to loopback in silence.
+ * The name {@link PUBLIC_ORIGIN_VARIABLE} had until COR-2169, which said A2A. The host refuses it,
+ * rather than reading it, so an operator who still sets it learns the name changed.
  */
-export function resolveA2aPublicOrigin(environment: BungalowEnvironment): URL | undefined {
-  const raw = environment[A2A_PUBLIC_ORIGIN_VARIABLE];
+export const RENAMED_PUBLIC_ORIGIN_VARIABLE = 'INTERBOROUGH_A2A_PUBLIC_ORIGIN';
+
+/**
+ * The public origin `INTERBOROUGH_PUBLIC_ORIGIN` names, or `undefined` when it is unset or empty.
+ * It must be an `https` origin and nothing more (no path, query, fragment, or user name), because a
+ * remote caller sends its key to it: a plain `http` origin would carry the key in the clear, and a
+ * path would name an address the host does not serve. Anything else stops the host rather than
+ * falling back to loopback in silence, and so does the old name, `INTERBOROUGH_A2A_PUBLIC_ORIGIN`,
+ * whatever it holds (its value is not echoed).
+ */
+export function resolvePublicOrigin(environment: BungalowEnvironment): URL | undefined {
+  const renamed = environment[RENAMED_PUBLIC_ORIGIN_VARIABLE];
+  if (renamed !== undefined && renamed !== '') {
+    throw new Error(
+      `${RENAMED_PUBLIC_ORIGIN_VARIABLE} was renamed to ${PUBLIC_ORIGIN_VARIABLE}: set that instead.`,
+    );
+  }
+  const raw = environment[PUBLIC_ORIGIN_VARIABLE];
   if (raw === undefined || raw === '') return undefined;
   let parsed: URL | undefined;
   try {
@@ -90,7 +104,7 @@ export function resolveA2aPublicOrigin(environment: BungalowEnvironment): URL | 
   ) {
     throw new Error(
       // The value is not echoed: unlike a port, a URL can carry a credential.
-      `${A2A_PUBLIC_ORIGIN_VARIABLE} must be an https origin with no path, user name, or password, such as https://agents.example.com.`,
+      `${PUBLIC_ORIGIN_VARIABLE} must be an https origin with no path, user name, or password, such as https://agents.example.com.`,
     );
   }
   return new URL(parsed.origin);

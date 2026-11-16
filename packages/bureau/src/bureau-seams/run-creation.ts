@@ -231,6 +231,7 @@ export function createRunCreation<D extends AgentDefinitions>(
     runtimeServices,
     store,
     runEventFeeds,
+    runOutcomeDetails,
     lateDecisions,
     runSessionIdentifiers,
     runSessionIncarnations,
@@ -915,6 +916,7 @@ export function createRunCreation<D extends AgentDefinitions>(
       disposeStreamListeners.push(
         attachRunEventFeed(runId, activeRun, runEventFeeds, {
           now: runtimeServices.clock.now,
+          outcomeDetails: runOutcomeDetails,
           onError: (error, kind) => {
             diagnose({
               level: 'error',

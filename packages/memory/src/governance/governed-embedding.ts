@@ -22,7 +22,9 @@ export interface ActiveEmbedding {
   /**
    * Embeds `texts` with the profile's embedder. A vector of another length than the profile's
    * dimension, or holding an entry that is not a finite number, throws
-   * {@link MemoryVectorDimensionError}, so nothing it made is ever stored.
+   * {@link MemoryVectorDimensionError}, so nothing it made is ever stored. An answer with another
+   * number of vectors than `texts` throws too, so a vector is never paired with another text's
+   * record (COR-2187).
    *
    * Every embed is bounded (COR-2185): it gets its own signal, which aborts when
    * {@link CreateGovernedEmbeddingInput.embedTimeoutMilliseconds} has passed or when
@@ -162,7 +164,8 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
       async embed(texts, options) {
         const caller = options?.signal;
         caller?.throwIfAborted();
-        // Read once, before the first await: the caller owns `options`.
+        // Read once, before the first await: the caller owns `texts` and `options`.
+        const sent = [...texts];
         const requested = options?.timeoutMilliseconds;
         const limit = requested === undefined ? embedTimeout : Math.min(embedTimeout, requested);
         // Each embed has its own bound, so a hung embedder holds one embed and never the memory.
@@ -181,9 +184,16 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
           // Called inside the `try`: an embedder that throws before it returns a promise is a
           // failed embed, not an exception out of this one.
           const embedded = await raceAbort(
-            Promise.resolve(embedder([...texts], { signal })),
+            Promise.resolve(embedder([...sent], { signal })),
             signal,
           );
+          // One vector per text: a batch answered with another count is a failed embed, so no
+          // caller pairs a vector with the wrong record (COR-2187).
+          if (!Array.isArray(embedded) || embedded.length !== sent.length) {
+            throw new Error(
+              `The embedder "${profile.embedderId}" answered with the wrong number of vectors (expected ${sent.length}, got ${Array.isArray(embedded) ? embedded.length : 'none'}).`,
+            );
+          }
           return embedded.map((vector) => {
             // Checked here, as the store checks a vector it is given, so a vector the store would
             // refuse fails the embed itself: an admission stores nothing, and a switch fails.

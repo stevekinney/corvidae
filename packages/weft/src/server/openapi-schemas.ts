@@ -6,11 +6,11 @@
 
 import { z } from 'zod';
 
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
 import { isDiscoverable } from './discovery-filter.ts';
 import { compareStrings, normalizeJsonObject } from './json-schema-utilities.ts';
 import { canonicalJson } from './openapi-canonical-json.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
+import { zodToJsonSchema } from './zod-json-schema.ts';
 
 /** Schema slots owned by an operation definition. */
 export type OpenApiSchemaSlot = 'Input' | 'Output' | 'Event';
@@ -50,7 +50,7 @@ export function extractComponentsSchemas(registry: OperationRegistry): OpenApiSc
     for (const [slot, schema] of slots) {
       if (schema === undefined) continue;
 
-      const jsonSchema = definitionSchemaToJsonSchema(schema, directionForSlot(slot));
+      const jsonSchema = zodToJsonSchema(schema, directionForSlot(slot));
       const canonical = canonicalJson(jsonSchema);
       const owner = { operationName: operation.name, slot };
       operationSlotToCanonical.set(ownerKey(owner.operationName, owner.slot), canonical);

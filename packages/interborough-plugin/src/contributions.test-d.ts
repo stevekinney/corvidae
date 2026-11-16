@@ -54,6 +54,32 @@ export const renamedPanels: PluginContributions = { panels: [panel] };
 // @ts-expect-error -- `mcpApps` was renamed `panels`
 export const staleMcpApps: PluginContributions = { mcpApps: [panel] };
 
+// A panel declares where it appears (COR-2212): the three placement kinds, with no MCP opener.
+export const placedPanel: PluginPanel = {
+  name: 'queue',
+  title: 'Queue',
+  uri: 'ui://example/queue/v1',
+  entry: new URL('file:///queue/app.ts'),
+  allowedTools: [],
+  placements: [
+    { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+    { kind: 'run' },
+    { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+  ],
+};
+
+export const homePlacement: PluginPanel = {
+  ...placedPanel,
+  // @ts-expect-error -- `home` is the host's own sidebar group, not a plugin's
+  placements: [{ kind: 'page', path: 'queue', sidebar: { group: 'home' } }],
+};
+
+export const unknownPlacement: PluginPanel = {
+  ...placedPanel,
+  // @ts-expect-error -- `dock` is not a placement kind
+  placements: [{ kind: 'dock' }],
+};
+
 declare const formatter: PluginFormatter;
 
 export const renamedFormatters: PluginContributions = { formatters: [formatter] };
@@ -249,6 +275,47 @@ export const typedTriggers: PluginContributions = {
       },
     }),
   ],
+};
+
+// COR-2168 — a kind may define `start`, `receive` or both. `receive` reads the configuration as
+// the schema parses it too, and answers a `Response`.
+export const receiveOnlyTrigger = defineTrigger({
+  name: 'inbox',
+  description: 'Receives a delivery.',
+  configuration: z.object({ path: z.string() }),
+  async receive(request, { configuration }) {
+    const path: string = configuration.path;
+    // @ts-expect-error -- the schema declares no `minutes`
+    const minutes: unknown = configuration.minutes;
+    return new Response(`${request.method} ${path}`, { status: minutes === undefined ? 202 : 200 });
+  },
+});
+
+export const listeningAndReceiving: PluginContributions = {
+  triggers: [
+    receiveOnlyTrigger,
+    defineTrigger({
+      name: 'both',
+      description: 'Listens and receives.',
+      configuration: z.object({}),
+      async start() {
+        return () => undefined;
+      },
+      async receive() {
+        return new Response(null, { status: 204 });
+      },
+    }),
+  ],
+};
+
+export const badReceive: PluginTrigger = {
+  name: 'bad',
+  description: 'Answers something that is not a Response.',
+  configuration: z.object({}),
+  // @ts-expect-error -- `receive` resolves a `Response`, not a string
+  async receive() {
+    return 'accepted';
+  },
 };
 
 // A kind written without the helper keeps an untyped `configuration`.

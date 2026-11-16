@@ -28,10 +28,6 @@
 
 import { z } from 'zod';
 
-import type { FaultCode } from '../core/fault-code.ts';
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
-import type { McpToolDefinition } from '../mcp/tools.ts';
-import { VERSION } from '../version.ts';
 import {
   serializeAccessPolicy,
   serializeParameterizedAccess,
@@ -39,16 +35,19 @@ import {
   type ParameterizedAccessMetadata,
 } from './access-policy-metadata.ts';
 import { isDiscoverable } from './discovery-filter.ts';
-import { applyDiscoveryInfo, type DiscoveryInfo } from './discovery-info.ts';
+import {
+  applyDiscoveryInfo,
+  resolveDocumentTitleAndVersion,
+  type DiscoveryInfo,
+} from './discovery-info.ts';
 import { asPlainObject, compareStrings } from './json-schema-utilities.ts';
 import { MCP_DISCOVERY_PATH, MCP_TOOLS_LIST_METHOD } from './mcp-discovery.ts';
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
 import { buildOpenRpcComponentsErrors } from './openrpc-errors.ts';
-import {
-  UNIVERSAL_FAULT_DEFAULTS,
-  type ErasedOperation,
-  type OperationRegistry,
-} from './operation-catalog.ts';
+import type { ErasedOperation, OperationRegistry } from './operation-catalog.ts';
+import { UNIVERSAL_FAULT_DEFAULTS } from './operation-catalog/universal-faults.ts';
+import type { OperationFault } from './operation-fault.ts';
+import { zodToJsonSchema } from './zod-json-schema.ts';
 
 /** Transports that MAY be listed in `OpenRpcOptions.transports`. */
 export type OpenRpcTransport = 'http' | 'websocket' | 'stdio';
@@ -58,9 +57,9 @@ export type OpenRpcOptions = {
   readonly registry: OperationRegistry;
   /** JSON-RPC transports whose methods should be included in the document. */
   readonly transports: ReadonlyArray<OpenRpcTransport>;
-  /** Document title. Defaults to `'Weft Workflow Engine'`. */
+  /** Document title. Defaults to `discoveryInfo.title`, then to `'API'`. */
   readonly title?: string;
-  /** Document version. Defaults to the current Weft package version. */
+  /** Document version. Defaults to `discoveryInfo.version`, then to `'0.0.0'`. */
   readonly version?: string;
   /** Operator-supplied discovery metadata applied to the `info` object. */
   readonly discoveryInfo?: DiscoveryInfo;
@@ -71,7 +70,7 @@ export type OpenRpcOptions = {
    * `mcpExposable`, because live MCP tool naming owns workflow-name collision
    * handling.
    */
-  readonly mcpTools?: ReadonlyArray<Pick<McpToolDefinition, 'name' | 'title'>>;
+  readonly mcpTools?: ReadonlyArray<{ readonly name: string; readonly title?: string }>;
   /**
    * Whether the document carries the MCP discovery metadata (`x-weft-mcp`),
    * which points at Weft's `/.well-known/mcp.json` and `tools/list`. Defaults
@@ -168,9 +167,10 @@ export function generateOpenRpcDocument(options: OpenRpcOptions): Record<string,
 const DISCOVER_METHOD_NAME = 'rpc.discover';
 
 function buildOpenRpcInfo(options: OpenRpcOptions): Record<string, unknown> {
-  const title = options.title ?? 'Weft Workflow Engine';
-  const version = options.version ?? VERSION;
-  const infoBlock = applyDiscoveryInfo({ title, version }, options.discoveryInfo);
+  const infoBlock = applyDiscoveryInfo(
+    resolveDocumentTitleAndVersion(options, options.discoveryInfo),
+    options.discoveryInfo,
+  );
   if (options.discoveryInfo?.externalDocs !== undefined) {
     infoBlock['externalDocs'] = { ...options.discoveryInfo.externalDocs };
   }
@@ -276,7 +276,7 @@ function buildMethod(operation: ErasedOperation): OpenRpcMethod {
   const inputSchema = operation.inputSchema;
   const paramsSchema = zodObjectToJsonSchema(inputSchema, operation.unknownKeyPolicy.jsonRpc);
   const descriptors = buildContentDescriptors(paramsSchema);
-  const resultSchema = definitionSchemaToJsonSchema(operation.outputSchema, 'output');
+  const resultSchema = zodToJsonSchema(operation.outputSchema, 'output');
 
   const method: OpenRpcMethod = {
     name: operation.name,
@@ -308,7 +308,7 @@ function buildDiscoverMethod(): OpenRpcMethod {
     params: [],
     result: {
       name: 'openRpcDocument',
-      schema: definitionSchemaToJsonSchema(OpenRpcDocumentSchema),
+      schema: zodToJsonSchema(OpenRpcDocumentSchema),
       required: true,
     },
     errors: buildUniversalErrorReferences(),
@@ -321,6 +321,8 @@ function buildDiscoverMethod(): OpenRpcMethod {
     'x-weft-access': { kind: 'public' },
   };
 }
+
+type FaultCode = OperationFault['code'];
 
 const UNIVERSAL_FAULT_CODES: ReadonlyArray<FaultCode> = [...UNIVERSAL_FAULT_DEFAULTS];
 
@@ -351,7 +353,7 @@ function zodObjectToJsonSchema(
   schema: z.ZodObject,
   jsonRpcPolicy: 'reject' | 'strip' | 'passthrough',
 ): Record<string, unknown> {
-  const base = definitionSchemaToJsonSchema(schema);
+  const base = zodToJsonSchema(schema);
   return {
     ...base,
     additionalProperties: jsonRpcPolicy !== 'reject',

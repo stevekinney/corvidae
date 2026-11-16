@@ -1018,6 +1018,10 @@ describe('the hook editor', () => {
       HOOKS_COPY.editor.check.testSent('example.com', '200 OK', 100),
     );
     expect(result.textContent).toContain(HOOKS_COPY.editor.webhook.seePayload);
+    // Its one link is in the Alert's actions box, which only a result with a link has.
+    const actions = result.querySelector('.cinder-alert__actions');
+    expect(actions?.querySelectorAll('a')).toHaveLength(1);
+    expect(actions?.textContent?.trim()).toBe(HOOKS_COPY.editor.webhook.seePayload);
     // The result sits directly under the buttons, and Save hook is first.
     const buttons = view.getByRole('button', { name: HOOKS_COPY.editor.check.test }).parentElement;
     expect(buttons?.firstElementChild?.textContent).toContain(HOOKS_COPY.editor.check.save);
@@ -1043,6 +1047,8 @@ describe('the hook editor', () => {
     expect(result.textContent).toContain(
       `${HOOKS_COPY.editor.check.testSent('hooks.example.com', '200 OK', 100)} ${HOOKS_COPY.editor.check.testSentUnsaved}`,
     );
+    // No link, so no actions box: Cinder draws one for any snippet, and an empty one wraps at 320.
+    expect(result.querySelector('.cinder-alert__actions')).toBeNull();
     expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
     expect(served.hooks).toEqual([]);
     expect(router.pathname).toBe('/hooks/new');
@@ -1062,6 +1068,7 @@ describe('the hook editor', () => {
       HOOKS_COPY.editor.check.testFailedAnswered('events.pagerduty.com', '410 Gone'),
     );
     expect(result.textContent).not.toContain(HOOKS_COPY.editor.webhook.seePayload);
+    expect(result.querySelector('.cinder-alert__actions')).toBeNull();
   });
 
   test('a test event without a usable address asks for one the way Save hook does', async () => {
@@ -1084,8 +1091,14 @@ describe('the hook editor', () => {
     const test = (await view.findByRole('button', {
       name: HOOKS_COPY.editor.check.test,
     })) as HTMLButtonElement;
-    expect(test.disabled).toBe(true);
-    expect(view.getByText(HOOKS_COPY.editor.check.testWebhookOnly)).not.toBeNull();
+    // Off by `aria-disabled`, so the button stays focusable and its reason is read from it.
+    expect(test.getAttribute('aria-disabled')).toBe('true');
+    const reason = view.getByText(HOOKS_COPY.editor.check.testWebhookOnly);
+    expect(test.getAttribute('aria-describedby')).toBe(reason.id);
+    test.focus();
+    expect(document.activeElement).toBe(test);
+    await fireEvent.click(test);
+    expect(stub?.callsTo('bureau.hooks.test')).toHaveLength(0);
     // The action of a hook is fixed once it is made: its segments are held, and it has no fields.
     const notify = view.getByRole('radio', { name: HOOKS_COPY.editor.action.notify });
     expect(notify.getAttribute('aria-disabled')).toBe('true');
@@ -1762,11 +1775,12 @@ describe('the editor for a hook it cannot change the action of', () => {
     await view.findByText(HOOKS_COPY.editor.action.plugin);
     expect(view.getByTestId('hook-sentence').textContent).toContain('run page from acme');
     expect(view.queryByLabelText(HOOKS_COPY.editor.action.label)).toBeNull();
-    // Without a test: a plugin's action is not a signed message.
+    // Without a test: a plugin's action is not a signed message, and this one offers none.
     expect(
-      (view.getByRole('button', { name: HOOKS_COPY.editor.check.test }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      view
+        .getByRole('button', { name: HOOKS_COPY.editor.check.test })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
 

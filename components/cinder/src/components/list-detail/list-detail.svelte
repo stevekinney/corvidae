@@ -81,6 +81,7 @@
     detail,
     empty,
     listEmpty,
+    listFooter,
     header,
     openFirst = false,
     selectedKey = $bindable(null),
@@ -401,6 +402,12 @@
             </li>
           {/snippet}
         </DataList>
+      {/if}
+      <!-- Outside `items`: not a row, so it neither hides `listEmpty` nor takes part in J and K. -->
+      {#if listFooter && !loading}
+        <div class="cinder-list-detail__footer">
+          {@render listFooter()}
+        </div>
       {/if}
     </div>
   </section>

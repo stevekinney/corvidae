@@ -10,13 +10,13 @@ import { z } from 'zod';
 
 import { executeCli } from './cli-client.ts';
 import {
-  A2A_PUBLIC_ORIGIN_VARIABLE,
   BUILD_DIRECTORY_VARIABLE,
   DEFAULT_PORT,
   PORT_VARIABLE,
   processEnvironment,
-  resolveA2aPublicOrigin,
+  PUBLIC_ORIGIN_VARIABLE,
   resolvePort,
+  resolvePublicOrigin,
 } from './environment-configuration.ts';
 import { PLUGIN_RUNTIME_DIRECTORY_VARIABLE } from './folder-plugins.ts';
 import { launchCommandEnvironment, shellQuote } from './launch-command.ts';
@@ -39,7 +39,8 @@ const HELP = `Usage: interborough start [options]
 
   --port <port>                 Listen on 127.0.0.1 (default: 7234, 0 for a free port)
   --home <directory>            State directory (default: ~/.interborough)
-  --a2a-public-origin <origin>  HTTPS origin for A2A behind a reverse proxy
+  --a2a-public-origin <origin>  HTTPS origin a reverse proxy serves A2A and triggers at
+                                (INTERBOROUGH_PUBLIC_ORIGIN)
   --help                        Show this help
   --version                     Show the release version`;
 
@@ -116,7 +117,7 @@ function startEnvironment(arguments_: string[], cwd: string) {
       configurationSource('exported-environment', {
         port: exported[PORT_VARIABLE] || undefined,
         home: exported[HOME_VARIABLE] || undefined,
-        a2aPublicOrigin: exported[A2A_PUBLIC_ORIGIN_VARIABLE] || undefined,
+        a2aPublicOrigin: exported[PUBLIC_ORIGIN_VARIABLE] || undefined,
       }),
       'defaults',
     ],
@@ -125,10 +126,10 @@ function startEnvironment(arguments_: string[], cwd: string) {
     ...exported,
     [PORT_VARIABLE]: settings.port,
     [HOME_VARIABLE]: settings.home === undefined ? undefined : resolveHome(settings.home, cwd),
-    [A2A_PUBLIC_ORIGIN_VARIABLE]: settings.a2aPublicOrigin,
+    [PUBLIC_ORIGIN_VARIABLE]: settings.a2aPublicOrigin,
   };
   resolvePort(environment);
-  resolveA2aPublicOrigin(environment);
+  resolvePublicOrigin(environment);
   return { environment };
 }
 

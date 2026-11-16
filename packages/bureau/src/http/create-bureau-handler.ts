@@ -46,6 +46,8 @@ import {
   type AuthenticatedPrincipal,
   type Principal,
   unauthenticatedLocalAuthContext,
+  VERSION as WEFT_VERSION,
+  weftFaultPolicy,
 } from '@lostgradient/weft';
 import {
   type ConditionalTextValueStore,
@@ -1551,6 +1553,10 @@ export function createBureauHandler(
     // Whether a route authenticates is decided by `authentication` alone, so the
     // health route and the documents are no more public than anything else.
     publicPaths: [],
+    // The documents are Bureau's: its own title, at the version of the Weft it is built on.
+    discoveryInfo: { title: 'Bureau', version: WEFT_VERSION },
+    // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting.
+    faultPolicy: weftFaultPolicy,
   });
   const resourceInventory: BureauResourceInventoryEntry[] = [
     ...BUREAU_HANDLER_OPERATIONS.map((operation): BureauResourceInventoryEntry => ({

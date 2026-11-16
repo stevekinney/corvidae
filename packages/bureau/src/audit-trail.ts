@@ -15,6 +15,7 @@
  */
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import type {
+  Action,
   AgentScheduledEvent,
   ScheduleCancelledEvent,
   SchedulePausedEvent,
@@ -295,6 +296,12 @@ export interface AuditRecord {
    * dedups its merged live+durable view on this field (`packages/gateway/
    * src/routes/audit.ts`), since the live store's own action log still
    * exposes `action.sequence`, not this trail's shared `sequence`.
+   *
+   * COR-2096: for a `run.guardrail` or `run.tripwire` of a child run, a goal attempt or a workflow
+   * step, which are not on the run store, there is no store `Action`: the observer
+   * (`recorded-run-events.ts`) numbers that run's observed events from 0, so this is a
+   * per-run count that only orders those events within their run, not the store's process-wide
+   * counter, and it cannot be matched against a live store action.
    */
   actionSequence?: number;
   /** The originating run id. */
@@ -1531,8 +1538,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   // Subscribe to the bureau's action stream. The bureau re-emits every
   // operative store action as an ActionEvent, so we don't need to reach into
   // the store directly — the event surface is the intended integration point.
-  const listener = (event: import('./events').ActionEvent) => {
-    const { action } = event;
+  const recordAction = (action: Action): void => {
     if (!auditEventSet.has(action.type)) return;
     if (!kv) return;
     const store = kv;
@@ -1579,7 +1585,26 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     );
   };
 
+  // COR-2096: a guardrail's trip reaches this trail from its own event, which a run in the store
+  // raises and so does a child, a goal attempt or a workflow step (none of which is on the store,
+  // so `'action'` never carries their actions). A run in the store raises both, so the `'action'`
+  // listener leaves these two kinds to the event and each is recorded once. A schedule fire and a
+  // catalog run resumed after a restart raise neither.
+  const RECORDED_FROM_THEIR_OWN_EVENT = new Set<string>(['run.guardrail', 'run.tripwire']);
+  const listener = (event: import('./events').ActionEvent) => {
+    if (RECORDED_FROM_THEIR_OWN_EVENT.has(event.action.type)) return;
+    recordAction(event.action);
+  };
+  const guardrailListener = (
+    event:
+      import('./events').RunGuardrailRecordedEvent | import('./events').RunTripwireRecordedEvent,
+  ) => {
+    recordAction(event.action);
+  };
+
   bureau.addEventListener('action', listener);
+  bureau.addEventListener('run.guardrail', guardrailListener);
+  bureau.addEventListener('run.tripwire', guardrailListener);
 
   // Shared write path behind both the public out-of-band `record()` below
   // and the schedule-definition listeners further down (AB-228) — the same
@@ -3000,6 +3025,8 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
 
     async dispose(): Promise<void> {
       bureau.removeEventListener('action', listener);
+      bureau.removeEventListener('run.guardrail', guardrailListener);
+      bureau.removeEventListener('run.tripwire', guardrailListener);
       bureau.removeEventListener('schedule.created', scheduleCreatedListener);
       bureau.removeEventListener('schedule.paused', scheduleTransitionListener);
       bureau.removeEventListener('schedule.resumed', scheduleTransitionListener);

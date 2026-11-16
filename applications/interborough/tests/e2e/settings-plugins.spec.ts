@@ -103,12 +103,11 @@ test.describe('Settings › Plugins', () => {
     const configuration = opened.getByTestId('plugin-configuration');
     await expect(configuration).toContainText(PLUGINS_COPY.configuration.description);
     await expect(configuration.locator('textarea')).toHaveCount(0);
-    await expect(
-      configuration.locator('[data-configuration-field="blockedPatterns"]'),
-    ).toBeVisible();
-    await expect(
-      configuration.locator('[data-configuration-field="groundingThreshold"]'),
-    ).toContainText('groundingThreshold');
+    await expect(configuration.locator('[data-cinder-field="blockedPatterns"]')).toBeVisible();
+    // The schema gives it no title, so the row is labelled in words and shows no key.
+    const groundingRow = configuration.locator('[data-cinder-field="groundingThreshold"]');
+    await expect(groundingRow).toContainText('Grounding threshold');
+    await expect(groundingRow).not.toContainText('groundingThreshold');
     await expect(configuration.getByRole('button', { name: 'Save configuration' })).toBeVisible();
     await expect(configuration).toContainText(PLUGINS_COPY.configuration.note);
     await expect(opened.getByTestId('plugin-in-use')).toContainText('In use.');
@@ -149,7 +148,7 @@ test.describe('Settings › Plugins', () => {
     });
     await open(page, 'guardrails');
     const field = detail(page, 'guardrails').locator(
-      '[data-configuration-field="groundingThreshold"] input',
+      '[data-cinder-field="groundingThreshold"] input',
     );
     await field.fill('0.5');
     await page.route('**/host/plugins/guardrails', (route) => route.abort('failed'));
@@ -168,6 +167,104 @@ test.describe('Settings › Plugins', () => {
       '1 change waits for a restart',
     );
     await captureAtEveryWidth(page, 'save-failed');
+  });
+
+  test('every kind of configuration field: text, select, switch, number, tags, duration, a group and a list of groups, as rows', async ({
+    page,
+    checkA11y,
+  }) => {
+    // The host's answer is changed to a fixture plugin whose schema holds one field of every kind
+    // the rows draw, so the design review sees them all in one place. Guardrails' name stands in.
+    await page.route('**/host/plugins', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      for (const plugin of snapshot.plugins as {
+        descriptor: { name: string };
+        configuration: unknown;
+        configurationSchema: unknown;
+      }[]) {
+        if (plugin.descriptor.name !== 'guardrails') continue;
+        plugin.configuration = {
+          searchAddress: 'https://search.example',
+          // No `region`: the optional choice has no default and nothing stored, so it reads Not set.
+          includeSnippets: true,
+          limit: 0.8,
+          blockedSites: ['example.com', 'example.org'],
+          cacheMs: 300000,
+          account: { owner: 'Operations' },
+          roots: [{ path: '/srv/data' }],
+        };
+        plugin.configurationSchema = {
+          type: 'object',
+          properties: {
+            searchAddress: {
+              type: 'string',
+              title: 'Search address',
+              description: 'The service the search goes to.',
+            },
+            region: { type: 'string', enum: ['us', 'eu'], description: 'Where the work runs.' },
+            includeSnippets: { type: 'boolean', description: 'Show an excerpt with each result.' },
+            limit: { type: 'number', description: 'How many results come back.' },
+            blockedSites: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Sites that are never searched.',
+            },
+            cacheMs: { type: 'number', description: 'How long a result is kept.' },
+            account: {
+              type: 'object',
+              description: 'Who the work is billed to.',
+              properties: { owner: { type: 'string', title: 'Owner' } },
+            },
+            roots: {
+              type: 'array',
+              description: 'Folders the plugin may read.',
+              items: { type: 'object', properties: { path: { type: 'string' } } },
+            },
+          },
+          required: ['searchAddress'],
+        };
+      }
+      return route.fulfill({ response, json: snapshot });
+    });
+    await open(page, 'guardrails');
+
+    const configuration = detail(page, 'guardrails').getByTestId('plugin-configuration');
+    for (const key of [
+      'searchAddress',
+      'region',
+      'includeSnippets',
+      'limit',
+      'blockedSites',
+      'cacheMs',
+      'account',
+      'roots',
+    ]) {
+      await expect(configuration.locator(`[data-cinder-field="${key}"]`)).toBeVisible();
+    }
+    await expect(configuration.locator('[data-cinder-field="region"] select')).toHaveValue('');
+    await checkA11y('settings plugins, every kind of configuration field, at 1280px');
+    for (const width of [1280, 320] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await configuration.scrollIntoViewIfNeeded();
+      await captureForDesignReview(page, {
+        route: ROUTE,
+        state: 'configuration-every-kind',
+        source: SOURCE,
+      });
+      // The rest of the form: the group's field, the list of groups and Save.
+      await configuration.locator('[data-cinder-field="roots"]').scrollIntoViewIfNeeded();
+      await configuration
+        .getByRole('button', { name: 'Save configuration' })
+        .scrollIntoViewIfNeeded();
+      await captureForDesignReview(page, {
+        route: ROUTE,
+        state: 'configuration-every-kind-end',
+        source: SOURCE,
+      });
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
   });
 
   test('a disabled plugin: the switch reads Disabled, what it holds back is named, and enabling it is explained next to the switch', async ({

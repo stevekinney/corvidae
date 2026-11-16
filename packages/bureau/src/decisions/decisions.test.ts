@@ -418,3 +418,180 @@ describe('the decision.made audit record', () => {
     ]);
   });
 });
+
+/**
+ * COR-2249 — a decision is published on the event feed as `decision.made`: its kind, how it ended,
+ * the row that answered and the path it answered by, and the task when it was asked for one. Never
+ * the request, the value, the rationale, the schema, the principal or the audit record's reason.
+ */
+describe('the decision.made event on the feed', () => {
+  interface Published {
+    readonly kind: string;
+    readonly payload: Readonly<Record<string, unknown>>;
+  }
+
+  /** Every `decision.made` envelope the Bureau's feed holds, in order. */
+  async function published(bureau: Bureau): Promise<Published[]> {
+    await bureau.internals.auditTrail?.query({ type: 'decision.made' });
+    const found: Published[] = [];
+    for await (const envelope of bureau.internals.eventFeed.feed.replay()) {
+      const entry = envelope as unknown as Published;
+      if (entry.kind === 'decision.made') found.push(entry);
+    }
+    return found;
+  }
+
+  const CONTEXT = 'CONTEXT-SENTINEL-77aa';
+  const VALUE = 'VALUE-SENTINEL-31bc';
+  const QUESTION = 'QUESTION-SENTINEL-0de4';
+  const PRINCIPAL = 'api-key:SENTINEL-PRINCIPAL';
+  const ROUTING = 'ROUTING-SENTINEL-9f10';
+
+  it('publishes an answered decision with its kind, row and path', async () => {
+    const { bureau } = await open();
+
+    await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
+
+    const events = await published(bureau);
+    expect(events.map((event) => event.payload)).toEqual([
+      {
+        kind: 'boolean',
+        outcome: 'answered',
+        row: 'anthropic/claude-haiku-5-5',
+        path: 'fallback',
+      },
+    ]);
+  });
+
+  it('names the task when the decision was asked for one', async () => {
+    const { bureau } = await open();
+
+    await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }, { taskId: 'task-9' });
+
+    const events = await published(bureau);
+    expect(events.map((event) => event.payload)).toEqual([
+      {
+        kind: 'boolean',
+        outcome: 'answered',
+        row: 'anthropic/claude-haiku-5-5',
+        path: 'fallback',
+        taskId: 'task-9',
+      },
+    ]);
+  });
+
+  it('names a host-registered model as the row and path native', async () => {
+    const { bureau } = await open({ decisions: hosted(hostModel(['boolean'])) });
+
+    await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
+
+    const events = await published(bureau);
+    expect(events.map((event) => event.payload)).toEqual([
+      { kind: 'boolean', outcome: 'answered', row: 'host/model', path: 'native' },
+    ]);
+  });
+
+  it('publishes a decision whose answer failed validation as an error, naming the row and path', async () => {
+    const { bureau } = await open({ replies: ['x', 'y'] });
+
+    await rejection(bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }));
+
+    const events = await published(bureau);
+    expect(events.map((event) => event.payload)).toEqual([
+      {
+        kind: 'boolean',
+        outcome: 'error',
+        row: 'anthropic/claude-haiku-5-5',
+        path: 'fallback',
+      },
+    ]);
+  });
+
+  it('publishes a refusal with no row and no path when no model can answer', async () => {
+    const { bureau } = await open({ catalog: [] });
+
+    await rejection(bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }));
+
+    const events = await published(bureau);
+    expect(events.map((event) => event.payload)).toEqual([{ kind: 'boolean', outcome: 'refused' }]);
+  });
+
+  it('publishes nothing for a request refused as malformed', async () => {
+    const { bureau } = await open();
+
+    await rejection(bureau.decisions.decide({ kind: 'boolean' } as never));
+
+    expect(await published(bureau)).toEqual([]);
+  });
+
+  it('carries nothing of the request, the value, the principal, the routing id or the schema', async () => {
+    const { bureau } = await open({ replies: [JSON.stringify({ verdict: VALUE })] });
+    const schema = z.object({ verdict: z.string() });
+    const received: Event[] = [];
+    bureau.addEventListener('decision.made', (event) => received.push(event));
+
+    await bureau.decisions.decide(
+      { kind: 'structured', question: QUESTION, context: CONTEXT, schema },
+      { principal: PRINCIPAL, routingId: ROUTING, taskId: 'task-9' },
+    );
+    await rejection(
+      bureau.decisions.decide({ kind: 'boolean', question: QUESTION, context: CONTEXT }),
+    ).catch(() => undefined);
+
+    const events = await published(bureau);
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    const serialized = JSON.stringify([events, received]);
+    for (const sentinel of [CONTEXT, VALUE, QUESTION, PRINCIPAL, ROUTING]) {
+      expect(serialized).not.toContain(sentinel);
+    }
+    expect(serialized).not.toContain(
+      sha256HexSync(canonicalJson(z.toJSONSchema(schema, { io: 'input' }))),
+    );
+    // The fullest event holds these five fields and no other.
+    expect(Object.keys(events[0]!.payload).toSorted()).toEqual([
+      'kind',
+      'outcome',
+      'path',
+      'row',
+      'taskId',
+    ]);
+  });
+
+  it('is sent once the audit record has been written, and not when the answered record cannot be', async () => {
+    const { bureau } = await open({ replies: ['{"answer":true}', '{"answer":true}'] });
+    const trail = bureau.internals.auditTrail!;
+    const written: string[] = [];
+    const sentAfter: boolean[] = [];
+    bureau.addEventListener('decision.made', () => sentAfter.push(written.length > 0));
+    const original = trail.record.bind(trail);
+    trail.record = async (entry) => {
+      await original(entry);
+      written.push(entry.type);
+    };
+
+    await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
+    expect(sentAfter).toEqual([true]);
+
+    trail.record = async () => {
+      throw new Error('the trail is full');
+    };
+    await rejection(bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }));
+    expect(sentAfter).toEqual([true]);
+  });
+
+  it('still publishes a failure whose audit record cannot be written, and rejects with the failure itself', async () => {
+    const { bureau } = await open({ catalog: [] });
+    const trail = bureau.internals.auditTrail!;
+    trail.record = async () => {
+      throw new Error('the trail is full');
+    };
+
+    const failure = await rejection(
+      bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }),
+    );
+
+    expect((failure as BureauError).code).toBe('NOT_CONFIGURED');
+    const events = await published(bureau);
+    expect(events.map((event) => event.payload)).toEqual([{ kind: 'boolean', outcome: 'refused' }]);
+  });
+});

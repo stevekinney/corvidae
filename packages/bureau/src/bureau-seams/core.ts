@@ -106,6 +106,7 @@ import type {
 } from '../bureau-construction-support';
 import type { WorkspaceMembershipOptions } from '../http/workspace-principal.ts';
 import type { createTryAgents } from '../agent-try';
+import type { RunOutcomeDetails } from '../run-outcome-details';
 import type { createWorkflowReviewWaits } from '../workflow-review-waits';
 
 /** How many times an append retries after losing a race to another process. */
@@ -270,6 +271,8 @@ export interface BureauCore<D extends AgentDefinitions> {
   readonly stopForwarding: Array<() => void>;
   /** Per-run event feeds, by run id. */
   readonly runEventFeeds: ReturnType<typeof createAgentRunEventRegistry>;
+  /** What each failed run's `RunErrorEvent` said, until its settlement is announced (COR-2095). */
+  readonly runOutcomeDetails: RunOutcomeDetails;
   /** The agent definitions as given at construction. */
   readonly agentsSnapshot: D;
   /** The host the goal workflows bind to. */

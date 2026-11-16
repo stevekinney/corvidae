@@ -18,6 +18,7 @@
  */
 
 import type { PluginMemoryContributions } from '@lostgradient/bureau';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   createEmbedderRegistry,
   createGovernedMemory,
@@ -31,8 +32,30 @@ import {
 import type { RuntimeServices } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
 
-/** The policy revision the installation's memory records on every write, receipt, and event. */
+/**
+ * The base of the policy revision the installation's memory records on every write, receipt, and
+ * event. It is the whole revision when no plugin contributes a memory guardrail
+ * ({@link memoryPolicyRevision}).
+ */
 export const MEMORY_POLICY_REVISION = 'interborough:1';
+
+/**
+ * The policy revision for the memory guardrails the running plugins contribute (COR-2192). With
+ * none it is {@link MEMORY_POLICY_REVISION}, so an installation without plugin guardrails keeps the
+ * revision its records already carry. Otherwise it is that base, `:sha256:`, and the SHA-256 (hex)
+ * of the JSON of each guardrail's `[id, version, gates]` in load order. Adding, removing,
+ * reordering, upgrading or regating a guardrail therefore changes the revision, which withdraws
+ * the evidence recalled under the old set (COR-771).
+ */
+export function memoryPolicyRevision(
+  sources: PluginMemoryContributions['guardrails']['sources'],
+): string {
+  if (sources.length === 0) return MEMORY_POLICY_REVISION;
+  const digest = sha256HexSync(
+    JSON.stringify(sources.map((source) => [source.id, source.version, source.gates])),
+  );
+  return `${MEMORY_POLICY_REVISION}:sha256:${digest}`;
+}
 
 /** The deletion targets this host keeps nothing in. `durable-snapshots` is deliberately absent. */
 export const MEMORY_DELETION_PROPAGATION: MemoryDeletionPropagation = {
@@ -61,7 +84,7 @@ export function createHostMemory(
     embedders: createEmbedderRegistry(contributions.embedders),
     vectors: createMemoryVectorStore(storage),
     policy: createMemoryGovernancePolicy({
-      revision: MEMORY_POLICY_REVISION,
+      revision: memoryPolicyRevision(contributions.guardrails.sources),
       admission: { contributedDetectors: contributions.guardrails.admission },
       recall: { contributedDetectors: contributions.guardrails.recall },
     }),

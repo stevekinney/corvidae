@@ -24,7 +24,14 @@ import { recoverRunWorkspaceAuthority } from '../run-authority.ts';
  * record. A restart inside that window finds the lease still live, so `resume` leaves the
  * record and schedules one tracked re-scan for the earliest expiry it skipped (and again for any
  * that remain); a shutdown abandons the wait. Without it such a delivery would stay pending until
- * some later restart.
+ * some later restart. The lease is the longest an attempt may run (a plugin's reaction sets its own
+ * `timeoutMilliseconds`, COR-2175), the longest backoff, and a margin, so a process still inside a
+ * reaction's timeout is never taken over.
+ *
+ * A plugin's reaction is run with a signal that aborts on a shutdown, at its timeout, and when its
+ * hook is disabled or deleted (`abortHook`). The attempt ends when it does, whether or not the
+ * reaction looks at it: a timeout is an `error` attempt and is retried, a disable or delete ends the
+ * delivery `aborted`, and a shutdown makes the attempt `interrupted`.
  *
  * ## Retry and the next attempt
  *
@@ -58,6 +65,7 @@ import {
   type HookSecretStore,
 } from './hook-types.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
+import { withoutValues } from './secret-references.ts';
 
 /** How long one request may take before it is given up as a network error. */
 export const DEFAULT_HOOK_REQUEST_TIMEOUT_MILLISECONDS = 10_000;
@@ -80,7 +88,30 @@ export interface HookActionRunner {
    */
   run(
     work: HookDeliveryWork,
-    context: { readonly owner: string; readonly hookId: string; readonly deliveryId: string },
+    context: {
+      readonly owner: string;
+      readonly hookId: string;
+      readonly deliveryId: string;
+      /**
+       * COR-2183 — which attempt this is, 1-based: the attempts the record holds plus one. An
+       * attempt dropped because the plugin needs setup is not recorded, so its number comes again.
+       */
+      readonly attempt: number;
+      /** COR-2183 — whether the delivery is a `hooks.test` one, which runs a reaction's `dryRun` instead of its `run`. */
+      readonly test: boolean;
+      /**
+       * What stops the attempt: a shutdown, and for a plugin's reaction also its timeout and the hook
+       * being disabled or deleted. The delivery ends the attempt when it aborts whether or not the
+       * action looks at it.
+       */
+      readonly signal: AbortSignal;
+      /**
+       * The values the action resolved from secret references and put in its input (COR-2177). The
+       * action adds each as it resolves it; the delivery removes them from any error text the
+       * attempt keeps, whatever threw it.
+       */
+      readonly resolvedSecrets: Set<string>;
+    },
   ): Promise<HookActionReceipt>;
 }
 
@@ -119,6 +150,30 @@ export interface HookDeliveryDependencies {
    * it pins; `undefined` when the kind is not registered or carries no version.
    */
   readonly actionKindVersion?: ((plugin: string, kind: string) => string | undefined) | undefined;
+  /**
+   * COR-2175 — the `timeoutMilliseconds` of a plugin's hook action kind registered now; `undefined`
+   * when the kind is not registered or sets none, which gives it {@link requestTimeoutMilliseconds}.
+   */
+  readonly actionKindTimeout?: ((plugin: string, kind: string) => number | undefined) | undefined;
+  /**
+   * COR-2183 — the `maxAttempts` of a plugin's hook action kind registered now, which a new
+   * delivery of it keeps on its record; `undefined` when the kind is not registered or sets none,
+   * which gives the engine's. A test delivery makes one attempt whatever this says.
+   */
+  readonly actionKindMaxAttempts?:
+    ((plugin: string, kind: string) => number | undefined) | undefined;
+  /**
+   * COR-2176 — whether a plugin's hook action kind can run now. A delivery of one that cannot (its
+   * plugin needs setup) makes no attempt: its lease is released and it waits, `pending`, for the
+   * next `resume`. Absent, or for a kind that is not registered, every kind is available; a missing
+   * kind is a failed delivery, not a waiting one.
+   */
+  readonly actionKindAvailable?: ((plugin: string, kind: string) => boolean) | undefined;
+  /**
+   * An abort signal that fires after `milliseconds`. Defaults to `AbortSignal.timeout`; a test passes
+   * one a controller ends, because the engine's `wait` is not a clock the tests share.
+   */
+  readonly timeoutSignal?: ((milliseconds: number) => AbortSignal) | undefined;
 }
 
 /** One event to deliver. */
@@ -159,7 +214,8 @@ export interface HookDeliveries {
   /**
    * Writes the pending delivery of `event` to `hook`, and returns its id. A `start-workflow` or
    * `notify` hook's delivery holds the work its action will do, mapped from the event now.
-   * `test` is for a webhook only. `skip` is for a `start-workflow` hook: the delivery is written,
+   * `test` is for a webhook, or a plugin reaction that has a `dryRun` (COR-2183): one attempt, which
+   * runs the `dryRun` and never the `run`. `skip` is for a `start-workflow` hook: the delivery is written,
    * and fails at once with `skip` as its reason, without starting anything.
    */
   enqueue(
@@ -193,6 +249,13 @@ export interface HookDeliveries {
    * and one that is not stored, are left as they are.
    */
   retry(deliveryId: string): Promise<void>;
+  /**
+   * Aborts the signal of every plugin attempt of `hookId` that is in flight in this process (COR-2175):
+   * the hook was disabled or deleted, so its delivery ends `aborted` without another attempt. An
+   * attempt in another process, a webhook request, and a delivery waiting out a backoff are not
+   * touched; the last is seen at its next pass.
+   */
+  abortHook(hookId: string): void;
   /**
    * Signs and sends one webhook request for a hook that is not saved (COR-2022), and resolves with
    * the delivery it would have recorded: one attempt, no retry. Nothing is written: no hook,
@@ -340,13 +403,71 @@ function withSkip(work: HookDeliveryWork, skip: string | undefined): HookDeliver
   return skip !== undefined && work.type === 'start-workflow' ? { ...work, skip } : work;
 }
 
+/** How one attempt of a delivery's action or request ended. */
+interface AttemptResult {
+  readonly attempt: Omit<HookDeliveryAttempt, 'number' | 'startedAt' | 'finishedAt'>;
+  /** A retry cannot change the answer. */
+  readonly permanent: boolean;
+  /** The hook was disabled or deleted while the attempt ran. */
+  readonly aborted?: true;
+  /**
+   * The plugin's secret went missing between the availability check and the run (COR-2176): the
+   * attempt is dropped, not recorded, so it does not count, and the delivery waits.
+   */
+  readonly needsSetup?: true;
+}
+
+/**
+ * `promise`, unless `signal` aborts first, which rejects with its reason: an action that ignores its
+ * signal still ends when the signal does. The promise that loses is abandoned, so its rejection is
+ * marked handled.
+ */
+async function endedBy<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  promise.catch(() => undefined);
+  signal.throwIfAborted();
+  let abandon: () => void = () => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    abandon = () => reject(signal.reason);
+    signal.addEventListener('abort', abandon, { once: true });
+  });
+  try {
+    return await Promise.race([promise, aborted]);
+  } finally {
+    signal.removeEventListener('abort', abandon);
+  }
+}
+
 /** Builds the hook deliveries over the notifier's engine. */
 export function createHookDeliveries(dependencies: HookDeliveryDependencies): HookDeliveries {
   const { engine, store } = dependencies;
-  const leaseMilliseconds =
-    dependencies.requestTimeoutMilliseconds +
-    engine.backoffMilliseconds(Math.max(1, engine.maxAttempts)) +
-    LEASE_MARGIN_MILLISECONDS;
+  const timeoutSignal =
+    dependencies.timeoutSignal ?? ((milliseconds) => AbortSignal.timeout(milliseconds));
+
+  /** How long one attempt of `work` may run: a plugin's reaction sets its own, everything else is a request. */
+  function timeoutOf(work: HookDeliveryWork | undefined): number {
+    return work?.type === 'plugin'
+      ? (dependencies.actionKindTimeout?.(work.plugin, work.kind) ??
+          dependencies.requestTimeoutMilliseconds)
+      : dependencies.requestTimeoutMilliseconds;
+  }
+
+  /**
+   * How long a process that drives a delivery holds it between two writes: the longest an attempt
+   * may run, the longest backoff wait that follows the engine's last attempt, and a margin. Per
+   * record, because a reaction's own timeout can be longer than a request's, and a lease that expired
+   * inside a hung `run` would let a second process run it again. It does not grow with a reaction's
+   * own `maxAttempts` (COR-2183): at 20 attempts and a 1-second base the backoff after the last is
+   * 6 days, and a crashed delivery would be held that long. A write that schedules a backoff longer
+   * than that (an attempt past the engine's own last) extends its own lease instead, in
+   * {@link advanced}.
+   */
+  function leaseFor(record: { readonly work?: HookDeliveryWork | undefined }): number {
+    return (
+      timeoutOf(record.work) +
+      engine.backoffMilliseconds(Math.max(1, engine.maxAttempts)) +
+      LEASE_MARGIN_MILLISECONDS
+    );
+  }
 
   /**
    * `record` advanced: a new revision, a fresh lease unless `leaseUntil` is given. The time of the
@@ -364,12 +485,18 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
   ): HookDeliveryRecord {
     const now = engine.now();
     const { nextAttemptAt: _due, ...rest } = record;
+    // Held until the wait this write schedules is over and an attempt could have run after it, so
+    // no other process takes the delivery during a backoff, however long.
+    const waitedOut =
+      changes.nextAttemptAt === undefined
+        ? 0
+        : changes.nextAttemptAt + timeoutOf(record.work) + LEASE_MARGIN_MILLISECONDS;
     return {
       ...rest,
       ...changes,
       updatedAt: now,
       revision: record.revision + 1,
-      leaseUntil: changes.leaseUntil ?? now + leaseMilliseconds,
+      leaseUntil: changes.leaseUntil ?? Math.max(now + leaseFor(record), waitedOut),
     };
   }
 
@@ -478,17 +605,34 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
     }
   }
 
-  /** Runs a `start-workflow` or `notify` delivery's work and says how it ended. */
-  async function act(record: HookDeliveryRecord): Promise<{
-    readonly attempt: Omit<HookDeliveryAttempt, 'number' | 'startedAt' | 'finishedAt'>;
-    readonly permanent: boolean;
-  }> {
-    if (record.work === undefined) {
+  /**
+   * Runs a `start-workflow`, `notify` or `plugin` delivery's work and says how it ended. A plugin's
+   * reaction is given a signal that aborts on a shutdown, at its timeout, and when its hook is
+   * disabled or deleted (`hookAbort`), and the attempt ends when it does even if the reaction
+   * ignores it. The cause is read in that order: a shutdown, then the hook, then the timeout.
+   */
+  async function act(
+    record: HookDeliveryRecord,
+    hookAbort: AbortController | undefined,
+    attempt: number,
+  ): Promise<AttemptResult> {
+    const { work } = record;
+    if (work === undefined) {
       return {
         attempt: { outcome: 'rejected', error: 'The delivery has no work to do' },
         permanent: true,
       };
     }
+    // What the action resolves from secret references, removed from whatever it reports.
+    const resolvedSecrets = new Set<string>();
+    // Started before the first await, so the timeout covers all the action does.
+    const timeoutMilliseconds = work.type === 'plugin' ? timeoutOf(work) : undefined;
+    const timeout =
+      timeoutMilliseconds === undefined ? undefined : timeoutSignal(timeoutMilliseconds);
+    const signal =
+      timeout === undefined || hookAbort === undefined
+        ? engine.signal
+        : AbortSignal.any([engine.signal, timeout, hookAbort.signal]);
     try {
       if (
         dependencies.workspace !== undefined &&
@@ -502,18 +646,46 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
           attempt: { outcome: 'rejected', error: 'Workspace authority unavailable.' },
           permanent: true,
         };
-      const receipt = await dependencies.actions.run(record.work, {
+      // A disable that landed before the action started stops it before it does anything.
+      if (signal !== engine.signal) signal.throwIfAborted();
+      const running = dependencies.actions.run(work, {
         owner: record.owner,
         hookId: record.hookId,
         deliveryId: record.id,
+        attempt,
+        test: record.test,
+        signal,
+        resolvedSecrets,
       });
+      const receipt = signal === engine.signal ? await running : await endedBy(running, signal);
       return { attempt: { outcome: 'completed', receipt }, permanent: false };
     } catch (error) {
       if (engine.shuttingDown()) return { attempt: { outcome: 'interrupted' }, permanent: false };
-      const message = (error instanceof Error ? error.message : String(error)).slice(
-        0,
-        ERROR_TEXT_LIMIT,
-      );
+      if (hookAbort?.signal.aborted === true) {
+        return {
+          attempt: { outcome: 'error', error: 'The hook was disabled' },
+          permanent: false,
+          aborted: true,
+        };
+      }
+      if (timeout?.aborted === true) {
+        return {
+          attempt: {
+            outcome: 'error',
+            error: `The reaction timed out after ${timeoutMilliseconds} ms`,
+          },
+          permanent: false,
+        };
+      }
+      // Matched by name: `hooks/` imports nothing from `plugins/`, where the gate's error lives.
+      if (error instanceof Error && error.name === 'PluginNeedsSetupError') {
+        return { attempt: { outcome: 'error' }, permanent: false, needsSetup: true };
+      }
+      // The values come out before the text is cut, or a cut could leave half of one in it.
+      const message = withoutValues(
+        error instanceof Error ? error.message : String(error),
+        resolvedSecrets,
+      ).slice(0, ERROR_TEXT_LIMIT);
       return error instanceof HookActionError && error.permanent
         ? { attempt: { outcome: 'rejected', error: message }, permanent: true }
         : { attempt: { outcome: 'error', error: message }, permanent: false };
@@ -522,107 +694,179 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
 
   async function run(id: string): Promise<void> {
     for (;;) {
-      const current = await store.getDelivery(id);
-      if (current === undefined || current.record.status !== 'pending') return;
-      if (engine.shuttingDown()) {
-        await release(current);
-        return;
-      }
-      const { record } = current;
-      const number = record.attempts.length + 1;
-      if (number > record.maxAttempts) {
-        await finish(current, 'exhausted');
-        return;
-      }
-      const hook = await store.getHook(record.hookId);
-      if (hook === undefined) {
-        // The hook is gone, and a delivery nobody can read is not kept.
-        await store.deleteDelivery(current);
-        return;
-      }
-      if (
-        hook.record.owner !== record.owner ||
-        (!hook.record.enabled && !record.test) ||
-        hook.record.action.type !== record.actionType ||
-        // A notification hook that reacts to its own notification writes one per notification, forever.
-        (record.actionType === 'notify' && record.kind === NOTIFICATION_CREATED_EVENT_KIND)
-      ) {
-        await finish(current, 'aborted');
-        return;
-      }
-      let secret = '';
-      if (record.actionType === 'webhook') {
-        try {
-          if (dependencies.keys === undefined) throw new Error('no key');
-          secret = await openHookSecret(record.hookId, dependencies.secrets, dependencies.keys);
-        } catch {
-          await finish(current, 'failed-secret');
-          return;
-        }
-      }
-
-      const startedAt = engine.now();
-      const request = record.request;
-      const defect =
-        request === undefined ? undefined : hookUrlDefect(request.url, dependencies.urlPolicy);
-      if (defect !== undefined) {
-        await finish(current, 'exhausted', [
-          ...record.attempts,
-          { number, startedAt, finishedAt: startedAt, outcome: 'refused', error: defect },
-        ]);
-        return;
-      }
-
-      // The attempt is on the record before the request is made, or the action is run.
-      const sending: HookDeliveryAttempt = { number, startedAt, outcome: 'sending' };
-      const opened = await write(
-        current,
-        advanced(record, { attempts: [...record.attempts, sending] }),
-      );
-      if (opened === undefined) return;
-
-      const done =
-        request === undefined
-          ? await act(record)
-          : { attempt: await send(request, number, secret, record), permanent: false };
-      const outcome = done.attempt;
-      const closedAttempt: HookDeliveryAttempt = {
-        number,
-        startedAt,
-        finishedAt: engine.now(),
-        ...outcome,
-      };
-      const attempts = [...record.attempts, closedAttempt];
-
-      if (outcome.outcome === 'interrupted') {
-        await write(opened, advanced(opened.record, { attempts, leaseUntil: 0 }));
-        return;
-      }
-      if (
-        outcome.outcome === 'completed' ||
-        (outcome.outcome === 'response' &&
-          (outcome.status ?? 0) >= 200 &&
-          (outcome.status ?? 0) < 300)
-      ) {
-        await finish(opened, 'delivered', attempts);
-        return;
-      }
-      if (done.permanent || outcome.outcome === 'rejected') {
-        await finish(opened, 'failed', attempts);
-        return;
-      }
-      if (number >= record.maxAttempts) {
-        await finish(opened, 'exhausted', attempts);
-        return;
-      }
-      const backoffMilliseconds = engine.backoffMilliseconds(number);
-      const waiting = await write(
-        opened,
-        advanced(opened.record, { attempts, nextAttemptAt: engine.now() + backoffMilliseconds }),
-      );
-      if (waiting === undefined) return;
-      await backoff(id, backoffMilliseconds);
+      const waitMilliseconds = await pass(id);
+      if (waitMilliseconds === undefined) return;
+      await backoff(id, waitMilliseconds);
     }
+  }
+
+  /**
+   * One pass over a delivery: the attempt it makes, or the reason it makes none. Resolves with how
+   * long to wait before the next pass, or `undefined` when this process stops driving the delivery.
+   */
+  async function pass(id: string): Promise<number | undefined> {
+    const current = await store.getDelivery(id);
+    if (current === undefined || current.record.status !== 'pending') return undefined;
+    if (engine.shuttingDown()) {
+      await release(current);
+      return undefined;
+    }
+    const { record } = current;
+    const number = record.attempts.length + 1;
+    if (number > record.maxAttempts) {
+      await finish(current, 'exhausted');
+      return undefined;
+    }
+    // Registered before the hook is read, so a disable that commits after the read still aborts
+    // this attempt: `abortHook` runs after the commit, and finds it.
+    const inFlight = record.actionType === 'plugin' ? openAttempt(record.hookId) : undefined;
+    try {
+      return await attemptOnce(current, number, inFlight);
+    } finally {
+      inFlight?.close();
+    }
+  }
+
+  async function attemptOnce(
+    current: Stored<HookDeliveryRecord>,
+    number: number,
+    inFlight: { readonly controller: AbortController } | undefined,
+  ): Promise<number | undefined> {
+    const { record } = current;
+    const hook = await store.getHook(record.hookId);
+    if (hook === undefined) {
+      // The hook is gone, and a delivery nobody can read is not kept.
+      await store.deleteDelivery(current);
+      return undefined;
+    }
+    if (
+      hook.record.owner !== record.owner ||
+      (!hook.record.enabled && !record.test) ||
+      hook.record.action.type !== record.actionType ||
+      // A disable that committed after the read above has already aborted this attempt.
+      inFlight?.controller.signal.aborted === true ||
+      // A notification hook that reacts to its own notification writes one per notification, forever.
+      (record.actionType === 'notify' && record.kind === NOTIFICATION_CREATED_EVENT_KIND)
+    ) {
+      await finish(current, 'aborted');
+      return undefined;
+    }
+    // A plugin that needs setup cannot run its reaction yet: no attempt is made, and none counts
+    // against `maxAttempts`. The lease is released so the next `resume` takes the delivery. This
+    // comes after the hook checks, so a disabled hook is still aborted, and before the attempt is
+    // written; the version pin is checked by the action, once the plugin is available.
+    if (
+      record.work?.type === 'plugin' &&
+      dependencies.actionKindAvailable?.(record.work.plugin, record.work.kind) === false
+    ) {
+      await release(current);
+      return undefined;
+    }
+    let secret = '';
+    if (record.actionType === 'webhook') {
+      try {
+        if (dependencies.keys === undefined) throw new Error('no key');
+        secret = await openHookSecret(record.hookId, dependencies.secrets, dependencies.keys);
+      } catch {
+        await finish(current, 'failed-secret');
+        return undefined;
+      }
+    }
+
+    const startedAt = engine.now();
+    const request = record.request;
+    const defect =
+      request === undefined ? undefined : hookUrlDefect(request.url, dependencies.urlPolicy);
+    if (defect !== undefined) {
+      await finish(current, 'exhausted', [
+        ...record.attempts,
+        { number, startedAt, finishedAt: startedAt, outcome: 'refused', error: defect },
+      ]);
+      return undefined;
+    }
+
+    // The attempt is on the record before the request is made, or the action is run.
+    const sending: HookDeliveryAttempt = { number, startedAt, outcome: 'sending' };
+    const opened = await write(
+      current,
+      advanced(record, { attempts: [...record.attempts, sending] }),
+    );
+    if (opened === undefined) return undefined;
+
+    const done: AttemptResult =
+      request === undefined
+        ? await act(record, inFlight?.controller, number)
+        : { attempt: await send(request, number, secret, record), permanent: false };
+    const outcome = done.attempt;
+    const closedAttempt: HookDeliveryAttempt = {
+      number,
+      startedAt,
+      finishedAt: engine.now(),
+      ...outcome,
+    };
+    const attempts = [...record.attempts, closedAttempt];
+
+    if (outcome.outcome === 'interrupted') {
+      await write(opened, advanced(opened.record, { attempts, leaseUntil: 0 }));
+      return undefined;
+    }
+    if (done.needsSetup) {
+      // The `sending` attempt is dropped, not closed: an attempt that never ran must not count
+      // toward `maxAttempts`. The delivery waits, with its lease released.
+      await write(opened, advanced(opened.record, { attempts: record.attempts, leaseUntil: 0 }));
+      return undefined;
+    }
+    if (
+      outcome.outcome === 'completed' ||
+      (outcome.outcome === 'response' &&
+        (outcome.status ?? 0) >= 200 &&
+        (outcome.status ?? 0) < 300)
+    ) {
+      await finish(opened, 'delivered', attempts);
+      return undefined;
+    }
+    // Before the exhaustion check: a hook that was disabled or deleted has nothing to exhaust.
+    if (done.aborted) {
+      await finish(opened, 'aborted', attempts);
+      return undefined;
+    }
+    if (done.permanent || outcome.outcome === 'rejected') {
+      await finish(opened, 'failed', attempts);
+      return undefined;
+    }
+    if (number >= record.maxAttempts) {
+      await finish(opened, 'exhausted', attempts);
+      return undefined;
+    }
+    const backoffMilliseconds = engine.backoffMilliseconds(number);
+    const waiting = await write(
+      opened,
+      advanced(opened.record, { attempts, nextAttemptAt: engine.now() + backoffMilliseconds }),
+    );
+    return waiting === undefined ? undefined : backoffMilliseconds;
+  }
+
+  // The plugin attempts in flight in this process, by hook: what a disable or a delete aborts.
+  const attemptsInFlight = new Map<string, Set<AbortController>>();
+
+  /** Registers an attempt of `hookId`'s reaction as in flight until `close` is called. */
+  function openAttempt(hookId: string): {
+    readonly controller: AbortController;
+    close(): void;
+  } {
+    const controller = new AbortController();
+    const attempts = attemptsInFlight.get(hookId) ?? new Set<AbortController>();
+    attempts.add(controller);
+    attemptsInFlight.set(hookId, attempts);
+    return {
+      controller,
+      close() {
+        attempts.delete(controller);
+        if (attempts.size === 0 && attemptsInFlight.get(hookId) === attempts) {
+          attemptsInFlight.delete(hookId);
+        }
+      },
+    };
   }
 
   // The deliveries this process is waiting to retry, each with what ends its wait early
@@ -722,11 +966,11 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
         attempts: [],
         createdAt: now,
         updatedAt: now,
-        leaseUntil: now + leaseMilliseconds,
+        leaseUntil: 0,
         revision: 0,
       };
       const action = hook.action;
-      const record: HookDeliveryRecord =
+      const unleased: HookDeliveryRecord =
         action.type === 'webhook'
           ? {
               ...base,
@@ -736,12 +980,28 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
           : {
               ...base,
               work: withSkip(workOf(action, hook, event, dependencies.actionKindVersion), skip),
-              maxAttempts: engine.maxAttempts,
+              // A test is one attempt; a reaction's own limit, else the engine's, for the rest.
+              maxAttempts:
+                action.type === 'plugin'
+                  ? test
+                    ? 1
+                    : (dependencies.actionKindMaxAttempts?.(action.plugin, action.kind) ??
+                      engine.maxAttempts)
+                  : engine.maxAttempts,
             };
-      await store.createDelivery(record);
+      // Held from the start, for as long as the first attempt may run.
+      await store.createDelivery({ ...unleased, leaseUntil: now + leaseFor(unleased) });
       return id;
     },
     drive,
+    abortHook(hookId) {
+      const attempts = attemptsInFlight.get(hookId);
+      if (attempts === undefined) return;
+      // An abort only settles promises: the attempt removes itself from the set once it has ended.
+      for (const controller of attempts) {
+        controller.abort(new DOMException('The hook was disabled', 'AbortError'));
+      }
+    },
     async prune(olderThanMilliseconds) {
       const cutoff = engine.now() - olderThanMilliseconds;
       let removed = 0;

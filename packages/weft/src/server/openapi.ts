@@ -11,18 +11,18 @@
  * @module server/openapi
  */
 
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
-import { VERSION } from '../version.ts';
 import { serializeAccessPolicy, serializeParameterizedAccess } from './access-policy-metadata.ts';
 import { isDiscoverable } from './discovery-filter.ts';
-import { applyDiscoveryInfo, type DiscoveryInfo } from './discovery-info.ts';
+import {
+  applyDiscoveryInfo,
+  resolveDocumentTitleAndVersion,
+  type DiscoveryInfo,
+} from './discovery-info.ts';
 import { asPlainObject, compareStrings } from './json-schema-utilities.ts';
 import { buildErrorResponses, ERROR_SCHEMA } from './openapi-error-responses.ts';
 import { extractComponentsSchemas, type OpenApiSchemaHelper } from './openapi-schemas.ts';
 import type { ErasedOperation, OperationRegistry } from './operation-catalog.ts';
-import type { ParamSource } from './rest-binding.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
-import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
+import type { ParamSource, RestBindingDescription } from './rest-binding.ts';
 import {
   DIRECT_HTTP_ROUTES,
   externalApiPath,
@@ -30,6 +30,7 @@ import {
   type DirectHttpRouteDefinition,
   type DirectRouteResponseContent,
 } from './route-model.ts';
+import { zodToJsonSchema } from './zod-json-schema.ts';
 
 export type OpenApiSecuritySchemeName = 'bearerAuth' | 'apiKeyAuth';
 
@@ -39,21 +40,20 @@ export type OpenApiSecuritySchemeName = 'bearerAuth' | 'apiKeyAuth';
 
 /** Options for customizing the generated OpenAPI document. */
 export type OpenApiOptions = {
-  /** API title. Defaults to `'Weft Workflow Engine'`. */
+  /** API title. Defaults to `discoveryInfo.title`, then to `'API'`. */
   title?: string;
-  /** API version. Defaults to the current Weft package version. */
+  /** API version. Defaults to `discoveryInfo.version`, then to `'0.0.0'`. */
   version?: string;
   /** Operator-supplied discovery metadata applied to the generated document. */
   discoveryInfo?: DiscoveryInfo;
   /** Operation registry used to emit operation-backed REST bindings. */
-  registry?: OperationRegistry;
+  registry: OperationRegistry;
   /**
-   * REST bindings used to emit OpenAPI path items. Defaults to
-   * `createLiveRestBindings()`. Servers that override their binding set
-   * (e.g. for a restricted subset) should pass the same set here so
-   * `/openapi.json` matches the live HTTP surface.
+   * REST bindings used to emit OpenAPI path items. A server that overrides
+   * its binding set (e.g. for a restricted subset) passes the same set here
+   * so `/openapi.json` matches the live HTTP surface.
    */
-  restBindings?: ReadonlyArray<UnknownRestBinding>;
+  restBindings: ReadonlyArray<RestBindingDescription>;
   /** Server URL. When omitted, no `servers` array is included. */
   serverUrl?: string;
   /**
@@ -96,14 +96,14 @@ function buildPathParameters(paramNames: readonly string[]): Array<Record<string
   }));
 }
 
-function inputSourceEntries(binding: UnknownRestBinding): Array<[string, ParamSource]> {
+function inputSourceEntries(binding: RestBindingDescription): Array<[string, ParamSource]> {
   return Object.entries(binding.inputSources)
     .filter((entry): entry is [string, ParamSource] => entry[1] !== undefined)
     .toSorted(([left], [right]) => compareStrings(left, right));
 }
 
 function inputJsonSchema(operation: ErasedOperation): OpenApiSchema {
-  return definitionSchemaToJsonSchema(operation.inputSchema);
+  return zodToJsonSchema(operation.inputSchema);
 }
 
 function fieldSchema(operation: ErasedOperation, field: string): OpenApiSchema {
@@ -140,7 +140,7 @@ function outputCanBeNull(operation: ErasedOperation): boolean {
 }
 
 function buildBindingParameters(
-  binding: UnknownRestBinding,
+  binding: RestBindingDescription,
   operation: ErasedOperation,
 ): Array<Record<string, unknown>> {
   const parameters = buildPathParameters(binding.pathParamNames);
@@ -166,7 +166,7 @@ function buildBindingParameters(
 }
 
 function buildRequestBodyFromInputSources(
-  binding: UnknownRestBinding,
+  binding: RestBindingDescription,
   operation: ErasedOperation,
 ): Record<string, unknown> | undefined {
   const entries = inputSourceEntries(binding);
@@ -211,7 +211,7 @@ function buildRequestBodyFromInputSources(
 }
 
 function buildRequestBody(
-  binding: UnknownRestBinding,
+  binding: RestBindingDescription,
   operation: ErasedOperation,
   schemaHelper: OpenApiSchemaHelper,
 ): Record<string, unknown> | undefined {
@@ -239,7 +239,7 @@ function buildRequestBody(
  * string. Empty (204) bindings emit a no-content response.
  */
 function buildSuccessResponse(
-  binding: UnknownRestBinding,
+  binding: RestBindingDescription,
   operation: ErasedOperation,
   schemaHelper: OpenApiSchemaHelper,
 ): Record<string, unknown> {
@@ -288,8 +288,8 @@ function buildSuccessResponse(
 export function emitBindings(
   paths: Record<string, Record<string, unknown>>,
   tagSet: Set<string>,
-  bindings: ReadonlyArray<UnknownRestBinding> = createLiveRestBindings(),
-  registry: OperationRegistry = createLiveOperationRegistry(),
+  bindings: ReadonlyArray<RestBindingDescription>,
+  registry: OperationRegistry,
   schemaHelper: OpenApiSchemaHelper = DEFAULT_SCHEMA_HELPER,
 ): void {
   for (const binding of bindings) {
@@ -300,7 +300,7 @@ export function emitBindings(
 function tryRegisterBinding(
   paths: Record<string, Record<string, unknown>>,
   tagSet: Set<string>,
-  binding: UnknownRestBinding,
+  binding: RestBindingDescription,
   registry: OperationRegistry,
   schemaHelper: OpenApiSchemaHelper,
 ): void {
@@ -323,7 +323,7 @@ function tryRegisterBinding(
 }
 
 function buildBindingEntry(
-  binding: UnknownRestBinding,
+  binding: RestBindingDescription,
   operation: ErasedOperation,
   schemaHelper: OpenApiSchemaHelper,
 ): Record<string, unknown> {
@@ -407,15 +407,16 @@ function emitDirectRoutes(
   }
 }
 
-export function generateOpenApiDocument(options?: OpenApiOptions): Record<string, unknown> {
-  const title = options?.title ?? 'Weft Workflow Engine';
-  const version = options?.version ?? VERSION;
-  const infoBlock = applyDiscoveryInfo({ title, version }, options?.discoveryInfo);
-  const registry = options?.registry ?? createLiveOperationRegistry();
+export function generateOpenApiDocument(options: OpenApiOptions): Record<string, unknown> {
+  const infoBlock = applyDiscoveryInfo(
+    resolveDocumentTitleAndVersion(options, options.discoveryInfo),
+    options.discoveryInfo,
+  );
+  const registry = options.registry;
   const schemaHelper = extractComponentsSchemas(registry);
 
   const { paths, tags } = buildOpenApiPaths(options, registry, schemaHelper);
-  const { security, securitySchemes } = buildSecurityBlock(options?.supportedSchemes);
+  const { security, securitySchemes } = buildSecurityBlock(options.supportedSchemes);
 
   const document: Record<string, unknown> = {
     openapi: '3.1.0',
@@ -437,17 +438,17 @@ export function generateOpenApiDocument(options?: OpenApiOptions): Record<string
 }
 
 function buildOpenApiPaths(
-  options: OpenApiOptions | undefined,
+  options: OpenApiOptions,
   registry: OperationRegistry,
   schemaHelper: OpenApiSchemaHelper,
 ): { paths: Record<string, Record<string, unknown>>; tags: Array<{ name: string }> } {
   const paths: Record<string, Record<string, unknown>> = {};
   const tagSet = new Set<string>();
 
-  emitBindings(paths, tagSet, options?.restBindings, registry, schemaHelper);
+  emitBindings(paths, tagSet, options.restBindings, registry, schemaHelper);
   // Direct routes are reserved infrastructure endpoints, so they are emitted
   // after bindings and overwrite any conflicting user binding documentation.
-  emitDirectRoutes(paths, tagSet, options?.directRoutes, options?.publicPaths);
+  emitDirectRoutes(paths, tagSet, options.directRoutes, options.publicPaths);
 
   const tags = [...tagSet].toSorted().map((name) => ({ name }));
   return { paths, tags };
@@ -481,14 +482,11 @@ function buildSecurityBlock(supportedSchemes?: ReadonlySet<OpenApiSecurityScheme
   return { security, securitySchemes };
 }
 
-function applyOpenApiExtras(
-  document: Record<string, unknown>,
-  options: OpenApiOptions | undefined,
-): void {
-  if (options?.serverUrl) {
+function applyOpenApiExtras(document: Record<string, unknown>, options: OpenApiOptions): void {
+  if (options.serverUrl) {
     document['servers'] = [{ url: options.serverUrl }];
   }
-  if (options?.discoveryInfo?.externalDocs !== undefined) {
+  if (options.discoveryInfo?.externalDocs !== undefined) {
     document['externalDocs'] = { ...options.discoveryInfo.externalDocs };
   }
 }

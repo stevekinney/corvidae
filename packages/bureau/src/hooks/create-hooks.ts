@@ -54,8 +54,9 @@ import { captureRunWorkspaceAuthority } from '../run-authority.ts';
  *
  * ## Matching
  *
- * `hooks.test` sends a test delivery to a webhook hook only: for the other actions it would start a
- * real run or write a real notification, so it is refused. `hooks.testDraft` sends the same test to
+ * `hooks.test` sends a test delivery to a webhook hook, or to a plugin hook whose reaction has a
+ * `dryRun` (COR-2183), which it calls instead of `run`: for the other actions it would start a real
+ * run or write a real notification, so it is refused. `hooks.testDraft` sends the same test to
  * a webhook URL before the hook is saved, and writes nothing (COR-2022).
  *
  * `hooks.retryDelivery` sends a delivery again from its record, never a delivery rebuilt from the
@@ -79,6 +80,9 @@ import { captureRunWorkspaceAuthority } from '../run-authority.ts';
  *
  * @module create-hooks
  */
+
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record.ts';
 import type { BureauNotifications } from '../notifications/notification-types.ts';
@@ -109,8 +113,11 @@ import {
   type HookActionKindRegistration,
   HookError,
   NOTIFICATION_CREATED_EVENT_KIND,
+  REACTION_MAXIMUM_ATTEMPTS,
+  isReactionMaxAttempts,
   type Hook,
   type HookAction,
+  type HookDeclaredBy,
   type HookDelivery,
   type HookDeliveryRecord,
   type HookDeliverySummary,
@@ -123,6 +130,14 @@ import {
 } from './hook-types.ts';
 import { hookOriginTag, runOfPayload } from './hook-origin.ts';
 import {
+  SECRET_REFERENCE_DEFECT,
+  isSecretReference,
+  issueIsAtSecret,
+  secretFieldAt,
+  secretFieldsOf,
+  withValueAt,
+} from './secret-references.ts';
+import {
   type HookEventSubjects,
   type HookSubjectSources,
   scopeMatches,
@@ -130,6 +145,7 @@ import {
 } from './hook-scope.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
 import type { EncryptedValue } from '@lostgradient/cryptography';
+import type { PluginReactionContext } from '@lostgradient/interborough-plugin';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 /** The event kind of a `hooks.test` delivery. It is not a published kind, so no hook can list it. */
@@ -238,6 +254,23 @@ export interface HookUpdateInput {
   readonly principal?: string;
 }
 
+/**
+ * COR-2179 — a hook a plugin declares as a default: what {@link BureauHooks.reconcileDeclared}
+ * takes. The `name` is the key the hook is reconciled by, within its plugin.
+ */
+export interface HookDeclaration {
+  /** The hook's label and its reconcile key, 1 to 100 characters, unique within the declarations. */
+  readonly name: string;
+  /** The published Bureau event kinds the hook fires on. */
+  readonly events: readonly string[];
+  /** The name of the plugin's reaction kind the hook runs. */
+  readonly reaction: string;
+  /** The reaction's configuration, checked against the schema the reaction declares. */
+  readonly configuration?: unknown;
+  /** The one subject the hook fires for; every kind in `events` must be one it can be told by. */
+  readonly scope?: HookScopeInput;
+}
+
 /** What `hooks.delete` and `hooks.test` take beyond the hook. */
 export interface HookCallOptions {
   /** The caller's principal (`api-key:<subject>`), recorded as the actor of the audit entry; omit when unknown. */
@@ -300,10 +333,38 @@ export interface BureauHooks {
     hookId: string,
     options?: HookReplaceSecretOptions,
   ): Promise<(HookWithSigningSecret & { readonly signingSecret: string }) | undefined>;
-  /** Changes a hook, or resolves `undefined` when there is none. */
+  /**
+   * Changes a hook, or resolves `undefined` when there is none. A default hook (`declaredBy`,
+   * COR-2179) takes `enabled` alone, which sets or clears the owner's override; every other field is
+   * refused with {@link HookError} `invalid` at that field, and a withdrawn hook cannot be enabled.
+   */
   update(hookId: string, input: HookUpdateInput): Promise<Hook | undefined>;
-  /** Deletes a hook, its sealed secret and its delivery records; `false` when there is none. */
+  /**
+   * Deletes a hook, its sealed secret and its delivery records; `false` when there is none. A
+   * default hook is refused with {@link HookError} `invalid` at `declaredBy`: turn it off instead.
+   */
   delete(hookId: string, options?: HookCallOptions): Promise<boolean>;
+  /**
+   * COR-2179 — makes the hooks `plugin` declares what `declarations` say, and resolves with them in
+   * declaration order. A missing hook is created (an id of `plugin` and the name decide it, so two
+   * processes make one); a changed declaration replaces the hook in place, with its id, `createdAt`,
+   * deliveries and the owner's `enabled` override kept; an unchanged one writes nothing; and a hook
+   * of `plugin` that is no longer declared is withdrawn: disabled and kept, never deleted. `[]` withdraws
+   * them all. Everything is checked as `create` checks it before anything is written, and a refusal is
+   * {@link HookError} `invalid` at `[index, field]`. A declaration of a reaction no plugin
+   * contributes is refused, so a plugin that is disabled is never reconciled with a list that would
+   * withdraw its hooks by mistake: only an empty list withdraws, and only the host's caller says so.
+   */
+  reconcileDeclared(
+    plugin: string,
+    declarations: readonly HookDeclaration[],
+  ): Promise<readonly Hook[]>;
+  /**
+   * COR-2179 — a copy of a hook an owner can change: the same action, events, scope and name, disabled,
+   * and no `declaredBy`. It belongs to `principal`, else to the owner of record. Resolves `undefined`
+   * when there is no such hook; refuses as `create` does.
+   */
+  duplicate(hookId: string, options?: HookCallOptions): Promise<HookWithSigningSecret | undefined>;
   /** One hook, or `undefined`. */
   get(hookId: string): Promise<Hook | undefined>;
   /**
@@ -317,7 +378,10 @@ export interface BureauHooks {
   /**
    * Sends one signed `hook.test` delivery to the hook and resolves with its record once the one
    * attempt has ended. A test is not retried. It works on a disabled hook. Resolves `undefined`
-   * when there is no such hook.
+   * when there is no such hook. A plugin hook is tested by calling its reaction's `dryRun` (COR-2183),
+   * with the context `run` gets and one attempt, and never `run`; a hook whose reaction has no
+   * `dryRun`, is not registered or needs setup, and any `start-workflow` or `notify` hook, is
+   * refused with {@link HookError} `invalid` at `action`.
    */
   test(hookId: string, options?: HookCallOptions): Promise<HookDelivery | undefined>;
   /**
@@ -390,6 +454,18 @@ export interface HooksDependencies {
   readonly subjects?: HookSubjectSources | undefined;
   /** How long one request may take. */
   readonly requestTimeoutMilliseconds?: number | undefined;
+  /**
+   * An abort signal that fires after the given milliseconds: how long a plugin's reaction may run.
+   * Defaults to `AbortSignal.timeout`; a test passes one a controller ends.
+   */
+  readonly timeoutSignal?: ((milliseconds: number) => AbortSignal) | undefined;
+  /**
+   * COR-2177 — reads the secret a stored `{ "$secret": "<key>" }` in a reaction's configuration
+   * names, by the key the workspace published it under. Asked for each attempt, so an attempt gets
+   * the value published by then, and never held. Omitted, a reference cannot be resolved and the
+   * attempt fails.
+   */
+  readonly configurationSecrets?: { get(key: string): Promise<string | undefined> } | undefined;
   /**
    * The hook action kinds plugins contribute (COR-1876), the entry point plugin composition feeds.
    * Two registrations of one plugin and kind name are refused. Omitted, only the built-in actions
@@ -499,7 +575,11 @@ function actionKindKey(plugin: string, kind: string): string {
   return `${plugin}/${kind}`;
 }
 
-/** The kinds `registrations` name, by {@link actionKindKey}; a repeated name is refused. */
+/**
+ * The kinds `registrations` name, by {@link actionKindKey}. A repeated name is refused, and so is a
+ * `timeoutMilliseconds` that is not a positive safe integer (a delivery's lease is built from it) or a
+ * `maxAttempts` that is not an integer from 1 to 20.
+ */
 function actionKindsOf(
   registrations: readonly HookActionKindRegistration[] | undefined,
 ): ReadonlyMap<string, HookActionKindRegistration> {
@@ -507,22 +587,41 @@ function actionKindsOf(
   for (const registration of registrations ?? []) {
     const key = actionKindKey(registration.plugin, registration.kind.name);
     if (kinds.has(key)) throw new Error(`Hook action kind "${key}" is contributed twice`);
+    const timeout = registration.kind.timeoutMilliseconds;
+    if (timeout !== undefined && !(Number.isSafeInteger(timeout) && timeout > 0)) {
+      throw new Error(
+        `Hook action kind "${key}" has a timeoutMilliseconds that is not a positive safe integer`,
+      );
+    }
+    const { maxAttempts } = registration.kind;
+    if (maxAttempts !== undefined && !isReactionMaxAttempts(maxAttempts)) {
+      throw new Error(
+        `Hook action kind "${key}" has a maxAttempts that is not an integer from 1 to ${REACTION_MAXIMUM_ATTEMPTS}`,
+      );
+    }
     kinds.set(key, registration);
   }
   return kinds;
 }
 
-/** `configuration` parsed with the schema of `registration`'s kind, or the reason it is refused. */
+/**
+ * `configuration` parsed with the schema of `registration`'s kind, or the reason it is refused. An
+ * issue at or beneath one of `secretPaths` is left out: a hook is written with a reference where
+ * the schema declares a string, and the reference is checked for what it is instead.
+ */
 function parsedConfiguration(
   registration: HookActionKindRegistration,
   configuration: unknown,
+  secretPaths: readonly (readonly string[])[] = [],
 ):
   { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string } {
   const parsed = registration.kind.configuration.safeParse(configuration);
   if (parsed.success) return { ok: true, value: parsed.data };
+  const issues = parsed.error.issues.filter((issue) => !issueIsAtSecret(issue.path, secretPaths));
+  if (issues.length === 0) return { ok: true, value: configuration };
   return {
     ok: false,
-    reason: parsed.error.issues
+    reason: issues
       .map((issue) => `${issue.path.join('.') || 'configuration'}: ${issue.message}`)
       .join('; '),
   };
@@ -603,7 +702,22 @@ function checkedAction(
       } catch {
         invalid(['action', 'configuration'], 'The configuration must be JSON');
       }
-      const checked = parsedConfiguration(registration, configuration);
+      // A secret field holds a reference, never a value (COR-2177): checked for what it is, and
+      // the schema's own refusal of a reference where it declares a string is left out.
+      const secretFields = secretFieldsOf(registration.kind.configuration);
+      if ('refusal' in secretFields) {
+        invalid(
+          ['action', 'configuration'],
+          `The configuration of "${plugin}/${kind}" cannot be written: ${secretFields.refusal}`,
+        );
+      }
+      for (const path of secretFields.paths) {
+        const field = secretFieldAt(configuration, path);
+        if (field !== undefined && !isSecretReference(field.value)) {
+          invalid(['action', 'configuration', ...path], SECRET_REFERENCE_DEFECT);
+        }
+      }
+      const checked = parsedConfiguration(registration, configuration, secretFields.paths);
       if (!checked.ok) invalid(['action', 'configuration'], checked.reason);
       return configuration === undefined
         ? { type: 'plugin', plugin, kind }
@@ -702,6 +816,19 @@ function isPermanentStartFailure(error: unknown): boolean {
   return PERMANENT_ACTION_FAILURES.has((error as { readonly code?: unknown } | null)?.code);
 }
 
+/**
+ * Whether a reaction rejected with a `PluginReactionError` that says no retry can change the answer
+ * (`permanent: true`). Read by shape, never with `instanceof`: a plugin loaded from a folder has its
+ * own copy of the plugin package, so its class is not this process's.
+ */
+function isPermanentReactionError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    error.name === 'PluginReactionError' &&
+    (error as { readonly permanent?: unknown }).permanent === true
+  );
+}
+
 function checkedEvents(events: readonly string[]): string[] {
   if (!Array.isArray(events) || events.length === 0) {
     invalid('events', 'A hook needs at least one event kind');
@@ -736,6 +863,65 @@ function checkedName(name: unknown): string {
     invalid('name', `The name must be 1 to ${NAME_MAXIMUM_LENGTH} characters`);
   }
   return name;
+}
+
+/**
+ * The identifier of the default hook `plugin` declares as `name` (COR-2179): `default-` and the
+ * first 32 hexadecimal digits of SHA-256 over the plugin, a NUL and the name. It is the same in
+ * every process, so a store that holds the id already is the fence against two processes creating
+ * the one hook.
+ */
+function defaultHookIdOf(plugin: string, name: string): string {
+  return `default-${createHash('sha256').update(`${plugin}\u0000${name}`).digest('hex').slice(0, 32)}`;
+}
+
+/** A declaration after every check `create` makes of the same fields. */
+interface CheckedDeclaration {
+  readonly name: string;
+  readonly events: readonly string[];
+  readonly action: HookAction;
+  readonly scope: HookScope | undefined;
+}
+
+/**
+ * Where a refusal of the check of declaration `index` is: `checkedAction` names the fields of an
+ * action, which a declaration holds flat (`reaction` for the action's `kind`).
+ */
+function atDeclaration(index: number, error: unknown): never {
+  if (!(error instanceof HookError) || error.code !== 'invalid') throw error;
+  throw new HookError('invalid', error.message, {
+    issues: error.issues.map((issue) => {
+      const [first, second, ...rest] = issue.path;
+      const field =
+        first === 'action'
+          ? second === 'kind'
+            ? ['reaction']
+            : [second ?? 'reaction', ...rest]
+          : issue.path;
+      return { path: [String(index), ...field], message: issue.message };
+    }),
+  });
+}
+
+/** `declaredBy` with the owner's override set (`disabled`) or cleared. */
+function withOwnerOverride(declaredBy: HookDeclaredBy, disabled: boolean): HookDeclaredBy {
+  const { ownerDisabled: _previous, ...rest } = declaredBy;
+  return disabled ? { ...rest, ownerDisabled: true } : rest;
+}
+
+/**
+ * Whether the stored default hook `before` already is what `declared` says: its events as a set, its
+ * action and its scope, and not withdrawn. `enabled` and the owner's override are not compared: they
+ * are the owner's, and a reconcile keeps them.
+ */
+function declarationIsCurrent(before: HookRecord, declared: CheckedDeclaration): boolean {
+  return (
+    before.declaredBy?.withdrawn !== true &&
+    before.events.length === declared.events.length &&
+    declared.events.every((kind) => before.events.includes(kind)) &&
+    isDeepStrictEqual(before.action, declared.action) &&
+    isDeepStrictEqual(before.scope, declared.scope)
+  );
 }
 
 /** Builds `Bureau.hooks` over the notifier's engine. */
@@ -787,6 +973,49 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         `Workflow "${action.workflowId}" does not exist, or is paused or invalid`,
       );
     }
+  }
+
+  /**
+   * `stored` with each secret field's reference replaced by the value published for its key now
+   * (COR-2177); `stored` itself, which the delivery keeps, is not touched. A value found in a secret
+   * field is not a reference, so it is refused for good and never passed on. A key that has no value
+   * now (no reader, nothing published, or the read failed) fails the attempt but not the delivery:
+   * it can be published before the next attempt. Every value resolved is added to `resolvedSecrets`,
+   * so the delivery can remove it from whatever the attempt reports.
+   */
+  async function withResolvedSecrets(
+    stored: unknown,
+    paths: readonly (readonly string[])[],
+    resolvedSecrets: Set<string>,
+  ): Promise<unknown> {
+    const fields: Array<{ readonly path: readonly string[]; readonly key: string }> = [];
+    for (const path of paths) {
+      const field = secretFieldAt(stored, path);
+      if (field === undefined) continue;
+      if (!isSecretReference(field.value)) {
+        // Written before the field was marked secret: the stored value is never passed to `run`.
+        throw new HookActionError(
+          `The action's configuration is refused: ${path.join('.')} is a secret field and holds a value where a secret reference belongs`,
+          true,
+        );
+      }
+      fields.push({ path, key: field.value.$secret });
+    }
+    let configuration = stored;
+    for (const { path, key } of fields) {
+      let value: string | undefined;
+      try {
+        value = await dependencies.configurationSecrets?.get(key);
+      } catch {
+        value = undefined;
+      }
+      if (typeof value !== 'string' || value === '') {
+        throw new HookActionError(`The secret "${key}" has no published value`, false);
+      }
+      resolvedSecrets.add(value);
+      configuration = withValueAt(configuration, path, value);
+    }
+    return configuration;
   }
 
   const actionRunner: HookActionRunner = {
@@ -853,7 +1082,29 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             true,
           );
         }
-        const checked = parsedConfiguration(registration, work.configuration);
+        // A test delivery runs `dryRun` and never falls back to `run`, which would have the real
+        // effect the test is there to avoid: a kind that has none now (an upgrade removed it) fails.
+        if (context.test && typeof registration.kind.dryRun !== 'function') {
+          throw new HookActionError(
+            `The hook action kind "${work.plugin}/${work.kind}" has no dryRun, so it cannot be tested`,
+            true,
+          );
+        }
+        const secretFields = secretFieldsOf(registration.kind.configuration);
+        if ('refusal' in secretFields) {
+          throw new HookActionError(
+            `The action's configuration is refused: ${secretFields.refusal}`,
+            true,
+          );
+        }
+        // Resolved for this attempt, so a later attempt gets what is published by then. The stored
+        // delivery keeps the reference: the values live in this call and in the copy `run` gets.
+        const resolved = await withResolvedSecrets(
+          work.configuration,
+          secretFields.paths,
+          context.resolvedSecrets,
+        );
+        const checked = parsedConfiguration(registration, resolved);
         if (!checked.ok) {
           throw new HookActionError(
             `The action's configuration is refused: ${checked.reason}`,
@@ -861,13 +1112,24 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           );
         }
         // A rejection is the delivery's failed attempt; the runner's caller records its message.
-        await registration.kind.run({
+        const reaction: PluginReactionContext = {
           event: work.event,
           configuration: checked.value,
-          signal: engine.signal,
+          signal: context.signal,
           deliveryId: context.deliveryId,
           idempotencyKey: key,
-        });
+          hookId: context.hookId,
+          owner: context.owner,
+          attempt: context.attempt,
+        };
+        try {
+          // `dryRun` was checked above, before anything was resolved.
+          if (context.test) await registration.kind.dryRun?.(reaction);
+          else await registration.kind.run(reaction);
+        } catch (error) {
+          if (isPermanentReactionError(error)) throw new HookActionError(error.message, true);
+          throw error;
+        }
         return {};
       }
       const notifications = dependencies.notifications?.();
@@ -903,6 +1165,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       dependencies.requestTimeoutMilliseconds ?? DEFAULT_HOOK_REQUEST_TIMEOUT_MILLISECONDS,
     newId: () => dependencies.newId('hook-delivery'),
     actionKindVersion: (plugin, kind) => actionKinds.get(actionKindKey(plugin, kind))?.version,
+    actionKindTimeout: (plugin, kind) =>
+      actionKinds.get(actionKindKey(plugin, kind))?.kind.timeoutMilliseconds,
+    actionKindMaxAttempts: (plugin, kind) =>
+      actionKinds.get(actionKindKey(plugin, kind))?.kind.maxAttempts,
+    actionKindAvailable: (plugin, kind) =>
+      actionKinds.get(actionKindKey(plugin, kind))?.availability?.() !== 'needs-setup',
+    timeoutSignal: dependencies.timeoutSignal,
     audit: (entry) =>
       dependencies.audit({
         runId: `hook:${entry.hookId}`,
@@ -934,6 +1203,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       (hook) =>
         hook.enabled &&
         hook.events.includes(kind) &&
+        // A default hook whose plugin contributes no such reaction now (the plugin is disabled, or
+        // its setup failed) fires nothing and writes no delivery. An owner's hook of a missing
+        // plugin still does: its delivery fails where a person can read why.
+        !(
+          hook.declaredBy !== undefined &&
+          hook.action.type === 'plugin' &&
+          !actionKinds.has(actionKindKey(hook.action.plugin, hook.action.kind))
+        ) &&
         // A record that lists it anyway (written by something that skipped the check) is not fired.
         !(hook.action.type === 'notify' && kind === NOTIFICATION_CREATED_EVENT_KIND),
     );
@@ -1092,11 +1369,38 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       const enabled = input.enabled;
       const expectedRevision = input.expectedRevision;
       const actor = input.principal;
+      // The fields that change a hook, in the order a refusal names them (COR-2179).
+      const changed = (
+        [
+          ['url', url],
+          ['action', replacement],
+          ['events', events],
+          ['scope', scope],
+          ['name', name],
+          ['signingSecret', secret],
+        ] as const
+      )
+        .filter(([, value]) => value !== undefined)
+        .map(([field]) => field);
 
       return exclusively(hookId, async () => {
         const stored = await store.getHook(hookId);
         if (stored === undefined) return undefined;
         const before = stored.record;
+        // A default hook is the plugin's: the owner may only turn it off or on.
+        if (before.declaredBy !== undefined) {
+          if (changed.length > 0) {
+            throw new HookError('invalid', 'A default hook can only be enabled or disabled', {
+              issues: changed.map((field) => ({
+                path: [field],
+                message: `A default hook declared by a plugin cannot change its ${field}; only \`enabled\` can be set`,
+              })),
+            });
+          }
+          if (enabled === true && before.declaredBy.withdrawn === true) {
+            invalid('enabled', 'The plugin no longer declares this hook, so it cannot be enabled');
+          }
+        }
         if (expectedRevision !== undefined && expectedRevision !== before.revision) {
           throw new HookError('stale-revision', 'The hook has changed since it was read', {
             currentRevision: before.revision,
@@ -1135,12 +1439,18 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         // Authority is asked again only when the action is rewritten, so a rename or a disable is
         // never held up by a workflow that has since been paused.
         if (replacement !== undefined) await assertActionAllowed(action, before.owner);
+        // `enabled` on a default hook sets or clears the owner's override, which a reconcile keeps.
+        const declaredBy =
+          before.declaredBy === undefined || enabled === undefined
+            ? before.declaredBy
+            : withOwnerOverride(before.declaredBy, !enabled);
         const after: HookRecord = {
           ...rest,
           ...(nextName === undefined ? {} : { name: nextName }),
           action,
           events: nextEvents,
           ...(nextScope === undefined ? {} : { scope: nextScope }),
+          ...(declaredBy === undefined ? {} : { declaredBy }),
           enabled: enabled ?? before.enabled,
           updatedAt: engine.now(),
           revision: before.revision + 1,
@@ -1155,6 +1465,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             currentRevision: current.record.revision,
           });
         }
+        // After the commit, never before it: a disable that lost the compare-and-swap aborts nothing.
+        if (before.enabled && !after.enabled) deliveries.abortHook(hookId);
         if (sealed !== undefined) await secrets.set(hookId, sealed);
         recordChange('hook.updated', after, actor);
         return viewOf(after);
@@ -1164,7 +1476,12 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       return exclusively(hookId, async () => {
         const stored = await store.getHook(hookId);
         if (stored === undefined) return false;
+        // Nothing is written, aborted or audited: the plugin's hook stays, and the owner turns it off.
+        if (stored.record.declaredBy !== undefined) {
+          invalid('declaredBy', 'A default hook cannot be deleted; disable it instead');
+        }
         if (!(await store.deleteHook(stored))) return false;
+        deliveries.abortHook(hookId);
         if (stored.record.action.type === 'webhook') {
           await secrets
             .delete(hookId)
@@ -1175,6 +1492,32 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         await store.deleteDeliveriesOf(hookId);
         recordChange('hook.deleted', stored.record, options?.principal);
         return true;
+      });
+    },
+    async reconcileDeclared(plugin, declarations) {
+      // The caller owns `declarations`: every field is read, checked and copied before the first
+      // await, and nothing is written until every declaration has passed.
+      const checked = checkedDeclarations(plugin, declarations);
+      const reconciled: Hook[] = [];
+      // Created and replaced first, in declaration order, and withdrawn after: a crash between
+      // leaves a hook too many firing, never one too few, and the next reconcile finishes.
+      for (const declared of checked) reconciled.push(await reconcileDefaultHook(plugin, declared));
+      await withdrawUndeclaredHooks(plugin, new Set(checked.map((declared) => declared.name)));
+      return reconciled;
+    },
+    async duplicate(hookId, options) {
+      // The caller owns `options`: read before the first await.
+      const principal = options?.principal;
+      const stored = await store.getHook(hookId);
+      if (stored === undefined) return undefined;
+      const { action, events, scope, name } = stored.record;
+      return hooks.create({
+        action,
+        events,
+        ...(scope === undefined ? {} : { scope: scope as HookScopeInput }),
+        ...(name === undefined ? {} : { name }),
+        enabled: false,
+        ...(principal === undefined ? {} : { principal }),
       });
     },
     async get(hookId) {
@@ -1218,10 +1561,34 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     async test(hookId, options) {
       const stored = await store.getHook(hookId);
       if (stored === undefined) return undefined;
-      if (stored.record.action.type !== 'webhook') {
+      const { action } = stored.record;
+      if (action.type === 'plugin') {
+        // A test of a plugin hook runs the reaction's `dryRun`, never its `run`: without one, a
+        // test would have the real effect (COR-2183). A kind that is gone, or whose plugin needs
+        // setup, cannot be tested either.
+        const registration = actionKinds.get(actionKindKey(action.plugin, action.kind));
+        if (registration === undefined) {
+          invalid(
+            'action',
+            `No plugin contributes the hook action kind "${action.plugin}/${action.kind}", so it cannot be tested`,
+          );
+        }
+        if (typeof registration.kind.dryRun !== 'function') {
+          invalid(
+            'action',
+            `The hook action kind "${action.plugin}/${action.kind}" has no dryRun, so a test would run it for real`,
+          );
+        }
+        if (registration.availability?.() === 'needs-setup') {
+          invalid(
+            'action',
+            `The plugin "${action.plugin}" needs setup, so its hook action kind cannot be tested yet`,
+          );
+        }
+      } else if (action.type !== 'webhook') {
         invalid(
           'action',
-          'Only a webhook hook can be tested: a test would start a real run, write a real notification or run a real plugin action',
+          'Only a webhook hook, or a plugin hook whose reaction has a dryRun, can be tested: a test would start a real run or write a real notification',
         );
       }
       const id = await deliveries.enqueue(
@@ -1306,6 +1673,179 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   };
 
   /**
+   * `declarations` checked as `create` checks the same fields, each refusal named by its place
+   * (`[index, field]`), and copied: the caller owns the input. A repeated name is refused at its
+   * second place. Nothing is written.
+   */
+  function checkedDeclarations(
+    plugin: string,
+    declarations: readonly HookDeclaration[],
+  ): readonly CheckedDeclaration[] {
+    if (typeof plugin !== 'string' || plugin === '') {
+      invalid('plugin', 'A declaration names the plugin that declares it');
+    }
+    if (!Array.isArray(declarations)) invalid('declarations', 'The declarations must be a list');
+    const names = new Set<string>();
+    return declarations.map((declaration, index): CheckedDeclaration => {
+      if (typeof declaration !== 'object' || declaration === null || Array.isArray(declaration)) {
+        invalid([String(index)], 'A declaration must be an object');
+      }
+      try {
+        const name = checkedName(declaration.name);
+        if (names.has(name)) invalid('name', `The name "${name}" is declared twice`);
+        names.add(name);
+        const events = checkedEvents(declaration.events);
+        const scope = declaration.scope === undefined ? undefined : checkedScope(declaration.scope);
+        const action = checkedAction(
+          {
+            type: 'plugin',
+            plugin,
+            kind: declaration.reaction,
+            configuration: declaration.configuration,
+          },
+          urlPolicy,
+          actionKinds,
+        );
+        assertScopeFits(scope, events);
+        return { name, events, action, scope };
+      } catch (error) {
+        return atDeclaration(index, error);
+      }
+    });
+  }
+
+  /**
+   * Makes the default hook `plugin` declares as `declared` what it says, and resolves with it: creates
+   * it when it is missing, replaces it when it differs (or was withdrawn), and writes nothing when it
+   * is current. The owner's override (`ownerDisabled`) is kept. A write that loses its
+   * compare-and-swap means another writer committed first, so the hook is read again and the
+   * decision made again from what is there, until it writes or has nothing to write.
+   */
+  function reconcileDefaultHook(plugin: string, declared: CheckedDeclaration): Promise<Hook> {
+    const hookId = defaultHookIdOf(plugin, declared.name);
+    return exclusively(hookId, async () => {
+      let lostCreate = false;
+      for (;;) {
+        const stored = await store.getHook(hookId);
+        if (stored === undefined) {
+          // The create was lost to a record that this release cannot read: it would be lost for ever.
+          if (lostCreate) throw new Error(`The default hook "${hookId}" exists and cannot be read`);
+          const record = await newDefaultHook(hookId, plugin, declared);
+          if (await store.createHook(record)) {
+            recordChange('hook.created', record, undefined);
+            return viewOf(record);
+          }
+          lostCreate = true;
+          continue;
+        }
+        const before = stored.record;
+        if (before.declaredBy?.plugin !== plugin || before.name !== declared.name) {
+          throw new Error(
+            `Hook id "${hookId}" is already in use by a hook that is not a default hook of ${plugin}`,
+          );
+        }
+        if (declarationIsCurrent(before, declared)) return viewOf(before);
+        const ownerDisabled = before.declaredBy.ownerDisabled === true;
+        const { scope: _previousScope, declaredBy: _previousOrigin, ...rest } = before;
+        const after: HookRecord = {
+          ...rest,
+          action: declared.action,
+          events: [...declared.events],
+          ...(declared.scope === undefined ? {} : { scope: declared.scope }),
+          declaredBy: { plugin, ...(ownerDisabled ? { ownerDisabled: true as const } : {}) },
+          enabled: !ownerDisabled,
+          updatedAt: engine.now(),
+          revision: before.revision + 1,
+        };
+        if (!(await store.replaceHook(stored, after))) continue;
+        // After the commit, as `update` does: a write that lost aborts nothing.
+        if (before.enabled && !after.enabled) deliveries.abortHook(hookId);
+        recordChange('hook.updated', after, undefined);
+        return viewOf(after);
+      }
+    });
+  }
+
+  /** The record of a default hook that does not exist yet, as `create` would write it for the owner of record. */
+  async function newDefaultHook(
+    hookId: string,
+    plugin: string,
+    declared: CheckedDeclaration,
+  ): Promise<HookRecord> {
+    const owner = ownerOrLocal(undefined);
+    const now = engine.now();
+    const workspaceAuthority =
+      dependencies.workspace === undefined
+        ? undefined
+        : await captureRunWorkspaceAuthority(dependencies.workspace, owner);
+    if (dependencies.workspace !== undefined && workspaceAuthority === undefined)
+      throw new Error('Workspace authority unavailable.');
+    return {
+      ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
+      version: 3,
+      id: hookId,
+      owner,
+      name: declared.name,
+      action: declared.action,
+      events: [...declared.events],
+      ...(declared.scope === undefined ? {} : { scope: declared.scope }),
+      declaredBy: { plugin },
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+    };
+  }
+
+  /**
+   * Withdraws every default hook of `plugin` whose name is not in `declared`, oldest first: disabled
+   * and kept, with the owner's override as it was. A hook that another writer withdrew, or changed, is
+   * read again and judged as it is now.
+   */
+  async function withdrawUndeclaredHooks(
+    plugin: string,
+    declared: ReadonlySet<string>,
+  ): Promise<void> {
+    const everyHook = await store.listHooks();
+    const undeclared = everyHook
+      .filter(
+        (hook) =>
+          hook.declaredBy?.plugin === plugin &&
+          hook.declaredBy.withdrawn !== true &&
+          !declared.has(hook.name ?? ''),
+      )
+      .toSorted((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    for (const { id: hookId } of undeclared) {
+      await exclusively(hookId, async () => {
+        for (;;) {
+          const stored = await store.getHook(hookId);
+          if (stored === undefined) return;
+          const before = stored.record;
+          if (
+            before.declaredBy?.plugin !== plugin ||
+            before.declaredBy.withdrawn === true ||
+            declared.has(before.name ?? '')
+          ) {
+            return;
+          }
+          const after: HookRecord = {
+            ...before,
+            declaredBy: { ...before.declaredBy, withdrawn: true },
+            enabled: false,
+            updatedAt: engine.now(),
+            revision: before.revision + 1,
+          };
+          if (!(await store.replaceHook(stored, after))) continue;
+          // After the commit: a withdrawal that lost aborts nothing, and one of a hook already off has nothing to abort.
+          if (before.enabled) deliveries.abortHook(hookId);
+          recordChange('hook.updated', after, undefined);
+          return;
+        }
+      });
+    }
+  }
+
+  /**
    * The hook that started `runId` (or a run above it), or `'unknown'` when that cannot be read: a
    * lookup that fails is treated as a hook's own run, because the cost of a wrong guess is a chain
    * with no end, and the skip is recorded on the delivery where a person can see it.
@@ -1379,6 +1919,27 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   // once open.
   let held: BureauEventEnvelope[] | undefined = [];
 
+  // A secret saved, or removed, makes a plugin's reactions available, or not (COR-2176). The
+  // deliveries that waited for it released their leases, so a resume takes them without a restart.
+  // Nothing is taken before the hooks are open: the boot `resume()` does that, once the workflow
+  // files are loaded.
+  for (const registration of actionKinds.values()) {
+    registration.onAvailabilityChange?.(() => {
+      if (held !== undefined || engine.shuttingDown()) return;
+      if (registration.availability?.() === 'needs-setup') return;
+      engine.track(
+        deliveries.resume().then(
+          () => undefined,
+          (cause: unknown) =>
+            dependencies.diagnose(
+              'Failed to resume the hook deliveries that waited for a plugin',
+              cause,
+            ),
+        ),
+      );
+    });
+  }
+
   function dispatch(envelope: BureauEventEnvelope): void {
     if (held !== undefined) {
       held.push(envelope);
@@ -1410,6 +1971,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         let starter: Promise<string | undefined> | undefined;
         let subjects: Promise<HookEventSubjects | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
+          // A reaction does not fire on its own plugin's events, or one that raises the kind it lists
+          // would run itself for ever. Nothing is written: this is a hook that does not match.
+          if (hook.action.type === 'plugin' && event.source === hook.action.plugin) {
+            dependencies.notice?.(
+              `[bureau] Hook ${hook.id} did not run its plugin action: Skipped: ${event.kind} came from plugin ${hook.action.plugin}, and a plugin's reaction does not fire on its own plugin's events`,
+            );
+            continue;
+          }
           const projected =
             dependencies.eventForHookOwner === undefined
               ? event

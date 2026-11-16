@@ -936,6 +936,7 @@ export type {
 export {
   default as SchemaForm,
   readSchemaFormData,
+  schemaFormFieldLabel,
   schemaFormInitialDraft,
   schemaHoldsConcealedField,
   validateSchemaFormValue,

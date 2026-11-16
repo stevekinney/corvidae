@@ -741,14 +741,48 @@ test.describe('MarkdownEditor preview', () => {
     expect(await valueChangeCount(page)).toBe(changes + 1);
   });
 
+  test('rich typing splits into two undo steps only after the history group delay', async ({
+    componentPage,
+  }) => {
+    // The rich editor's history (prosemirror-history, default `newGroupDelay`
+    // of 500 ms) starts a new undo step when more than that passes between two
+    // edits. The paused clock makes the elapsed time exact instead of a race
+    // with the runner's speed.
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Start');
+    await modeSegment(page, 'Rich editor').click();
+    await expect(richEditor(page)).toBeVisible();
+
+    await page.clock.install();
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    await placeRichCaretAtEnd(page);
+    await page.keyboard.type(' ad');
+    await page.clock.runFor(501);
+    await page.keyboard.type('ded');
+    await expect(richEditor(page)).toHaveText('Start added');
+
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(richEditor(page)).toHaveText('Start ad');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(richEditor(page)).toHaveText('Start');
+  });
+
   test('keeps rich history across a preview round trip', async ({ componentPage }) => {
     const page = await openFixture(componentPage);
     await setDocument(page, 'Start');
     await modeSegment(page, 'Rich editor').click();
     await expect(richEditor(page)).toBeVisible();
+
+    // Hold the clock while typing so no time passes between keystrokes: the
+    // history groups edits within `newGroupDelay` (500 ms), and a runner that
+    // stalls longer between two keys would otherwise split the typing into two
+    // undo steps. Resume before the round trip, which needs real timers.
+    await page.clock.install();
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     await placeRichCaretAtEnd(page);
     await page.keyboard.type(' added');
     await expect(richEditor(page)).toHaveText('Start added');
+    await page.clock.resume();
 
     await modeSegment(page, 'Preview').click();
     await expect(previewContent(page)).toHaveText('Start added');

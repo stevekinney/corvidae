@@ -78,6 +78,18 @@ export interface PluginModelContributions {
   readonly providers: readonly PluginProviderContribution[];
 }
 
+/** One memory guardrail a plugin contributed, as a host folds it into its memory policy revision. */
+export interface PluginMemoryGuardrailSource {
+  /** `plugin:memory/name`, the identity the guardrail is recorded under. */
+  readonly id: string;
+  /** The plugin that contributed it. */
+  readonly plugin: string;
+  /** The version of that plugin. */
+  readonly version: string;
+  /** The gates it runs at. */
+  readonly gates: readonly ('admission' | 'recall')[];
+}
+
 /** What plugins contribute to governed memory, for a `memory` factory to build with. */
 export interface PluginMemoryContributions {
   /**
@@ -90,6 +102,13 @@ export interface PluginMemoryContributions {
     readonly admission: readonly InputDetector[];
     /** The detectors that run on recall. */
     readonly recall: readonly InputDetector[];
+    /**
+     * One entry per contributed detector, in load order (COR-2192): who contributed it, at which
+     * version, and the gates it runs at, so the host can fold the set into its policy revision.
+     * `id` is the namespaced identity both gates' wrappers carry, and `gates` is canonical: it
+     * lists `admission` before `recall`, and both for a detector that declared none.
+     */
+    readonly sources: readonly PluginMemoryGuardrailSource[];
   };
   /** Embedders a `memory.embedder` setting can name, by `plugin:name`. */
   readonly embedders: readonly ContributedEmbedder[];
@@ -213,6 +232,11 @@ export type PluginProblem =
       readonly event: string;
       /** The dotted path of the field, `*` for an object that accepts any other key. */
       readonly field: string;
+      /**
+       * Present only when the host ran out of its schema budget before it finished the payload:
+       * `field` is where the count ran out, and the message says no content was found there.
+       */
+      readonly message?: string;
     }
   | {
       /**
@@ -303,9 +327,39 @@ export type PluginProblem =
       readonly message: string;
     }
   | {
+      /**
+       * The host served a panel's page under a URI it served before, with a different
+       * `contentDigest` (COR-2210). The page is still served: a URI names a contract, and bytes
+       * that changed under it are worth a person's attention, not a refusal. Reported by the host
+       * through {@link BureauPlugins.reportPanelChange} once it has built the app.
+       */
+      readonly code: 'panel-changed';
+      /** The app's name. */
+      readonly app: string;
+      /** The app's `ui://` resource URI. */
+      readonly uri: string;
+      /** The `contentDigest` the host served under `uri` on an earlier start. */
+      readonly previousDigest: string;
+      /** The `contentDigest` the host serves under `uri` now. */
+      readonly contentDigest: string;
+    }
+  | {
       /** `start` threw or rejected; the plugin's contributions stay registered. */
       readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
+      readonly message: string;
+    }
+  | {
+      /**
+       * The listener of a workflow file whose trigger is one of the plugin's kinds failed: its
+       * `start` threw, or its kind refused the file's configuration (COR-2165). One problem per
+       * failed workflow, removed once its listener is not failed or its file is gone. The plugin
+       * stays `running`. Set by the host's workflow runtime, never by composition.
+       */
+      readonly code: 'trigger-failed';
+      /** The identifier of the workflow file. */
+      readonly workflow: string;
+      /** The failure's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
 
@@ -456,6 +510,11 @@ export interface PluginReactionListing {
   readonly description: string;
   /** The version a delivery pins: the kind's own, else its plugin's. */
   readonly version: string;
+  /**
+   * Whether the kind has a `dryRun` (COR-2183), which `hooks.test` calls instead of `run`: a hook of
+   * a kind without one cannot be tested.
+   */
+  readonly dryRun: boolean;
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }
@@ -542,6 +601,19 @@ export interface BureauPlugins {
    * ignored.
    */
   reportPanelFailure(plugin: string, app: string, message: string): void;
+  /**
+   * Records that the host served `plugin`'s panel `app` under `uri` with `contentDigest` where an
+   * earlier start served `previousDigest` (COR-2210): the plugin lists a `panel-changed` problem
+   * carrying both digests. The app is still listed and served, and the plugin keeps its status.
+   * Names no running plugin or app, and repeats, are ignored.
+   */
+  reportPanelChange(
+    plugin: string,
+    app: string,
+    uri: string,
+    previousDigest: string,
+    contentDigest: string,
+  ): void;
   /**
    * The trigger kinds of the running plugins, in load order: what a workflow file's trigger can
    * name besides `schedule` and `signal`. Fixed once the Bureau is built.

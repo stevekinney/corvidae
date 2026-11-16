@@ -104,6 +104,7 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.workflows.pause',
   'bureau.workflows.resume',
   'bureau.workflows.delete',
+  'bureau.workflows.triggers.retry',
   'bureau.workflows.list',
   'bureau.workflows.catalog',
   'bureau.workflows.revisions',
@@ -190,6 +191,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The hold-release receipt contains the memory identifier, changed flag, and hold status, not memory content (holdOutput).',
   'bureau.memory.quarantine':
     'The quarantine receipt contains the memory identifier and affected and changed counts, not memory content (quarantineOutput).',
+  'bureau.memory.quarantine.release':
+    'The release receipt contains the memory identifier and changed flag, not memory content (transitionOutput).',
   'bureau.assets.uploads.abort':
     'The abort receipt contains only the upload identity and whether an upload was aborted (upload abort output schema).',
   'bureau.workflows.signal':

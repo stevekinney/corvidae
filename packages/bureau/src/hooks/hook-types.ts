@@ -84,6 +84,19 @@ export interface HookActionKindRegistration {
    * registered without one, whose deliveries pin nothing.
    */
   readonly version?: string | undefined;
+  /**
+   * COR-2176 — whether the kind's plugin can run it now: `needs-setup` while a secret the plugin
+   * declared is missing. A delivery of a kind that needs setup makes no attempt and waits, with its
+   * lease released, until {@link HookActionKindRegistration.onAvailabilityChange} reports the
+   * secret saved. Absent, the kind is always available.
+   */
+  readonly availability?: (() => 'available' | 'needs-setup') | undefined;
+  /**
+   * COR-2176 — calls `listener` whenever {@link HookActionKindRegistration.availability} may have
+   * changed; returns the function that stops it. Absent, a delivery that waits for the kind is taken
+   * again only by the next `resume`, which is a restart.
+   */
+  readonly onAvailabilityChange?: ((listener: () => void) => () => void) | undefined;
 }
 
 /** What a hook does for an event, tagged by `type`. */
@@ -109,6 +122,21 @@ export interface HookScope {
   readonly id: string;
 }
 
+/**
+ * COR-2179 — where a default hook comes from: the plugin that declared it (the hook's `name` is the
+ * key it is reconciled by). An owner's own hook has none. The owner may only turn a default hook
+ * off or on (`ownerDisabled`), and a plugin that stops declaring it withdraws it (`withdrawn`): the
+ * hook is disabled and kept, never deleted.
+ */
+export interface HookDeclaredBy {
+  /** The plugin that declared the hook. */
+  readonly plugin: string;
+  /** The owner turned the hook off; a reconcile that replaces the hook keeps it off. Absent when it is on. */
+  readonly ownerDisabled?: true;
+  /** The plugin no longer declares the hook, so it is disabled and the owner cannot enable it. Absent otherwise. */
+  readonly withdrawn?: true;
+}
+
 /** A hook: when a published Bureau event of one of `events` happens, its `action` runs. */
 export interface Hook {
   /** The hook's identifier, minted by the Bureau. */
@@ -126,6 +154,11 @@ export interface Hook {
    * every hook stored before scopes existed does.
    */
   readonly scope?: HookScope;
+  /**
+   * COR-2179 — present on a default hook, a hook a plugin declared: the plugin, whether the owner
+   * turned it off and whether the plugin withdrew it. Absent on a hook an owner wrote.
+   */
+  readonly declaredBy?: HookDeclaredBy;
   /** Whether the hook fires. A disabled hook keeps its secret and its delivery records. */
   readonly enabled: boolean;
   /** Epoch milliseconds the hook was created. */
@@ -145,11 +178,12 @@ export interface HookRecord extends Hook {
   /** Durable authorization distinct from audit and resource ownership. */
   readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   /**
-   * The stored shape's version: 2 when the record has a `scope`, so a release that predates scopes
-   * refuses it instead of firing it for the whole Bureau, and 1 otherwise. The store sets it on
-   * every write.
+   * The stored shape's version: 3 when the record has `declaredBy` (COR-2179), so a release that
+   * predates default hooks refuses it instead of firing a hook its owner may have turned off, 2 when
+   * it has a `scope`, so a release that predates scopes refuses it instead of firing it for the
+   * whole Bureau, and 1 otherwise. The store sets it on every write.
    */
-  readonly version: 1 | 2;
+  readonly version: 1 | 2 | 3;
 }
 
 /** What one attempt to deliver came to. */
@@ -343,6 +377,19 @@ export interface HookDeliveryRecord extends HookDelivery {
   readonly leaseUntil: number;
   /** Increases by one on every write; every write compares it. */
   readonly revision: number;
+}
+
+/** COR-2183 — the most attempts a plugin's reaction may ask for with its own `maxAttempts`. */
+export const REACTION_MAXIMUM_ATTEMPTS = 20;
+
+/** Whether `value` is an acceptable `maxAttempts` for a reaction: an integer from 1 to {@link REACTION_MAXIMUM_ATTEMPTS}. */
+export function isReactionMaxAttempts(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= REACTION_MAXIMUM_ATTEMPTS
+  );
 }
 
 /** The event a `notify` hook may not list: the notification it writes is announced by this event, so the hook would loop. */

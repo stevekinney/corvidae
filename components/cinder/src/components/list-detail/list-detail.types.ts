@@ -93,6 +93,13 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   /** Rendered in the list when `items` is empty. */
   listEmpty?: Snippet;
   /**
+   * Drawn at the end of the list pane, after the rows or after `listEmpty`, and outside `items`: it
+   * is not a row, so it never stops `listEmpty` from drawing, is not selectable, and J and K never
+   * land on it. Use it for a link to a related list that has no place among the rows, such as the
+   * archived or quarantined ones. It is not drawn while the list is loading.
+   */
+  listFooter?: Snippet;
+  /**
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full
    * width, so the action never reads as the filter's submit button. With `listCollapsible`, it is

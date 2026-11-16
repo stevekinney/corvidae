@@ -43,6 +43,17 @@ test('hook privacy rejects foreign and unknown event owners regardless of admini
   expect(await project('owner-a', event('invented', { runId: 'run-a' }))).toBeUndefined();
 });
 
+test('the run outcome kinds are in the catalog, so a workspace hook gets its own run’s and no other’s (COR-2095)', async () => {
+  const project = workspaceHookEvents(workspace, async ({ kind, ...resource }) =>
+    kind === 'run' && 'id' in resource && resource.id === 'run-a' ? 'owner-a' : undefined,
+  );
+  for (const kind of ['run.completed', 'run.error', 'run.aborted', 'run.settled']) {
+    const outcome = event(kind, { runId: 'run-a', finishReason: 'error' });
+    expect(await project('owner-a', outcome)).toEqual(outcome);
+    expect(await project('owner-b', outcome)).toBeUndefined();
+  }
+});
+
 test('shared configuration hook events copy only their explicit metadata fields', async () => {
   const project = workspaceHookEvents(workspace, async () => undefined);
   const created = await project(

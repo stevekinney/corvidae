@@ -18,6 +18,20 @@
  * the scopes a hook that lists the kind may have, and what the editor's Only for offers. A kind
  * with none is about the whole Bureau, or names nothing a scope can match.
  *
+ * A payload names no content and no free text, errors included (COR-2095, Revision 2026-11-16): a
+ * failure is named by an enum or an identifier (`run.error`'s `errorKind` is a member of the
+ * error-kind enum and its `errorCode`, like `tool.error`'s, an identifier), never by the error's
+ * message, cause, stack or request. An event is pushed to hooks, webhooks and delivery records, where
+ * a leak cannot be recalled, so the text is read through the authorized task read by `runId`
+ * (`bureau.tasks.get`) and never from a pushed event.
+ *
+ * A run is announced once for each settlement that stands: `run.completed`, `run.error` or
+ * `run.aborted`, then `run.settled`. A run whose owner's process was lost is settled `failed` with the
+ * finish reason `owner-lost` by the process that boots next; if the owner was only stalled and then
+ * finishes the run, its real settlement replaces that one and is announced too, on the owner's own
+ * feed, so a run can be announced twice (`run.error` with `owner-lost` on one feed, then
+ * `run.completed` on the other). Each announcement is a real, committed change.
+ *
  * Weft's own event kinds (`weft.*` run, workflow and schedule events) are not in it. The Bureau's
  * feed publishes Weft's `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft's, and
  * matching a hook on the rest needs a subscription to the engine's own feed, which the Bureau does
@@ -87,6 +101,22 @@ function field(name: string, type: BureauEventFieldType): BureauEventField {
 type FieldList = readonly (readonly [name: string, type: BureauEventFieldType])[];
 
 const RUN: FieldList = [['runId', 'string']];
+// COR-2096: what a guardrail event names; the flagged text and the guardrail's detail never cross.
+const GUARDRAIL: FieldList = [
+  ['runId', 'string'],
+  ['step', 'number'],
+  ['guardrailName', 'string'],
+  ['category', 'string'],
+  ['phase', 'string'],
+  ['confidence', 'number'],
+];
+// COR-2096: the tool and the call a tool event names.
+const TOOL_CALL: FieldList = [
+  ['runId', 'string'],
+  ['step', 'number'],
+  ['toolName', 'string'],
+  ['toolCallId', 'string'],
+];
 // `dedupeKey` and `committedAtMs` are set only when an outbox carried the transition.
 const SCHEDULE_CHANGE: FieldList = [
   ['scheduleId', 'string'],
@@ -179,6 +209,48 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     ],
     EVERY_SCOPE,
   ),
+  'run.tripwire': entry(
+    'run.tripwire',
+    'run',
+    'A guardrail in tripwire mode halted a run. It names the guardrail, what it found, where it looked and how sure it was, never the flagged text.',
+    GUARDRAIL,
+    EVERY_SCOPE,
+  ),
+  'run.guardrail': entry(
+    'run.guardrail',
+    'run',
+    'A guardrail in validate mode blocked, sanitized, redacted or warned about a step, and the run went on. It names the guardrail, what it found, where it looked, how sure it was and the action it took, never the flagged text.',
+    [...GUARDRAIL, ['action', 'string']],
+    EVERY_SCOPE,
+  ),
+  'budget.threshold': entry(
+    'budget.threshold',
+    'run',
+    'A run’s spend crossed one of its budget’s warning fractions. `threshold` is the fraction, `currentCost` the spend and `budget` the limit, in US dollars, and `model` the model that step ran on. `step` is absent for a threshold a monitor reports, which has none.',
+    [
+      ['runId', 'string'],
+      ['step?', 'number'],
+      ['threshold', 'number'],
+      ['currentCost', 'number'],
+      ['budget', 'number'],
+      ['model', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'tool.policy-denied': entry(
+    'tool.policy-denied',
+    'run',
+    'A policy refused a tool call. It names the tool and the call, never the policy’s reason or the call’s arguments.',
+    TOOL_CALL,
+    EVERY_SCOPE,
+  ),
+  'tool.error': entry(
+    'tool.error',
+    'run',
+    'A tool call failed. It names the tool and the call and the error’s code when it is an identifier (`INTERNAL_ERROR` when the error names none or names anything else), never the error’s message, cause or stack.',
+    [...TOOL_CALL, ['errorCode', 'string']],
+    EVERY_SCOPE,
+  ),
   'run.registered': entry(
     'run.registered',
     'run',
@@ -189,8 +261,45 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'run.settled': entry(
     'run.settled',
     'run',
-    'A run reached a terminal state: it completed, failed, or was aborted.',
-    RUN,
+    'A run reached a terminal state, which `status` says: `completed`, `failed` or `canceled`. It follows the run’s one outcome event (`run.completed`, `run.error` or `run.aborted`).',
+    [
+      ['runId', 'string'],
+      ['status', 'string'],
+      ['finishReason?', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'run.completed': entry(
+    'run.completed',
+    'run',
+    'A run finished without failing and without being aborted. It is published once, just before `run.settled`. A failed run never publishes it.',
+    [
+      ['runId', 'string'],
+      ['finishReason?', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'run.error': entry(
+    'run.error',
+    'run',
+    'A run failed: its finish reason is a failure (an error, a tripwire, the step limit, a denied elicitation, an exhausted budget, a timeout). It is published once, just before `run.settled`. `step`, `errorCode` and `errorKind` are present only when the run’s own failure event named them: `errorKind` is one of the error kinds (`load`, `contract`, `generate`, `tool`, `abort`, `output`, `policy`) and `errorCode` an identifier (upper-case letters, digits and underscores). It carries no error text: read the failure’s message from the task, by `runId` (`bureau.tasks.get`, its `statusMessage`).',
+    [
+      ['runId', 'string'],
+      ['finishReason', 'string'],
+      ['step?', 'number'],
+      ['errorCode?', 'string'],
+      ['errorKind?', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'run.aborted': entry(
+    'run.aborted',
+    'run',
+    'A run was aborted. It is published once, just before `run.settled`.',
+    [
+      ['runId', 'string'],
+      ['finishReason?', 'string'],
+    ],
     EVERY_SCOPE,
   ),
   // No scope: deleting a run deletes the task record a scope would read, before dispatch reads it.
@@ -612,6 +721,20 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['at', 'number'],
       ['recordIds', 'string[]'],
       ['operationId?', 'string'],
+    ],
+  ),
+  // unattributed, with no scope: a decision names a task only when it was asked for one, so no
+  // event of the kind is guaranteed to lead back to a run (`taskId` is optional).
+  'decision.made': entry(
+    'decision.made',
+    'unattributed',
+    'A decision was made through `bureau.decisions.decide` and written to the audit trail: its kind, how it ended (`answered`, `refused` or `error`), the row that answered and the path it answered by (`native`, `adapter` or `fallback`), and the task it was asked for. It names no request, value, rationale or schema.',
+    [
+      ['kind', 'string'],
+      ['outcome', 'string'],
+      ['row?', 'string'],
+      ['path?', 'string'],
+      ['taskId?', 'string'],
     ],
   ),
 } satisfies Record<PublishedBureauEventKind, BureauEventCatalogEntry>);

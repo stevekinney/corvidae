@@ -325,3 +325,45 @@ describe('a start-workflow hook and a kind it cannot place', () => {
     expect(run.starts).toHaveLength(1);
   });
 });
+
+/** COR-2095: the outcome kinds name a run, so they follow the same guard `run.settled` does. */
+describe.each(['run.completed', 'run.error', 'run.aborted'] as const)(
+  'a start-workflow hook on %s',
+  (kind) => {
+    const START = { type: 'start-workflow', workflowId: 'lookup' } as const;
+
+    it('starts the workflow for a run no hook started', async () => {
+      const run = setup(() => Promise.resolve(undefined));
+      const hook = await run.hooks.create({ action: START, events: [kind] });
+      await run.fire(kind, { runId: 'r1' });
+
+      expect(run.starts).toEqual([{ tags: [`hook-origin:${hook.id}`] }]);
+    });
+
+    it('skips, with a notice, the event of a run a hook started', async () => {
+      const run = setup(() => Promise.resolve('hook-origin-1'));
+      const hook = await run.hooks.create({ action: START, events: [kind] });
+      await run.fire(kind, { runId: 'r1' });
+
+      expect(run.starts).toEqual([]);
+      const [delivery] = await run.hooks.deliveries(hook.id);
+      expect(delivery).toMatchObject({ status: 'failed' });
+      expect(delivery!.attempts[0]!.error).toContain('hook hook-origin-1 started');
+      expect(run.notices).toHaveLength(1);
+    });
+
+    it('holds an event published before the hooks open, then delivers it', async () => {
+      const run = setup(() => Promise.resolve(undefined));
+      const hook = await run.hooks.create({ action: { type: 'notify' }, events: [kind] });
+
+      run.publishWithoutOpening(kind, { runId: 'r1' });
+      await run.settle();
+      expect(await run.hooks.deliveries(hook.id)).toEqual([]);
+
+      await run.created.resume();
+      await run.settle();
+      const [delivery] = await run.hooks.deliveries(hook.id);
+      expect(delivery).toMatchObject({ status: 'delivered', kind });
+    });
+  },
+);

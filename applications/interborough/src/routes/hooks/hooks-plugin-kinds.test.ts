@@ -10,7 +10,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { PLUGIN_KINDS_COPY } from '../../app/copy/plugins.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
-import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
+import {
+  StubFault,
+  installBureauStub,
+  type BureauStub,
+} from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
@@ -29,6 +33,7 @@ const PAGE_KIND = {
   kind: 'page',
   description: 'Pages the on-call person.',
   version: '1.0.0',
+  dryRun: false,
   configuration: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     type: 'object',
@@ -213,6 +218,246 @@ describe('a contributed hook action under Then', () => {
     const awaited213 = await view.findAllByRole('radio');
     expect(awaited213.length).toBe(3);
     expect(view.queryByRole('combobox', { name: HOOKS_COPY.editor.action.label })).toBeNull();
+  });
+});
+
+/** A saved hook that runs `pager/page`, and the test delivery the Bureau answers for it. */
+const PAGER_HOOK = {
+  ...ALPHA,
+  id: 'pager-hook',
+  action: { type: 'plugin', plugin: 'pager', kind: 'page', configuration: { team: 'ops' } },
+};
+
+function testDelivery(status: 'delivered' | 'exhausted') {
+  return {
+    ...delivery('hook.test', 'test-1'),
+    hookId: 'pager-hook',
+    actionType: 'plugin',
+    test: true,
+    status,
+    request: null,
+    attempts: [
+      {
+        number: 1,
+        startedAt: 2_000,
+        finishedAt: 2_100,
+        outcome: status === 'delivered' ? 'completed' : 'error',
+        status: null,
+        responseExcerpt: null,
+        responseTruncated: null,
+        error: status === 'delivered' ? null : 'The pager is down',
+        receipt: null,
+      },
+    ],
+    maxAttempts: 1,
+  };
+}
+
+describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix line 115)', () => {
+  const copy = HOOKS_COPY.editor.check;
+  const TESTABLE = () => ({ triggers: [], reactions: [{ ...PAGE_KIND, dryRun: true }] });
+  const alertOf = (result: HTMLElement) =>
+    result.closest('[data-cinder-variant]') ?? result.querySelector('[data-cinder-variant]');
+
+  async function testButton(view: ReturnType<typeof open>) {
+    return (await view.findByRole('button', { name: copy.test })) as HTMLButtonElement;
+  }
+
+  /** A result with a link has the Alert's actions box, which holds exactly that one link to the log. */
+  function expectOneLogLink(result: HTMLElement) {
+    const actions = result.querySelector('.cinder-alert__actions');
+    expect(actions).not.toBeNull();
+    expect(actions?.querySelectorAll('a')).toHaveLength(1);
+    expect(actions?.textContent?.trim()).toBe(HOOKS_COPY.editor.header.jumpToLog);
+  }
+
+  /** The button is off but reachable: `aria-disabled`, focusable, described by the reason, and pressing it does nothing. */
+  async function expectOff(view: ReturnType<typeof open>, reason: string) {
+    const test = await testButton(view);
+    const text = await view.findByText(reason);
+    await waitFor(() => expect(test.getAttribute('aria-disabled')).toBe('true'));
+    expect(test.disabled).toBe(false);
+    expect(test.getAttribute('aria-describedby')).toBe(text.id);
+    test.focus();
+    expect(document.activeElement).toBe(test);
+    await fireEvent.click(test);
+    expect(stub?.callsTo('bureau.hooks.test')).toHaveLength(0);
+    expect(stub?.callsTo('bureau.hooks.draft.test')).toHaveLength(0);
+  }
+
+  test('is on for an action that offers a test, and says nothing was sent, with its link in the Alert’s actions', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.test': () => testDelivery('delivered'),
+    });
+    const test = await testButton(view);
+    await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
+    expect(test.getAttribute('aria-describedby')).toBeNull();
+    expect(view.queryByTestId('hook-test-reason')).toBeNull();
+
+    await fireEvent.click(test);
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain(copy.testPluginRan('page'));
+    expect(result.textContent).toContain(
+      'Test ran. page checked the event without doing it; nothing was sent.',
+    );
+    expect(result.textContent).not.toContain('Test event sent');
+    expect(result.textContent).not.toMatch(/dry run/i);
+    expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('success');
+    // A plugin delivery sends no request, so the one link is to the log; it sits in the actions slot.
+    expect(result.textContent).not.toContain(HOOKS_COPY.editor.webhook.seePayload);
+    expectOneLogLink(result);
+    expect(stub?.callsTo('bureau.hooks.test')).toHaveLength(1);
+    expect(stub?.callsTo('bureau.hooks.test')[0]?.params).toEqual({ hookId: 'pager-hook' });
+    expect(stub?.callsTo('bureau.hooks.draft.test')).toHaveLength(0);
+  });
+
+  test('draws a failed test as a danger Alert, without repeating the plugin’s text, with a link to the log', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.test': () => testDelivery('exhausted'),
+    });
+    const test = await testButton(view);
+    await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
+    await fireEvent.click(test);
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain('Test failed. The action couldn’t check the event.');
+    expect(result.textContent).not.toContain('The pager is down');
+    expect(result.textContent).not.toMatch(/dry run/i);
+    expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('danger');
+    expectOneLogLink(result);
+  });
+
+  test('draws a test that is waiting as a warning, not a failure', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.test': () => ({
+        ...testDelivery('delivered'),
+        status: 'pending',
+        attempts: [],
+      }),
+    });
+    const test = await testButton(view);
+    await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
+    await fireEvent.click(test);
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain('pager needs setup before this test can run.');
+    expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('warning');
+    expectOneLogLink(result);
+  });
+
+  test('says the plugin needs setup, as a warning and in the editor’s words, when the Bureau refuses the test for it', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.test': () => {
+        throw new StubFault(
+          'InvalidParams',
+          400,
+          'The plugin "pager" needs setup, so its hook action kind cannot be tested yet',
+          { issues: [{ path: ['action'], message: 'needs setup', code: 'custom' }] },
+        );
+      },
+    });
+    const test = await testButton(view);
+    await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
+    await fireEvent.click(test);
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain('pager needs setup before this action can be tested.');
+    expect(result.textContent).not.toContain('hook action kind');
+    expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('warning');
+    // Nothing to read in the log, so no link and no actions box.
+    expect(result.querySelector('.cinder-alert__actions')).toBeNull();
+  });
+
+  test('draws a test the Bureau could not answer as a danger Alert with no actions box', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.test': () => {
+        throw new StubFault('InternalError', 500, 'The Bureau fell over.');
+      },
+    });
+    const test = await testButton(view);
+    await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
+    await fireEvent.click(test);
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain(copy.testFailed);
+    expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('danger');
+    expect(result.querySelector('.cinder-alert__actions')).toBeNull();
+  });
+
+  test('says a reaction that cannot be tested would do its work for real', async () => {
+    const view = open('/hooks/pager-hook', { 'bureau.hooks.get': () => PAGER_HOOK });
+    await expectOff(
+      view,
+      'A test of this action would do what it does for real, so it has no test.',
+    );
+    expect(view.queryByText(/dry run/i)).toBeNull();
+  });
+
+  test('says to turn the plugin on when it is off or not listed', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': () => ({ triggers: [], reactions: [] }),
+    });
+    await expectOff(view, 'Turn on pager in Settings to test this action.');
+  });
+
+  test('says it could not check when the list of plugin actions failed to load', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': () => {
+        throw new Error('down');
+      },
+    });
+    await expectOff(view, 'Couldn’t check whether this action can be tested.');
+  });
+
+  test('says to save first for a new hook whose action offers a test, and says a reaction without one would run for real', async () => {
+    const offered = open('/hooks/new', { 'bureau.plugins.contributions': TESTABLE });
+    const select = (await offered.findByRole('combobox', {
+      name: HOOKS_COPY.editor.action.label,
+    })) as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBe(4));
+    await fireEvent.change(select, { target: { value: 'pager:page' } });
+    await expectOff(offered, 'Save hook, then send a test.');
+    cleanup();
+    stub?.restore();
+
+    const refused = open('/hooks/new');
+    const other = (await refused.findByRole('combobox', {
+      name: HOOKS_COPY.editor.action.label,
+    })) as HTMLSelectElement;
+    await waitFor(() => expect(other.options.length).toBe(4));
+    await fireEvent.change(other, { target: { value: 'pager:page' } });
+    await expectOff(
+      refused,
+      'A test of this action would do what it does for real, so it has no test.',
+    );
+    // The built-in sentence no longer claims that only a webhook is tested.
+    expect(refused.queryByText(copy.testWebhookOnly)).toBeNull();
+  });
+
+  test('keeps a test delivery of a plugin action from reading as a missing payload in the log', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.deliveries': () => ({ deliveries: [testDelivery('delivered')] }),
+    });
+    const log = await view.findByTestId('hook-deliveries');
+    const item = await waitFor(() => {
+      const found = log.querySelector<HTMLElement>('li[data-delivery="test-1"]');
+      if (found === null) throw new Error('no delivery');
+      return found;
+    });
+    await fireEvent.click(item.querySelector<HTMLButtonElement>('button[aria-expanded]')!);
+    const payload = await within(item).findByTestId('hook-delivery-payload');
+    expect(payload.textContent).toBe(HOOKS_COPY.editor.deliveries.noPayloadTest);
+    expect(payload.textContent).not.toContain('sent no payload');
   });
 });
 

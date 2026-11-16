@@ -5,7 +5,13 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { eventPayloadContent, eventPayloadFields, isEventPayload } from './plugin-event-payload.ts';
+import {
+  EVENT_PAYLOAD_NODE_BUDGET,
+  eventPayloadContent,
+  eventPayloadFields,
+  isEventPayload,
+  judgeEventPayload,
+} from './plugin-event-payload.ts';
 
 const identifier = () => z.string().meta({ identifier: true });
 
@@ -206,12 +212,15 @@ describe('the outcome of every payload shape', () => {
     return Node;
   };
 
-  const refusedAtBudget = (prefix: string) => (found: string[]) => {
+  const refusedAtBudget = (prefix: string) => (found: string[], budgetExhausted: boolean) => {
+    expect(budgetExhausted).toBe(true);
     expect(found).toHaveLength(1);
     expect(found[0]?.startsWith(prefix)).toBe(true);
   };
 
-  const rows: ReadonlyArray<readonly [string, () => z.ZodObject, (found: string[]) => void]> = [
+  const rows: ReadonlyArray<
+    readonly [string, () => z.ZodObject, (found: string[], budgetExhausted: boolean) => void]
+  > = [
     [
       'a clean fresh factory with one getter: refused, budget exhausted',
       () => z.object({ root: freshOne() }),
@@ -303,7 +312,45 @@ describe('the outcome of every payload shape', () => {
   ];
 
   it.each(rows)('%s', (_name, build, expected) => {
-    expected(eventPayloadContent(build()));
+    const { fields, budgetExhausted } = judgeEventPayload(build());
+    expected(fields, budgetExhausted);
+  });
+});
+
+/** COR-2495 — a getter is charged before it runs, and a budget refusal says it is one. */
+describe('the work budget', () => {
+  it('charges each getter as it reads it, so a wide object of getters stops within the budget', () => {
+    let reads = 0;
+    const shape: Record<string, unknown> = {};
+    for (let index = 0; index < 10_000; index += 1) {
+      Object.defineProperty(shape, `field${index}`, {
+        enumerable: true,
+        get: () => {
+          reads += 1;
+          return z.number();
+        },
+      });
+    }
+    const verdict = judgeEventPayload(z.object(shape as z.ZodRawShape));
+    expect(verdict.budgetExhausted).toBe(true);
+    expect(verdict.fields).toHaveLength(1);
+    expect(reads).toBeLessThanOrEqual(EVENT_PAYLOAD_NODE_BUDGET);
+  });
+
+  it('refuses a clean object of 10,000 plain keys as a budget refusal, not as content', () => {
+    const shape: Record<string, z.ZodType> = {};
+    for (let index = 0; index < 10_000; index += 1) shape[`field${index}`] = identifier();
+    const verdict = judgeEventPayload(z.object(shape));
+    expect(verdict.budgetExhausted).toBe(true);
+    expect(verdict.fields).toHaveLength(1);
+    expect(verdict.fields[0]?.startsWith('field')).toBe(true);
+  });
+
+  it('does not report the budget for a payload that holds content', () => {
+    expect(judgeEventPayload(z.object({ note: z.string() }))).toEqual({
+      fields: ['note'],
+      budgetExhausted: false,
+    });
   });
 });
 

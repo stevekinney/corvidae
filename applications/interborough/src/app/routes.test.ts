@@ -402,6 +402,13 @@ describe('a link to an agent', () => {
     expect(agentEditPath('assistant')).toBe('/agents/assistant/edit');
     expect(matchRoute(agentPath('a b/c'))?.params).toEqual({ agent: 'a b/c' });
     expect(agentMemoryPath('assistant')).toBe('/agents/assistant/memory');
+    // The quarantined view is in the query too, before the open memory.
+    expect(agentMemoryPath('assistant', undefined, 'quarantined')).toBe(
+      '/agents/assistant/memory?view=quarantined',
+    );
+    expect(agentMemoryPath('assistant', 'm1', 'quarantined')).toBe(
+      '/agents/assistant/memory?view=quarantined&selected=m1',
+    );
     // The open memory is in the query, whatever its identifier holds.
     expect(agentMemoryPath('a b', 'm/1?x#y')).toBe('/agents/a%20b/memory?selected=m%2F1%3Fx%23y');
     expect(matchRoute(agentMemoryPath('a b', 'm/1?x#y').split('?')[0]!)).toEqual({

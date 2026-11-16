@@ -3,10 +3,17 @@ import type { DetectionResult, DetectorContext, GuardrailProvenance, InputDetect
 import { raceAbort } from './abort-race';
 import type { MemoryClass, MemorySourceKind, MemoryTrust } from './policy';
 
+/**
+ * What a scan found. A flagged scan says whether a detector tripped or failed: `failed` is true only
+ * when the detector threw, and is how a caller tells the two apart. The category is not: a detector
+ * may report `detector-failure` as the category of a detection of its own (COR-2194).
+ */
 export type GovernedContentScan =
   | { readonly flagged: false }
   | {
       readonly flagged: true;
+      /** True only when the detector threw; false when it tripped, whatever category it named. */
+      readonly failed: boolean;
       readonly detector: string;
       readonly category: string;
       readonly confidence: number;
@@ -43,8 +50,10 @@ export interface GovernedContentScanOptions {
  * Runs governance detectors in order and stops at the first trip. Unlike the
  * shared guardrail pipeline, which swallows a detector's exception so it never
  * crashes a conversation, governance fails closed: a detector that throws is a
- * detection, because admitting content nobody could scan is exactly the gap a
- * poisoning attempt would aim for. The result never carries the content itself.
+ * detection (`failed`), because admitting content nobody could scan is exactly the gap a
+ * poisoning attempt would aim for. What a caller does with a failure is its own: admission and
+ * promotion treat it as any detection, and recall withholds the record without quarantining it. The
+ * result never carries the content itself, nor the error.
  *
  * A cancelled scan is the exception: it rejects with the signal's reason rather than flag, and a
  * detector that throws because the operation was cancelled is that cancellation, not a failure.
@@ -77,6 +86,7 @@ export async function scanGovernedContent(
       if (signal?.aborted === true) throw signal.reason;
       return {
         flagged: true,
+        failed: true,
         detector: detector.name,
         category: 'detector-failure',
         confidence: 1,
@@ -85,6 +95,7 @@ export async function scanGovernedContent(
     if (result.triggered) {
       return {
         flagged: true,
+        failed: false,
         detector: detector.name,
         category: result.category,
         confidence: result.confidence,

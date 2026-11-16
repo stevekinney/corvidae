@@ -154,30 +154,67 @@ function evidenceFrom(candidate: RecallCandidate, score: number): MemoryEvidence
   };
 }
 
+/** What a recall guardrail found on a candidate: who found it, and how sure it was. */
+interface RecallDetection {
+  readonly detector: string;
+  readonly category: string;
+  readonly confidence: number;
+}
+
+/**
+ * Records that `candidate` was left out of this recall by a recall guardrail: the `outcome` is
+ * `quarantined` when the record was quarantined, and `withheld` when it was only left out.
+ */
+async function recordRecallWithheld(
+  run: RecallRun,
+  candidate: RecallCandidate,
+  outcome: 'quarantined' | 'withheld',
+  detection: RecallDetection,
+): Promise<void> {
+  const { context, authority } = run;
+  await context.recordEvent({
+    tenantId: authority.tenantId,
+    type: 'memory.recall.withheld',
+    outcome,
+    attribution: context.attribution(authority, run.operationId),
+    recordIds: [candidate.record.id],
+    reason: 'content-policy',
+    diagnostic: { ...detection, contentDigest: candidate.read.governance.contentDigest },
+  });
+}
+
+/** A guardrail tripped on the candidate: it is quarantined, taken out of the index, and recorded. */
 async function withholdPoisoned(
   run: RecallRun,
   candidate: RecallCandidate,
-  scan: { detector: string; category: string; confidence: number },
+  scan: RecallDetection,
 ): Promise<void> {
-  const { context, authority } = run;
+  const { context } = run;
   await context.updateGovernance(candidate, (governance) =>
     governance.state === 'active' ? { state: 'quarantined' } : undefined,
   );
   await context.textSearchProvider?.remove(candidate.record.id);
-  await context.recordEvent({
-    tenantId: authority.tenantId,
-    type: 'memory.recall.withheld',
-    outcome: 'quarantined',
-    attribution: context.attribution(authority, run.operationId),
-    recordIds: [candidate.record.id],
-    reason: 'content-policy',
-    diagnostic: { ...scan, contentDigest: candidate.read.governance.contentDigest },
-  });
+  await recordRecallWithheld(run, candidate, 'quarantined', scan);
+}
+
+/**
+ * A guardrail failed on the candidate, which says nothing about the record: it is left out of this
+ * recall and recorded, and stays `active` and indexed, so a later recall scans it again (COR-2194).
+ * The record carries no error text.
+ */
+async function withholdUnscanned(
+  run: RecallRun,
+  candidate: RecallCandidate,
+  scan: RecallDetection,
+): Promise<void> {
+  await recordRecallWithheld(run, candidate, 'withheld', scan);
 }
 
 /**
  * Admits one ranked candidate: within the token and cost budgets, and past the
- * recall detectors, which quarantine content that trips them. Returns the stop
+ * recall detectors, which quarantine content that trips them. A detector that
+ * throws quarantines nothing: the record is left out of this recall, stays
+ * `active`, and is scanned again by the next one (COR-2194). Returns the stop
  * reason when a budget ends the recall.
  */
 async function admitOne(
@@ -236,8 +273,12 @@ async function admitOne(
     throw error;
   }
   if (scan.flagged) {
-    const { flagged: _flagged, ...diagnostic } = scan;
-    await withholdPoisoned(run, candidate, diagnostic);
+    // Branch on `failed`, never on the category: a guardrail that trips may name its category
+    // `detector-failure` itself, and that still quarantines.
+    const { flagged: _flagged, failed, ...diagnostic } = scan;
+    await (failed
+      ? withholdUnscanned(run, candidate, diagnostic)
+      : withholdPoisoned(run, candidate, diagnostic));
     run.exclusions.push(recallExclusion(candidate, 'admission', 'content-policy', diagnostic));
     return undefined;
   }
@@ -408,7 +449,7 @@ async function expandProvenance(run: RecallRun): Promise<void> {
   for (const selected of run.selected.values()) {
     for (const source of selected.read.governance.lineage?.sources ?? []) {
       if (run.selected.has(source.id)) continue;
-      // A source admission already withheld (a detector quarantined it, or a
+      // A source admission already withheld (a detector quarantined it or failed on it, or a
       // budget left it out) is never offered to admission a second time.
       if (run.exclusions.some((exclusion) => exclusion.recordId === source.id)) continue;
       // A source in the recalled collection already went through every filter;
@@ -637,7 +678,8 @@ async function finish(
  * policy minimum for its class (an untrusted procedure is never selected), or
  * its retention has ended. The survivors are scored, fused, and admitted in rank
  * order, so a withheld record never shrinks the evidence returned; a recall
- * detector that trips on one withholds and quarantines it. The model receives
+ * detector that trips on one withholds and quarantines it, and one that throws
+ * withholds it from this recall only. The model receives
  * only labeled evidence; the bundle tells the caller why.
  */
 export async function recallForModel(

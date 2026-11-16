@@ -31,6 +31,7 @@ import {
 } from '../rest-bindings.ts';
 import type { ConnectionLease } from '../runtime/context.ts';
 import type { TaskQueue } from '../task-queue.ts';
+import { weftDiscoveryInfo } from '../weft-documents.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 import {
   defaultShapeSuccess,
@@ -267,11 +268,11 @@ export const DIRECT_ROUTE_EXECUTORS: Record<DirectRouteHandlerName, RouteExecuto
     jsonResponse(
       generateOpenApiDocument({
         registry: options?.operationRegistry ?? defaultOperationRegistry(options),
-        ...(options?.restBindings !== undefined ? { restBindings: options.restBindings } : {}),
+        restBindings: options?.restBindings ?? createLiveRestBindings(),
         ...(options?.supportedAuthenticationSchemes !== undefined
           ? { supportedSchemes: options.supportedAuthenticationSchemes }
           : {}),
-        ...(options?.discoveryInfo !== undefined ? { discoveryInfo: options.discoveryInfo } : {}),
+        discoveryInfo: weftDiscoveryInfo(options?.discoveryInfo),
       }),
     ),
   openRpcDocument: async ({ engine, options }) =>
@@ -280,15 +281,15 @@ export const DIRECT_ROUTE_EXECUTORS: Record<DirectRouteHandlerName, RouteExecuto
         registry: options?.operationRegistry ?? defaultOperationRegistry(options),
         transports: ['http', 'websocket'],
         mcpTools: listMcpTools(engine),
-        ...(options?.discoveryInfo !== undefined ? { discoveryInfo: options.discoveryInfo } : {}),
+        discoveryInfo: weftDiscoveryInfo(options?.discoveryInfo),
       }),
     ),
   asyncApiDocument: async ({ options }) =>
     jsonResponse(
       generateAsyncApiDocument({
         registry: options?.operationRegistry ?? defaultOperationRegistry(options),
-        ...(options?.restBindings !== undefined ? { restBindings: options.restBindings } : {}),
-        ...(options?.discoveryInfo !== undefined ? { discoveryInfo: options.discoveryInfo } : {}),
+        restBindings: options?.restBindings ?? createLiveRestBindings(),
+        discoveryInfo: weftDiscoveryInfo(options?.discoveryInfo),
       }),
     ),
 };
