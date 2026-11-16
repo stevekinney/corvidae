@@ -91,12 +91,12 @@ export type SkeletonProps = {
    * placeholder under a real band does not change what it says when the rows arrive. Setting it
    * draws the band without `dayBand`. Ignored by variants other than `'list'`.
    */
-  dayBandLabel?: string;
+  dayBandLabel?: string | undefined;
   /**
    * The text at the end of the day band, such as the zone its times are in ("Central time"). It is
    * drawn only with `dayBandLabel`.
    */
-  dayBandDetail?: string;
+  dayBandDetail?: string | undefined;
   /**
    * Accessible name of the loading region, announced politely once the placeholder appears
    * (for example `'Loading agents'`). The placeholder bars stay hidden from assistive

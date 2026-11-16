@@ -612,7 +612,9 @@ export function serializeRunFilter(filter: RunFilter): string {
 export type RunStatusWord = StatusWord | 'Check not met' | 'Waiting';
 
 /** Whether a run that has not ended is parked at an `await-signal` step, waiting for a signal. */
-function awaitingSignalOf(row: Pick<RunRow, 'status' | 'workflow'>): string | null {
+function awaitingSignalOf(
+  row: Pick<RunRow, 'status'> & { readonly workflow?: RunWorkflow | null | undefined },
+): string | null {
   const going = row.status === 'working' || row.status === 'submitted';
   return going ? (row.workflow?.awaitingSignal ?? null) : null;
 }
