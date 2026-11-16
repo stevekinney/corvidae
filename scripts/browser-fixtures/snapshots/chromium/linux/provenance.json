@@ -9,15 +9,31 @@
   "suiteExitCode": 0,
   "componentRenders": {
     "approval-card": {
-      "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
       "suiteExitCode": 0
     },
     "card": {
-      "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
       "suiteExitCode": 0
     },
     "chat": {
-      "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "chat-composer-popover": {
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "chat-mcp-app": {
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "chat-sub-session": {
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "description-list": {
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
       "suiteExitCode": 0
     },
     "stacked-list-item": {
