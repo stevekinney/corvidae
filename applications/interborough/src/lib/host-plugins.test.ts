@@ -7,11 +7,13 @@ import {
   HOST_PLUGINS_ROUTE,
   HOST_RESTART_ROUTE,
   HostPluginError,
+  needAttentionCount,
   PluginsReadError,
   restartHost,
   savePluginSecret,
   updatePlugin,
   type HostPluginFaultKind,
+  type PluginsSnapshot,
 } from './host-plugins.ts';
 
 const VALUE = 'tsk-test-value-that-must-never-be-repeated';
@@ -79,6 +81,55 @@ function recording(respond: (seen: Seen) => Response) {
   };
   return { seen, fetch };
 }
+
+describe('needAttentionCount', () => {
+  const [base] = SNAPSHOT.plugins;
+  const plugin = (name: string, status: string, problems: readonly Record<string, unknown>[]) => ({
+    ...base,
+    descriptor: { ...base?.descriptor, name },
+    status,
+    problems,
+  });
+  /** The snapshot as the client reads it from the host's answer, so it has the real type. */
+  const snapshot = (...plugins: object[]): Promise<PluginsSnapshot> =>
+    getPlugins({
+      fetch: async () => Response.json({ ...SNAPSHOT, plugins, unloaded: [] }),
+    });
+  const changed = {
+    code: 'panel-changed',
+    app: 'one',
+    uri: 'ui://a/one/v1',
+    previousDigest: 'sha256:old',
+    contentDigest: 'sha256:new',
+  };
+
+  test('does not count a plugin whose only problem is a changed panel, since nothing is unavailable', async () => {
+    const skipped = plugin('broken', 'skipped', [{ code: 'setup-failed', message: 'x' }]);
+    expect(needAttentionCount(await snapshot(skipped))).toBe(1);
+    const withChanged = await snapshot(skipped, plugin('drifting', 'running', [changed]));
+    expect(needAttentionCount(withChanged)).toBe(1);
+  });
+
+  test('counts a plugin with a changed panel and another problem', async () => {
+    const skipped = plugin('broken', 'skipped', [{ code: 'setup-failed', message: 'x' }]);
+    const waiting = plugin('waiting', 'needs-setup', [
+      changed,
+      { code: 'secret-missing', key: 'k', contributions: [] },
+    ]);
+    expect(needAttentionCount(await snapshot(skipped, waiting))).toBe(2);
+  });
+
+  test('still counts a panel that failed to build and a step that failed after startup', async () => {
+    const skipped = plugin('broken', 'skipped', [{ code: 'setup-failed', message: 'x' }]);
+    const panel = plugin('panel', 'running', [{ code: 'panel-failed', app: 'one', message: 'x' }]);
+    const start = plugin('start', 'running', [{ code: 'start-failed', message: 'x' }]);
+    expect(needAttentionCount(await snapshot(skipped, panel, start))).toBe(3);
+  });
+
+  test('is zero when nothing failed to load, whatever panel changed', async () => {
+    expect(needAttentionCount(await snapshot(plugin('drifting', 'running', [changed])))).toBe(0);
+  });
+});
 
 async function failureOf(work: Promise<unknown>): Promise<unknown> {
   return work.then(

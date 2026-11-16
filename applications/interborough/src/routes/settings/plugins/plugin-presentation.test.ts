@@ -398,7 +398,8 @@ describe('problemView', () => {
       }),
     ).toMatchObject({
       status: { label: 'Loaded, a panel changed', dot: 'warning' },
-      body: expect.stringContaining('sha256:old'),
+      title: 'A panel’s page changed',
+      body: 'The panel one serves a different page than at the last start. That is expected after the plugin is updated; if it was not, check where the plugin is installed from.',
     });
   });
 

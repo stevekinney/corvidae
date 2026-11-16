@@ -263,11 +263,7 @@ export function problemView(problem: PluginProblem, plugin?: PluginStanding): Pr
       return {
         status: { label: words.panelChanged.status, dot: WARNING },
         title: words.panelChanged.title,
-        body: words.panelChanged.body(
-          text(problem, 'app'),
-          text(problem, 'previousDigest'),
-          text(problem, 'contentDigest'),
-        ),
+        body: words.panelChanged.body(text(problem, 'app')),
       };
     default:
       return {
