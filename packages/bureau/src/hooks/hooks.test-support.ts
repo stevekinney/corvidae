@@ -105,6 +105,10 @@ export type OpenHooksBureauOptions = {
   readonly withoutKey?: boolean;
   readonly retention?: BureauOptions['retention'];
   readonly formatters?: BureauOptions['formatters'];
+  /** Reads the secrets a stored reference in a reaction's configuration names (COR-2177). */
+  readonly pluginSecrets?: BureauOptions['pluginSecrets'];
+  /** Plugins the Bureau composes itself, so their reactions reach its hooks (COR-2175). */
+  readonly plugins?: BureauOptions['plugins'];
   /** Replaces the instant backoff wait, for a test that holds a wait open. */
   readonly sleep?: (milliseconds: number) => Promise<void>;
 };
@@ -127,6 +131,8 @@ export async function openHooksBureau(options: OpenHooksBureauOptions): Promise<
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     ...(options.retention === undefined ? {} : { retention: options.retention }),
     ...(options.formatters === undefined ? {} : { formatters: options.formatters }),
+    ...(options.pluginSecrets === undefined ? {} : { pluginSecrets: options.pluginSecrets }),
+    ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     hooks: options.hooks ?? {},
     webhooks: {
       targets: [],

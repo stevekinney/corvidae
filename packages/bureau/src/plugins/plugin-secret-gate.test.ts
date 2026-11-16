@@ -33,6 +33,7 @@ import { createBureau } from '../create-bureau';
 import { DiagnosticEvent } from '../events';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../bureau-types/facade';
+import type { HookActionKindRegistration } from '../hooks/hook-types';
 import type { BureauDiagnostic } from '../bureau-types/options';
 import { composePlugins } from './compose-plugins';
 import {
@@ -243,6 +244,71 @@ describe('a plugin missing a declared secret', () => {
       'the embedder stayed needs-setup after the secret was saved',
     );
     expect(await tool!.execute({})).toBe('found');
+  });
+});
+
+describe('a reaction’s registration (COR-2176)', () => {
+  it('exposes its plugin gate’s availability and when it changes, and a plugin with no secret has none', async () => {
+    const secrets = secretsStore();
+    const reaction = (name: string) => ({
+      name,
+      description: 'Pages.',
+      configuration: z.object({}),
+      run: async () => undefined,
+    });
+    const composed = await composePlugins({
+      plugins: [
+        {
+          descriptor: definePlugin({
+            name: 'kit',
+            version: '1.0.0',
+            description: 'Needs an API key.',
+            secrets: [KEY],
+            setup: () => ({ reactions: [reaction('page')] }),
+          }),
+          source: 'package',
+          location: '@example/kit',
+        },
+        {
+          descriptor: definePlugin({
+            name: 'plain',
+            version: '1.0.0',
+            description: 'Needs nothing.',
+            setup: () => ({ reactions: [reaction('ping')] }),
+          }),
+          source: 'package',
+          location: '@example/plain',
+        },
+      ],
+      pluginSecrets: secrets,
+      hooks: {},
+    });
+    stops.push(composed.watchSecrets());
+    const hooks = composed.options.hooks as
+      { readonly actionKinds?: readonly HookActionKindRegistration[] } | undefined;
+    const registrations = hooks?.actionKinds ?? [];
+    const kit = registrations.find((registration) => registration.plugin === 'kit');
+    const plain = registrations.find((registration) => registration.plugin === 'plain');
+    expect(plain?.availability).toBeUndefined();
+    expect(plain?.onAvailabilityChange).toBeUndefined();
+
+    expect(kit?.availability?.()).toBe('needs-setup');
+    let changes = 0;
+    const stop = kit?.onAvailabilityChange?.(() => {
+      changes += 1;
+    });
+    secrets.save(KEY, SECRET);
+    await waitForCondition(
+      () => kit?.availability?.() === 'available',
+      'the kind stayed unavailable',
+    );
+    expect(changes).toBeGreaterThanOrEqual(1);
+    stop?.();
+    secrets.remove(KEY);
+    await waitForCondition(
+      () => kit?.availability?.() === 'needs-setup',
+      'the kind stayed available',
+    );
   });
 });
 

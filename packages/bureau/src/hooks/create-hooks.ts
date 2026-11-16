@@ -123,6 +123,14 @@ import {
 } from './hook-types.ts';
 import { hookOriginTag, runOfPayload } from './hook-origin.ts';
 import {
+  SECRET_REFERENCE_DEFECT,
+  isSecretReference,
+  issueIsAtSecret,
+  secretFieldAt,
+  secretFieldsOf,
+  withValueAt,
+} from './secret-references.ts';
+import {
   type HookEventSubjects,
   type HookSubjectSources,
   scopeMatches,
@@ -391,6 +399,18 @@ export interface HooksDependencies {
   /** How long one request may take. */
   readonly requestTimeoutMilliseconds?: number | undefined;
   /**
+   * An abort signal that fires after the given milliseconds: how long a plugin's reaction may run.
+   * Defaults to `AbortSignal.timeout`; a test passes one a controller ends.
+   */
+  readonly timeoutSignal?: ((milliseconds: number) => AbortSignal) | undefined;
+  /**
+   * COR-2177 — reads the secret a stored `{ "$secret": "<key>" }` in a reaction's configuration
+   * names, by the key the workspace published it under. Asked for each attempt, so an attempt gets
+   * the value published by then, and never held. Omitted, a reference cannot be resolved and the
+   * attempt fails.
+   */
+  readonly configurationSecrets?: { get(key: string): Promise<string | undefined> } | undefined;
+  /**
    * The hook action kinds plugins contribute (COR-1876), the entry point plugin composition feeds.
    * Two registrations of one plugin and kind name are refused. Omitted, only the built-in actions
    * exist.
@@ -499,7 +519,10 @@ function actionKindKey(plugin: string, kind: string): string {
   return `${plugin}/${kind}`;
 }
 
-/** The kinds `registrations` name, by {@link actionKindKey}; a repeated name is refused. */
+/**
+ * The kinds `registrations` name, by {@link actionKindKey}. A repeated name is refused, and so is a
+ * `timeoutMilliseconds` that is not a positive safe integer: a delivery's lease is built from it.
+ */
 function actionKindsOf(
   registrations: readonly HookActionKindRegistration[] | undefined,
 ): ReadonlyMap<string, HookActionKindRegistration> {
@@ -507,22 +530,35 @@ function actionKindsOf(
   for (const registration of registrations ?? []) {
     const key = actionKindKey(registration.plugin, registration.kind.name);
     if (kinds.has(key)) throw new Error(`Hook action kind "${key}" is contributed twice`);
+    const timeout = registration.kind.timeoutMilliseconds;
+    if (timeout !== undefined && !(Number.isSafeInteger(timeout) && timeout > 0)) {
+      throw new Error(
+        `Hook action kind "${key}" has a timeoutMilliseconds that is not a positive safe integer`,
+      );
+    }
     kinds.set(key, registration);
   }
   return kinds;
 }
 
-/** `configuration` parsed with the schema of `registration`'s kind, or the reason it is refused. */
+/**
+ * `configuration` parsed with the schema of `registration`'s kind, or the reason it is refused. An
+ * issue at or beneath one of `secretPaths` is left out: a hook is written with a reference where
+ * the schema declares a string, and the reference is checked for what it is instead.
+ */
 function parsedConfiguration(
   registration: HookActionKindRegistration,
   configuration: unknown,
+  secretPaths: readonly (readonly string[])[] = [],
 ):
   { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string } {
   const parsed = registration.kind.configuration.safeParse(configuration);
   if (parsed.success) return { ok: true, value: parsed.data };
+  const issues = parsed.error.issues.filter((issue) => !issueIsAtSecret(issue.path, secretPaths));
+  if (issues.length === 0) return { ok: true, value: configuration };
   return {
     ok: false,
-    reason: parsed.error.issues
+    reason: issues
       .map((issue) => `${issue.path.join('.') || 'configuration'}: ${issue.message}`)
       .join('; '),
   };
@@ -603,7 +639,22 @@ function checkedAction(
       } catch {
         invalid(['action', 'configuration'], 'The configuration must be JSON');
       }
-      const checked = parsedConfiguration(registration, configuration);
+      // A secret field holds a reference, never a value (COR-2177): checked for what it is, and
+      // the schema's own refusal of a reference where it declares a string is left out.
+      const secretFields = secretFieldsOf(registration.kind.configuration);
+      if ('refusal' in secretFields) {
+        invalid(
+          ['action', 'configuration'],
+          `The configuration of "${plugin}/${kind}" cannot be written: ${secretFields.refusal}`,
+        );
+      }
+      for (const path of secretFields.paths) {
+        const field = secretFieldAt(configuration, path);
+        if (field !== undefined && !isSecretReference(field.value)) {
+          invalid(['action', 'configuration', ...path], SECRET_REFERENCE_DEFECT);
+        }
+      }
+      const checked = parsedConfiguration(registration, configuration, secretFields.paths);
       if (!checked.ok) invalid(['action', 'configuration'], checked.reason);
       return configuration === undefined
         ? { type: 'plugin', plugin, kind }
@@ -702,6 +753,19 @@ function isPermanentStartFailure(error: unknown): boolean {
   return PERMANENT_ACTION_FAILURES.has((error as { readonly code?: unknown } | null)?.code);
 }
 
+/**
+ * Whether a reaction rejected with a `PluginReactionError` that says no retry can change the answer
+ * (`permanent: true`). Read by shape, never with `instanceof`: a plugin loaded from a folder has its
+ * own copy of the plugin package, so its class is not this process's.
+ */
+function isPermanentReactionError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    error.name === 'PluginReactionError' &&
+    (error as { readonly permanent?: unknown }).permanent === true
+  );
+}
+
 function checkedEvents(events: readonly string[]): string[] {
   if (!Array.isArray(events) || events.length === 0) {
     invalid('events', 'A hook needs at least one event kind');
@@ -789,6 +853,49 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     }
   }
 
+  /**
+   * `stored` with each secret field's reference replaced by the value published for its key now
+   * (COR-2177); `stored` itself, which the delivery keeps, is not touched. A value found in a secret
+   * field is not a reference, so it is refused for good and never passed on. A key that has no value
+   * now (no reader, nothing published, or the read failed) fails the attempt but not the delivery:
+   * it can be published before the next attempt. Every value resolved is added to `resolvedSecrets`,
+   * so the delivery can remove it from whatever the attempt reports.
+   */
+  async function withResolvedSecrets(
+    stored: unknown,
+    paths: readonly (readonly string[])[],
+    resolvedSecrets: Set<string>,
+  ): Promise<unknown> {
+    const fields: Array<{ readonly path: readonly string[]; readonly key: string }> = [];
+    for (const path of paths) {
+      const field = secretFieldAt(stored, path);
+      if (field === undefined) continue;
+      if (!isSecretReference(field.value)) {
+        // Written before the field was marked secret: the stored value is never passed to `run`.
+        throw new HookActionError(
+          `The action's configuration is refused: ${path.join('.')} is a secret field and holds a value where a secret reference belongs`,
+          true,
+        );
+      }
+      fields.push({ path, key: field.value.$secret });
+    }
+    let configuration = stored;
+    for (const { path, key } of fields) {
+      let value: string | undefined;
+      try {
+        value = await dependencies.configurationSecrets?.get(key);
+      } catch {
+        value = undefined;
+      }
+      if (typeof value !== 'string' || value === '') {
+        throw new HookActionError(`The secret "${key}" has no published value`, false);
+      }
+      resolvedSecrets.add(value);
+      configuration = withValueAt(configuration, path, value);
+    }
+    return configuration;
+  }
+
   const actionRunner: HookActionRunner = {
     async run(work, context) {
       // One key per delivery: the delivery is created once per event and hook, and its attempts
@@ -853,7 +960,21 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             true,
           );
         }
-        const checked = parsedConfiguration(registration, work.configuration);
+        const secretFields = secretFieldsOf(registration.kind.configuration);
+        if ('refusal' in secretFields) {
+          throw new HookActionError(
+            `The action's configuration is refused: ${secretFields.refusal}`,
+            true,
+          );
+        }
+        // Resolved for this attempt, so a later attempt gets what is published by then. The stored
+        // delivery keeps the reference: the values live in this call and in the copy `run` gets.
+        const resolved = await withResolvedSecrets(
+          work.configuration,
+          secretFields.paths,
+          context.resolvedSecrets,
+        );
+        const checked = parsedConfiguration(registration, resolved);
         if (!checked.ok) {
           throw new HookActionError(
             `The action's configuration is refused: ${checked.reason}`,
@@ -861,13 +982,18 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           );
         }
         // A rejection is the delivery's failed attempt; the runner's caller records its message.
-        await registration.kind.run({
-          event: work.event,
-          configuration: checked.value,
-          signal: engine.signal,
-          deliveryId: context.deliveryId,
-          idempotencyKey: key,
-        });
+        try {
+          await registration.kind.run({
+            event: work.event,
+            configuration: checked.value,
+            signal: context.signal,
+            deliveryId: context.deliveryId,
+            idempotencyKey: key,
+          });
+        } catch (error) {
+          if (isPermanentReactionError(error)) throw new HookActionError(error.message, true);
+          throw error;
+        }
         return {};
       }
       const notifications = dependencies.notifications?.();
@@ -903,6 +1029,11 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       dependencies.requestTimeoutMilliseconds ?? DEFAULT_HOOK_REQUEST_TIMEOUT_MILLISECONDS,
     newId: () => dependencies.newId('hook-delivery'),
     actionKindVersion: (plugin, kind) => actionKinds.get(actionKindKey(plugin, kind))?.version,
+    actionKindTimeout: (plugin, kind) =>
+      actionKinds.get(actionKindKey(plugin, kind))?.kind.timeoutMilliseconds,
+    actionKindAvailable: (plugin, kind) =>
+      actionKinds.get(actionKindKey(plugin, kind))?.availability?.() !== 'needs-setup',
+    timeoutSignal: dependencies.timeoutSignal,
     audit: (entry) =>
       dependencies.audit({
         runId: `hook:${entry.hookId}`,
@@ -1155,6 +1286,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             currentRevision: current.record.revision,
           });
         }
+        // After the commit, never before it: a disable that lost the compare-and-swap aborts nothing.
+        if (before.enabled && !after.enabled) deliveries.abortHook(hookId);
         if (sealed !== undefined) await secrets.set(hookId, sealed);
         recordChange('hook.updated', after, actor);
         return viewOf(after);
@@ -1165,6 +1298,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const stored = await store.getHook(hookId);
         if (stored === undefined) return false;
         if (!(await store.deleteHook(stored))) return false;
+        deliveries.abortHook(hookId);
         if (stored.record.action.type === 'webhook') {
           await secrets
             .delete(hookId)
@@ -1379,6 +1513,27 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   // once open.
   let held: BureauEventEnvelope[] | undefined = [];
 
+  // A secret saved, or removed, makes a plugin's reactions available, or not (COR-2176). The
+  // deliveries that waited for it released their leases, so a resume takes them without a restart.
+  // Nothing is taken before the hooks are open: the boot `resume()` does that, once the workflow
+  // files are loaded.
+  for (const registration of actionKinds.values()) {
+    registration.onAvailabilityChange?.(() => {
+      if (held !== undefined || engine.shuttingDown()) return;
+      if (registration.availability?.() === 'needs-setup') return;
+      engine.track(
+        deliveries.resume().then(
+          () => undefined,
+          (cause: unknown) =>
+            dependencies.diagnose(
+              'Failed to resume the hook deliveries that waited for a plugin',
+              cause,
+            ),
+        ),
+      );
+    });
+  }
+
   function dispatch(envelope: BureauEventEnvelope): void {
     if (held !== undefined) {
       held.push(envelope);
@@ -1410,6 +1565,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         let starter: Promise<string | undefined> | undefined;
         let subjects: Promise<HookEventSubjects | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
+          // A reaction does not fire on its own plugin's events, or one that raises the kind it lists
+          // would run itself for ever. Nothing is written: this is a hook that does not match.
+          if (hook.action.type === 'plugin' && event.source === hook.action.plugin) {
+            dependencies.notice?.(
+              `[bureau] Hook ${hook.id} did not run its plugin action: Skipped: ${event.kind} came from plugin ${hook.action.plugin}, and a plugin's reaction does not fire on its own plugin's events`,
+            );
+            continue;
+          }
           const projected =
             dependencies.eventForHookOwner === undefined
               ? event

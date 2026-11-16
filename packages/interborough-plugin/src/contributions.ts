@@ -365,7 +365,11 @@ export interface PluginReactionContext {
   readonly event: PluginEvent;
   /** The action's configuration, parsed with the kind's `configuration` schema. */
   readonly configuration: unknown;
-  /** Aborts when the host stops the delivery. */
+  /**
+   * Aborts when the host stops the delivery (a shutdown), when the reaction's `timeoutMilliseconds`
+   * have passed, and when the hook is disabled or deleted. The attempt ends when it aborts, whether
+   * or not `run` looks at it: pass it to whatever `run` waits on so the work stops too.
+   */
   readonly signal: AbortSignal;
   /** The id of the delivery this attempt belongs to; every attempt of one delivery shares it. */
   readonly deliveryId: string;
@@ -386,9 +390,36 @@ export interface PluginReaction {
   readonly version?: string;
   /** What the action does. */
   readonly description: string;
-  /** The schema an action's configuration is parsed with. */
+  /**
+   * How long one attempt of `run` may take, in milliseconds: a positive safe integer, or the host
+   * skips the plugin (a `setup-failed` problem naming the reaction and the value). When it passes,
+   * the context's `signal` aborts, the attempt ends in error
+   * (`The reaction timed out after N ms`) and is tried again. Absent, an attempt gets the host's
+   * webhook request timeout (10 seconds unless the host sets another). A delivery's lease lasts at
+   * least this long, so a second process never takes over a `run` still inside its timeout.
+   */
+  readonly timeoutMilliseconds?: number;
+  /**
+   * The schema an action's configuration is parsed with. Mark a field that holds a secret (an API
+   * key, a webhook token) with `.meta({ secret: true })`: a hook then stores `{ "$secret": "<key>" }`
+   * in that field, where the key names a secret the workspace has published, and never the value; a
+   * plain value in the field is refused when the hook is written. Each attempt of a delivery
+   * resolves the key to the value published then, and `run` receives the value in `configuration`,
+   * as the schema declares it (a string). An attempt whose key has no value fails and is tried
+   * again, and never falls back to another value. Mark only fields reached through an object's
+   * properties, optional or not: a marker under an array or a record, and a marked field that
+   * is a union, are refused, because a reference has no single place to be kept there. `.nullable()`
+   * makes a union, so both `.meta({ secret: true }).nullable()` and `.nullable().meta({ secret: true })`
+   * are refused; use `.optional()` instead. A `{ secret: true }` inside a `default` or `examples`
+   * value is data, not a marker.
+   */
   readonly configuration: z.ZodType;
-  /** Carries out the action for one event; a rejection is a failed delivery. */
+  /**
+   * Carries out the action for one event. A rejection fails that attempt, and the delivery is tried
+   * again until it runs out of attempts. Reject with a `PluginReactionError` whose `permanent`
+   * is `true` when a retry cannot change the answer (the channel does not exist, the service
+   * refuses the input for good): the delivery then ends `failed` after that one attempt.
+   */
   run(context: PluginReactionContext): Promise<void>;
 }
 

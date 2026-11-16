@@ -746,8 +746,20 @@ class Contributed {
       this.validatorSources.push({ plugin, version, validator: contributed });
     }
     for (const kind of result.reactions ?? []) {
-      // A delivery pins the kind's own version, else its plugin's (COR-1879).
-      this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
+      // A delivery pins the kind's own version, else its plugin's (COR-1879). While a secret the
+      // plugin declared is missing a delivery waits instead of failing, and the gate says when it
+      // is saved (COR-2176).
+      this.actionKinds.push({
+        plugin,
+        kind,
+        version: kind.version ?? version,
+        ...(gate === undefined
+          ? {}
+          : {
+              availability: () => (gate.available() ? 'available' : 'needs-setup'),
+              onAvailabilityChange: (listener) => gate.onChange(listener),
+            }),
+      });
     }
     for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
@@ -1045,6 +1057,19 @@ async function setUp(
         formatToolId({ namespace: descriptor.name, name: interceptor.name }),
         interceptor,
       );
+    }
+    // A reaction's timeout builds its delivery's lease, so a value that is not a positive safe
+    // integer skips this plugin here, and never reaches `createHooks`, which would fail the Bureau.
+    for (const reaction of returned.reactions ?? []) {
+      const { timeoutMilliseconds } = reaction;
+      if (
+        timeoutMilliseconds !== undefined &&
+        !(Number.isSafeInteger(timeoutMilliseconds) && timeoutMilliseconds > 0)
+      ) {
+        throw new Error(
+          `The reaction "${reaction.name}" has a timeoutMilliseconds of ${String(timeoutMilliseconds)}, which is not a positive safe integer`,
+        );
+      }
     }
     // Registered now and refused while a declared secret is missing: the options that receive
     // contributions are read once, so one added later would never be seen (COR-1874).

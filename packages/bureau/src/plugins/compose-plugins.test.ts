@@ -368,6 +368,41 @@ describe('composePlugins', () => {
     }
   });
 
+  describe('a reaction’s timeoutMilliseconds (COR-2175)', () => {
+    it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
+      'skips only the plugin whose reaction sets %p, naming the reaction and the value, and loads the others',
+      async (timeoutMilliseconds) => {
+        const { records, options } = await composePlugins<ComposableOptions>({
+          plugins: [
+            pluginEntry('broken', () => ({
+              reactions: [{ ...actionKind('page'), timeoutMilliseconds }],
+            })),
+            pluginEntry('fine', () => ({
+              reactions: [{ ...actionKind('ping'), timeoutMilliseconds: 5_000 }],
+            })),
+          ],
+          hooks: {},
+        });
+
+        expect(records.map((record) => record.status)).toEqual(['skipped', 'running']);
+        expect(records[0]?.problems).toEqual([
+          expect.objectContaining({
+            code: 'setup-failed',
+            message: expect.stringContaining(`"page"`),
+          }),
+        ]);
+        const [problem] = records[0]?.problems ?? [];
+        expect(problem?.code === 'setup-failed' ? problem.message : '').toContain(
+          String(timeoutMilliseconds),
+        );
+        const registered = options.hooks?.actionKinds?.map(
+          (registration) => `${registration.plugin}/${registration.kind.name}`,
+        );
+        expect(registered).toEqual(['fine/ping']);
+      },
+    );
+  });
+
   describe('guardrail families', () => {
     const detect = async () => ({}) as never;
     const validate = async () => ({ valid: true, confidence: 0, category: 'x' });

@@ -4922,6 +4922,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       workspace === undefined
         ? undefined
         : (owner) => mayRunUseSharedConfiguration(workspace, owner, 'bureau.workflows:write', true),
+    configurationSecrets: options.pluginSecrets,
     options: options.hooks,
     engine: webhookNotifierInstance?.engine,
     kv: runtime.kv,
