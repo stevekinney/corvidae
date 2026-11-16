@@ -382,7 +382,7 @@ describe('a plugin kind in the bureau.events kinds filter (COR-2224)', () => {
     coreEvent(bureau, 'after');
     await reading;
     expect(liveSeen).toMatchObject([{ kind: 'demo:greeted', source: 'demo' }]);
-    await live.close();
+    await live.iterable.close();
 
     const reconnected = await served.subscribe({
       kinds: ['demo:greeted'],
@@ -396,6 +396,6 @@ describe('a plugin kind in the bureau.events kinds filter (COR-2224)', () => {
     expect(replayedSeen).toMatchObject([
       { kind: 'demo:greeted', payload: { greetingId: 'greeting-1' } },
     ]);
-    await reconnected.close();
+    await reconnected.iterable.close();
   });
 });
