@@ -1094,18 +1094,16 @@ function eventPayloadProblems(
   try {
     return (contributions.events ?? []).flatMap((declaration) => {
       const { fields, budgetExhausted } = judgeEventPayload(declaration.payload);
-      return fields.map(
-        (field): PluginProblem => ({
-          code: 'event-payload-content',
-          event: declaration.name,
-          field,
-          ...(budgetExhausted
-            ? {
-                message: `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
-              }
-            : {}),
-        }),
-      );
+      return fields.map((field): PluginProblem => ({
+        code: 'event-payload-content',
+        event: declaration.name,
+        field,
+        ...(budgetExhausted
+          ? {
+              message: `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
+            }
+          : {}),
+      }));
     });
   } catch (error) {
     // A schema that throws when read (a getter that fails) skips its plugin; it never rejects the host.

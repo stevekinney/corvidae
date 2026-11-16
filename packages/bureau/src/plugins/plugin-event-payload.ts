@@ -146,10 +146,11 @@ export interface EventPayloadVerdict {
  * key and charges each getter. Once frozen, or for a shape Zod did not wrap, `def.shape` is it.
  */
 function unreadShape(definition: Definition): Readonly<Record<string, unknown>> {
-  const accessor = Object.getOwnPropertyDescriptor(definition, 'shape')?.get as
-    | { raw?: Readonly<Record<string, unknown>> }
-    | undefined;
-  return accessor?.raw ?? definition.shape ?? {};
+  const descriptor = Object.getOwnPropertyDescriptor(definition, 'shape');
+  const accessor: unknown = descriptor === undefined ? undefined : Reflect.get(descriptor, 'get');
+  const raw: unknown = typeof accessor === 'function' ? Reflect.get(accessor, 'raw') : undefined;
+  if (typeof raw === 'object' && raw !== null) return raw as Readonly<Record<string, unknown>>;
+  return definition.shape ?? {};
 }
 
 /** `rest` under the object key `key`: `note` under `customer` is `customer.note`, `[]` is `lines[]`. */
