@@ -805,7 +805,7 @@ describe('composePlugins', () => {
       expect(isPublishedEventKind('kit:greeted', ['kit:greeted'])).toBe(true);
     });
 
-    it('skips a formatter that lists another plugin\'s declared kind, naming the owner', async () => {
+    it("skips a formatter that lists another plugin's declared kind, naming the owner", async () => {
       const { records } = await composePlugins<ComposableOptions>({
         plugins: [
           pluginEntry('kit', () => ({ events: [greeted()] })),
@@ -818,6 +818,21 @@ describe('composePlugins', () => {
       expect(records[1]?.problems).toEqual([
         { code: 'formatter-foreign-kind', formatter: 'fmt', kind: 'kit:greeted', owner: 'kit' },
       ]);
+    });
+
+    it('names the owner whichever of the two plugins loads first', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('other', () => formatting(['kit:greeted'])),
+          pluginEntry('kit', () => ({ events: [greeted()] })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        { code: 'formatter-foreign-kind', formatter: 'fmt', kind: 'kit:greeted', owner: 'kit' },
+      ]);
+      expect(records[1]?.status).toBe('running');
     });
 
     it('skips a formatter that lists an undeclared plugin kind, with formatter-unknown-kind', async () => {

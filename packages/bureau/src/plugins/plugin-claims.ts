@@ -16,7 +16,13 @@ import type { PluginClashParty, PluginContributionKind, PluginProblem } from './
  * `panel-tool` holds the tool names a panel opens from, because a tool links to one page.
  */
 export type ClaimSpace =
-  PluginContributionKind | 'plugin' | 'event-kind' | 'declared-event-kind' | 'provider-name' | 'panel-uri' | 'panel-tool';
+  | PluginContributionKind
+  | 'plugin'
+  | 'event-kind'
+  | 'declared-event-kind'
+  | 'provider-name'
+  | 'panel-uri'
+  | 'panel-tool';
 
 /** One name in one space. */
 export interface Claim {

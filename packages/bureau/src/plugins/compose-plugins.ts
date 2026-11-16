@@ -1242,7 +1242,10 @@ export async function composePlugins<O extends ComposableOptions>(
     }
     for (const claim of plan.claims) claims.hold(claim, party);
     for (const { name } of outcome.result.events ?? []) {
-      declaredBy.set(formatToolId({ namespace: entry.descriptor.name, name }), entry.descriptor.name);
+      declaredBy.set(
+        formatToolId({ namespace: entry.descriptor.name, name }),
+        entry.descriptor.name,
+      );
     }
     contributed.add(
       entry.descriptor.name,
@@ -1262,6 +1265,19 @@ export async function composePlugins<O extends ComposableOptions>(
       },
       ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
     });
+  }
+  // A plugin that loaded before the owner of a kind its formatter lists had no owner to name yet, so
+  // it was skipped as `formatter-unknown-kind`; now every owner is known, name it (COR-2225).
+  for (const [index, record] of records.entries()) {
+    if (record.status !== 'skipped') continue;
+    const problems = record.problems.map((problem): PluginProblem => {
+      if (problem.code !== 'formatter-unknown-kind') return problem;
+      const owner = declaredBy.get(problem.kind);
+      if (owner === undefined) return problem;
+      const { formatter, kind } = problem;
+      return { code: 'formatter-foreign-kind', formatter, kind, owner };
+    });
+    records[index] = { ...record, problems };
   }
   const gates = records.flatMap(({ gate }) => (gate === undefined ? [] : [gate]));
   return {
