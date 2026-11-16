@@ -4,7 +4,7 @@
  * into the agent's revision identity, notices an edit to one, and keeps the text beside the run's
  * snapshot and only the digest on a saved version.
  */
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
@@ -266,9 +266,13 @@ describe('editing a reference document', () => {
     await fixture.catalog.refresh();
     const before = entryOf(fixture).definitionRevision;
 
-    // A document in a subdirectory: `fs.watch` of the directory never sees it.
-    await fixture.put('docs/glossary.txt', 'Order: a purchase or a return.\n');
+    // A document in a subdirectory: `fs.watch` of the directory never sees it, but a scan the
+    // setup writes started can still read it, so listening starts before the edit. The edit is
+    // renamed into place, so no scan reads the document half written.
     const changed = fixture.nextChange((change) => change.changed.includes('helper'));
+    const temporary = join(fixture.directory, 'docs', '.glossary.tmp');
+    await writeFile(temporary, 'Order: a purchase or a return.\n');
+    await rename(temporary, join(fixture.directory, 'docs', 'glossary.txt'));
     await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
     await changed;
 
@@ -286,9 +290,73 @@ describe('editing a reference document', () => {
     await fixture.catalog.refresh();
     expect(entryOf(fixture).state).toBe('ready');
 
+    // Listening starts before the removal. The real `fs.watch` is live here, and a scan it starts
+    // (or one the setup writes started and is still reading) can announce the rejection first; a
+    // rejection announced before anyone listens is never announced again.
+    const changed = fixture.nextChange((change) => change.rejected.includes('helper'));
     await rm(join(fixture.directory, 'style.md'));
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await changed;
+    expect(entryOf(fixture).problem?.code).toBe('missing-reference');
+  });
+
+  it('is noticed by a poll alone when the watcher reports nothing', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const fixture = await start({
+      runtime,
+      watch: true,
+      openWatcher: () => ({ on: () => undefined, close: () => undefined }) as never,
+    });
+    await fixture.put('style.md', 'Be brief.\n');
+    await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL, references: '[style.md]' }));
+    await fixture.catalog.refresh();
+    expect(entryOf(fixture).state).toBe('ready');
+
+    await rm(join(fixture.directory, 'style.md'));
+    // Nothing has rescanned: the removal is invisible until a timer fires.
+    expect(entryOf(fixture).state).toBe('ready');
     const changed = fixture.nextChange((change) => change.rejected.includes('helper'));
     await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await changed;
+    expect(entryOf(fixture).problem?.code).toBe('missing-reference');
+  });
+
+  it('is noticed by a scan that was already reading the documents when it went missing, with no poll', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    let holdReads = false;
+    let reachedGate: () => void = () => {};
+    const reached = new Promise<void>((resolve) => (reachedGate = resolve));
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const fixture = await start({
+      runtime,
+      watch: true,
+      openWatcher: () => ({ on: () => undefined, close: () => undefined }) as never,
+      operations: {
+        ...nodeAgentFileOperations,
+        // Holds the scan on the document, before it learns whether the document is there.
+        stat: async (path) => {
+          if (holdReads && basename(path) === 'style.md') {
+            reachedGate();
+            await released;
+          }
+          return nodeAgentFileOperations.stat(path);
+        },
+      },
+    });
+    await fixture.put('style.md', 'Be brief.\n');
+    await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL, references: '[style.md]' }));
+    await fixture.catalog.refresh();
+    expect(entryOf(fixture).state).toBe('ready');
+
+    holdReads = true;
+    const changed = fixture.nextChange((change) => change.rejected.includes('helper'));
+    const scanning = fixture.catalog.refresh();
+    await reached;
+    await rm(join(fixture.directory, 'style.md'));
+    release();
+    await scanning;
+    // The scan announced the rejection, and the poll has nothing left to find.
     await changed;
     expect(entryOf(fixture).problem?.code).toBe('missing-reference');
   });

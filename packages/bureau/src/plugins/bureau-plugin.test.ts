@@ -3,7 +3,7 @@
  * `bureau:discover-agents`, five `bureau:child-runs-*`, two asset tools, and the eleven `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,6 +18,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { eventSourceOf } from '../event-source';
 import { agentFileDirectory } from '../sources/agent-file-directory';
+import { hashDefinitionBytes } from '../sources/definition-source';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import {
   startWorkflowToolsBureau,
@@ -308,62 +309,113 @@ describe('the source of an event a bureau tool causes', () => {
   });
 });
 
-describe('an owner edit that lands while a bureau tool is writing the same workflow', () => {
-  it('is not marked as the tool’s: the source follows the bytes the tool wrote', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'bureau-attribution-'));
-    try {
-      const inner = workflowFileDirectory(directory);
-      // Holds each write after it is on disk and before the catalog reads it back.
-      let holdWrites = false;
-      let reachedGate: () => void = () => {};
-      const reached = new Promise<void>((resolve) => (reachedGate = resolve));
-      let release: () => void = () => {};
-      const released = new Promise<void>((resolve) => (release = resolve));
-      const gated: typeof inner = Object.assign(Object.create(inner) as typeof inner, {
-        async write(...input: Parameters<typeof inner.write>) {
-          const entry = await inner.write(...input);
-          if (holdWrites) {
-            reachedGate();
-            await released;
-          }
-          return entry;
-        },
-      });
-      const harness = await start({ overrides: { workflowSource: gated } });
-      await harness.bureau.workflows!.create('nightly', { trigger: TRIGGER, steps: STEPS });
-      const listed = await harness.bureau.workflows!.list();
-      const hash = listed.find((listing) => listing.id === 'nightly')?.hash;
-      expect(hash).toBeDefined();
-
-      const sources: Array<string | undefined> = [];
-      harness.bureau.addEventListener('definitions.changed', (event) => {
-        if ((event as unknown as { catalog: string }).catalog === 'workflows') {
-          sources.push(eventSourceOf(event));
+/**
+ * A bureau tool pauses a workflow while its write is held after the bytes are on disk, the owner
+ * edits the same file, and the write is released. The watcher is live (`fs.watch` and a heartbeat
+ * rescan), so how many scans run before the owner's edit lands is not the test's to decide: a scan
+ * can read the tool's bytes (and its event is then the tool's), or only the owner's. What the
+ * contract promises is that each `definitions.changed` event's source follows the bytes the scan
+ * that announced it read.
+ *
+ * `scanBetween` forces a scan between the tool's bytes and the owner's edit.
+ */
+async function ownerEditDuringToolWrite(scanBetween: boolean) {
+  const directory = await mkdtemp(join(tmpdir(), 'bureau-attribution-'));
+  try {
+    const inner = workflowFileDirectory(directory);
+    // Holds each write after it is on disk and before the catalog reads it back.
+    let holdWrites = false;
+    let reachedGate: () => void = () => {};
+    const reached = new Promise<void>((resolve) => (reachedGate = resolve));
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let toolHash: string | undefined;
+    // The hash of `nightly` in the latest load. A scan is single-flight and tells its listeners
+    // right after its own load, so at the moment an event is dispatched this is what that scan read.
+    let loadedHash: string | undefined;
+    const gated: typeof inner = Object.assign(Object.create(inner) as typeof inner, {
+      async load() {
+        const entries = await inner.load();
+        loadedHash = entries.find((entry) => entry.id === 'nightly')?.hash;
+        return entries;
+      },
+      async write(...input: Parameters<typeof inner.write>) {
+        const entry = await inner.write(...input);
+        if (holdWrites) {
+          toolHash = entry.hash;
+          reachedGate();
+          await released;
         }
-      });
+        return entry;
+      },
+    });
+    const harness = await start({ overrides: { workflowSource: gated } });
+    await harness.bureau.workflows!.create('nightly', { trigger: TRIGGER, steps: STEPS });
+    const listed = await harness.bureau.workflows!.list();
+    const hash = listed.find((listing) => listing.id === 'nightly')?.hash;
+    expect(hash).toBeDefined();
 
-      holdWrites = true;
-      const call = harness.callTool('bureau__workflows-pause', {
-        id: 'nightly',
-        expectedHash: hash,
-      });
-      await reached;
-      // The tool's bytes are on disk; the owner edits the file before the tool's write settles.
-      const edited = JSON.stringify({
-        trigger: { kind: 'schedule', spec: '2h' },
-        steps: STEPS,
-      });
-      await writeFile(join(directory, 'nightly.json'), edited);
-      release();
-      const { outcome } = await call;
-      await harness.bureau.workflows!.refresh();
+    const events: Array<{ source: string | undefined; read: string | undefined }> = [];
+    harness.bureau.addEventListener('definitions.changed', (event) => {
+      if ((event as unknown as { catalog: string }).catalog === 'workflows') {
+        events.push({ source: eventSourceOf(event), read: loadedHash });
+      }
+    });
 
-      expect(outcome).toBe('success');
-      expect(sources.length).toBeGreaterThan(0);
-      expect(sources).not.toContain('bureau');
-    } finally {
-      await rm(directory, { recursive: true, force: true });
+    holdWrites = true;
+    const call = harness.callTool('bureau__workflows-pause', {
+      id: 'nightly',
+      expectedHash: hash,
+    });
+    await reached;
+    // The tool's bytes are on disk.
+    if (scanBetween) await harness.bureau.workflows!.refresh();
+    // The owner edits the file before the tool's write settles, in one step so no scan reads it half written.
+    const edited = new TextEncoder().encode(
+      JSON.stringify({ trigger: { kind: 'schedule', spec: '2h' }, steps: STEPS }),
+    );
+    const ownerTemporary = join(directory, '.nightly.owner');
+    await writeFile(ownerTemporary, edited);
+    await rename(ownerTemporary, join(directory, 'nightly.json'));
+    release();
+    const { outcome } = await call;
+    await harness.bureau.workflows!.refresh();
+    const finalListing = await harness.bureau.workflows!.list();
+    const finalHash = finalListing.find((listing) => listing.id === 'nightly')?.hash;
+    return { outcome, events, toolHash, ownerHash: hashDefinitionBytes(edited), finalHash };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+describe('an owner edit that lands while a bureau tool is writing the same workflow', () => {
+  it('is not marked as the tool’s: the source follows the bytes each scan read', async () => {
+    const { outcome, events, toolHash, ownerHash, finalHash } =
+      await ownerEditDuringToolWrite(false);
+
+    expect(outcome).toBe('success');
+    expect(toolHash).toBeDefined();
+    expect(toolHash).not.toBe(ownerHash);
+    expect(finalHash).toBe(ownerHash);
+    expect(events.length).toBeGreaterThan(0);
+    for (const { source, read } of events) {
+      expect(source).toBe(read === toolHash ? 'bureau' : undefined);
     }
+    // The change to the owner's bytes is announced last, and is nobody's.
+    expect(events.at(-1)).toEqual({ source: undefined, read: ownerHash });
+  });
+
+  it('is announced as the tool’s when a scan reads the tool’s bytes first, and as nobody’s once the owner’s bytes are read', async () => {
+    const { outcome, events, toolHash, ownerHash, finalHash } =
+      await ownerEditDuringToolWrite(true);
+
+    expect(outcome).toBe('success');
+    expect(finalHash).toBe(ownerHash);
+    expect(events.map(({ read }) => read)).toContain(toolHash);
+    for (const { source, read } of events) {
+      expect(source).toBe(read === toolHash ? 'bureau' : undefined);
+    }
+    expect(events.at(-1)).toEqual({ source: undefined, read: ownerHash });
   });
 });
 
