@@ -198,6 +198,18 @@ describe('COR-1552 and COR-2308: the light arm ships the retuned values', () => 
   });
 });
 
+// COR-2450: at half alpha the light scrim greyed the whole page behind a modal. A quarter keeps
+// the page readable behind the dialog. The dark scrim is unchanged.
+describe('COR-2450: the light overlay backdrop dims the page by a quarter', () => {
+  test('the light scrim is oklch(20% 0.03 245) at alpha 0.25', () => {
+    expectColor('light', ['--cinder-overlay-backdrop', [0.2, 0.03, 245], 0.25]);
+  });
+
+  test('the dark scrim keeps alpha 0.65', () => {
+    expectColor('dark', ['--cinder-overlay-backdrop', [0.08, 0.02, 245], 0.65]);
+  });
+});
+
 describe('COR-1552 and COR-2308: the structural and control border tiers', () => {
   for (const arm of ['light', 'dark'] as const) {
     for (const [property, alphas] of INK_TIERS) {

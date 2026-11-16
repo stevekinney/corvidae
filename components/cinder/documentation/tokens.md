@@ -596,7 +596,7 @@ Shared backdrop, blur, padding, and radius for Modal, Drawer, and Popover. Adjus
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-overlay-backdrop` | `light-dark(oklch(20% 0.03 245 / 0.5), oklch(8% 0.02 245 / 0.65))` | Overlay backdrop scrim color. |
+| `--cinder-overlay-backdrop` | `light-dark(oklch(20% 0.03 245 / 0.25), oklch(8% 0.02 245 / 0.65))` | Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright. |
 | `--cinder-overlay-blur` | `4px` | Overlay backdrop blur radius. |
 | `--cinder-overlay-padding` | `var(--cinder-space-6)` | Overlay panel padding. |
 | `--cinder-overlay-radius` | `var(--cinder-radius-lg)` | Overlay panel corner radius. |

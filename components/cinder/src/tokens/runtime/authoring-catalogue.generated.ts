@@ -9254,7 +9254,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-overlay-backdrop',
       category: 'color',
       component: null,
-      description: 'Overlay backdrop scrim color.',
+      description:
+        'Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
