@@ -5411,6 +5411,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         gate: record?.gate,
         // The feed records it from the emitter, as it records every other event.
         dispatch: (event) => emitter.dispatchEvent(event),
+        // The emitter completes in the same synchronous stretch that stops the feed recording, so
+        // no publish resolves between the feed stopping and this turning true (`shutdown`).
+        isDisposed: () => emitter.completed,
       }),
       agents: { list: () => host.agents.list() },
       schedules: {

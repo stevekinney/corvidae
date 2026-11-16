@@ -1,11 +1,14 @@
 /**
  * COR-2224 — `PluginHost.publish`: a plugin publishes one of the events it declared.
  *
- * The call checks, in order, that the plugin declared the name (a `TypeError` naming it), that
- * every secret the plugin declared is set (the secret gate's refusal, as for any contribution), and
- * that the payload satisfies the declared schema (a `TypeError`). Only then does it dispatch a
+ * The call checks, in order, that the Bureau is not disposed (a {@link PluginHostDisposedError}:
+ * a disposed Bureau records and delivers nothing, so a resolved call would have lost the event),
+ * that the plugin declared the name (a `TypeError` naming the kind `<plugin>:<name>`), that every
+ * secret the plugin declared is set (the secret gate's refusal, as for any contribution), and that
+ * the payload satisfies the declared schema (a `TypeError`). Only then does it dispatch a
  * {@link PluginPublishedEvent} of kind `<plugin>:<name>`, marked with the plugin as its source, so
- * the event feed records it. A rejected call dispatches nothing.
+ * the event feed records it. The checks and the dispatch run in one synchronous stretch, so a
+ * dispose cannot fall between them. A rejected call dispatches nothing.
  *
  * @module plugin-event-publish
  */
@@ -26,18 +29,34 @@ export interface PluginEventPublisherOptions {
   readonly gate: PluginSecretGate | undefined;
   /** Dispatches the event on the Bureau emitter. */
   readonly dispatch: (event: Event) => void;
+  /** Whether the Bureau no longer records or delivers events. */
+  readonly isDisposed: () => boolean;
+}
+
+/** A plugin published after the Bureau was disposed, which no longer records or delivers events. */
+export class PluginHostDisposedError extends Error {
+  /** The plugin that published. */
+  readonly plugin: string;
+
+  /** The error for `plugin`'s publish after dispose. */
+  constructor(plugin: string) {
+    super(`Plugin "${plugin}" cannot publish: the Bureau is disposed.`);
+    this.name = 'PluginHostDisposedError';
+    this.plugin = plugin;
+  }
 }
 
 /** The `publish` of one plugin's host API. */
 export function createPluginEventPublisher(
   options: PluginEventPublisherOptions,
 ): (name: string, payload: unknown) => Promise<void> {
-  const { plugin, declarations, gate, dispatch } = options;
+  const { plugin, declarations, gate, dispatch, isDisposed } = options;
   return async (name, payload) => {
+    if (isDisposed()) throw new PluginHostDisposedError(plugin);
     const declaration = declarations.find((candidate) => candidate.name === name);
     if (declaration === undefined) {
       throw new TypeError(
-        `Plugin "${plugin}" declared no event named "${name}", so it cannot publish one.`,
+        `Plugin "${plugin}" declared no event "${plugin}:${name}", so it cannot publish one.`,
       );
     }
     const kind = `${plugin}:${declaration.name}`;
