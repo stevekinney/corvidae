@@ -420,6 +420,20 @@ export interface PluginFormatting {
   readonly title: string;
   /** More detail, when the event has any. */
   readonly body?: string;
+  /**
+   * How much the event matters to whoever reads the activity view. Without one, or with any other
+   * value, the event is `info`.
+   */
+  readonly tier?: 'critical' | 'warning' | 'info';
+  /** The name of a Lucide icon the view draws beside the title. */
+  readonly icon?: string;
+  /**
+   * Where the view sends the reader for more, as a path in the host's router: it starts with one
+   * `/` and holds no whitespace or control character. The host drops any other value (a URL, a
+   * `//host` path, a relative path, a path with a tab or line break), so a plugin cannot point the
+   * view at another origin.
+   */
+  readonly link?: string;
 }
 
 /** Formats the events of the kinds it names. */
@@ -428,7 +442,12 @@ export interface PluginFormatter {
   readonly name: string;
   /** The event kinds the formatter handles. */
   readonly eventKinds: readonly string[];
-  /** Formats one event of a kind in `eventKinds`. */
+  /**
+   * Formats one event of a kind in `eventKinds`, from the event alone and synchronously: it is
+   * handed no storage, no secrets and no other event, and returns no promise. The host keeps a
+   * `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000
+   * characters, cutting a longer one, and drops a `body` that is not a string.
+   */
   format(event: PluginEvent): PluginFormatting;
 }
 
@@ -505,6 +524,33 @@ export type PluginWorkflow = WorkflowDefinition<any, any, string, any> & {
 };
 
 /**
+ * An event kind a plugin declares. The kind is `<plugin>:<name>`, so no two plugins can hold one,
+ * and none can hold a kind Bureau itself publishes (those have no `:`). A declared kind is listed
+ * by `bureau.events.catalog` with the fields of its payload, and a plugin's own identity records
+ * it as an `event` with a digest of `payload`.
+ *
+ * A payload carries identifiers, statuses and counts, never content (an event reaches hooks,
+ * activity views and other plugins, and is not the place a document or a message travels). The
+ * host refuses a plugin whose payload could carry content, with `event-payload-content`. A field
+ * is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status),
+ * or a string marked `.meta({ identifier: true })`, an identifier of a thing held elsewhere; a
+ * nested object, array, union or optional of such values is accepted too. A free `z.string()`,
+ * `z.unknown()`, `z.any()`, `z.record()` and an object with a catchall are refused.
+ */
+export interface PluginEventDeclaration {
+  /** The event's name, unique within the plugin; its kind is `<plugin>:<name>`. */
+  readonly name: string;
+  /**
+   * The event's own version, which an identity records. Without one the plugin's version is used.
+   */
+  readonly version?: string;
+  /** What the event means and when the plugin publishes it. */
+  readonly description: string;
+  /** The shape of the event's payload: a Zod object whose fields hold no content. */
+  readonly payload: z.ZodObject;
+}
+
+/**
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
  * plugin names only the kinds it contributes.
  */
@@ -533,6 +579,8 @@ export interface PluginContributions {
   readonly panels?: readonly PluginPanel[];
   /** Event formatters. */
   readonly formatters?: readonly PluginFormatter[];
+  /** Event kinds the plugin declares, each `<plugin>:<name>`, with the shape of its payload. */
+  readonly events?: readonly PluginEventDeclaration[];
   /** Agents defined in code. */
   readonly agents?: readonly PluginAgent[];
   /** Workflows defined in code, registered as `plugin:name` beside the workflow files. */

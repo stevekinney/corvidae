@@ -995,15 +995,19 @@
     "$.events[].payload[].name",
     "$.events[].payload[].optional",
     "$.events[].payload[].type",
-    "$.events[].scopes"
+    "$.events[].scopes",
+    "$.events[].source"
   ],
   "output:bureau.events.format": [
     "$.events",
     "$.events[].body",
     "$.events[].formattedBy",
+    "$.events[].icon",
     "$.events[].kind",
+    "$.events[].link",
     "$.events[].runId",
     "$.events[].source",
+    "$.events[].tier",
     "$.events[].title"
   ],
   "output:bureau.goals.cancel": ["$.goalRunId", "$.outcome", "$.revision", "$.status"],
