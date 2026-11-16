@@ -1772,6 +1772,8 @@
         reminder.blockSize,
       );
       const cardBox = card.getBoundingClientRect();
+      // A layout not yet measured (zero-sized boxes) says nothing about where the card stands.
+      if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return;
       // A card taller than the transcript has its bottom, Deny and Approve, aligned to the
       // transcript's bottom with the clearance to spare (COR-2327); the lift leaves such a card
       // alone, so the two never pull against each other.

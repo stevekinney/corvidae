@@ -796,7 +796,9 @@
     if (transcript !== null) {
       const card = row.getBoundingClientRect();
       const box = transcript.getBoundingClientRect();
-      if (approvalTallerThanTranscript(card, box)) {
+      // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
+      const measured = card.height > 0 && box.height > 0;
+      if (measured && approvalTallerThanTranscript(card, box)) {
         transcript.scrollTop += approvalArrivalShift(card, box);
         return;
       }
