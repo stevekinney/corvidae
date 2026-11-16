@@ -367,7 +367,7 @@ describe('the runs a schedule missed', () => {
     });
     const status = within(row).getByRole('img', { name: 'Missed runs, 2' });
     expect(status.textContent?.trim()).toBe('Missed runs, 2');
-    expect(status.textContent).not.toContain('·');
+    expect(status.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(status.getAttribute('data-cinder-status')).toBe('warning');
   });
 

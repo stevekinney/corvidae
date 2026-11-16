@@ -62,8 +62,40 @@ export interface EngineRunTasksDependencies {
   /** Who owns a schedule, or `undefined` when it is unknown. */
   readonly ownerOfSchedule: (scheduleId: string) => Promise<string | undefined>;
   /** The owner a tick falls back to when its schedule has none: the deployment's. */
-  readonly deploymentOwner: string;
+  readonly deploymentOwner: () => string;
   readonly diagnose: (message: string, cause: unknown) => void;
+}
+
+/** The workflow runtime, as far as {@link createEngineRunTasksOf} reads it. */
+export interface EngineRunTasksRuntime {
+  readonly workflowTypes: () => Promise<readonly string[]>;
+  readonly revisionSteps: EngineRunTasksDependencies['revisionSteps'];
+  readonly workflows: { readonly owner: string };
+}
+
+/**
+ * {@link createEngineRunTasks} over the Bureau's workflow runtime and durable engine, each read when
+ * a list is built: a Bureau with no workflow runtime lists no instance, and one with no durable
+ * engine lists none at all.
+ */
+export function createEngineRunTasksOf(dependencies: {
+  readonly runtime: () => EngineRunTasksRuntime | undefined;
+  readonly engine: () => EngineRunTaskEngine | undefined;
+  readonly ownerOfInstance: EngineRunTasksDependencies['ownerOfInstance'];
+  readonly ownerOfSchedule: EngineRunTasksDependencies['ownerOfSchedule'];
+  readonly localOwner: string;
+  readonly diagnose: EngineRunTasksDependencies['diagnose'];
+}): EngineRunTasks {
+  return createEngineRunTasks({
+    engine: () => (dependencies.runtime() === undefined ? undefined : dependencies.engine()),
+    workflowTypes: async () => (await dependencies.runtime()?.workflowTypes()) ?? [],
+    revisionSteps: async (type, workflowVersion) =>
+      dependencies.runtime()?.revisionSteps(type, workflowVersion),
+    ownerOfInstance: dependencies.ownerOfInstance,
+    ownerOfSchedule: dependencies.ownerOfSchedule,
+    deploymentOwner: () => dependencies.runtime()?.workflows.owner ?? dependencies.localOwner,
+    diagnose: dependencies.diagnose,
+  });
 }
 
 /** The engine's runs as task views. */
@@ -97,7 +129,10 @@ function truncated(text: string): string {
  * instance a person or a plugin started carries an `origin`; one a schedule fired carries the
  * schedule's trigger (`{ kind: 'schedule', scheduleId }`) and no origin.
  */
-export function instanceStartOf(input: unknown): {
+export function instanceStartOf(
+  input: unknown,
+  runId: string,
+): {
   readonly origin: TaskOrigin | null;
   readonly scheduleId: string | null;
 } {
@@ -107,7 +142,8 @@ export function instanceStartOf(input: unknown): {
   if (origin?.kind === 'schedule') return { origin, scheduleId: origin.scheduleId };
   const scheduleId = input['kind'] === 'schedule' ? input['scheduleId'] : undefined;
   if (typeof scheduleId === 'string' && scheduleId !== '') {
-    return { origin: origin ?? { kind: 'schedule', scheduleId, fireId: '' }, scheduleId };
+    // The fire is the run the schedule started: this instance.
+    return { origin: origin ?? { kind: 'schedule', scheduleId, fireId: runId }, scheduleId };
   }
   return { origin, scheduleId: null };
 }
@@ -129,9 +165,9 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       const scheduleId = isScheduleTick(tick) ? tick.scheduleId : undefined;
       const owner =
         scheduleId === undefined ? undefined : await dependencies.ownerOfSchedule(scheduleId);
-      return owner ?? dependencies.deploymentOwner;
+      return owner ?? dependencies.deploymentOwner();
     }
-    return (await dependencies.ownerOfInstance(run.id)) ?? dependencies.deploymentOwner;
+    return (await dependencies.ownerOfInstance(run.id)) ?? dependencies.deploymentOwner();
   }
 
   async function tickView(run: WorkflowSummary, state: WorkflowState): Promise<TaskView> {
@@ -197,7 +233,7 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
     engine: EngineRunTaskEngine,
     readSteps: boolean,
   ): Promise<TaskView> {
-    const { origin, scheduleId } = instanceStartOf(state.input);
+    const { origin, scheduleId } = instanceStartOf(state.input, run.id);
     const revision = await dependencies.revisionSteps(run.type, state.versionTuple.workflowVersion);
     const total =
       revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
@@ -228,14 +264,23 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
     async list() {
       const engine = dependencies.engine();
       if (engine === undefined) return [];
-      const types = [
-        RUN_ENGINE_WORKFLOW_TYPE.scheduleTick,
-        ...(await dependencies.workflowTypes()).map((type) => weftNameOf(type)),
-      ];
+      // A read the engine refuses leaves those runs out and is reported, never a failure of the
+      // list of the tasks that have records (the way `runCounts` leaves a count out).
+      const types: string[] = [RUN_ENGINE_WORKFLOW_TYPE.scheduleTick];
+      try {
+        const identifiers = await dependencies.workflowTypes();
+        types.push(...identifiers.map((type) => weftNameOf(type)));
+      } catch (error) {
+        diagnose('Could not read the workflow types to list their instances as tasks.', error);
+      }
       const found: WorkflowSummary[] = [];
       for (const type of new Set(types)) {
-        const page = await engine.list({ type, limit: ENGINE_RUN_TASKS_PER_TYPE });
-        found.push(...page.items);
+        try {
+          const page = await engine.list({ type, limit: ENGINE_RUN_TASKS_PER_TYPE });
+          found.push(...page.items);
+        } catch (error) {
+          diagnose(`Could not list the runs of "${type}" as tasks.`, error);
+        }
       }
       // Newest first, so the history a few runs are read for is the newest's.
       const newest = found.toSorted(
@@ -266,10 +311,16 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
     async holds(runId) {
       const engine = dependencies.engine();
       if (engine === undefined) return false;
-      const state = await engine.get(runId);
-      if (state === null || state === undefined) return false;
-      if (state.type === RUN_ENGINE_WORKFLOW_TYPE.scheduleTick) return true;
-      return (await dependencies.workflowTypes()).some((type) => weftNameOf(type) === state.type);
+      try {
+        const state = await engine.get(runId);
+        if (state === null || state === undefined) return false;
+        if (state.type === RUN_ENGINE_WORKFLOW_TYPE.scheduleTick) return true;
+        const identifiers = await dependencies.workflowTypes();
+        return identifiers.some((type) => weftNameOf(type) === state.type);
+      } catch (error) {
+        diagnose(`Could not tell whether the engine still holds "${runId}".`, error);
+        return false;
+      }
     },
   };
 }

@@ -220,7 +220,7 @@ import {
   type TaskToolGrant,
 } from './task-registry';
 import { createTaskResync, type TaskResync } from './task-resync';
-import { createEngineRunTasks } from './engine-run-tasks';
+import { createEngineRunTasksOf } from './engine-run-tasks';
 import { ANONYMOUS_LOCAL_OWNER, ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule';
 import {
@@ -3446,14 +3446,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
   });
-  const engineRunTasks = createEngineRunTasks({
-    engine: () => (workflowRuntime === undefined ? undefined : runtime.durable?.engine),
-    workflowTypes: async () => (await workflowRuntime?.workflowTypes()) ?? [],
-    revisionSteps: async (type, workflowVersion) =>
-      workflowRuntime?.revisionSteps(type, workflowVersion),
+  const engineRunTasks = createEngineRunTasksOf({
+    runtime: () => workflowRuntime,
+    engine: () => runtime.durable?.engine,
     ownerOfInstance: runOwner,
     ownerOfSchedule: scheduleOwner,
-    deploymentOwner: workflowRuntime?.workflows.owner ?? ANONYMOUS_LOCAL_OWNER,
+    localOwner: ANONYMOUS_LOCAL_OWNER,
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
   });

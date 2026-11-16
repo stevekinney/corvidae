@@ -368,7 +368,7 @@ describe('StatusDot qualifier (row 09q)', () => {
     const root = container.querySelector('.cinder-status-dot');
     const text = container.querySelector('.cinder-status-dot__label')?.textContent;
     expect(text).toBe('Missed runs, 4');
-    expect(text).not.toContain('·');
+    expect(text).not.toContain(String.fromCodePoint(0xb7));
     expect(root?.getAttribute('aria-label')).toBe('Missed runs, 4');
   });
 

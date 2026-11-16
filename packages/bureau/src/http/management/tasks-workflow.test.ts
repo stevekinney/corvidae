@@ -4,11 +4,13 @@
  * with the schedule they belong to, what a tick recorded, how far an instance got, and the signal it
  * waits for. The Runs list names, groups and filters rows by these.
  */
-import { afterEach, describe, expect, it } from 'bun:test';
+import { createAgent } from '@lostgradient/operative';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { startScheduleTick } from '../../schedule-tick.ts';
 import { waitForCondition } from '../../test';
-import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
+import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
+import { rpc } from './management-fixtures.test-support.ts';
 import { TASK_RECORD_KEY_PREFIX } from '../../task-registry.ts';
 import { ownerRpc, serveWorkflows } from './workflows-fixtures.test-support.ts';
 
@@ -41,6 +43,15 @@ async function listTasks(
     nextPageToken: (body.result?.['nextPageToken'] as string | null | undefined) ?? null,
     error: body.error,
   };
+}
+
+/** The tasks of a listing, without its page token. */
+async function tasksOf(
+  served: Awaited<ReturnType<typeof serveWorkflows>>,
+  params: Record<string, unknown> = {},
+): Promise<ListedTask[]> {
+  const listed = await listTasks(served, params);
+  return listed.tasks;
 }
 
 const SIGNAL_TRIGGER = { kind: 'signal', name: 'start-notes' } as const;
@@ -81,7 +92,7 @@ describe('a task view’s workflow', () => {
     expect(goals.tasks.map((task) => task.id)).toEqual(['goal-run']);
     const agents = await listTasks(served, { workflow: 'agentRun' });
     expect(agents.tasks.map((task) => task.id).toSorted()).toEqual(['chat-run', 'old-run']);
-    expect((await listTasks(served, { workflow: 'no-such-workflow' })).tasks).toEqual([]);
+    expect(await tasksOf(served, { workflow: 'no-such-workflow' })).toEqual([]);
   });
 
   it('refuses a page token under another workflow filter', async () => {
@@ -150,7 +161,7 @@ describe('the Bureau’s own runs, listed as tasks', () => {
     });
     const byWorkflow = await listTasks(served, { workflow: 'scheduleTick' });
     expect(byWorkflow.tasks.map((task) => task.id)).toEqual(listed.tasks.map((task) => task.id));
-    expect((await listTasks(served, { workflow: 'agentRun' })).tasks).toEqual([]);
+    expect(await tasksOf(served, { workflow: 'agentRun' })).toEqual([]);
   });
 
   it('lists an instance of a workflow file by its workflow, the steps it has and the signal it waits for', async () => {
@@ -165,7 +176,7 @@ describe('the Bureau’s own runs, listed as tasks', () => {
     void run;
     // The instance parks at its first step, which is when it waits for the signal.
     await waitForCondition(async () => {
-      const [parked] = (await listTasks(served, { workflow: 'release-notes' })).tasks;
+      const [parked] = await tasksOf(served, { workflow: 'release-notes' });
       return parked?.workflow.awaitingSignal === 'notes-approved';
     }, 'the instance never waited for its signal');
 
@@ -180,6 +191,124 @@ describe('the Bureau’s own runs, listed as tasks', () => {
     expect(task?.workflow.awaitingSignal).toBe('notes-approved');
     // It reached its first step, and has not finished.
     expect(task?.workflow.steps?.at).toBe(1);
+  });
+
+  it('lists an instance a schedule fired with that schedule, and the response passes its schema (rows 09r, 52i)', async () => {
+    const served = await serveWorkflows(cleanups);
+    await served.bureau.workflows!.create('digest-flow', {
+      trigger: FAST_SCHEDULE,
+      steps: [{ kind: 'await-signal', signal: 'never-sent' }],
+    });
+    let fired: ListedTask | undefined;
+    await waitForCondition(async () => {
+      const listed = await listTasks(served, { workflow: 'digest-flow' });
+      expect(listed.error).toBeUndefined();
+      fired = listed.tasks.find((task) => task.workflow.scheduleId !== null);
+      return fired !== undefined;
+    }, 'the schedule never fired an instance');
+    expect(fired?.origin).toMatchObject({ kind: 'schedule', fireId: fired?.id });
+    // The schedule is the one `bureau.schedules.list` names, which the Runs list names it by.
+    const schedules = await ownerRpc(served.owner, 'bureau.schedules.list', {});
+    const ids = ((schedules.result?.['schedules'] ?? []) as { id: string }[]).map(
+      (schedule) => schedule.id,
+    );
+    expect(ids).toContain(fired?.workflow.scheduleId ?? '');
+  });
+
+  it('lists an instance that failed, with the step it failed at and why', async () => {
+    const served = await serveWorkflows(cleanups, {
+      agents: {
+        writer: createAgent({
+          name: 'writer',
+          generate: async () => {
+            throw new Error('GitHub did not answer (HTTP 503)');
+          },
+        }),
+      },
+    });
+    await served.bureau.workflows!.create('flaky', {
+      trigger: SIGNAL_TRIGGER,
+      steps: [{ kind: 'await-signal', signal: 'go' }, AGENT_STEP],
+    });
+    await served.bureau.durableEngine()!.start('flaky', null, { id: 'flaky-run' });
+    await waitForCondition(async () => {
+      const [parked] = await tasksOf(served, { workflow: 'flaky' });
+      return parked?.workflow.awaitingSignal === 'go';
+    }, 'the instance never waited for its signal');
+    await served.bureau.workflows!.signal('go', null);
+    let failed: ListedTask | undefined;
+    await waitForCondition(async () => {
+      [failed] = await tasksOf(served, { workflow: 'flaky' });
+      return failed?.status === 'failed';
+    }, 'the instance never failed');
+    expect(failed?.workflow.steps).toEqual({ total: 2, at: 2 });
+    expect(failed?.workflow.awaitingSignal).toBeNull();
+    expect((failed as unknown as { statusMessage: string | null }).statusMessage).not.toBeNull();
+  });
+
+  it('lists the engine’s runs to a caller that may read the workflows, and to no one else', async () => {
+    const served = await serveWorkflows(cleanups);
+    await startScheduleTick(served.bureau.durableEngine()!, {
+      event: 'came-due',
+      scheduleId: 'schedule-a',
+      scheduleName: null,
+      fireRunId: 'fire-a',
+    });
+    const asKey = async (key: string): Promise<string[]> => {
+      const body = await rpc(served.keyed, 'bureau.tasks.list', {}, key);
+      const tasks = (body.result?.['tasks'] ?? []) as ListedTask[];
+      return tasks.map((task) => task.workflow.type);
+    };
+    // Bob owns nothing here, and `bureau.tasks:read` alone is not the workflows' (the owner's).
+    expect(await asKey('bob-key')).toEqual([]);
+    expect(await asKey('tasks-reader-key')).toEqual([]);
+    // The owner, and an operator who may read the workflows as well as every owner's tasks, see it.
+    const ownerTasks = await tasksOf(served);
+    expect(ownerTasks.map((task) => task.workflow.type)).toContain('scheduleTick');
+    expect(await asKey('operator-key')).toContain('scheduleTick');
+  });
+
+  it('lists a tick under manual maintenance, where the engine’s type index is not refreshed', async () => {
+    const served = await serveWorkflows(cleanups, { maintenance: 'manual' });
+    await startScheduleTick(served.bureau.durableEngine()!, {
+      event: 'came-due',
+      scheduleId: 'schedule-a',
+      scheduleName: null,
+      fireRunId: 'fire-a',
+    });
+    expect(await tasksOf(served, { origin: 'system' })).toHaveLength(1);
+  });
+
+  it('still lists the tasks that have records when the engine will not list its runs', async () => {
+    const diagnostics: string[] = [];
+    const served = await serveWorkflows(cleanups, {
+      onDiagnostic: (event) => diagnostics.push(`${event.level}: ${event.message}`),
+    });
+    const kv = served.bureau.internals.kv!;
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}chat-run`,
+      JSON.stringify({
+        schemaVersion: 1,
+        taskId: 'chat-run',
+        contextId: 'chat-run',
+        incarnation: '',
+        agentName: 'writer',
+        owner: served.bureau.workflows!.owner,
+        createdAt: '2026-11-02T10:00:00.000Z',
+        history: [],
+      }),
+    );
+    const engine = served.bureau.durableEngine()!;
+    const failing = spyOn(engine, 'list').mockRejectedValue(new Error('engine unavailable'));
+    try {
+      const listed = await listTasks(served);
+      expect(listed.error).toBeUndefined();
+      expect(listed.tasks.map((task) => task.id)).toEqual(['chat-run']);
+      // The refusal is reported, not swallowed.
+      expect(diagnostics.some((line) => line.includes('as tasks'))).toBe(true);
+    } finally {
+      failing.mockRestore();
+    }
   });
 
   it('keeps a page token for engine runs across pages and drops a run the engine purged', async () => {
@@ -212,7 +341,7 @@ describe('the Bureau’s own runs, listed as tasks', () => {
       scheduleName: null,
       fireRunId: 'fire-a',
     });
-    const [tick] = (await listTasks(served, { origin: 'system' })).tasks;
+    const [tick] = await tasksOf(served, { origin: 'system' });
     const read = await ownerRpc(served.owner, 'bureau.tasks.get', { taskId: tick!.id });
     expect(read.error?.data?.httpStatus).toBe(404);
   });

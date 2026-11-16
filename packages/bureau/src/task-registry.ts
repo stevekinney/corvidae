@@ -470,6 +470,12 @@ export interface TaskListQuery<T = TaskView> {
   readonly topLevelOnly?: boolean | undefined;
   /** COR-2423 — only tasks that ran on this workflow type ({@link TaskWorkflow.type}). */
   readonly workflow?: string | undefined;
+  /**
+   * COR-2423 — whether the engine's own runs (schedule ticks, instances of workflow files) are
+   * listed beside the tasks that have records. Defaults to `true`; the management operation sets it
+   * to whether the caller may read the deployment's workflows.
+   */
+  readonly engineRuns?: boolean | undefined;
   /** Only tasks whose status timestamp is strictly after this ISO 8601 instant. */
   readonly statusTimestampAfter?: string | undefined;
   /** Entries per page. It is not bound to the snapshot, so it may vary between pages. */
@@ -1256,6 +1262,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     if (
       host.engineRuns === undefined ||
       query.topLevelOnly === true ||
+      query.engineRuns === false ||
       query.contextId !== undefined ||
       query.agentName !== undefined ||
       query.parentRunId !== undefined ||
@@ -1315,6 +1322,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       siblingsOf: query.siblingsOf ?? null,
       topLevelOnly: query.topLevelOnly === true,
       workflow: query.workflow ?? null,
+      engineRuns: query.engineRuns !== false && query.topLevelOnly !== true,
       statusTimestampAfter:
         query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
     };

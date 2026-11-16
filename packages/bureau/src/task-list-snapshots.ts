@@ -83,6 +83,8 @@ export interface TaskListingFilters {
   readonly topLevelOnly: boolean;
   /** Only the tasks that ran on this workflow type (COR-2423). */
   readonly workflow: string | null;
+  /** Whether the engine's own runs were listed with the tasks (COR-2423): the caller's reach to them. */
+  readonly engineRuns: boolean;
   readonly statusTimestampAfter: number | null;
 }
 
@@ -252,6 +254,7 @@ function sameFilters(left: TaskListingFilters, right: TaskListingFilters): boole
     left.siblingsOf === right.siblingsOf &&
     left.topLevelOnly === right.topLevelOnly &&
     left.workflow === right.workflow &&
+    left.engineRuns === right.engineRuns &&
     left.statusTimestampAfter === right.statusTimestampAfter
   );
 }

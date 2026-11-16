@@ -302,8 +302,13 @@ function workflowsOf(host: BureauWorkflowsOperationHost): BureauWorkflows {
 /** Every workflow file belongs to the deployment's owner of record, whether or not a directory is configured. */
 const DEPLOYMENT_OWNER = ownerOrLocal(undefined);
 
-function mayAccessWorkflows(
-  host: BureauWorkflowsOperationHost,
+/**
+ * Whether `principal` may use `operatorScope` on the deployment's workflows and their instances:
+ * the deployment's owner, a caller holding the scope, or a workspace member the capabilities allow.
+ * `bureau.tasks.list` asks it before it lists an instance as a task.
+ */
+export function mayAccessWorkflows(
+  host: BureauOwnershipHost,
   principal: Principal,
   operatorScope: BureauScope,
 ): boolean {
