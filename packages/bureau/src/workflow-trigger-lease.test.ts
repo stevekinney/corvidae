@@ -1500,7 +1500,45 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M49: a retired attempt’s delete and the next attempt’s acquire in one process are chained, so the next attempt never runs on a record its predecessor then deletes',
+    row: 'M48a (added in review): a close that lands while start is pending keeps the record until that start has settled and its listener has stopped, so no standby acquires before then, and close waits for it',
+    run: async () => {
+      const shared = sharedStore();
+      const holder = await peer(shared);
+      const standby = await peer(shared);
+      const starting = gate();
+      holder.onStart = () => starting.promise;
+      const reconciling = holder.reconcile({ a: {} });
+      await waitUntil(() => holder.starts.length === 1, { message: 'the start to begin' });
+      await standby.reconcile({ a: {} });
+      expect(standby.status()?.state).toBe('standby');
+
+      let closed = false;
+      const closing = holder.close().then(() => void (closed = true));
+      await standby.tick();
+      // The record still names the holder: its listener may yet come up.
+      expect(await shared.kv.get(RECORD)).toBe(holder.own);
+      expect(standby.status()?.state).toBe('standby');
+      expect(standby.starts).toHaveLength(0);
+      expect(closed).toBe(false);
+
+      // The start settles; its listener is stopped, and only then is the record deleted.
+      const stopping = gate();
+      holder.onStop = () => stopping.promise;
+      starting.open();
+      // The attempt stops the listener its start resolved with; the reconcile waits for that.
+      await waitUntil(() => holder.stops.length === 1, { message: 'the late listener to stop' });
+      expect(await shared.kv.get(RECORD)).toBe(holder.own);
+      expect(closed).toBe(false);
+      stopping.open();
+      await reconciling;
+      await closing;
+      expect(await shared.kv.get(RECORD)).toBeNull();
+      await standby.tick();
+      expect(standby.status()?.state).toBe('listening');
+    },
+  },
+  {
+    row: 'M49:a retired attempt’s delete and the next attempt’s acquire in one process are chained, so the next attempt never runs on a record its predecessor then deletes',
     run: async () => {
       const shared = sharedStore();
       const p = await peer(shared);

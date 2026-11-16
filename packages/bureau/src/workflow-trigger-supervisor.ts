@@ -571,9 +571,19 @@ export function createWorkflowTriggerSupervisor(
       await trigger.stopping;
       await stopQuietly(id, trigger.stop);
     })();
+    if (lease === undefined || !trigger.holding) {
+      await stopped;
+      return;
+    }
     // A holder's listener that stops gives its record back once it has stopped, whether or not
-    // the entry is still current: `close` retires every entry first (COR-2167).
-    await releaseHeld(id, trigger, stopped);
+    // the entry is still current: `close` retires every entry first (COR-2167). A `start` still
+    // pending may yet bring a listener up, which its attempt stops when it settles, so the record
+    // waits for the attempt too: no peer acquires while this process's listener can still run.
+    await releaseHeld(
+      id,
+      trigger,
+      stopped.then(() => trigger.attempt.catch(() => undefined)),
+    );
   }
 
   /**
