@@ -772,6 +772,9 @@
               entries={instanceEntryList}
               startedAt={summary.startedAt}
               {progress}
+              failed={instanceFailed}
+              category={workflow?.failureCategory}
+              errorStack={workflow?.errorStack}
               failure={instanceFailed ? (workflow?.error ?? record?.error ?? undefined) : undefined}
             />
           {/if}

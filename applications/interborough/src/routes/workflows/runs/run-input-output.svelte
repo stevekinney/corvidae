@@ -232,7 +232,7 @@
           </Collapsible>
         {/if}
       </div>
-    {:else if record !== undefined && workflow === undefined}
+    {:else if record !== undefined && workflow === undefined && !failureOnStep}
       {#if record.error !== undefined && record.error !== null}
         <Section level={3} title={TASK_COPY.runRecord.error} description={record.error} />
       {/if}

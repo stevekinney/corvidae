@@ -6,7 +6,8 @@
    * why it failed under it and no banner above the page (row 14t). The entries are made from the
    * history the Bureau keeps of the instance (`run-instance.ts`).
    */
-  import { Section } from '@lostgradient/cinder';
+  import { Badge, Collapsible, Section } from '@lostgradient/cinder';
+  import type { WorkflowState } from '@lostgradient/weft';
   import { CircleX } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
@@ -14,6 +15,7 @@
   import { clockTime } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { failureHeading, type InstanceEntry, type InstanceProgress } from './run-instance.ts';
+  import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { durationWords } from './run-rows.ts';
 
   interface RunInstanceHappenedProps {
@@ -22,11 +24,24 @@
     startedAt: number;
     /** How far the run got, which names the step that failed. */
     progress: InstanceProgress | undefined;
-    /** Why the run failed, in the engine's words, when it did. */
+    /** Whether the run failed, which draws the block on the step that failed. */
+    failed?: boolean;
+    /** Why the run failed, in the engine's words, when it says. */
     failure?: string | undefined;
+    /** What kind of failure the engine says it was, and its stack, for an operator. */
+    category?: WorkflowState['failureCategory'];
+    errorStack?: string | undefined;
   }
 
-  let { entries, startedAt, progress, failure = undefined }: RunInstanceHappenedProps = $props();
+  let {
+    entries,
+    startedAt,
+    progress,
+    failed = false,
+    failure = undefined,
+    category = undefined,
+    errorStack = undefined,
+  }: RunInstanceHappenedProps = $props();
 
   const copy = RUN_DETAIL_COPY.instance;
   const heading = $derived(progress === undefined ? undefined : failureHeading(progress));
@@ -61,21 +76,34 @@
       </li>
     {/each}
   </ol>
-  {#if failure !== undefined && heading !== undefined}
+  {#if failed && heading !== undefined}
     <div class="weft-overview-tab__failure" data-testid="run-step-failure">
       <div class="weft-overview-tab__failure-title">
         <CircleX aria-hidden="true" size={18} />
         <span>{heading}</span>
+        {#if category !== undefined}
+          <Badge variant="danger">{failureCategoryLabel(category)}</Badge>
+        {/if}
       </div>
-      <p class="weft-overview-tab__failure-explanation">
-        <strong>{copy.whyItFailed}.</strong>
-        {failure}
-      </p>
+      {#if category !== undefined}
+        <p class="weft-overview-tab__failure-explanation">{failureCategoryExplanation(category)}</p>
+      {/if}
+      {#if failure !== undefined && failure !== ''}
+        <p class="weft-overview-tab__failure-explanation">
+          <strong>{copy.whyItFailed}.</strong>
+          {failure}
+        </p>
+      {/if}
       <p class="weft-overview-tab__failure-explanation">
         {copy.checkHealth.before}<a href={router.href(healthPath)} onclick={openHealth}
           >{copy.checkHealth.link}</a
         >{copy.checkHealth.after}
       </p>
+      {#if errorStack !== undefined && errorStack.length > 0}
+        <Collapsible variant="flat" trigger="Show full stack trace">
+          <pre class="weft-send-tab__result">{errorStack}</pre>
+        </Collapsible>
+      {/if}
     </div>
   {/if}
 </Section>

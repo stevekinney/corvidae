@@ -563,3 +563,97 @@ describe('a goal’s attempt', () => {
     expect(router.pathname).toBe('/goals/goal-1');
   });
 });
+
+describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
+  const DAILY_SUMMARY = {
+    id: 'daily-summary',
+    owner: 'anonymous:local',
+    agentName: 'assistant',
+    inputPreview: 'Summarize what happened yesterday.',
+    continuesChat: false,
+    workflowType: 'agentRun',
+    description: 'Daily summary',
+    cronExpression: '0 9 * * *',
+    intervalMs: null,
+    status: 'active',
+    overlap: 'skip',
+    revision: 1,
+    timeZone: 'UTC',
+    nextFireAt: '2026-11-03T09:00:00.000Z',
+    skippedOccurrences: [],
+    // The schedule's last fire is this run, and it has missed four occurrences since.
+    lastFireAt: '2026-10-29T09:00:00.000Z',
+    missedFireCount: 4,
+    skippedCount: 0,
+    createdAt: '2026-10-19T08:00:00.000Z',
+    updatedAt: '2026-10-19T08:00:00.000Z',
+    blocker: null,
+  };
+  const FIRE = taskFixture({
+    id: 'fire-1',
+    contextId: 'fire-session',
+    kind: 'schedule-fire',
+    actor: SCHEDULER_ACTOR,
+    agentName: 'assistant',
+    status: 'completed',
+    createdAt: '2026-10-29T09:00:00.000Z',
+    updatedAt: '2026-10-29T09:00:12.000Z',
+    origin: { kind: 'schedule', scheduleId: 'daily-summary', fireId: 'fire-1' },
+  });
+
+  function openFire() {
+    const view = open('/runs/fire-1', { tasks: [FIRE], scopes: BUREAU_ONLY });
+    stub?.on('bureau.schedules.list', () => ({ schedules: [DAILY_SUMMARY], nextOffset: null }));
+    stub?.on('bureau.health.attention', () => ({
+      items: [
+        {
+          kind: 'missed-runs',
+          scheduleId: 'daily-summary',
+          count: 4,
+          since: Date.parse('2026-10-30T09:00:00.000Z'),
+        },
+      ],
+    }));
+    return view;
+  }
+
+  test('says the schedule by its name with when it runs, then the run itself (row 55i)', async () => {
+    const view = openFire();
+
+    await waitFor(() => expect(origin(view.container)?.textContent).toContain('Daily summary'));
+    const line = origin(view.container)?.textContent ?? '';
+    expect(line).toContain(TASK_COPY.list.kinds.schedule);
+    expect(line).toMatch(/every day at/i);
+    expect(origin(view.container)?.querySelector('a')?.getAttribute('href')).toBe(
+      '/schedules/daily-summary',
+    );
+    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')?.textContent).toContain(
+      RUN_DETAIL_COPY.lineage.thisRun,
+    );
+  });
+
+  test('lists the schedule in the rail, and says it was the last run and how many it has missed since (row 55m)', async () => {
+    const view = openFire();
+
+    const rail = await view.findByRole('complementary');
+    await waitFor(() => expect(rail.textContent).toContain(RUN_DETAIL_COPY.schedule));
+    await waitFor(() =>
+      expect(rail.textContent).toContain(
+        'This was the schedule’s last run. It has missed 4 occurrences since.',
+      ),
+    );
+  });
+
+  test('offers Open schedule and a Run again that starts the schedule now (row 55j)', async () => {
+    const view = openFire();
+
+    expect(await view.findByRole('link', { name: RUN_DETAIL_COPY.openSchedule })).not.toBeNull();
+    stub?.on('bureau.schedules.runnow', () => ({ outcome: 'started', taskId: 'fire-2' }));
+    await fireEvent.click(await view.findByRole('button', { name: RUN_DETAIL_COPY.runAgain }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.runnow')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.schedules.runnow')[0]?.params).toEqual({
+      scheduleId: 'daily-summary',
+    });
+  });
+});
