@@ -712,6 +712,59 @@ export class AssetLifecycleEvent extends Event {
   }
 }
 
+/** The kinds of {@link TriggerLifecycleEvent}. */
+export type TriggerEventKind =
+  'trigger.started' | 'trigger.stopped' | 'trigger.failed' | 'trigger.fired';
+
+/** What became of one fire of a contributed trigger, as `trigger.fired` names it. */
+export type TriggerFireOutcome = 'started' | 'duplicate' | 'skipped' | 'refused';
+
+/**
+ * COR-2250 — what a workflow file's contributed trigger did in this Bureau: its listener started
+ * (`listening`, `waiting-for-secret`, or `ready` for a kind that only receives), stopped (its file
+ * was paused or removed, or another Bureau sharing the storage took it over, COR-2167), or failed,
+ * and what became of each fire. It names the file, the kind (`plugin:name`), the kind's version,
+ * and, for a fire, its outcome, the run it started or found, and the code of a refusal; for a
+ * failure, the listener's code. Never the payload, the idempotency key, or any error text.
+ */
+export class TriggerLifecycleEvent extends Event {
+  declare readonly type: TriggerEventKind;
+  readonly workflowId: string;
+  /** The contributed kind, `plugin:name`. */
+  readonly trigger: string;
+  /** The kind's own version, else its plugin's, as of when the listener or the call started. */
+  readonly version: string;
+  /** `trigger.fired` only. */
+  readonly outcome: TriggerFireOutcome | undefined;
+  /** The run a `started` or `duplicate` fire names. */
+  readonly runId: string | undefined;
+  /**
+   * An identifier (`^[A-Z][A-Z0-9_]{0,63}$`): why a `trigger.failed` listener failed
+   * (`START_FAILED`, `CONFIGURATION_REFUSED`), or why a `refused` fire was refused.
+   */
+  readonly errorCode: string | undefined;
+
+  constructor(
+    kind: TriggerEventKind,
+    event: {
+      readonly workflowId: string;
+      readonly trigger: string;
+      readonly version: string;
+      readonly outcome?: TriggerFireOutcome | undefined;
+      readonly runId?: string | undefined;
+      readonly errorCode?: string | undefined;
+    },
+  ) {
+    super(kind);
+    this.workflowId = event.workflowId;
+    this.trigger = event.trigger;
+    this.version = event.version;
+    this.outcome = event.outcome;
+    this.runId = event.runId;
+    this.errorCode = event.errorCode;
+  }
+}
+
 /** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
 export type DefinitionCatalogKind = 'agents' | 'workflows';
 
@@ -1067,6 +1120,11 @@ export interface BureauEventMap extends EventMap {
   'asset.blob.purged': AssetLifecycleEvent;
   'asset.expired': AssetLifecycleEvent;
   [DefinitionsChangedEvent.type]: DefinitionsChangedEvent;
+  /** COR-2250 — what a workflow file's contributed trigger did, and each fire's outcome. */
+  'trigger.started': TriggerLifecycleEvent;
+  'trigger.stopped': TriggerLifecycleEvent;
+  'trigger.failed': TriggerLifecycleEvent;
+  'trigger.fired': TriggerLifecycleEvent;
   [ScheduleMissedEvent.type]: ScheduleMissedEvent;
   [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;
   /** A notification was written (COR-1941). */

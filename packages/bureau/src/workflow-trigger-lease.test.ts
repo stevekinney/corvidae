@@ -27,6 +27,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
+import { projectBureauEvent } from './bureau-event-feed';
 import { workflowsTriggersRetryOperation } from './http/management/workflows-operations';
 import { createPluginSecretGate, gatedContributions } from './plugins/plugin-secret-gate';
 import type { BureauPluginSecrets } from './plugins/plugin-types';
@@ -46,6 +47,7 @@ import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
   type ListenerStatus,
+  type TriggerEventRecord,
   type TriggerFireRequest,
   type WorkflowTriggerSupervisor,
 } from './workflow-trigger-supervisor';
@@ -139,6 +141,8 @@ interface Peer {
   readonly diagnosed: Array<{ readonly message: string; readonly cause: unknown }>;
   /** What the problem reporter was told, in order. */
   readonly calls: string[];
+  /** The trigger events this process published (COR-2250). */
+  readonly published: TriggerEventRecord[];
   /** The trigger lease keys this process read, and wrote, in order. */
   readonly reads: string[];
   readonly writes: string[];
@@ -221,6 +225,7 @@ async function peer(
     return result;
   };
   const requests: TriggerFireRequest[] = [];
+  const published: TriggerEventRecord[] = [];
   const state: {
     starts: PluginTriggerContext[];
     stops: string[];
@@ -292,6 +297,7 @@ async function peer(
     reportFailure: (pluginName, workflow) => void state.calls.push(`report ${pluginName}/${workflow}`),
     clearFailure: (pluginName, workflow) => void state.calls.push(`clear ${pluginName}/${workflow}`),
     lease,
+    publish: (event) => void published.push(event),
   });
   const settled = async (): Promise<void> => {
     let seen: Promise<unknown>;
@@ -311,6 +317,7 @@ async function peer(
     requests: state.requests,
     diagnosed,
     calls: state.calls,
+    published,
     reads,
     writes,
     get faults() {
@@ -1793,6 +1800,46 @@ describe('the listener lease and fenced fires (COR-2167 outcome matrix)', () => 
   for (const { row, run } of rows) it(row, run);
 });
 
+describe('the trigger events of a takeover (COR-2250)', () => {
+  afterEach(() => void peersOfTheRow.splice(0));
+
+  it('publishes trigger.stopped on the old holder and trigger.started on the new one', async () => {
+    const shared = sharedStore();
+    const holder = await peer(shared);
+    const standby = await peer(shared);
+    await holder.reconcile({ a: {} });
+    await standby.reconcile({ a: {} });
+    const base = { workflowId: 'a', trigger: KIND, version: '1' };
+    expect(holder.published).toEqual([{ kind: 'trigger.started', ...base }]);
+    // Going standby at boot is not a stop: the standby never ran the listener.
+    expect(standby.published).toEqual([]);
+    // The holder stalls: by the standby's clock its lease has lapsed.
+    standby.passTime(PROCESS_LEASE_MILLISECONDS + 1);
+    await standby.tick();
+    expect(standby.published).toEqual([{ kind: 'trigger.started', ...base }]);
+    // The stalled holder resumes, finds the record names the taker, and stops.
+    holder.passTime(PROCESS_LEASE_MILLISECONDS + 1);
+    await holder.tick();
+    expect(holder.published).toEqual([
+      { kind: 'trigger.started', ...base },
+      { kind: 'trigger.stopped', ...base },
+    ]);
+  });
+
+  it('publishes a fenced fire as skipped on the old holder', async () => {
+    const shared = sharedStore();
+    const holder = await peer(shared);
+    const taker = await peer(shared);
+    await holder.reconcile({ a: {} });
+    await takenBy(shared.kv, taker);
+    await holder.starts[0]!.fire({}, { idempotencyKey: 'k' });
+    expect(holder.published.slice(1)).toEqual([
+      { kind: 'trigger.stopped', workflowId: 'a', trigger: KIND, version: '1' },
+      { kind: 'trigger.fired', workflowId: 'a', trigger: KIND, version: '1', outcome: 'skipped' },
+    ]);
+  });
+});
+
 /** A memory store that says it outlives its process, so a Bureau over it holds a process lease. */
 function persistentMemory(): Storage {
   const base = new MemoryStorage();
@@ -1817,9 +1864,20 @@ describe('the listener lease, through a Bureau (wiring)', () => {
       overrides: { plugins: [plugin.entry], storage, onDiagnostic: () => undefined },
     });
     cleanups.push(() => harness.dispose());
+    const started: unknown[] = [];
+    harness.bureau.addEventListener('trigger.started', (event) =>
+      started.push(projectBureauEvent(event)),
+    );
     await harness.put('a.json', workflowFileText('a', { trigger: { kind: KIND } }));
     await harness.bureau.workflows?.refresh();
     expect((await harness.bureau.workflows?.get('a'))?.listener?.state).toBe('listening');
+    // COR-2250: the Bureau publishes what the listener did.
+    expect(started).toEqual([
+      {
+        kind: 'trigger.started',
+        payload: { workflowId: 'a', trigger: KIND, version: '1.0.0' },
+      },
+    ]);
     expect(await textValueStore(storage, { disposeUnderlyingStorage: false }).list('bureau-trigger:')).toEqual([]);
   });
 

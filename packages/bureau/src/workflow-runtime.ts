@@ -96,7 +96,11 @@ import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
   type ListenerStatus,
+  type TriggerEventRecord,
   type TriggerFireRequest,
+  triggerFiredRecord,
+  triggerRefusalCode,
+  triggerRefusedRecord,
 } from './workflow-trigger-supervisor';
 import { createTriggerStorage, sweepTriggerState } from './workflow-trigger-state';
 import { createWorkflowTriggerLease } from './workflow-trigger-lease';
@@ -846,6 +850,11 @@ export interface WorkflowRuntimeOptions {
         readonly kv: ConditionalTextValueStore | undefined;
       }
     | undefined;
+  /**
+   * COR-2250 — told what each contributed trigger's listener did (started, stopped, failed) and
+   * what became of each fire, its `start`'s and a `receive`'s alike, for the Bureau to publish.
+   */
+  readonly onTriggerEvent?: ((event: TriggerEventRecord) => void) | undefined;
   readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT') => Error;
   /**
    * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
@@ -1242,6 +1251,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     });
   }
 
+  /** COR-2250 — hand a trigger event to the Bureau; one that throws is diagnosed. */
+  function publishTriggerEvent(event: TriggerEventRecord): void {
+    try {
+      options.onTriggerEvent?.(event);
+    } catch (error) {
+      options.diagnose(`Could not publish "${event.kind}" for workflow "${event.workflowId}".`, error);
+    }
+  }
+
   const triggerStorage = options.storage ?? new MemoryStorage();
   const triggers = createWorkflowTriggerSupervisor({
     fire: fireTrigger,
@@ -1265,6 +1283,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     reportFailure: (plugin, workflow, message) =>
       options.onTriggerFailed?.(plugin, workflow, message),
     clearFailure: (plugin, workflow) => options.onTriggerRecovered?.(plugin, workflow),
+    publish: publishTriggerEvent,
     lease:
       options.listenerLease === undefined
         ? undefined
@@ -2368,18 +2387,30 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           // The plugin owns `fireOptions`: read the key once, before anything awaits. Closed is
           // checked before aborted, because `close` aborts the signal and that is not a stop.
           const idempotencyKey: unknown = fireOptions?.idempotencyKey;
-          if (closed) return Promise.resolve(skippedFire('closed'));
-          if (signal.aborted) return Promise.resolve(skippedFire('stopped'));
+          // COR-2250: every fire is published once, with its outcome, or `refused` and a code.
+          const fired = { workflowId: id, trigger: kind.name, version };
+          const answered = (outcome: PluginTriggerOutcome): PluginTriggerOutcome => {
+            publishTriggerEvent(triggerFiredRecord(fired, outcome));
+            return outcome;
+          };
+          if (closed) return Promise.resolve(answered(skippedFire('closed')));
+          if (signal.aborted) return Promise.resolve(answered(skippedFire('stopped')));
           return fireTrigger({
             workflowId: id,
             kind: kind.name,
             version,
             payload,
             ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-          }).then((outcome) => {
-            if (outcome.outcome === 'started') triggers.noteFired(id, kind.name);
-            return outcome;
-          });
+          }).then(
+            (outcome) => {
+              if (outcome.outcome === 'started') triggers.noteFired(id, kind.name);
+              return answered(outcome);
+            },
+            (error: unknown) => {
+              publishTriggerEvent(triggerRefusedRecord(fired, triggerRefusalCode(error)));
+              throw error;
+            },
+          );
         },
       };
       const answer: unknown = await receive(request, context);

@@ -47,6 +47,8 @@ import {
   ScheduleMissedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  type TriggerEventKind,
+  TriggerLifecycleEvent,
   RunAbortSettledEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
@@ -130,6 +132,20 @@ const isGoalEvent =
   (kind: GoalEventKind) =>
   (event: unknown): event is GoalLifecycleEvent =>
     event instanceof GoalLifecycleEvent && event.type === kind;
+
+/** The kinds every {@link TriggerLifecycleEvent} is published as. */
+const TRIGGER_EVENT_KINDS: readonly TriggerEventKind[] = [
+  'trigger.started',
+  'trigger.stopped',
+  'trigger.failed',
+  'trigger.fired',
+];
+
+/** A trigger event of one kind; every trigger kind shares {@link TriggerLifecycleEvent}. */
+const isTriggerEvent =
+  (kind: TriggerEventKind) =>
+  (event: unknown): event is TriggerLifecycleEvent =>
+    event instanceof TriggerLifecycleEvent && event.type === kind;
 
 /** An asset event of one kind; every forwarded asset kind shares {@link AssetLifecycleEvent}. */
 const isAssetEvent =
@@ -280,6 +296,10 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'asset.blob.purged': 'published',
   'asset.expired': 'published',
   'definitions.changed': 'published',
+  'trigger.started': 'published',
+  'trigger.stopped': 'published',
+  'trigger.failed': 'published',
+  'trigger.fired': 'published',
   'schedule.missed': 'published',
   'task.cleanup-acknowledged': 'published',
   'notification.created': 'published',
@@ -556,6 +576,20 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     removed: [...event.removed],
     rejected: [...event.rejected],
   })),
+  // COR-2250: the file, the kind, its version, and for a fire its outcome, run and refusal code;
+  // never the payload or the idempotency key, which the event does not hold.
+  ...TRIGGER_EVENT_KINDS.map((kind) =>
+    projection(kind, isTriggerEvent(kind), (event) =>
+      definedFields({
+        workflowId: event.workflowId,
+        trigger: event.trigger,
+        version: event.version,
+        outcome: event.outcome,
+        runId: event.runId,
+        errorCode: event.errorCode,
+      }),
+    ),
+  ),
   projection(ScheduleMissedEvent.type, isInstance(ScheduleMissedEvent), (event) => ({
     scheduleId: event.scheduleId,
     missedCount: event.missedCount,

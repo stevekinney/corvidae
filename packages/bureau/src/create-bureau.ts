@@ -146,6 +146,7 @@ import {
   NotificationCreatedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  TriggerLifecycleEvent,
   DiagnosticEvent,
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
@@ -3119,6 +3120,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             onTriggerRecovered: (plugin, workflow) =>
               pluginRegistry.clearTriggerFailure(plugin, workflow),
             listenerLease: { processLease, kv: runtime.kv },
+            // COR-2250: what each contributed trigger did, on the Bureau's feed.
+            onTriggerEvent: (event) =>
+              emitter.dispatch(new TriggerLifecycleEvent(event.kind, event)),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',

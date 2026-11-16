@@ -47,6 +47,8 @@ import type {
 import type { Storage } from '@lostgradient/storage';
 import { z } from 'zod';
 
+import type { TriggerEventKind, TriggerFireOutcome } from './events';
+import { publishableErrorCode } from './published-error-names';
 import type { VersionedCatalogEntry } from './versioned-catalog';
 import type { WorkflowTriggerLease } from './workflow-trigger-lease';
 import { createTriggerStorage } from './workflow-trigger-state';
@@ -188,6 +190,77 @@ export interface WorkflowTriggerSupervisorOptions {
    * whose store dies with its process: every listener runs, and no fire reads anything first.
    */
   readonly lease?: WorkflowTriggerLease | undefined;
+  /**
+   * COR-2250 — told what a listener did (started, stopped, failed) and what became of each fire of
+   * a listener's `fire`, for the Bureau to publish. Never given a payload, a key or error text.
+   */
+  readonly publish?: ((event: TriggerEventRecord) => void) | undefined;
+}
+
+/** COR-2250 — one trigger event, as the supervisor and the runtime hand it to the Bureau. */
+export interface TriggerEventRecord {
+  readonly kind: TriggerEventKind;
+  readonly workflowId: string;
+  /** The contributed kind, `plugin:name`. */
+  readonly trigger: string;
+  readonly version: string;
+  readonly outcome?: TriggerFireOutcome | undefined;
+  readonly runId?: string | undefined;
+  /** An identifier, never text. */
+  readonly errorCode?: string | undefined;
+}
+
+/** The code a `trigger.failed` event names, for each {@link ListenerCode}. */
+const LISTENER_ERROR_CODES: Readonly<Record<ListenerCode, string>> = {
+  'start-failed': 'START_FAILED',
+  'configuration-refused': 'CONFIGURATION_REFUSED',
+};
+
+/** The states in which a listener is running in this process, as `trigger.started` counts them. */
+const RUNNING_STATES: ReadonlySet<ListenerState> = new Set(['listening', 'waiting-for-secret', 'ready']);
+
+/** The `trigger.fired` record of a fire the host or the supervisor answered. */
+export function triggerFiredRecord(
+  base: Pick<TriggerEventRecord, 'workflowId' | 'trigger' | 'version'>,
+  outcome: PluginTriggerOutcome,
+): TriggerEventRecord {
+  return {
+    kind: 'trigger.fired',
+    ...base,
+    outcome: outcome.outcome,
+    ...(outcome.outcome === 'skipped' ? {} : { runId: outcome.runId }),
+  };
+}
+
+/** The `trigger.fired` record of a fire that rejected, named by `errorCode` alone. */
+export function triggerRefusedRecord(
+  base: Pick<TriggerEventRecord, 'workflowId' | 'trigger' | 'version'>,
+  errorCode: string,
+): TriggerEventRecord {
+  return { kind: 'trigger.fired', ...base, outcome: 'refused', errorCode };
+}
+
+/**
+ * The identifiers of the refusals the host's `fire` makes with a code that is not one: a payload
+ * the `inputSchema` refuses (`WorkflowInputInvalidError`) and a failed apply (`WorkflowApplyError`).
+ */
+const REFUSAL_CODES: ReadonlyMap<string, string> = new Map([
+  ['input-invalid', 'INPUT_INVALID'],
+  ['workflow-apply-failed', 'WORKFLOW_APPLY_FAILED'],
+]);
+
+/**
+ * COR-2250 — the identifier a `trigger.fired` event names for a fire that rejected: a known
+ * refusal by its own name, a code that is an identifier already (a `BureauError`'s `BAD_REQUEST`),
+ * and `INTERNAL_ERROR` for anything else, so no error text reaches the feed.
+ */
+export function triggerRefusalCode(error: unknown): string {
+  const code =
+    error !== null && typeof error === 'object' && Object.hasOwn(error, 'code')
+      ? (error as { readonly code: unknown }).code
+      : undefined;
+  const known = typeof code === 'string' ? REFUSAL_CODES.get(code) : undefined;
+  return known ?? publishableErrorCode(code, 'INTERNAL_ERROR');
 }
 
 interface RunningTrigger {
@@ -242,6 +315,8 @@ interface ListenerRecord {
   readonly plugin: string;
   /** The kind, `plugin:name`. */
   readonly kind: string;
+  /** The kind's version as of the listener that wrote the status, for its events. */
+  readonly version: string;
   readonly status: ListenerStatus;
 }
 
@@ -369,9 +444,11 @@ export function createWorkflowTriggerSupervisor(
     ) {
       entry.failures = 0;
     }
+    publishTransition(id, entry, prior, next.state, next.code);
     listeners.set(id, {
       plugin: entry.plugin,
       kind: entry.kind,
+      version: entry.desired.kind.version,
       status: {
         state: next.state,
         since: sameState ? prior.status.since : options.nowISO(),
@@ -387,7 +464,50 @@ export function createWorkflowTriggerSupervisor(
     const prior = listeners.get(id);
     if (prior === undefined) return;
     if (prior.status.state === 'failed') options.clearFailure(prior.plugin, id);
+    if (RUNNING_STATES.has(prior.status.state)) publishStopped(id, prior);
     listeners.delete(id);
+  }
+
+  /** Hand `event` to the Bureau; a publisher that throws is diagnosed, and changes nothing here. */
+  function publish(event: TriggerEventRecord): void {
+    if (options.publish === undefined) return;
+    try {
+      options.publish(event);
+    } catch (error) {
+      options.diagnose(`Could not publish "${event.kind}" for workflow "${event.workflowId}".`, error);
+    }
+  }
+
+  function publishStopped(id: string, prior: ListenerRecord): void {
+    publish({ kind: 'trigger.stopped', workflowId: id, trigger: prior.kind, version: prior.version });
+  }
+
+  /**
+   * COR-2250 — the events a change of `id`'s state is: `trigger.started` into a running state
+   * from any other, `trigger.stopped` from a running state to `stopped` or `standby`, and
+   * `trigger.failed` into `failed`. A status written for another kind ends the old one first.
+   */
+  function publishTransition(
+    id: string,
+    entry: RunningTrigger,
+    prior: ListenerRecord | undefined,
+    next: ListenerState,
+    code: ListenerCode | null,
+  ): void {
+    let priorState = prior?.status.state;
+    if (prior !== undefined && prior.kind !== entry.kind) {
+      if (RUNNING_STATES.has(prior.status.state)) publishStopped(id, prior);
+      priorState = undefined;
+    }
+    const base = { workflowId: id, trigger: entry.kind, version: entry.desired.kind.version };
+    const wasRunning = priorState !== undefined && RUNNING_STATES.has(priorState);
+    if (RUNNING_STATES.has(next) && !wasRunning) publish({ kind: 'trigger.started', ...base });
+    if (wasRunning && (next === 'stopped' || next === 'standby')) {
+      publish({ kind: 'trigger.stopped', ...base });
+    }
+    if (next === 'failed' && priorState !== 'failed' && code !== null) {
+      publish({ kind: 'trigger.failed', ...base, errorCode: LISTENER_ERROR_CODES[code] });
+    }
   }
 
   /**
@@ -605,6 +725,7 @@ export function createWorkflowTriggerSupervisor(
         return;
       }
     }
+    const fired = { workflowId: id, trigger: kind.name, version };
     const context: PluginTriggerContext = {
       configuration: parsed.data,
       workflowId: id,
@@ -614,10 +735,17 @@ export function createWorkflowTriggerSupervisor(
         // The plugin owns `fireOptions`: read the key once, before anything awaits. Closed is
         // checked before aborted, because `close` aborts every listener and that is not a stop.
         const idempotencyKey: unknown = fireOptions?.idempotencyKey;
-        if (closed) return Promise.resolve<PluginTriggerOutcome>(skipped('closed'));
-        if (controller.signal.aborted) {
-          return Promise.resolve<PluginTriggerOutcome>(skipped('stopped'));
-        }
+        // COR-2250: every fire is published once, with its outcome, or `refused` and a code.
+        const answered = (outcome: PluginTriggerOutcome): PluginTriggerOutcome => {
+          publish(triggerFiredRecord(fired, outcome));
+          return outcome;
+        };
+        const refused = (error: unknown): never => {
+          publish(triggerRefusedRecord(fired, triggerRefusalCode(error)));
+          throw error;
+        };
+        if (closed) return Promise.resolve(answered(skipped('closed')));
+        if (controller.signal.aborted) return Promise.resolve(answered(skipped('stopped')));
         const forward = (given: unknown): Promise<PluginTriggerOutcome> =>
           options
             .fire({
@@ -629,22 +757,22 @@ export function createWorkflowTriggerSupervisor(
             })
             .then((outcome) => {
               if (outcome.outcome === 'started') noteFired(id, entry);
-              return outcome;
-            });
+              return answered(outcome);
+            }, refused);
         // No lease, no read: the host is called in this turn, as before COR-2167.
         if (lease === undefined) return forward(payload);
         // The fence: the record is read before the host is called, and the plugin's payload is
         // copied before that read awaits. A read that throws rejects the fire, starting nothing.
         const snapshot = snapshotOf(payload);
         return lease.holds(id).then((holds): PluginTriggerOutcome | Promise<PluginTriggerOutcome> => {
-          if (closed) return skipped('closed');
-          if (controller.signal.aborted) return skipped('stopped');
+          if (closed) return answered(skipped('closed'));
+          if (controller.signal.aborted) return answered(skipped('stopped'));
           if (!holds) {
             lostLease(id, entry);
-            return skipped('stopped');
+            return answered(skipped('stopped'));
           }
           return forward(snapshot);
-        });
+        }, refused);
       },
     };
     // What a gated kind says about its own listener reaches the entry, not the status: it is held
