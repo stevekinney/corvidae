@@ -452,6 +452,7 @@ export function createPluginRegistry(
                   kind: kind.name,
                   description: kind.description,
                   version: kind.version ?? record.entry.descriptor.version,
+                  dryRun: typeof kind.dryRun === 'function',
                   configuration: jsonSchemaOf(kind.configuration),
                 }))
             : [],

@@ -69,6 +69,11 @@ const kindsOutput = z.object({
         kind: z.string().describe('The kind’s name within the plugin: the `kind` of the action.'),
         description: z.string().describe('What the action does.'),
         version: z.string().describe('The version a delivery of the kind pins.'),
+        dryRun: z
+          .boolean()
+          .describe(
+            'Whether the kind has a `dryRun`, which `bureau.hooks.test` calls instead of the action: a hook of a kind without one cannot be tested.',
+          ),
         configuration: configurationSchema,
       }),
     )

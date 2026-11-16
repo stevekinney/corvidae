@@ -175,6 +175,40 @@ describe('plugin registry kinds', () => {
     expect(kind?.configuration).toMatchObject({ properties: { team: { type: 'string' } } });
   });
 
+  it('lists whether a hook action kind has a dryRun, so a client knows whether hooks.test is open to it (COR-2183, reactions-2 matrix line 114)', async () => {
+    const pager = definePlugin({
+      name: 'pager',
+      version: '1.0.0',
+      description: 'Pages someone.',
+      setup: () => ({
+        reactions: [
+          {
+            name: 'page',
+            description: 'Pages the on-call person.',
+            configuration: z.object({}),
+            run: async () => undefined,
+            dryRun: async () => undefined,
+          },
+          {
+            name: 'ring',
+            description: 'Rings the on-call person.',
+            configuration: z.object({}),
+            run: async () => undefined,
+          },
+        ],
+      }),
+    });
+    const composed = await composePlugins({
+      plugins: [{ descriptor: pager, source: 'package', location: '@example/pager' }],
+      hooks: {},
+    });
+    const kinds = createPluginRegistry(composed.records).plugins.reactions();
+    expect(kinds.map((kind) => [kind.kind, kind.dryRun])).toEqual([
+      ['page', true],
+      ['ring', false],
+    ]);
+  });
+
   it('marks a configuration field declared with .meta({ secret: true }) as a secret in the JSON Schema (COR-2177)', async () => {
     const pager = definePlugin({
       name: 'pager',

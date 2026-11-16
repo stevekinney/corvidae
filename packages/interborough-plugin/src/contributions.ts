@@ -415,6 +415,16 @@ export interface PluginReactionContext {
    * idempotency key, or a lookup of what it already did) to make the repeat a no-op.
    */
   readonly idempotencyKey: string;
+  /** The id of the hook this attempt runs for. */
+  readonly hookId: string;
+  /** The principal that owns the hook: `api-key:<subject>` or `anonymous:local`. */
+  readonly owner: string;
+  /**
+   * Which attempt of the delivery this is, 1-based. An attempt the process was interrupted in counts,
+   * so the attempt after a restart is the next number. An attempt dropped because the plugin needs
+   * setup is not recorded, so the next one carries the same number again.
+   */
+  readonly attempt: number;
 }
 
 /** A new kind of hook action, what a hook does when one of its events happens. */
@@ -434,6 +444,14 @@ export interface PluginReaction {
    * least this long, so a second process never takes over a `run` still inside its timeout.
    */
   readonly timeoutMilliseconds?: number;
+  /**
+   * How many attempts a new delivery of this reaction may make before it is exhausted: an integer
+   * from 1 to 20, or the host skips the plugin (a `setup-failed` problem naming the reaction and
+   * the value). Absent, a delivery gets the host's own limit (8 for a Bureau that sets none). A
+   * delivery keeps the number it was made with, so a plugin upgrade changes only deliveries made
+   * after it, and a test delivery (`dryRun`) makes one attempt whatever this says.
+   */
+  readonly maxAttempts?: number;
   /**
    * The schema an action's configuration is parsed with. Mark a field that holds a secret (an API
    * key, a webhook token) with `.meta({ secret: true })`: a hook then stores `{ "$secret": "<key>" }`
@@ -456,6 +474,17 @@ export interface PluginReaction {
    * refuses the input for good): the delivery then ends `failed` after that one attempt.
    */
   run(context: PluginReactionContext): Promise<void>;
+  /**
+   * What `hooks.test` runs instead of `run`: the same checks and the same effect, without the part
+   * a person cannot take back (a message not sent, a record not written). It gets the same context
+   * as `run`, and it is a one-attempt test delivery that is not retried: an attempt a shutdown
+   * interrupted counts as that attempt, so a restart does not call `dryRun` again, though a person
+   * can retry the delivery by hand. A test that never made its attempt (its plugin needed setup)
+   * makes it when the plugin is set up. Absent, a hook of this reaction cannot be tested, and
+   * `hooks.test` is refused: a test would otherwise call `run` for a real effect. A rejection, a
+   * timeout and a `PluginReactionError` are handled as for `run`.
+   */
+  dryRun?(context: PluginReactionContext): Promise<void>;
 }
 
 /**

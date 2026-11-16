@@ -505,6 +505,11 @@ export interface PluginReactionListing {
   readonly description: string;
   /** The version a delivery pins: the kind's own, else its plugin's. */
   readonly version: string;
+  /**
+   * Whether the kind has a `dryRun` (COR-2183), which `hooks.test` calls instead of `run`: a hook of
+   * a kind without one cannot be tested.
+   */
+  readonly dryRun: boolean;
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }

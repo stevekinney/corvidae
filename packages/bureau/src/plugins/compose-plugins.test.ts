@@ -436,6 +436,64 @@ describe('composePlugins', () => {
     );
   });
 
+  describe('a reaction’s maxAttempts and dryRun (COR-2183, reactions-2 matrix line 75)', () => {
+    it.each([0, 21, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '5' as unknown as number])(
+      'skips only the plugin whose reaction sets maxAttempts %p, naming the reaction and the value, and loads the others',
+      async (maxAttempts) => {
+        const { records, options } = await composePlugins<ComposableOptions>({
+          plugins: [
+            pluginEntry('broken', () => ({
+              reactions: [{ ...actionKind('page'), maxAttempts }],
+            })),
+            pluginEntry('fine', () => ({
+              reactions: [{ ...actionKind('ping'), maxAttempts: 5 }],
+            })),
+          ],
+          hooks: {},
+        });
+
+        expect(records.map((record) => record.status)).toEqual(['skipped', 'running']);
+        const [problem] = records[0]?.problems ?? [];
+        expect(problem?.code).toBe('setup-failed');
+        const message = problem?.code === 'setup-failed' ? problem.message : '';
+        expect(message).toContain(`"page"`);
+        expect(message).toContain(String(maxAttempts));
+        const registered = options.hooks?.actionKinds?.map(
+          (registration) => `${registration.plugin}/${registration.kind.name}`,
+        );
+        expect(registered).toEqual(['fine/ping']);
+      },
+    );
+
+    it.each([1, 8, 20])('loads a reaction whose maxAttempts is %p', async (maxAttempts) => {
+      const { records, options } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('fine', () => ({ reactions: [{ ...actionKind('ping'), maxAttempts }] })),
+        ],
+        hooks: {},
+      });
+      expect(records.map((record) => record.status)).toEqual(['running']);
+      expect(options.hooks?.actionKinds?.[0]?.kind.maxAttempts).toBe(maxAttempts);
+    });
+
+    it('hands the host a reaction’s dryRun and its maxAttempts unchanged, and lists whether it has a dryRun', async () => {
+      const dryRun = async () => undefined;
+      const { options } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('fine', () => ({
+            reactions: [{ ...actionKind('ping'), maxAttempts: 4, dryRun }, actionKind('pong')],
+          })),
+        ],
+        hooks: {},
+      });
+      const [ping, pong] = options.hooks?.actionKinds ?? [];
+      expect(ping?.kind.dryRun).toBeDefined();
+      expect(ping?.kind.maxAttempts).toBe(4);
+      expect(pong?.kind.dryRun).toBeUndefined();
+      expect(pong?.kind.maxAttempts).toBeUndefined();
+    });
+  });
+
   describe('guardrail families', () => {
     const detect = async () => ({}) as never;
     const validate = async () => ({ valid: true, confidence: 0, category: 'x' });
