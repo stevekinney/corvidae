@@ -15,13 +15,26 @@ function ruleOf(source: string, selector: string): string {
 // floor below which it scrolls by its column count (rows 16c and 24b). The browser specification
 // `tests/e2e/responsive.spec.ts` measures the result; these keep the rules from being dropped.
 describe('the tables that hold long values', () => {
-  test('a record table fits its box, above a floor', async () => {
-    expect(ruleOf(await read('./records.css'), '.ib-records__table')).toMatch(
-      /min-inline-size:\s*36rem/,
-    );
-    // The runs list is a list of rows (COR-2017), not a table, so it is not here.
-    const path = '../routes/settings/models/models-section.svelte';
-    expect(await read(path), path).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="ib-records__table"/);
+  test('a record table fits its box and stacks on a phone, with no floor of its own', async () => {
+    // The floor that made a record table scroll inside its frame is gone (COR-2364): below a
+    // phone's width a `fit` table stacks its rows, so no column count makes it scroll.
+    const records = await read('./records.css');
+    expect(records).not.toContain('.ib-records__table');
+    expect(records).not.toMatch(/min-inline-size:\s*36rem/);
+    // The record lists are lists of rows (COR-2017), not tables; two tables are left.
+    for (const path of [
+      '../routes/settings/models/models-section.svelte',
+      '../routes/workflow-definitions/internal-workflows.svelte',
+    ]) {
+      const source = await read(path);
+      expect(source, path).toMatch(/<Table\s[^>]*\bfit\b/);
+      expect(source, path).not.toContain('ib-records__table');
+    }
+  });
+
+  test('the engine workflow table keeps its table layout at every width', async () => {
+    const table = await read('../routes/workflows/list/workflow-table.svelte');
+    expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*\bstackBelow=\{false\}/);
   });
 
   test('the workflow table fits its box, above a floor, and keeps its Tags column', async () => {

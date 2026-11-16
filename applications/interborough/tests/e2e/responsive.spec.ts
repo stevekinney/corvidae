@@ -338,7 +338,7 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
   '/settings/models': async (page) => {
     await expect(
-      page.locator('.ib-model-name__identifier .cinder-text', { hasText: LONG_MODEL }),
+      page.locator('.ib-models__identifier .cinder-text', { hasText: LONG_MODEL }),
     ).toBeVisible();
   },
   '/health/runs': async (page) => {
@@ -906,6 +906,128 @@ for (const route of routes) {
     });
   }
 }
+
+/**
+ * A `fit` table below a phone's width is a list of flat rows (COR-2364, Cinder Table). Measures the
+ * rows of the table in `scope` against the layout the design review agreed: the table and the
+ * document do not scroll sideways, a row's title, status and field labels start at one x, the
+ * status word is whole, the end value shares the title's first-line baseline and ends at the row's
+ * inline end, every cell that is not empty is drawn with its header text as its label, and the rows
+ * are flat, divided by one 1px line, with none after the last.
+ */
+async function stackedRowProblems(page: Page, scope: string): Promise<string[]> {
+  return page.evaluate((scopeSelector) => {
+    const problems: string[] = [];
+    const table = document.querySelector<HTMLTableElement>(`${scopeSelector} table`);
+    if (table === null) return ['no table'];
+    if (table.scrollWidth > table.clientWidth) problems.push('the table scrolls sideways');
+    const box = table.parentElement;
+    if (box !== null && box.scrollWidth > box.clientWidth) problems.push('the scroll box scrolls');
+    if (document.documentElement.scrollWidth > document.documentElement.clientWidth) {
+      problems.push('the document scrolls sideways');
+    }
+    if (getComputedStyle(table).display === 'table') problems.push('the table did not stack');
+    const rows = Array.from(table.querySelectorAll<HTMLElement>(':scope > tbody > tr'));
+    if (rows.length === 0) problems.push('no rows');
+    const baselineOf = (element: Element): number | undefined => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node !== null && (node.textContent ?? '').trim() === '') node = walker.nextNode();
+      if (node === null) return undefined;
+      const probe = document.createElement('span');
+      probe.style.cssText = 'display:inline-block;width:0;height:0';
+      node.parentNode?.insertBefore(probe, node);
+      const bottom = probe.getBoundingClientRect().bottom;
+      probe.remove();
+      return bottom;
+    };
+    rows.forEach((row, index) => {
+      const where = `row ${index + 1}`;
+      const style = getComputedStyle(row);
+      if (Number.parseFloat(style.borderTopLeftRadius) > 0) problems.push(`${where} has a radius`);
+      if (style.boxShadow !== 'none') problems.push(`${where} has a shadow`);
+      const last = index === rows.length - 1;
+      if (
+        last ? Number.parseFloat(style.borderBottomWidth) !== 0 : style.borderBottomWidth !== '1px'
+      ) {
+        problems.push(`${where} has a ${style.borderBottomWidth} bottom line`);
+      }
+      const title = row.querySelector<HTMLElement>('[data-cinder-stack-title]');
+      if (title === null) {
+        problems.push(`${where} has no title`);
+        return;
+      }
+      const left = title.getBoundingClientRect().left;
+      for (const cell of Array.from(row.children) as HTMLElement[]) {
+        const empty = cell.hasAttribute('data-cinder-stack-empty');
+        if (empty) {
+          if (getComputedStyle(cell).display !== 'none')
+            problems.push(`${where} draws an empty cell`);
+          continue;
+        }
+        const part = cell.getAttribute('data-cinder-stack');
+        const label = cell.getAttribute('data-cinder-stack-label') ?? '';
+        if (part !== 'end' && Math.abs(cell.getBoundingClientRect().left - left) > 1) {
+          problems.push(`${where}: ${label} starts at a different x from the title`);
+        }
+        if (part === 'status' && cell.scrollWidth > cell.clientWidth) {
+          problems.push(`${where}: the status is clipped`);
+        }
+        if (part === 'end') {
+          const end = baselineOf(cell);
+          const heading = baselineOf(title);
+          if (end === undefined || heading === undefined || Math.abs(end - heading) > 1) {
+            problems.push(`${where}: the end value is off the title's baseline`);
+          }
+          const rowBox = row.getBoundingClientRect();
+          const inset = Number.parseFloat(style.paddingRight);
+          if (Math.abs(cell.getBoundingClientRect().right - (rowBox.right - inset)) > 1) {
+            problems.push(`${where}: the end value is not at the row's inline end`);
+          }
+        }
+        if (cell !== title && part === null) {
+          const content = getComputedStyle(cell, '::before').content.replace(/^"|"$/g, '');
+          if (label === '' || content !== label) problems.push(`${where}: ${label} has no label`);
+        }
+      }
+    });
+    return problems;
+  }, scope);
+}
+
+for (const width of [320, 375]) {
+  test(`Models stacks as flat rows at ${width} pixels`, async ({ page }) => {
+    await settle(page, '/settings/models', width);
+    expect(await stackedRowProblems(page, '[data-section="models"]')).toEqual([]);
+    // Sorting stays reachable on a phone: one Select above the rows, the header buttons out of the tab order.
+    await expect(page.locator('[data-section="models"] .cinder-table__stack-sort')).toHaveCount(1);
+  });
+
+  test(`Internal workflows stacks as flat rows at ${width} pixels`, async ({ page }) => {
+    await settle(page, '/internal-workflows', width);
+    const rows = page.locator('[data-page="internal-workflows"] tbody tr');
+    // This host's engine registers none of the Bureau's own types (see MARKERS), so the table is
+    // measured where the Bureau's host lists them.
+    test.skip((await rows.count()) === 0, 'this host lists no internal workflows');
+    expect(await stackedRowProblems(page, '[data-page="internal-workflows"]')).toEqual([]);
+    // Tapping the card outside its link opens the workflow's runs; the link's ::after covers the row.
+    const row = rows.first();
+    const box = (await row.boundingBox())!;
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height - 4);
+    await expect(page).toHaveURL(/\/workflows\/.+\/runs/);
+  });
+}
+
+test('the engine workflow table keeps its table layout and header at 320 pixels', async ({
+  page,
+}) => {
+  await settle(page, '/health/runs', 320);
+  const table = page.locator('table.weft-workflows-table');
+  await expect(table).toBeVisible();
+  expect(await table.evaluate((element) => getComputedStyle(element).display)).toBe('table');
+  await expect(table.locator('thead th', { hasText: 'Status' })).toBeVisible();
+  await expect(table.locator('thead th', { hasText: 'Workflow ID' })).toBeVisible();
+});
 
 // The names do not depend on the seed's values, only the addresses do.
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));

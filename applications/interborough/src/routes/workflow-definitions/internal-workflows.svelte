@@ -93,7 +93,15 @@
       headingLevel={2}
     />
   {:else}
-    <Table caption={copy.caption} density="condensed" class="ib-records__table">
+    <!-- `fit`, so a long value never widens the table and, below a phone's width, each row is the
+         workflow's name over what it does, with its last run at the end of the name's line. -->
+    <Table caption={copy.caption} density="condensed" fit>
+      <colgroup>
+        <col style="width: 30%" />
+        <col style="width: 38%" />
+        <col style="width: 10%" />
+        <col style="width: 22%" />
+      </colgroup>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>{copy.columns.workflow}</Table.HeaderCell>
@@ -107,20 +115,25 @@
           {@const words = internalWords(row.name, row.description)}
           {@const cells = internalCells(activity.data?.get(row.name), now)}
           <Table.Row data-workflow={row.name} data-engine>
-            <Table.Cell class="ib-records__wrap">
+            <Table.Cell as="th" class="ib-records__wrap ib-records__row-header">
               <Link
                 href={router.href(workflowRunsPath(row.name))}
                 onclick={(event) => go(event, workflowRunsPath(row.name))}>{words.title}</Link
               >
-              <code class="ib-identifier ib-workflows__code-name" data-testid="workflow-identifier"
-                >{row.name}</code
-              >
+              {#snippet detail()}
+                <code
+                  class="ib-identifier ib-workflows__code-name"
+                  data-testid="workflow-identifier">{row.name}</code
+                >
+              {/snippet}
             </Table.Cell>
-            <Table.Cell class="ib-records__wrap" data-testid="workflow-description"
+            <Table.Cell stack="plain" class="ib-records__wrap" data-testid="workflow-description"
               >{words.description ?? copy.noDescription}</Table.Cell
             >
             <Table.Cell data-testid="workflow-run-counts">{cells.runs ?? ''}</Table.Cell>
-            <Table.Cell data-testid="workflow-last-run">{cells.lastRun ?? ''}</Table.Cell>
+            <Table.Cell stack="end" data-testid="workflow-last-run"
+              >{cells.lastRun ?? ''}</Table.Cell
+            >
           </Table.Row>
         {/each}
       </Table.Body>

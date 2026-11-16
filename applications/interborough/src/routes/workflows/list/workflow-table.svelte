@@ -130,7 +130,14 @@
   }
 </script>
 
-<Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
+<!-- The engine table keeps its table layout and its floor at every width (COR-2364). -->
+<Table
+  caption="Workflows"
+  selectable={selectionEnabled}
+  fit
+  stackBelow={false}
+  class="weft-workflows-table"
+>
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
     <col style="width: 7rem" />
