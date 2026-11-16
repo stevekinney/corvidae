@@ -698,7 +698,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'trigger.fired': entry(
     'trigger.fired',
     'unattributed',
-    'A contributed trigger fired. `outcome` is `started` or `duplicate` with the run as `runId`, `skipped` when the listener was stopped, the file is paused or the Bureau closed, or `refused` when the fire rejected, with `errorCode` naming why (`INPUT_INVALID`, `BAD_REQUEST`, `WORKFLOW_APPLY_FAILED`, or `INTERNAL_ERROR`). The payload and the idempotency key are never on the event.',
+    'A contributed trigger fired. `outcome` is `started` or `duplicate` with the run as `runId`, `skipped` when the listener was stopped, the file is paused or the Bureau closed, or `refused` when the fire rejected, with `errorCode` an identifier naming why: `INPUT_INVALID` for a payload the file’s `inputSchema` refuses, `WORKFLOW_APPLY_FAILED` while the last change to the files has not applied, the failure’s own code when it is an identifier (such as `BAD_REQUEST` or `CONFLICT`), and `INTERNAL_ERROR` otherwise. The payload, the idempotency key and the error’s text are never on the event.',
     [...TRIGGER, ['outcome', 'string'], ['runId?', 'string'], ['errorCode?', 'string']],
   ),
   // external: downtime or a daylight-saving gap swallowed the occurrences; a run cannot make time pass or skip.

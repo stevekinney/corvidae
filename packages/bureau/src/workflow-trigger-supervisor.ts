@@ -444,7 +444,6 @@ export function createWorkflowTriggerSupervisor(
     ) {
       entry.failures = 0;
     }
-    publishTransition(id, entry, prior, next.state, next.code);
     listeners.set(id, {
       plugin: entry.plugin,
       kind: entry.kind,
@@ -457,6 +456,8 @@ export function createWorkflowTriggerSupervisor(
         retryAt: next.retryAt ?? null,
       },
     });
+    // Published once the status is written, so a listener of the event reads the new state.
+    publishTransition(id, entry, prior, next.state, next.code);
   }
 
   /** Forget `id`'s listener, and the problem it had. */
@@ -464,8 +465,8 @@ export function createWorkflowTriggerSupervisor(
     const prior = listeners.get(id);
     if (prior === undefined) return;
     if (prior.status.state === 'failed') options.clearFailure(prior.plugin, id);
-    if (RUNNING_STATES.has(prior.status.state)) publishStopped(id, prior);
     listeners.delete(id);
+    if (RUNNING_STATES.has(prior.status.state)) publishStopped(id, prior);
   }
 
   /** Hand `event` to the Bureau; a publisher that throws is diagnosed, and changes nothing here. */

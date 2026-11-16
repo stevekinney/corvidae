@@ -476,6 +476,8 @@ export type {
   RecoveryRejectionReason,
   RunFailureDetail,
   RunSettledStatus,
+  TriggerEventKind,
+  TriggerFireOutcome,
 } from './events';
 export {
   ActionEvent,
@@ -492,6 +494,7 @@ export {
   ScheduleMissedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  TriggerLifecycleEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
