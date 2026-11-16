@@ -709,6 +709,19 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(input.parentElement?.classList.contains('cinder-approval-card--decision')).toBe(true);
   });
 
+  test('draws no empty facts list, which would stand a second stack gap under the title', () => {
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({
+        facts: [],
+        tool: { name: 'create-label', risk: 'medium' },
+        operation: { kind: 'other', argsPreview: { orderId: 4471 } },
+      }),
+    });
+
+    expect(container.querySelector('.cinder-approval-card__facts')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__input-row')).not.toBeNull();
+  });
+
   // C#14 (chat stress sweep): "Input: Command refund order 4471" repeated the Command fact.
   test('leaves out input rows whose only field is already shown as a fact', () => {
     const { queryByRole, container } = render(ApprovalCard, {

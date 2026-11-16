@@ -328,30 +328,33 @@
       </span>
     {/if}
   </div>
-  <dl class="cinder-approval-card__facts">
-    {#each factRows as fact, index (index)}
-      <div class="cinder-approval-card__fact">
-        <dt dir="auto">{fact.label}</dt>
-        <dd data-cinder-monospace={fact.monospace || undefined} dir="auto">{fact.value}</dd>
-      </div>
-    {/each}
-    {#if command !== undefined}
-      <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
-        <dt class="cinder-sr-only">Command</dt>
-        <dd class="cinder-approval-card__command-value" dir="auto">
-          <div class="cinder-approval-card__command">
-            <CodeBlock
-              code={command}
-              language="shell"
-              languageLabelVisible={false}
-              copyable={false}
-              wrap
-            />
-          </div>
-        </dd>
-      </div>
-    {/if}
-  </dl>
+  <!-- Drawn only with something in it: an empty list would stand a second stack gap under the title. -->
+  {#if factRows.length > 0 || command !== undefined}
+    <dl class="cinder-approval-card__facts">
+      {#each factRows as fact, index (index)}
+        <div class="cinder-approval-card__fact">
+          <dt dir="auto">{fact.label}</dt>
+          <dd data-cinder-monospace={fact.monospace || undefined} dir="auto">{fact.value}</dd>
+        </div>
+      {/each}
+      {#if command !== undefined}
+        <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
+          <dt class="cinder-sr-only">Command</dt>
+          <dd class="cinder-approval-card__command-value" dir="auto">
+            <div class="cinder-approval-card__command">
+              <CodeBlock
+                code={command}
+                language="shell"
+                languageLabelVisible={false}
+                copyable={false}
+                wrap
+              />
+            </div>
+          </dd>
+        </div>
+      {/if}
+    </dl>
+  {/if}
   {#if isPending}
     {#if why !== undefined}
       <div class="cinder-approval-card__input cinder-approval-card__why">
