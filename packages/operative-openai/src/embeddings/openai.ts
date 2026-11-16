@@ -8,7 +8,11 @@ import { ProviderError } from '@lostgradient/operative/provider-kit';
 export interface OpenAIEmbeddingClient {
   /** The Embeddings resource; `embeddings.create` returns one vector per input. */
   embeddings: {
-    create(params: Record<string, unknown>): Promise<{
+    create(
+      params: Record<string, unknown>,
+      /** Request options; the SDK ends the request when `signal` aborts. Given only with a signal. */
+      options?: { signal?: AbortSignal },
+    ): Promise<{
       data: Array<{ embedding: number[] }>;
     }>;
   };
@@ -47,14 +51,16 @@ export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embed
     return clientPromise;
   }
 
-  return async (texts: string[]): Promise<EmbeddingVector[]> => {
+  return async (texts, callOptions): Promise<EmbeddingVector[]> => {
     const client = await getClient();
+    const signal = callOptions?.signal;
 
     try {
-      const response = await client.embeddings.create({
-        model,
-        input: texts,
-      });
+      const parameters = { model, input: texts };
+      // The signal rides in the SDK's request options, and only when the caller gave one.
+      const response = await (signal === undefined
+        ? client.embeddings.create(parameters)
+        : client.embeddings.create(parameters, { signal }));
 
       return response.data.map((entry) => entry.embedding);
     } catch (error) {

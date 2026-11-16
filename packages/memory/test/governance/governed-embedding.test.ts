@@ -2,6 +2,7 @@
  * COR-1898 part 1: governed memory keeps each record's vector in the vector store, under the
  * active embedding profile, and admission, recall, and deletion go through that profile.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage } from '@lostgradient/storage';
 import type { Embedder } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -380,6 +381,7 @@ describe('governed embedding status', () => {
       registry: createTestEmbedders(keyword, DIMENSION).embedders,
       vectors,
       initialEmbedder: TEST_EMBEDDER_ID,
+      runtime: createManualRuntimeServices({ identifierSeed: 'governed-embedding-status' }),
     });
     expect(await embedding.status()).toEqual({
       active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION },

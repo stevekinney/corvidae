@@ -161,6 +161,46 @@ describe('voyage plugin', () => {
     expect(snapshot.values['memory.embedder']).toBe('voyage:embed');
   });
 
+  it('hands the caller’s signal to the request, so aborting it ends a request that never answers (COR-2185)', async () => {
+    let started!: (signal: AbortSignal | null | undefined) => void;
+    const requestSignal = new Promise<AbortSignal | null | undefined>((resolve) => {
+      started = resolve;
+    });
+    const realFetch = globalThis.fetch;
+    // A server that never answers: the request ends only when its own signal aborts.
+    globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+      started(init?.signal);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+    try {
+      const result = await voyage.setup!({
+        configuration: voyage.configuration!.parse({ dimensions: DIMENSION }),
+        secrets: { get: async () => SECRET },
+      } as never);
+      const contributed = result.embedders?.[0];
+      const controller = new AbortController();
+      const settled = Promise.resolve(
+        contributed?.embed(['alpha'], { signal: controller.signal }),
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      const signal = await requestSignal;
+      expect(signal?.aborted).toBe(false);
+
+      controller.abort(new Error('the caller gave up'));
+      // The request's signal follows the caller's at once.
+      expect(signal?.aborted).toBe(true);
+
+      const failure = await settled;
+      expect(String((failure as { cause?: unknown }).cause)).toContain('the caller gave up');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it('refuses the switch while the plugin needs its secret, and calls nothing', async () => {
     const fake = startFakeVoyage();
     const { bureau, memory } = await startBureau(fake, { secret: undefined });

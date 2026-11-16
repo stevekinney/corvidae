@@ -70,6 +70,59 @@ describe('ollama plugin', () => {
     ]);
   });
 
+  it('hands the caller’s signal to the request, so aborting it ends a request that never answers (COR-2185)', async () => {
+    let started!: (signal: AbortSignal | null | undefined) => void;
+    const requestSignal = new Promise<AbortSignal | null | undefined>((resolve) => {
+      started = resolve;
+    });
+    const realFetch = globalThis.fetch;
+    // A server that never answers: the request ends only when its own signal aborts.
+    globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+      started(init?.signal);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+    try {
+      const contributed = await embedder({ dimensions: 3 });
+      const controller = new AbortController();
+      const settled = Promise.resolve(
+        contributed.embed(['alpha'], { signal: controller.signal }),
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      const signal = await requestSignal;
+      expect(signal?.aborted).toBe(false);
+
+      controller.abort(new Error('the caller gave up'));
+      // The request's signal follows the caller's at once.
+      expect(signal?.aborted).toBe(true);
+
+      const failure = await settled;
+      expect(String((failure as { cause?: unknown }).cause)).toContain('the caller gave up');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('sends no signal when the caller gave none (COR-2185)', async () => {
+    const seen: { init?: RequestInit | undefined } = {};
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      seen.init = init;
+      return Response.json({ embeddings: [[0.25, 0.5, 0.75]] });
+    }) as typeof fetch;
+    try {
+      const contributed = await embedder({ dimensions: 3 });
+      await contributed.embed(['alpha']);
+      expect(seen.init).toBeDefined();
+      expect(Object.hasOwn(seen.init!, 'signal')).toBe(false);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it('names the status the server answered when it refuses', async () => {
     const fake = startFakeOllama(404);
     const contributed = await embedder({ baseURL: fake.baseURL, dimensions: 3, model: 'absent' });

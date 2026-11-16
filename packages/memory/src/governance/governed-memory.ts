@@ -77,6 +77,10 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     registry: options.embedders,
     vectors: options.vectors,
     initialEmbedder: options.initialEmbedder ?? HASHING_EMBEDDER_ID,
+    runtime,
+    ...(options.embedTimeoutMilliseconds === undefined
+      ? {}
+      : { embedTimeoutMilliseconds: options.embedTimeoutMilliseconds }),
   });
   const context = createGovernanceContext({
     storage: options.storage,

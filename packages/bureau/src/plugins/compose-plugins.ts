@@ -36,6 +36,7 @@ import type { GovernedMemory } from '@lostgradient/memory';
 import { type GuardrailEntry, guardrailActionOf, guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
+  type DetectorContext,
   formatToolId,
   fromNamespacedToolName,
   parseToolId,
@@ -54,6 +55,7 @@ import {
   createAgentContributions,
   guardrailContractFault,
 } from '../agent-contributions';
+import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../bureau-types/options';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -683,11 +685,16 @@ class Contributed {
     }
     this.providers.push(...providers);
     for (const detector of result.guardrails?.memory ?? []) {
-      // The detector itself, not a copy of its fields: it may be an instance whose methods live on
-      // its prototype.
+      // One wrapper for both gates, named by its family-qualified identity (COR-2190), so the ledger
+      // tells two plugins' `pii` apart. It calls the detector rather than spreading it: its methods
+      // may live on a prototype. A throw still propagates, so a `detector-failure` carries the id too.
       const gates = detector.gates ?? MEMORY_GATES;
-      if (gates.includes('admission')) this.memory.admission.push(detector);
-      if (gates.includes('recall')) this.memory.recall.push(detector);
+      const named = {
+        name: guardrailId(plugin, 'memory', detector.name),
+        detect: (input: string, context: DetectorContext) => detector.detect(input, context),
+      };
+      if (gates.includes('admission')) this.memory.admission.push(named);
+      if (gates.includes('recall')) this.memory.recall.push(named);
     }
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
@@ -964,8 +971,12 @@ async function setUp(
     const result =
       gate === undefined
         ? returned
-        : gatedContributions(returned, gate, (name) =>
-            formatToolId({ namespace: descriptor.name, name }),
+        : gatedContributions(
+            returned,
+            gate,
+            (name) => formatToolId({ namespace: descriptor.name, name }),
+            // COR-2191: a skipped memory guardrail is reported to the host's sink.
+            resolveDiagnosticSink(options.onDiagnostic),
           );
     const plan = planOf(
       descriptor.name,

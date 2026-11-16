@@ -3,6 +3,7 @@ import type { GuardrailProvenance } from 'armorer';
 import type { MemoryRecord } from '../memory-record-storage';
 import {
   type MemoryEmbeddingProfile,
+  MemoryVectorDimensionError,
   MemoryVectorProfileMissingError,
 } from '../memory-vector-store';
 import { memoryCorrelationSchema } from '../transition-events';
@@ -94,9 +95,16 @@ export type StoredGovernedRecord =
       readonly reason: DerivationBlocker;
     };
 
-/** Embeds one text with the active embedding's embedder. */
-export async function embedOne(active: ActiveEmbedding, text: string): Promise<Float32Array> {
-  const [vector] = await active.embed([text]);
+/**
+ * Embeds one text with the active embedding's embedder, bounded as every embed is, and cut short
+ * when `options.signal` aborts.
+ */
+export async function embedOne(
+  active: ActiveEmbedding,
+  text: string,
+  options?: { readonly signal?: AbortSignal; readonly timeoutMilliseconds?: number },
+): Promise<Float32Array> {
+  const [vector] = await active.embed([text], options);
   return vector!;
 }
 
@@ -141,8 +149,17 @@ export async function storeGovernedRecord(
   // Embedded before anything is stored, so a vector the active profile refuses stores nothing.
   // While the active embedder is unavailable there is no vector: the record is queued instead.
   const active = await context.embedding.activeIfAvailable();
-  const vector =
-    active.embedding === undefined ? undefined : await embedOne(active.embedding, input.content);
+  let vector: Float32Array | undefined;
+  if (active.embedding !== undefined) {
+    try {
+      vector = await embedOne(active.embedding, input.content);
+    } catch (error) {
+      // A vector the profile refuses is never stored, so it still fails the admission. Any other
+      // failure (the embedder throws, or does not answer within its bound) is an outage: the
+      // record is stored without a vector and queued below, as if the embedder were unavailable.
+      if (error instanceof MemoryVectorDimensionError) throw error;
+    }
+  }
   // Only the write option sets the operation key; a `dedupeKey` smuggled in
   // through extension metadata would otherwise claim another write's key.
   const { dedupeKey: _callerKey, ...extension } = withoutReservedMetadata(options.metadata ?? {});
@@ -384,10 +401,16 @@ export async function admitWrite(
   if ((await context.storage.count(scope)) >= policy.admission.maxRecordsPerCollection) {
     return reject(context, authority, operationId, 'quota-exceeded');
   }
+  // Computed before the scan, which tells its detectors the record's trust, and used to store it.
+  const trust = lowestTrust([
+    policy.admission.sourceTrust[options.source],
+    ...sources.map((source) => source.read.governance.trust),
+  ]);
   const scan = await scanGovernedContent(
     content,
     policy.admission.detectors,
     provenanceFor(options.source),
+    { source: options.source, memoryClass: options.memoryClass ?? 'episodic', trust },
   );
   const contentDigest = digestContent(content);
   if (scan.flagged && policy.admission.onDetection === 'reject') {
@@ -410,10 +433,7 @@ export async function admitWrite(
     content,
     options,
     scope,
-    trust: lowestTrust([
-      policy.admission.sourceTrust[options.source],
-      ...sources.map((source) => source.read.governance.trust),
-    ]),
+    trust,
     state,
     ...(options.derivedFrom === undefined
       ? {}

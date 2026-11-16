@@ -726,6 +726,7 @@ describe('a file that calls an activity that defines compensate (F12, F14, I1, O
         },
         needsSetup,
         (name) => `x:${name}`,
+        () => undefined,
       );
       const catalog = createVersionedCatalog();
       catalog.register({

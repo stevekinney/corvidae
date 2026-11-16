@@ -42,4 +42,39 @@ describe('the openai plugin', () => {
     );
     expect(String(failure)).toContain('openai-api-key');
   });
+
+  test('forwards the caller’s signal to the request, so aborting it ends an embed that never answers (COR-2185)', async () => {
+    let started!: (signal: AbortSignal | null | undefined) => void;
+    const requestSignal = new Promise<AbortSignal | null | undefined>((resolve) => {
+      started = resolve;
+    });
+    const realFetch = globalThis.fetch;
+    // A server that never answers: the request ends only when its own signal aborts.
+    globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+      started(init?.signal);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+    try {
+      const result = await plugin.setup?.({ secrets: { get: async () => 'sk-test-key' } } as never);
+      const controller = new AbortController();
+      const settled = Promise.resolve(
+        result?.embedders?.[0]?.embed(['text'], { signal: controller.signal }),
+      ).then(
+        () => 'resolved',
+        () => 'rejected',
+      );
+      const signal = await requestSignal;
+      expect(signal?.aborted).toBe(false);
+
+      controller.abort(new Error('the caller gave up'));
+      // The request's signal follows the caller's at once.
+      expect(signal?.aborted).toBe(true);
+
+      expect(await settled).toBe('rejected');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });

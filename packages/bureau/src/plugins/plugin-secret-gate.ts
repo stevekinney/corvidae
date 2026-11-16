@@ -65,6 +65,7 @@ import {
 import type { DetectionResult, DetectorContext } from 'armorer';
 
 import { INTERCEPTOR_POINTS } from '../agent-contributions';
+import type { DiagnosticSink } from '../bureau-types/options';
 import type { BureauPluginSecrets } from './plugin-types';
 
 /**
@@ -329,12 +330,15 @@ function gatedWorkflow<W extends PluginWorkflow>(
 
 /**
  * `result` with every contribution's callable gated by `gate` (tools excepted: `pluginTool`
- * gates them as it rebuilds them). Identity, names and every other field are kept.
+ * gates them as it rebuilds them). Identity, names and every other field are kept. A gated memory
+ * guardrail sends one `warn` to `diagnose` (scope `memory`, no content) at its first skipped call,
+ * and again at the first skipped call after the plugin has been available.
  */
 export function gatedContributions<T extends PluginContributions>(
   result: T,
   gate: PluginSecretGate,
   idOf: (name: string) => string,
+  diagnose: DiagnosticSink,
 ): T {
   const guardrails = result.guardrails;
   return {
@@ -443,29 +447,47 @@ export function gatedContributions<T extends PluginContributions>(
             ...(guardrails.memory === undefined
               ? {}
               : {
-                  memory: guardrails.memory.map((detector) => ({
-                    ...detector,
-                    detect: async (
-                      input: string,
-                      context: DetectorContext,
-                    ): Promise<DetectionResult> => {
-                      // Not run: memory counts a detector's failure as a detection, so a refusal here
-                      // would hold back every write and recall while the plugin needs setup.
-                      if (!gate.available()) {
-                        return {
-                          triggered: false,
-                          confidence: 0,
-                          category: PLUGIN_NEEDS_SETUP_CATEGORY,
-                          detail: new PluginNeedsSetupError(
+                  memory: guardrails.memory.map((detector) => {
+                    // COR-2191: the first skipped call says so once, and a recovery re-arms it, even
+                    // when no call lands while the plugin is available.
+                    let warned = false;
+                    gate.onChange(() => {
+                      if (gate.available()) warned = false;
+                    });
+                    return {
+                      ...detector,
+                      detect: async (
+                        input: string,
+                        context: DetectorContext,
+                      ): Promise<DetectionResult> => {
+                        // Not run: memory counts a detector's failure as a detection, so a refusal here
+                        // would hold back every write and recall while the plugin needs setup.
+                        if (!gate.available()) {
+                          const detail = new PluginNeedsSetupError(
                             gate.plugin,
                             idOf(detector.name),
                             gate.missing(),
-                          ).message,
-                        };
-                      }
-                      return detector.detect(input, context);
-                    },
-                  })),
+                          ).message;
+                          if (!warned) {
+                            warned = true;
+                            // Never the input: a diagnostic carries no memory content.
+                            diagnose({
+                              level: 'warn',
+                              scope: 'memory',
+                              message: `[bureau] ${detail} The memory guardrail was skipped.`,
+                            });
+                          }
+                          return {
+                            triggered: false,
+                            confidence: 0,
+                            category: PLUGIN_NEEDS_SETUP_CATEGORY,
+                            detail,
+                          };
+                        }
+                        return detector.detect(input, context);
+                      },
+                    };
+                  }),
                 }),
           },
         }),
