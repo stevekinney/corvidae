@@ -249,7 +249,7 @@ import { providerAttention } from './provider-attention.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
-import { allowedHosts, createRequestGuard, isAmbiguousPath, rawPathOf } from './request-guard.ts';
+import { allowedHosts, createRequestGuard, rawPathOf } from './request-guard.ts';
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
@@ -734,14 +734,14 @@ function publicOriginGuards(
 
 /**
  * Where the `/bureau` prefix comes off a request before the Bureau handler sees it, or `undefined`
- * for a request that cannot lose it safely: one whose raw path does not literally start with the
- * prefix, or is ambiguous (a dot segment, an encoded dot or slash, a double slash), which the
- * router and the handler could read as two places. It never cuts a fixed number of characters off a
- * path it has not checked.
+ * for a path that does not literally start with the prefix, which it never cuts a fixed number of
+ * characters off. It refuses nothing else: an identifier a client percent-encodes into a path (a
+ * thread id `team/standup` is `team%2Fstandup`) is the Bureau's to decode, for the local owner as
+ * before. A request through the public origin with an ambiguous path never gets here: the guard of
+ * `/bureau/*` refuses it first (`request-guard.ts`).
  */
 function withoutBureauPrefix(request: Request): Request | undefined {
   const raw = rawPathOf(request);
-  if (isAmbiguousPath(raw)) return undefined;
   if (raw !== BUREAU_PATH_PREFIX && !raw.startsWith(`${BUREAU_PATH_PREFIX}/`)) return undefined;
   const url = new URL(request.url);
   url.pathname = raw.slice(BUREAU_PATH_PREFIX.length) || '/';
@@ -1611,10 +1611,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // chat run waiting on a person's answer sends nothing at all. A stream cut that way ends
       // without its terminating chunk, and Chromium logs `ERR_INCOMPLETE_CHUNKED_ENCODING` for each
       // one (COR-1643). The listener binds loopback, but a reverse proxy forwards a public origin's
-      // paths to it, so a stranger can hold a connection open here. The one route a stranger may
-      // call with no credential, `POST /triggers/<workflow>`, therefore has its own deadline on
-      // reading its body (`trigger-routes.ts`, 30 seconds). The A2A paths the public origin also
-      // reaches need the A2A key before they hold anything open.
+      // paths to it. The one route a stranger may call with no credential, `POST
+      // /triggers/<workflow>`, therefore has a total deadline on reading its body
+      // (`trigger-routes.ts`, 30 seconds): at the deadline its handler, its buffered bytes and its
+      // timer are released and it answers 408. The host does not close the socket, which this
+      // timeout being off leaves open, as on every route; the A2A paths the public origin also
+      // reaches need the A2A key before they hold anything.
       idleTimeout: 0,
       // A route admitted as `trigger-receive` is checked by the guard that also admits the public
       // origin's `Host`; every other route, and every path no route names, by the loopback one.

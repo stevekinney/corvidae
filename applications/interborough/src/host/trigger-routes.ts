@@ -59,9 +59,12 @@ export interface TriggerRouteDependencies {
 }
 
 /**
- * How long a delivery's body may take to arrive, 30 seconds. The listener's own idle timeout is
- * off because the pages hold quiet streams, and this route is the one a stranger can reach: a
- * client that sends a byte a minute would hold a connection and its buffer for as long as it liked.
+ * How long a delivery's body may take to arrive in all, 30 seconds: a total deadline, not an idle
+ * one, so a client that sends a byte a minute is cut off too. At the deadline the handler stops
+ * reading, drops the bytes it buffered and its timer, and answers 408 without calling `receive`.
+ * The host does not close the socket: the listener's idle timeout is off because the pages hold
+ * quiet streams, so the connection stays open as it does on every route, and the client may keep
+ * it. What the deadline bounds is what this route holds for it.
  */
 export const TRIGGER_BODY_DEADLINE_MILLISECONDS = 30_000;
 

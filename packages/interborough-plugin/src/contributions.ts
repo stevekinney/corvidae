@@ -366,7 +366,7 @@ export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
   readonly configuration: TSchema;
   /**
    * Starts listening; the function it resolves with stops it. A kind defines `start`, `receive` or
-   * both: one with neither is refused when its plugin loads. A kind with only `receive` has no
+   * both: one with neither, or with a member that is present and not a function, is refused when its plugin loads (the plugin is skipped with `setup-failed`). A kind with only `receive` has no
    * listener to run, and its files report the listener state `ready`.
    */
   start?(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;

@@ -27,9 +27,14 @@
  * every asset read. The host hands each public surface a guard of its own, admitting only that
  * surface's paths: `/bureau/*` one for A2A and assets, the trigger route one for
  * `/triggers/<one segment>`; every other route and every unmatched path is checked by the
- * loopback guard. The guard decides on the raw request target, the path the router matches and the
- * handler behind it is given, never on a resolved one, and refuses any public request whose raw
- * target holds a dot segment, an encoded dot, slash or backslash, a backslash or a double slash.
+ * loopback guard. The guard decides on the path of `request.url` as the listener hands it over,
+ * which is also the path `withoutBureauPrefix` strips and the trigger route's handler reads, so one
+ * path is judged and used; and it refuses any public request whose path holds a dot segment, an
+ * encoded dot, slash or backslash, a backslash or a double slash (see {@link isAmbiguousPath}).
+ * That is not the target as the client wrote it: on Bun 1.4.4 `request.url` arrives with dot
+ * segments, `%2e` segments and literal backslashes already resolved, while the router matched the
+ * unresolved target (`/bureau/a2a/\..\jsonrpc` reaches the Bureau as `/a2a/jsonrpc`). That is safe
+ * because every surface admits only its own prefix and no handler sees a path the guard did not.
  *
  * The guard reads `Host`, so the reverse proxy in front of a public origin must forward it. One
  * that rewrites it to `127.0.0.1:<port>` makes every request it forwards look local, and so
@@ -87,9 +92,13 @@ function presentsCredential(request: Request): boolean {
 }
 
 /**
- * The path of the request target as the client wrote it: the query and the fragment cut off, an
- * absolute-form target's scheme and authority cut off, and nothing resolved or decoded. The router
- * matches this path, so a guard that decides on it sees what the handler behind the router is given.
+ * The path of `request.url` with the query and the fragment cut off and an absolute-form target's
+ * scheme and authority cut off, and nothing decoded or resolved here. It is the path the guard
+ * decides on, `withoutBureauPrefix` strips and the trigger route's handler reads. It is not the
+ * target as the client wrote it: Bun has already resolved dot segments, `%2e` segments and literal
+ * backslashes in `request.url`, so a request the router matched on its unresolved form can arrive
+ * here as another path. Because each public surface admits only its own prefix and the handlers
+ * read this same path, the guard stays sound.
  */
 export function rawPathOf(request: Request): string {
   const withoutOrigin = request.url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, '');
@@ -103,6 +112,11 @@ export function rawPathOf(request: Request): string {
  * strips or decodes it: a dot segment, an encoded dot, slash or backslash (any case), a backslash,
  * or a double slash. A request through the public origin with such a path is refused, and the
  * Bureau handler is given none.
+ *
+ * Which clauses can fire at the listener on Bun 1.4.4: an encoded slash or backslash (`%2f`,
+ * `%5c`), an encoded dot inside a segment (`a%2eb`), and a double slash, which it hands over as
+ * written. A dot segment and a literal backslash arrive already resolved, so those two clauses are
+ * defense in depth, for another runtime or a request built by hand.
  */
 export function isAmbiguousPath(path: string): boolean {
   return (

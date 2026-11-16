@@ -1028,30 +1028,39 @@ describe('trigger deliveries (COR-2169)', () => {
     // A guard and the handler it protects must see one path: a request whose raw target is
     // ambiguous (a dot segment, an encoded dot, slash or backslash, a double slash) is refused by
     // the guard before any prefix is stripped, whatever it resolves to.
-    const AMBIGUOUS_TARGETS = [
-      '/bureau/../triggers/x',
-      '/bureau/a2a/../../triggers/x',
-      '/bureau/%2e%2e/triggers/x',
-      '/bureau/%2E%2E/triggers/x',
-      '/bureau/%2e%2E/triggers/x',
-      '/bureau/./../triggers/x',
-      '/triggers/../bureau/jsonrpc',
-      '/triggers/x/../../bureau/jsonrpc',
-      '/triggers/%2e%2e/bureau/jsonrpc',
-      '/triggers//x',
-      '/bureau//triggers/x',
-      '/bureau/a2a//open',
-      '/triggers/x%2f..%2f..%2fbureau%2fjsonrpc',
-      '/triggers/x%2F..%2F..%2Fbureau%2Fjsonrpc',
-      '/triggers/x%5c..%5cbureau',
-      '/bureau/assets/..%2fjsonrpc',
-      'http://agents.example.test/bureau/../triggers/x',
-      'http://agents.example.test/triggers/../bureau/jsonrpc',
+    // Which check refuses a target is part of the row. Bun resolves dot segments, `%2e` segments
+    // and literal backslashes in `request.url` before the guard reads it, so a target that holds
+    // only those arrives as the path it resolves to, which no public surface admits, and the
+    // loopback-Host check refuses it; a target with an encoded slash or backslash or a double slash
+    // arrives as written, and the ambiguous-path check refuses it. Each text names the check that
+    // would be missing if a row failed.
+    const AMBIGUOUS_PATH = 'Forbidden: this path is not accepted.';
+    const LOOPBACK_HOST = 'Forbidden: this host answers only to its own address.';
+    const AMBIGUOUS_TARGETS: ReadonlyArray<readonly [string, string]> = [
+      ['/bureau/../triggers/x', LOOPBACK_HOST],
+      ['/bureau/a2a/../../triggers/x', LOOPBACK_HOST],
+      ['/bureau/%2e%2e/triggers/x', LOOPBACK_HOST],
+      ['/bureau/%2E%2E/triggers/x', LOOPBACK_HOST],
+      ['/bureau/%2e%2E/triggers/x', LOOPBACK_HOST],
+      ['/bureau/./../triggers/x', LOOPBACK_HOST],
+      ['/triggers/../bureau/jsonrpc', LOOPBACK_HOST],
+      ['/triggers/x/../../bureau/jsonrpc', LOOPBACK_HOST],
+      ['/triggers/%2e%2e/bureau/jsonrpc', LOOPBACK_HOST],
+      // No route matches a double slash under /triggers, so the loopback guard answers the fallback.
+      ['/triggers//x', LOOPBACK_HOST],
+      ['/bureau//triggers/x', AMBIGUOUS_PATH],
+      ['/bureau/a2a//open', AMBIGUOUS_PATH],
+      ['/triggers/x%2f..%2f..%2fbureau%2fjsonrpc', AMBIGUOUS_PATH],
+      ['/triggers/x%2F..%2F..%2Fbureau%2Fjsonrpc', AMBIGUOUS_PATH],
+      ['/triggers/x%5c..%5cbureau', AMBIGUOUS_PATH],
+      ['/bureau/assets/..%2fjsonrpc', AMBIGUOUS_PATH],
+      ['http://agents.example.test/bureau/../triggers/x', LOOPBACK_HOST],
+      ['http://agents.example.test/triggers/../bureau/jsonrpc', LOOPBACK_HOST],
     ];
 
     test.each(AMBIGUOUS_TARGETS)(
       'an ambiguous target %p is refused by the guard before the Bureau or receive',
-      async (target) => {
+      async (target, refusal) => {
         const before = served.plugin.contexts.length;
         const answer = await raw(
           served,
@@ -1060,7 +1069,7 @@ describe('trigger deliveries (COR-2169)', () => {
         );
         // The guard's own 403: Bureau's answer to a path it was handed would be a 404 or a 200.
         expect(answer.status).toBe(403);
-        expect(answer.text.startsWith('Forbidden:')).toBe(true);
+        expect(answer.text).toBe(refusal);
         expect(served.plugin.contexts).toHaveLength(before);
       },
     );
