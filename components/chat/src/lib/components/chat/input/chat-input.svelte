@@ -3016,4 +3016,20 @@
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     color: var(--cinder-status-danger-text);
   }
+
+  /* A narrow composer (its own width, never the viewport) spends a spacing step less on its sides,
+   * so the field and the controls row gain width: the field's text, and the Markdown overlay that
+   * must sit exactly on it, step from --cinder-space-3 to --cinder-space-2, and the controls row
+   * from --cinder-space-2 to --cinder-space-1-5. The controls keep their 44px targets. Last in the
+   * sheet, so it follows the rules it narrows (COR-2327). */
+  @container (max-inline-size: 30rem) {
+    .chat-input-editor,
+    .chat-input-markdown {
+      padding-inline: var(--cinder-space-2);
+    }
+
+    .chat-input-footer {
+      padding-inline: var(--cinder-space-1-5);
+    }
+  }
 </style>

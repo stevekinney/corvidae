@@ -79,6 +79,29 @@ describe('the header row', () => {
   });
 });
 
+describe('a narrow composer', () => {
+  test('spends a spacing step less on its sides, by its own width, after the rules it narrows', async () => {
+    const source = (await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text()).replace(
+      /\s+/g,
+      ' ',
+    );
+    const narrowing =
+      '@container (max-inline-size: 30rem) { .chat-input-editor, .chat-input-markdown { padding-inline: var(--cinder-space-2); } .chat-input-footer { padding-inline: var(--cinder-space-1-5); } }';
+    const at = source.indexOf(narrowing);
+    expect(at).toBeGreaterThan(-1);
+    // A container query adds no specificity, so it must come after the base rules it narrows.
+    for (const base of [
+      '.chat-input-editor { display: block;',
+      '.chat-input-markdown { position: absolute;',
+      '.chat-input-footer { display: flex;',
+    ]) {
+      const baseAt = source.indexOf(base);
+      expect(baseAt, base).toBeGreaterThan(-1);
+      expect(baseAt, base).toBeLessThan(at);
+    }
+  });
+});
+
 describe('the formatting row', () => {
   test('holds the toolbar and the words of the shortcuts, above the text', () => {
     const { container } = render(ChatInput, { id: 'surface-format', formattingToolbar: true });

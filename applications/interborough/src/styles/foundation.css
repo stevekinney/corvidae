@@ -366,6 +366,15 @@
     --weft-outlet-gutter: var(--cinder-space-4);
     padding-block-start: var(--cinder-space-3);
   }
+
+  /* A conversation insets its own column (`chat.css`: the header, the transcript, the reminder and
+   * the composer share Chat's narrow inset, --cinder-space-3, from its container query). On a phone
+   * the outlet gives it only what is left of the phone gutter, so the column's shared edge stands
+   * --cinder-space-4 from the screen, as on every other phone page, and the composer gains the
+   * width (COR-2327). */
+  .weft-shell-outlet:has(.weft-chat-route) {
+    --weft-outlet-gutter: calc(var(--cinder-space-4) - var(--cinder-space-3));
+  }
 }
 
 /* Notification bell + popover (design rows 02w and 02x). The bell carries a dot, not a count: the

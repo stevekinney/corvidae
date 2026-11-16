@@ -310,11 +310,37 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
         const { x, y, width, height } = node!.getBoundingClientRect();
         return { x, y, width, height };
       };
+      // The next drawn surface in the docked stack: the blocked row or the composer.
+      let next = element.nextElementSibling;
+      while (next !== null && next.getBoundingClientRect().height === 0) {
+        next = next.nextElementSibling;
+      }
+      const space = document.createElement('div');
+      space.style.blockSize = 'var(--cinder-space-3)';
+      element.parentElement!.append(space);
+      const token = space.getBoundingClientRect().height;
+      space.remove();
       return {
         drawer: rectOf(element),
         text: rectOf(element.querySelector('.chat-approval-drawer-text')),
         button: rectOf(element.querySelector('button')),
+        gapBelow:
+          next === null
+            ? null
+            : next.getBoundingClientRect().top - element.getBoundingClientRect().bottom,
+        token,
       };
+    });
+    // The docked stack keeps one gap: the reminder stands --cinder-space-3 clear of the row under it.
+    expect(reminder.gapBelow).not.toBeNull();
+    expect(Math.abs(reminder.gapBelow! - reminder.token)).toBeLessThanOrEqual(0.5);
+    expect(reminder.token).toBe(12);
+    // The reminder's own state, for design review: the transcript scrolled up so it shows, its
+    // bottom edge fading into the docked stack.
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'approval reminder, transcript scrolled up',
+      source: SOURCE,
     });
     expect(reminder.drawer.height).toBeLessThanOrEqual(60);
     expect(reminder.button.x).toBeGreaterThanOrEqual(reminder.text.x + reminder.text.width - 1);
@@ -444,6 +470,48 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       state: 'no provider',
       source: SOURCE,
     });
+  });
+
+  test('on a phone the conversation column stands the phone gutter from each side: the title and the composer share the 16px edge (COR-2327)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.getByRole('heading', { level: 1, name: REFUND })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    // Each attempt reads every edge in one pass and judges that pass, never a frame mid-layout.
+    await expect(async () => {
+      const read = await page.evaluate(() => {
+        const box = (selector: string) => {
+          const element = document.querySelector(selector);
+          if (element === null) return null;
+          const { left, right } = element.getBoundingClientRect();
+          return { left, right };
+        };
+        const gutter = document.createElement('div');
+        gutter.style.inlineSize = 'var(--cinder-space-4)';
+        document.body.append(gutter);
+        const phoneGutter = gutter.getBoundingClientRect().width;
+        gutter.remove();
+        return {
+          viewport: document.documentElement.clientWidth,
+          phoneGutter,
+          title: box('h1.cinder-page-header__title'),
+          head: box('.weft-chat-head'),
+          composer: box('.chat-input-shell'),
+        };
+      });
+      expect(read.phoneGutter).toBe(16);
+      expect(read.title).not.toBeNull();
+      expect(read.composer).not.toBeNull();
+      expect(Math.abs(read.title!.left - read.composer!.left)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(read.composer!.left - read.phoneGutter)).toBeLessThanOrEqual(0.5);
+      // Symmetrical: the column ends the same gutter from the right edge.
+      expect(Math.abs(read.viewport - read.composer!.right - read.phoneGutter)).toBeLessThanOrEqual(
+        0.5,
+      );
+      expect(Math.abs(read.head!.right - read.composer!.right)).toBeLessThanOrEqual(0.5);
+    }).toPass();
   });
 
   test('docks the composer at the bottom of the screen, blocked or live (04y)', async ({
