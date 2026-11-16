@@ -287,6 +287,38 @@ describe('a profile with a model (version 2)', () => {
     expect(await store.getPreviousProfile()).toEqual(LEGACY);
   });
 
+  it('stores the checkpoint of a profile deletion with its model as version 2, and a resume finishes it', async () => {
+    const storage = new MemoryStorage();
+    const stopping = createMemoryVectorStore(
+      new Proxy(storage, {
+        get(target, property) {
+          if (property === 'delete') {
+            return async (key: string) => {
+              if (key.includes(':d:')) throw new Error('stopped part-way');
+              return target.delete(key);
+            };
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      }),
+    );
+    await stopping.activeProfile(MODELED);
+    await stopping.createProfile(MODELED_TARGET);
+    await stopping.put(MODELED_TARGET, { id: 'alpha', scope }, { version: 1, vector: vector(1) });
+    expect(await rejectionOf(stopping.deleteProfile(MODELED_TARGET))).toBeInstanceOf(Error);
+    const checkpoint = await textOf(storage, `${PREFIX}d:ollama%3Aembed:8:2`);
+    expect(checkpoint?.startsWith('{"schemaVersion":2,')).toBe(true);
+
+    // A forget still reaches the vectors of the profile whose deletion stopped, then a resume ends it.
+    const store = createMemoryVectorStore(storage);
+    await store.deleteMany([{ id: 'alpha', scope }]);
+    expect(Object.keys(await snapshot(storage)).filter((key) => key.includes(':v:'))).toEqual([]);
+    await store.resumeProfileDeletions();
+    expect(Object.keys(await snapshot(storage)).filter((key) => key.includes(':d:'))).toEqual([]);
+    expect(await store.listProfiles()).toEqual([MODELED]);
+  });
+
   it('keeps main’s bytes for a job in which no profile has a model', async () => {
     const storage = new MemoryStorage();
     const store = createMemoryVectorStore(storage);

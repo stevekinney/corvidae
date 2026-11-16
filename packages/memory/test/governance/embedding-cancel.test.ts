@@ -18,6 +18,7 @@
  * | running, completion about to swap | cancel arrives first                  | the cancel wins: `true`, the source stays active, the completion does not take effect |
  * | running, cancel about to swap  | the completion lands first               | the completion wins: the cancel reports `false`, the target is active and keeps every vector, nothing is deleted |
  * | running, cancel about to swap  | a second cancel lands first              | exactly one of the two reports `true` |
+ * | running, cancel about to swap  | a step's progress write lands first      | the swap misses, the cancel reads the record again, and wins with the progress the step wrote |
  * | running                        | the cancel's write fails (a stop before it) | the switch is still `running` with its target; the steps go on and complete it |
  * | cancelled                      | cancel again                             | `false`; the record is as it was |
  * | failed                         | cancel                                   | `false`; the failed record and the source are as they were |
@@ -331,6 +332,35 @@ describe('cancelling the embedding switch (COR-2188)', () => {
     expect(results.filter(Boolean)).toHaveLength(1);
     const status = await fixture.memory.embedding.status();
     expect(status.job?.state).toBe('cancelled');
+  });
+
+  it('running, a step moves the record’s progress between the cancel’s read and its swap: the cancel reads again and still wins', async () => {
+    const { fixture, vectors, durable, ids, source } = await harness();
+    const stepper = fixture.restart();
+    let moved = false;
+    const cancelling = fixture.restart({
+      vectors: createMemoryVectorStore(
+        intercepting(durable, async (run, _conditions, operations) => {
+          if (!moved && recordsCancellation(operations)) {
+            // The step's progress write lands first, so the cancel's swap, which expects the record it read, misses.
+            moved = true;
+            await stepper.embedding.advance({ limit: 1 });
+          }
+          return run();
+        }),
+      ),
+    });
+    const target = await started(cancelling);
+
+    expect(await cancelling.embedding.cancel()).toBe(true);
+
+    expect(moved).toBe(true);
+    const status = await fixture.memory.embedding.status();
+    // The record is the one the step wrote, cancelled: its progress is kept.
+    expect(status.job).toMatchObject({ state: 'cancelled', done: 1, total: 3 });
+    expect(await vectors.listProfiles()).toEqual([source]);
+    expect(await keysOf(durable, target)).toEqual([]);
+    expect(await heldCount(vectors, source, ids)).toBe(ids.length);
   });
 
   it('running, the cancel’s write fails: the switch is still running with its target, and the steps complete it', async () => {
