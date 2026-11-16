@@ -8,6 +8,18 @@
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
   "suiteExitCode": 0,
   "componentRenders": {
+    "approval-card": {
+      "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "suiteExitCode": 0
+    },
+    "card": {
+      "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "suiteExitCode": 0
+    },
+    "chat": {
+      "renderedSourceSha": "a21a9e1994c04262ac604640d687648eb0c77e3f",
+      "suiteExitCode": 0
+    },
     "stacked-list-item": {
       "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
       "suiteExitCode": 0
