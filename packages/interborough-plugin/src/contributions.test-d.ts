@@ -53,6 +53,32 @@ export const renamedPanels: PluginContributions = { panels: [panel] };
 // @ts-expect-error -- `mcpApps` was renamed `panels`
 export const staleMcpApps: PluginContributions = { mcpApps: [panel] };
 
+// A panel declares where it appears (COR-2212): the three placement kinds, with no MCP opener.
+export const placedPanel: PluginPanel = {
+  name: 'queue',
+  title: 'Queue',
+  uri: 'ui://example/queue/v1',
+  entry: new URL('file:///queue/app.ts'),
+  allowedTools: [],
+  placements: [
+    { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+    { kind: 'run' },
+    { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+  ],
+};
+
+export const homePlacement: PluginPanel = {
+  ...placedPanel,
+  // @ts-expect-error -- `home` is the host's own sidebar group, not a plugin's
+  placements: [{ kind: 'page', path: 'queue', sidebar: { group: 'home' } }],
+};
+
+export const unknownPlacement: PluginPanel = {
+  ...placedPanel,
+  // @ts-expect-error -- `dock` is not a placement kind
+  placements: [{ kind: 'dock' }],
+};
+
 declare const formatter: PluginFormatter;
 
 export const renamedFormatters: PluginContributions = { formatters: [formatter] };

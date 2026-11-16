@@ -16,6 +16,7 @@ export const runInspector: PluginPanel = {
   entry: new URL('./run-inspector/app.ts', import.meta.url),
   styles: BASE_STYLES,
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.events', 'bureau.tasks.cancel'],
+  placements: [{ kind: 'run' }],
   opensFromTool: 'bureau.tasks.inspect',
 };
 
@@ -46,8 +47,8 @@ export const workflowRevisionReview: PluginPanel = {
   styles: WORKFLOW_REVISION_STYLES,
   allowedTools: ['bureau.workflows.get', 'bureau.workflows.update'],
   hostOnlyTools: ['bureau.workflows.update'],
+  placements: [{ kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' }],
   opensFromTool: 'bureau.workflows.update',
-  opensFromAgentTool: 'bureau:workflows-propose-update',
 };
 
 /**

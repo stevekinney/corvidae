@@ -287,6 +287,7 @@ const runInspector: PluginPanel = {
   uri: 'ui://inspector/run-inspector/v1',
   entry: new URL('./run-inspector/app.ts', import.meta.url),
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.cancel'],
+  placements: [{ kind: 'run' }],
   opensFromTool: 'bureau.tasks.inspect',
 };
 
@@ -297,6 +298,14 @@ export default definePlugin({
   setup: () => ({ panels: [runInspector] }),
 });
 ```
+
+A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
+
+- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.
+- `{ kind: 'run' }`: the panel shows on a run's page. Two plugins can both place a panel there.
+- `{ kind: 'chat-tool', agentTool }`: Chat opens the panel inline when the agent tool `agentTool` is called. A Bureau given its agent tools refuses an id it does not hold, except the workflow tools it adds itself.
+
+`opensFromTool` is optional: leave it out for a panel that needs no MCP opener, such as a page, and no tool is linked to it and none is claimed. A placement claims nothing. Setup refuses an unknown `kind`, a `page` group outside the three, and a `page` path outside the grammar. `GET /host/panels` lists each panel's `placements`, always, and an empty list when it declares none.
 
 An entry that does not build leaves the plugin `running` with a `panel-failed` problem, and the other contributions keep working.
 

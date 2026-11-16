@@ -152,12 +152,58 @@ describe('the MCP apps the host serves', () => {
         title: 'The one page',
         uri: 'ui://test/one/v1',
         opensFromTool: 'a.second',
+        placements: [],
         allowedTools: ['a.first', 'a.second'],
         hostOnlyTools: [],
         html: expect.any(String),
       },
     ]);
     expect(apps[0]?.html).toBe(resources[0]?.text);
+  });
+
+  it('links no tool to a panel that names no opener, and still serves its page and placements (COR-2212)', async () => {
+    const { opensFromTool: _opener, ...withoutOpener } = await app('one', {
+      allowedTools: ['a.first'],
+      placements: [{ kind: 'page', path: 'reviews/queue', sidebar: { group: 'work' } }],
+    });
+    const { apps, resources, toolMeta } = await panelMounts(
+      contributed(withoutOpener, await app('two')),
+    );
+    expect(resources.map(({ uri }) => uri)).toEqual(['ui://test/one/v1', 'ui://test/two/v1']);
+    // `a.first` is shown to apps because the panel lists it, but no tool links to the page.
+    expect(toolMeta['a.first']).toEqual({ ui: { visibility: ['model', 'app'] } });
+    expect(
+      Object.values(toolMeta).filter((meta) => JSON.stringify(meta).includes('resourceUri')),
+    ).toHaveLength(1);
+    expect(apps[0]).not.toHaveProperty('opensFromTool');
+    expect(apps[0]?.placements).toEqual([
+      { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work' } },
+    ]);
+  });
+
+  it('serves each placement with only the fields it declares', async () => {
+    const stray = { kind: 'run', plugin: 'smuggled' } as never;
+    const { apps } = await panelMounts(
+      contributed(
+        await app('one', {
+          placements: [
+            {
+              kind: 'page',
+              path: 'reviews',
+              sidebar: { group: 'build', icon: 'inbox', extra: 'x' } as never,
+              hidden: true,
+            } as never,
+            stray,
+            { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update', extra: 1 } as never,
+          ],
+        }),
+      ),
+    );
+    expect(apps[0]?.placements).toEqual([
+      { kind: 'page', path: 'reviews', sidebar: { group: 'build', icon: 'inbox' } },
+      { kind: 'run' },
+      { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+    ]);
   });
 
   it('lists no app whose page did not build', async () => {

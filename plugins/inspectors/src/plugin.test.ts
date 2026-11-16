@@ -30,7 +30,11 @@ describe('the inspectors plugin', () => {
     expect(pendingReview.opensFromTool).toBe('bureau.reviews.list');
     expect(runInspector.allowedTools).toContain(runInspector.opensFromTool);
     expect(pendingReview.allowedTools).toContain(pendingReview.opensFromTool);
-    expect(workflowRevisionReview.opensFromAgentTool).toBe('bureau:workflows-propose-update');
+    expect(runInspector.placements).toEqual([{ kind: 'run' }]);
+    expect(pendingReview.placements).toBeUndefined();
+    expect(workflowRevisionReview.placements).toEqual([
+      { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+    ]);
     expect(workflowRevisionReview.allowedTools).toContain(workflowRevisionReview.opensFromTool);
   });
 

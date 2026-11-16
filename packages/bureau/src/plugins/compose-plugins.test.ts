@@ -3,6 +3,8 @@
  */
 import {
   definePlugin,
+  type PluginPanel,
+  type PluginPanelPlacement,
   type PluginSetupContext,
   type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
@@ -1049,6 +1051,167 @@ describe('MCP apps a plugin contributes', () => {
     expect(plugins.panels().map(({ plugin, version, app }) => [plugin, version, app.uri])).toEqual([
       ['first', '1.0.0', 'ui://first/one/v1'],
     ]);
+  });
+
+  describe('placements (COR-2212)', () => {
+    /** A panel that declares only where it appears: it names no `opensFromTool`. */
+    const placed = (
+      name: string,
+      uri: string,
+      placements: readonly PluginPanelPlacement[],
+      extras: Partial<PluginPanel> = {},
+    ): PluginPanel => ({
+      name,
+      title: name,
+      uri,
+      entry: new URL(`file:///${name}/app.ts`),
+      allowedTools: ['bureau.tasks.inspect'],
+      placements,
+      ...extras,
+    });
+
+    it('composes a panel with only a page placement and no opener, and links it to no tool', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [
+                { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+              ]),
+            ],
+          })),
+          // A second plugin's page panel also names no tool, so nothing claims a tool twice.
+          pluginEntry('b', () => ({
+            panels: [placed('two', 'ui://b/two/v1', [{ kind: 'page', path: 'b' }])],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+      const { plugins } = createPluginRegistry(records);
+      expect(plugins.panels().map(({ app }) => [app.name, app.opensFromTool])).toEqual([
+        ['one', undefined],
+        ['two', undefined],
+      ]);
+      expect(plugins.panels()[0]?.app.placements).toEqual([
+        { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+      ]);
+    });
+
+    it('composes two plugins’ panels that both have a run placement, with no name-clash', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [placed('one', 'ui://a/one/v1', [{ kind: 'run' }])],
+          })),
+          pluginEntry('b', () => ({
+            panels: [placed('two', 'ui://b/two/v1', [{ kind: 'run' }])],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+      expect(records.flatMap(({ problems }) => problems ?? [])).toEqual([]);
+    });
+
+    it('still claims the opener of a panel that names one', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [{ kind: 'run' }], {
+                opensFromTool: 'bureau.tasks.inspect',
+              }),
+            ],
+          })),
+          pluginEntry('b', () => ({
+            panels: [
+              placed('two', 'ui://b/two/v1', [{ kind: 'run' }], {
+                opensFromTool: 'bureau.tasks.inspect',
+              }),
+            ],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'skipped']);
+      expect(records[1]?.problems).toEqual([
+        expect.objectContaining({ code: 'name-clash', name: 'bureau.tasks.inspect' }),
+      ]);
+    });
+
+    it.each([
+      ['the group home', { kind: 'page', path: 'reviews', sidebar: { group: 'home' } }],
+      ['a group that is not a string', { kind: 'page', path: 'reviews', sidebar: {} }],
+      ['an uppercase path', { kind: 'page', path: 'Reviews' }],
+      ['a path with a leading slash', { kind: 'page', path: '/reviews' }],
+      ['a path with a trailing slash', { kind: 'page', path: 'reviews/' }],
+      ['an empty segment', { kind: 'page', path: 'reviews//queue' }],
+      ['a segment starting with a digit', { kind: 'page', path: 'reviews/1st' }],
+      ['an empty path', { kind: 'page', path: '' }],
+      ['no path', { kind: 'page' }],
+      ['a path with a dot segment', { kind: 'page', path: 'reviews/../queue' }],
+      ['a kind this host does not know', { kind: 'dock' }],
+      ['no kind', {}],
+    ] as const)('fails setup for a placement with %s', async (_name, placement) => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [placed('one', 'ui://a/one/v1', [placement] as never)],
+          })),
+        ],
+      });
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringMatching(/^setup returned the panel "one" with a .*placement/),
+        }),
+      ]);
+    });
+
+    it('refuses a chat-tool placement for an agent tool the Bureau does not hold, but not a workflow tool', async () => {
+      const agentSource = { tools: { 'plugin:known': {} } } as never;
+      const { records } = await composePlugins<ComposableOptions>({
+        agentSource,
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [{ kind: 'chat-tool', agentTool: 'plugin:known' }]),
+            ],
+          })),
+          pluginEntry('b', () => ({
+            panels: [
+              placed('two', 'ui://b/two/v1', [
+                { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+              ]),
+            ],
+          })),
+          pluginEntry('c', () => ({
+            panels: [
+              placed('three', 'ui://c/three/v1', [{ kind: 'chat-tool', agentTool: 'nobody:home' }]),
+            ],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running', 'skipped']);
+      expect(records[2]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: 'setup returned the panel "three" opened from unknown agent tool "nobody:home".',
+        }),
+      ]);
+    });
+
+    it('checks no agent tool when the Bureau is given none', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [{ kind: 'chat-tool', agentTool: 'nobody:home' }]),
+            ],
+          })),
+        ],
+      });
+      expect(records[0]?.status).toBe('running');
+    });
   });
 
   it('skips a plugin whose host-only tool is not an operation open to host panels', async () => {

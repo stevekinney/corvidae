@@ -132,14 +132,26 @@ describe('the run inspector’s panel', () => {
     const host = await start();
     const listing = await fetch(new URL('/host/panels', host.url));
     const listed = (await listing.json()) as {
-      apps: { plugin: string; app: string; opensFromTool: string }[];
+      apps: { plugin: string; app: string; opensFromTool?: string; placements: unknown[] }[];
     };
     expect(listed.apps).toContainEqual(
       expect.objectContaining({
         plugin: 'inspectors',
         app: 'run-inspector',
         opensFromTool: 'bureau.tasks.inspect',
+        placements: [{ kind: 'run' }],
       }),
+    );
+    expect(listed.apps).toContainEqual(
+      expect.objectContaining({
+        plugin: 'inspectors',
+        app: 'workflow-revision-review',
+        placements: [{ kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' }],
+      }),
+    );
+    // A panel that declares no placement lists an empty array.
+    expect(listed.apps).toContainEqual(
+      expect.objectContaining({ app: 'pending-review', placements: [] }),
     );
     const page = await fetch(new URL(PAGE, host.url));
     expect(page.status).toBe(200);

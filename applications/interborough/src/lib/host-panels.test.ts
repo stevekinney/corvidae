@@ -2,7 +2,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
-import { getPanels, loadPluginApp, pluginToolCaller } from './host-panels.ts';
+import { chatToolsOf, getPanels, loadPluginApp, pluginToolCaller } from './host-panels.ts';
 
 type Seen = { path: string; init: RequestInit | undefined };
 
@@ -35,11 +35,75 @@ describe('the panels the host lists', () => {
         title: 'Run inspector',
         uri: 'ui://inspectors/run-inspector/v1',
         opensFromTool: 'bureau.tasks.inspect',
+        placements: [{ kind: 'run' }],
+      },
+      {
+        plugin: 'inspectors',
+        app: 'workflow-revision-review',
+        title: 'Review workflow revision',
+        uri: 'ui://inspectors/workflow-revision-review/v1',
+        placements: [
+          { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+          { kind: 'page', path: 'reviews/queue', sidebar: { group: 'system', icon: 'inbox' } },
+        ],
       },
     ];
     const { fetch, seen } = scripted(() => Response.json({ apps }));
     expect(await getPanels({ fetch })).toEqual(apps);
     expect(seen[0]?.path).toBe('/host/panels');
+  });
+
+  test('reads the Chat tools a panel opens from out of its chat-tool placements', async () => {
+    const [run, review] = await getPanels({
+      fetch: scripted(() =>
+        Response.json({
+          apps: [
+            {
+              plugin: 'inspectors',
+              app: 'run-inspector',
+              title: 'Run inspector',
+              uri: 'ui://inspectors/run-inspector/v1',
+              placements: [{ kind: 'run' }],
+            },
+            {
+              plugin: 'inspectors',
+              app: 'workflow-revision-review',
+              title: 'Review workflow revision',
+              uri: 'ui://inspectors/workflow-revision-review/v1',
+              placements: [
+                { kind: 'page', path: 'reviews' },
+                { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+              ],
+            },
+          ],
+        }),
+      ).fetch,
+    });
+    expect(chatToolsOf(run!)).toEqual([]);
+    expect(chatToolsOf(review!)).toEqual(['bureau:workflows-propose-update']);
+  });
+
+  test.each([
+    ['a placement of another kind', [{ kind: 'dock' }]],
+    [
+      'a page placement in the home group',
+      [{ kind: 'page', path: 'reviews', sidebar: { group: 'home' } }],
+    ],
+    ['a chat-tool placement with no agent tool', [{ kind: 'chat-tool' }]],
+  ])('throws for %s', async (_name, placements) => {
+    const { fetch } = scripted(() =>
+      Response.json({
+        apps: [{ plugin: 'a', app: 'b', title: 'B', uri: 'ui://a/b/v1', placements }],
+      }),
+    );
+    expect(await rejectionOf(getPanels({ fetch }))).toBeInstanceOf(Error);
+  });
+
+  test('throws for a panel listing with no placements field', async () => {
+    const { fetch } = scripted(() =>
+      Response.json({ apps: [{ plugin: 'a', app: 'b', title: 'B', uri: 'ui://a/b/v1' }] }),
+    );
+    expect(await rejectionOf(getPanels({ fetch }))).toBeInstanceOf(Error);
   });
 
   test.each([

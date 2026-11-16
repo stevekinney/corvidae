@@ -22,6 +22,8 @@ import type {
   PluginContributions,
   PluginHost,
   PluginMemoryGate,
+  PluginPanel,
+  PluginPanelPlacement,
   PluginSecrets,
   PluginSetupContext,
   PluginSetupResult,
@@ -295,6 +297,64 @@ function checkedGuardrailName(
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
 const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
+/** The path of a `page` placement: lowercase segments of letters, digits and hyphens (COR-2212). */
+const PANEL_PAGE_PATH_PATTERN = /^[a-z][a-z0-9-]*(\/[a-z][a-z0-9-]*)*$/;
+
+/** The sidebar groups a `page` placement may sit in; `home` is the host's own. */
+const PANEL_SIDEBAR_GROUPS: readonly string[] = ['work', 'build', 'system'];
+
+/**
+ * Throws a `TypeError` when `placement` of the panel `app` is not one the host can place: another
+ * `kind`, a `page` group outside {@link PANEL_SIDEBAR_GROUPS}, a `page` path outside
+ * {@link PANEL_PAGE_PATH_PATTERN}, or a `chat-tool` agent tool the Bureau does not hold (checked
+ * only when it is given its agent tools, and the workflow tools it adds itself always pass). The
+ * `sidebar.icon` is not checked here (COR-2212).
+ */
+function checkPlacement(
+  app: PluginPanel,
+  placement: PluginPanelPlacement,
+  agentTools: AgentSource['tools'] | undefined,
+): void {
+  // A plugin's value may hold what the type forbids, so each field is read as unknown first.
+  const { kind, path, sidebar, agentTool } = placement as {
+    kind?: unknown;
+    path?: unknown;
+    sidebar?: { group?: unknown } | undefined;
+    agentTool?: unknown;
+  };
+  const refuse = (reason: string): never => {
+    throw new TypeError(`setup returned the panel "${app.name}" with ${reason}.`);
+  };
+  if (kind === 'page') {
+    if (typeof path !== 'string' || !PANEL_PAGE_PATH_PATTERN.test(path)) {
+      refuse(
+        `a page placement at ${JSON.stringify(path)}, which is not a path of lowercase segments (letters, digits and hyphens, each starting with a letter) such as "reviews/queue"`,
+      );
+    }
+    if (
+      sidebar !== undefined &&
+      (typeof sidebar.group !== 'string' || !PANEL_SIDEBAR_GROUPS.includes(sidebar.group))
+    ) {
+      refuse(
+        `a page placement in the sidebar group ${JSON.stringify(sidebar.group)}, which is not one of ${PANEL_SIDEBAR_GROUPS.join(', ')}`,
+      );
+    }
+  } else if (kind === 'chat-tool') {
+    if (
+      typeof agentTool === 'string' &&
+      agentTools !== undefined &&
+      !Object.hasOwn(agentTools, agentTool) &&
+      !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`)
+    ) {
+      throw new TypeError(
+        `setup returned the panel "${app.name}" opened from unknown agent tool "${agentTool}".`,
+      );
+    }
+  } else if (kind !== 'run') {
+    refuse(`a placement of kind ${JSON.stringify(kind)}, which is not page, run or chat-tool`);
+  }
+}
+
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
  * name outside the plugin name grammar (which also keeps `plugin__name` injective), a tool that
@@ -424,7 +484,8 @@ function planOf(
         `setup returned the panel "${app.name}" with the URI "${app.uri}", which is outside the plugin's namespace: a panel URI begins ui://${plugin}/.`,
       );
     }
-    if (!app.allowedTools.includes(app.opensFromTool)) {
+    // A page panel declares a placement and needs no MCP opener, so the tool link is optional.
+    if (app.opensFromTool !== undefined && !app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
         `setup returned the panel "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
       );
@@ -443,23 +504,14 @@ function planOf(
         );
       }
     }
-    if (
-      app.opensFromAgentTool !== undefined &&
-      agentTools !== undefined &&
-      !Object.hasOwn(agentTools ?? {}, app.opensFromAgentTool) &&
-      !(
-        app.opensFromAgentTool.startsWith('bureau:') &&
-        WORKFLOW_TOOL_NAMES.some((name) => app.opensFromAgentTool === `bureau:${name}`)
-      )
-    ) {
-      throw new TypeError(
-        `setup returned the panel "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
-      );
-    }
+    for (const placement of app.placements ?? []) checkPlacement(app, placement, agentTools);
     contribute('panel', app.name);
     claims.push({ space: 'panel-uri', name: app.uri });
-    // A tool links to one page, so the host cannot serve two apps opened from the same tool.
-    claims.push({ space: 'panel-tool', name: app.opensFromTool });
+    // A tool links to one page, so the host cannot serve two apps opened from the same tool. A
+    // placement takes no claim: a page path or a chat tool names no tool another plugin holds, and
+    // two plugins can both place a panel on a run's page (COR-2212).
+    if (app.opensFromTool !== undefined)
+      claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
   for (const formatter of contributions.formatters ?? []) {
     contribute('formatter', formatter.name);

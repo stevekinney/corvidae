@@ -65,6 +65,7 @@ function hostAnswer(path: string, init: RequestInit | undefined): Response | und
           title: 'Run inspector',
           uri: 'ui://inspectors/run-inspector/v1',
           opensFromTool: 'bureau.tasks.inspect',
+          placements: [{ kind: 'run' }],
         },
         {
           plugin: 'inspectors',
@@ -72,6 +73,7 @@ function hostAnswer(path: string, init: RequestInit | undefined): Response | und
           title: 'Pending reviews',
           uri: 'ui://inspectors/pending-review/v1',
           opensFromTool: 'bureau.reviews.list',
+          placements: [],
         },
       ],
     });

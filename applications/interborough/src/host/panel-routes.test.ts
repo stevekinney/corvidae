@@ -20,6 +20,7 @@ const app = (overrides: Partial<ServedPanel> = {}): ServedPanel => ({
   title: 'Run inspector',
   uri: 'ui://inspectors/run-inspector/v1',
   opensFromTool: 'bureau.tasks.inspect',
+  placements: [],
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.cancel'],
   hostOnlyTools: [],
   html: PAGE,
@@ -139,6 +140,43 @@ describe('GET the panels the host serves', () => {
           title: 'Run inspector',
           uri: 'ui://inspectors/run-inspector/v1',
           opensFromTool: 'bureau.tasks.inspect',
+          placements: [],
+        },
+      ],
+    });
+  });
+
+  test('lists each panel’s placements, and leaves out an opener it does not name (COR-2212)', async () => {
+    const { opensFromTool: _opener, ...bare } = app({
+      name: 'queue',
+      uri: 'ui://inspectors/queue/v1',
+      placements: [
+        { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+        { kind: 'run' },
+        { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+      ],
+    });
+    const response = await call(routes(bureauDouble(), [app(), bare]), 'list');
+    expect(await response.json()).toEqual({
+      apps: [
+        {
+          plugin: 'inspectors',
+          app: 'run-inspector',
+          title: 'Run inspector',
+          uri: 'ui://inspectors/run-inspector/v1',
+          opensFromTool: 'bureau.tasks.inspect',
+          placements: [],
+        },
+        {
+          plugin: 'inspectors',
+          app: 'queue',
+          title: 'Run inspector',
+          uri: 'ui://inspectors/queue/v1',
+          placements: [
+            { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+            { kind: 'run' },
+            { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+          ],
         },
       ],
     });

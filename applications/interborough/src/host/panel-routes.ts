@@ -3,7 +3,9 @@
  * Chat's `McpApp`, which owns no client and no credential, so the host supplies both halves of it:
  *
  * - `GET /host/panels` lists the panels the host serves: the plugin, the app, its title and
- *   `ui://` URI, and the Bureau tool it opens from. A page finds its panel here.
+ *   `ui://` URI, the Bureau tool it opens from (left out when it names none), and its `placements`,
+ *   the places it appears in the host (always listed, empty when it declares none). A page finds
+ *   its panel here.
  * - `GET /host/plugins/<plugin>/apps/<app>` answers `{ html, ui }`, the built page and its
  *   deny-by-default security metadata, which is what `McpApp`'s resource loader returns. It is JSON
  *   on purpose: a navigation to an HTML answer would run the plugin's script as the top document
@@ -186,13 +188,13 @@ export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBu
         refuse(request) ??
         Response.json(
           {
-            apps: served.map(({ plugin, name, title, uri, opensFromTool, opensFromAgentTool }) => ({
+            apps: served.map(({ plugin, name, title, uri, opensFromTool, placements }) => ({
               plugin,
               app: name,
               title,
               uri,
-              opensFromTool,
-              ...(opensFromAgentTool === undefined ? {} : { opensFromAgentTool }),
+              ...(opensFromTool === undefined ? {} : { opensFromTool }),
+              placements,
             })),
           },
           { headers: JSON_HEADERS },

@@ -4,6 +4,7 @@
  * metadata that links a tool to the page, merged into the one pair the adapter accepts.
  */
 import type { BureauPlugins } from '@lostgradient/bureau';
+import type { PluginPanelPlacement } from '@lostgradient/interborough-plugin';
 import type { Storage } from '@lostgradient/storage';
 import type { OperationMcpResource } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -60,6 +61,32 @@ async function servedDigest(storage: Storage, uri: string): Promise<string | und
   }
 }
 
+/**
+ * A placement as the host serves it, copied field by field: the host lists only the fields the
+ * placement declares, never whatever else a plugin's object carries.
+ */
+function servedPlacement(placement: PluginPanelPlacement): PluginPanelPlacement {
+  switch (placement.kind) {
+    case 'page':
+      return {
+        kind: 'page',
+        path: placement.path,
+        ...(placement.sidebar === undefined
+          ? {}
+          : {
+              sidebar: {
+                group: placement.sidebar.group,
+                ...(placement.sidebar.icon === undefined ? {} : { icon: placement.sidebar.icon }),
+              },
+            }),
+      };
+    case 'run':
+      return { kind: 'run' };
+    case 'chat-tool':
+      return { kind: 'chat-tool', agentTool: placement.agentTool };
+  }
+}
+
 /** The apps `bureau.plugins.panels()` lists. */
 export type ContributedPanels = ReturnType<BureauPlugins['panels']>;
 
@@ -85,10 +112,10 @@ export type ServedPanel = {
   readonly title: string;
   /** The app's `ui://` resource URI. */
   readonly uri: string;
-  /** The Bureau tool a client runs to open the page. */
-  readonly opensFromTool: string;
-  /** The agent tool id that may open this app inline in Chat. */
-  readonly opensFromAgentTool?: string;
+  /** The Bureau tool a client runs to open the page; absent for a panel that declares none. */
+  readonly opensFromTool?: string;
+  /** Where the panel appears in the host: each placement the plugin declared, and none by default. */
+  readonly placements: readonly PluginPanelPlacement[];
   /** The Bureau MCP tool names the panel may call, and no others. */
   readonly allowedTools: readonly string[];
   /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
@@ -187,10 +214,8 @@ export async function panelMounts(
       name: app.name,
       title: app.title,
       uri: app.uri,
-      opensFromTool: app.opensFromTool,
-      ...(app.opensFromAgentTool === undefined
-        ? {}
-        : { opensFromAgentTool: app.opensFromAgentTool }),
+      ...(app.opensFromTool === undefined ? {} : { opensFromTool: app.opensFromTool }),
+      placements: (app.placements ?? []).map(servedPlacement),
       allowedTools: [...app.allowedTools],
       hostOnlyTools: [...(app.hostOnlyTools ?? [])],
       html: page.html,
@@ -201,7 +226,9 @@ export async function panelMounts(
   for (const app of apps) {
     for (const tool of app.allowedTools) toolMeta[tool] = { ui: { visibility: APP_VISIBILITY } };
   }
+  // Only a panel that names an opener is linked from a tool; a page panel needs no MCP opener.
   for (const app of apps) {
+    if (app.opensFromTool === undefined) continue;
     toolMeta[app.opensFromTool] = { ui: { resourceUri: app.uri, visibility: APP_VISIBILITY } };
   }
   const changes: PanelChange[] = [];
