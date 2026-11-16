@@ -362,6 +362,51 @@ describe('StatusDot wordTone (row 33h)', () => {
   });
 });
 
+describe('StatusDot qualifier (row 09q)', () => {
+  test('renders "word, count" from the word and the qualifier, with no middle dot', () => {
+    const { container } = render(StatusDot, { props: { word: 'Missed runs', qualifier: 4 } });
+    const root = container.querySelector('.cinder-status-dot');
+    const text = container.querySelector('.cinder-status-dot__label')?.textContent;
+    expect(text).toBe('Missed runs, 4');
+    expect(text).not.toContain('·');
+    expect(root?.getAttribute('aria-label')).toBe('Missed runs, 4');
+  });
+
+  test('the qualifier does not change the tone of its word', () => {
+    const { container } = render(StatusDot, { props: { word: 'Missed runs', qualifier: 4 } });
+    expect(container.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+      'warning',
+    );
+  });
+
+  test('a qualifier on Done is neutral, as the word table has it for a qualified Done', () => {
+    const { container } = render(StatusDot, {
+      props: { word: 'Done', qualifier: 'refund not issued' },
+    });
+    expect(container.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+      'neutral',
+    );
+  });
+
+  test('a qualifier of 0 is shown, and a blank one is not', () => {
+    const zero = render(StatusDot, { props: { word: 'Missed runs', qualifier: 0 } });
+    expect(zero.container.querySelector('.cinder-status-dot__label')?.textContent).toBe(
+      'Missed runs, 0',
+    );
+    const blank = render(StatusDot, { props: { word: 'Missed runs', qualifier: '  ' } });
+    expect(blank.container.querySelector('.cinder-status-dot__label')?.textContent).toBe(
+      'Missed runs',
+    );
+  });
+
+  test('an explicit label still wins over the word and its qualifier', () => {
+    const { container } = render(StatusDot, {
+      props: { word: 'Missed runs', qualifier: 4, label: 'Four missed' },
+    });
+    expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe('Four missed');
+  });
+});
+
 describe('StatusDot CSS contract', () => {
   test('connection presets tint the root text with their semantic state colors', async () => {
     const css = await Bun.file(new URL('./status-dot.css', import.meta.url)).text();

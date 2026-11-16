@@ -30,6 +30,18 @@ Status-dot owns the word-to-tone table for Interborough's status words, so a pag
 
 One word has one tone, identical in light and dark. A qualifier after a comma rides along on its base word (`Running, checking the result` is `info`, `Missed runs, 4` is `warning`) unless the table lists the whole phrase (`Done, refund not issued` is `neutral`, because a finished run whose task was not achieved is never green). An explicit `status` or `label` still wins over what the word supplies.
 
+A count or short phrase that belongs after the word goes in `qualifier`, which sets it after the word and a comma, so a page never writes the separator itself (a count and its word are never joined by a middle dot):
+
+```svelte
+<script lang="ts">
+  import { StatusDot } from '@lostgradient/cinder';
+</script>
+
+<StatusDot word="Missed runs" qualifier={4} size="sm" />
+```
+
+The dot reads "Missed runs, 4" in the amber of "Missed runs". A blank qualifier is ignored and `0` is shown.
+
 | Tone | Words |
 | --- | --- |
 | `warning` (amber) | Waiting on you, Missed runs, Disconnected, Needs attention, Needs sign-in |
@@ -56,6 +68,7 @@ Some words are scoped, and the page decides where they belong: Ended is for chat
 | `label` | `string` | no | — | Human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. Defaults to a word derived from `status` (for example "Online"), so a bare StatusDot is a dot and a word, never a dot alone. |
 | `labelVisible` | `boolean` | no | `true` | Whether to render the visible label. |
 | `live` | `boolean` | no | — | Use role="status" with polite live-region attributes. Defaults true when connectionState is provided. |
+| `qualifier` | `string` \| `number` | no | — | A count or short phrase set after the `word` and a comma, so `word="Missed runs"` with `qualifier={4}` reads "Missed runs, 4". It does not change the word's tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`. |
 | `size` | `"sm"` \| `"md"` | no | `"md"` | Dot size. |
 | `status` | `"online"` \| `"offline"` \| `"warning"` \| `"danger"` \| `"info"` \| `"pending"` \| `"neutral"` \| `"success"` \| `"accent"` | no | — | Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-border-control`, the neutral dot; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. |
 | `wordTone` | `"muted"` \| `"status"` | no | `"muted"` | How the visible word is coloured: `muted` (the default) leaves a success, neutral, info or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning and danger words are always coloured. |

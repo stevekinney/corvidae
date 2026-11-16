@@ -58,6 +58,7 @@
   let {
     status,
     word,
+    qualifier,
     connectionState,
     label,
     live,
@@ -70,7 +71,20 @@
   }: StatusDotProps = $props();
 
   const normalizedAriaLabel = $derived(ariaLabel?.trim() ? ariaLabel.trim() : undefined);
-  const trimmedWord = $derived(word?.trim() ? word.trim() : undefined);
+  const trimmedWordOnly = $derived(word?.trim() ? word.trim() : undefined);
+  // The qualifier is set after the word and a comma, the one separator the status words use, so
+  // "Missed runs" with a qualifier of 4 reads "Missed runs, 4". A blank qualifier says nothing, and
+  // a qualifier of 0 does.
+  const trimmedQualifier = $derived(
+    qualifier === undefined || String(qualifier).trim() === ''
+      ? undefined
+      : String(qualifier).trim(),
+  );
+  const trimmedWord = $derived(
+    trimmedWordOnly !== undefined && trimmedQualifier !== undefined
+      ? `${trimmedWordOnly}, ${trimmedQualifier}`
+      : trimmedWordOnly,
+  );
   // A word the table does not know stays neutral rather than guessing a tone.
   const wordStatus = $derived(
     trimmedWord === undefined ? undefined : (statusForStatusDotWord(trimmedWord) ?? 'neutral'),
