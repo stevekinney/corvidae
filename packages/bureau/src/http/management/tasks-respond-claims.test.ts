@@ -26,6 +26,7 @@ import {
 } from '../../tasks/respond-to-task.ts';
 import type { PendingReview, ReviewStatus } from '../../bureau-types/reviews.ts';
 import type { TaskRespondResult } from '../../bureau-types/tasks.ts';
+import { PLAIN_TASK_WORKFLOW } from '../../task-workflow.test-support.ts';
 import { mayAccessOwnedResource } from '../owner-predicate.ts';
 import {
   type BureauTasksRespondOperationHost,
@@ -118,6 +119,7 @@ function hostOver(
     cleanup: null,
     openWaits: options.openWaits,
     wakeAt: null,
+    workflow: PLAIN_TASK_WORKFLOW,
   };
   const tasks = options.taskGone
     ? { get: async () => undefined, ownerOf: async () => undefined }

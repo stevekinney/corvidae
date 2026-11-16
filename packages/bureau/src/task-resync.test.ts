@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { bearsSettlement, createTaskResync } from './task-resync.ts';
 import type { TaskRecord, TaskView } from './task-registry.ts';
+import { PLAIN_TASK_WORKFLOW } from './task-workflow.test-support.ts';
 
 const record: TaskRecord = {
   schemaVersion: 1,
@@ -37,6 +38,7 @@ const view: TaskView = {
   cleanup: null,
   openWaits: [],
   wakeAt: null,
+  workflow: PLAIN_TASK_WORKFLOW,
 };
 
 /** A repair over one settled record whose history holds `kinds`; resolves what it appended. */

@@ -25,6 +25,7 @@ import {
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { TaskView } from '../task-registry.ts';
+import { PLAIN_TASK_WORKFLOW } from '../task-workflow.test-support.ts';
 import { createA2APushCheckpoints, type A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import {
   type A2APushBureau,
@@ -52,6 +53,7 @@ const VIEW: TaskView = {
   cleanup: null,
   openWaits: [],
   wakeAt: null,
+  workflow: PLAIN_TASK_WORKFLOW,
 };
 
 const CALLER = { authenticated: true, userName: 'api-key:alice' };

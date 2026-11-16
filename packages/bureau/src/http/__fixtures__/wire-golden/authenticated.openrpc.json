@@ -1747,7 +1747,7 @@
       }
     },
     {
-      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.",
+      "description": "Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id ascending); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, `origin` only the tasks recorded with an origin of that kind (`chat`, `person`, `schedule`, `api`, `agent`, `goal`, or `parent`), `parentRunId` only the subordinate tasks of that run (the children it started, the attempts of a goal, the steps of a workflow instance), `parentContextId` only the child runs started from any run in that context (a reloaded chat lists the children of every run in its thread this way), `siblingsOf` only the tasks that share a parent run with the named task, that task excluded, `workflow` only the tasks that ran on that workflow type (`workflow.type` on each task says which), and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, wire projection (never the one of A2A `ListTasks`), and filters (`contextId`, `agentName`, `status`, `origin`, `parentRunId`, `parentContextId`, `siblingsOf`, `workflow`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1872,6 +1872,15 @@
             "description": "Only tasks whose status timestamp is strictly after this instant, as an ISO 8601 date-time with an offset.",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflow",
+          "required": false,
+          "schema": {
+            "description": "Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `durableHeartbeatTick`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.",
+            "minLength": 1,
             "type": "string"
           }
         }
@@ -2248,6 +2257,115 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "workflow": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "awaitingSignal": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "scheduleId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "scheduleName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "steps": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "at": {
+                                "anyOf": [
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "total": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "total",
+                              "at"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "tick": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "event": {
+                                "enum": [
+                                  "came-due",
+                                  "missed-runs"
+                                ],
+                                "type": "string"
+                              },
+                              "missedRuns": {
+                                "anyOf": [
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "whileStopped": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "event",
+                              "missedRuns",
+                              "whileStopped"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "scheduleId",
+                      "scheduleName",
+                      "tick",
+                      "steps",
+                      "awaitingSignal"
+                    ],
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2265,7 +2383,8 @@
                   "updatedAt",
                   "cleanup",
                   "openWaits",
-                  "wakeAt"
+                  "wakeAt",
+                  "workflow"
                 ],
                 "type": "object"
               },
@@ -2359,6 +2478,11 @@
             "description": "Only tasks whose status timestamp is strictly after this instant, as an ISO 8601 date-time with an offset.",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "workflow": {
+            "description": "Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `durableHeartbeatTick`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -2759,6 +2883,115 @@
                 "string",
                 "null"
               ]
+            },
+            "workflow": {
+              "additionalProperties": false,
+              "properties": {
+                "awaitingSignal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scheduleId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scheduleName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "steps": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "anyOf": [
+                            {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "total": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "at"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tick": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "event": {
+                          "enum": [
+                            "came-due",
+                            "missed-runs"
+                          ],
+                          "type": "string"
+                        },
+                        "missedRuns": {
+                          "anyOf": [
+                            {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "whileStopped": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "event",
+                        "missedRuns",
+                        "whileStopped"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "scheduleId",
+                "scheduleName",
+                "tick",
+                "steps",
+                "awaitingSignal"
+              ],
+              "type": "object"
             }
           },
           "required": [
@@ -2776,7 +3009,8 @@
             "updatedAt",
             "cleanup",
             "openWaits",
-            "wakeAt"
+            "wakeAt",
+            "workflow"
           ],
           "type": "object"
         }
@@ -3612,6 +3846,115 @@
                     "string",
                     "null"
                   ]
+                },
+                "workflow": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "awaitingSignal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "steps": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "at": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "total": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "total",
+                            "at"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tick": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "event": {
+                              "enum": [
+                                "came-due",
+                                "missed-runs"
+                              ],
+                              "type": "string"
+                            },
+                            "missedRuns": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "whileStopped": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "event",
+                            "missedRuns",
+                            "whileStopped"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "scheduleId",
+                    "scheduleName",
+                    "tick",
+                    "steps",
+                    "awaitingSignal"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
@@ -3629,7 +3972,8 @@
                 "updatedAt",
                 "cleanup",
                 "openWaits",
-                "wakeAt"
+                "wakeAt",
+                "workflow"
               ],
               "type": "object"
             },
@@ -4107,6 +4451,115 @@
                     "string",
                     "null"
                   ]
+                },
+                "workflow": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "awaitingSignal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scheduleName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "steps": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "at": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "total": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "total",
+                            "at"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tick": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "event": {
+                              "enum": [
+                                "came-due",
+                                "missed-runs"
+                              ],
+                              "type": "string"
+                            },
+                            "missedRuns": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "whileStopped": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "event",
+                            "missedRuns",
+                            "whileStopped"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "scheduleId",
+                    "scheduleName",
+                    "tick",
+                    "steps",
+                    "awaitingSignal"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
@@ -4124,7 +4577,8 @@
                 "updatedAt",
                 "cleanup",
                 "openWaits",
-                "wakeAt"
+                "wakeAt",
+                "workflow"
               ],
               "type": "object"
             },

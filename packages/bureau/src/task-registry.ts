@@ -74,6 +74,12 @@ import {
   taskOriginParentOf,
   taskOriginView,
 } from './task-origin';
+import {
+  isStoredTaskWorkflow,
+  type StoredTaskWorkflow,
+  type TaskWorkflow,
+  workflowViewOf,
+} from './task-workflow';
 import type { CancelDurableRunOutcome } from './bureau-types/runs';
 import type { PendingReview } from './bureau-types/reviews';
 
@@ -234,6 +240,13 @@ export interface TaskRecord {
    * record written before it was kept.
    */
   readonly pendingWakeup?: { readonly wakeAt: number } | undefined;
+  /**
+   * COR-2423 — what the Bureau recorded of the workflow the task ran on, when the engine told it
+   * more than the origin does: the type of a schedule tick or of an instance of a workflow file,
+   * and how far the instance got. Absent for every other task and in a record written before it
+   * was kept; the view then reads the type from the origin ({@link workflowViewOf}).
+   */
+  readonly workflow?: StoredTaskWorkflow | undefined;
 }
 
 /**
@@ -326,6 +339,12 @@ export interface TaskView {
    * end of the run. It carries no note: a view never holds message text.
    */
   readonly wakeAt: string | null;
+  /**
+   * COR-2423 — the workflow the task ran on: its type (the one `bureau.tasks.list` filters by),
+   * its schedule, what a schedule tick recorded, and how far an instance of a workflow file got.
+   * Always present; see {@link TaskWorkflow}.
+   */
+  readonly workflow: TaskWorkflow;
 }
 
 /** What a context is doing, from its latest live task. */
@@ -374,6 +393,14 @@ export interface TaskRegistryHost {
     ((taskId: string, reviewId: string, eventKind: string) => Promise<void>) | undefined;
   /** Resolves after `milliseconds` on the Bureau's runtime timers. */
   readonly sleep: (milliseconds: number) => Promise<void>;
+  /**
+   * COR-2423 — the engine's own runs (schedule ticks, instances of workflow files) as task views,
+   * which have no record. `bureau.tasks.list` shows them beside the tasks that do; no other
+   * operation reaches one. Absent for a Bureau without a durable engine.
+   */
+  readonly engineRuns?: (() => Promise<readonly TaskView[]>) | undefined;
+  /** COR-2423 — whether the engine still holds `runId` as one of those runs, so a page keeps it. */
+  readonly holdsEngineRun?: ((runId: string) => Promise<boolean>) | undefined;
 }
 
 /** The receipt `bureau.tasks.cancel` answers with. */
@@ -441,6 +468,8 @@ export interface TaskListQuery<T = TaskView> {
   readonly siblingsOf?: string | undefined;
   /** Only top-level tasks ({@link isTopLevelTaskOrigin}). Internal: A2A's listing sets it. */
   readonly topLevelOnly?: boolean | undefined;
+  /** COR-2423 — only tasks that ran on this workflow type ({@link TaskWorkflow.type}). */
+  readonly workflow?: string | undefined;
   /** Only tasks whose status timestamp is strictly after this ISO 8601 instant. */
   readonly statusTimestampAfter?: string | undefined;
   /** Entries per page. It is not bound to the snapshot, so it may vary between pages. */
@@ -476,6 +505,8 @@ export interface TaskQuery {
   readonly siblingsOf?: string | undefined;
   /** See {@link TaskListQuery.topLevelOnly}. */
   readonly topLevelOnly?: boolean | undefined;
+  /** See {@link TaskListQuery.workflow}. */
+  readonly workflow?: string | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -921,6 +952,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
     (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
     (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
+    (value['workflow'] === undefined || isStoredTaskWorkflow(value['workflow'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
@@ -1109,6 +1141,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       cleanup,
       openWaits,
       wakeAt,
+      workflow: workflowViewOf(
+        record,
+        status === 'completed' || status === 'failed' || status === 'canceled',
+      ),
     };
   }
 
@@ -1158,6 +1194,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       | 'parentRunId'
       | 'parentContextId'
       | 'topLevelOnly'
+      | 'workflow'
     >,
     siblings: TaskListingSiblings | null,
   ): Promise<TaskView[]> {
@@ -1202,9 +1239,53 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     const grouped = reviewsByRun(host.pendingReviews());
     const views = records.map((record) => viewOf(record, grouped.get(record.taskId)));
-    return query.status === undefined
-      ? views
-      : views.filter((view) => view.status === query.status);
+    return views.filter(
+      (view) =>
+        (query.status === undefined || view.status === query.status) &&
+        (query.workflow === undefined || view.workflow.type === query.workflow),
+    );
+  }
+
+  /**
+   * COR-2423 — the engine's own runs (schedule ticks and instances of workflow files) that match
+   * `query`, listed beside the tasks that have records. They have no agent, context or parent run,
+   * so a filter on one of those matches none of them, and an A2A listing (`topLevelOnly`) never
+   * holds one. The reviews a run waits on make it `input-required` as they do for a task.
+   */
+  async function engineRunViews(query: TaskListQuery<unknown>): Promise<TaskView[]> {
+    if (
+      host.engineRuns === undefined ||
+      query.topLevelOnly === true ||
+      query.contextId !== undefined ||
+      query.agentName !== undefined ||
+      query.parentRunId !== undefined ||
+      query.parentContextId !== undefined ||
+      query.siblingsOf !== undefined
+    ) {
+      return [];
+    }
+    const grouped = reviewsByRun(host.pendingReviews());
+    const views: TaskView[] = [];
+    for (const run of await host.engineRuns()) {
+      if (query.owner !== undefined && run.owner !== query.owner) continue;
+      if (query.origin !== undefined && run.origin?.kind !== query.origin) continue;
+      if (query.workflow !== undefined && run.workflow.type !== query.workflow) continue;
+      const reviews = grouped.get(run.id) ?? [];
+      const held = reviews.length > 0 && ['working', 'submitted', 'completed'].includes(run.status);
+      const view: TaskView = held
+        ? {
+            ...run,
+            status: 'input-required',
+            openWaits: reviews.map((review) =>
+              review.kind === 'human-wait'
+                ? { kind: 'human-wait', reviewId: review.id, signalName: review.signalName }
+                : { kind: 'tool-approval', reviewId: review.id, callId: review.approval.callId },
+            ),
+          }
+        : run;
+      if (query.status === undefined || view.status === query.status) views.push(view);
+    }
+    return views;
   }
 
   const listings = createTaskListingStore({
@@ -1233,6 +1314,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       parentContextId: query.parentContextId ?? null,
       siblingsOf: query.siblingsOf ?? null,
       topLevelOnly: query.topLevelOnly === true,
+      workflow: query.workflow ?? null,
       statusTimestampAfter:
         query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
     };
@@ -1250,7 +1332,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     matched: number;
   }> {
     const { statusTimestampAfter } = scope.filters;
-    const views = await matchingViews(query, siblings);
+    const views = [...(await matchingViews(query, siblings)), ...(await engineRunViews(query))];
     const keyed = views
       .map((view) => ({ view, key: listingKeyOf(view) }))
       .filter(
@@ -1288,7 +1370,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const end = position + limit;
     const tasks: T[] = [];
     for (const entry of record.entries.slice(position, end)) {
-      if (await kv.has(recordKey(entry.id))) tasks.push(entry.value);
+      // An entry is a task with a record, or an engine run the engine still holds (COR-2423).
+      if ((await kv.has(recordKey(entry.id))) || (await host.holdsEngineRun?.(entry.id)) === true) {
+        tasks.push(entry.value);
+      }
     }
     let nextPageToken: string | null = null;
     if (end < record.entries.length || record.continuation !== null) {

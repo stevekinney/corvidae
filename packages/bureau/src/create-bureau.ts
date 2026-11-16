@@ -220,6 +220,7 @@ import {
   type TaskToolGrant,
 } from './task-registry';
 import { createTaskResync, type TaskResync } from './task-resync';
+import { createEngineRunTasks } from './engine-run-tasks';
 import { ANONYMOUS_LOCAL_OWNER, ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule';
 import {
@@ -3445,6 +3446,17 @@ async function constructBureau<const D extends AgentDefinitions>(
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
   });
+  const engineRunTasks = createEngineRunTasks({
+    engine: () => (workflowRuntime === undefined ? undefined : runtime.durable?.engine),
+    workflowTypes: async () => (await workflowRuntime?.workflowTypes()) ?? [],
+    revisionSteps: async (type, workflowVersion) =>
+      workflowRuntime?.revisionSteps(type, workflowVersion),
+    ownerOfInstance: runOwner,
+    ownerOfSchedule: scheduleOwner,
+    deploymentOwner: workflowRuntime?.workflows.owner ?? ANONYMOUS_LOCAL_OWNER,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,
@@ -3531,6 +3543,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         new Promise<void>((resolve) => {
           runtimeServices.timers.setTimeout(resolve, milliseconds);
         }),
+      // COR-2423: the schedule tick and the instances of workflow files, which have no task record.
+      engineRuns: () => engineRunTasks.list(),
+      holdsEngineRun: (runId) => engineRunTasks.holds(runId),
     },
   });
   taskRegistryHolder.current = tasks;

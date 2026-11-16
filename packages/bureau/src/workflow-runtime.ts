@@ -774,6 +774,11 @@ export interface WorkflowRuntime {
   ) => Promise<WorkflowRevisionSteps | undefined>;
   /** COR-2009 — the ids of every instance of a workflow file that has not finished. */
   readonly inFlightRunIds: () => Promise<string[]>;
+  /**
+   * COR-2423 — the identifiers of every workflow whose instances the engine may hold: the files,
+   * the ones that ran before (their saved versions), and the plugins' code workflows.
+   */
+  readonly workflowTypes: () => Promise<readonly string[]>;
   /** Stop watching and wait for work in flight. */
   readonly close: () => Promise<void>;
 }
@@ -2904,6 +2909,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (!(await isWorkflowType(type))) return undefined;
       return revisionOf(bureauNameOf(type), workflowVersion);
     },
+
+    workflowTypes: knownTypes,
 
     async inFlightRunIds() {
       const runIds: string[] = [];
