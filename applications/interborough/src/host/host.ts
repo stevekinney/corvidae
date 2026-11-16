@@ -230,7 +230,11 @@ import {
 } from './locations.ts';
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
-import { PANEL_PREBUILT_DIRECTORY_VARIABLE, panelMounts } from './panel-mounts.ts';
+import {
+  PANEL_PREBUILT_DIRECTORY_VARIABLE,
+  panelMounts,
+  reportPanelChanges,
+} from './panel-mounts.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
@@ -1353,18 +1357,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     }
     // A page whose bytes differ from what an earlier start served under its URI is still served,
     // and listed as a problem on the plugin (COR-2210).
-    for (const change of mcpMounts.changes) {
-      bureau.plugins.reportPanelChange(
-        change.plugin,
-        change.app,
-        change.uri,
-        change.previousDigest,
-        change.contentDigest,
-      );
-      log(
-        `Plugin ${change.plugin}: its panel ${change.app} at ${change.uri} changed from ${change.previousDigest} to ${change.contentDigest}.`,
-      );
-    }
+    reportPanelChanges(bureau.plugins, mcpMounts.changes, log);
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {
       open: (socket) => bureauHandler?.websocket.open(socket),

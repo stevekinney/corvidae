@@ -153,6 +153,29 @@ export type PanelChange = {
 };
 
 /**
+ * Lists each of `changes` as a `panel-changed` problem on its plugin and logs it. The pages stay
+ * served: the host starts, and a person sees that the bytes under a URI changed (COR-2210).
+ */
+export function reportPanelChanges(
+  plugins: Pick<BureauPlugins, 'reportPanelChange'>,
+  changes: readonly PanelChange[],
+  log: (message: string) => void,
+): void {
+  for (const change of changes) {
+    plugins.reportPanelChange(
+      change.plugin,
+      change.app,
+      change.uri,
+      change.previousDigest,
+      change.contentDigest,
+    );
+    log(
+      `Plugin ${change.plugin}: its panel ${change.app} at ${change.uri} changed from ${change.previousDigest} to ${change.contentDigest}.`,
+    );
+  }
+}
+
+/**
  * Build every contributed app once and merge their resources and tool metadata. An app is linked
  * from its `opensFromTool`, which Bureau composition keeps to one app (a second plugin's app is
  * skipped with `name-clash`). An app whose page does not build is left out and reported in
