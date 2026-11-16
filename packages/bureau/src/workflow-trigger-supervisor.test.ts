@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type {
   PluginTrigger,
   PluginTriggerContext,
@@ -26,6 +26,8 @@ import { Engine } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { weftNameOf } from './namespaced-identifier';
+import { createPluginSecretGate, gatedContributions } from './plugins/plugin-secret-gate';
+import type { BureauPluginSecrets } from './plugins/plugin-types';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import {
   contributionCatalog,
@@ -46,6 +48,11 @@ import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
+  type ListenerCode,
+  type ListenerState,
+  type ListenerStatus,
+  type TriggerFireRequest,
+  type WorkflowTriggerSupervisor,
 } from './workflow-trigger-supervisor';
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -58,6 +65,19 @@ const nothingStarted = async (): Promise<PluginTriggerOutcome> => ({
   outcome: 'skipped',
   reason: 'stopped',
 });
+
+/**
+ * What a supervisor that no test reads the listener of is given: a fixed clock and nobody to tell
+ * about a failed start.
+ */
+const unobserved = {
+  nowISO: () => '2020-01-01T00:00:00.000Z',
+  // Manual timers: nothing real is armed, and none of them fires unless a test advances them.
+  timers: createManualRuntimeServices().timers,
+  exclusive: <T>(work: () => Promise<T>): Promise<T> => work(),
+  reportFailure: () => undefined,
+  clearFailure: () => undefined,
+};
 
 /** A promise a test settles by hand. */
 function gate(): { promise: Promise<void>; open: () => void } {
@@ -113,6 +133,7 @@ describe('the workflow trigger supervisor', () => {
       fire: nothingStarted,
       diagnose: () => undefined,
       storage: new MemoryStorage(),
+      ...unobserved,
     });
 
     const reconciling = supervisor.reconcile(desire(kind, ['a', 'b']), new Set());
@@ -131,6 +152,7 @@ describe('the workflow trigger supervisor', () => {
       fire: nothingStarted,
       diagnose: () => undefined,
       storage: new MemoryStorage(),
+      ...unobserved,
     });
     await supervisor.close();
     await supervisor.reconcile(
@@ -156,6 +178,7 @@ describe('the workflow trigger supervisor', () => {
       fire: nothingStarted,
       diagnose: () => undefined,
       storage: new MemoryStorage(),
+      ...unobserved,
     });
     await supervisor.reconcile(desire(kind, ['a']), new Set());
     const changed = new Map<string, DesiredTrigger>([
@@ -224,6 +247,7 @@ function supervisorOver(storage: Storage, diagnosed: string[] = []) {
     fire: nothingStarted,
     diagnose: (message) => void diagnosed.push(message),
     storage,
+    ...unobserved,
   });
 }
 
@@ -388,6 +412,7 @@ describe('what the supervisor hands the runtime, and answers itself (COR-2162)',
       fire,
       diagnose: () => undefined,
       storage: new MemoryStorage(),
+      ...unobserved,
     });
     await supervisor.reconcile(
       wantedKind(stateKind(contexts, { version: '7' }), { a: {} }),
@@ -412,6 +437,7 @@ describe('what the supervisor hands the runtime, and answers itself (COR-2162)',
       fire,
       diagnose: () => undefined,
       storage: new MemoryStorage(),
+      ...unobserved,
     });
     await supervisor.reconcile(wantedKind(stateKind(contexts), { a: {} }), new Set());
     await supervisor.reconcile(new Map(), new Set());
@@ -431,6 +457,7 @@ describe('what the supervisor hands the runtime, and answers itself (COR-2162)',
       fire,
       diagnose: () => undefined,
       storage: new MemoryStorage(),
+      ...unobserved,
     });
     await supervisor.reconcile(wantedKind(stateKind(contexts), { a: {} }), new Set());
     await supervisor.close();
@@ -660,6 +687,21 @@ describe('the outcome of a contributed trigger’s fire (COR-2162 outcome matrix
     return calls;
   }
 
+  /** Make the first start of `engine` carry `extra` beside the options the runtime gave it. */
+  function startingWith(engine: Engine, extra: Record<string, unknown>): void {
+    const original = engine.start.bind(engine) as (...args: unknown[]) => unknown;
+    let first = true;
+    (engine as unknown as Record<string, unknown>)['start'] = async (
+      name: unknown,
+      input: unknown,
+      startOptions: Record<string, unknown>,
+    ) => {
+      const extended = first ? { ...startOptions, ...extra } : startOptions;
+      first = false;
+      return original(name, input, extended);
+    };
+  }
+
   /**
    * Hold the apply a change starts after the files are registered and before the triggers are
    * reconciled (the schedule read sits between them), run `act` in that window, then let it finish.
@@ -842,6 +884,57 @@ describe('the outcome of a contributed trigger’s fire (COR-2162 outcome matrix
       },
     })),
     {
+      row: 'a repeat of a key whose run is pending (a delayed start) answers duplicate with that run',
+      run: async () => {
+        const clock = { now: 1_000 };
+        const rig = await pipeline(parking(), { clock });
+        startingWith(rig.engine, { startAt: clock.now + 3_600_000 });
+        const first = runOf(await rig.fire({}, { idempotencyKey: 'k' }), 'started');
+        expect(await statusOf(rig, first)).toBe('pending');
+        expect(runOf(await rig.fire({}, { idempotencyKey: 'k' }), 'duplicate')).toBe(first);
+        expect(await rig.runIds()).toEqual([first]);
+      },
+    },
+    {
+      row: 'a repeat of a key whose run timed out answers duplicate with that run',
+      run: async () => {
+        const clock = { now: 1_000 };
+        const rig = await pipeline(parking(), { clock });
+        startingWith(rig.engine, { executionTimeout: 60_000 });
+        const first = runOf(await rig.fire({}, { idempotencyKey: 'k' }), 'started');
+        clock.now += 120_000;
+        await rig.engine.scheduler.tick(clock.now);
+        await waitUntil(async () => (await statusOf(rig, first)) === 'timed-out', {
+          message: 'the run to time out',
+        });
+        expect(runOf(await rig.fire({}, { idempotencyKey: 'k' }), 'duplicate')).toBe(first);
+        expect(await rig.runIds()).toEqual([first]);
+      },
+    },
+    {
+      row: 'a start that throws after it committed took the key: the redelivery answers duplicate with the committed run',
+      run: async () => {
+        const rig = await pipeline();
+        const original = rig.engine.start.bind(rig.engine);
+        let committed: string | undefined;
+        (rig.engine as unknown as Record<string, unknown>)['start'] = async (
+          ...args: Parameters<Engine['start']>
+        ) => {
+          const handle = await original(...args);
+          if (committed === undefined) {
+            committed = handle.id;
+            throw new Error('the start failed after its commit');
+          }
+          return handle;
+        };
+        expect(await rejectionOf(rig.fire({}, { idempotencyKey: 'k' }))).toMatchObject({
+          message: 'the start failed after its commit',
+        });
+        expect(runOf(await rig.fire({}, { idempotencyKey: 'k' }), 'duplicate')).toBe(committed!);
+        expect(await rig.runIds()).toEqual([committed!]);
+      },
+    },
+    {
       row: 'a repeat after the run record was purged starts a new run, and no key reaches Weft',
       run: async () => {
         const rig = await pipeline();
@@ -999,7 +1092,7 @@ describe('the outcome of a contributed trigger’s fire (COR-2162 outcome matrix
       },
     },
     {
-      row: 'a lookup that throws rejects and starts nothing; a start that throws leaves the key free (unchanged)',
+      row: 'a lookup that throws rejects and starts nothing; a start the engine refuses before it commits leaves the key free (unchanged)',
       run: async () => {
         const rig = await pipeline();
         let failList = true;
@@ -1279,6 +1372,1506 @@ describe('the outcome of a contributed trigger’s fire (COR-2162 outcome matrix
   for (const { row, run } of rows) {
     it(row, async () => {
       await run();
+    });
+  }
+});
+
+/**
+ * COR-2165 — what a listener is doing, and why, as the supervisor keeps it. Every row is a cell of
+ * the outcome matrix of COR-2165 and COR-2166 (`tmp/chef/briefs/COR-2165-2166-matrix.md`): the
+ * event, the state it starts from, and the state, problem, `since`, controller and stop it ends in.
+ */
+describe('the listener state of a contributed trigger (COR-2165 outcome matrix)', () => {
+  const ORIGIN = '2020-01-01T00:00:00.000Z';
+  const KIND = 'x:watch';
+  const SECRET_KEY = 'x-token';
+
+  /** What the rig's kind does when started, by the `account` of its configuration. */
+  type OnStart = (context: PluginTriggerContext, count: number) => Promise<void> | void;
+
+  interface ListenerRig {
+    readonly supervisor: WorkflowTriggerSupervisor;
+    readonly services: ReturnType<typeof createManualRuntimeServices>;
+    /** The context of every start, in order. */
+    readonly starts: PluginTriggerContext[];
+    /** The stops that ran, as `stop:<account>`, in order. */
+    readonly stops: string[];
+    /** What the problem reporter was told, in order. */
+    readonly calls: string[];
+    readonly diagnosed: string[];
+    /** The requests the host's `fire` received. */
+    readonly requests: TriggerFireRequest[];
+    /** The `trigger-failed` problems the plugin lists now: `workflow` to its message. */
+    problems(): Record<string, string>;
+    /** Replace what each start does. */
+    onStart: OnStart;
+    /** Replace what the kind's stop does. */
+    onStop: (account: string) => Promise<void> | void;
+    /** Replace what the host answers a fire with. */
+    answer: (request: TriggerFireRequest) => Promise<PluginTriggerOutcome>;
+    /** The listener of workflow `id`. */
+    status(id?: string): unknown;
+    /** Reconcile, as the runtime does: under its serialization lock. */
+    reconcile(
+      files: Readonly<Record<string, { account?: unknown; paused?: boolean }>>,
+      keep?: ReadonlySet<string>,
+    ): Promise<void>;
+    /** Reconcile without the lock, so two of them overlap, to reach what a close can do alone. */
+    reconcileDirect(
+      files: Readonly<Record<string, { account?: unknown; paused?: boolean }>>,
+      keep?: ReadonlySet<string>,
+    ): Promise<void>;
+    /** Retry workflow `id` now, as the runtime's `retryTrigger` does. */
+    retry(id?: string): Promise<ListenerStatus | undefined>;
+    /** Every callback the supervisor gave the timers, in order, even one it later cleared. */
+    readonly timerCallbacks: Array<() => void>;
+    /** The timers armed now. */
+    pendingTimers(): ReturnType<ReturnType<typeof createManualRuntimeServices>['pendingTimers']>;
+    /** Advance the clock by `milliseconds`, fire the timers that fall due, and wait for the attempts they queued. */
+    advance(milliseconds: number): Promise<void>;
+    /** Move only the wall clock, which `since` and `lastFiredAt` read: no timer fires. */
+    passTime(milliseconds: number): Promise<void>;
+    /** Wait for everything queued under the serialization lock. */
+    settled(): Promise<void>;
+  }
+
+  const ready = (): Promise<void> => Promise.resolve();
+
+  function baseKind(rig: Pick<ListenerRig, 'starts' | 'stops' | 'onStart' | 'onStop'>) {
+    const trigger: PluginTrigger = {
+      name: 'watch',
+      description: 'Watches a source.',
+      configuration: z.object({ account: z.string().optional() }),
+      start: async (context) => {
+        rig.starts.push(context);
+        const account = (context.configuration as { account?: string }).account ?? '';
+        await rig.onStart(context, rig.starts.length);
+        return async () => {
+          rig.stops.push(`stop:${account}`);
+          await rig.onStop(account);
+        };
+      },
+    };
+    return trigger;
+  }
+
+  /** A rig over a kind `wrap` may gate. */
+  function listenerRig(wrap?: (kind: PluginTrigger) => PluginTrigger): ListenerRig {
+    const services = createManualRuntimeServices();
+    const timerCallbacks: Array<() => void> = [];
+    const timers = {
+      ...services.timers,
+      setTimeout: (callback: () => void, milliseconds?: number) => {
+        timerCallbacks.push(callback);
+        return services.timers.setTimeout(callback, milliseconds);
+      },
+    };
+    // The runtime's `exclusive`: one step at a time, a reconcile's among them.
+    let tail: Promise<unknown> = Promise.resolve();
+    const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
+      const result = tail.then(work, work);
+      tail = result.catch(() => undefined);
+      return result;
+    };
+    const failing = new Map<string, string>();
+    const calls: string[] = [];
+    const requests: TriggerFireRequest[] = [];
+    const state = {
+      starts: [] as PluginTriggerContext[],
+      stops: [] as string[],
+      onStart: ready as OnStart,
+      onStop: ready as (account: string) => Promise<void> | void,
+      answer: (async (): Promise<PluginTriggerOutcome> => ({
+        outcome: 'started',
+        runId: `run-${requests.length}`,
+      })) as (request: TriggerFireRequest) => Promise<PluginTriggerOutcome>,
+    };
+    const trigger = baseKind(state);
+    const entry: VersionedCatalogEntry<PluginTrigger> = {
+      kind: 'trigger',
+      name: KIND,
+      version: '1',
+      id: `${KIND}@1`,
+      source: { name: 'x', version: '1' },
+      value: wrap === undefined ? trigger : wrap(trigger),
+    };
+    const desiredOf = (
+      files: Readonly<Record<string, { account?: unknown; paused?: boolean }>>,
+    ): Map<string, DesiredTrigger> =>
+      new Map(
+        Object.entries(files).map(([id, { paused, ...rest }]) => [
+          id,
+          {
+            kind: entry,
+            trigger: { kind: KIND, ...rest },
+            ...(paused === undefined ? {} : { paused }),
+          } satisfies DesiredTrigger,
+        ]),
+      );
+    const diagnosed: string[] = [];
+    const supervisor = createWorkflowTriggerSupervisor({
+      fire: async (request) => {
+        requests.push(request);
+        return state.answer(request);
+      },
+      diagnose: (message) => void diagnosed.push(message),
+      storage: new MemoryStorage(),
+      nowISO: () => services.clock.nowISO(),
+      timers,
+      exclusive,
+      reportFailure: (plugin, workflow, message) => {
+        calls.push(`report ${plugin}/${workflow}`);
+        // The registry keeps the first message of a workflow that is still failing.
+        if (!failing.has(workflow)) failing.set(workflow, message);
+      },
+      clearFailure: (plugin, workflow) => {
+        calls.push(`clear ${plugin}/${workflow}`);
+        failing.delete(workflow);
+      },
+    });
+    cleanups.push(() => supervisor.close());
+    const rig: ListenerRig = {
+      supervisor,
+      services,
+      starts: state.starts,
+      stops: state.stops,
+      calls,
+      diagnosed,
+      requests,
+      problems: () => Object.fromEntries(failing),
+      get onStart() {
+        return state.onStart;
+      },
+      set onStart(value) {
+        state.onStart = value;
+      },
+      get onStop() {
+        return state.onStop;
+      },
+      set onStop(value) {
+        state.onStop = value;
+      },
+      get answer() {
+        return state.answer;
+      },
+      set answer(value) {
+        state.answer = value;
+      },
+      status: (id = 'a') => supervisor.listener(id, KIND),
+      reconcile: (files, keep = new Set()) =>
+        exclusive(() => supervisor.reconcile(desiredOf(files), keep)),
+      reconcileDirect: (files, keep = new Set()) => supervisor.reconcile(desiredOf(files), keep),
+      retry: (id = 'a') => supervisor.retry(id),
+      timerCallbacks,
+      pendingTimers: () => services.pendingTimers(),
+      advance: async (milliseconds) => {
+        await services.advance(milliseconds);
+        await rig.settled();
+      },
+      passTime: async (milliseconds) => {
+        services.setTime(services.clock.now() + milliseconds);
+      },
+      settled: async () => {
+        let seen: Promise<unknown>;
+        do {
+          seen = tail;
+          await seen;
+        } while (seen !== tail);
+      },
+    };
+    rigsOfTheRow.push(rig);
+    return rig;
+  }
+
+  /** Every rig the row under way built, so the invariant below is read from each. */
+  const rigsOfTheRow: ListenerRig[] = [];
+
+  /**
+   * I3 (COR-2166): the published `retryAt` is non-null exactly while a retry timer is armed. Read
+   * after every row, so a path that cancels a timer, or starts an attempt, without clearing it
+   * fails here whichever row reaches it.
+   */
+  function expectRetryAtToMatchTheTimers(rig: ListenerRig): void {
+    let published = 0;
+    for (const id of ['a', 'b', 'c', 'd']) {
+      for (const kind of [KIND, 'Bad_Plugin:watch']) {
+        if (rig.supervisor.listener(id, kind)?.retryAt != null) published += 1;
+      }
+    }
+    expect(published, 'published retryAt values').toBe(rig.pendingTimers().length);
+  }
+
+  /** The error a start throws. */
+  const boom = (): never => {
+    throw new Error('the source refused the token sk-live-0123456789');
+  };
+
+  /** `onStart` that throws for the account `bad`, holds for `hold` until `release`, else resolves. */
+  function scripted(rig: ListenerRig, release?: Promise<void>): void {
+    rig.onStart = async (context) => {
+      const account = (context.configuration as { account?: string }).account;
+      if (account === 'bad') boom();
+      if (account === 'hold') await release;
+    };
+  }
+
+  const status = (
+    state: ListenerState,
+    since: string,
+    code: ListenerCode | null = null,
+    lastFiredAt: string | null = null,
+    retryAt: string | null = null,
+  ): ListenerStatus => ({
+    state,
+    since,
+    code,
+    lastFiredAt,
+    retryAt,
+  });
+
+  /** The ISO time `seconds` after the rig's origin. */
+  const at = (seconds: number): string =>
+    new Date(Date.parse(ORIGIN) + seconds * 1000).toISOString();
+
+  /** A secret store the test saves to and removes from, as a host's `watch` notifies. */
+  function secretStore() {
+    const values = new Set<string>();
+    const watchers = new Set<() => void>();
+    const reader: BureauPluginSecrets = {
+      get: async (key) => (values.has(key) ? 'a-value' : undefined),
+      watch: (_key, listener) => {
+        watchers.add(listener);
+        return () => watchers.delete(listener);
+      },
+    };
+    return {
+      reader,
+      save: () => {
+        values.add(SECRET_KEY);
+        for (const listener of watchers) listener();
+      },
+      remove: () => {
+        values.delete(SECRET_KEY);
+        for (const listener of watchers) listener();
+      },
+    };
+  }
+
+  /** A rig whose kind waits for the secret `x-token`, as a plugin that declares it does. */
+  async function gatedRig(initially: 'missing' | 'set') {
+    const secrets = secretStore();
+    if (initially === 'set') secrets.save();
+    const secretGate = await createPluginSecretGate('x', [SECRET_KEY], secrets.reader);
+    cleanups.push(secretGate.watch());
+    const rig = listenerRig(
+      (trigger) =>
+        gatedContributions(
+          { triggers: [trigger] },
+          secretGate,
+          (name) => `x:${name}`,
+          () => undefined,
+        ).triggers[0]!,
+    );
+    return { rig, secrets };
+  }
+
+  /** Wait for workflow `id` to be in `state`. */
+  async function inState(rig: ListenerRig, state: string, id = 'a'): Promise<void> {
+    await waitUntil(() => (rig.status(id) as { state: string } | undefined)?.state === state, {
+      message: `the listener of ${id} to be ${state}`,
+    });
+  }
+
+  interface ListenerRow {
+    readonly row: string;
+    readonly run: () => Promise<void>;
+  }
+
+  const rows: readonly ListenerRow[] = [
+    {
+      row: 'start resolves, from none: listening since now, kept with no problem',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('listening', ORIGIN));
+        expect(rig.problems()).toEqual({});
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'a first start still in flight records nothing, and the state is written when it settles',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        scripted(rig, release.promise);
+        const reconciling = rig.reconcile({ a: { account: 'hold' } });
+        await waitUntil(() => rig.starts.length === 1, { message: 'the start to begin' });
+        expect(rig.status()).toBeUndefined();
+        await rig.passTime(5_000);
+        release.open();
+        await reconciling;
+        expect(rig.status()).toEqual(status('listening', '2020-01-01T00:00:05.000Z'));
+      },
+    },
+    {
+      row: 'start throws, from none: failed start-failed with one problem naming the workflow, redacted by the registry (the message is passed whole), and the attempt’s controller aborted',
+      run: async () => {
+        const rig = listenerRig();
+        scripted(rig);
+        await rig.reconcile({ a: { account: 'bad' } });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(1)));
+        expect(rig.calls).toEqual(['report x/a']);
+        expect(rig.problems()['a']).toContain('the source refused the token');
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+      },
+    },
+    {
+      row: 'a fire of an attempt whose start threw answers skipped stopped, and starts nothing',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        // The plugin captured `fire` before it threw.
+        expect(await rig.starts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+        expect(rig.requests).toEqual([]);
+        expect(rig.status()).toMatchObject({ state: 'failed', code: 'start-failed' });
+      },
+    },
+    {
+      row: 'start throws, from failed (an edit that fails again): still failed, since kept, one problem, not reported twice',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: { account: 'one' } });
+        await rig.passTime(7_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(rig.starts).toHaveLength(2);
+        // `since` is kept across the edit, and the new attempt's first retry is a second away.
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(8)));
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'start resolves, from failed (an edit that works): listening, since now, the problem cleared',
+      run: async () => {
+        const rig = listenerRig();
+        scripted(rig);
+        await rig.reconcile({ a: { account: 'bad' } });
+        await rig.passTime(7_000);
+        await rig.reconcile({ a: { account: 'good' } });
+        expect(rig.status()).toEqual(status('listening', '2020-01-01T00:00:07.000Z'));
+        expect(rig.problems()).toEqual({});
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+      },
+    },
+    {
+      row: 'the configuration is refused, from none: failed configuration-refused with a problem, and nothing started',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { account: 5 } });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+        expect(rig.starts).toEqual([]);
+        expect(Object.keys(rig.problems())).toEqual(['a']);
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'the configuration is refused, from failed start-failed: the code changes, since is kept, one problem',
+      run: async () => {
+        const rig = listenerRig();
+        scripted(rig);
+        await rig.reconcile({ a: { account: 'bad' } });
+        await rig.passTime(3_000);
+        await rig.reconcile({ a: { account: 5 } });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'paused, from none: stopped, nothing started, no problem',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'paused, from listening: stopped, the listener aborted and stopped, and its fire answers skipped stopped',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: {} });
+        await rig.passTime(2_000);
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', '2020-01-01T00:00:02.000Z'));
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+        expect(rig.stops).toEqual(['stop:']);
+        expect(await rig.starts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+        expect(rig.requests).toEqual([]);
+        expect(rig.starts).toHaveLength(1);
+      },
+    },
+    {
+      row: 'paused, from failed: stopped, and the problem is cleared',
+      run: async () => {
+        const rig = listenerRig();
+        scripted(rig);
+        await rig.reconcile({ a: { account: 'bad' } });
+        await rig.reconcile({ a: { account: 'bad', paused: true } });
+        expect(rig.status()).toMatchObject({ state: 'stopped', code: null });
+        expect(rig.problems()).toEqual({});
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+      },
+    },
+    {
+      row: 'unpaused, from stopped: starts, listening since now',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { paused: true } });
+        await rig.passTime(4_000);
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('listening', '2020-01-01T00:00:04.000Z'));
+        expect(rig.starts).toHaveLength(1);
+      },
+    },
+    {
+      row: 'edited, from stopped: stays stopped with its since, and starts nothing',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { paused: true } });
+        await rig.passTime(4_000);
+        await rig.reconcile({ a: { paused: true, account: 'other' } });
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'edited, from listening: the old listener is aborted and stopped, a new one starts, and listening keeps its since',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { account: 'one' } });
+        await rig.passTime(4_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(rig.starts).toHaveLength(2);
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+        expect(rig.starts[1]!.signal.aborted).toBe(false);
+        expect(rig.stops).toEqual(['stop:one']);
+        expect(rig.status()).toEqual(status('listening', ORIGIN));
+      },
+    },
+    {
+      row: 'edited, from failed, with the new start still in flight: failed and its problem stay until the attempt settles',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        scripted(rig, release.promise);
+        await rig.reconcile({ a: { account: 'bad' } });
+        const reconciling = rig.reconcile({ a: { account: 'hold' } });
+        await waitUntil(() => rig.starts.length === 2, { message: 'the second start to begin' });
+        expect(rig.status()).toMatchObject({ state: 'failed', code: 'start-failed' });
+        expect(Object.keys(rig.problems())).toEqual(['a']);
+        release.open();
+        await reconciling;
+        expect(rig.status()).toMatchObject({ state: 'listening' });
+        expect(rig.problems()).toEqual({});
+      },
+    },
+    {
+      row: 'the file is deleted: the listener is aborted and stopped, and its status is dropped',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: {} });
+        await rig.reconcile({});
+        expect(rig.status()).toBeUndefined();
+        expect(rig.stops).toEqual(['stop:']);
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+      },
+    },
+    {
+      row: 'the file is deleted while failed, or paused: the status is dropped and the problem cleared',
+      run: async () => {
+        const rig = listenerRig();
+        scripted(rig);
+        await rig.reconcile({ a: { account: 'bad' }, b: { paused: true } });
+        await rig.reconcile({});
+        expect(rig.status('a')).toBeUndefined();
+        expect(rig.status('b')).toBeUndefined();
+        expect(rig.problems()).toEqual({});
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+      },
+    },
+    {
+      row: 'a workflow in keep (an unreadable file) is left as it is: its listener and status stay',
+      run: async () => {
+        const rig = listenerRig();
+        scripted(rig);
+        await rig.reconcile({ a: {}, b: { account: 'bad' }, c: { paused: true } });
+        await rig.reconcile({}, new Set(['a', 'b', 'c']));
+        expect(rig.status('a')).toMatchObject({ state: 'listening' });
+        expect(rig.status('b')).toMatchObject({ state: 'failed' });
+        expect(rig.status('c')).toMatchObject({ state: 'stopped' });
+        expect(rig.stops).toEqual([]);
+        expect(rig.starts[0]!.signal.aborted).toBe(false);
+        expect(Object.keys(rig.problems())).toEqual(['b']);
+      },
+    },
+    {
+      row: 'a status is kept in memory only: a new supervisor over the same files starts with none',
+      run: async () => {
+        const first = listenerRig();
+        await first.reconcile({ a: {} });
+        const second = listenerRig();
+        expect(second.status()).toBeUndefined();
+        await second.reconcile({ a: {} });
+        expect(second.status()).toEqual(status('listening', ORIGIN));
+      },
+    },
+    {
+      row: 'a fire that answers started sets lastFiredAt and keeps the state; a duplicate, a skip and a rejection change nothing',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: {} });
+        await rig.passTime(9_000);
+        const context = rig.starts[0]!;
+        for (const answer of [
+          { outcome: 'duplicate', runId: 'r0' },
+          { outcome: 'skipped', reason: 'paused' },
+        ] satisfies PluginTriggerOutcome[]) {
+          rig.answer = async () => answer;
+          expect(await context.fire({})).toEqual(answer);
+          expect(rig.status()).toEqual(status('listening', ORIGIN));
+        }
+        rig.answer = async () => {
+          throw new Error('the payload was refused');
+        };
+        expect(await rejectionOf(context.fire({}))).toMatchObject({
+          message: 'the payload was refused',
+        });
+        expect(rig.status()).toEqual(status('listening', ORIGIN));
+        rig.answer = async () => ({ outcome: 'started', runId: 'run-1' });
+        expect(await context.fire({ n: 1 })).toEqual({ outcome: 'started', runId: 'run-1' });
+        expect(rig.status()).toEqual(status('listening', ORIGIN, null, '2020-01-01T00:00:09.000Z'));
+      },
+    },
+    {
+      row: 'lastFiredAt survives a change of state, and a fire during the first start is written with the first status',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        const answered = gate();
+        rig.onStart = async (context) => {
+          await context.fire({ early: true });
+          answered.open();
+          await release.promise;
+        };
+        const reconciling = rig.reconcile({ a: {} });
+        await answered.promise;
+        expect(rig.status()).toBeUndefined();
+        await rig.passTime(1_000);
+        release.open();
+        await reconciling;
+        expect(rig.status()).toEqual(status('listening', '2020-01-01T00:00:01.000Z', null, ORIGIN));
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', '2020-01-01T00:00:02.000Z', null, ORIGIN));
+      },
+    },
+    {
+      row: 'a start that resolves after its listener was replaced is stopped, and writes no status and no problem',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        scripted(rig, release.promise);
+        const first = rig.reconcileDirect({ a: { account: 'hold' } });
+        await waitUntil(() => rig.starts.length === 1, { message: 'the start to begin' });
+        // The runtime never overlaps two reconciles; the fence holds even if they did.
+        const second = rig.reconcileDirect({ a: { paused: true } });
+        release.open();
+        await first;
+        await second;
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.stops).toEqual(['stop:hold']);
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'a start that throws after its listener was stopped is diagnosed only: no status, no problem',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async () => {
+          await release.promise;
+          boom();
+        };
+        const first = rig.reconcileDirect({ a: { account: 'late' } });
+        await waitUntil(() => rig.starts.length === 1, { message: 'the start to begin' });
+        const second = rig.reconcileDirect({}, new Set());
+        release.open();
+        await first;
+        await second;
+        expect(rig.status()).toBeUndefined();
+        expect(rig.calls).toEqual([]);
+        expect(rig.diagnosed).toHaveLength(1);
+      },
+    },
+    {
+      row: 'a start that throws after close writes no status and no problem',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async () => {
+          await release.promise;
+          boom();
+        };
+        const reconciling = rig.reconcile({ a: {} });
+        await waitUntil(() => rig.starts.length === 1, { message: 'the start to begin' });
+        const closing = rig.supervisor.close();
+        release.open();
+        await reconciling;
+        await closing;
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'a start that hangs records nothing while it is pending, and a changed file aborts it',
+      run: async () => {
+        const rig = listenerRig();
+        const never = gate();
+        scripted(rig, never.promise);
+        const first = rig.reconcileDirect({ a: { account: 'hold' } });
+        await waitUntil(() => rig.starts.length === 1, { message: 'the start to begin' });
+        await quietFor(10);
+        expect(rig.status()).toBeUndefined();
+        const second = rig.reconcileDirect({ a: { paused: true } });
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+        never.open();
+        await first;
+        await second;
+        expect(rig.status()).toMatchObject({ state: 'stopped' });
+      },
+    },
+    {
+      row: 'a trigger whose storage cannot be made is failed start-failed with a problem',
+      run: async () => {
+        const rig = listenerRig();
+        const kind: VersionedCatalogEntry<PluginTrigger> = {
+          kind: 'trigger',
+          name: 'Bad_Plugin:watch',
+          version: '1',
+          id: 'Bad_Plugin:watch@1',
+          source: { name: 'Bad_Plugin', version: '1' },
+          value: baseKind(rig),
+        };
+        await rig.supervisor.reconcile(
+          new Map([['a', { kind, trigger: { kind: kind.name } }]]),
+          new Set(),
+        );
+        expect(rig.supervisor.listener('a', 'Bad_Plugin:watch')).toEqual(
+          status('failed', ORIGIN, 'start-failed', null, at(1)),
+        );
+        expect(rig.calls).toEqual(['report Bad_Plugin/a']);
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'secret missing when the gated start runs, from none: waiting-for-secret, the inner start not called, no problem',
+      run: async () => {
+        const { rig } = await gatedRig('missing');
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('waiting-for-secret', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'secret missing, from failed (an edit onto a gated kind): waiting-for-secret, the problem cleared',
+      run: async () => {
+        const { rig } = await gatedRig('missing');
+        await rig.reconcile({ a: { account: 5 } });
+        expect(rig.status()).toMatchObject({ state: 'failed', code: 'configuration-refused' });
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toMatchObject({ state: 'waiting-for-secret', code: null });
+        expect(rig.problems()).toEqual({});
+      },
+    },
+    {
+      row: 'secret present at the first start: listening, from the gate’s report, with the inner listener started once',
+      run: async () => {
+        const { rig } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('listening', ORIGIN));
+        expect(rig.starts).toHaveLength(1);
+      },
+    },
+    {
+      row: 'the secret is set, from waiting-for-secret: listening since now, and the inner listener has its own signal, never the outer one',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('missing');
+        await rig.reconcile({ a: {} });
+        await rig.passTime(3_000);
+        secrets.save();
+        await inState(rig, 'listening');
+        expect(rig.status()).toEqual(status('listening', '2020-01-01T00:00:03.000Z'));
+        expect(rig.starts).toHaveLength(1);
+        expect(rig.starts[0]!.signal.aborted).toBe(false);
+      },
+    },
+    {
+      row: 'the secret is removed while listening: waiting-for-secret, the inner signal aborted, the inner listener stopped, and its fire answers skipped stopped and starts nothing',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        await rig.passTime(3_000);
+        secrets.remove();
+        await inState(rig, 'waiting-for-secret');
+        expect(rig.status()).toEqual(status('waiting-for-secret', '2020-01-01T00:00:03.000Z'));
+        const inner = rig.starts[0]!;
+        expect(inner.signal.aborted).toBe(true);
+        expect(rig.stops).toEqual(['stop:']);
+        expect(await inner.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+        expect(rig.requests).toEqual([]);
+      },
+    },
+    {
+      row: 'the secret is saved again after a removal: the inner listener starts again with a signal that is not aborted',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        secrets.remove();
+        await inState(rig, 'waiting-for-secret');
+        secrets.save();
+        await inState(rig, 'listening');
+        await waitUntil(() => rig.starts.length === 2, { message: 'the second inner start' });
+        expect(rig.starts[1]!.signal.aborted).toBe(false);
+        expect(await rig.starts[1]!.fire({})).toEqual({ outcome: 'started', runId: 'run-1' });
+      },
+    },
+    {
+      row: 'after a removal the outer context is the supervisor’s, whose signal the gate never aborts: a restart still runs',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        secrets.remove();
+        await inState(rig, 'waiting-for-secret');
+        secrets.save();
+        await waitUntil(() => rig.starts.length === 2, { message: 'the restart' });
+        // A fire from the new inner listener reaches the host: nothing fenced the outer listener.
+        expect(await rig.starts[1]!.fire({})).toMatchObject({ outcome: 'started' });
+      },
+    },
+    {
+      row: 'an inner start that throws after the secret is saved again is reported: failed start-failed with a problem, the outer stopped, and the gate follows the secret no more',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('missing');
+        await rig.reconcile({ a: {} });
+        rig.onStart = () => boom();
+        secrets.save();
+        await inState(rig, 'failed');
+        expect(rig.status()).toMatchObject({ state: 'failed', code: 'start-failed' });
+        expect(rig.calls).toEqual(['report x/a']);
+        expect(rig.problems()['a']).toContain('the source refused the token');
+        // The supervisor aborted the failed attempt, and the gate stopped following the secret.
+        expect(rig.starts).toHaveLength(1);
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+        rig.onStart = ready;
+        secrets.remove();
+        secrets.save();
+        await quietFor(25);
+        expect(rig.starts).toHaveLength(1);
+        expect(rig.status()).toMatchObject({ state: 'failed' });
+      },
+    },
+    {
+      row: 'the gate’s first transition throws: handled once as a throwing start, with one problem and no second report',
+      run: async () => {
+        const { rig } = await gatedRig('set');
+        rig.onStart = () => boom();
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toMatchObject({ state: 'failed', code: 'start-failed' });
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'the inner stop throws on removal: swallowed, and the state is waiting-for-secret',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        rig.onStop = () => {
+          throw new Error('the inner stop failed');
+        };
+        secrets.remove();
+        await inState(rig, 'waiting-for-secret');
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'the secret is removed while the inner start is in flight: the next transition stops and aborts the started listener, then reports waiting',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('missing');
+        await rig.reconcile({ a: {} });
+        const release = gate();
+        rig.onStart = async () => {
+          await release.promise;
+        };
+        secrets.save();
+        await waitUntil(() => rig.starts.length === 1, { message: 'the inner start' });
+        secrets.remove();
+        release.open();
+        await waitUntil(() => rig.stops.length === 1, { message: 'the inner stop' });
+        await inState(rig, 'waiting-for-secret');
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+      },
+    },
+    {
+      row: 'the outer stop of a listening gated trigger stops the inner listener and writes no waiting-for-secret over stopped',
+      run: async () => {
+        const { rig } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toMatchObject({ state: 'stopped' });
+        expect(rig.stops).toEqual(['stop:']);
+        expect(rig.starts[0]!.signal.aborted).toBe(true);
+        await quietFor(25);
+        expect(rig.status()).toMatchObject({ state: 'stopped' });
+      },
+    },
+    {
+      row: 'a gated trigger that is deleted while listening has its status dropped, and a later secret change writes none',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        await rig.reconcile({});
+        secrets.remove();
+        secrets.save();
+        await quietFor(25);
+        expect(rig.status()).toBeUndefined();
+      },
+    },
+    {
+      row: 'a gated trigger fires through the gate while listening: the host answers started and lastFiredAt is set',
+      run: async () => {
+        const { rig } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        await rig.passTime(2_000);
+        expect(await rig.starts[0]!.fire({})).toMatchObject({ outcome: 'started' });
+        expect(rig.status()).toEqual(status('listening', ORIGIN, null, '2020-01-01T00:00:02.000Z'));
+      },
+    },
+    {
+      row: 'a gated listener answers skipped closed, not stopped, after close',
+      run: async () => {
+        const { rig } = await gatedRig('set');
+        await rig.reconcile({ a: {} });
+        await rig.supervisor.close();
+        expect(await rig.starts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'closed' });
+      },
+    },
+  ];
+
+  /** How many starts of the account `account` the rig's kind has begun. */
+  const startsOf = (rig: ListenerRig, account: string): number =>
+    rig.starts.filter(
+      (context) => (context.configuration as { account?: string }).account === account,
+    ).length;
+
+  /** `onStart` for the rows that hold one account, and fail another. */
+  function holdingAndFailing(rig: ListenerRig, release: Promise<void>): void {
+    rig.onStart = async (context) => {
+      const account = (context.configuration as { account?: string }).account;
+      if (account === 'bad') boom();
+      if (account === 'hold') await release;
+    };
+  }
+
+  /** The delay, in milliseconds, between now and the `retryAt` of workflow `a`'s listener. */
+  const delayOf = (rig: ListenerRig): number =>
+    Date.parse((rig.status() as ListenerStatus).retryAt!) - Date.parse(rig.services.clock.nowISO());
+
+  const retryRows: readonly ListenerRow[] = [
+    {
+      row: 'start throws, from none: failed with retryAt one second on, one timer, and no attempt before it is due',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(1)));
+        expect(rig.pendingTimers()).toHaveLength(1);
+        await rig.advance(999);
+        expect(rig.starts).toHaveLength(1);
+        await rig.advance(1);
+        expect(rig.starts).toHaveLength(2);
+      },
+    },
+    {
+      row: 'failures in a row wait 1, 2, 4 seconds and on to a 300 second cap that never grows, with since kept and one problem',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        const delays: number[] = [];
+        for (let failure = 0; failure < 11; failure += 1) {
+          const wait = delayOf(rig);
+          delays.push(wait);
+          await rig.advance(wait);
+        }
+        expect(delays).toEqual([
+          1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000, 256_000, 300_000, 300_000,
+        ]);
+        expect(rig.starts).toHaveLength(12);
+        expect(rig.status()).toMatchObject({ state: 'failed', since: ORIGIN });
+        expect(rig.calls).toEqual(['report x/a']);
+        expect(rig.pendingTimers()).toHaveLength(1);
+      },
+    },
+    {
+      row: 'a retry that works: listening since now, the problem cleared, and no timer left',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = (_context, count) => {
+          if (count < 3) boom();
+        };
+        await rig.reconcile({ a: {} });
+        await rig.advance(1_000);
+        await rig.advance(2_000);
+        expect(rig.status()).toEqual(status('listening', at(3)));
+        expect(rig.pendingTimers()).toHaveLength(0);
+        expect(rig.problems()).toEqual({});
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+      },
+    },
+    {
+      row: 'the delay after a success is one second again: a listener that fails after listening starts its backoff over',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        rig.onStart = (_context, count) => {
+          if (count < 4) boom();
+        };
+        await rig.reconcile({ a: {} });
+        await rig.advance(1_000);
+        await rig.advance(2_000);
+        await rig.advance(4_000);
+        expect(rig.status()).toEqual(status('listening', at(7)));
+        // The plugin's own start fails after the secret is saved again: reported at the first rung.
+        rig.onStart = boom;
+        secrets.remove();
+        await inState(rig, 'waiting-for-secret');
+        secrets.save();
+        await inState(rig, 'failed');
+        expect(rig.status()).toEqual(status('failed', at(7), 'start-failed', null, at(8)));
+      },
+    },
+    {
+      row: 'a start that reached waiting-for-secret resets the backoff, and a timer’s attempt that finds the secret missing arms nothing',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('set');
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        await rig.advance(1_000);
+        secrets.remove();
+        await rig.advance(2_000);
+        expect(rig.status()).toEqual(status('waiting-for-secret', at(3)));
+        expect(rig.pendingTimers()).toHaveLength(0);
+        expect(rig.problems()).toEqual({});
+        secrets.save();
+        await inState(rig, 'failed');
+        expect(rig.status()).toMatchObject({ state: 'failed', retryAt: at(4) });
+      },
+    },
+    {
+      row: 'the configuration is refused: failed with no retryAt and no timer, and never retried',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { account: 5 } });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+        expect(rig.pendingTimers()).toEqual([]);
+        await rig.advance(3_600_000);
+        expect(rig.starts).toEqual([]);
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+      },
+    },
+    {
+      row: 'an edit during the backoff cancels the timer, attempts at once, and starts the backoff over',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: { account: 'one' } });
+        await rig.advance(1_000);
+        await rig.advance(2_000);
+        expect(delayOf(rig)).toBe(4_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(startsOf(rig, 'two')).toBe(1);
+        expect(rig.pendingTimers()).toHaveLength(1);
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(4)));
+        await rig.advance(1_000);
+        expect(startsOf(rig, 'two')).toBe(2);
+        expect(delayOf(rig)).toBe(2_000);
+      },
+    },
+    {
+      row: 'a pause during the backoff cancels the timer, clears the problem, and nothing starts when the time passes',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.problems()).toEqual({});
+        await rig.advance(3_600_000);
+        expect(rig.starts).toHaveLength(1);
+      },
+    },
+    {
+      row: 'a deleted file during the backoff cancels the timer, drops the status, and clears the problem',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {}, b: {} });
+        await rig.reconcile({ b: {} });
+        expect(rig.status('a')).toBeUndefined();
+        expect(rig.pendingTimers()).toHaveLength(1);
+        expect(Object.keys(rig.problems())).toEqual(['b']);
+        await rig.advance(1_000);
+        // `a`'s listener, `b`'s, and `b`'s retry: nothing retried `a`.
+        expect(rig.starts).toHaveLength(3);
+      },
+    },
+    {
+      row: 'a reconcile of the same file during the backoff leaves the timer and the status, and makes no attempt',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        const timers = rig.pendingTimers();
+        expect(timers).toHaveLength(1);
+        await rig.reconcile({ a: {} });
+        expect(rig.pendingTimers()).toEqual(timers);
+        expect(rig.starts).toHaveLength(1);
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(1)));
+      },
+    },
+    {
+      row: 'a workflow in keep keeps its timer: an unreadable file is left as it is',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        await rig.reconcile({}, new Set(['a']));
+        expect(rig.pendingTimers()).toHaveLength(1);
+        await rig.advance(1_000);
+        expect(rig.starts).toHaveLength(2);
+      },
+    },
+    {
+      row: 'closing cancels every pending retry, and the timers that fire after it start nothing',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {}, b: {} });
+        expect(rig.pendingTimers()).toHaveLength(2);
+        await rig.supervisor.close();
+        expect(rig.pendingTimers()).toEqual([]);
+        for (const callback of rig.timerCallbacks) callback();
+        await rig.advance(3_600_000);
+        expect(rig.starts).toHaveLength(2);
+      },
+    },
+    {
+      row: 'a timer that fires after its entry was replaced, paused or removed starts nothing',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({
+          a: { account: 'one' },
+          b: { account: 'one' },
+          c: { account: 'one' },
+        });
+        const callbacks = [...rig.timerCallbacks];
+        expect(callbacks).toHaveLength(3);
+        rig.onStart = ready;
+        await rig.reconcile({ a: { account: 'two' }, b: { paused: true }, c: {} });
+        await rig.reconcile({ a: { account: 'two' }, b: { paused: true } });
+        const before = rig.starts.length;
+        for (const callback of callbacks) callback();
+        await rig.settled();
+        expect(rig.starts).toHaveLength(before);
+        expect(rig.status('a')).toMatchObject({ state: 'listening' });
+        expect(rig.status('b')).toMatchObject({ state: 'stopped' });
+      },
+    },
+    {
+      row: 'the timer’s attempt queues behind a reconcile in progress, and runs when it is over',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        holdingAndFailing(rig, release.promise);
+        const reconciling = rig.reconcile({ a: { account: 'bad' }, b: { account: 'hold' } });
+        await waitUntil(() => startsOf(rig, 'hold') === 1, { message: 'the held start' });
+        await rig.services.advance(1_000);
+        await quietFor(25);
+        expect(startsOf(rig, 'bad')).toBe(1);
+        release.open();
+        await reconciling;
+        await rig.settled();
+        expect(startsOf(rig, 'bad')).toBe(2);
+      },
+    },
+    {
+      row: 'a retry attempt in flight keeps failed with retryAt null, and arms no timer while it is pending',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async (_context, count) => {
+          if (count === 1) boom();
+          if (count === 2) await release.promise;
+        };
+        await rig.reconcile({ a: {} });
+        await rig.services.advance(1_000);
+        await waitUntil(() => rig.starts.length === 2, { message: 'the retry attempt' });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed'));
+        expect(rig.pendingTimers()).toEqual([]);
+        release.open();
+        await rig.settled();
+        expect(rig.status()).toEqual(status('listening', at(1)));
+        expect(rig.problems()).toEqual({});
+      },
+    },
+    {
+      row: 'closing while a retry attempt is in flight stops it when it settles, and writes no status, problem or timer',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async (_context, count) => {
+          if (count === 1) boom();
+          if (count === 2) await release.promise;
+        };
+        await rig.reconcile({ a: {} });
+        await rig.services.advance(1_000);
+        await waitUntil(() => rig.starts.length === 2, { message: 'the retry attempt' });
+        const closing = rig.supervisor.close();
+        release.open();
+        await closing;
+        await rig.settled();
+        expect(rig.stops).toEqual(['stop:']);
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.status()).toMatchObject({ state: 'failed', retryAt: null });
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'a retry attempt that throws after close arms no timer',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async (_context, count) => {
+          if (count >= 2) await release.promise;
+          boom();
+        };
+        await rig.reconcile({ a: {} });
+        await rig.services.advance(1_000);
+        await waitUntil(() => rig.starts.length === 2, { message: 'the retry attempt' });
+        const closing = rig.supervisor.close();
+        release.open();
+        await closing;
+        await rig.settled();
+        expect(rig.pendingTimers()).toEqual([]);
+      },
+    },
+    {
+      row: 'a storage failure is a throwing start: failed, one problem, and retried with the backoff',
+      run: async () => {
+        const rig = listenerRig();
+        const kind: VersionedCatalogEntry<PluginTrigger> = {
+          kind: 'trigger',
+          name: 'Bad_Plugin:watch',
+          version: '1',
+          id: 'Bad_Plugin:watch@1',
+          source: { name: 'Bad_Plugin', version: '1' },
+          value: baseKind(rig),
+        };
+        await rig.supervisor.reconcile(
+          new Map([['a', { kind, trigger: { kind: kind.name } }]]),
+          new Set(),
+        );
+        expect(rig.supervisor.listener('a', 'Bad_Plugin:watch')).toEqual(
+          status('failed', ORIGIN, 'start-failed', null, at(1)),
+        );
+        await rig.advance(1_000);
+        expect(rig.supervisor.listener('a', 'Bad_Plugin:watch')).toEqual(
+          status('failed', ORIGIN, 'start-failed', null, at(3)),
+        );
+        expect(rig.diagnosed.filter((message) => message.includes('its storage'))).toHaveLength(2);
+        expect(rig.calls).toEqual(['report Bad_Plugin/a']);
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'a gate-reported failure arms one timer, the secret saved during the backoff makes no attempt, and the timer’s attempt finds it set',
+      run: async () => {
+        const { rig, secrets } = await gatedRig('missing');
+        await rig.reconcile({ a: {} });
+        rig.onStart = boom;
+        secrets.save();
+        await inState(rig, 'failed');
+        expect(rig.pendingTimers()).toHaveLength(1);
+        expect(rig.status()).toMatchObject({ retryAt: at(1) });
+        rig.onStart = ready;
+        secrets.remove();
+        secrets.save();
+        await quietFor(25);
+        expect(rig.starts).toHaveLength(1);
+        expect(rig.pendingTimers()).toHaveLength(1);
+        await rig.advance(1_000);
+        expect(rig.status()).toMatchObject({ state: 'listening', retryAt: null });
+        expect(rig.starts).toHaveLength(2);
+        expect(rig.problems()).toEqual({});
+      },
+    },
+    {
+      row: 'triggers.retry, during the backoff: starts at once, cancels the timer, and clears the backoff',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = (_context, count) => {
+          if (count < 4) boom();
+        };
+        await rig.reconcile({ a: {} });
+        await rig.advance(1_000);
+        expect(delayOf(rig)).toBe(2_000);
+        const answered = await rig.retry();
+        expect(rig.starts).toHaveLength(3);
+        expect(answered).toEqual(status('failed', ORIGIN, 'start-failed', null, at(2)));
+        expect(rig.pendingTimers()).toHaveLength(1);
+        await rig.advance(1_000);
+        expect(rig.status()).toEqual(status('listening', at(2)));
+        expect(rig.pendingTimers()).toEqual([]);
+      },
+    },
+    {
+      row: 'triggers.retry that works: listening since now, the problem cleared, no timer',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = (_context, count) => {
+          if (count === 1) boom();
+        };
+        await rig.reconcile({ a: {} });
+        await rig.passTime(500);
+        expect(await rig.retry()).toEqual(status('listening', at(0.5)));
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.problems()).toEqual({});
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+      },
+    },
+    {
+      row: 'triggers.retry while the first attempt is in flight answers its result, with no second start',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async () => {
+          await release.promise;
+        };
+        const reconciling = rig.reconcile({ a: {} });
+        await waitUntil(() => rig.starts.length === 1, { message: 'the first start' });
+        expect(rig.pendingTimers()).toEqual([]);
+        const answered = rig.retry();
+        release.open();
+        expect(await answered).toEqual(status('listening', ORIGIN));
+        await reconciling;
+        expect(rig.starts).toHaveLength(1);
+      },
+    },
+    {
+      row: 'triggers.retry while a timer’s attempt is queued behind a reconcile shares that attempt: no second start',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        holdingAndFailing(rig, release.promise);
+        const reconciling = rig.reconcile({ a: { account: 'bad' }, b: { account: 'hold' } });
+        await waitUntil(() => startsOf(rig, 'hold') === 1, { message: 'the held start' });
+        await rig.services.advance(1_000);
+        const answered = rig.retry();
+        release.open();
+        await reconciling;
+        expect(await answered).toMatchObject({ state: 'failed', code: 'start-failed' });
+        expect(startsOf(rig, 'bad')).toBe(2);
+      },
+    },
+    {
+      row: 'triggers.retry runs under the serialization lock: it waits for a reconcile in progress',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        holdingAndFailing(rig, release.promise);
+        const reconciling = rig.reconcile({ a: { account: 'bad' }, b: { account: 'hold' } });
+        await waitUntil(() => startsOf(rig, 'hold') === 1, { message: 'the held start' });
+        const answered = rig.retry();
+        await quietFor(25);
+        expect(startsOf(rig, 'bad')).toBe(1);
+        release.open();
+        await reconciling;
+        expect(await answered).toMatchObject({ state: 'failed' });
+        expect(startsOf(rig, 'bad')).toBe(2);
+        expect(rig.pendingTimers()).toHaveLength(1);
+      },
+    },
+    {
+      row: 'triggers.retry while listening, waiting-for-secret or stopped is a no-op that answers the current state',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: {}, b: { paused: true } });
+        await rig.passTime(5_000);
+        expect(await rig.retry('a')).toEqual(status('listening', ORIGIN));
+        expect(await rig.retry('b')).toEqual(status('stopped', ORIGIN));
+        expect(rig.starts).toHaveLength(1);
+        const { rig: gated } = await gatedRig('missing');
+        await gated.reconcile({ a: {} });
+        await gated.passTime(5_000);
+        expect(await gated.retry()).toEqual(status('waiting-for-secret', ORIGIN));
+        expect(gated.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'triggers.retry of a refused configuration parses it again, stays failed with its since, and arms no timer',
+      run: async () => {
+        const rig = listenerRig();
+        await rig.reconcile({ a: { account: 5 } });
+        await rig.passTime(2_000);
+        expect(await rig.retry()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.starts).toEqual([]);
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'triggers.retry of a workflow with no listener answers undefined',
+      run: async () => {
+        const rig = listenerRig();
+        expect(await rig.retry('missing')).toBeUndefined();
+        await rig.reconcile({ a: {} });
+        await rig.reconcile({});
+        expect(await rig.retry('a')).toBeUndefined();
+      },
+    },
+    {
+      row: 'triggers.retry attempt that settles after close is stopped, and writes no status, problem or timer',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async (_context, count) => {
+          if (count === 1) boom();
+          if (count === 2) {
+            await release.promise;
+            boom();
+          }
+        };
+        await rig.reconcile({ a: {} });
+        const retrying = rig.retry();
+        await waitUntil(() => rig.starts.length === 2, { message: 'the manual attempt' });
+        const closing = rig.supervisor.close();
+        release.open();
+        await closing;
+        await retrying;
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.calls).toEqual(['report x/a']);
+      },
+    },
+    {
+      row: 'a process restart starts the backoff over: a new supervisor attempts at once and waits one second',
+      run: async () => {
+        const first = listenerRig();
+        first.onStart = boom;
+        await first.reconcile({ a: {} });
+        await first.advance(1_000);
+        expect(delayOf(first)).toBe(2_000);
+        const second = listenerRig();
+        second.onStart = boom;
+        await second.reconcile({ a: {} });
+        expect(second.starts).toHaveLength(1);
+        expect(second.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(1)));
+      },
+    },
+  ];
+
+  /** Rows for an attempt in flight while a retry timer was armed (COR-2166, review round 1). */
+  const inFlightRows: readonly ListenerRow[] = [
+    {
+      row: 'triggers.retry, while failed with a timer armed and the new start pending: retryAt is null and no timer is armed, and a start that never settles keeps it null',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async (_context, count) => {
+          if (count === 1) boom();
+          if (count === 2) await release.promise;
+        };
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toMatchObject({ state: 'failed', retryAt: at(1) });
+        expect(rig.pendingTimers()).toHaveLength(1);
+        const retrying = rig.retry();
+        await waitUntil(() => rig.starts.length === 2, { message: 'the manual attempt' });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed'));
+        expect(rig.pendingTimers()).toEqual([]);
+        // The start never settles: nothing re-arms a timer, however long it takes.
+        await rig.services.advance(3_600_000);
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed'));
+        expect(rig.pendingTimers()).toEqual([]);
+        release.open();
+        await retrying;
+        expect(rig.status()).toMatchObject({ state: 'listening', retryAt: null });
+      },
+    },
+    {
+      row: 'an edit, while failed with a timer armed and the new start pending: retryAt is null and no timer is armed',
+      run: async () => {
+        const rig = listenerRig();
+        const release = gate();
+        rig.onStart = async (context) => {
+          const account = (context.configuration as { account?: string }).account;
+          if (account === 'one') boom();
+          await release.promise;
+        };
+        await rig.reconcile({ a: { account: 'one' } });
+        expect(rig.status()).toMatchObject({ state: 'failed', retryAt: at(1) });
+        const editing = rig.reconcile({ a: { account: 'two' } });
+        await waitUntil(() => startsOf(rig, 'two') === 1, { message: 'the edited start' });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'start-failed'));
+        expect(rig.pendingTimers()).toEqual([]);
+        release.open();
+        await editing;
+        expect(rig.status()).toMatchObject({ state: 'listening', retryAt: null });
+      },
+    },
+    {
+      row: 'a pause, while failed with a timer armed: stopped with no retryAt and no timer',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toMatchObject({ retryAt: at(1) });
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.pendingTimers()).toEqual([]);
+      },
+    },
+    {
+      row: 'a removal and a close, while failed with a timer armed, leave no retryAt behind',
+      run: async () => {
+        const rig = listenerRig();
+        rig.onStart = boom;
+        await rig.reconcile({ a: {}, b: {} });
+        await rig.reconcile({ b: {} });
+        expect(rig.status('a')).toBeUndefined();
+        await rig.supervisor.close();
+        expect(rig.status('b')).toMatchObject({ state: 'failed', retryAt: null });
+        expect(rig.pendingTimers()).toEqual([]);
+      },
+    },
+  ];
+
+  for (const { row, run } of [...rows, ...retryRows, ...inFlightRows]) {
+    it(row, async () => {
+      rigsOfTheRow.length = 0;
+      await run();
+      for (const rig of rigsOfTheRow) expectRetryAtToMatchTheTimers(rig);
     });
   }
 });

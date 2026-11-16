@@ -546,6 +546,7 @@ export default definePlugin({
 | `setup-failed` | `skipped` | `setup` threw, or returned something that cannot be registered. `message`. |
 | `start-failed` | `running` | `start` threw. `message`. |
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
+| `trigger-failed` | `running` | The listener of a workflow file that uses one of the plugin's trigger kinds failed: its `start` threw, or the kind refused the file's configuration. One per failed workflow, removed once it is not failed. `workflow`, `message`. |
 | `panel-changed` | `running` | A start served a page under a `uri` with a different `contentDigest` than an earlier start served under it. The page is still served. `app`, `uri`, `previousDigest`, `contentDigest`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |

@@ -100,6 +100,35 @@ const problemSchema = z.object({
 /** A JSON Schema as it is written in a workflow file. */
 const jsonSchemaField = z.record(z.string(), z.unknown());
 
+/**
+ * What a ready file’s contributed trigger is doing (COR-2165): a sibling of `trigger`, because a
+ * kind’s own configuration can have a `state` key of its own.
+ */
+const listenerSchema = z.object({
+  state: z
+    .enum(['listening', 'waiting-for-secret', 'failed', 'stopped'])
+    .describe(
+      '`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, and `stopped` for a paused file.',
+    ),
+  since: z.string().describe('When `state` last changed. A change of `code` alone keeps it.'),
+  code: z
+    .enum(['start-failed', 'configuration-refused'])
+    .nullable()
+    .describe('Why it is `failed`, else `null`.'),
+  lastFiredAt: z
+    .string()
+    .nullable()
+    .describe(
+      'When a fire last started a run since this process started, or `null`. A restart clears it.',
+    ),
+  retryAt: z
+    .string()
+    .nullable()
+    .describe(
+      'When the next attempt to start a `failed` listener is due (1 second after a failure, doubling to 300), or `null`: for a listener that is not failed, one whose kind refused the configuration, and while an attempt is in flight.',
+    ),
+});
+
 const workflowListingSchema = z.object({
   id: z.string(),
   state: z.enum(['ready', 'invalid']),
@@ -120,6 +149,12 @@ const workflowListingSchema = z.object({
    * a `ready` file, else `null`.
    */
   trigger: z.record(z.string(), z.unknown()).nullable(),
+  /**
+   * What the file’s contributed trigger is doing, or `null` for a built-in trigger kind, a file
+   * that is not `ready`, and a listener whose first start has not settled. Held in memory, so a
+   * restart starts it again.
+   */
+  listener: listenerSchema.nullable(),
   /** The file's steps as written, each step's `title` and `review` included, for a `ready` file. */
   steps: z.array(z.record(z.string(), z.unknown())).nullable(),
   problem: problemSchema.nullable(),
@@ -315,6 +350,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     outputSchema: listing.outputSchema === null ? null : { ...listing.outputSchema },
     version: listing.version ?? null,
     trigger: listing.trigger === null ? null : { ...listing.trigger },
+    listener: listing.listener === null ? null : { ...listing.listener },
     steps: listing.steps === null ? null : listing.steps.map((step) => ({ ...step })),
     problem:
       listing.problem === undefined
@@ -645,6 +681,59 @@ export const workflowsDeleteOperation = defineGuardedWrite(
   (workflows, id, guard) => workflows.delete(id, guard),
 );
 
+const retryInput = z.object({ id: workflowId });
+
+const retryOutput = z.object({
+  id: z.string(),
+  listener: listenerSchema.describe(
+    'What the listener is doing once the attempt has settled: the state it was in, when it was not failed.',
+  ),
+});
+
+export const workflowsTriggersRetryOperation = defineOperation<
+  typeof retryInput,
+  typeof retryOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.triggers.retry',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.triggers.retry'),
+  mcpExposable: false,
+  summary: 'Retry a failed trigger now',
+  description:
+    'Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret` or `stopped`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: retryInput,
+  outputSchema: retryOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'Unprocessable',
+    'Unavailable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:write', 'workflow', input.id);
+    // A file whose last apply failed and has no listener is `Unavailable`, as a start is.
+    const result = await workflows.retryTrigger(input.id).catch((error: unknown) => {
+      return faultOf(error, input.id);
+    });
+    if (result === undefined) throw resourceNotFound('workflow', input.id);
+    if (result.outcome === 'no-listener') {
+      throw {
+        code: 'Unprocessable',
+        message: `Workflow "${input.id}" has no trigger listener to retry: its trigger is not a contributed kind of a ready file.`,
+        data: { reason: 'no-listener' },
+      } satisfies OperationFault;
+    }
+    return { id: input.id, listener: { ...result.listener } };
+  },
+});
+
 const getInput = z.object({ id: workflowId });
 
 export const workflowsGetOperation = defineOperation<
@@ -657,7 +746,7 @@ export const workflowsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one workflow',
   description:
-    'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+    'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed` or `stopped`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: getInput,
@@ -717,7 +806,7 @@ export const workflowsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List workflows',
   description:
-    'Lists every workflow file by identifier, `ready` and `invalid` alike, then the code workflows plugins contributed, each with `kind: "code"`, its `id` (`plugin:name`), `name`, `title`, `plugin` and `version` and none of a file’s members (a code workflow starts and reads its runs back through the same operations as a file). Each file has its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
+    'Lists every workflow file by identifier, `ready` and `invalid` alike, then the code workflows plugins contributed, each with `kind: "code"`, its `id` (`plugin:name`), `name`, `title`, `plugin` and `version` and none of a file’s members (a code workflow starts and reads its runs back through the same operations as a file). Each file has its `description`, its `trigger`, its `listener` (see `bureau.workflows.get`; none on a code workflow), and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: listInput,
@@ -1624,6 +1713,7 @@ export const bureauWorkflowsOperations = [
   workflowsPauseOperation,
   workflowsResumeOperation,
   workflowsDeleteOperation,
+  workflowsTriggersRetryOperation,
   workflowsGetOperation,
   workflowsListOperation,
   workflowsCatalogOperation,

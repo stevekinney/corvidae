@@ -9,13 +9,20 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 import { createBureau } from '../../create-bureau.ts';
 import { waitForCondition } from '../../test';
-import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
+import {
+  AGENT_STEP,
+  FAST_SCHEDULE,
+  workflowFileText,
+} from '../../testing/workflow-file-fixtures.test-support.ts';
+import { watchPlugin } from '../../testing/watch-plugin.test-support.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
+import { OPERATION_MAP } from '../operation-map.ts';
 import { rpc, type RpcBody } from './management-fixtures.test-support.ts';
 import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test-support.ts';
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
@@ -34,6 +41,8 @@ const serve = (
   serveWorkflows(cleanups, {
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
     ...(workspace === undefined ? {} : { workspace }),
+    // Plugin `x`, whose trigger kind `x:watch` the retry operation acts on.
+    plugins: [watchPlugin().entry],
   });
 
 /** The array an operation's result holds under `key`, empty when it holds none. */
@@ -45,7 +54,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the nineteen workflow operations, with their scopes registered', () => {
+  it('serves the twenty workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -53,6 +62,7 @@ describe('the operations list', () => {
       'bureau.workflows.pause',
       'bureau.workflows.resume',
       'bureau.workflows.delete',
+      'bureau.workflows.triggers.retry',
       'bureau.workflows.get',
       'bureau.workflows.list',
       'bureau.workflows.catalog',
@@ -140,6 +150,11 @@ describe('the operations list', () => {
 /** The state of the world the operations act on, as the file system and the Bureau see it. */
 async function seed(served: Served) {
   const created = await served.bureau.workflows!.create('digest', DEFINITION);
+  // A file whose trigger is a contributed kind, for `bureau.workflows.triggers.retry`.
+  await served.bureau.workflows!.create('watcher', {
+    trigger: { kind: 'x:watch', account: 'ok' },
+    steps: [AGENT_STEP],
+  });
   const run = await served.bureau.durableEngine()!.start('digest', null, { id: 'digest-run' });
   await run.result();
   return created;
@@ -203,6 +218,11 @@ const CALLS: readonly Call[] = [
     params: (hash) => ({ id: 'digest', expectedHash: hash }),
     scope: 'write',
   },
+  {
+    method: 'bureau.workflows.triggers.retry',
+    params: () => ({ id: 'watcher' }),
+    scope: 'write',
+  },
   { method: 'bureau.workflows.start', params: () => ({ id: 'digest' }), scope: 'write' },
   {
     method: 'bureau.workflows.internal.get',
@@ -252,7 +272,10 @@ describe('the owner predicate, with several principals', () => {
           expect(response.error?.data?.httpStatus).toBe(404);
         }
         expect(await readFile(join(served.directory, 'digest.json'), 'utf8')).toBe(before);
-        expect(served.bureau.workflows?.list().map((entry) => entry.id)).toEqual(['digest']);
+        expect(served.bureau.workflows?.list().map((entry) => entry.id)).toEqual([
+          'digest',
+          'watcher',
+        ]);
       });
 
       it(`is served to the operator scope for ${wire}, and not to the other scope`, async () => {
@@ -528,6 +551,44 @@ describe('results', () => {
     expect(listed.result?.['nextOffset']).toBeNull();
   });
 
+  it('shows what a contributed trigger is doing beside the trigger, and null for a built-in kind (COR-2165)', async () => {
+    const plugin = watchPlugin();
+    plugin.failing.add('bad');
+    const served = await serveWorkflows(cleanups, {
+      plugins: [plugin.entry],
+      // Manual timers: the retry of the failed start never fires between the reads below.
+      runtime: createManualRuntimeServices(),
+      onDiagnostic: () => undefined,
+    });
+    await served.bureau.workflows!.create('watcher', {
+      trigger: { kind: 'x:watch', account: 'bad' },
+      steps: [AGENT_STEP],
+    });
+    await served.bureau.workflows!.create('digest', DEFINITION);
+
+    const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'watcher' });
+    // The kind's own configuration stays in `trigger`, and the state is a sibling.
+    expect(got.result?.['trigger']).toEqual({ kind: 'x:watch', account: 'bad' });
+    const listener = got.result?.['listener'] as Record<string, unknown>;
+    expect(listener).toMatchObject({ state: 'failed', code: 'start-failed', lastFiredAt: null });
+    expect(typeof listener['since']).toBe('string');
+    expect(Object.keys(listener).toSorted()).toEqual([
+      'code',
+      'lastFiredAt',
+      'retryAt',
+      'since',
+      'state',
+    ]);
+
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    const byId = (id: string) =>
+      listOf(listed, 'workflows').find((entry) => entry.id === id) as Record<string, unknown>;
+    expect(byId('watcher')?.['listener']).toEqual(listener);
+    expect(byId('digest')?.['listener']).toBeNull();
+    const builtIn = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
+    expect(builtIn.result).toMatchObject({ listener: null });
+  });
+
   it('pages the list with limit and offset', async () => {
     const served = await serve();
     for (const id of ['a-flow', 'b-flow', 'c-flow']) {
@@ -657,11 +718,13 @@ describe('results', () => {
     const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
     expect(listed.result?.['workflows']).toMatchObject([
       { id: 'digest', state: 'ready', description: null, runs: null },
+      { id: 'watcher', state: 'ready', runs: null },
     ]);
     const counted = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).not.toEqual(counted.result?.['workflows']);
     expect(counted.result?.['workflows']).toMatchObject([
       { id: 'digest', runs: { active: 0, last24Hours: 1 } },
+      { id: 'watcher', runs: { active: 0, last24Hours: 0 } },
     ]);
   });
 
@@ -778,6 +841,144 @@ describe('results', () => {
       runId: agentRunId,
     });
     expect(response.error?.data?.httpStatus).toBe(404);
+  });
+});
+
+describe('bureau.workflows.triggers.retry (COR-2166)', () => {
+  /** A Bureau whose file `watcher` uses `x:watch` on `account`, which fails while it is listed. */
+  async function watching(account: string, failing: readonly string[]) {
+    const plugin = watchPlugin();
+    for (const name of failing) plugin.failing.add(name);
+    const served = await serveWorkflows(cleanups, {
+      plugins: [plugin.entry],
+      runtime: createManualRuntimeServices(),
+      onDiagnostic: () => undefined,
+    });
+    await served.bureau.workflows!.create('watcher', {
+      trigger: { kind: 'x:watch', account },
+      steps: [AGENT_STEP],
+    });
+    return { served, plugin };
+  }
+
+  it('answers the id and the listener once a failed listener started at once, with no retryAt', async () => {
+    const { served, plugin } = await watching('flaky', ['flaky']);
+    expect(served.bureau.workflows?.list()[0]?.listener).toMatchObject({ state: 'failed' });
+    plugin.failing.delete('flaky');
+
+    const response = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'watcher',
+    });
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({
+      id: 'watcher',
+      listener: { state: 'listening', code: null, retryAt: null, lastFiredAt: null },
+    });
+    expect(Object.keys(response.result ?? {}).toSorted()).toEqual(['id', 'listener']);
+    expect(plugin.startCounts.get('flaky')).toBeGreaterThanOrEqual(2);
+  });
+
+  it('answers a listener that fails again as failed with a retryAt, never as a fault', async () => {
+    const { served } = await watching('flaky', ['flaky']);
+    const response = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'watcher',
+    });
+    expect(response.error).toBeUndefined();
+    const listener = response.result?.['listener'] as Record<string, unknown>;
+    expect(listener).toMatchObject({ state: 'failed', code: 'start-failed' });
+    expect(Number.isNaN(Date.parse(String(listener['retryAt'])))).toBe(false);
+  });
+
+  it('does nothing for a listener that is listening, and answers it as it is', async () => {
+    const { served, plugin } = await watching('steady', []);
+    const before = served.bureau.workflows?.list()[0]?.listener;
+    const response = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'watcher',
+    });
+    expect(response.result).toMatchObject({ id: 'watcher', listener: { state: 'listening' } });
+    const answered = response.result?.['listener'] as Record<string, unknown>;
+    expect(answered['since']).toBe(before?.since);
+    expect(plugin.startCounts.get('steady')).toBe(1);
+  });
+
+  it('is NotFound for a file that is not there, and Unprocessable with no-listener for one that has no listener', async () => {
+    const { served } = await watching('steady', []);
+    await served.bureau.workflows!.create('digest', DEFINITION);
+    await writeFile(join(served.directory, 'broken.json'), '{ not json');
+    await served.bureau.workflows!.refresh();
+
+    const missing = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'ghost',
+    });
+    expect(missing.error?.data?.httpStatus).toBe(404);
+    for (const id of ['digest', 'broken']) {
+      const response = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', { id });
+      expect(response.error?.data?.httpStatus, id).toBe(422);
+      expect(response.error?.data, id).toMatchObject({ reason: 'no-listener' });
+    }
+  });
+
+  it('is Unavailable with workflow-apply-failed for a contributed-kind file whose last apply failed, and retries it once the apply works', async () => {
+    const plugin = watchPlugin();
+    const served = await serveWorkflows(cleanups, {
+      plugins: [plugin.entry],
+      runtime: createManualRuntimeServices(),
+      onDiagnostic: () => undefined,
+    });
+    const engine = served.bureau.durableEngine()!;
+    const original = engine.registerSource.bind(engine);
+    let failing = true;
+    engine.registerSource = (...args: Parameters<typeof original>) => {
+      if (failing) throw new Error('registration refused');
+      return original(...args);
+    };
+    await writeFile(
+      join(served.directory, 'watcher.json'),
+      workflowFileText('watcher', { trigger: { kind: 'x:watch', account: 'ok' } }),
+    );
+    await served.bureau.workflows!.refresh();
+    expect(served.bureau.workflows?.list().find((entry) => entry.id === 'watcher')?.listener).toBe(
+      null,
+    );
+
+    const refused = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'watcher',
+    });
+    expect(refused.error?.data?.httpStatus).toBe(503);
+    expect(refused.error?.data).toMatchObject({ reason: 'workflow-apply-failed' });
+    expect(plugin.startCounts.get('ok')).toBeUndefined();
+
+    failing = false;
+    const retried = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'watcher',
+    });
+    expect(retried.error).toBeUndefined();
+    expect(retried.result).toMatchObject({ id: 'watcher', listener: { state: 'listening' } });
+  });
+
+  it('answers NotFound for a code workflow id, which is not a file', async () => {
+    const { served } = await watching('steady', []);
+    const response = await ownerRpc(served.owner, 'bureau.workflows.triggers.retry', {
+      id: 'agentRun',
+    });
+    expect(response.error?.data?.httpStatus).toBe(404);
+  });
+
+  // A workspace member without `workspace:manage` is refused with 403 by the six-actor case of
+  // `workspace-workflow-privacy.test.ts`, which runs this operation as `administrator`.
+  it('is an administrator-shared operation, as pause is, with the facade member retryTrigger', () => {
+    expect(OPERATION_MAP['bureau.workflows.triggers.retry']).toEqual({
+      workspaceClass: 'administrator-shared',
+      member: 'workflows.retryTrigger',
+    });
+    expect(
+      bureauWorkflowsOperations.find(
+        (operation) => operation.name === 'bureau.workflows.triggers.retry',
+      ),
+    ).toMatchObject({
+      destructive: true,
+      mcpExposable: false,
+    });
   });
 });
 

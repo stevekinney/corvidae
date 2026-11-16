@@ -26,6 +26,7 @@ export const PLUGIN_PROBLEM_CODES = {
   'load-failed': 'plugin',
   'panel-failed': 'panel',
   'panel-changed': 'panel',
+  'trigger-failed': 'trigger',
   'start-failed': 'plugin',
 } as const;
 

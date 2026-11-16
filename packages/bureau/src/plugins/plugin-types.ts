@@ -324,6 +324,19 @@ export type PluginProblem =
       readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
+    }
+  | {
+      /**
+       * The listener of a workflow file whose trigger is one of the plugin's kinds failed: its
+       * `start` threw, or its kind refused the file's configuration (COR-2165). One problem per
+       * failed workflow, removed once its listener is not failed or its file is gone. The plugin
+       * stays `running`. Set by the host's workflow runtime, never by composition.
+       */
+      readonly code: 'trigger-failed';
+      /** The identifier of the workflow file. */
+      readonly workflow: string;
+      /** The failure's message, with every secret value the plugin was handed removed. */
+      readonly message: string;
     };
 
 /** Fails to compile when `PluginProblem` and `PLUGIN_PROBLEM_CODES` disagree on the codes. */

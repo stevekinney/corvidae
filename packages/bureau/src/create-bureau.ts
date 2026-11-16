@@ -3093,6 +3093,10 @@ async function constructBureau<const D extends AgentDefinitions>(
             runtime: runtimeServices,
             onPinnedUnavailable: (activity, runId) =>
               pluginRegistry.notePinnedUnavailable(activity, runId),
+            onTriggerFailed: (plugin, workflow, message) =>
+              pluginRegistry.reportTriggerFailure(plugin, workflow, message),
+            onTriggerRecovered: (plugin, workflow) =>
+              pluginRegistry.clearTriggerFailure(plugin, workflow),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',

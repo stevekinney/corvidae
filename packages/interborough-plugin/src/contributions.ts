@@ -308,8 +308,11 @@ export interface PluginTriggerContext<TConfiguration = unknown> {
    * and trigger kind, for as long as the run it started exists, so a second fire with the same key
    * starts nothing and resolves `duplicate` with the first run's id, whatever state that run is in
    * and whatever its payload was. Once that run is purged, the key is forgotten. Only a fire that
-   * starts a run uses its key: a fire the host skipped, or one that rejected, leaves the key free
-   * for the redelivery. A key that is empty or not a string rejects.
+   * starts a run uses its key: a fire the host skipped leaves it free for the redelivery, and so
+   * does one that rejected before the run was created (a payload the file refuses, or a start the
+   * engine refused). A fire that rejected because the engine's start threw after it had committed
+   * the run took the key, so its redelivery resolves `duplicate` with that run. A key that is empty
+   * or not a string rejects.
    *
    * A fire after the host stopped the trigger resolves `skipped` and starts nothing; so does one
    * for a file that is paused, or after the host closed. A payload the file's `inputSchema`
@@ -325,7 +328,12 @@ export interface PluginTriggerContext<TConfiguration = unknown> {
       readonly idempotencyKey?: string;
     },
   ): Promise<PluginTriggerOutcome>;
-  /** Aborts when the host stops the trigger. */
+  /**
+   * Aborts when the host stops the trigger, and when `start` threw: a `fire` after that resolves
+   * `skipped`. For a plugin that declares a secret, the host gives `start` a context of its own
+   * each time it runs it: its signal aborts when a secret is removed, and the next `start`
+   * receives a new one.
+   */
   readonly signal: AbortSignal;
 }
 

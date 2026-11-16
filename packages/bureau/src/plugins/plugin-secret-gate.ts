@@ -20,7 +20,7 @@
  * | -- | -- | -- | -- |
  * | tool (`execute`) | refuses; the call fails, after any approval | works | refuses |
  * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
- * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
+ * | trigger kind (`start`) | waits: the real `start` is not called, and the listener is `waiting-for-secret` | the real `start` runs, and the listener is `listening`; a throw is `failed` | the trigger it started is aborted and stopped, its `fire` answers `skipped: 'stopped'`, and it waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run fails closed (COR-2300): the refusal is a `detector-failure` finding that blocks the input, reply or call it would judge, under a `warn` action too, and taints the session as a block does (a `tripwire` action halts the run) | works | refuses |
  * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run fails closed on it (COR-2300) | works | refuses |
@@ -53,6 +53,7 @@ import {
   type PluginGuardrailFactory,
   type PluginInterceptor,
   type PluginTrigger,
+  type PluginTriggerContext,
   type PluginWorkflow,
 } from '@lostgradient/interborough-plugin';
 import {
@@ -67,6 +68,7 @@ import type { DetectionResult, DetectorContext } from 'armorer';
 
 import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import type { DiagnosticSink } from '../bureau-types/options';
+import { reportListener } from '../workflow-trigger-reports';
 import type { BureauPluginSecrets } from './plugin-types';
 
 /**
@@ -255,39 +257,100 @@ function gatedInterceptor(
   return { ...interceptor, ...gatedPoints };
 }
 
+/** Aborts `target` when `source` aborts; returns the function that stops following it. */
+function followAbort(source: AbortSignal, target: AbortController): () => void {
+  if (source.aborted) {
+    target.abort();
+    return () => undefined;
+  }
+  const onAbort = () => target.abort();
+  source.addEventListener('abort', onAbort, { once: true });
+  return () => source.removeEventListener('abort', onAbort);
+}
+
 /**
  * A trigger kind whose `start` waits for the gate: the kind's own `start` runs once every declared
  * secret is set, the trigger it started is stopped when one is removed, and it starts again when
  * the secret is saved again. The returned stop stops whichever is running and follows the gate no
  * more. Every transition runs in order on one chain, so a start and a stop never overlap.
+ *
+ * Each run of the kind's own `start` gets its own context (COR-2165): an `AbortController` of its
+ * own, linked to the context the host gave, which removing the secret aborts, and a `fire` that
+ * answers `skipped: 'stopped'` once it is aborted, so a plugin that kept `fire` starts nothing for
+ * a secret that is gone. The host's own `signal` is never aborted by the gate, because aborting it
+ * would stop the gate from starting the kind again.
+ *
+ * What the listener is doing goes to the host through {@link reportListener}: `waiting-for-secret`
+ * while a secret is missing, `listening` once the kind is running, and `failed` when a start after
+ * the first throws. The first transition's failure is thrown instead, as a `start` that throws, so
+ * it is handled once. A report never awaits, and none follows the host's stop of the gate.
  */
 function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTrigger {
   return {
     ...kind,
     start: async (context) => {
-      let stopInner: (() => void | Promise<void>) | undefined;
+      let inner:
+        | {
+            readonly stop: () => void | Promise<void>;
+            readonly controller: AbortController;
+            readonly unfollow: () => void;
+          }
+        | undefined;
       let ended = false;
       let chain: Promise<void> = Promise.resolve();
-      const settle = async (): Promise<void> => {
+      /** Reports only while the host still follows this listener: never after its stop or abort. */
+      const report = (state: Parameters<typeof reportListener>[1]): void => {
+        if (!ended && !context.signal.aborted) reportListener(context, state);
+      };
+      const settle = async (first: boolean): Promise<void> => {
         const want = !ended && gate.available() && !context.signal.aborted;
-        if (want && stopInner === undefined) {
-          stopInner = await kind.start(context);
-        } else if (!want && stopInner !== undefined) {
-          const stop = stopInner;
-          stopInner = undefined;
-          await stop();
+        if (want && inner === undefined) {
+          const controller = new AbortController();
+          const unfollow = followAbort(context.signal, controller);
+          const innerContext: PluginTriggerContext = {
+            ...context,
+            signal: controller.signal,
+            fire: (payload, fireOptions) =>
+              // Closed and stopped by the host take precedence: only the gate's own removal is
+              // answered here.
+              controller.signal.aborted && !context.signal.aborted
+                ? Promise.resolve({ outcome: 'skipped', reason: 'stopped' })
+                : context.fire(payload, fireOptions),
+          };
+          try {
+            inner = { stop: await kind.start(innerContext), controller, unfollow };
+          } catch (error) {
+            controller.abort();
+            unfollow();
+            if (first) throw error;
+            report({ state: 'failed', error });
+            return;
+          }
+          report({ state: 'listening' });
+        } else if (!want && inner !== undefined) {
+          const { stop, controller, unfollow } = inner;
+          inner = undefined;
+          controller.abort();
+          unfollow();
+          try {
+            await stop();
+          } finally {
+            report({ state: 'waiting-for-secret' });
+          }
+        } else if (!want) {
+          report({ state: 'waiting-for-secret' });
         }
       };
-      const queue = (): Promise<void> => {
-        const next = chain.then(settle);
-        // A later transition runs whatever this one did; its failure is the kind's to report
-        // through the first `start`, and a later one leaves the trigger stopped until the next.
+      const queue = (first: boolean): Promise<void> => {
+        const next = chain.then(() => settle(first));
+        // A later transition runs whatever this one did; a stop that throws leaves the trigger
+        // waiting until the next, and a start that throws was reported.
         chain = next.catch(() => undefined);
         return next;
       };
-      const unsubscribe = gate.onChange(() => void queue());
+      const unsubscribe = gate.onChange(() => void queue(false));
       try {
-        await queue();
+        await queue(true);
       } catch (error) {
         unsubscribe();
         throw error;
@@ -295,7 +358,7 @@ function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTr
       return async () => {
         ended = true;
         unsubscribe();
-        await queue();
+        await queue(false);
       };
     },
   };

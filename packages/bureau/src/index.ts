@@ -155,6 +155,9 @@ export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-refer
 export type {
   WorkflowCodeDetail,
   WorkflowDetail,
+  WorkflowFileListing,
+  WorkflowListener,
+  WorkflowTriggerRetry,
   WorkflowRunDetail,
   WorkflowRunFilter,
   WorkflowRunSummary,

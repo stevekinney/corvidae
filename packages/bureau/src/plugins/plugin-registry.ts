@@ -138,6 +138,15 @@ export interface PluginRegistry {
    * once per pinned id however often it is noted; an id without a version is not a pin.
    */
   notePinnedUnavailable(pinned: string, runId: string): void;
+  /**
+   * Records that the listener of workflow `workflow`, whose trigger kind `plugin` contributes,
+   * failed (COR-2165): the plugin lists one `trigger-failed` problem for the workflow, with
+   * `message` (secrets removed). The first message of a workflow that stays failed is kept. A name
+   * that is no running plugin is ignored.
+   */
+  reportTriggerFailure(plugin: string, workflow: string, message: string): void;
+  /** Removes the `trigger-failed` problem of `workflow`, once its listener is not failed. */
+  clearTriggerFailure(plugin: string, workflow: string): void;
 }
 
 /** What one ready agent's definition names. */
@@ -362,6 +371,8 @@ export function createPluginRegistry(
   // The panels the host served with different bytes than an earlier start served under their URI
   // (COR-2210), by plugin name, then app name.
   const changedApps = new Map<string, Map<string, PanelChange>>();
+  // The listeners that failed (COR-2165), by plugin name, then workflow, with the message.
+  const failedTriggers = new Map<string, Map<string, string>>();
   const pinned: PinnedTally = new Map();
   let reads: PluginReferenceReads | undefined;
   const started = Promise.withResolvers<void>();
@@ -386,6 +397,11 @@ export function createPluginRegistry(
         code: 'panel-changed',
         app,
         ...change,
+      })),
+      ...[...(failedTriggers.get(name) ?? [])].map(([workflow, message]): PluginProblem => ({
+        code: 'trigger-failed',
+        workflow,
+        message,
       })),
       ...(laterProblems.get(name) ?? []),
     ];
@@ -521,6 +537,18 @@ export function createPluginRegistry(
       const entry = byId.get(key) ?? { id, version: identity.version, runs: new Set<string>() };
       byId.set(key, entry);
       entry.runs.add(runId);
+    },
+    reportTriggerFailure(plugin, workflow, message) {
+      const record = records.find(
+        (candidate) => candidate.status === 'running' && candidate.entry.descriptor.name === plugin,
+      );
+      if (record?.setup === undefined) return;
+      const byWorkflow = failedTriggers.get(plugin) ?? new Map<string, string>();
+      failedTriggers.set(plugin, byWorkflow);
+      if (!byWorkflow.has(workflow)) byWorkflow.set(workflow, record.setup.redact(message));
+    },
+    clearTriggerFailure(plugin, workflow) {
+      failedTriggers.get(plugin)?.delete(workflow);
     },
     async start(hostFor) {
       const hosts = new Map<string, PluginHost>();
