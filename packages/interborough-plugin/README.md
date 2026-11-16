@@ -111,6 +111,7 @@ A plugin declares the event kinds it will publish with `events: [{ name, descrip
 
 - **Kinds and clashes.** Because the kind carries the plugin's name, no plugin holds another's, and none holds a kind Bureau itself publishes (those have no `:`). A plugin that declares one name twice, or whose kind a host option already holds as an event kind, is `skipped` with `name-clash`.
 - **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload, wrappers and getter reads included; a payload that needs more, such as one whose getter builds a new schema on every read, is refused with `event-payload-content` at the path where the count ran out.
+- **Formatting.** Only the publisher formats its own kinds: a formatter may list a kind Bureau publishes or one its own plugin declares. A formatter that lists a kind another plugin declares skips the plugin with `formatter-foreign-kind`, naming the kind and the owner (the owner must be set up before the formatter's plugin); one that lists any other kind, such as an undeclared `<plugin>:<name>`, skips it with `formatter-unknown-kind`.
 - **Listing.** `bureau.events.catalog` lists each running plugin's declared kinds after Bureau's own, with the payload fields, `origin: 'unattributed'`, no scopes and `source: '<plugin>'`.
 - **Identity.** Its identity kind is `event`, with the id `plugin:name`, the event's version and a digest of its payload schema, so marking a field `identifier` or changing its type changes the digest.
 
@@ -131,6 +132,13 @@ export default definePlugin({
           greetingId: z.string().meta({ identifier: true }),
           status: z.enum(['sent', 'failed']),
         }),
+      },
+    ],
+    formatters: [
+      {
+        name: 'greeted',
+        eventKinds: ['greetings:greeted'],
+        format: () => ({ title: 'Someone was greeted' }),
       },
     ],
   }),

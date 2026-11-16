@@ -11,6 +11,7 @@ import { createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { isPublishedEventKind } from '../bureau-event-catalog';
 import { createVersionedCatalog } from '../versioned-catalog';
 import {
   type ComposableOptions,
@@ -786,6 +787,50 @@ describe('composePlugins', () => {
         expect.objectContaining({ code: 'name-clash', name: 'kit:greeted' }),
       ]);
       expect(createPluginRegistry(records).plugins.events()).toEqual([]);
+    });
+
+    const formatting = (kinds: string[], name = 'fmt') => ({
+      formatters: [{ name, eventKinds: kinds, format: () => ({ title: 'x' }) }],
+    });
+
+    it('composes a formatter that lists a kind its plugin declares (COR-2225)', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({ events: [greeted()], ...formatting(['kit:greeted']) })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[0]?.problems).toEqual([]);
+      expect(isPublishedEventKind('kit:greeted', ['kit:greeted'])).toBe(true);
+    });
+
+    it('skips a formatter that lists another plugin\'s declared kind, naming the owner', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({ events: [greeted()] })),
+          pluginEntry('other', () => formatting(['kit:greeted'])),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[1]?.status).toBe('skipped');
+      expect(records[1]?.problems).toEqual([
+        { code: 'formatter-foreign-kind', formatter: 'fmt', kind: 'kit:greeted', owner: 'kit' },
+      ]);
+    });
+
+    it('skips a formatter that lists an undeclared plugin kind, with formatter-unknown-kind', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({ events: [greeted()], ...formatting(['kit:missing']) })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        { code: 'formatter-unknown-kind', formatter: 'fmt', kind: 'kit:missing' },
+      ]);
     });
 
     it('skips a plugin that declares a kind another holds, with name-clash', async () => {

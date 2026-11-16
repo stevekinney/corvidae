@@ -9,13 +9,14 @@ import type { PluginClashParty, PluginContributionKind, PluginProblem } from './
 
 /**
  * A space of names. A contribution kind holds `plugin:name` ids, `plugin` holds plugin names,
- * `event-kind` holds the event kinds a formatter claims, and `provider-name` holds the bare names
+ * `event-kind` holds the event kinds a formatter claims or a plugin declares, `declared-event-kind`
+ * holds the kinds a formatter lists of its own plugin's declared kinds, and `provider-name` holds the bare names
  * of model providers, which the host resolves a generate by, so two plugins cannot share one.
  * `panel-uri` holds the `ui://` resource URIs of panels, which a host serves by URI alone, and
  * `panel-tool` holds the tool names a panel opens from, because a tool links to one page.
  */
 export type ClaimSpace =
-  PluginContributionKind | 'plugin' | 'event-kind' | 'provider-name' | 'panel-uri' | 'panel-tool';
+  PluginContributionKind | 'plugin' | 'event-kind' | 'declared-event-kind' | 'provider-name' | 'panel-uri' | 'panel-tool';
 
 /** One name in one space. */
 export interface Claim {

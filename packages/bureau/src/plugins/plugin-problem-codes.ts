@@ -16,6 +16,7 @@ export const PLUGIN_PROBLEM_CODES = {
   'activity-field-missing': 'activity',
   'workflow-field-missing': 'workflow',
   'formatter-unknown-kind': 'formatter',
+  'formatter-foreign-kind': 'formatter',
   'event-payload-content': 'event',
   'provider-secret-unknown': 'provider',
   'provider-secret-ambiguous': 'provider',
