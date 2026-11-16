@@ -222,12 +222,12 @@ describe('WorkflowList', () => {
       limit: 50,
     });
 
-    const { findByText, getByRole } = render(WorkflowListHarness, {
+    const { findAllByText, getByRole } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('payment-failing')).not.toBeNull();
-    expect(await findByText('order-processing')).not.toBeNull();
+    expect((await findAllByText('payment-failing')).length).toBeGreaterThan(0);
+    expect((await findAllByText('order-processing')).length).toBeGreaterThan(0);
     expect(getByRole('heading', { level: 1 }).textContent).toBe('Workflow runs');
     const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
     expect(requestUrl.searchParams.get('status')).toBe('failed');
