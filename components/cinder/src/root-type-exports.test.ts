@@ -3,6 +3,7 @@ import { expect, expectTypeOf, test } from 'bun:test';
 import { isRedispatchedPortaledEvent as ownedPortalEventPredicate } from './components/portal/index.ts';
 import {
   createBodyScrollLock,
+  dockedToBottom,
   formatDateTime,
   formatRelativeTime,
   isRedispatchedPortaledEvent,
@@ -10,7 +11,10 @@ import {
   ToolbarGroup,
   ToolbarSpacer,
 } from './index.ts';
-import { createBodyScrollLock as ownedBodyScrollLock } from './utilities/attachments.ts';
+import {
+  createBodyScrollLock as ownedBodyScrollLock,
+  dockedToBottom as ownedDockedToBottom,
+} from './utilities/attachments.ts';
 import {
   formatDateTime as ownedFormatDateTime,
   formatRelativeTime as ownedFormatRelativeTime,
@@ -227,6 +231,7 @@ test('root exports expose the existing toolbar parts and DOM utility owners', ()
   expect(ToolbarGroup).toBe(Toolbar.Group);
   expect(ToolbarSpacer).toBe(Toolbar.Spacer);
   expect(createBodyScrollLock).toBe(ownedBodyScrollLock);
+  expect(dockedToBottom).toBe(ownedDockedToBottom);
   expect(formatDateTime).toBe(ownedFormatDateTime);
   expect(formatRelativeTime).toBe(ownedFormatRelativeTime);
   expect(isRedispatchedPortaledEvent).toBe(ownedPortalEventPredicate);
