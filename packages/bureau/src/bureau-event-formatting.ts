@@ -3,6 +3,11 @@
  * for the event kinds it knows (`PluginFormatter`); an event no formatter claims is shown by
  * its raw kind, with the run it names so the view can still link to it.
  *
+ * A formatter formats from the event alone, synchronously, and what it returns is bounded
+ * (COR-2221): a `title` is one line of at most {@link FORMATTED_TITLE_LIMIT} characters (its
+ * newlines become spaces) and a `body` at most {@link FORMATTED_BODY_LIMIT}; a longer one is cut,
+ * never refused, and a `body` that is not a string is dropped with a `warn` diagnostic.
+ *
  * Each kind has at most one formatter. Two that claim the same kind are refused when the
  * formatters are registered, so the sentence a kind gets never depends on registration order.
  *
@@ -21,6 +26,12 @@ export interface EventFormatterRegistration {
   readonly formatter: PluginFormatter;
 }
 
+/** The tiers a formatted event has, most urgent first. */
+export const FORMATTED_EVENT_TIERS = ['critical', 'warning', 'info'] as const;
+
+/** How much a formatted event matters. */
+export type FormattedEventTier = (typeof FORMATTED_EVENT_TIERS)[number];
+
 /** An event as a person reads it. */
 export interface FormattedBureauEvent {
   /** The event's kind, always the raw one. */
@@ -29,12 +40,69 @@ export interface FormattedBureauEvent {
   readonly title: string;
   /** More detail, when the formatter gave some. */
   readonly body?: string;
+  /** How much the event matters: the formatter's `tier`, and `info` when it gave none or the event is shown raw. */
+  readonly tier: FormattedEventTier;
+  /** The name of a Lucide icon to draw beside the title, when the formatter gave one. */
+  readonly icon?: string;
+  /** A router-relative path (it starts with `/`) the view links the event to, when the formatter gave one. */
+  readonly link?: string;
   /** The run the event is about, so the view can link to it; absent when the payload names none. */
   readonly runId?: string;
   /** The plugin whose contribution emitted the event; absent for an event from Bureau core. */
   readonly source?: string;
   /** `<plugin>/<formatter>` when a contributed formatter wrote the title; absent for the raw fallback. */
   readonly formattedBy?: string;
+}
+
+/** The longest `title` a formatter's output keeps, in characters; a longer one is cut (COR-2221). */
+export const FORMATTED_TITLE_LIMIT = 200;
+
+/** The longest `body` a formatter's output keeps, in characters; a longer one is cut (COR-2221). */
+export const FORMATTED_BODY_LIMIT = 2000;
+
+/** A line break: CRLF, CR, LF, and the Unicode line and paragraph separators. */
+const LINE_BREAKS = /\r\n|[\r\n\p{Zl}\p{Zp}]/gu;
+
+/** Cuts `text` to `limit` characters without leaving half of a surrogate pair behind. */
+function truncated(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const last = text.charCodeAt(limit - 1);
+  const isHighSurrogate = last >= 0xd800 && last <= 0xdbff;
+  return text.slice(0, isHighSurrogate ? limit - 1 : limit);
+}
+
+/** The tier a formatter named, or `info` when it named none or one the host does not know. */
+function tierOf(value: unknown): FormattedEventTier {
+  return FORMATTED_EVENT_TIERS.find((tier) => tier === value) ?? 'info';
+}
+
+/** The origin a link is resolved against to prove it stays in the router. */
+const ROUTER_BASE = 'https://router.invalid';
+
+/**
+ * The link a formatter gave, when it is a path in the host's router: it starts with one `/`,
+ * holds no whitespace or control character, and resolves to the router's own origin. A URL, a
+ * relative path and a protocol-relative `//host` (which a browser resolves to another origin) are
+ * dropped.
+ */
+function routerLinkOf(value: unknown): string | undefined {
+  if (
+    typeof value !== 'string' ||
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.startsWith('/\\')
+  ) {
+    return undefined;
+  }
+  // The URL parser strips a tab, a line feed and a carriage return wherever they fall, so
+  // `/<tab>/host` resolves as `//host`: no whitespace or control character may remain.
+  if (/[\s\p{Cc}]/u.test(value)) return undefined;
+  try {
+    // Whatever the check above missed, a link that leaves the router's origin is dropped.
+    return new URL(value, ROUTER_BASE).origin === ROUTER_BASE ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Formats events with the formatters it was built from. */
@@ -81,10 +149,24 @@ export function createBureauEventFormatter(
       try {
         const formatting = registration.formatter.format(event);
         if (typeof formatting.title === 'string' && formatting.title.length > 0) {
+          // A body that is not a string is dropped, and says so: the title still stands.
+          if (formatting.body !== undefined && typeof formatting.body !== 'string') {
+            diagnose?.(
+              `Event formatter "${name}" returned a body that is not a string for "${event.kind}"`,
+            );
+          }
+          const link = routerLinkOf(formatting.link);
           return {
             ...common,
-            title: formatting.title,
-            ...(typeof formatting.body === 'string' ? { body: formatting.body } : {}),
+            title: truncated(formatting.title.replaceAll(LINE_BREAKS, ' '), FORMATTED_TITLE_LIMIT),
+            ...(typeof formatting.body === 'string'
+              ? { body: truncated(formatting.body, FORMATTED_BODY_LIMIT) }
+              : {}),
+            tier: tierOf(formatting.tier),
+            ...(typeof formatting.icon === 'string' && formatting.icon.length > 0
+              ? { icon: formatting.icon }
+              : {}),
+            ...(link === undefined ? {} : { link }),
             formattedBy: name,
           };
         }
@@ -93,6 +175,6 @@ export function createBureauEventFormatter(
         diagnose?.(`Event formatter "${name}" failed on "${event.kind}"`, cause);
       }
     }
-    return { ...common, title: event.kind };
+    return { ...common, title: event.kind, tier: 'info' };
   };
 }

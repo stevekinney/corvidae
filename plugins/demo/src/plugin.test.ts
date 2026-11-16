@@ -95,6 +95,27 @@ describe('the demo plugin', () => {
     expect(echoInputSchema.safeParse({ message: 3 }).success).toBe(false);
   });
 
+  test('declares exactly one event, demo:greeted, whose payload names the greeting by an identifier (COR-2223)', async () => {
+    const contributions = await pluginContributions(plugin);
+    expect(contributions.events?.map(({ name }) => name)).toEqual(['greeted']);
+    const [greeted] = contributions.events ?? [];
+    expect(greeted?.payload.safeParse({ greetingId: 'greeting-1' }).success).toBe(true);
+    expect(greeted?.payload.safeParse({}).success).toBe(false);
+
+    const bureau = await start({ secret: 'fixture-demo-approval-secret' });
+    expect(
+      bureau.plugins
+        .events()
+        .map(({ kind, plugin: source, payload }) => ({ kind, source, payload })),
+    ).toEqual([
+      {
+        kind: 'demo:greeted',
+        source: 'demo',
+        payload: [{ name: 'greetingId', type: 'string', optional: false }],
+      },
+    ]);
+  });
+
   test('declares one generated secret of its own, never the host’s approval secret', () => {
     expect(plugin.secrets).toEqual([{ key: 'demo-approval-secret', generated: true }]);
     expect(plugin.enabled).toBe(false);

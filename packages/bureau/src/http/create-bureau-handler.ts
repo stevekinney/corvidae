@@ -241,7 +241,10 @@ import {
   type BureauTasksInspectOperationHost,
   tasksInspectOperation,
 } from './management/tasks-inspect-operation.ts';
-import { eventsCatalogOperation } from './management/events-catalog-operation.ts';
+import {
+  type BureauEventsCatalogOperationHost,
+  eventsCatalogOperation,
+} from './management/events-catalog-operation.ts';
 import {
   type BureauGuardrailsOperationHost,
   guardrailsListOperation,
@@ -422,6 +425,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauWorkerDeploymentsOperationHost &
   BureauHooksOperationHost &
   BureauPluginKindsOperationHost &
+  BureauEventsCatalogOperationHost &
   BureauGuardrailsOperationHost &
   BureauEventFormatOperationHost &
   BureauSchedulesOperationHost &
