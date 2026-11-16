@@ -334,11 +334,19 @@ function messageOf(error: unknown): string {
 }
 
 /**
+ * Stands in for a payload that was not JSON when `fire` was called: a symbol is never JSON, so the
+ * runtime refuses it, at its own place in the order of checks, however the plugin changes its
+ * object while the fence awaits.
+ */
+const NOT_JSON_PAYLOAD = Symbol('a payload that was not JSON');
+
+/**
  * What a fire's payload is once it has been read, before the fence awaits: a copy when it is JSON,
- * since the plugin still owns it, and the value itself otherwise, for the runtime to refuse.
+ * since the plugin still owns it, and {@link NOT_JSON_PAYLOAD} otherwise, so the JSON or not-JSON
+ * decision is taken at the call and cannot change afterwards.
  */
 function snapshotOf(payload: unknown): unknown {
-  return z.json().safeParse(payload).success ? structuredClone(payload) : payload;
+  return z.json().safeParse(payload).success ? structuredClone(payload) : NOT_JSON_PAYLOAD;
 }
 
 /** Build a supervisor. */

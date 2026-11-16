@@ -1280,6 +1280,25 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
+    row: 'M35a (added in review): a payload that is not JSON when fire is called stays not JSON, though the plugin makes it JSON during the fence read',
+    run: async () => {
+      const shared = sharedStore();
+      const holder = await peer(shared);
+      await holder.reconcile({ a: {} });
+      const reading = gate();
+      holder.faults = { get: (key) => (key === RECORD ? reading.promise : undefined) };
+      const payload: Record<string, unknown> = { n: 1, callback: () => undefined };
+      const firing = holder.starts[0]!.fire(payload);
+      // The plugin turns its payload into JSON while the fence awaits.
+      delete payload['callback'];
+      reading.open();
+      await firing;
+      expect(holder.requests).toHaveLength(1);
+      // The host is handed a payload it still refuses as not JSON, as it would have been at the call.
+      expect(z.json().safeParse(holder.requests[0]!.payload).success).toBe(false);
+    },
+  },
+  {
     row: 'M36 (O5): a fence read that throws rejects the fire with the read’s error, starts nothing, leaves the key free and the state unchanged',
     run: async () => {
       const failure = new Error('the store is down');
