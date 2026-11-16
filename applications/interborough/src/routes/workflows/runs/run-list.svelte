@@ -74,7 +74,7 @@
     type RunFilter,
     type RunListEntry,
   } from './run-rows.ts';
-  import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
+  import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS } from './started-by.ts';
 
   /** The form that starts a run. */
   const START_RUN_PATH = '/runs/new';
@@ -226,7 +226,10 @@
       key: 'startedBy',
       label: TASK_COPY.startedByLabel,
       multiple: false,
-      options: STARTED_BY_KINDS.map((value) => ({ value, label: STARTED_BY_LABELS[value] })),
+      options: STARTED_BY_KINDS.map((value) => ({
+        value,
+        label: STARTED_BY_FILTER_LABELS[value],
+      })),
     },
     {
       type: 'choice',

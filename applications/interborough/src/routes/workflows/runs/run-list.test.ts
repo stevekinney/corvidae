@@ -32,7 +32,7 @@ import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import { filterLabelOf } from './run-rows.ts';
-import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
+import { STARTED_BY_FILTER_LABELS, STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
 
 let stub: BureauWorldStub | undefined;
 afterEach(() => {
@@ -201,9 +201,10 @@ describe('the Started by and Agent chips', () => {
   test('an applied chip names its choice, and its x takes it out of the address', async () => {
     const view = open('/runs?startedBy=goal');
     await waitFor(() => expect(rowIds(view.container)).toEqual(['goal-1-a0']));
-    const remove = view.getByRole('button', {
-      name: `Remove filter: ${TASK_COPY.startedByLabel}: ${STARTED_BY_LABELS.goal}`,
-    });
+    // The chip reads "Started by: Goals" (row 52x), the plural of what started the runs.
+    const remove = view.getByRole('button', { name: 'Remove filter: Started by: Goals' });
+    expect(STARTED_BY_FILTER_LABELS.goal).toBe('Goals');
+    expect(STARTED_BY_LABELS.goal).toBe('A goal');
     await fireEvent.click(remove);
     await waitFor(() => expect(router.search.get('startedBy')).toBeNull());
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(3));
