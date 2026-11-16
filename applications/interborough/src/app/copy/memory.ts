@@ -20,6 +20,37 @@ export const MEMORY_COPY = {
   listFailed: 'The memories could not be loaded.',
   /** Under an open memory the list or search does not hold, which the list leads with. */
   pinnedNote: 'Open now, not in this list',
+  /**
+   * The quarantined memories, a view of the tab (`?view=quarantined`) the way archived chats are
+   * a view of Chats: an entry after the list opens it, and it has its own title and a way back.
+   */
+  quarantinedView: {
+    /** The entry after the list that opens the view, and the view's title. */
+    title: 'Quarantined memories',
+    /** The way back above the title shows "Memory", so its accessible name says "Back to Memory". */
+    back: 'Memory',
+    backLabel: 'Back to Memory',
+    /** The detail's Back where it replaces the list on a phone, inside the view. */
+    detailBackLabel: 'Back to quarantined memories',
+    /** What the view says when it lists nothing, with the way back to the memories. */
+    empty: {
+      title: 'No quarantined memories',
+      description:
+        'A memory the checks hold, or one you quarantine, is listed here until you release or forget it.',
+      back: 'Back to Memory',
+    },
+    /** Said instead of the list when viewing quarantined memories is not allowed. */
+    forbiddenTitle: 'This is locked',
+    /** What the details say of a memory the address names but the view does not hold. */
+    notHere: {
+      /** More pages of the view are unread, so the memory may still be in one of them. */
+      unread:
+        'This memory is not in the quarantined memories read so far. Load more to look further.',
+      /** Every page was read: the memory is not quarantined (released, forgotten, or never held). */
+      absent:
+        'This memory is not quarantined. It may have been released or forgotten, or it may be in use.',
+    },
+  },
   noContent: 'This memory has no text.',
   relevance: 'Relevance',
   /**
@@ -113,7 +144,8 @@ export const MEMORY_COPY = {
     failed: 'This memory could not be loaded.',
     notFound: {
       title: 'This memory was not found',
-      description: 'It may have been forgotten, or it may not be yours.',
+      description:
+        'It may have been forgotten, or it may not be yours. A quarantined memory opens from Quarantined memories.',
     },
     content: 'Memory',
     /** The label/value rows below the text. Trust is not drawn: it follows from who wrote the memory. */
@@ -373,20 +405,96 @@ export const MEMORY_COPY = {
       dialog: {
         title: 'Quarantine this memory?',
         description: (excerpt: string): string =>
-          `“${excerpt}” and anything derived from it is taken out of use: it is no longer listed, searched, read or recalled. This cannot be undone. It stays stored for inspection, and forgetting it still removes it.`,
+          `“${excerpt}” and anything derived from it is taken out of use: it is no longer listed, searched, read or recalled. It stays stored, and you can forget it. Release brings this memory back, not ones derived from it, if it passes the checks a new memory passes.`,
         reasonLabel: 'Why is it quarantined?',
         confirm: 'Quarantine memory',
         cancel: 'Cancel',
       },
       outcome: {
         done: {
-          title: 'Memory quarantined',
+          /** Names the memory, so two quarantines never read as one message. */
+          title: (excerpt: string): string => `“${excerpt}” quarantined`,
           description: (affected: number): string =>
             `${affected} ${affected === 1 ? 'record was' : 'records were'} taken out of use.`,
+          /** The action in the notice that opens the quarantined view, where the memory now is. */
+          see: 'See quarantined memories',
         },
         already: {
-          title: 'Already quarantined',
+          title: (excerpt: string): string => `“${excerpt}” was already quarantined`,
           description: 'Nothing changed.',
+        },
+      },
+    },
+    release: {
+      /** The action in a quarantined memory's details; the legal hold's own is “Release legal hold”. */
+      action: 'Release from quarantine',
+      outcome: {
+        done: {
+          title: (excerpt: string): string => `“${excerpt}” released`,
+          description:
+            'It is listed, searched and recalled again. If a check flags it again, it is quarantined again.',
+        },
+        already: {
+          title: (excerpt: string): string => `“${excerpt}” was already in use`,
+          description: 'Nothing changed.',
+        },
+      },
+      /**
+       * Why a release was refused, by the reason the server names: the title is shown, then what is
+       * true now and what, if anything, to do.
+       */
+      refusal: {
+        'verification-failed': {
+          title: 'A check flagged this memory again',
+          description:
+            'It stays quarantined, because it did not pass the checks a new memory passes. Leave it for inspection, or remove it with the Forget this memory button.',
+        },
+        'derived-record': {
+          title: 'This memory was derived from another',
+          description:
+            'A derived memory is never released on its own, and releasing the memory it came from leaves it quarantined. Nothing else is needed.',
+        },
+        'deletion-pending': {
+          title: 'This memory is being deleted',
+          description:
+            'A deletion has claimed it, so it cannot be released. It stays quarantined until the deletion finishes; nothing else is needed.',
+        },
+        superseded: {
+          title: 'This memory was corrected',
+          description:
+            'A correction replaced it, so it cannot be released. It stays quarantined; nothing else is needed.',
+        },
+        tampered: {
+          title: 'This memory changed after it was saved',
+          description:
+            'Its text no longer matches what was saved, so it stays quarantined. Remove it with the Forget this memory button, and add it again if you still need it.',
+        },
+      },
+      /** What the quarantined memory's details say about why it is held. */
+      detail: {
+        /** The details' heading, and the label of the held text under it. */
+        heading: 'Quarantined memory',
+        flaggedText: 'Flagged text',
+        quarantinedRow: 'Quarantined',
+        whyRow: 'Why',
+        /**
+         * The checks and categories the ledger names, in plain words. A name not listed here is
+         * never shown: the sentence falls back to the one that names no check.
+         */
+        detectors: { 'memory-poisoning': 'The memory safety check' },
+        categories: {
+          'memory-poisoning': 'a possible prompt injection',
+          'detector-failure': 'text it could not check',
+        },
+        how: {
+          admission: (detector: string, category: string): string =>
+            `${detector} flagged it as ${category} when it was saved.`,
+          recall: (detector: string, category: string): string =>
+            `${detector} flagged it as ${category} when the agent recalled it.`,
+          admissionUnnamed: 'A check flagged it when it was saved.',
+          recallUnnamed: 'A check flagged it when the agent recalled it.',
+          owner: 'You quarantined it.',
+          unknown: 'The memory ledger does not say why.',
         },
       },
     },
@@ -406,7 +514,7 @@ export const MEMORY_COPY = {
       forbidden: {
         title: 'This is locked',
         description:
-          'Sharing and quarantine need the bureau.memory:write scope, and a legal hold needs bureau.memory:govern.',
+          'Sharing and quarantine need the bureau.memory:write scope. A legal hold, viewing quarantined memories, and releasing one need bureau.memory:govern.',
       },
       'invalid-grantee': {
         title: 'That owner cannot be shared with',

@@ -261,10 +261,11 @@
     return settingRows ? rowLabel(field) : field.label;
   }
 
-  /** A row shows its key beside the label unless the label already reads as the key ("Models" for `models`). */
+  /** A row shows its key only beside a title the schema supplies, and not when that title is the key in another case. */
   function rowIdentifier(field: SchemaFormField): string | undefined {
-    // "Base URL" beside `baseURL` stays: only a label that is the key itself, in another case, goes.
-    return rowLabel(field).toLowerCase() === field.key.toLowerCase() ? undefined : field.key;
+    const title = field.schema['title'];
+    if (typeof title !== 'string' || title.trim().length === 0) return undefined;
+    return title.toLowerCase() === field.key.toLowerCase() ? undefined : field.key;
   }
 
   /** Map a field's options to Select's `{ value, label }` shape, keyed on the

@@ -31,6 +31,7 @@ import {
   changeShare,
   promoteRecord,
   quarantineRecord,
+  releaseQuarantine,
   revokeRecord,
 } from './governed-transitions';
 import { admitWrite } from './governed-writes';
@@ -167,6 +168,7 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     export: (authority, exportOptions) => exportRecords(governance, authority, exportOptions),
     quarantine: (authority, locator, reason) =>
       quarantineRecord(governance, authority, locator, reason),
+    releaseQuarantine: (authority, locator) => releaseQuarantine(governance, authority, locator),
     revoke: (authority, locator, reason) => revokeRecord(governance, authority, locator, reason),
     delete: (authority, locator) => deleteLocated(governance, deletion, authority, locator),
     forget: (authority, request) => forget(governance, deletion, authority, request),

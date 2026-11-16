@@ -1668,6 +1668,11 @@
     "$.memories[].id",
     "$.memories[].kind",
     "$.memories[].memoryClass",
+    "$.memories[].quarantine",
+    "$.memories[].quarantine.at",
+    "$.memories[].quarantine.by",
+    "$.memories[].quarantine.category",
+    "$.memories[].quarantine.detector",
     "$.memories[].sessionId",
     "$.memories[].source",
     "$.memories[].trust",
@@ -1675,6 +1680,7 @@
     "$.nextOffset"
   ],
   "output:bureau.memory.quarantine": ["$.affected", "$.changed", "$.id"],
+  "output:bureau.memory.quarantine.release": ["$.changed", "$.id"],
   "output:bureau.memory.remember": [
     "$|oneOf[0].memory",
     "$|oneOf[0].memory.content",

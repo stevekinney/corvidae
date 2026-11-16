@@ -105,6 +105,7 @@ export type {
   MemoryRecallStageReport,
   MemoryRecallStageScores,
   MemoryRecordLocator,
+  MemoryReleaseRejection,
   MemoryRetentionCandidate,
   MemoryRetentionSweep,
   MemorySupersessionNotice,
@@ -309,6 +310,7 @@ export {
   renderMemoryEvidence,
 } from './governance/evidence';
 export { createGovernedMemory } from './governance/governed-memory';
+export { MEMORY_RELEASE_REJECTIONS } from './governance/governed-memory-types';
 export { createGovernedMemoryTools } from './governance/governed-tools';
 export { createMemoryGovernanceLedger } from './governance/ledger';
 export {

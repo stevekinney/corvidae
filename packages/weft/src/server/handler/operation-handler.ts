@@ -14,6 +14,7 @@ import {
   createOperationRegistry,
   executeOperation,
   executeSubscription,
+  type FaultPolicy,
   type OperationRegistry,
   type RegistrableOperation,
 } from '../operation-catalog.ts';
@@ -98,6 +99,13 @@ export type OperationHandlerOptions<Host> = {
    */
   readonly publicPaths?: ReadonlyArray<string>;
   readonly discoveryInfo?: DiscoveryInfo;
+  /**
+   * What the host decides about the faults its operations throw: whether an undeclared fault
+   * answers `EngineFailure` (`strict`, on by default) or passes through with a warning, and how
+   * the host's own error classes map to faults. The handler reads no environment variable; a host
+   * on Weft's engine passes `weftFaultPolicy`, which follows `NODE_ENV` and `WEFT_STRICT_FAULTS`.
+   */
+  readonly faultPolicy?: FaultPolicy;
   /** Maximum JSON-RPC request body size in bytes. Defaults to 1 MB. */
   readonly maxRequestBodyBytes?: number;
   /**
@@ -230,7 +238,9 @@ export function createOperationHandler<Host>(
   assertPositiveInteger(options.maxRequestBodyBytes, 'maxRequestBodyBytes');
   assertPositiveInteger(options.maxStreamDurationMs, 'maxStreamDurationMs', MAX_TIMER_DELAY_MS);
   const authenticate = options.authenticate;
-  const registry = createOperationRegistry<Host>(options.operations);
+  const registry = createOperationRegistry<Host>(options.operations, {
+    faultPolicy: options.faultPolicy,
+  });
   assertSubscriptionsAcceptFromCursor(registry);
   const mounts = resolveMounts(options.mounts ?? []);
   const publicPaths = resolveHandlerPublicPaths(

@@ -104,6 +104,23 @@ export interface MemoryWriteReceipt {
 
 export type MemoryOperationStatus = 'applied' | 'unchanged' | 'not-found' | 'denied' | 'rejected';
 
+/**
+ * Every `reason` a rejected {@link GovernedMemory.releaseQuarantine} carries: the admission
+ * guardrails held the record (`verification-failed`), it is derived from another record
+ * (`derived-record`), a deletion has claimed it (`deletion-pending`), a correction superseded it
+ * (`superseded`), or its content no longer matches the digest recorded at admission (`tampered`).
+ */
+export const MEMORY_RELEASE_REJECTIONS = [
+  'verification-failed',
+  'derived-record',
+  'deletion-pending',
+  'superseded',
+  'tampered',
+] as const;
+
+/** One of {@link MEMORY_RELEASE_REJECTIONS}: why a quarantined record was not released. */
+export type MemoryReleaseRejection = (typeof MEMORY_RELEASE_REJECTIONS)[number];
+
 export interface MemoryOperationResult {
   readonly operationId: string;
   readonly status: MemoryOperationStatus;
@@ -117,6 +134,12 @@ export interface GovernedListOptions {
   readonly visibility?: MemoryVisibility | 'all';
   readonly limit?: number;
   readonly offset?: number;
+  /**
+   * Lists only the records in this state, before `limit` and `offset` apply. A record that is not
+   * `active` is listed only to a caller with `memory:inspect`, so for any other caller a state other
+   * than `active` lists nothing. Defaults to every record the caller may see.
+   */
+  readonly state?: 'active' | 'quarantined' | 'revoked';
 }
 
 export interface GovernedSearchOptions {
@@ -733,6 +756,24 @@ export interface GovernedMemory {
     authority: MemoryAuthority,
     locator: MemoryRecordLocator,
     reason: string,
+  ): Promise<MemoryOperationResult>;
+  /**
+   * Gives one quarantined record back to active use after inspection. It needs `memory:quarantine`
+   * and `memory:inspect`; a caller without `memory:inspect` is `denied` before the record is
+   * looked up, so the answer says nothing about whether it exists. An active record is `unchanged`,
+   * a revoked one is `not-found`, and a record that is derived, claimed by a deletion, superseded
+   * or tampered with is `rejected` with that `reason` ({@link MemoryReleaseRejection}). The
+   * content is then scanned again by the admission guardrails of the policy current now, with the
+   * record's own provenance, source, class and trust: one that trips or throws is `rejected` with
+   * `verification-failed`, and stays quarantined. Otherwise the record alone becomes `active`
+   * (never what was derived from it) in one write that declines unless the record is still
+   * quarantined and intact, and is indexed for text search. Each rejection records
+   * `memory.release.rejected`, a detector's name only in the protected diagnostic, and a release
+   * records `memory.released`. The scan has no deadline and takes no signal.
+   */
+  releaseQuarantine(
+    authority: MemoryAuthority,
+    locator: MemoryRecordLocator,
   ): Promise<MemoryOperationResult>;
   revoke(
     authority: MemoryAuthority,

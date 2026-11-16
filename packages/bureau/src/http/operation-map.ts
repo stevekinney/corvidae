@@ -212,6 +212,10 @@ export const OPERATION_MAP = {
     member: 'memory.releaseLegalHold',
   },
   'bureau.memory.quarantine': { workspaceClass: 'private-owned', member: 'memory.quarantine' },
+  'bureau.memory.quarantine.release': {
+    workspaceClass: 'private-owned',
+    member: 'memory.releaseQuarantine',
+  },
   'bureau.memory.export': { workspaceClass: 'private-owned', member: 'memory.export' },
   // COR-2188: the deployment's embedding, guarded by the settings scopes, so an administrator's.
   'bureau.memory.embedding': {

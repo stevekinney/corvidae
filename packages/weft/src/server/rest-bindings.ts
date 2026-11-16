@@ -104,6 +104,7 @@ import {
 import { createWorkerStartOverridePreviewOperation } from './operations/worker-start-override-preview.ts';
 import type { RestBinding } from './rest-binding.ts';
 import type { TaskQueue } from './task-queue.ts';
+import { weftFaultPolicy } from './weft-fault-policy.ts';
 
 /**
  * The router stores heterogeneous bindings whose `Input`/`Output` pairs
@@ -397,31 +398,34 @@ export function createLiveOperationRegistry(
   options?: LiveOperationRegistryOptions,
 ): OperationRegistry {
   const resolved: LiveOperationRegistryOptions = options ?? {};
-  return createOperationRegistry<RegistryAgnosticEngine>([
-    ...STATIC_OPERATIONS.map((operation) =>
-      operation.name === 'weft.workflows.start'
-        ? buildStartWorkflowOperationForRegistry(resolved)
-        : operation.name === 'weft.workflows.startorsignal'
-          ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
-          : operation.name === 'weft.worker.startoverrides.preview'
-            ? buildWorkerStartOverridePreviewOperation(resolved)
-            : operation.name === 'weft.tasks.deadletters.retry'
-              ? buildRetryTaskDeadLetterOperationForRegistry(resolved)
-              : operation,
-    ),
-    buildTaskDiagnosticsOperationForRegistry(resolved),
-    buildSystemMetricsOperation(resolved),
-    buildListWorkersOperationForRegistry(resolved),
-    buildDrainWorkerOperationForRegistry(resolved),
-    buildClearWorkerDrainOperationForRegistry(resolved),
-    buildForgetWorkerOperationForRegistry(resolved),
-    buildDrainDeploymentOperationForRegistry(resolved),
-    buildClearDeploymentDrainOperationForRegistry(resolved),
-    buildListTaskQueuesOperationForRegistry(resolved),
-    buildWorkerDiagnosticsOperationForRegistry(resolved),
-    buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
-    ...buildWorkerDeploymentRoutingOperations(resolved),
-    ...buildConformanceOperations(resolved),
-    ...(resolved.additionalOperations ?? []),
-  ]);
+  return createOperationRegistry<RegistryAgnosticEngine>(
+    [
+      ...STATIC_OPERATIONS.map((operation) =>
+        operation.name === 'weft.workflows.start'
+          ? buildStartWorkflowOperationForRegistry(resolved)
+          : operation.name === 'weft.workflows.startorsignal'
+            ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
+            : operation.name === 'weft.worker.startoverrides.preview'
+              ? buildWorkerStartOverridePreviewOperation(resolved)
+              : operation.name === 'weft.tasks.deadletters.retry'
+                ? buildRetryTaskDeadLetterOperationForRegistry(resolved)
+                : operation,
+      ),
+      buildTaskDiagnosticsOperationForRegistry(resolved),
+      buildSystemMetricsOperation(resolved),
+      buildListWorkersOperationForRegistry(resolved),
+      buildDrainWorkerOperationForRegistry(resolved),
+      buildClearWorkerDrainOperationForRegistry(resolved),
+      buildForgetWorkerOperationForRegistry(resolved),
+      buildDrainDeploymentOperationForRegistry(resolved),
+      buildClearDeploymentDrainOperationForRegistry(resolved),
+      buildListTaskQueuesOperationForRegistry(resolved),
+      buildWorkerDiagnosticsOperationForRegistry(resolved),
+      buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
+      ...buildWorkerDeploymentRoutingOperations(resolved),
+      ...buildConformanceOperations(resolved),
+      ...(resolved.additionalOperations ?? []),
+    ],
+    { faultPolicy: weftFaultPolicy },
+  );
 }

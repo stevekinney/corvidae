@@ -104,9 +104,10 @@ test.describe('Settings › Plugins', () => {
     await expect(configuration).toContainText(PLUGINS_COPY.configuration.description);
     await expect(configuration.locator('textarea')).toHaveCount(0);
     await expect(configuration.locator('[data-cinder-field="blockedPatterns"]')).toBeVisible();
-    await expect(configuration.locator('[data-cinder-field="groundingThreshold"]')).toContainText(
-      'groundingThreshold',
-    );
+    // The schema gives it no title, so the row is labelled in words and shows no key.
+    const groundingRow = configuration.locator('[data-cinder-field="groundingThreshold"]');
+    await expect(groundingRow).toContainText('Grounding threshold');
+    await expect(groundingRow).not.toContainText('groundingThreshold');
     await expect(configuration.getByRole('button', { name: 'Save configuration' })).toBeVisible();
     await expect(configuration).toContainText(PLUGINS_COPY.configuration.note);
     await expect(opened.getByTestId('plugin-in-use')).toContainText('In use.');

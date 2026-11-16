@@ -327,7 +327,7 @@ test.describe('the memory page', () => {
     await expect(rowOf(page, label)).toHaveCount(1);
   });
 
-  test('quarantines a memory after saying it cannot be undone, and no longer lists it', async ({
+  test('quarantines a memory after saying what releasing it does, and no longer lists it', async ({
     page,
     request,
   }) => {
@@ -348,15 +348,36 @@ test.describe('the memory page', () => {
       .getByRole('button', { name: MEMORY_COPY.govern.quarantine.action })
       .click();
     const dialog = page.getByRole('dialog', { name: MEMORY_COPY.govern.quarantine.dialog.title });
-    await expect(dialog).toContainText('This cannot be undone.');
+    await expect(dialog).not.toContainText('cannot be undone');
+    await expect(dialog).toContainText('It stays stored, and you can forget it.');
     await expect(dialog).toContainText(label.slice(0, 20));
     await dialog.getByLabel(MEMORY_COPY.govern.quarantine.dialog.reasonLabel).fill('It is wrong.');
     await dialog
       .getByRole('button', { name: MEMORY_COPY.govern.quarantine.dialog.confirm })
       .click();
 
-    await expect(page.getByText(MEMORY_COPY.govern.quarantine.outcome.done.title)).toBeVisible();
+    // The outcome names the memory beside the list, and links to where it now is.
+    await expect(page.locator('[data-governance-outcome]')).toContainText(label.slice(0, 20));
     await expect(rowOf(page, label)).toHaveCount(0);
+
+    // The Quarantined memories view lists it, its details say why it is held, and releasing it puts it back.
+    await page
+      .getByRole('button', { name: MEMORY_COPY.govern.quarantine.outcome.done.see })
+      .click();
+    await expect(rowOf(page, label)).toHaveCount(1);
+    await rowOf(page, label).click();
+    await expect(page.locator('[data-memory-quarantined]')).toContainText(
+      MEMORY_COPY.govern.release.detail.how.owner,
+    );
+    await page
+      .locator('[data-memory-quarantined]')
+      .getByRole('button', { name: MEMORY_COPY.govern.release.action })
+      .click();
+    await expect(page.locator('[data-governance-outcome]')).toContainText(label.slice(0, 20));
+    await expect(rowOf(page, label)).toHaveCount(0);
+    // Back from the quarantined view, the memory is in the ordinary list again.
+    await page.getByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel }).click();
+    await expect(rowOf(page, label)).toHaveCount(1);
   });
 
   test('exports the agent’s memories to a file', async ({ page, request }) => {

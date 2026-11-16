@@ -166,6 +166,34 @@ export function matchesQuery(text: string, query: string): boolean {
   return highlightSegments(text, query).some((segment) => segment.match);
 }
 
+/** The plain words for `name` in `table`, or nothing for a name the table does not list or none given. */
+function plainWord(
+  table: Readonly<Record<string, string>>,
+  name: string | null,
+): string | undefined {
+  return name !== null && Object.hasOwn(table, name) ? table[name] : undefined;
+}
+
+/**
+ * Why a memory is quarantined, in the owner's words: who or what held it, and for a guardrail its
+ * name and the category it reported. A memory the ledger does not explain says so.
+ */
+export function quarantineWhy(quarantine: Memory['quarantine']): string {
+  const detail = MEMORY_COPY.govern.release.detail;
+  const words = detail.how;
+  if (quarantine === undefined) return words.unknown;
+  if (quarantine.by === 'owner') return words.owner;
+  const detector = plainWord(detail.detectors, quarantine.detector);
+  const category = plainWord(detail.categories, quarantine.category);
+  // An identifier the page has no words for is never shown, and never quoted.
+  if (detector === undefined || category === undefined) {
+    return quarantine.by === 'admission' ? words.admissionUnnamed : words.recallUnnamed;
+  }
+  return quarantine.by === 'admission'
+    ? words.admission(detector, category)
+    : words.recall(detector, category);
+}
+
 /** A short excerpt of a memory, to name the actions of its row. */
 export function excerpt(content: string): string {
   const text = content.trim().replace(/\s+/g, ' ');
@@ -202,6 +230,8 @@ export function refusalWords(fault: MemoryFault): { title: string; description: 
       return MEMORY_COPY.add.refusal[fault.kind];
     case 'invalid-grantee':
       return MEMORY_COPY.govern.refusal['invalid-grantee'];
+    case 'not-released':
+      return MEMORY_COPY.govern.release.refusal[fault.reason];
     case 'other':
       return { title: words.other.title, description: fault.message };
   }
