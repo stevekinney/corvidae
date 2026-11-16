@@ -1,0 +1,435 @@
+{
+  "Conflict": {
+    "http": {
+      "body": {
+        "data": {
+          "compatibilityReasons": [
+            "name-mismatch"
+          ],
+          "currentGeneration": 1,
+          "missingTypes": [
+            "golden"
+          ],
+          "missingWorkflowCount": 1,
+          "reason": "workflow-replaced",
+          "samplesTruncated": true,
+          "sourceValidationReasons": [
+            "unregistered-source-kind"
+          ]
+        },
+        "error": "golden",
+        "weftCode": "WorkflowNotFoundError"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 409
+    },
+    "jsonRpc": {
+      "code": -32021,
+      "data": {
+        "compatibilityReasons": [
+          "name-mismatch"
+        ],
+        "currentGeneration": 1,
+        "httpStatus": 409,
+        "missingTypes": [
+          "golden"
+        ],
+        "missingWorkflowCount": 1,
+        "reason": "golden",
+        "samplesTruncated": true,
+        "sourceValidationReasons": [
+          "unregistered-source-kind"
+        ],
+        "weftCode": "Conflict"
+      },
+      "message": "golden"
+    }
+  },
+  "EngineFailure": {
+    "http": {
+      "body": {
+        "error": "Internal server error"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 500
+    },
+    "jsonRpc": {
+      "code": -32099,
+      "data": {
+        "httpStatus": 500,
+        "weftCode": "EngineFailure"
+      },
+      "message": "golden"
+    }
+  },
+  "Forbidden": {
+    "http": {
+      "body": {
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 403
+    },
+    "jsonRpc": {
+      "code": -32011,
+      "data": {
+        "httpStatus": 403,
+        "reason": "golden",
+        "weftCode": "Forbidden"
+      },
+      "message": "golden"
+    }
+  },
+  "InvalidParams": {
+    "http": {
+      "body": {
+        "data": {
+          "issues": [
+            {
+              "code": "golden",
+              "message": "golden",
+              "path": [
+                "golden"
+              ]
+            }
+          ]
+        },
+        "error": "golden",
+        "weftCode": "WorkflowNotFoundError"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 400
+    },
+    "jsonRpc": {
+      "code": -32602,
+      "data": {
+        "httpStatus": 400,
+        "issues": [
+          {
+            "code": "golden",
+            "message": "golden",
+            "path": [
+              "golden"
+            ]
+          }
+        ],
+        "weftCode": "InvalidParams"
+      },
+      "message": "golden"
+    }
+  },
+  "MethodNotFound": {
+    "http": {
+      "body": {
+        "data": {
+          "method": "golden"
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 404
+    },
+    "jsonRpc": {
+      "code": -32601,
+      "data": {
+        "httpStatus": 404,
+        "method": "golden",
+        "weftCode": "MethodNotFound"
+      },
+      "message": "golden"
+    }
+  },
+  "NotFound": {
+    "http": {
+      "body": {
+        "data": {
+          "identifier": "golden",
+          "resource": "golden"
+        },
+        "error": "golden",
+        "weftCode": "WorkflowNotFoundError"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 404
+    },
+    "jsonRpc": {
+      "code": -32020,
+      "data": {
+        "httpStatus": 404,
+        "identifier": "golden",
+        "resource": "golden",
+        "weftCode": "NotFound"
+      },
+      "message": "golden"
+    }
+  },
+  "NotImplemented": {
+    "http": {
+      "body": {
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 501
+    },
+    "jsonRpc": {
+      "code": -32025,
+      "data": {
+        "httpStatus": 501,
+        "weftCode": "NotImplemented"
+      },
+      "message": "golden"
+    }
+  },
+  "PayloadTooLarge": {
+    "http": {
+      "body": {
+        "data": {
+          "maxBytes": 1
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 413
+    },
+    "jsonRpc": {
+      "code": -32024,
+      "data": {
+        "httpStatus": 413,
+        "maxBytes": 1,
+        "weftCode": "PayloadTooLarge"
+      },
+      "message": "golden"
+    }
+  },
+  "RateLimited": {
+    "http": {
+      "body": {
+        "data": {
+          "retryAfterSeconds": 1
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "1"
+      },
+      "status": 429
+    },
+    "jsonRpc": {
+      "code": -32027,
+      "data": {
+        "httpStatus": 429,
+        "retryAfterSeconds": 1,
+        "weftCode": "RateLimited"
+      },
+      "message": "golden"
+    }
+  },
+  "StaleRevision": {
+    "http": {
+      "body": {
+        "data": {
+          "currentRevision": "golden",
+          "expectedRevision": "golden"
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 409
+    },
+    "jsonRpc": {
+      "code": -32026,
+      "data": {
+        "currentRevision": "golden",
+        "expectedRevision": "golden",
+        "httpStatus": 409,
+        "weftCode": "StaleRevision"
+      },
+      "message": "golden"
+    }
+  },
+  "SubscriptionOverflow": {
+    "http": {
+      "body": {
+        "data": {
+          "droppedCount": 1
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 500
+    },
+    "jsonRpc": {
+      "code": -32031,
+      "data": {
+        "droppedCount": 1,
+        "httpStatus": 500,
+        "subscriptionId": "golden",
+        "weftCode": "SubscriptionOverflow"
+      },
+      "message": "golden"
+    }
+  },
+  "Timeout": {
+    "http": {
+      "body": {
+        "data": {
+          "operationName": "golden",
+          "updateId": "golden"
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 504
+    },
+    "jsonRpc": {
+      "code": -32023,
+      "data": {
+        "httpStatus": 504,
+        "operationName": "golden",
+        "updateId": "golden",
+        "weftCode": "Timeout"
+      },
+      "message": "golden"
+    }
+  },
+  "Unauthorized": {
+    "http": {
+      "body": {
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 401
+    },
+    "jsonRpc": {
+      "code": -32010,
+      "data": {
+        "httpStatus": 401,
+        "reason": "golden",
+        "weftCode": "Unauthorized"
+      },
+      "message": "golden"
+    }
+  },
+  "Unavailable": {
+    "http": {
+      "body": {
+        "data": {
+          "retryAfterSeconds": 1
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "1"
+      },
+      "status": 503
+    },
+    "jsonRpc": {
+      "code": -32028,
+      "data": {
+        "httpStatus": 503,
+        "reason": "golden",
+        "retryAfterSeconds": 1,
+        "weftCode": "Unavailable"
+      },
+      "message": "golden"
+    }
+  },
+  "Unprocessable": {
+    "http": {
+      "body": {
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 422
+    },
+    "jsonRpc": {
+      "code": -32022,
+      "data": {
+        "httpStatus": 422,
+        "reason": "golden",
+        "weftCode": "Unprocessable"
+      },
+      "message": "golden"
+    }
+  },
+  "UnsupportedCapability": {
+    "http": {
+      "body": {
+        "data": {
+          "capability": "golden"
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 501
+    },
+    "jsonRpc": {
+      "code": -32029,
+      "data": {
+        "capability": "golden",
+        "httpStatus": 501,
+        "weftCode": "UnsupportedCapability"
+      },
+      "message": "golden"
+    }
+  },
+  "UnsupportedTransport": {
+    "http": {
+      "body": {
+        "data": {
+          "supported": [
+            "http-rest"
+          ],
+          "transport": "http-rest"
+        },
+        "error": "golden"
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 501
+    },
+    "jsonRpc": {
+      "code": -32030,
+      "data": {
+        "httpStatus": 501,
+        "supported": [
+          "http-rest"
+        ],
+        "transport": "http-rest",
+        "weftCode": "UnsupportedTransport"
+      },
+      "message": "golden"
+    }
+  }
+}

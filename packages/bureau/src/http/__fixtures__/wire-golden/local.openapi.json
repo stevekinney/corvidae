@@ -1,0 +1,1490 @@
+{
+  "components": {
+    "schemas": {
+      "BureauAgentsCatalogInput": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "BureauAgentsDefinitionsCreateOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "hash": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "hash"
+        ],
+        "type": "object"
+      },
+      "BureauAgentsDefinitionsGetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the agent.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "BureauAssetsGetOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "enum": [
+              "owner",
+              "reader"
+            ],
+            "type": "string"
+          },
+          "assetId": {
+            "type": "string"
+          },
+          "byteLength": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "custody": {
+            "enum": [
+              "bureau",
+              "provider-fetch"
+            ],
+            "type": "string"
+          },
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mediaType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mimeFamily": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modality": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provenanceKind": {
+            "type": "string"
+          },
+          "rejection": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "available",
+              "rejected",
+              "quarantined",
+              "expired",
+              "deleted"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "revision",
+          "state",
+          "custody",
+          "digest",
+          "mediaType",
+          "fileName",
+          "modality",
+          "mimeFamily",
+          "byteLength",
+          "provenanceKind",
+          "createdAt",
+          "updatedAt",
+          "expiresAt",
+          "rejection",
+          "access"
+        ],
+        "type": "object"
+      },
+      "BureauAssetsUploadsAppendOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "declaredByteLength": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "declaredMediaType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "receivedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "const": "open",
+            "type": "string"
+          },
+          "uploadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadId",
+          "declaredMediaType",
+          "declaredByteLength",
+          "receivedBytes",
+          "state",
+          "createdAt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "BureauContextsArchiveOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "archivedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "changed",
+          "archivedAt"
+        ],
+        "type": "object"
+      },
+      "BureauDeploymentsGetOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "currentBuildId": {
+            "description": "The build that takes the new unpinned work the ramp does not.",
+            "type": "string"
+          },
+          "deploymentName": {
+            "description": "The deployment the routing belongs to.",
+            "type": "string"
+          },
+          "generation": {
+            "description": "Increases by one on every write; pass it back as `expectedGeneration`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "previousBuildId": {
+            "description": "The build that was current before the latest change of `currentBuildId`, which `bureau.deployments.rollback` returns to; `null` until the current build has changed once.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rampBasisPoints": {
+            "description": "The ramping build’s share of new unpinned work, from 0 to 10000.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rampingBuildId": {
+            "description": "The build taking `rampBasisPoints` of new unpinned work, or `null` when none ramps.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "description": "When the routing was last written, as an ISO-8601 timestamp.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deploymentName",
+          "currentBuildId",
+          "rampingBuildId",
+          "rampBasisPoints",
+          "previousBuildId",
+          "generation",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "BureauDeploymentsPromoteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "deploymentName": {
+            "description": "The name of the worker deployment whose routing is read or moved.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedGeneration": {
+            "description": "Apply the move only if the routing is still at this `generation`, for example the one `bureau.deployments.get` returned; a routing that has moved past it is a `Conflict` (`reason: \"stale-generation\"`). Omitted, the move is fenced by the generation it reads itself.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deploymentName"
+        ],
+        "type": "object"
+      },
+      "BureauEventsOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subscriptionId",
+          "cursor"
+        ],
+        "type": "object"
+      },
+      "BureauHooksDeleteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "hookId": {
+            "description": "The identifier of the hook.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "hookId"
+        ],
+        "type": "object"
+      },
+      "BureauHooksDeliveriesRetryOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "actionType": {
+            "enum": [
+              "webhook",
+              "start-workflow",
+              "notify",
+              "plugin"
+            ],
+            "type": "string"
+          },
+          "attempts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "finishedAt": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "outcome": {
+                  "enum": [
+                    "sending",
+                    "response",
+                    "network-error",
+                    "interrupted",
+                    "refused",
+                    "completed",
+                    "rejected",
+                    "error"
+                  ],
+                  "type": "string"
+                },
+                "receipt": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "notificationId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "runId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "notificationId"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                },
+                "responseExcerpt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responseTruncated": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "startedAt": {
+                  "type": "number"
+                },
+                "status": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "number",
+                "startedAt",
+                "finishedAt",
+                "outcome",
+                "status",
+                "responseExcerpt",
+                "responseTruncated",
+                "error",
+                "receipt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "hookId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "maxAttempts": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "nextAttemptAt": {
+            "description": "Epoch milliseconds the next attempt is due, while a `pending` delivery waits out its backoff after a failed attempt; `null` otherwise.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "headers": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "headers",
+                  "body"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request of a `webhook` delivery; `null` for the other actions."
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "delivered",
+              "exhausted",
+              "aborted",
+              "failed-secret",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "test": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "work": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "configuration": {
+                    "description": "The configuration of a `plugin` delivery; `null` otherwise."
+                  },
+                  "input": {
+                    "description": "A `start-workflow` delivery’s workflow input; a `plugin` delivery’s event, `{ kind, bureauId, emittedAtMs, payload, source? }`."
+                  },
+                  "plugin": {
+                    "description": "The plugin of a `plugin` delivery; `null` otherwise.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "pluginKind": {
+                    "description": "The action kind of a `plugin` delivery; `null` otherwise.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "skip": {
+                    "description": "Why a `start-workflow` delivery starts nothing: the event is about a run a hook started, or cannot be placed. `null` otherwise.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "type": {
+                    "enum": [
+                      "start-workflow",
+                      "notify",
+                      "plugin"
+                    ],
+                    "type": "string"
+                  },
+                  "workflowId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "type",
+                  "workflowId",
+                  "input",
+                  "plugin",
+                  "pluginKind",
+                  "configuration",
+                  "skip",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a `start-workflow`, `notify` or `plugin` delivery does, mapped from the event when it was created; `null` for a webhook."
+          }
+        },
+        "required": [
+          "id",
+          "hookId",
+          "owner",
+          "actionType",
+          "kind",
+          "test",
+          "status",
+          "request",
+          "work",
+          "attempts",
+          "maxAttempts",
+          "nextAttemptAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "BureauHooksGetOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "What the hook does for each event. A hook stored before actions existed is a `webhook`.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "const": "webhook",
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "enum": [
+                      "payload",
+                      "event"
+                    ],
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "start-workflow",
+                    "type": "string"
+                  },
+                  "workflowId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "workflowId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "type": {
+                    "const": "notify",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "configuration": {
+                    "anyOf": [
+                      {},
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "plugin": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "plugin",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "plugin",
+                  "kind",
+                  "configuration"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "createdAt": {
+            "description": "Epoch milliseconds.",
+            "type": "number"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "description": "The principal that owns the hook.",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Pass it back as `expectedRevision`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The one subject the hook fires for; `null` for a hook that fires for the whole Bureau. `kind` is `agent`, `workflow` or `schedule`. A stored kind this release does not know is shown as stored, and a stored value it cannot read is shown with an empty `kind`; neither fires."
+          },
+          "updatedAt": {
+            "description": "Epoch milliseconds.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "name",
+          "action",
+          "events",
+          "scope",
+          "enabled",
+          "createdAt",
+          "updatedAt",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "BureauMemoryForgetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "description": "The identifier of the agent whose memory this addresses.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The identifier of the memory.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId",
+          "id"
+        ],
+        "type": "object"
+      },
+      "BureauMemoryHoldOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "legalHold": {
+            "enum": [
+              "held",
+              "released"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "changed",
+          "legalHold"
+        ],
+        "type": "object"
+      },
+      "BureauMemoryShareInput": {
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "description": "The identifier of the agent whose memory this addresses.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The owner who may read this memory: another agent’s collection owner or, later, a user. Not the caller’s own owner.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The identifier of the memory.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId",
+          "id",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      },
+      "BureauMemoryShareOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "grantedBy": {
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "changed",
+          "granteeOwnerId",
+          "grantedBy"
+        ],
+        "type": "object"
+      },
+      "BureauNotificationsDismissInput": {
+        "additionalProperties": false,
+        "properties": {
+          "all": {
+            "const": true,
+            "description": "`true` changes every notification the caller has that is not already changed.",
+            "type": "boolean"
+          },
+          "ids": {
+            "description": "These notifications, from 1 to 100 identifiers. An unknown identifier is skipped.",
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "BureauNotificationsDismissOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "updated": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "type": "object"
+      },
+      "BureauSchedulesCancelInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "description": "The schedule’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scheduleId": {
+            "description": "The identifier of the schedule.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduleId"
+        ],
+        "type": "object"
+      },
+      "BureauSchedulesCancelOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "BureauSchedulesCreateOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "agentName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blocker": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow-cannot-load",
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "workflow": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workflow",
+                  "message"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "continuesChat": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "cronExpression": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "inputPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "intervalMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lastFireAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "missedFireCount": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextFireAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overlap": {
+            "enum": [
+              "skip",
+              "queue",
+              "cancel-running",
+              "allow"
+            ],
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "skippedCount": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skippedOccurrences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "workflowType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "agentName",
+          "inputPreview",
+          "continuesChat",
+          "workflowType",
+          "description",
+          "cronExpression",
+          "intervalMs",
+          "timeZone",
+          "status",
+          "overlap",
+          "revision",
+          "nextFireAt",
+          "skippedOccurrences",
+          "lastFireAt",
+          "missedFireCount",
+          "skippedCount",
+          "createdAt",
+          "updatedAt",
+          "blocker"
+        ],
+        "type": "object"
+      },
+      "BureauSchedulesGetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "scheduleId": {
+            "description": "The identifier of the schedule.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduleId"
+        ],
+        "type": "object"
+      },
+      "BureauWorkflowsDeleteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedHash": {
+            "description": "The `hash` of the workflow file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The identifier of the workflow.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "expectedHash"
+        ],
+        "type": "object"
+      },
+      "BureauWorkflowsGetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the workflow.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "BureauWorkflowsRunsCancelInput": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the workflow instance to read.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "description": "Audited fault-specific context; omitted when no fields are safe to expose",
+            "properties": {
+              "capability": {
+                "type": "string"
+              },
+              "currentRevision": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "droppedCount": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "expectedRevision": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "identifier": {
+                "type": "string"
+              },
+              "issues": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "message",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "maxBytes": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "method": {
+                "type": "string"
+              },
+              "missingTypes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "missingWorkflowCount": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "operationName": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string"
+              },
+              "retryAfterSeconds": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "samplesTruncated": {
+                "type": "boolean"
+              },
+              "supported": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "transport": {
+                "type": "string"
+              },
+              "updateId": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "error": {
+            "description": "Human-readable error description",
+            "type": "string"
+          },
+          "weftCode": {
+            "description": "Fine-grained public Weft error code when one is available",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "in": "header",
+        "name": "x-api-key",
+        "type": "apiKey"
+      },
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Weft Workflow Engine",
+    "version": "0.0.0-golden"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/asyncapi.json": {
+      "get": {
+        "operationId": "asyncApiDocument",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "AsyncAPI 3.0 specification"
+          }
+        },
+        "summary": "AsyncAPI 3.0 specification",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "openApiDocument",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OpenAPI 3.1 specification"
+          }
+        },
+        "summary": "OpenAPI 3.1 specification",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/openrpc.json": {
+      "get": {
+        "operationId": "openRpcDocument",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OpenRPC 1.3.2 specification"
+          }
+        },
+        "summary": "OpenRPC 1.3.2 specification",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              },
+              "application/msgpack": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service health status"
+          }
+        },
+        "summary": "Health check",
+        "tags": [
+          "System"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "System"
+    }
+  ]
+}
