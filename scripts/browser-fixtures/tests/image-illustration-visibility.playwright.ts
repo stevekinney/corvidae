@@ -9,8 +9,8 @@
  * samples the painted pixels in each theme at desktop and phone sizes.
  */
 import { loadManifest, type Theme, type Viewport } from '@lostgradient/testing';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { PNG } from 'pngjs';
-import { expect, test } from './component-page-fixture.ts';
 
 type Rgb = { r: number; g: number; b: number };
 

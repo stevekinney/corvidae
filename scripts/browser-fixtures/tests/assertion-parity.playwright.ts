@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const entries = loadManifest();
 

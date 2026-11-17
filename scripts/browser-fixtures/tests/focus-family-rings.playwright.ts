@@ -26,9 +26,9 @@
  * Follows the keyboard-walk idiom from segmented-control-layout.playwright.ts.
  */
 
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 import type { Locator, Page } from '@playwright/test';
 import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
-import { expect, test } from './review-editor-browser-errors.ts';
 
 const PIXEL_TOLERANCE = 1;
 
