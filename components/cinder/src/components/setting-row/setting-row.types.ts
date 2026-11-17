@@ -114,6 +114,14 @@ export type SettingRowProps = {
    * width where the row stacks, the control takes the row's width whatever this says.
    */
   controlWidth?: string;
+  /**
+   * Where the control sits in its column. `end` (the default) sizes the control to its content and
+   * puts it at the inline end, which suits a switch or a button. `stretch` makes the control fill
+   * the column, so text-entry controls (a field, a select, a number) share one leading edge and one
+   * width down a list of rows.
+   * @default "end"
+   */
+  controlAlign?: 'end' | 'stretch';
   /** The setting's control, rendered with `FormField` context applied. */
   control: Snippet;
   /** Optional disclosure content rendered beneath the row. */
