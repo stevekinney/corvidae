@@ -12,6 +12,8 @@
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
     /** Uses the compact actionable row when several approvals share one tool group. */
     layout?: 'decision' | 'row';
+    /** The reader's own word, for a decision the reader made. Default `you`. */
+    youLabel?: string;
   };
 </script>
 
@@ -24,6 +26,7 @@
     onApprovalResolve,
     onApprovalRequestAgain,
     layout = 'decision',
+    youLabel = 'you',
   }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
@@ -56,10 +59,15 @@
     if (part.details?.facts !== undefined) props.facts = part.details.facts;
     if (why !== undefined) props.why = why;
     if (part.action.consequence !== undefined) props.consequence = part.action.consequence;
-    // A decision made here: who, when, and the note that went with it.
+    // A decision: who, when, where when it was not here (a link to it when the host gave one), and
+    // the note that went with it. One made here, or recorded by the reader, reads as "you".
     if (part.receipt !== undefined) {
-      props.decidedBy = 'you';
+      props.decidedBy = part.receipt.decidedBy ?? youLabel;
       props.decidedAt = part.receipt.decidedAt;
+      if (part.receipt.decidedIn !== undefined) props.decidedIn = part.receipt.decidedIn;
+      if (part.receipt.decidedInHref !== undefined) {
+        props.decidedInHref = part.receipt.decidedInHref;
+      }
       if (part.receipt.reason !== undefined) props.decisionNote = part.receipt.reason;
       if (part.receipt.result !== undefined) props.result = part.receipt.result;
     }

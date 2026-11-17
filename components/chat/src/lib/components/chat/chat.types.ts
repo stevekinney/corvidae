@@ -389,6 +389,18 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    */
   labels?: Partial<ChatLabels> | undefined;
   /**
+   * The reader's own principal. An approval whose result row records (under its `approvalDecision`
+   * metadata) that this principal decided it reads "Approved by you"; any other principal is
+   * named as recorded: "Approved by Priya Raman".
+   */
+  currentPrincipal?: string | undefined;
+  /**
+   * Where an approval decided in Reviews can be read, by its tool call id. Its receipt then writes
+   * "in Reviews" as a link there. Without it, or when it returns `undefined`, the place is plain
+   * text.
+   */
+  approvalReceiptHref?: ((toolCallId: string) => string | undefined) | undefined;
+  /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */
   disabled?: boolean | undefined;

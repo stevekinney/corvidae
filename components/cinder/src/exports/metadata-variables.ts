@@ -8,6 +8,7 @@ export { default as alertDialogVariables } from '../components/alert-dialog/aler
 export { default as alertVariables } from '../components/alert/alert.variables.ts';
 export { default as appBarVariables } from '../components/app-bar/app-bar.variables.ts';
 export { default as approvalCardVariables } from '../components/approval-card/approval-card.variables.ts';
+export { default as approvalGroupVariables } from '../components/approval-group/approval-group.variables.ts';
 export { default as areaChartVariables } from '../components/area-chart/area-chart.variables.ts';
 export { default as aspectRatioVariables } from '../components/aspect-ratio/aspect-ratio.variables.ts';
 export { default as attemptsIndicatorVariables } from '../components/attempts-indicator/attempts-indicator.variables.ts';

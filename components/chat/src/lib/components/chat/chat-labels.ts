@@ -140,6 +140,13 @@ export type ChatComposerLabels = {
    * on a phone. Its accessible name stays `reviewApproval`, which must contain these words.
    */
   reviewApprovalShort: string;
+  /** The reader, as an approval's receipt names a decision the reader made: "Approved by you". Default `you`. */
+  you: string;
+  /**
+   * Where an approval decided in Reviews was decided, as its receipt says it: "Approved by Priya
+   * Raman in Reviews". Default `Reviews`.
+   */
+  decidedInReviews: string;
   copy: string;
   copyMessage: string;
   copied: string;
@@ -262,6 +269,8 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   approvalQueueNote: 'Messages you send now wait until you decide.',
   reviewApproval: 'Review approval',
   reviewApprovalShort: 'Review',
+  you: 'you',
+  decidedInReviews: 'Reviews',
   copy: 'Copy',
   copyMessage: 'Copy message',
   copied: 'Copied',

@@ -10,9 +10,13 @@ const source = readFileSync(resolve(import.meta.dir, 'chat.svelte'), 'utf8');
 describe('batch approval group spacing', () => {
   test('rows stand one group gap apart', () => {
     expect(source).toMatch(/\.chat-approval-group-rows\s*\{[^}]*gap: var\(--cinder-space-3\);/);
-    expect(source).toMatch(
-      /\.chat-approval-group-heading\s*\{\s*margin: 0 0 var\(--cinder-space-2\);/,
-    );
+  });
+
+  // COR-2282 A3: two or more approvals are Cinder's one bordered group, which draws its own heading
+  // and separators; Chat keeps no heading of its own.
+  test('a batch is Cinder’s ApprovalGroup, with no heading of Chat’s own', () => {
+    expect(source).toContain('<ApprovalGroup');
+    expect(source).not.toContain('chat-approval-group-heading');
   });
 
   test('nothing else stands between two cards', () => {
