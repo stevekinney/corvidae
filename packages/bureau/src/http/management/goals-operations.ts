@@ -37,7 +37,7 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import type { BureauGoalCreateOutcome, BureauGoalUpdateOutcome } from '../../goal-types.ts';
-import type { GoalState } from '../../goal-state.ts';
+import { attemptAgentName, type GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../bureau-types/facade.ts';
 import {
@@ -81,6 +81,8 @@ const usageSchema = z.object({
 });
 
 const attemptViewSchema = z.object({
+  /** The agent the attempt ran as, which differs from the goal's `agentName` once the goal's agent changed. */
+  agentName: z.string(),
   attemptId: z.string(),
   attemptIndex: z.number().int(),
   runId: z.string(),
@@ -202,6 +204,7 @@ function viewOf(goal: GoalState): GoalView {
       durationMs: goal.usage.durationMs,
     },
     attempts: goal.attempts.map((attempt) => ({
+      agentName: attemptAgentName(goal, attempt.attemptIndex),
       attemptId: attempt.attemptId,
       attemptIndex: attempt.attemptIndex,
       runId: attempt.runId,

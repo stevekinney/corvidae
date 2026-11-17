@@ -44,8 +44,12 @@ export interface HookSubjectSources {
   run(runId: string): Promise<HookRunSubjects>;
   /** The agent the schedule `scheduleId` runs, or `undefined` when it runs none. */
   agentOfSchedule(scheduleId: string): Promise<string | undefined>;
-  /** The agent the goal `goalRunId` is pursued by, or `undefined` when there is no such goal. */
-  agentOfGoal(goalRunId: string): Promise<string | undefined>;
+  /**
+   * The agent the goal `goalRunId` is pursued by, or `undefined` when there is no such goal. With
+   * `attemptIndex`, the agent that attempt ran as, which differs from the goal's current agent once
+   * the goal's agent changed (COR-2425); without one, the goal's current agent.
+   */
+  agentOfGoal(goalRunId: string, attemptIndex?: number): Promise<string | undefined>;
 }
 
 /** The subjects of one event, by kind. */
@@ -93,7 +97,16 @@ export async function subjectsOfPayload(
 
   const goalRunId = stringField(payload, 'goalRunId');
   if (goalRunId !== undefined) {
-    const agent = await sources.agentOfGoal(goalRunId);
+    // An event about one attempt is matched on the agent that attempt ran as.
+    const attemptIndex = Object.hasOwn(payload, 'attemptIndex')
+      ? payload['attemptIndex']
+      : undefined;
+    const agent = await sources.agentOfGoal(
+      goalRunId,
+      typeof attemptIndex === 'number' && Number.isSafeInteger(attemptIndex) && attemptIndex >= 0
+        ? attemptIndex
+        : undefined,
+    );
     if (agent !== undefined) agents.add(agent);
   }
 

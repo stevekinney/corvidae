@@ -25949,6 +25949,9 @@
                     "items": {
                       "additionalProperties": false,
                       "properties": {
+                        "agentName": {
+                          "type": "string"
+                        },
                         "attemptId": {
                           "type": "string"
                         },
@@ -26013,6 +26016,7 @@
                         }
                       },
                       "required": [
+                        "agentName",
                         "attemptId",
                         "attemptIndex",
                         "runId",
@@ -26328,6 +26332,9 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "agentName": {
+                    "type": "string"
+                  },
                   "attemptId": {
                     "type": "string"
                   },
@@ -26399,6 +26406,7 @@
                   }
                 },
                 "required": [
+                  "agentName",
                   "attemptId",
                   "attemptIndex",
                   "runId",
@@ -27199,6 +27207,9 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "agentName": {
+                        "type": "string"
+                      },
                       "attemptId": {
                         "type": "string"
                       },
@@ -27263,6 +27274,7 @@
                       }
                     },
                     "required": [
+                      "agentName",
                       "attemptId",
                       "attemptIndex",
                       "runId",

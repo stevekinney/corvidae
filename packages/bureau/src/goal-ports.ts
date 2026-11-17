@@ -435,7 +435,24 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       );
     }
     if (await mustStandDown(true)) return standDown();
-    const seat = await conversations.seat(record, request);
+    // A prompt edited since the last start is taken by this start, in its own write: the attempt is
+    // seated from the record that write answers, so what the record says the attempt was given is
+    // what it was given, and an edit that lands after it waits for the next attempt. A start that is
+    // retried finds the edit already taken (the marker is this attempt's) and seats the same turn.
+    const taken = await store.consumePromptEdit(
+      request.goalRunId,
+      request.attemptIndex,
+      runtime.clock.nowISO(),
+    );
+    // A write that lost every compare-and-swap is a fault of this process: the activity retries.
+    if (taken.status === 'stale') {
+      throw new Error(
+        `Goal "${request.goalRunId}" changed under every try to take its prompt edit.`,
+      );
+    }
+    const seated =
+      taken.status === 'updated' || taken.status === 'unchanged' ? taken.record : record;
+    const seat = await conversations.seat(seated, request);
     if (seat.status === 'failed') return failed(seat.detail);
     if (await mustStandDown(true)) return standDown();
     let started: GoalAttemptRun;

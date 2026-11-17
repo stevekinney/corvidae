@@ -9,9 +9,10 @@
  * - The prompt is read when an attempt is seated, so an attempt in flight keeps the one it started
  *   with, and the next attempt the goal opens has the new one. Under the `continue` conversation
  *   policy a retry's turn is the validator's feedback alone, because the transcript holds the
- *   prompt, so the store records the index of the first attempt the edited prompt belongs to
- *   (`objective.promptRevisedAtAttempt`) and that one retry is turned with the new prompt and then
- *   the feedback (`goalAttemptInput`).
+ *   prompt, so an edit sets `objective.promptPending` and the start of the next attempt takes it in
+ *   its own write (`consumePromptEdit`), recording its index in `objective.promptRevisedAtAttempt`
+ *   from the record it seats from. That one retry is turned with the new prompt and then the
+ *   feedback (`goalAttemptInput`); an edit landing after a start's write waits for the attempt after.
  * - The validator is read when a check begins. A check already running finishes with the validator
  *   it began with, and every check recorded keeps the identity it ran against (its validation
  *   carries it). An attempt still running when the validator changes is checked against the new one.

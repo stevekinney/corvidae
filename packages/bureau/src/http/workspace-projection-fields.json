@@ -1018,6 +1018,7 @@
     "$.goal",
     "$.goal.agentName",
     "$.goal.attempts",
+    "$.goal.attempts[].agentName",
     "$.goal.attempts[].attemptId",
     "$.goal.attempts[].attemptIndex",
     "$.goal.attempts[].completedAt",
@@ -1064,6 +1065,7 @@
   "output:bureau.goals.get": [
     "$.agentName",
     "$.attempts",
+    "$.attempts[].agentName",
     "$.attempts[].attemptId",
     "$.attempts[].attemptIndex",
     "$.attempts[].completedAt",
@@ -1112,6 +1114,7 @@
     "$.goals",
     "$.goals[].agentName",
     "$.goals[].attempts",
+    "$.goals[].attempts[].agentName",
     "$.goals[].attempts[].attemptId",
     "$.goals[].attempts[].attemptIndex",
     "$.goals[].attempts[].completedAt",

@@ -110,6 +110,31 @@ describe('a prompt edited while an attempt is in flight, under the continue poli
     expect(goal.objective).toMatchObject({ prompt: 'work harder', promptRevisedAtAttempt: 1 });
   });
 
+  it('reaches the retry when the edit is made while the attempt’s result is being checked, and when it is edited twice before the retry', async () => {
+    const check = createLatch();
+    const seen: string[][] = [];
+    const bureau = await boot({
+      agents: { worker: workerAgent(scriptedGenerate(['nope', 'done'], seen)) },
+      validators: [createCheckValidator({ before: () => check.promise })],
+    });
+    await bureau.goals.create(goalRequest({ conversationPolicy: { kind: 'continue' } }));
+    await pollUntil(async () => {
+      const goal = await bureau.goals.get('g1');
+      return goal?.status === 'evaluating';
+    });
+
+    expect(await change(bureau, { prompt: 'first edit' })).toMatchObject({ outcome: 'updated' });
+    expect(await change(bureau, { prompt: 'work harder' })).toMatchObject({ outcome: 'updated' });
+    check.release();
+    const goal = await ended(bureau);
+
+    expect(goal.status).toBe('succeeded');
+    // The start took both edits as one: the retry is the later prompt, then the feedback.
+    expect(seen).toEqual([[WORK], [WORK, NOPE, 'user: work harder\n\nsay done']]);
+    expect(goal.objective).toMatchObject({ promptRevisedAtAttempt: 1 });
+    expect(goal.objective).not.toHaveProperty('promptPending');
+  });
+
   it('leaves a goal whose prompt never changed with the feedback alone, as it was', async () => {
     const latch = createLatch();
     latch.release();

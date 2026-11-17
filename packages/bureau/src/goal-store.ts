@@ -283,6 +283,19 @@ export interface GoalStore {
     expectedRevision: number,
   ): Promise<GoalConfigurationResult>;
   /**
+   * COR-2425 — the start of attempt `attemptIndex` takes a pending prompt edit: one compare-and-swap
+   * clears `objective.promptPending` and records `promptRevisedAtAttempt: attemptIndex`, and the
+   * start seats its attempt from the record this answers, so the marker says exactly what the
+   * attempt was given. With no edit pending nothing is written (`unchanged`); an edit that lands
+   * after this write stays pending for the attempt after it. Like `updateConfiguration` it advances
+   * `revision` and never `transitionSeq`.
+   */
+  consumePromptEdit(
+    goalRunId: string,
+    attemptIndex: number,
+    now: string,
+  ): Promise<GoalConfigurationResult>;
+  /**
    * Increments `controllerRestarts`. A terminal goal is `rejected`. With
    * `expectedCount`, the increment is a compare-and-swap on the count: a record
    * already at another count is `stale`, so of several recoveries that observed
@@ -588,6 +601,31 @@ export function createGoalStore(
         (record) => ({ status: 'updated', record }),
       );
     },
+    consumePromptEdit(goalRunId, attemptIndex, now) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) =>
+          current.objective.promptPending === true
+            ? {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  objective: {
+                    agentName: current.objective.agentName,
+                    prompt: current.objective.prompt,
+                    ...(current.objective.instructions === undefined
+                      ? {}
+                      : { instructions: current.objective.instructions }),
+                    promptRevisedAtAttempt: attemptIndex,
+                  },
+                  updatedAt: now,
+                },
+              }
+            : { outcome: 'done', result: { status: 'unchanged', record: current } },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
     async recordControllerRestart(goalRunId, now, expectedCount) {
       const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
@@ -694,9 +732,9 @@ function evaluateConfigurationUpdate(
         attempt.agentName === undefined ? { ...attempt, agentName: objective.agentName } : attempt,
       )
     : current.attempts;
-  // The next attempt that opens is the first to be given the edited prompt, which a retry under the
-  // `continue` policy reads (`goalAttemptInput`). The attempts opened so far keep the prompt they
-  // were given, and the one in flight keeps it too.
+  // The edit is pending until an attempt's start takes it (`consumePromptEdit`): that start, not
+  // this write, says which attempt is the first given the edited prompt, because a start already
+  // under way read the record before this write and seats its attempt from that copy.
   const promptEdited = prompt !== objective.prompt;
   const next: GoalState = {
     ...current,
@@ -704,7 +742,7 @@ function evaluateConfigurationUpdate(
       ...objective,
       prompt,
       agentName,
-      ...(promptEdited && opened > 0 ? { promptRevisedAtAttempt: opened } : {}),
+      ...(promptEdited ? { promptPending: true } : {}),
     },
     validator: { name: nextValidator.name, version: nextValidator.version },
     bounds: { ...bounds, maximumAttempts },
