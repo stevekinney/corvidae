@@ -182,7 +182,11 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     });
     routeEngine(
       'release-run',
-      engineRun({ status: 'failed', error: 'GitHub did not answer (HTTP 503)' }),
+      engineRun({
+        status: 'failed',
+        error:
+          'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503)"}',
+      }),
     );
 
     const view = mount('release-run');
@@ -197,6 +201,8 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 2 tries');
     expect(block.textContent).toContain('Why it failed');
     expect(block.textContent).toContain('GitHub did not answer (HTTP 503)');
+    // What the step said, never the error's JSON (row 55b).
+    expect(block.textContent).not.toContain('{');
     // The failure is told once, on the step, and no banner repeats it.
     expect(view.container.querySelectorAll('.weft-overview-tab__failure')).toHaveLength(1);
     await waitFor(() => {

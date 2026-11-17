@@ -20,6 +20,7 @@
     type InstanceEntry,
     type InstanceProgress,
   } from './run-instance.ts';
+  import { oneLine } from '../../../lib/one-line.ts';
   import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { durationWords } from './run-rows.ts';
 
@@ -74,6 +75,13 @@
       : copy.retryKeeps(progress.at, retryVersion),
   );
 
+  // What the step said, in its own words and never the error's JSON (row 55b): "GitHub didn’t
+  // answer (HTTP 503)". The stack below says the rest.
+  const said = $derived(
+    failure === undefined || failure === ''
+      ? undefined
+      : oneLine(failure, { keepParenthetical: true }) || failure,
+  );
   const heading = $derived(progress === undefined ? undefined : failureHeading(progress));
   const healthPath = TASK_COPY.list.loadFailed.healthPath;
 
@@ -118,10 +126,10 @@
       {#if category !== undefined}
         <p class="weft-overview-tab__failure-explanation">{failureCategoryExplanation(category)}</p>
       {/if}
-      {#if failure !== undefined && failure !== ''}
+      {#if said !== undefined}
         <p class="weft-overview-tab__failure-explanation">
           <strong>{copy.whyItFailed}.</strong>
-          {failure}{#if tried !== undefined}{` ${tried}`}{/if}
+          {said}{#if tried !== undefined}{` ${tried}`}{/if}
         </p>
       {:else if tried !== undefined}
         <p class="weft-overview-tab__failure-explanation">{tried}</p>
