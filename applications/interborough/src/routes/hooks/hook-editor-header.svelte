@@ -23,11 +23,13 @@
     PageHeader,
     StatusDot,
     Toggle,
+    Tooltip,
     VisuallyHidden,
   } from '@lostgradient/cinder';
   import { Copy, Ellipsis, Trash2 } from '@lucide/svelte';
 
   import type { Hook } from '../../lib/bureau-hooks.ts';
+  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import type { LatestDelivery } from './hook-editor-presentation.ts';
@@ -44,6 +46,8 @@
     latest: LatestDelivery | undefined;
     /** Where the hook stands: the word of its one status, and the sentence after it. */
     standing: HookStanding;
+    /** The title of the plugin that declared a default hook, for the reason its held switch gives. */
+    declaringTitle?: string | undefined;
     /** Whether the switch is being saved. */
     togglePending: boolean;
     /** Whether a copy is being made. */
@@ -66,6 +70,7 @@
     sentence,
     latest,
     standing,
+    declaringTitle,
     togglePending,
     duplicating = false,
     onToggle,
@@ -80,15 +85,35 @@
   const withdrawn = $derived(hook.declaredBy?.withdrawn === true);
   /** The word's own line is the latest delivery's only when no other state decided the word. */
   const deliveryLine = $derived(standing.state === 'delivery');
+  /** Settings › Plugins, which opens the plugin its address selects. */
+  const pluginSettings = routerSelectionLocationFor('/settings/plugins');
 
   function openSettings(event: MouseEvent, plugin: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
     event.preventDefault();
-    router.navigate(`/settings/plugins?plugin=${encodeURIComponent(plugin)}`);
+    router.navigate(pluginSettings.pathTo('plugin', plugin));
   }
 </script>
+
+{#snippet theSwitch()}
+  <Toggle
+    {...{ 'data-changes': true }}
+    id="ib-hook-on"
+    label={hook.enabled ? copy.on : copy.off}
+    nameDetail={title}
+    mutating
+    checked={hook.enabled}
+    disabled={togglePending || withdrawn}
+    onValueChangeRequest={(next) => {
+      onToggle(next);
+      // The switch follows the saved hook once it has been read again, not the press. Cinder
+      // takes the returned boolean as the value to show, so hand back the saved one.
+      return hook.enabled;
+    }}
+  />
+{/snippet}
 
 <div class="ib-hook-identity" data-testid="hook-header" data-hook-state={standing.state}>
   <PageHeader
@@ -100,21 +125,16 @@
   >
     {#snippet actions()}
       <div class="ib-hook-identity__actions">
-        <Toggle
-          {...{ 'data-changes': true }}
-          id="ib-hook-on"
-          label={hook.enabled ? copy.on : copy.off}
-          nameDetail={title}
-          mutating
-          checked={hook.enabled}
-          disabled={togglePending || withdrawn}
-          onValueChangeRequest={(next) => {
-            onToggle(next);
-            // The switch follows the saved hook once it has been read again, not the press. Cinder
-            // takes the returned boolean as the value to show, so hand back the saved one.
-            return hook.enabled;
-          }}
-        />
+        {#if withdrawn && hook.declaredBy !== null}
+          <!-- As on the list row: a hook its plugin withdrew stays off, and the tooltip says why. -->
+          <Tooltip
+            text={HOOKS_COPY.standing.withdrawnSwitch(declaringTitle ?? hook.declaredBy.plugin)}
+          >
+            {@render theSwitch()}
+          </Tooltip>
+        {:else}
+          {@render theSwitch()}
+        {/if}
         {#if isDefault}
           <Button
             {...{ 'data-changes': true }}
@@ -185,7 +205,7 @@
         {@const plugin = standing.action.plugin}
         <Link
           underline="always"
-          href={router.href(`/settings/plugins?plugin=${encodeURIComponent(plugin)}`)}
+          href={router.href(pluginSettings.pathTo('plugin', plugin))}
           onclick={(event) => openSettings(event, plugin)}>{standing.action.label}</Link
         >
       {/if}
@@ -204,7 +224,8 @@
   .ib-hook-identity__actions {
     display: flex;
     align-items: center;
-    gap: var(--cinder-space-3);
+    /* Row R10-05: the switch and Duplicate sit 8px apart. */
+    gap: var(--cinder-space-2);
   }
 
   .ib-hook-identity__latest {

@@ -9,12 +9,15 @@
   import Link from '../link/link.svelte';
   import Select from '../select/select.svelte';
   import type { SelectOption } from '../select/select.types.ts';
-  import { resolveSecretCopy, secretOptionLabel, splitAroundKey } from './schema-form-secret.ts';
+  import Text from '../text/text.svelte';
+  import { resolveSecretCopy, splitAroundKey } from './schema-form-secret.ts';
   import type { SchemaFormSecrets } from './schema-form.types.ts';
 
   interface Props {
     id: string;
     label: string;
+    /** Whether the label is drawn; a setting row draws its own, so its key choice keeps this one for assistive technology. */
+    labelVisible?: boolean;
     /** The field's own description, shown with the help. */
     description?: string | undefined;
     error?: string | undefined;
@@ -30,6 +33,7 @@
   let {
     id,
     label,
+    labelVisible = true,
     description,
     error,
     required,
@@ -58,17 +62,15 @@
   const NONE = '';
   const options = $derived<SelectOption[]>([
     ...(required ? [] : [{ value: NONE, label: copy.none }]),
-    ...rows.map((entry) => {
-      const shown = secretOptionLabel(entry.key);
-      return {
-        value: entry.key,
-        label: shown,
-        // A key that is cut shows whole on its own line: an option carries no tooltip.
-        ...(shown === entry.key ? {} : { description: entry.key }),
-        note: entry.set ? copy.set : copy.missingNote,
-        ...(entry.group === undefined ? {} : { group: entry.group }),
-      };
-    }),
+    // A key is an identifier: monospace, and a long one is cut in its middle with the whole key in
+    // a tooltip, so its start (which plugin) and its end (which secret) both show.
+    ...rows.map((entry) => ({
+      value: entry.key,
+      label: entry.key,
+      code: true,
+      note: entry.set ? copy.set : copy.missingNote,
+      ...(entry.group === undefined ? {} : { group: entry.group }),
+    })),
   ]);
   const help = $derived(
     [description, copy.help].filter((part) => part !== undefined && part !== '').join(' '),
@@ -93,6 +95,7 @@
     <Select
       {id}
       {label}
+      {labelVisible}
       {required}
       presentation="listbox"
       class="cinder-schema-form__secret-select"
@@ -122,8 +125,13 @@
         {#if parts === undefined}
           {sentence}
         {:else}
-          {parts.before}<code class="cinder-schema-form__secret-key">{chosen.key}</code
-          >{parts.after}
+          {parts.before}<Text
+            variant="code"
+            as="code"
+            truncate="middle"
+            text={chosen.key}
+            class="cinder-schema-form__secret-key"
+          />{parts.after}
         {/if}
         {#if secrets?.onAdd !== undefined}
           <Button variant="ghost" size="sm" {disabled} onclick={() => secrets?.onAdd?.(chosen.key)}

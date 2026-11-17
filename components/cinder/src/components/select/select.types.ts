@@ -34,6 +34,12 @@ export type SelectOption<T extends string = string> = {
   /** Listbox only: a muted line under the description ("Needs a provider"). */
   note?: string;
   /**
+   * Listbox only: the label is an identifier (a key, a path). It is drawn in monospace and, when it
+   * does not fit, cut in its middle so its start and end both show, with the whole label in a
+   * tooltip (`Text truncate="middle"`). The option's accessible name is still the whole label.
+   */
+  code?: boolean;
+  /**
    * Listbox only: group name. Options that share a name render together under a heading.
    * Ungrouped options render first, without a heading, and groups follow in the order `groups`
    * lists them (then in order of first appearance for any `groups` does not list).

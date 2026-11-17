@@ -1,4 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* An option marked `code` draws its label with Text (truncate="middle"). */
+@import '../text/text.css';
 @layer cinder.components {
   /* ========================================
  * SELECT
@@ -504,6 +506,13 @@
     font-weight: var(--cinder-font-medium);
     line-height: var(--cinder-leading-normal);
     overflow-wrap: anywhere;
+  }
+
+  /* An identifier keeps one line and gives way in its middle, so the row never wraps it. */
+  .cinder-select__option-label[data-cinder-code] {
+    display: flex;
+    min-inline-size: 0;
+    overflow-wrap: normal;
   }
 
   .cinder-select__option-description,

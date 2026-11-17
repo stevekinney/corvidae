@@ -17,6 +17,7 @@ import {
   latestDelivery,
   pluginTestOutcome,
   statusAnswer,
+  storedConfigurationSchema,
   summaryOf,
   testOutcome,
   thenSummary,
@@ -63,6 +64,38 @@ function delivery(
     ...overrides,
   };
 }
+
+describe('a stored configuration with no schema to draw it (row R10-08)', () => {
+  test('has one field per saved key, in order: a reference is a secret, and anything else keeps its kind', () => {
+    const schema = storedConfigurationSchema({
+      channel: 'ops',
+      token: { $secret: 'slack-bot-token' },
+      limit: 3,
+      loud: true,
+      routes: ['a', 'b'],
+      odd: { $secret: 'k', extra: 1 },
+    });
+    expect(schema).toEqual({
+      type: 'object',
+      properties: {
+        channel: { type: 'string' },
+        token: { type: 'string', secret: true },
+        limit: { type: 'number' },
+        loud: { type: 'boolean' },
+        routes: {},
+        odd: {},
+      },
+    });
+    expect(Object.keys(schema['properties'] as object)).toEqual([
+      'channel',
+      'token',
+      'limit',
+      'loud',
+      'routes',
+      'odd',
+    ]);
+  });
+});
 
 describe('a hook as the editor’s sentence', () => {
   test('says the clause of the event, what it covers, and what it does, with a full stop', () => {

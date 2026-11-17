@@ -1215,6 +1215,35 @@ describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
     expect(JSON.stringify(copy)).not.toContain(SIGNING_SECRET);
   });
 
+  it('copies only the hook it authorized: one changed between that read and the copy is StaleRevision, and nothing is made', async () => {
+    const { opened } = await open();
+    const original = await createAs(opened, 'alice-observer-key');
+    const hooks = opened.bureau.hooks!;
+    const authorizedRead = hooks.get.bind(hooks);
+    let raced = false;
+    // The interleaving: the hook changes right after the operation reads it to authorize the copy.
+    (hooks as { get: typeof hooks.get }).get = async (hookId) => {
+      const read = await authorizedRead(hookId);
+      if (!raced && hookId === original.id) {
+        raced = true;
+        await hooks.update(hookId, { name: 'Changed since it was read' });
+      }
+      return read;
+    };
+
+    const stale = await call(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: original.id },
+      'alice-observer-key',
+    );
+
+    expect(raced).toBe(true);
+    expect(stale.error?.data).toMatchObject({ currentRevision: 2 });
+    const remaining = await hooks.list();
+    expect(remaining.map((hook) => hook.id)).toEqual([original.id]);
+  });
+
   it('refuses a caller without observe-all, whose copy would observe the whole Bureau, and writes nothing', async () => {
     const { opened } = await open({ actionKinds: [pagerKind()] });
     const [declared] = await opened.bureau.hooks!.reconcileDeclared('pager', [DECLARATION]);

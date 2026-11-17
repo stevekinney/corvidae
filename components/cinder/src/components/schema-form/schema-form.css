@@ -4,6 +4,8 @@
 @import '../duration-field/duration-field.css';
 @import '../setting-row/setting-row.css';
 @import '../tag-input/tag-input.css';
+/* A secret's key is drawn with Text (truncate="middle"). */
+@import '../text/text.css';
 
 @layer cinder.components {
   .cinder-schema-form {
@@ -263,8 +265,24 @@
     font-family: var(--cinder-font-mono);
   }
 
-  .cinder-schema-form__secret-key {
-    overflow-wrap: anywhere;
+  /* A key is cut in its middle (Text truncate="middle"), never wrapped. In the warning's sentence its
+   * tooltip wrapper stays in the line and shrinks to the line's width, so a long key gives way. */
+  .cinder-schema-form__secret-warning .cinder-tooltip-wrapper.cinder-text__tooltip {
+    display: inline-flex;
+    max-inline-size: 100%;
+    vertical-align: bottom;
+  }
+
+  /* A read-only secret: its key and its Set or Missing dot on one line, the key giving way first. */
+  .cinder-schema-form__secret-value {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-schema-form__secret-value > .cinder-tooltip-wrapper {
+    flex: 0 1 auto;
   }
 
   .cinder-schema-form__secret-label {

@@ -6,6 +6,7 @@
 <script lang="ts">
   import { describeDuration } from '../duration-field/duration-units.ts';
   import StatusDot from '../status-dot/status-dot.svelte';
+  import Text from '../text/text.svelte';
   import {
     choiceBranchForValue,
     isConcealedSchema,
@@ -82,12 +83,22 @@
     {#if key === undefined}
       <span class="cinder-schema-form__read-only-empty">{copy.notChosen}</span>
     {:else}
-      <code class="cinder-schema-form__secret-key" data-cinder-secret-key>{key}</code>
-      <StatusDot
-        word={isSet(key) ? 'Set' : 'Missing'}
-        label={isSet(key) ? copy.set : copy.missingNote}
-        size="sm"
-      />
+      <!-- A long key is cut in its middle, the whole key in a tooltip, so it never wraps. -->
+      <span class="cinder-schema-form__secret-value">
+        <Text
+          variant="code"
+          as="code"
+          truncate="middle"
+          text={key}
+          class="cinder-schema-form__secret-key"
+          data-cinder-secret-key=""
+        />
+        <StatusDot
+          word={isSet(key) ? 'Set' : 'Missing'}
+          label={isSet(key) ? copy.set : copy.missingNote}
+          size="sm"
+        />
+      </span>
     {/if}
   {:else if isConcealedSchema(target.schema)}
     <span class="cinder-schema-form__read-only-empty">{copy.hidden}</span>

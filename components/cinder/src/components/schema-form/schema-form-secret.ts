@@ -25,22 +25,6 @@ export function resolveSecretCopy(copy: Partial<SchemaFormSecretCopy> | undefine
   return { ...DEFAULT_SECRET_COPY, ...copy };
 }
 
-/** The longest a key reads in an option before its middle is cut. */
-export const SECRET_OPTION_LABEL_LIMIT = 32;
-
-/**
- * A key as an option reads it: whole when it is short, and cut in the middle with an ellipsis when
- * it is longer than {@link SECRET_OPTION_LABEL_LIMIT}, so the start (which plugin) and the end
- * (which secret) both show.
- */
-export function secretOptionLabel(key: string): string {
-  if (key.length <= SECRET_OPTION_LABEL_LIMIT) return key;
-  const keep = SECRET_OPTION_LABEL_LIMIT - 1;
-  const head = Math.ceil(keep / 2);
-  const tail = keep - head;
-  return `${key.slice(0, head)}…${key.slice(key.length - tail)}`;
-}
-
 /** `text` split around the first `key` in it, so the key can be drawn in monospace; `undefined` when it holds none. */
 export function splitAroundKey(
   text: string,

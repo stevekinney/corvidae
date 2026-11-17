@@ -324,6 +324,75 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
     expect(toggle.hasAttribute('disabled') || toggle.getAttribute('aria-disabled') === 'true').toBe(
       true,
     );
+    // The held switch gives its reason in a tooltip, the one its list row gives.
+    await waitFor(() => {
+      expect(header.querySelector('[role="tooltip"]')?.textContent).toBe(
+        HOOKS_COPY.standing.withdrawnSwitch('Slack'),
+      );
+    });
+  });
+
+  test('shows the saved configuration of a hook whose action is not offered as pairs, read only', async () => {
+    const withConfiguration = (record: ReturnType<typeof hook>) =>
+      hook(record.id, {
+        ...record,
+        action: {
+          ...record.action,
+          configuration: { channel: 'ops', token: { $secret: 'slack-bot-token' }, limit: 3 },
+        },
+      });
+    for (const [path, record] of [
+      // The plugin is disabled.
+      ['/hooks/default-pager', withConfiguration(PAGER)],
+      // The plugin is on and dropped the action.
+      [
+        '/hooks/default-dropped',
+        hook('default-dropped', {
+          name: 'Post thing',
+          action: {
+            type: 'plugin',
+            plugin: 'slack',
+            kind: 'gone',
+            configuration: { channel: 'ops', token: { $secret: 'slack-bot-token' }, limit: 3 },
+          },
+        }),
+      ],
+      // The plugin withdrew the hook and dropped its action.
+      [
+        '/hooks/default-gone',
+        hook('default-gone', {
+          name: 'Post gone runs',
+          enabled: false,
+          action: {
+            type: 'plugin',
+            plugin: 'slack',
+            kind: 'gone',
+            configuration: { channel: 'ops', token: { $secret: 'slack-bot-token' }, limit: 3 },
+          },
+          declaredBy: { plugin: 'slack', ownerDisabled: false, withdrawn: true },
+        }),
+      ],
+    ] as const) {
+      const view = open(path, [record]);
+      const stored = await view.findByTestId('stored-configuration');
+      expect(stored.textContent).toContain(copy.action.storedConfiguration);
+      expect(stored.querySelectorAll('input, select, textarea, [role="combobox"]')).toHaveLength(0);
+      expect(
+        [...stored.querySelectorAll('dd')].map((value) => value.textContent?.trim()),
+        path,
+      ).toHaveLength(3);
+      expect(stored.querySelector('code[data-cinder-secret-key]')?.textContent).toBe(
+        'slack-bot-token',
+      );
+      expect(stored.textContent).toContain('ops');
+      expect(stored.textContent).toContain('3');
+      expect(view.queryByTestId('contributed-action')).toBeNull();
+      cleanup();
+      host?.restore();
+      stub?.restore();
+      host = undefined;
+      stub = undefined;
+    }
   });
 
   test('is Unavailable when its plugin is disabled, with a link, and its test is off with the reason', async () => {
@@ -470,10 +539,19 @@ describe('a hook the owner made that runs a plugin’s action (rows R10-10 to R1
     const rows = [...document.body.querySelectorAll('[role="option"]')];
     const note = (key: string) =>
       rows
-        .find((row) => row.querySelector('.cinder-select__option-label')?.textContent === key)
+        .find(
+          (row) =>
+            row.querySelector('.cinder-select__option-label .cinder-text')?.textContent === key,
+        )
         ?.querySelector('.cinder-select__option-note')?.textContent;
     expect(note('slack-bot-token')).toBe('Set');
     expect(note('slack-signing-key')).toBe('Missing');
+    // Row R10-13: every key row is an identifier, in monospace and cut only in its middle.
+    for (const row of rows.filter((candidate) => candidate.textContent?.includes('slack-'))) {
+      const key = row.querySelector('.cinder-select__option-label .cinder-text');
+      expect(key?.getAttribute('data-cinder-variant')).toBe('code');
+      expect(key?.getAttribute('data-cinder-truncate')).toBe('middle');
+    }
     expect(
       [
         ...document.body.querySelectorAll('.cinder-select__group .cinder-_option-group__heading'),
@@ -591,7 +669,7 @@ describe('a hook the owner made that runs a plugin’s action (rows R10-10 to R1
       within(help as HTMLElement)
         .getByRole('link')
         .getAttribute('href'),
-    ).toBe('/settings/plugins');
+    ).toBe('/settings/plugins?plugin=slack');
   });
 
   test('when the keys cannot be read says so with Try again and leaves the other fields usable', async () => {

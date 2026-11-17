@@ -20,6 +20,7 @@
   import { commitValue } from '../../utilities/value-change.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import Popover from '../popover/popover.svelte';
+  import Text from '../text/text.svelte';
   import type { SelectGroup, SelectOption, SelectVariant } from './select.types.ts';
 
   type Section = {
@@ -445,8 +446,16 @@
       >
     {/if}
     <span class="cinder-select__option-text">
-      <span class="cinder-select__option-label"
-        >{option.label}{#if option.suffix}<span class="cinder-select__suffix"
+      <!-- An identifier is cut in its middle with the whole label in a tooltip. Its text stays out of
+           the Tab order: the trigger drives the list, and the option already names the whole label. -->
+      <span class="cinder-select__option-label" data-cinder-code={option.code ? '' : undefined}
+        >{#if option.code}<Text
+            variant="code"
+            as="span"
+            truncate="middle"
+            text={option.label}
+            tabindex={-1}
+          />{:else}{option.label}{/if}{#if option.suffix}<span class="cinder-select__suffix"
             >{`, ${option.suffix}`}</span
           >{/if}</span
       >

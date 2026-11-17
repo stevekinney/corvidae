@@ -15,6 +15,7 @@
   import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import { router } from '../../lib/router.svelte.ts';
   import SecretDialog, { type SecretTarget } from '../settings/plugins/secret-dialog.svelte';
   import { HOOKS_COPY } from './hook-copy.ts';
@@ -34,6 +35,8 @@
     issues?: readonly { path: readonly (string | number)[]; message: string }[] | undefined;
     /** Whether every control is held, as while the hook is saved. */
     disabled?: boolean;
+    /** The plugin whose action this is: the link to where a key is saved opens it in Settings. */
+    plugin?: string | undefined;
   }
 
   let {
@@ -44,10 +47,15 @@
     readOnly = false,
     issues,
     disabled = false,
+    plugin,
   }: Props = $props();
 
   const copy = HOOKS_COPY.secrets;
-  const settingsPath = '/settings/plugins';
+  /** Settings › Plugins, with this action's plugin selected when it is known. */
+  const pluginSettings = routerSelectionLocationFor('/settings/plugins');
+  const settingsPath = $derived(
+    plugin === undefined ? '/settings/plugins' : pluginSettings.pathTo('plugin', plugin),
+  );
 
   // The plugins the host loaded: where the secret keys, and what groups them, come from.
   const plugins = createQuery(

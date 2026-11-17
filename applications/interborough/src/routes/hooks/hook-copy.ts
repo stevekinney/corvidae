@@ -318,6 +318,9 @@ export const HOOKS_COPY = {
       needsSetup: 'Needs setup',
       /** What a saved plugin hook says in place of a choice: its kind is fixed. */
       pluginFixed: (action: string, plugin: string): string => `${action} from ${plugin}`,
+      /** Above the saved configuration of a plugin hook whose action is not offered now (row R10-08). */
+      storedConfiguration:
+        'Its configuration, kept as it was saved while the action is not offered.',
       /** What a hook that notifies says in place of fields. */
       notifyNote: 'You get a notification in Interborough, in the bell at the top right.',
       plugin: 'Run an action from a plugin',

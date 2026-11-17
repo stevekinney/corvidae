@@ -702,9 +702,13 @@ describe('the hook editor', () => {
       target: { value: 'Tell the receiver' },
     });
     // Until it is saved the Check step says the event it will watch, and that nothing watches yet.
+    // Row R10-23: the event in words, and no event kind's identifier anywhere in the summary.
     const summary = view.getByTestId('hook-check-summary');
-    expect(summary.textContent).toContain('A review is waiting');
-    expect(summary.textContent).toContain('review.requested');
+    expect(view.getByTestId('hook-check-events').textContent).toBe(
+      eventOptionLabel('review.requested'),
+    );
+    expect(summary.querySelector('code')).toBeNull();
+    for (const { kind } of CATALOG) expect(summary.textContent ?? '', kind).not.toContain(kind);
     expect(summary.textContent).toContain(HOOKS_COPY.editor.check.saveToStart);
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
 

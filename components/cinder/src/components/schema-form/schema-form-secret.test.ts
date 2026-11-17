@@ -15,7 +15,6 @@ const { default: SchemaForm } = await import('./schema-form.svelte');
 const { initialDraftOf, secretKeyOf, isSecretReference, createSchemaFormModel } =
   await import('./schema-form-model.ts');
 const { validateSchemaValue, withSecretReferences } = await import('./schema-form-validation.ts');
-const { secretOptionLabel, SECRET_OPTION_LABEL_LIMIT } = await import('./schema-form-secret.ts');
 
 afterEach(() => cleanup());
 
@@ -94,7 +93,7 @@ describe('a secret field', () => {
     await open(container);
 
     const listed = rows().map((row) => ({
-      key: row.querySelector('.cinder-select__option-label')?.textContent,
+      key: row.querySelector('.cinder-select__option-label .cinder-text')?.textContent,
       note: row.querySelector('.cinder-select__option-note')?.textContent,
     }));
     expect(listed.filter(({ key }) => key !== 'None')).toEqual([
@@ -106,6 +105,37 @@ describe('a secret field', () => {
       document.body.querySelectorAll('.cinder-select__group .cinder-_option-group__heading'),
     ).map((element) => element.textContent?.trim());
     expect(headings).toEqual(['Slack', 'Pager']);
+    // Every key row is an identifier: monospace (Text's code variant) and cut in its middle when long.
+    const keyRows = rows().filter((row) => !row.textContent?.includes('None'));
+    expect(keyRows).toHaveLength(3);
+    for (const row of keyRows) {
+      const key = requiredInstance(
+        row.querySelector('.cinder-select__option-label .cinder-text'),
+        HTMLElement,
+      );
+      expect(key.getAttribute('data-cinder-variant')).toBe('code');
+      expect(key.getAttribute('data-cinder-truncate')).toBe('middle');
+      // The list is driven from its trigger: the key is no Tab stop of its own.
+      expect(key.getAttribute('tabindex')).toBe('-1');
+    }
+  });
+
+  test('shows a long key whole, cut only by Text in its middle, with the whole key in a tooltip', async () => {
+    const long = `plugin-${'x'.repeat(60)}-api-key`;
+    const { container } = await mount({
+      secrets: { keys: [{ key: long, group: 'Plugin', set: true }] },
+      value: { channel: 'ops', token: { $secret: long } },
+    });
+    await open(container);
+
+    const row = requiredValue(rows().find((candidate) => candidate.textContent?.includes(long)));
+    // The row's name is the whole key, and no description repeats it.
+    expect(row.querySelector('.cinder-select__option-label .cinder-text')?.textContent).toBe(long);
+    expect(row.querySelector('.cinder-select__option-description')).toBeNull();
+    const key = requiredInstance(row.querySelector('[data-cinder-truncate="middle"]'), HTMLElement);
+    expect(key.querySelector('.cinder-text__head')?.textContent).toBe(long.slice(0, -4));
+    expect(key.querySelector('.cinder-text__tail')?.textContent).toBe(long.slice(-4));
+    expect(row.querySelector('[role="tooltip"]')?.textContent).toBe(long);
   });
 
   test('submits { "$secret": key } and nothing else, and reports no other value as a draft', async () => {
@@ -147,7 +177,11 @@ describe('a secret field', () => {
 
     const warning = requiredValue(container.querySelector('.cinder-schema-form__secret-warning'));
     expect(warning.textContent).toContain('slack-signing-key isn’t saved yet.');
-    expect(requiredValue(warning.querySelector('code')).textContent).toBe('slack-signing-key');
+    const key = requiredValue(warning.querySelector('code'));
+    expect(key.textContent).toBe('slack-signing-key');
+    // A long key gives way in its middle, with the whole key in a tooltip, never a wrap.
+    expect(key.getAttribute('data-cinder-truncate')).toBe('middle');
+    expect(warning.querySelector('[role="tooltip"]')?.textContent).toBe('slack-signing-key');
     await fireEvent.click(requiredValue(warning.querySelector('button')));
     expect(onAdd).toHaveBeenCalledWith('slack-signing-key');
   });
@@ -285,16 +319,6 @@ describe('secret references in the model and the validator', () => {
     expect(isSecretReference('k')).toBe(false);
     expect(secretKeyOf(undefined)).toBeUndefined();
   });
-
-  test('cuts a long key in the middle and keeps a short one whole', () => {
-    expect(secretOptionLabel('slack-bot-token')).toBe('slack-bot-token');
-    const long = `plugin-${'x'.repeat(60)}-api-key`;
-    const cut = secretOptionLabel(long);
-    expect(cut).toHaveLength(SECRET_OPTION_LABEL_LIMIT);
-    expect(cut.startsWith('plugin-')).toBe(true);
-    expect(cut.endsWith('-api-key')).toBe(true);
-    expect(cut).toContain('…');
-  });
 });
 
 describe('a read-only form', () => {
@@ -324,6 +348,13 @@ describe('a read-only form', () => {
     const keys = Array.from(container.querySelectorAll('[data-cinder-secret-key]'));
     expect(keys.map((key) => key.textContent)).toEqual(['slack-bot-token', 'slack-signing-key']);
     expect(keys.every((key) => key.tagName === 'CODE')).toBe(true);
+    // A key is cut in its middle with the whole key in a tooltip, never wrapped.
+    expect(keys.every((key) => key.getAttribute('data-cinder-truncate') === 'middle')).toBe(true);
+    expect(
+      Array.from(
+        container.querySelectorAll('.cinder-schema-form__secret-value [role="tooltip"]'),
+      ).map((tooltip) => tooltip.textContent),
+    ).toEqual(['slack-bot-token', 'slack-signing-key']);
     const dots = Array.from(container.querySelectorAll('.cinder-status-dot')).map((dot) => [
       dot.getAttribute('data-cinder-status'),
       dot.textContent?.trim(),

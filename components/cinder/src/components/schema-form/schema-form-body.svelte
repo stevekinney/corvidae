@@ -568,10 +568,17 @@
 
 <!-- The control of a setting row, which sits at the inline end. Its label, description and error
      belong to the row, so the control takes none of its own. -->
-{#snippet secretControl(field: SchemaFormField, id: string, label: string, description?: string)}
+{#snippet secretControl(
+  field: SchemaFormField,
+  id: string,
+  label: string,
+  description?: string,
+  labelVisible = true,
+)}
   <SchemaFormSecret
     {id}
     {label}
+    {labelVisible}
     {description}
     error={fieldError(field)}
     required={field.required}
@@ -586,7 +593,7 @@
 
 {#snippet settingControl(field: SchemaFormField, id: string)}
   {#if field.kind === 'secret'}
-    {@render secretControl(field, id, rowLabel(field))}
+    {@render secretControl(field, id, rowLabel(field), undefined, false)}
   {:else if field.kind === 'string'}
     <Input
       {id}
@@ -732,7 +739,11 @@
     >
       {#snippet control()}
         {#if lone}
-          <SchemaFormNamedControl {id} label={rowLabel(lone)} named={lone.kind !== 'enum'}>
+          <SchemaFormNamedControl
+            {id}
+            label={rowLabel(lone)}
+            named={lone.kind !== 'enum' && lone.kind !== 'secret'}
+          >
             {@render settingControl(lone, id)}
           </SchemaFormNamedControl>
         {:else if inline}

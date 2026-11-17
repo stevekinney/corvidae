@@ -1239,12 +1239,18 @@ export const hooksDuplicateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Copy a hook',
   description:
-    'Makes a hook of the caller’s own from one the caller may read (COR-2181): the same action, events and scope, off, with no `declaredBy`, so a default hook a plugin declared becomes a hook the owner can change. `name` labels the copy, else it keeps the hook’s own label. The copy is owned by the caller, whoever owned the original, and is checked as `bureau.hooks.create` checks a hook, so it needs `bureau.events:observe-all` (a hook observes the whole Bureau’s events), and a copy of a `start-workflow` hook needs a caller allowed to start workflows. A webhook’s copy gets a signing secret the Bureau generates, shown once as `signingSecret` on the answer (`null` otherwise) and never copied from the original. A caller copies its own hooks, and `bureau.hooks:read` reads any owner’s to copy; another owner’s hook the caller may not read answers `NotFound`, as `bureau.hooks.get` does, and in a workspace a hook of another owner is copied only when it is a webhook for events shared to the workspace. A hook whose plugin no longer offers its action is `InvalidParams` on `action.kind`, because a copy would be checked against a schema that is gone.',
+    'Makes a hook of the caller’s own from one the caller may read (COR-2181): the same action, events and scope, off, with no `declaredBy`, so a default hook a plugin declared becomes a hook the owner can change. `name` labels the copy, else it keeps the hook’s own label. The copy is owned by the caller, whoever owned the original, and is checked as `bureau.hooks.create` checks a hook, so it needs `bureau.events:observe-all` (a hook observes the whole Bureau’s events), and a copy of a `start-workflow` hook needs a caller allowed to start workflows. A webhook’s copy gets a signing secret the Bureau generates, shown once as `signingSecret` on the answer (`null` otherwise) and never copied from the original. A caller copies its own hooks, and `bureau.hooks:read` reads any owner’s to copy; another owner’s hook the caller may not read answers `NotFound`, as `bureau.hooks.get` does, and in a workspace a hook of another owner is copied only when it is a webhook for events shared to the workspace. A hook whose plugin no longer offers its action is `InvalidParams` on `action.kind`, because a copy would be checked against a schema that is gone. The copy is made of the hook as it was when the caller was allowed to copy it: a hook that changed in between is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is made.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: duplicateInput,
   outputSchema: createdHookSchema,
-  producibleFaults: ['InvalidParams', 'Forbidden', 'NotFound', 'UnsupportedCapability'],
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'StaleRevision',
+    'UnsupportedCapability',
+  ],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
@@ -1260,8 +1266,11 @@ export const hooksDuplicateOperation = defineOperation<
       throw resourceNotFound('hook', input.hookId);
     }
     try {
+      // Fenced on the revision authorized above: a hook that changed since (to another owner's
+      // action or events, say) is refused, never copied as it is now.
       const copy = await hooks.duplicate(input.hookId, {
         principal: owner,
+        expectedRevision: hook.revision,
         ...(input.name === undefined ? {} : { name: input.name }),
       });
       if (copy === undefined) throw resourceNotFound('hook', input.hookId);

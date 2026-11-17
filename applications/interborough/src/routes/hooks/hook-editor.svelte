@@ -83,6 +83,7 @@
   import { hookPath } from '../../lib/identifier-paths.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { listWorkflowFiles } from '../../lib/workflow-files.ts';
   import SecretDialog, { type SecretTarget } from '../settings/plugins/secret-dialog.svelte';
@@ -98,6 +99,7 @@
     configurationIssuesOf,
     isNeedsSetupRefusal,
     pluginTestOutcome,
+    storedConfigurationSchema,
     testOutcome,
     thenSummary,
     whenSummary,
@@ -338,6 +340,8 @@
   const declaringTitle = $derived(
     declared === null ? undefined : pluginTitleOf(declared.plugin, plugins.data?.plugins),
   );
+  /** Settings › Plugins, which opens the plugin its address selects. */
+  const pluginSettings = routerSelectionLocationFor('/settings/plugins');
   /** The key the header's Add the key dialog is for, or `null` while it is closed. */
   let addingKey = $state<SecretTarget | null>(null);
   /** The kinds of subject the chosen events narrow by, which say what "any" covers in the sentence. */
@@ -793,7 +797,7 @@
     }
     return {
       ...copy.check.testPluginOffParts(pluginTitleOf(hook.action.plugin, plugins.data?.plugins)),
-      path: `/settings/plugins?plugin=${encodeURIComponent(hook.action.plugin)}`,
+      path: pluginSettings.pathTo('plugin', hook.action.plugin),
     };
   });
   /** Whether Send a test event can be pressed: a webhook sends one, and a saved plugin action that offers a test runs it. */
@@ -868,6 +872,7 @@
         sentence={savedSentence}
         {latest}
         {standing}
+        {declaringTitle}
         togglePending={switching.isPending}
         duplicating={duplicating.isPending}
         onToggle={toggle}
@@ -916,11 +921,8 @@
             <Callout semantic="note" data-testid="hook-provenance">
               <Link
                 underline="always"
-                href={router.href(
-                  `/settings/plugins?plugin=${encodeURIComponent(declared.plugin)}`,
-                )}
-                onclick={(event) =>
-                  leave(event, `/settings/plugins?plugin=${encodeURIComponent(declared.plugin)}`)}
+                href={router.href(pluginSettings.pathTo('plugin', declared.plugin))}
+                onclick={(event) => leave(event, pluginSettings.pathTo('plugin', declared.plugin))}
                 >{declaringTitle}</Link
               >{declared.withdrawn
                 ? HOOKS_COPY.defaultHook.provenance.withdrawn
@@ -1002,9 +1004,23 @@
                     readOnly={isDefault}
                     issues={configurationIssues}
                     disabled={saving.isPending}
+                    plugin={hook.action.plugin}
                     onChange={(next) => {
                       form.contributedConfiguration = next;
                     }}
+                  />
+                </div>
+              {:else if contributed.isSuccess && Object.keys(hook.action.configuration).length > 0}
+                <!-- The action is not offered now, so its schema is unknown: the saved pairs are
+                     shown as they are, read only, and nothing is lost or changed (row R10-08). -->
+                <div class="ib-hook-editor__contributed" data-testid="stored-configuration">
+                  <p class="ib-hook-editor__plain">{copy.action.storedConfiguration}</p>
+                  <HookConfiguration
+                    kindId={`stored:${hook.id}`}
+                    schema={storedConfigurationSchema(hook.action.configuration)}
+                    value={hook.action.configuration}
+                    readOnly
+                    plugin={hook.action.plugin}
                   />
                 </div>
               {/if}
@@ -1054,6 +1070,7 @@
                       value={form.contributedConfiguration}
                       issues={configurationIssues}
                       disabled={saving.isPending}
+                      plugin={chosenKind.plugin}
                       onChange={(next) => {
                         form.contributedConfiguration = next;
                       }}
@@ -1151,9 +1168,10 @@
               <div class="ib-hook-editor__quiet" data-testid="hook-check-summary">
                 <p class="ib-hook-editor__quiet-line">
                   <span class="ib-hook-editor__sentence-label">{copy.check.eventLine}</span>
-                  {#each form.events as kind (kind)}
-                    <span>{eventOptionLabel(kind)} <code>{kind}</code></span>
-                  {/each}
+                  <!-- Row R10-23: the events in words, never their identifiers. -->
+                  <span data-testid="hook-check-events"
+                    >{form.events.map((kind) => eventOptionLabel(kind)).join(', ')}</span
+                  >
                 </p>
                 <p class="ib-hook-editor__quiet-line">{copy.check.saveToStart}</p>
               </div>

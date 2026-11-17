@@ -313,6 +313,38 @@ export function configurationIssuesOf(
 }
 
 /**
+ * A schema that draws a stored configuration as read-only pairs when the action's own schema is not
+ * listed (its plugin is off, dropped the action, or withdrew the hook; row R10-08). Each saved key is
+ * a field in the order it was saved: a secret reference reads as its key, a string, number or
+ * boolean as itself, and anything else as JSON. No value is invented and none is left out.
+ */
+export function storedConfigurationSchema(
+  configuration: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(configuration)) {
+    properties[key] = storedFieldSchema(value);
+  }
+  return { type: 'object', properties };
+}
+
+function storedFieldSchema(value: unknown): Record<string, unknown> {
+  if (typeof value === 'string') return { type: 'string' };
+  if (typeof value === 'number') return { type: 'number' };
+  if (typeof value === 'boolean') return { type: 'boolean' };
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    typeof (value as Record<string, unknown>)['$secret'] === 'string'
+  ) {
+    return { type: 'string', secret: true };
+  }
+  return {};
+}
+
+/**
  * Whether the Bureau refused a test because the action's plugin needs setup. The refusal names it in
  * its own words, which are not shown: the editor says it in its own (`testPluginNeedsSetup`).
  */

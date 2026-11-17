@@ -379,10 +379,12 @@ export interface BureauHooks {
    * and no `declaredBy`. It is named `options.name` (COR-2181), else as the hook is. It belongs to
    * `principal`, else to the owner of record. Resolves `undefined` when there is no such hook;
    * refuses as `create` does, so the copy of a hook whose plugin no longer offers its action is refused.
+   * With `expectedRevision`, a hook that has changed since the caller read it is refused with
+   * `stale-revision` and nothing is made, so the copy is of the hook the caller was allowed to copy.
    */
   duplicate(
     hookId: string,
-    options?: HookCallOptions & { readonly name?: string },
+    options?: HookCallOptions & { readonly name?: string; readonly expectedRevision?: number },
   ): Promise<HookWithSigningSecret | undefined>;
   /**
    * COR-2180 — the plugins that made a default hook, withdrawn ones included, each once. It reads
@@ -1685,8 +1687,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       // The caller owns `options`: read before the first await.
       const principal = options?.principal;
       const copyName = options?.name;
+      const expectedRevision = options?.expectedRevision;
       const stored = await store.getHook(hookId);
       if (stored === undefined) return undefined;
+      if (expectedRevision !== undefined && expectedRevision !== stored.record.revision) {
+        throw new HookError('stale-revision', 'The hook has changed since it was read', {
+          currentRevision: stored.record.revision,
+        });
+      }
       const { action, events, scope, name: sourceName } = stored.record;
       const name = copyName ?? sourceName;
       return hooks.create({

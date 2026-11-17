@@ -719,6 +719,41 @@ for (const width of WIDTHS) {
   });
 }
 
+test('[default-hook-phone] at 320 by 640 the switch and Duplicate share one row at the leading edge, 8 pixels apart', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await openHooks(page, '/hooks/default-on', [DEFAULT_ON]);
+  const head = page.getByTestId('hook-header');
+  const heading = head.getByRole('heading', { level: 1, name: 'Post settled runs' });
+  await expect(heading).toBeVisible();
+  const duplicate = head.getByRole('button', { name: defaults.duplicate, exact: true });
+  await expect(duplicate).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'default-hook-phone',
+    source: SOURCE,
+  });
+
+  const title = await heading.boundingBox();
+  const toggle = await head.locator('.ib-hook-identity__actions > *').first().boundingBox();
+  const button = await duplicate.boundingBox();
+  if (title === null || toggle === null || button === null) throw new Error('not drawn');
+  // R10-05: one row: the switch and Duplicate share a centre line.
+  expect(
+    Math.abs(toggle.y + toggle.height / 2 - (button.y + button.height / 2)),
+  ).toBeLessThanOrEqual(1);
+  // At the leading edge, under the title.
+  expect(Math.abs(toggle.x - title.x)).toBeLessThanOrEqual(1);
+  // 8 pixels apart, give or take 2.
+  const gap = button.x - (toggle.x + toggle.width);
+  expect(gap).toBeGreaterThanOrEqual(6);
+  expect(gap).toBeLessThanOrEqual(10);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
 test('[default-hook-off] a hook the owner turned off says so after Off', async ({ page }) => {
   await openHooks(page, '/hooks/default-off', [DEFAULT_OFF]);
   const head = page.getByTestId('hook-header');
@@ -742,6 +777,11 @@ test('[default-hook-withdrawn] a hook its plugin withdrew stays off, its switch 
     `Slack${defaults.provenance.withdrawn}`,
   );
   await expect(head.getByTestId('hook-standing-sentence')).toHaveCount(0);
+  // The held switch says why in a tooltip, as its list row does.
+  await head.locator('.ib-hook-identity__actions .cinder-tooltip-wrapper').hover();
+  await expect(
+    page.getByRole('tooltip').filter({ hasText: standing.withdrawnSwitch('Slack') }),
+  ).toBeVisible();
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
     state: 'default-hook-withdrawn',
@@ -766,6 +806,11 @@ test('[default-hook-plugin-disabled] a hook of a disabled plugin is Unavailable,
   const reason = page.getByTestId('hook-test-reason');
   await expect(reason).toHaveText('Turn on Pager in Settings to test this action.');
   await expect(reason.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+  // R10-08: the action is not offered, so its saved configuration is shown as pairs, read only.
+  const stored = page.getByTestId('stored-configuration');
+  await expect(stored.locator('dt', { hasText: /^channel$/i })).toBeVisible();
+  await expect(stored.locator('dd', { hasText: 'ops' })).toBeVisible();
+  await expect(stored.locator('input, select, textarea, [role="combobox"]')).toHaveCount(0);
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
     state: 'default-hook-plugin-disabled',
@@ -885,6 +930,22 @@ for (const width of WIDTHS) {
     await expect(page.getByRole('option', { name: /^slack-bot-token/ })).toContainText('Set');
     await expect(page.getByRole('option', { name: /^slack-signing-key/ })).toContainText('Missing');
     await expect(page.locator('.cinder-select__group').filter({ hasText: 'Slack' })).toBeVisible();
+    // R10-13: each key row draws its key in the monospace face, cut only in its middle when long.
+    for (const key of ['slack-bot-token', 'slack-signing-key']) {
+      const drawn = page
+        .getByRole('option', { name: new RegExp(`^${key}`) })
+        .locator('.cinder-select__option-label .cinder-text');
+      await expect(drawn).toHaveAttribute('data-cinder-truncate', 'middle');
+      const [font, mono] = await drawn.evaluate((node) => {
+        const probe = document.createElement('span');
+        probe.style.fontFamily = 'var(--cinder-font-mono)';
+        node.append(probe);
+        const fonts = [getComputedStyle(node).fontFamily, getComputedStyle(probe).fontFamily];
+        probe.remove();
+        return fonts;
+      });
+      expect(font).toBe(mono);
+    }
     await page.keyboard.press('Escape');
 
     // Save hook sends the changed configuration through update, the secret as its reference alone.
@@ -979,7 +1040,7 @@ test('[plugin-hook-no-secrets] with no secret a plugin names, the Select is disa
   );
   await expect(
     action.getByRole('link', { name: HOOKS_COPY.secrets.manage, exact: true }),
-  ).toHaveAttribute('href', '/settings/plugins');
+  ).toHaveAttribute('href', '/settings/plugins?plugin=slack');
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
     state: 'plugin-hook-no-secrets',
@@ -1109,7 +1170,8 @@ test('[plugin-hook-save-failed] a refused save keeps every value and shows the r
   });
 });
 
-for (const width of WIDTHS) {
+// R10-20 holds at the narrowest phone too.
+for (const width of [320, ...WIDTHS] as const) {
   test(`[new-hook-plugin-action] every action choice is on screen, and a plugin’s action is chosen from a grouped Select, at ${width} pixels`, async ({
     page,
     checkA11y,
