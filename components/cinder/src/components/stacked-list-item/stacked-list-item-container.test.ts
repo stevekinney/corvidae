@@ -155,9 +155,21 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
     expect(container.querySelector('.cinder-stacked-list-item__actions-trigger')).toBeNull();
   });
 
-  test('every phone rule is a container query on the row, and none reads the viewport', () => {
-    expect(stylesheet).not.toContain('data-cinder-phone');
+  test('every phone rule is a container query on the row; only the line-two status column reads the viewport', () => {
+    expect(stylesheet).not.toMatch(/data-cinder-phone\b(?!-)/);
     expect(stylesheet).not.toMatch(/@media[^{]*(?:max-width|min-width|width\s*[<>])/);
+    // The one viewport rule: the chat list's line-two status keeps its fixed column in a narrow
+    // pane of a wide window (previews line up) and gives it up on a phone (COR-2016), which the
+    // row's own width cannot tell apart. Every selector that reads the viewport mark is a
+    // line-two one.
+    const viewportSelectors = [
+      ...stylesheet.matchAll(/\n {2}([^{}\n]*\[data-cinder-viewport-phone\][^{]*)\{/g),
+    ].map((match) => match[1] ?? '');
+    expect(viewportSelectors).toHaveLength(3);
+    for (const selector of viewportSelectors) {
+      expect(selector).toContain('--status-line-two');
+      expect(selector).not.toContain('--status-leading');
+    }
     const phoneRules = stylesheet.split(
       '@container cinder-stacked-list-item (max-width: 639.98px)',
     );

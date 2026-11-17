@@ -33,7 +33,7 @@ describe('StackedListItem status on a phone (COR-2018)', () => {
     // against the line's text (regular, subtle).
     const spacing = [
       ...stylesheet.matchAll(
-        /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*,[^{]*\.cinder-stacked-list-item__status:has\(\*\)\s*\{([^}]*)\}/g,
+        /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{([^}]*)\}/g,
       ),
     ];
     expect(spacing).toHaveLength(1);

@@ -233,6 +233,9 @@
   )}
   data-cinder-density={resolvedDensity}
   data-cinder-phone={phone ? '' : undefined}
+  data-cinder-viewport-phone={statusPlacement === 'line-two' && phoneViewport.current
+    ? ''
+    : undefined}
   data-cinder-expanded={details !== undefined && expanded ? '' : undefined}
   data-cinder-selected={selected ? '' : undefined}
   aria-current={selected && linkHref === undefined ? 'true' : undefined}

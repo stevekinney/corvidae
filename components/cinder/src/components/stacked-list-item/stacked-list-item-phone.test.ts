@@ -76,7 +76,7 @@ describe('StackedListItem on a phone', () => {
     );
     expect(stylesheet).toContain("'leading status line line trailing'");
     expect(stylesheet).toMatch(
-      /--status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*,/,
+      /--status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{/,
     );
     cleanup();
     setPhone(false);
