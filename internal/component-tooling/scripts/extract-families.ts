@@ -789,11 +789,27 @@ function relativePaths(path: string, text: string): WrittenPath[] {
   const paths: WrittenPath[] = [];
   for (const match of text.matchAll(ANCHORED_JOIN)) {
     const run = match[1] ?? '';
-    const joined = segmentsPath(literalSegments(run));
+    const segments = literalSegments(run);
+    const joined = segmentsPath(segments);
     if (joined === undefined) continue;
-    // The run's text between its first and last quote becomes the one literal that replaces it.
+    // The run's text between its first and last quote is replaced: by one literal where it was
+    // one, and by segments where it was segments, so what reads the run's shape (the map's
+    // placement rules) reads the same shape after the rewrite.
+    const quote = run[0] ?? "'";
     const start = (match.index ?? 0) + match[0].length - run.length + 1;
-    paths.push({ start, length: run.length - 2, text: joined, render: identity });
+    paths.push({
+      start,
+      length: run.length - 2,
+      text: joined,
+      render:
+        segments.length === 1
+          ? identity
+          : (replacement) =>
+              replacement
+                .split('/')
+                .filter((segment) => segment !== '' && segment !== '.')
+                .join(`${quote}, ${quote}`),
+    });
   }
   for (const match of text.matchAll(ANCHORED_TEMPLATE)) {
     const tail = match[1] ?? '';

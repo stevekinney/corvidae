@@ -408,8 +408,9 @@ describe('extract-families', () => {
     expect((await extract(root, { kind: 'packages', names: ['tokens'] })).dead).toEqual([]);
     expect(existsSync(join(root, CORE, 'src/tokens'))).toBe(false);
     const anchored = `${CORE}/src/exports/anchored.test.ts`;
+    // Segments stay segments, so a rule that reads their shape reads the same after the move.
     expect(read(root, anchored)).toContain(
-      "join(import.meta.dir, '../../../tokens/src/tokens/runtime', file)",
+      "join(import.meta.dir, '..', '..', '..', 'tokens', 'src', 'tokens', 'runtime', file)",
     );
     expect(read(root, 'scripts/browser-fixtures/tests/runtime.playwright.ts')).toContain(
       "'components',\n  'tokens', 'src',\n  'tokens',",
