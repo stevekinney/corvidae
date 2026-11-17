@@ -3,7 +3,7 @@
   import ContextMenuTrigger from '../context-menu-trigger/context-menu-trigger.svelte';
   import DropdownItem from '../dropdown-item/dropdown-item.svelte';
   import DropdownMenu from '../dropdown-menu/dropdown-menu.svelte';
-  import LocaleProvider from '../locale-provider/locale-provider.svelte';
+  import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
 
   let {
     disabled = false,

@@ -13,7 +13,7 @@
 
 <script lang="ts">
   import ColorField from '../../components/color-field/color-field.svelte';
-  import FormField from '../../components/form-field/form-field.svelte';
+  import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
 
   let { id, fieldError }: ColorFieldFormFieldFixtureProps = $props();
 

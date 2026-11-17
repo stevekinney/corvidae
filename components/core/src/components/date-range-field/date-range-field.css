@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../calendar/calendar.css';
-@import '../grid/grid.css';
+@import '@lostgradient/calendar/calendar.css';
+@import '@lostgradient/grid/grid.css';
 @import '../input/input.css';
 @import '../popover/popover.css';
 

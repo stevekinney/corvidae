@@ -1,5 +1,5 @@
 <script lang="ts">
-  import FormField from '../../components/form-field/form-field.svelte';
+  import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
   import PhoneInput from '../../components/phone-input/phone-input.svelte';
   import PinInput from '../../components/pin-input/pin-input.svelte';
   import Rating from '../../components/rating/rating.svelte';

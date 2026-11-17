@@ -4,7 +4,7 @@
   import DropdownItem from '../../components/dropdown-item/dropdown-item.svelte';
   import DropdownMenu from '../../components/dropdown-menu/dropdown-menu.svelte';
   import DropdownTrigger from '../../components/dropdown-trigger/dropdown-trigger.svelte';
-  import LocaleProvider from '../../components/locale-provider/locale-provider.svelte';
+  import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
 
   let {
     providerDirection = 'rtl',

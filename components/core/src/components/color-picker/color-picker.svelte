@@ -7,7 +7,7 @@
   import type {
     ColorSwatch,
     ColorSwatchPickerProps,
-  } from '../color-swatch-picker/color-swatch-picker.types.ts';
+  } from '@lostgradient/color-swatch-picker/components/color-swatch-picker/color-swatch-picker.types.ts';
   import { untrack } from 'svelte';
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
@@ -17,7 +17,7 @@
     formatHex,
     isOpaqueForFormat,
   } from '@lostgradient/foundation/utilities/color-format.ts';
-  import ColorSwatchPicker from '../color-swatch-picker/color-swatch-picker.svelte';
+  import ColorSwatchPicker from '@lostgradient/color-swatch-picker/components/color-swatch-picker/color-swatch-picker.svelte';
   import ColorPickerControls from './color-picker-controls.svelte';
   import {
     alphaFromKeyboard,

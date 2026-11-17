@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import { Lock } from '@lucide/svelte';
-  import Badge from '../badge/badge.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { PolicyLockProps } from './policy-lock.types.ts';

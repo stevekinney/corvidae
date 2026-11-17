@@ -1,5 +1,5 @@
+import type { FormFieldManaged } from '@lostgradient/form-field/components/form-field/form-field.types.ts';
 import type { Snippet } from 'svelte';
-import type { FormFieldManaged } from '../form-field/form-field.types.ts';
 
 /**
  * Where a setting's own save has got to, drawn as a status line under its description.

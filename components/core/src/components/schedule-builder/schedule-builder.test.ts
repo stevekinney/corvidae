@@ -991,7 +991,7 @@ describe('ScheduleBuilder', () => {
 
     test('uses the form field error style instead of a style of its own', () => {
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
-      expect(css).toContain("@import '../form-field/form-field.css'");
+      expect(css).toContain("@import '@lostgradient/form-field/form-field.css'");
     });
   });
 

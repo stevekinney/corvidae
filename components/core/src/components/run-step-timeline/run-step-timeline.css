@@ -1,8 +1,8 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../badge/badge.css';
+@import '@lostgradient/badge/badge.css';
 @import '../code-block/code-block.css';
 @import '../collapsible/collapsible.css';
-@import '../link/link.css';
+@import '@lostgradient/link/link.css';
 @import '../progress/progress.css';
 @import '../status-dot/status-dot.css';
 

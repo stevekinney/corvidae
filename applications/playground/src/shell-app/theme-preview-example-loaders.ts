@@ -19,7 +19,7 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'button/variants': () =>
       import('../../../../components/core/src/components/button/examples/variants.example.svelte'),
     'link/basic': () =>
-      import('../../../../components/core/src/components/link/examples/basic.example.svelte'),
+      import('../../../../components/link/src/components/link/examples/basic.example.svelte'),
     'input/basic': () =>
       import('../../../../components/core/src/components/input/examples/basic.example.svelte'),
     'input/with-error': () =>
@@ -35,7 +35,7 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'tabs/basic': () =>
       import('../../../../components/core/src/components/tabs/examples/basic.example.svelte'),
     'callout/variants': () =>
-      import('../../../../components/core/src/components/callout/examples/variants.example.svelte'),
+      import('../../../../components/callout/src/components/callout/examples/variants.example.svelte'),
     'table/basic': () =>
       import('../../../../components/core/src/components/table/examples/basic.example.svelte'),
     'line-chart/multi-series': () =>

@@ -1,3 +1,4 @@
+import type { BadgeVariant } from '@lostgradient/badge/components/badge/badge.types.ts';
 import type {
   DataAttributes,
   PadUnion,
@@ -5,7 +6,6 @@ import type {
 } from '@lostgradient/foundation/_internal/union-props.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
-import type { BadgeVariant } from '../badge/badge.types.ts';
 export type ChipVariant = BadgeVariant;
 export type ChipSize = 'sm' | 'md';
 export type ChipMode = 'display' | 'toggle' | 'removable';

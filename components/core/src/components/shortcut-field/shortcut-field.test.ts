@@ -185,7 +185,7 @@ describe('ShortcutField', () => {
 
   test('styles import the shared form-field styles alongside Kbd styles (COR-443)', async () => {
     const css = await Bun.file(new URL('./shortcut-field.css', import.meta.url)).text();
-    expect(css).toContain("@import '../kbd/kbd.css';");
-    expect(css).toContain("@import '../form-field/form-field.css';");
+    expect(css).toContain("@import '@lostgradient/kbd/kbd.css';");
+    expect(css).toContain("@import '@lostgradient/form-field/form-field.css';");
   });
 });

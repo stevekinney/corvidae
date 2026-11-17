@@ -5,7 +5,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
   import { onDestroy } from 'svelte';
-  import { default as FormField } from '../form-field/index.ts';
+  import { default as FormField } from '@lostgradient/form-field/components/form-field/index.ts';
   import { default as Input } from '../input/index.ts';
   import { default as Button } from '../button/index.ts';
   import X from '@lucide/svelte/icons/x';

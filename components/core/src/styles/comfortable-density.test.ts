@@ -31,7 +31,9 @@ const foundation = await Bun.file(
 const tokens = await Bun.file(
   new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
 ).text();
-const cardCss = await Bun.file(new URL('../components/card/card.css', import.meta.url)).text();
+const cardCss = await Bun.file(
+  new URL('../../../card/src/components/card/card.css', import.meta.url),
+).text();
 
 const COMFORTABLE_SELECTOR = ":where([data-density='comfortable'])";
 

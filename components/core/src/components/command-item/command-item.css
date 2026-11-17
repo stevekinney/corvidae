@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../kbd/kbd.css';
+@import '@lostgradient/kbd/kbd.css';
 @layer cinder.components {
   /* ========================================
  * COMMAND ITEM

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
-  import LocaleProvider from '../../components/locale-provider/locale-provider.svelte';
+  import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
   import Slider from '../../components/slider/slider.svelte';
 
   let {
