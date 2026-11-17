@@ -137,7 +137,7 @@ describe('the token runtime browser bundle', () => {
       (file) =>
         /\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:prettier|ajv|ajv-formats|postcss|stylelint)\//.test(
           file.path,
-        ) || /\/components\/core\/scripts\//.test(file.path),
+        ) || /\/components\/cinder\/scripts\//.test(file.path),
     );
     expect(tooling.map((file) => file.path)).toEqual([]);
   });
@@ -155,7 +155,7 @@ describe('the token runtime browser bundle', () => {
   it('only pulls the runtime tree and its pure dependencies into the graph', () => {
     const outside = graph.filter(
       (file) =>
-        !/\/components\/core\/src\/tokens\//.test(file.path) &&
+        !/\/components\/cinder\/src\/tokens\//.test(file.path) &&
         !/\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:postcss-value-parser|culori)\//.test(
           file.path,
         ) &&
