@@ -252,6 +252,15 @@
     max-inline-size: 100%;
   }
 
+  /* A ghost select draws no face at rest, so its words are what the eye lines up. The one that
+   * leads its row is pulled back by its inline padding and its 1px transparent border, so its text
+   * starts at the field edge, on the text above it, rather than 11px inside it; only its hover tint
+   * and ring reach past the edge (COR-2489). A ghost select after another keeps its place, so a row
+   * of them never overlaps. */
+  .cinder-select-field[data-cinder-variant='ghost']:first-child {
+    margin-inline-start: calc(-1 * (var(--cinder-pad-control) + 1px));
+  }
+
   .cinder-select-field[data-cinder-variant='ghost'] .cinder-select-field__control {
     inline-size: auto;
     min-inline-size: 0;
