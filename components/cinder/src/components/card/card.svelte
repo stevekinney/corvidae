@@ -31,9 +31,12 @@
   import type { CardProps } from './card.types.ts';
   import CompactActions from '../../_internal/compact-actions.svelte';
   import { composeDescribedBy } from '../../_internal/field-control.ts';
+  import { setFramedSurfaceContext } from '../../_internal/framed-surface-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
   const generatedId = $props.id();
+  // A Table inside the card draws no frame of its own: the card is the frame.
+  setFramedSurfaceContext();
 
   let {
     class: className,

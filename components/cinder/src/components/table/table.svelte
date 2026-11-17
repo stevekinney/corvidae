@@ -44,6 +44,7 @@
     readViewportBreakpoint,
     useViewportBelow,
   } from '../../_internal/viewport-below.svelte.ts';
+  import { getFramedSurfaceContext } from '../../_internal/framed-surface-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
@@ -55,7 +56,8 @@
     density = 'comfortable',
     selectable = false,
     scrollable = true,
-    frameless = false,
+    frameless: framelessProp = false,
+    framed = false,
     fit = false,
     scrollContainerProps,
     stackBelow = PHONE_VIEWPORT_BREAKPOINT,
@@ -63,6 +65,10 @@
     children,
     ...rest
   }: TableProps = $props();
+
+  // Inside a Card the card is the frame, so the table draws none unless `framed` keeps it.
+  const insideFramedSurface = getFramedSurfaceContext() === true;
+  const frameless = $derived(framelessProp || (insideFramedSurface && !framed));
 
   const stackBreakpoint = $derived(readViewportBreakpoint(stackBelow, 'Table', 'stackBelow'));
   const narrowViewport = useViewportBelow(() => stackBreakpoint);
