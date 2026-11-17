@@ -240,21 +240,29 @@ describe('dependencyClosure', () => {
 
   test('matches the workspaces the real playground imports', () => {
     const repositoryRoot = join(scriptsDirectory, '..', '..', '..');
-    const closure = dependencyClosure(readWorkspaces(repositoryRoot), '@lostgradient/playground');
-    expect(closure.map((workspace) => workspace.directory)).toEqual([
-      'applications/playground',
-      'components/chat',
-      'components/cinder',
-      'components/editor',
-      'internal/component-tooling',
-      'internal/typescript',
-      'packages/armorer',
-      'packages/conversationalist',
-      'packages/cryptography',
-      'packages/lifecycle',
-      'packages/markdown',
-      'testing/testing',
-    ]);
+    const workspaces = readWorkspaces(repositoryRoot);
+    const closure = dependencyClosure(workspaces, '@lostgradient/playground');
+    // The playground documents every component workspace but the terminal: Cinder before the
+    // package split, and core with every family package after it.
+    const componentWorkspaces = workspaces
+      .map((workspace) => workspace.directory)
+      .filter(
+        (directory) => directory.startsWith('components/') && directory !== 'components/terminal',
+      );
+    expect(closure.map((workspace) => workspace.directory)).toEqual(
+      [
+        'applications/playground',
+        ...componentWorkspaces,
+        'internal/component-tooling',
+        'internal/typescript',
+        'packages/armorer',
+        'packages/conversationalist',
+        'packages/cryptography',
+        'packages/lifecycle',
+        'packages/markdown',
+        'testing/testing',
+      ].toSorted(),
+    );
   });
 });
 

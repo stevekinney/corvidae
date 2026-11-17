@@ -20,6 +20,7 @@ import {
   CINDER_COMPONENT_SOURCE,
   EDITOR_COMPONENT_NAMES,
   EDITOR_COMPONENT_SOURCE,
+  cinderComponentStylesheetUrlFor,
   componentExportNameFor,
   documentationComponentStylesheetUrl,
   documentationExampleStylesheetUrls,
@@ -270,6 +271,16 @@ describe('stylesheets an implementation imports beyond its own sidecar', () => {
   });
 });
 
+/**
+ * Where the playground serves a Cinder component's own stylesheet, wherever the package split has
+ * put the component: core's components root before it moves, its family package after.
+ */
+function cinderStylesheet(name: string): string {
+  const location = CINDER_COMPONENT_SOURCE.components().get(name);
+  if (location === undefined) throw new Error(`No Cinder component ${name}.`);
+  return cinderComponentStylesheetUrlFor(location, join(location.directory, `${name}.css`));
+}
+
 describe('documentationComponentStylesheetUrl', () => {
   it('does not add a second stylesheet for documentation primitives', () => {
     expect(documentationComponentStylesheetUrl(CINDER_COMPONENT_SOURCE, 'button')).toBeNull();
@@ -277,7 +288,7 @@ describe('documentationComponentStylesheetUrl', () => {
 
   it('loads only the documented Cinder component outside the shared stylesheet', () => {
     expect(documentationComponentStylesheetUrl(CINDER_COMPONENT_SOURCE, 'dropdown')).toBe(
-      '/components/dropdown/dropdown.css',
+      cinderStylesheet('dropdown'),
     );
   });
 
@@ -295,11 +306,7 @@ describe('documentationExampleStylesheetUrls', () => {
         'basic',
         'disabled-fieldset',
       ]),
-    ).toEqual([
-      '/components/checkbox/checkbox.css',
-      '/components/checkbox-group/checkbox-group.css',
-      '/components/form-field/form-field.css',
-    ]);
+    ).toEqual(['checkbox', 'checkbox-group', 'form-field'].map(cinderStylesheet).toSorted());
   });
 
   it('collects root-barrel imports and recursively follows local implementation modules', () => {
@@ -307,44 +314,28 @@ describe('documentationExampleStylesheetUrls', () => {
       documentationExampleStylesheetUrls(CINDER_COMPONENT_SOURCE, 'autocomplete', [
         'inside-form-field',
       ]),
-    ).toContain('/components/form-field/form-field.css');
+    ).toContain(cinderStylesheet('form-field'));
     expect(
       documentationExampleStylesheetUrls(CINDER_COMPONENT_SOURCE, 'json-schema-editor', []),
-    ).toEqual(
-      expect.arrayContaining(['/components/tabs/tabs.css', '/components/textarea/textarea.css']),
-    );
+    ).toEqual(expect.arrayContaining(['tabs', 'textarea'].map(cinderStylesheet)));
   });
 
   it('collects Cinder styles from extracted-package implementation modules', () => {
     expect(documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'diff-viewer', [])).toEqual(
-      expect.arrayContaining([
-        '/components/segmented-control/segmented-control.css',
-        '/components/spinner/spinner.css',
-        '/components/surface/surface.css',
-      ]),
+      expect.arrayContaining(['segmented-control', 'spinner', 'surface'].map(cinderStylesheet)),
     );
   });
 
   it('follows TypeScript barrels to their local Svelte implementations', () => {
     expect(
       documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'markdown-editor', []),
-    ).toEqual(
-      expect.arrayContaining([
-        '/components/dropdown/dropdown.css',
-        '/components/toolbar/toolbar.css',
-      ]),
-    );
+    ).toEqual(expect.arrayContaining(['dropdown', 'toolbar'].map(cinderStylesheet)));
   });
 
   it('recursively follows Cinder components imported by examples', () => {
     expect(
       documentationExampleStylesheetUrls(CINDER_COMPONENT_SOURCE, 'card', ['danger-zone-toggle']),
-    ).toEqual(
-      expect.arrayContaining([
-        '/components/confirm-dialog/confirm-dialog.css',
-        '/components/modal/modal.css',
-      ]),
-    );
+    ).toEqual(expect.arrayContaining(['confirm-dialog', 'modal'].map(cinderStylesheet)));
   });
 
   it('loads extracted-package component sidecars imported by examples, not helper-only imports', () => {
