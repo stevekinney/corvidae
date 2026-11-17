@@ -146,6 +146,11 @@ export type ChatComposerLabels = {
    * composer holds a draft: it says what a send does now.
    */
   approvalQueueNote: string;
+  /**
+   * Why Send is off while an approval waits and the composer has no queue to hold a message in (a
+   * compact composer, or an adapter with no `sendRunInput`). Written beside Send.
+   */
+  approvalHoldsSend: string;
   reviewApproval: string;
   /**
    * What the approval reminder's button reads in a narrow column, where the whole row is one line
@@ -285,6 +290,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   approvalWaiting: 'Approval waiting',
   approvalWaitingText: 'Approval needed.',
   approvalQueueNote: 'Messages you send now wait until you decide.',
+  approvalHoldsSend: 'Decide the approval to send',
   reviewApproval: 'Review approval',
   reviewApprovalShort: 'Review',
   you: 'you',

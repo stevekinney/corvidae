@@ -6,6 +6,8 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -97,5 +99,17 @@ describe('Chat — an approval that expired before a decision', () => {
 
     await fireEvent.click(getByRole(card, 'button', { name: 'Ask again' }));
     expect(asked).toEqual(['call-refund']);
+  });
+
+  test('draws it as Cinder’s quiet dashed neutral row, not a warning-toned card (owner decision)', () => {
+    const css = readFileSync(
+      join(import.meta.dir, '../../../../../cinder/src/components/approval-card/approval-card.css'),
+      'utf8',
+    );
+    const rule = css.match(
+      /\.cinder-approval-card--decision\[data-cinder-state='expired'\][^{]*\{([^}]*)\}/,
+    )?.[1];
+    expect(rule).toMatch(/border-style:\s*dashed;/);
+    expect(rule).not.toMatch(/status-warning/);
   });
 });

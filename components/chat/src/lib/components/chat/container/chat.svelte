@@ -1631,9 +1631,16 @@
   // A canceled read is said once, by the state that stands in the transcript's place with its Retry:
   // the composer draws no notice of its own, and the reason Send is off sits beside Send
   // (COR-2327 B6).
-  const composerSendDisabledReason = $derived(
-    availability?.kind === 'canceled' ? availabilityLabels(availability).sendBlocked : undefined,
+  // While an approval waits a message is queued until the decision (COR-2282 M7). A composer that
+  // has no queue to hold it in (a compact composer, or an adapter with no `sendRunInput`) does not
+  // send it as run input or as a new turn either: Send is off, and says why beside it.
+  const approvalHoldsSend = $derived.by(
+    () => approvalWaiting && !composerSending && !(followUpsEnabled && !composerCompact),
   );
+  const composerSendDisabledReason = $derived.by(() => {
+    if (availability?.kind === 'canceled') return availabilityLabels(availability).sendBlocked;
+    return approvalHoldsSend ? chatLabels.approvalHoldsSend : undefined;
+  });
   const availabilityComposerStatus = $derived.by<ChatComposerStatus | undefined>(() => {
     if (availability?.kind === 'unconfigured' && unconfiguredWithHistory) {
       const words = availabilityLabels(availability);

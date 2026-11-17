@@ -982,9 +982,14 @@
     font-size: var(--cinder-text-sm);
   }
 
-  .cinder-approval-card--decision[data-cinder-state='expired'] {
-    border-color: var(--cinder-status-warning-border);
-    background: var(--cinder-status-warning-background);
+  /* An approval that expired before a decision is a quiet dashed neutral row (owner decision,
+   * COR-2438 A7): nothing is asked of the person any more, so it takes no warning tone and no
+   * raised fill, only a dashed edge that says it never settled. */
+  .cinder-approval-card--decision[data-cinder-state='expired'],
+  .cinder-approval-card--row[data-cinder-state='expired'] {
+    border-style: dashed;
+    border-color: var(--cinder-border-strong);
+    background: transparent;
   }
 
   /* A settled card (expired, approved or denied) is the title on its own line, then one small muted
@@ -1214,9 +1219,9 @@
 
   /* The command is always open, so it is a code block that wraps: none of it hides behind a
      sideways scroll. */
-  /* One code block in every layout. Its panel reaches past the text column by exactly its own
-   * inline padding, so the command's first character sits on the label column instead of one
-   * padding inside it, in the light scheme where the panel and the card share a white surface. */
+  /* One code block in every layout. Its panel is inset to the card's text column (COR-2440): its
+   * edges sit on the column the title and the facts start on, never hanging out toward the card's
+   * border, and the command reads one padding inside it. */
   .cinder-approval-card__command {
     --_cinder-approval-card-command-padding: var(--cinder-space-2);
     /* @runtime-state */
@@ -1224,14 +1229,7 @@
 
     min-inline-size: 0;
     margin: 0;
-    margin-inline: calc(-1 * var(--_cinder-approval-card-command-padding));
     text-align: start;
-  }
-
-  /* The hang (`margin-inline`) is the padding, so the row's command text lands on the title column
-   * and the panel keeps one space-1 from the card's border. */
-  .cinder-approval-card--row .cinder-approval-card__command {
-    --_cinder-approval-card-command-padding: var(--cinder-space-1);
   }
 
   /* The facts line is the two things an approver weighs before answering, in small text: a clock
@@ -1279,6 +1277,17 @@
   /* The irreversible fact is muted danger text: the danger text colour, never a filled badge. */
   .cinder-approval-card__facts-line-fact[data-cinder-tone='danger'] {
     color: var(--cinder-status-danger-text);
+  }
+
+  /* A narrow decision card puts its status above the title, as the card layout does (COR-2288,
+   * owner decision): the deadline and "Can't be undone", or a decided card's state word, read
+   * first and the title keeps the full line under them. */
+  @container (inline-size < 30rem) {
+    .cinder-approval-card__decision-head .cinder-approval-card__facts-line,
+    .cinder-approval-card__decision-head .cinder-approval-card__state-word {
+      flex-basis: 100%;
+      order: -1;
+    }
   }
 
   @container (inline-size >= 30rem) {
@@ -1360,6 +1369,59 @@
 
   .cinder-approval-card__receipt-details[hidden] {
     display: none;
+  }
+
+  /* The receipt's details are one definition list: each term in one small muted label style over
+   * its value (board row A4). */
+  .cinder-approval-card__receipt-facts {
+    margin: 0;
+  }
+
+  .cinder-approval-card__receipt-fact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-approval-card__receipt-fact > dd {
+    min-inline-size: 0;
+    margin: 0;
+    color: var(--cinder-text-default);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-approval-card__receipt-term {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  /* At 30rem and wider the settled receipt folds to one row: the decided action, who decided, and
+   * the Details chevron at the trailing end; the list opens under the row, the full width. */
+  @container (inline-size >= 30rem) {
+    .cinder-approval-card__receipt {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      column-gap: var(--cinder-space-3);
+    }
+
+    .cinder-approval-card__receipt > .cinder-approval-card__settled-row {
+      display: flex;
+      flex: 1 1 0;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: var(--cinder-space-3);
+    }
+
+    .cinder-approval-card__receipt > .cinder-approval-card__input {
+      display: contents;
+    }
+
+    .cinder-approval-card__receipt .cinder-approval-card__receipt-details {
+      flex: 0 0 100%;
+    }
   }
 
   /* ----------------------------------------

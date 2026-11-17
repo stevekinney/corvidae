@@ -57,7 +57,7 @@ export function lastAssistantId(conversation: ConversationHistory): string | und
     if (id === undefined || !Object.hasOwn(conversation.messages, id)) continue;
     const row = conversation.messages[id];
     // A hidden row (the turn a page reads a run it joined under) is not the person's message.
-    if (row?.role === 'user' && row.hidden !== true) return undefined;
+    if (row?.role === 'user' && !row.hidden) return undefined;
     if (row?.role === 'assistant') return id;
   }
   return undefined;

@@ -21,6 +21,8 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
 
+  import { CHAT_APPROVAL_FOR_ATTRIBUTE } from '@lostgradient/chat';
+
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { approvalQuestion } from '../../lib/tool-text.ts';
   import { decidedByLabel, decidedPlace, type DecisionContext } from './approval-decision-words.ts';
@@ -43,6 +45,12 @@
     operation?: ApprovalOperation | undefined;
     /** Whether the operation cannot be undone; without it, a dangerous tool's call is taken as such. */
     irreversible?: boolean | undefined;
+    /**
+     * The id of the message that asks for the approval. A waiting card carries it as
+     * `data-chat-approval-for`, so Chat's arrival scroll, visibility check and reminder find the
+     * card this page draws outside Chat's message rows (COR-2440 AC5).
+     */
+    approvalMessageId?: string | undefined;
     /** What approving does, in one sentence, as the approval declares it (COR-2438). */
     consequence?: string | undefined;
     /** Why the agent wants to do it, offered as a disclosure (COR-2438). */
@@ -89,6 +97,7 @@
     context,
     operation,
     irreversible,
+    approvalMessageId,
     consequence,
     why,
     decidedInHref,
@@ -197,6 +206,9 @@
         'data-approval-decision': true,
         'data-cinder-tool-approval': true,
         'data-cinder-tool-approval-call-id': entry.railId ?? entry.callId,
+        ...(approvalMessageId === undefined
+          ? {}
+          : { [CHAT_APPROVAL_FOR_ATTRIBUTE]: approvalMessageId }),
         tabindex: -1,
       }
     : {}}

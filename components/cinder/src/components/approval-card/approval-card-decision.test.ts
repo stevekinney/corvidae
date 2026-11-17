@@ -539,7 +539,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(details?.hasAttribute('hidden')).toBe(true);
     await fireEvent.click(getByRole('button', { name: 'Details' }));
     expect(squash(details?.textContent)).toContain(
-      'Your note: Refund it through the original card instead',
+      'Your note Refund it through the original card instead',
     );
   });
 
@@ -588,14 +588,14 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(details?.hasAttribute('hidden')).toBe(false);
-    expect(squash(details?.textContent)).toContain('Your note: Checked the order first');
-    expect(squash(details?.textContent)).toContain('Result: Refunded $42.00 to the original card.');
+    expect(squash(details?.textContent)).toContain('Your note Checked the order first');
+    expect(squash(details?.textContent)).toContain('Result Refunded $42.00 to the original card.');
     expect(squash(details?.querySelector('.cinder-approval-card__command')?.textContent)).toContain(
       'refund --order 4471 --amount 42.00',
     );
   });
 
-  test('writes "Your note:" and "Result:" as one label followed by one space each', async () => {
+  test('writes the note, the result and the command as one definition list with one label style (A4)', async () => {
     const { container, getByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
@@ -607,22 +607,43 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
     await fireEvent.click(getByRole('button', { name: 'Details' }));
     const details = container.querySelector('.cinder-approval-card__receipt-details')!;
-    const note = details.querySelector('.cinder-approval-card__decision-note');
-    const result = details.querySelector('.cinder-approval-card__result');
-    expect(squash(note?.textContent)).toBe(
-      'Your note: Approved after confirming the duplicate charge.',
-    );
-    expect(squash(result?.textContent)).toBe('Result: Refund completed successfully.');
-    // The same classed label leads each, and each is followed by exactly one space.
-    for (const [block, label] of [
-      [note, 'decision-note-label'],
-      [result, 'result-label'],
-    ] as const) {
-      const span = block?.querySelector(`.cinder-approval-card__${label}`);
-      expect(span).not.toBeNull();
-      expect(span?.nextSibling?.textContent?.startsWith(' ')).toBe(true);
-      expect(span?.nextSibling?.textContent?.startsWith('  ')).toBe(false);
+    expect(details.tagName).toBe('DL');
+    expect(container.querySelectorAll('.cinder-approval-card__receipt dl')).toHaveLength(1);
+    const terms = [...details.querySelectorAll(':scope > div > dt')];
+    expect(terms.map((term) => term.textContent?.trim())).toEqual([
+      'Your note',
+      'Result',
+      'Command',
+    ]);
+    // One label style: every term carries the same class, and none ends in a colon.
+    for (const term of terms) {
+      expect(term.className).toBe('cinder-approval-card__receipt-term');
+      expect(term.textContent?.trim().endsWith(':')).toBe(false);
     }
+    expect(
+      [...details.querySelectorAll(':scope > div > dd')].map((value) => squash(value.textContent)),
+    ).toEqual([
+      'Approved after confirming the duplicate charge.',
+      'Refund completed successfully.',
+      expect.stringContaining('refund --order 4471 --amount 42.00'),
+    ]);
+  });
+
+  test('folds the settled receipt to one row at 30rem and wider, the chevron at its end (A4)', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const wide = css.match(
+      /@container \(inline-size >= 30rem\) \{\s*\.cinder-approval-card__receipt \{([^}]*)\}([\s\S]*?)\n {2}\}/,
+    );
+    expect(wide?.[1]).toMatch(/flex-direction:\s*row;/);
+    expect(wide?.[2]).toMatch(
+      /\.cinder-approval-card__receipt > \.cinder-approval-card__settled-row \{[^}]*display:\s*flex;/,
+    );
+    expect(wide?.[2]).toMatch(
+      /\.cinder-approval-card__receipt > \.cinder-approval-card__input \{\s*display:\s*contents;/,
+    );
+    expect(wide?.[2]).toMatch(
+      /\.cinder-approval-card__receipt \.cinder-approval-card__receipt-details \{\s*flex:\s*0 0 100%;/,
+    );
   });
 
   test('offers no disclosure when there is nothing more to show', () => {
@@ -776,8 +797,17 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).toMatch(/\.cinder-approval-card__fact--command \{\s*display: block;/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*background:/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*border:/);
+    // An expired approval is a quiet dashed neutral row in both layouts, never warning-toned (A7).
+    const expired = css.match(
+      /\.cinder-approval-card--decision\[data-cinder-state='expired'\],\s*\.cinder-approval-card--row\[data-cinder-state='expired'\] \{([^}]*)\}/,
+    )?.[1];
+    expect(expired).toMatch(/border-style:\s*dashed;/);
+    expect(expired).toMatch(/border-color:\s*var\(--cinder-border-strong\);/);
+    expect(expired).toMatch(/background:\s*transparent;/);
+    expect(css).not.toMatch(/\[data-cinder-state='expired'\][^{]*\{[^}]*status-warning/);
+    // A narrow decision card puts its status above the title, as the card layout does (COR-2288).
     expect(css).toMatch(
-      /\.cinder-approval-card--decision\[data-cinder-state='expired'\] \{[^}]*border-color:\s*var\(--cinder-status-warning-border\)/s,
+      /@container \(inline-size < 30rem\) \{\s*\.cinder-approval-card__decision-head \.cinder-approval-card__facts-line,\s*\.cinder-approval-card__decision-head \.cinder-approval-card__state-word \{[^}]*order:\s*-1;/,
     );
     expect(css).toMatch(/@media \(any-pointer: coarse\) \{[^}]*__arm-escape \{\s*display: none;/s);
     expect(css).toMatch(
@@ -1009,8 +1039,11 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\s+/g,
       ' ',
     );
-    // No container query decides it: the row measures itself and sets the attribute.
-    expect(css).not.toMatch(/@container \(inline-size < 30rem\)/);
+    // No container query decides it: the row measures itself and sets the attribute. (A narrow
+    // card's 30rem query only moves the status above the title.)
+    for (const block of css.match(/@container \(inline-size < 30rem\) \{[^@]*/g) ?? []) {
+      expect(block).not.toMatch(/note/);
+    }
     const { container } = render(ApprovalCard, { props: decisionCard() });
     // Nothing is measured without layout, so the words stay.
     expect(container.querySelector('[data-cinder-note-compact]')).toBeNull();

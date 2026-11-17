@@ -155,6 +155,15 @@ describe('the review-read deadline cache (COR-2280 P7)', () => {
     ).toBeUndefined();
   });
 
+  test('the chat page applies the clock an expiry hands back to its displayed clock', async () => {
+    // The page's rail and card read `bureauNow`; without this assignment the rail keeps the tick
+    // from before the approval stopped being live, and reads it as waiting (the stale clock).
+    const source = await Bun.file(new URL('./chat-conversation.svelte', import.meta.url)).text();
+    const read = source.slice(source.indexOf('reviewDeadlines.apply('));
+    const applied = read.slice(0, read.indexOf('reconcileApprovalExpiry'));
+    expect(applied).toMatch(/if \(outcome\.clockAt !== undefined\) bureauNow = outcome\.clockAt;/);
+  });
+
   test('claims a row’s read once until it is released', () => {
     const deadlines = new ApprovalReviewDeadlines();
     expect(deadlines.claim('key')).toBe(true);

@@ -85,6 +85,25 @@ test('a return to the page while an opener’s transport is open reads no histor
   expect(session.transportActive).toBe(false);
 });
 
+test('a return reads transportActive itself: an open transport with nothing streaming reads no history (COR-2293)', async () => {
+  // The controller's own turns keep `streaming` set for as long as their transport is open, so this
+  // state is made by hand: a transport is open, nothing streams and nothing attaches. The refresh
+  // a page return makes must read `transportActive`, not only `streaming` and `attaching`.
+  const requests: string[] = [];
+  const session = open(async (input) => {
+    const url = urlOf(input);
+    requests.push(url);
+    if (isHistoryRead(url)) return Response.json({ threadId: 'thread', messages: [] });
+    return new Response('', { status: 404 });
+  });
+  Object.defineProperty(session, 'transportActive', { configurable: true, get: () => true });
+  expect(session.streaming).toBe(false);
+  expect(session.attaching).toBe(false);
+
+  expect(await session.refresh()).toBe(false);
+  expect(requests.some(isHistoryRead)).toBe(false);
+});
+
 test('a new chat reads no history before its first run begins, and reads it once it has', async () => {
   const requests: string[] = [];
   const session = open(

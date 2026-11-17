@@ -104,6 +104,7 @@ export const appFixtureDeclarations = {
   alert: ['assertion'],
   'alert-dialog': ['assertion'],
   'approval-card': ['assertion'],
+  'approval-group': ['assertion'],
   'aspect-ratio': ['assertion'],
   autocomplete: ['assertion'],
   avatar: ['assertion'],

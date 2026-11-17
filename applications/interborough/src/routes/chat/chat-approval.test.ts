@@ -5,6 +5,8 @@
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import { CHAT_APPROVAL_FOR_ATTRIBUTE } from '@lostgradient/chat';
+
 import ChatApproval from './chat-approval.svelte';
 import type { ToolCallEntry } from './tool-activity.ts';
 
@@ -107,6 +109,25 @@ describe('a waiting approval', () => {
     expect(view.container.querySelector('[data-approval-decision]')).toBeNull();
     expect(view.queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(view.container.textContent).toContain('Approved');
+  });
+
+  test('marks a waiting card with the message that asks for it, so Chat finds it (COR-2440 AC5)', () => {
+    const view = render(ChatApproval, {
+      props: {
+        id: 'approval-marked',
+        entry: entry('dangerous'),
+        question: 'Look up order 4471?',
+        source: 'Tool runner',
+        context: {},
+        unreachable: false,
+        approvalMessageId: 'native-1:step:1:result:call-1',
+        onResolve: () => {},
+      },
+    } as never);
+    const card = view.container.querySelector('[data-approval-decision]');
+    // The attribute Chat documents and looks a host-drawn card up by.
+    expect(card?.getAttribute(CHAT_APPROVAL_FOR_ATTRIBUTE)).toBe('native-1:step:1:result:call-1');
+    expect(card?.getAttribute('data-cinder-state')).toBe('pending');
   });
 
   test('is the explicit decision surface, not the row (COR-2282)', () => {

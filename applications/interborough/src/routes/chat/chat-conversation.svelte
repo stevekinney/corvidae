@@ -1352,6 +1352,8 @@
         approvalKey === undefined ? undefined : reviewDeadlines.expired[approvalKey];
       return {
         toolCallId: result.callId,
+        // The row that asks for the approval, which Chat looks the card up by (COR-2440 AC5).
+        messageId: message.id,
         reviewId: reviewed?.id,
         approvalKey,
         action:
@@ -2313,6 +2315,7 @@
                         : undefined}
                       requestedAt={asked?.requestedAt}
                       alwaysAsks={asked?.alwaysAsks}
+                      approvalMessageId={asked?.messageId}
                       irreversible={asked?.action?.irreversible}
                       consequence={asked?.action?.consequence}
                       why={asked?.action?.why}
