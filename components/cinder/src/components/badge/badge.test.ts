@@ -329,6 +329,13 @@ describe('Badge truncate', () => {
     expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe('Outer hint');
   });
 
+  test('draws the focus ring around the whole badge, not on the label inside the pill', () => {
+    expect(badgeCss).toMatch(
+      /\.cinder-badge:has\(> \.cinder-badge__label:focus-visible\) \{[^}]*box-shadow: var\(--_cinder-focus-ring-shadow\);/,
+    );
+    expect(badgeCss).toMatch(/\.cinder-badge__label:focus-visible \{\s*outline: none;\s*\}/);
+  });
+
   test('leaves a badge without truncate as it was', () => {
     const { container } = render(Badge, { children: textSnippet('Ready') });
     const badge = container.querySelector('.cinder-badge');

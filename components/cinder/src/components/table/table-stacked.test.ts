@@ -528,6 +528,39 @@ describe('Table fit stacks into cards', () => {
     );
   });
 
+  test('the stacked description and end value are muted, in the phone row type of a stacked list item', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    ).replace(/\s+/g, ' ');
+    const body = (selector: string): string => {
+      const escaped = selector
+        .replace(/\s+/g, ' ')
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/ /g, '\\s+');
+      return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    };
+    // The sibling rule decides the layout only: a colour on it would outrank the muted parts.
+    const sibling = body(
+      '.cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell:not([data-cinder-controls])\n    ~ .cinder-table__cell:not([data-cinder-controls])',
+    );
+    expect(sibling).toContain('flex: 0 1 auto;');
+    expect(sibling).not.toMatch(/color:/);
+    const prose = body(
+      ".cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack='plain']",
+    );
+    expect(prose).toContain('color: var(--cinder-text-muted);');
+    const end = body(
+      ".cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack='end']",
+    );
+    expect(end).toContain('color: var(--cinder-text-subtle);');
+    expect(end).toContain('font-size: var(--cinder-text-xs);');
+    const title = body(
+      '.cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack-title]',
+    );
+    expect(title).toContain('font-size: var(--cinder-text-base);');
+    expect(title).toContain('font-weight: var(--cinder-font-semibold);');
+  });
+
   test('the card styles are scoped to the card marker and draw no frame', async () => {
     const css = stripCinderComponentsLayer(
       await Bun.file(new URL('./table.css', import.meta.url)).text(),
