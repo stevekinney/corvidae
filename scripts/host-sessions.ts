@@ -564,9 +564,13 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
   const holder = ownerFor(request.holder, 'claude session', request.cwd, started);
   await mkdir(directory, { recursive: true });
   if (options.bypass === true) {
-    // Past the cap, but counted like any other.
-    await recordHolder(directory, request.sessionId, holder);
-    await appendEvent(directory, request.sessionId, admitEvent(request, now(), true));
+    // Past the cap, but counted like any other, and recorded under the admission lock like every
+    // write of a holder, so a survey cannot remove the ledger it has just made live.
+    const hook = ownerFor(request.waiter, `bypass ${request.toolUseId}`, request.cwd, started);
+    await withAdmissionLock(directory, hook, options, async () => {
+      await recordHolder(directory, request.sessionId, holder);
+      await appendEvent(directory, request.sessionId, admitEvent(request, now(), true));
+    });
     return { admitted: true, bypassed: true, waitedMilliseconds: 0 };
   }
   const queue = queueDirectory(directory);
@@ -789,33 +793,45 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
   if (agentId === '') return;
   const table = context.readProcessTable();
   const session = table === undefined ? undefined : sessionProcess(context.hookPid, table);
-  const ledgers = await readSessions(context.directory);
-  let own = ledgers.find((ledger) => ledger.sessionId === sessionId);
-  if (own !== undefined && !sessionAlive(own, table)) {
-    // The session was resumed in a new process: what the old one ran ended with it.
-    await removeLedger(context.directory, own.directory);
-    own = undefined;
-  }
-  if (own === undefined && session === undefined) return;
-  if (session !== undefined && table !== undefined) {
-    const holder = ownerFor(
-      identity(session, table.get(session)),
-      'claude session',
-      text(input.cwd),
-      context.now(),
-    );
-    await recordHolder(context.directory, sessionId, holder);
-  }
-  const event: SessionEvent = { kind: 'start', agentId, at: context.now() };
-  const before = own?.state ?? foldSession([]);
-  const after = applySessionEvent(before, event);
-  const agent = after.agents.get(agentId);
-  const others = ledgers.filter((ledger) => ledger !== own && sessionAlive(ledger, table));
-  const overCap =
-    agent !== undefined &&
-    runsWithoutAdmission(agent) &&
-    hostPlaces(others) + sessionPlaces(after) > (context.cap ?? hostPlaceCap);
-  await appendEvent(context.directory, sessionId, overCap ? { ...event, overCap } : event);
+  const hook = ownerFor(
+    identity(context.hookPid, table?.get(context.hookPid)),
+    `agent ${agentId} start (session ${sessionId.slice(0, 8)})`,
+    text(input.cwd),
+    context.now(),
+  );
+  await mkdir(context.directory, { recursive: true });
+  // Under the admission lock, like every write of a holder: an admission's survey removes a ledger
+  // it read without a holder or with a dead one, and must not remove it after this start has
+  // recorded the session's live process in it (COR-2463).
+  await withAdmissionLock(context.directory, hook, context, async () => {
+    const ledgers = await readSessions(context.directory);
+    let own = ledgers.find((ledger) => ledger.sessionId === sessionId);
+    if (own !== undefined && !sessionAlive(own, table)) {
+      // The session was resumed in a new process: what the old one ran ended with it.
+      await removeLedger(context.directory, own.directory);
+      own = undefined;
+    }
+    if (own === undefined && session === undefined) return;
+    if (session !== undefined && table !== undefined) {
+      const holder = ownerFor(
+        identity(session, table.get(session)),
+        'claude session',
+        text(input.cwd),
+        context.now(),
+      );
+      await recordHolder(context.directory, sessionId, holder);
+    }
+    const event: SessionEvent = { kind: 'start', agentId, at: context.now() };
+    const before = own?.state ?? foldSession([]);
+    const after = applySessionEvent(before, event);
+    const agent = after.agents.get(agentId);
+    const others = ledgers.filter((ledger) => ledger !== own && sessionAlive(ledger, table));
+    const overCap =
+      agent !== undefined &&
+      runsWithoutAdmission(agent) &&
+      hostPlaces(others) + sessionPlaces(after) > (context.cap ?? hostPlaceCap);
+    await appendEvent(context.directory, sessionId, overCap ? { ...event, overCap } : event);
+  });
 }
 
 /** Appends an event to a session that has a ledger; a session without one holds nothing to change. */

@@ -25,6 +25,8 @@ import { applySessionEvent, type SessionEvent, type SessionState } from './host-
 import {
   admitWorker,
   appendEvent,
+  handleHookEvent,
+  hostPlaces,
   readSessions,
   releasePlace,
   type Admission,
@@ -802,6 +804,70 @@ const m7LedgerWithoutHolder = await scenario(async (root) => {
   }).toEqual({ withoutHolder: [], sessions: ['session-A'] });
 });
 
+/**
+ * An admission's survey read session C's ledger without a holder and is about to remove it, when
+ * C's `SubagentStart` records C's live process and the agent's start in that ledger. The removal
+ * must not take the start with it: C's running agent keeps its places.
+ */
+const m7StartBesideTheSurvey = await scenario(async (root) => {
+  const directory = join(root, 'places');
+  const ledger = join(directory, 'sessions', 'session-C');
+  await real.mkdir(join(ledger, 'events'), { recursive: true });
+  const stale = { kind: 'start', agentId: 'agent-old', at: 0, sessionId: 'session-C' };
+  await real.writeFile(join(ledger, 'events', '000000000001.json'), JSON.stringify(stale));
+  const startWaits = gate();
+  const admissionDone = gate();
+  let starting: Promise<Settled<unknown>> | undefined;
+  const dispose = interceptFileSystem([
+    {
+      methods: ['rename'],
+      matches: ([from]) => from === ledger,
+      before: async () => {
+        starting = settle(
+          handleHookEvent(
+            {
+              hook_event_name: 'SubagentStart',
+              session_id: 'session-C',
+              agent_id: 'agent-new',
+              agent_type: 'chef-worker',
+              cwd: '/worktrees/C',
+            },
+            {
+              directory,
+              hookPid: 511,
+              environment: {},
+              readProcessTable: () => hostTable(),
+              now: () => 1_000_000,
+              sleep: async () => {
+                startWaits.open();
+                await admissionDone.opened;
+              },
+            },
+          ),
+        );
+        await Promise.race([starting, startWaits.opened]);
+      },
+    },
+  ]);
+  let surveyed: Settled<Admission>;
+  try {
+    surveyed = await settle(admission(directory, 'A', 'a1'));
+  } finally {
+    admissionDone.open();
+    await starting;
+    dispose();
+  }
+  const ledgers = await readSessions(directory);
+  const sessionC = ledgers.filter((each) => each.sessionId === 'session-C');
+  const started = await starting;
+  expect({
+    admitted: admitted(surveyed),
+    startRecorded: started?.ok,
+    holder: sessionC[0]?.holder?.pid,
+    places: hostPlaces(sessionC),
+  }).toEqual({ admitted: true, startRecorded: true, holder: 500, places: 2 });
+});
+
 // --- M8: the interleaving exploration covers expiry and release ---------------------------------
 
 function without(kind: SessionEvent['kind']) {
@@ -867,6 +933,9 @@ describe('the COR-2463 outcome matrix', () => {
 
   test('M7: the next admission reclaims a ledger left without its holder', () =>
     rethrow(m7LedgerWithoutHolder));
+
+  test('M7: a start recorded while the survey removes its ledger as holderless keeps its places', () =>
+    rethrow(m7StartBesideTheSurvey));
 
   test('M8: the exploration covers expiry and release, and fails without either step', () =>
     rethrow(m8ExplorationCoversExpiryAndRelease));
