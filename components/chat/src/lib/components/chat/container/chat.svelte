@@ -1761,6 +1761,8 @@
     let released = false;
     let frame = 0;
     let observedCard: HTMLElement | null = null;
+    // Where the card stood before the last scroll this placement made.
+    let movedFrom: number | undefined;
     const settled = (): void => {
       approvalArrivalSettled = true;
     };
@@ -1778,16 +1780,28 @@
         resizes?.observe(card);
       }
       if (focusIsInside(card, scroller.ownerDocument.activeElement)) return settled();
+      // The placement, not the person, holds the transcript off its end, so Jump to latest stays
+      // hidden, as it does after a lift: its band would shrink the transcript under the card and
+      // feed the placement as the reminder did (COR-2327).
+      attentionLifted = true;
+      attentionLiftedTop = scroller.scrollTop;
       const viewportBox = approvalArrivalBox(scroller);
       const cardBox = card.getBoundingClientRect();
       // A layout not yet measured (zero-sized boxes) says nothing about where the card stands, so
       // the reminder stays available; the resize that measures it places the card.
       if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
       const shift = approvalArrivalShift(cardBox, viewportBox);
-      if (shift === 0) return settled();
+      if (shift === 0) {
+        movedFrom = undefined;
+        return settled();
+      }
+      // The last scroll did not move the card: the transcript is at its end or its start, where it
+      // rests. Judged by the card, not by `scrollTop`, which a transcript may report unclamped.
+      if (movedFrom !== undefined && Math.abs(cardBox.top - movedFrom) < 0.5) return settled();
+      movedFrom = cardBox.top;
       const before = scroller.scrollTop;
       scroller.scrollTop += shift;
-      // A transcript already at its end or its start cannot move further: that is where it rests.
+      attentionLiftedTop = scroller.scrollTop;
       if (Math.abs(scroller.scrollTop - before) < 0.5) return settled();
       // Look once more after the scroll lands, until a pass moves nothing.
       schedule();
@@ -1831,6 +1845,9 @@
   // Whether the transcript sits where a waiting item's lift put it, and not where the person did.
   // Jump to latest stays hidden then: the lift is the end of what there is to read (C#7).
   let attentionLifted = $state(false);
+  // Where the lift, or the arrival placement, left the transcript; moving away from it gives Jump
+  // to latest back. Not state: nothing renders from it.
+  let attentionLiftedTop = 0;
   // Whether Jump to latest is drawn. The transcript gives up the band the button floats in while
   // it shows, so the button never lies on a line of text; the band is not there otherwise.
   const jumpButtonShown = $derived(scrollState.showJumpButton && !attentionLifted);
@@ -1840,7 +1857,6 @@
     let target: HTMLElement | null = null;
     let released = false;
     let frame = 0;
-    let liftedTop = 0;
     const reveal = (): void => {
       frame = 0;
       const next = findAttentionTarget(scroller);
@@ -1876,14 +1892,14 @@
       );
       if (shift !== 0) {
         scroller.scrollTop += shift;
-        liftedTop = scroller.scrollTop;
+        attentionLiftedTop = scroller.scrollTop;
         attentionLifted = true;
       }
     };
     // Only the transcript moving away from where the lift left it gives Jump to latest back, so a
     // press inside the lifted card never brings the control in under the finger mid-press.
     const followScroll = (): void => {
-      if (untrack(() => attentionLifted) && Math.abs(scroller.scrollTop - liftedTop) > 2) {
+      if (untrack(() => attentionLifted) && Math.abs(scroller.scrollTop - attentionLiftedTop) > 2) {
         attentionLifted = false;
       }
     };
