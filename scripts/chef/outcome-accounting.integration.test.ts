@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { materializeTask, verifyTaskBank, type TaskBank } from './outcome-accounting.ts';
 
 test('rejects a bank whose repaired control changes an oracle', async () => {
@@ -16,7 +17,7 @@ test('rejects a bank whose repaired control changes an oracle', async () => {
   );
 });
 
-test('read never initializes a missing accounting record', async () => {
+const readOutcome = await outcomeOf(async () => {
   const directory = mkdtempSync(join(tmpdir(), 'outcome-accounting-read-'));
   const record = join(directory, 'missing.json');
   try {
@@ -33,4 +34,8 @@ test('read never initializes a missing accounting record', async () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('read never initializes a missing accounting record', () => {
+  rethrow(readOutcome);
 });

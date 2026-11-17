@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { materializeTask, type TaskBank, type TaskControl } from './outcome-accounting.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'task-bank-local-'));
@@ -16,12 +17,16 @@ async function execute(taskId: string, control: TaskControl): Promise<number | n
   return result.exitCode;
 }
 
-test('materialized fixtures reject buggy and empty candidates while accepting repairs', async () => {
+const controlsOutcome = await outcomeOf(async () => {
   for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02']) {
     expect(await execute(taskId, 'buggy')).toBe(1);
     expect(await execute(taskId, 'empty')).toBe(1);
     expect(await execute(taskId, 'repaired')).toBe(0);
   }
+});
+
+test('materialized fixtures reject buggy and empty candidates while accepting repairs', () => {
+  rethrow(controlsOutcome);
 });
 
 test('the materializer never allows an oracle replacement or filesystem escape', () => {
@@ -33,7 +38,7 @@ test('the materializer never allows an oracle replacement or filesystem escape',
   expect(() => materializeTask(task, scratch, 'buggy')).toThrow('unsafe file path');
 });
 
-test('distinct oracle cases reject constant candidate answers', async () => {
+const constantsOutcome = await outcomeOf(async () => {
   for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02']) {
     const task = bank.tasks.find((entry) => entry.id === taskId)!;
     const root = materializeTask(task, scratch, 'repaired');
@@ -41,6 +46,10 @@ test('distinct oracle cases reject constant candidate answers', async () => {
     const result = await runWithHangGuard(['bun', '--no-install', ...task.oracleArgv], { cwd: root });
     expect(result.exitCode).toBe(1);
   }
+});
+
+test('distinct oracle cases reject constant candidate answers', () => {
+  rethrow(constantsOutcome);
 });
 
 rmSync(scratch, { recursive: true, force: true });
