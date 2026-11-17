@@ -173,6 +173,8 @@ interface PeerOptions {
   readonly receiveOnly?: boolean;
   /** The plugin that contributes the kind; `Bad_Plugin` cannot be given storage. */
   readonly plugin?: string;
+  /** No trigger lease, as a Bureau over memory storage has: every listener runs, and no record. */
+  readonly memory?: boolean;
 }
 
 /** The shared store every peer of a row works over. */
@@ -300,7 +302,7 @@ async function peer(
       void state.calls.push(`report ${pluginName}/${workflow}`),
     clearFailure: (pluginName, workflow) =>
       void state.calls.push(`clear ${pluginName}/${workflow}`),
-    lease,
+    lease: options.memory === true ? undefined : lease,
     publish: (event) => void published.push(event),
   });
   const settled = async (): Promise<void> => {
@@ -409,6 +411,45 @@ function readTogether(count: number): { readonly arrive: (key: string) => Promis
       await all.promise;
     },
   };
+}
+
+/**
+ * `p` holds the listener of `a` and `taker` takes its record: `p`'s next fire is fenced, and its
+ * listener's stop begins and is held until the returned gate opens.
+ */
+async function fencedWithItsStopHeld(
+  p: Peer,
+  kv: ConditionalTextValueStore,
+  taker: Peer,
+): Promise<{ open: () => void }> {
+  await p.reconcile({ a: {} });
+  await takenBy(kv, taker);
+  const stopping = gate();
+  p.onStop = () => stopping.promise;
+  expect(await p.starts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+  expect(p.stops).toHaveLength(1);
+  p.onStop = () => undefined;
+  return stopping;
+}
+
+/**
+ * The invariant (COR-2167): `next` would start `p`'s listener of `a` again while its earlier
+ * listener's stop is held by `stopping`. No `start` begins until that stop has completed, and then
+ * exactly one does, and `next` settles.
+ */
+async function expectTheStartToWaitForTheStop(
+  p: Peer,
+  stopping: { open: () => void },
+  next: Promise<unknown>,
+  label = '',
+): Promise<void> {
+  const starts = p.starts.length;
+  await quietFor(50);
+  expect(p.starts, `no start while the earlier listener is stopping ${label}`).toHaveLength(starts);
+  stopping.open();
+  await next;
+  await p.settled();
+  expect(p.starts).toHaveLength(starts + 1);
 }
 
 /** A secret store the test saves to and removes from. */
@@ -900,7 +941,7 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M18: tick pass, standby, record absent (the holder closed): CAS on absent, then start, listening within one tick',
+    row: 'M18: tick pass, standby, record absent (the holder closed): CAS on absent, then start, listening within one tick, and only once any earlier listener of the workflow in this process has stopped',
     run: async () => {
       const shared = sharedStore();
       const holder = await peer(shared);
@@ -912,10 +953,20 @@ const rows: readonly LeaseRow[] = [
       await standby.tick();
       expect(standby.status()).toEqual(status('listening', at(3)));
       expect(await shared.kv.get(RECORD)).toBe(standby.own);
+
+      // A standby that was the holder, was fenced, and whose listener is still stopping.
+      const other = sharedStore();
+      const fenced = await peer(other);
+      const taker = await peer(other);
+      const stopping = await fencedWithItsStopHeld(fenced, other.kv, taker);
+      await other.kv.delete(RECORD);
+      await expectTheStartToWaitForTheStop(fenced, stopping, fenced.tick());
+      expect(fenced.status()?.state).toBe('listening');
+      expect(await other.kv.get(RECORD)).toBe(fenced.own);
     },
   },
   {
-    row: 'M19: tick pass, standby, holder’s lease expired or absent: CAS on the raw record and lease, then start',
+    row: 'M19: tick pass, standby, holder’s lease expired or absent: CAS on the raw record and lease, then start, only once any earlier listener of the workflow in this process has stopped',
     run: async () => {
       for (const how of ['expired', 'absent'] as const) {
         const shared = sharedStore();
@@ -929,6 +980,18 @@ const rows: readonly LeaseRow[] = [
         await standby.tick();
         expect(standby.status()?.state).toBe('listening');
         expect(await shared.kv.get(RECORD)).toBe(standby.own);
+
+        // A former holder whose taker is gone, while its own fenced listener is still stopping.
+        const other = sharedStore();
+        const fenced = await peer(other);
+        const taker = await peer(other);
+        const stopping = await fencedWithItsStopHeld(fenced, other.kv, taker);
+        crash(taker);
+        if (how === 'expired') fenced.passTime(PROCESS_LEASE_MILLISECONDS + 1);
+        else await other.kv.delete(processLeaseKey(taker.processLease.processId!));
+        await expectTheStartToWaitForTheStop(fenced, stopping, fenced.tick());
+        expect(fenced.status()?.state).toBe('listening');
+        expect(await other.kv.get(RECORD)).toBe(fenced.own);
       }
     },
   },
@@ -953,7 +1016,7 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M21: tick pass, standby whose record names this process (a CAS that threw had committed): held, no write, start runs',
+    row: 'M21: tick pass, standby whose record names this process (a CAS that threw had committed): held, no write, start runs, only once any earlier listener of the workflow in this process has stopped',
     run: async () => {
       const shared = sharedStore();
       const holder = await peer(shared);
@@ -966,6 +1029,15 @@ const rows: readonly LeaseRow[] = [
       expect(standby.status()?.state).toBe('listening');
       expect(standby.starts).toHaveLength(1);
       expect(standby.writes).toEqual([]);
+
+      // A fenced former holder finds the record naming it again while its listener is stopping.
+      const other = sharedStore();
+      const fenced = await peer(other);
+      const taker = await peer(other);
+      const stopping = await fencedWithItsStopHeld(fenced, other.kv, taker);
+      await takenBy(other.kv, fenced);
+      await expectTheStartToWaitForTheStop(fenced, stopping, fenced.tick());
+      expect(fenced.status()?.state).toBe('listening');
     },
   },
   {
@@ -1162,7 +1234,7 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M31: a fire from a holder that lost the lease: skipped stopped, no run, controller aborted, standby; its stop runs in the background and close awaits it',
+    row: 'M31: a fire from a holder that lost the lease: skipped stopped, no run, controller aborted, standby; its stop runs in the background, and the next start of the workflow awaits it, as close does',
     run: async () => {
       const shared = sharedStore();
       const holder = await peer(shared);
@@ -1186,6 +1258,53 @@ const rows: readonly LeaseRow[] = [
       stopping.open();
       await closing;
       expect(await shared.kv.get(RECORD)).toBe(taker.own);
+
+      // The taker gives the record back while the fenced listener is still stopping: the next
+      // start, a tick's, waits for that stop.
+      const other = sharedStore();
+      const fenced = await peer(other);
+      const otherTaker = await peer(other);
+      const held = await fencedWithItsStopHeld(fenced, other.kv, otherTaker);
+      await other.kv.delete(RECORD);
+      await expectTheStartToWaitForTheStop(fenced, held, fenced.tick());
+      expect(fenced.status()?.state).toBe('listening');
+    },
+  },
+  {
+    row: 'M31a (added in review): the fenced listener’s stop writes its trigger storage after the next listener of the workflow started: that start waits for the stop, so the stored cursor is the newer listener’s',
+    run: async () => {
+      const shared = sharedStore();
+      const holder = await peer(shared);
+      const taker = await peer(shared);
+      const order: string[] = [];
+      const cursor = (text: string) => new TextEncoder().encode(text);
+      holder.onStart = async (context, count) => {
+        order.push(`start:${count}`);
+        if (count === 2) await context.storage.put('cursor', cursor('new-progress'));
+      };
+      await holder.reconcile({ a: {} });
+      await takenBy(shared.kv, taker);
+      const stopping = gate();
+      holder.onStop = async () => {
+        order.push('stop-begin:1');
+        await stopping.promise;
+        await holder.starts[0]!.storage.put('cursor', cursor('stale-checkpoint'));
+        order.push('stop-end:1');
+      };
+      expect(await holder.starts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+      holder.onStop = () => undefined;
+      // The taker releases the record; this process's next renewal takes it.
+      await shared.kv.delete(RECORD);
+      const ticking = holder.tick();
+      await quietFor(50);
+      expect(order).toEqual(['start:1', 'stop-begin:1']);
+      stopping.open();
+      await ticking;
+      await holder.settled();
+      expect(order).toEqual(['start:1', 'stop-begin:1', 'stop-end:1', 'start:2']);
+      const stored = await holder.starts[1]!.storage.get('cursor');
+      expect(stored === null ? null : new TextDecoder().decode(stored)).toBe('new-progress');
+      expect(holder.status()?.state).toBe('listening');
     },
   },
   {
@@ -1296,6 +1415,22 @@ const rows: readonly LeaseRow[] = [
       expect(holder.requests).toHaveLength(1);
       // The host is handed a payload it still refuses as not JSON, as it would have been at the call.
       expect(z.json().safeParse(holder.requests[0]!.payload).success).toBe(false);
+    },
+  },
+  {
+    row: 'M35b (added in review): a fire with no payload, fire() or fire(undefined), hands the host no payload, with a lease as without one, for the host to start with null',
+    run: async () => {
+      for (const memory of [false, true]) {
+        const shared = sharedStore();
+        const p = await peer(shared, { memory });
+        await p.reconcile({ a: {} });
+        const context = p.starts[0]!;
+        // `fire`'s payload is required by its type; a plugin in JavaScript can leave it out.
+        const withNoArguments = Reflect.apply(context.fire, context, []) as Promise<unknown>;
+        expect(await withNoArguments).toMatchObject({ outcome: 'started' });
+        expect(await context.fire(undefined)).toMatchObject({ outcome: 'started' });
+        expect(p.requests.map((request) => request.payload)).toEqual([undefined, undefined]);
+      }
     },
   },
   {
@@ -1431,7 +1566,7 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M44: a partitioned holder: no tick and fires rejected while its store fails; the peer takes over on expiry; the first renewal after the heal stops it',
+    row: 'M44: a partitioned holder: no tick and fires rejected while its store fails; the peer takes over on expiry; the first renewal after the heal stops it (the lease fences fires, not the plugin’s trigger storage, which the holder can still write until then: a documented gap beside O7)',
     run: async () => {
       const shared = sharedStore();
       const holder = await peer(shared);
@@ -1458,7 +1593,7 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M45: a holder that stalls past its lease and resumes goes standby at its next tick, and its fires are fenced meanwhile',
+    row: 'M45: a holder that stalls past its lease and resumes goes standby at its next tick, and its fires are fenced meanwhile (its listener, not fenced, can still write the plugin’s trigger storage until that tick: a documented gap beside O7)',
     run: async () => {
       const shared = sharedStore();
       const holder = await peer(shared);
@@ -1547,6 +1682,34 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
+    row: 'M47a (added in review): close stops every listener at once: a start that ignores its signal still holds close, but the other listeners are stopped and their records deleted meanwhile',
+    run: async () => {
+      const shared = sharedStore();
+      const p = await peer(shared);
+      p.onStart = (context) => (context.workflowId === 'a' ? boom() : undefined);
+      await p.reconcile({ a: {}, b: {} });
+      expect(p.status('a')?.state).toBe('failed');
+      expect(p.status('b')?.state).toBe('listening');
+      // The timer's attempt of `a` takes its record and starts a listener that never settles.
+      const starting = gate();
+      p.onStart = (context) => (context.workflowId === 'a' ? starting.promise : undefined);
+      const advancing = p.advance(1_000);
+      await waitUntil(() => p.starts.length === 3, { message: 'the retry of a to start' });
+      let closed = false;
+      const closing = p.close().then(() => void (closed = true));
+      await waitUntil(async () => (await shared.kv.get(triggerLeaseKey('b'))) === null, {
+        message: 'the record of b to be deleted',
+      });
+      expect(p.stops).toHaveLength(1);
+      expect(closed).toBe(false);
+      expect(await shared.kv.get(RECORD)).toBe(p.own);
+      starting.open();
+      await closing;
+      await advancing;
+      expect(await shared.kv.get(RECORD)).toBeNull();
+    },
+  },
+  {
     row: 'M48: a close between acquire and start: start is not called, the record is deleted by CAS on its own value, and no status is written',
     run: async () => {
       const shared = sharedStore();
@@ -1610,26 +1773,26 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M49:a retired attempt’s delete and the next attempt’s acquire in one process are chained, so the next attempt never runs on a record its predecessor then deletes',
+    row: 'M49: a retired attempt’s listener stop and the next attempt’s start in one process are chained: the next start, a retry’s or a timer’s, begins only once the earlier listener has stopped, on persistent and on memory storage, and never on a record its predecessor then deletes',
     run: async () => {
-      const shared = sharedStore();
-      const p = await peer(shared);
-      await p.reconcile({ a: {} });
-      const stopping = gate();
-      p.onStop = () => stopping.promise;
-      reportListener(p.starts[0]!, { state: 'failed', error: new Error('gone') });
-      await waitUntil(() => p.status()?.state === 'failed', { message: 'the failure' });
-      const retrying = p.retry();
-      // The next attempt waits for the delete, which waits for the stop.
-      await waitUntil(() => p.services.pendingTimers().length === 0, {
-        message: 'the retry to take over from the timer',
-      });
-      expect(p.starts).toHaveLength(1);
-      stopping.open();
-      expect(await retrying).toMatchObject({ state: 'listening' });
-      await p.settled();
-      expect(p.starts).toHaveLength(2);
-      expect(await shared.kv.get(RECORD)).toBe(p.own);
+      for (const memory of [false, true]) {
+        for (const by of ['retry', 'timer'] as const) {
+          const shared = sharedStore();
+          const p = await peer(shared, { memory });
+          await p.reconcile({ a: {} });
+          const stopping = gate();
+          p.onStop = () => stopping.promise;
+          // The gate reports the listener failed: its stop begins in the background.
+          reportListener(p.starts[0]!, { state: 'failed', error: new Error('gone') });
+          await waitUntil(() => p.status()?.state === 'failed', { message: 'the failure' });
+          expect(p.stops).toHaveLength(1);
+          p.onStop = () => undefined;
+          const next = by === 'retry' ? p.retry() : p.advance(1_000);
+          await expectTheStartToWaitForTheStop(p, stopping, next, `(${by}, memory ${memory})`);
+          expect(p.status()?.state, `${by}, memory ${memory}`).toBe('listening');
+          expect(await shared.kv.get(RECORD)).toBe(memory ? null : p.own);
+        }
+      }
     },
   },
   {
@@ -1811,6 +1974,44 @@ const rows: readonly LeaseRow[] = [
       await closing;
       expect(fenced.writes).toHaveLength(writes);
       expect(await other.kv.get(RECORD)).toBe(taker.own);
+    },
+  },
+  {
+    row: 'M58a (added in review): a close that lands while an attempt waits for an earlier listener’s stop starts nothing and takes no record, and resolves once that stop has completed, on persistent and on memory storage',
+    run: async () => {
+      for (const memory of [false, true]) {
+        const shared = sharedStore();
+        const p = await peer(shared, { memory });
+        let stopping: { open: () => void };
+        let next: Promise<unknown>;
+        if (memory) {
+          // The listener is reported failed and its stop is held; a retry's attempt waits for it.
+          await p.reconcile({ a: {} });
+          const held = gate();
+          p.onStop = () => held.promise;
+          reportListener(p.starts[0]!, { state: 'failed', error: new Error('gone') });
+          await waitUntil(() => p.status()?.state === 'failed', { message: 'the failure' });
+          p.onStop = () => undefined;
+          stopping = held;
+          next = p.retry();
+        } else {
+          // The fenced listener's stop is held; the record is free, and a tick's attempt waits.
+          const taker = await peer(shared);
+          stopping = await fencedWithItsStopHeld(p, shared.kv, taker);
+          await shared.kv.delete(RECORD);
+          next = p.processLease.renew();
+        }
+        await quietFor(50);
+        let closed = false;
+        const closing = p.close().then(() => void (closed = true));
+        await quietFor(50);
+        expect(closed, `memory ${memory}`).toBe(false);
+        stopping.open();
+        await closing;
+        await next;
+        expect(p.starts, `memory ${memory}`).toHaveLength(1);
+        expect(await shared.kv.get(RECORD)).toBeNull();
+      }
     },
   },
   {
@@ -2101,6 +2302,41 @@ describe('the listener lease, through a Bureau (wiring)', () => {
     expect(
       await textValueStore(storage, { disposeUnderlyingStorage: false }).list('bureau-trigger:'),
     ).toEqual([]);
+  });
+
+  it('M35b (added in review): a fire with no payload starts a run with a null payload, on memory and on persistent storage; a payload that is not JSON still rejects', async () => {
+    for (const storage of [new MemoryStorage(), persistentMemory()]) {
+      const plugin = watchPlugin();
+      const harness = await startWorkflowBureau({
+        overrides: {
+          plugins: [plugin.entry],
+          storage,
+          runtime: createManualRuntimeServices({ origin: ORIGIN }),
+          maintenance: 'manual',
+          onDiagnostic: () => undefined,
+        },
+      });
+      cleanups.push(() => harness.dispose());
+      await harness.put('a.json', workflowFileText('a', { trigger: { kind: KIND } }));
+      await harness.bureau.workflows?.refresh();
+      expect(await harness.bureau.workflows?.get('a')).toMatchObject({
+        listener: { state: 'listening' },
+      });
+      const context = plugin.contexts[0]!;
+      const fires = [
+        Reflect.apply(context.fire, context, []) as Promise<PluginTriggerOutcome>,
+        context.fire(undefined),
+      ];
+      for (const fired of fires) {
+        const outcome = await fired;
+        expect(outcome).toMatchObject({ outcome: 'started' });
+        const runId = outcome.outcome === 'started' ? outcome.runId : '';
+        const detail = await harness.bureau.workflows?.getRun(runId);
+        expect(detail?.trigger).toMatchObject({ kind: KIND, payload: null });
+      }
+      const refusal = await rejectionOf(context.fire({ callback: () => undefined }));
+      expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
+    }
   });
 
   it('a persistent Bureau takes the record, ticks at maintain(), takes over a lapsed holder, starts a manual run with no lease, and deletes the record before it releases its process lease', async () => {

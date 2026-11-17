@@ -17,7 +17,10 @@
  *
  * What this does not do: a fire that passed the old holder's fence and a fire of the new holder can
  * both start a run for one idempotency key in the window of a handover (see `fireTrigger` in
- * `workflow-runtime.ts`).
+ * `workflow-runtime.ts`). And it fences fires, not a plugin's own trigger storage: a holder in
+ * another process that stalled or was cut off, and was taken over, keeps its listener running until
+ * its next tick or fence finds the record no longer names it, and can write that storage until
+ * then.
  *
  * @module workflow-trigger-lease
  */
