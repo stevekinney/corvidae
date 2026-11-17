@@ -52,6 +52,7 @@
     onSelect,
     onRetry,
     onCopyInput,
+    onCopyError,
     endLabel,
     footnote,
     label = 'Tool calls',
@@ -85,7 +86,35 @@
     details: labels?.details ?? 'Details',
     retry: labels?.retry ?? 'Ask the agent to retry',
     copyInput: labels?.copyInput ?? 'Copy input',
+    copyError: labels?.copyError ?? 'Copy error',
+    copied: labels?.copied ?? 'Copied',
+    failedStatus: labels?.failedStatus ?? 'Failed',
+    stepPosition:
+      labels?.stepPosition ?? ((position: number, total: number) => `Step ${position} of ${total}`),
   });
+
+  /** The failed call whose error was just copied: its Copy error reads Copied. */
+  let copiedId = $state<string | undefined>();
+  /** The text Copy error puts on the clipboard: what went wrong, then the rest of the error. */
+  const errorText = (call: ToolCallRailCall): string =>
+    [call.failure, call.diagnostic]
+      .filter((part): part is string => part !== undefined && part !== '')
+      .join('\n');
+  async function copyError(call: ToolCallRailCall): Promise<void> {
+    if (!onCopyError) return;
+    try {
+      await onCopyError(call.id, errorText(call));
+      copiedId = call.id;
+    } catch {
+      copiedId = undefined;
+    }
+  }
+
+  /**
+   * Where the call under way falls among the calls so far, counting from 1: the last call that is
+   * running, or none.
+   */
+  const runningPosition = $derived(calls.findLastIndex((call) => call.status === 'running') + 1);
 
   /** One or two calls are plain rows: no summary, no rail and no fold. */
   const plain = $derived(calls.length < 3);
@@ -315,8 +344,14 @@
       <div class="cinder-tool-call-rail__failure">
         <span class="cinder-tool-call-rail__failure-text">
           <CircleX class="cinder-tool-call-rail__failure-glyph" aria-hidden="true" />
-          <span>{call.failure}</span>
+          <span
+            ><strong class="cinder-tool-call-rail__failure-status">{words.failedStatus}</strong
+            >{' '}{call.failure}</span
+          >
         </span>
+        {#if call.diagnostic !== undefined && call.diagnostic !== ''}
+          <span class="cinder-tool-call-rail__diagnostic" dir="auto">{call.diagnostic}</span>
+        {/if}
         <span class="cinder-tool-call-rail__links">
           {#if onSelect}
             <button
@@ -325,6 +360,16 @@
               onclick={() => onSelect(call.id)}
             >
               {words.details}
+            </button>
+          {/if}
+          {#if onCopyError}
+            <button
+              type="button"
+              class="cinder-tool-call-rail__link"
+              data-cinder-copy-error=""
+              onclick={() => void copyError(call)}
+            >
+              {copiedId === call.id ? words.copied : words.copyError}
             </button>
           {/if}
           {#if onRetry}
@@ -413,7 +458,15 @@
         <span class="cinder-tool-call-rail__summary-marker" aria-hidden="true">
           <Spinner size="sm" variant="arc" />
         </span>
-        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, true)}</span>
+        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, true)}</span
+        >{#if runningPosition > 0}<span
+            class="cinder-tool-call-rail__summary-separator"
+            aria-hidden="true">,</span
+          >
+          <span class="cinder-tool-call-rail__summary-step" data-cinder-step-position=""
+            >{words.stepPosition(runningPosition, calls.length)}</span
+          >
+        {/if}
       </p>
     {:else}
       <button

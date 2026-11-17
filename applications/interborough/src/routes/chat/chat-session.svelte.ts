@@ -163,6 +163,29 @@ function approvalRound(
 /** How many failed attempts in a row end the retries and leave the session disconnected. */
 export const MAX_RECONNECT_ATTEMPTS = 8;
 
+/**
+ * How many tries the session makes after the read that failed first, before it gives up: each
+ * failure but the last schedules one.
+ */
+export const RECONNECT_TRIES = MAX_RECONNECT_ATTEMPTS - 1;
+
+/** A reconnect the session has scheduled, for the warning on the turn whose stream dropped. */
+export interface ChatReconnect {
+  /** Which try comes next, counting from 1. */
+  readonly attempt: number;
+  /** How many tries the session makes before it gives up ({@link RECONNECT_TRIES}). */
+  readonly attempts: number;
+  /** The whole wait before the next try, in milliseconds. */
+  readonly wait: number;
+  /** When the next try starts, in milliseconds since the epoch. */
+  readonly nextTryAt: number;
+  /**
+   * Whether the stream that failed was a run's the page was reading, so a turn is left partway. A
+   * first read of the thread that failed leaves no turn waiting on it.
+   */
+  readonly runDropped: boolean;
+}
+
 export type ChatRegenerationState = {
   readonly messageId: string;
   readonly commandId: string;
@@ -224,6 +247,11 @@ export class ChatSessionState {
    * composer says "Reconnecting… attempt N" while it is above zero.
    */
   reconnectAttempt = $state(0);
+  /**
+   * The try the session has scheduled while it retries: which one, of how many, and when it starts.
+   * `undefined` when the stream is up, or once the session has given up (`disconnected`).
+   */
+  reconnectSchedule = $state.raw<ChatReconnect | undefined>(undefined);
   /**
    * How many follow-ups the run has not taken yet: the transcript's queued rows. The Bureau holds
    * each until the run's next step takes it, when it becomes a sent message, and Remove takes one
@@ -1054,6 +1082,14 @@ export class ChatSessionState {
   #setRetryFailures(failures: number): void {
     this.#retryFailures = failures;
     this.reconnectAttempt = failures;
+    if (failures === 0) this.reconnectSchedule = undefined;
+  }
+
+  /** The session has given up retrying: it is not reconnecting, and offers Reconnect instead. */
+  #giveUpReconnecting(): void {
+    this.disconnected = true;
+    this.reconnectAttempt = 0;
+    this.reconnectSchedule = undefined;
   }
 
   #scheduleReconnect(error: unknown): void {
@@ -1062,19 +1098,25 @@ export class ChatSessionState {
     // fails must not start the ladder again behind a page that still says it is disconnected.
     if (this.disconnected) return;
     if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) {
-      this.disconnected = true;
-      this.reconnectAttempt = 0;
+      this.#giveUpReconnecting();
       return;
     }
     this.#setRetryFailures(this.#retryFailures + 1);
     if (this.#retryFailures >= MAX_RECONNECT_ATTEMPTS) {
-      this.disconnected = true;
-      this.reconnectAttempt = 0;
+      this.#giveUpReconnecting();
       return;
     }
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     const generation = ++this.#retryGeneration;
     const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
+    this.reconnectSchedule = {
+      attempt: this.#retryFailures,
+      attempts: RECONNECT_TRIES,
+      wait: delay,
+      nextTryAt: Date.now() + delay,
+      // A later failed try keeps what the first said: the run it was reading is still the one.
+      runDropped: this.#attachedRun || this.reconnectSchedule?.runDropped === true,
+    };
     // poll-reason: timer
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = undefined;

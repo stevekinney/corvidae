@@ -512,6 +512,25 @@ export function interruptedWords(entry: Pick<ToolCallEntry, 'tier'>): string {
  * ("Approved by you 10:33 AM, $18.50 refunded", "Denied by you 10:40 AM"), which `context` words:
  * who the person is to this chat, and which decisions were made away from it.
  */
+/**
+ * A failed call's error as its step shows it: the first line of what went wrong, and the rest of
+ * the error under it, its other lines then its code (`Code: E_TIMEOUT`).
+ */
+export function failureLines(entry: Pick<ToolCallEntry, 'summary' | 'failure'>): {
+  readonly failure: string;
+  readonly diagnostic: string;
+} {
+  const message = (entry.failure?.message ?? entry.summary).trim();
+  const newline = message.indexOf('\n');
+  const failure = (newline === -1 ? message : message.slice(0, newline)).trim();
+  const rest = newline === -1 ? '' : message.slice(newline + 1).trim();
+  const code = entry.failure?.code;
+  const diagnostic = [rest, code === undefined ? '' : CHAT_COPY.tools.errorCode(code)]
+    .filter((part) => part !== '')
+    .join('\n');
+  return { failure, diagnostic };
+}
+
 export function railCall(
   entry: ToolCallEntry,
   nested: boolean,
@@ -549,12 +568,17 @@ export function railCall(
         result: entry.summary || CHAT_COPY.tools.denied,
         ...(decided === undefined ? {} : { decision: decided }),
       };
-    case 'failed':
+    case 'failed': {
+      // The step says Failed in words with what went wrong under its row, and the rest of the
+      // error (more lines, its code) as the diagnostic under that (COR-2283 R1 and R7).
+      const { failure, diagnostic } = failureLines(entry);
       return {
         ...named,
         status: 'failed',
-        ...(entry.summary === '' ? {} : { result: entry.summary }),
+        ...(failure === '' ? {} : { failure }),
+        ...(diagnostic === '' ? {} : { diagnostic }),
       };
+    }
     case 'done':
       // A call whose answer is a page keeps its answer on the row, as a link, so a person's
       // approval of it is told in the approval under the row and not in place of the answer.

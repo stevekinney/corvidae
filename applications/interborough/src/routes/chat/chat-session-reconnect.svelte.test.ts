@@ -1,10 +1,16 @@
+import { DEFAULT_TURN_LABELS, type ChatTurnState } from '@lostgradient/chat';
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, expect, jest, spyOn, test } from 'bun:test';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { settle } from '../../lib/fake-timers.test-support.ts';
-import { ChatSessionState } from './chat-session.svelte.ts';
+import { ChatSessionState, RECONNECT_TRIES } from './chat-session.svelte.ts';
+import { reconnectingTurnState } from './turn-states.ts';
+
+/** The line Chat draws by the composer for a reconnecting turn. */
+const reconnectLine = (state: Extract<ChatTurnState, { kind: 'reconnecting' }>) =>
+  DEFAULT_TURN_LABELS.reconnecting(state.attempt, state.attempts, state.nextTryIn);
 
 const sessions: ChatSessionState[] = [];
 afterEach(() => {
@@ -424,6 +430,45 @@ test('counts the failed reads while it retries, for the composer’s reconnect l
   expect(session.disconnected).toBe(true);
   // A session that has given up is not reconnecting: it offers Reconnect instead.
   expect(session.reconnectAttempt).toBe(0);
+});
+
+test('says which try comes next, of how many, and when, for the turn’s reconnect line (COR-2283 R3)', async () => {
+  jest.useFakeTimers();
+  const session = open(async () => {
+    throw new TypeError('offline');
+  });
+  expect(session.reconnectSchedule).toBeUndefined();
+
+  await session.attach();
+  const first = session.reconnectSchedule!;
+  expect(first).toMatchObject({ attempt: 1, attempts: RECONNECT_TRIES, wait: 500 });
+  expect(first.nextTryAt - Date.now()).toBe(500);
+  expect(reconnectLine(reconnectingTurnState(first, Date.now()))).toBe(
+    'Connection lost. Reconnecting, attempt 1 of 7. Next try in 1s.',
+  );
+
+  for (const [attempt, wait] of [
+    [2, 1000],
+    [3, 2000],
+    [4, 4000],
+    [5, 8000],
+  ] as const) {
+    jest.runOnlyPendingTimers();
+    await settle();
+    expect(session.reconnectSchedule).toMatchObject({ attempt, attempts: 7, wait });
+  }
+  const fifth = session.reconnectSchedule!;
+  expect(reconnectLine(reconnectingTurnState(fifth, fifth.nextTryAt - 3_200))).toBe(
+    'Connection lost. Reconnecting, attempt 5 of 7. Next try in 4s.',
+  );
+  expect(reconnectingTurnState(fifth, fifth.nextTryAt - 3_200)).toMatchObject({ wait: 8 });
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    jest.runOnlyPendingTimers();
+    await settle();
+  }
+  expect(session.disconnected).toBe(true);
+  expect(session.reconnectSchedule).toBeUndefined();
 });
 
 test('a manual reconnect starts the count over', async () => {

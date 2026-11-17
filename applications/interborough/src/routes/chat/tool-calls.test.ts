@@ -118,6 +118,85 @@ describe('a turn’s tool calls', () => {
     ).toBe('expired');
   });
 
+  test('a failed step says Failed in words, what went wrong, its diagnostic, Copy error and Retry this step (COR-2283 R1 and R7)', async () => {
+    const retried: string[] = [];
+    const written: string[] = [];
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void written.push(text) },
+    });
+    try {
+      const { container } = render(Harness, {
+        props: {
+          entries: [
+            entry({
+              callId: 'c1',
+              name: 'send-email',
+              title: 'Send email',
+              state: 'failed',
+              summary: 'Mail server didn’t reply.',
+              failure: {
+                message: 'Mail server didn’t reply.\nConnecting to smtp.example.com:587 timed out.',
+                code: 'ETIMEDOUT',
+              },
+            }),
+          ],
+          onRetryStep: (callId: string) => void retried.push(callId),
+        },
+      } as never);
+      const failure = container.querySelector<HTMLElement>('.cinder-tool-call-rail__failure')!;
+      expect(failure.querySelector('.cinder-tool-call-rail__failure-status')?.textContent).toBe(
+        'Failed',
+      );
+      expect(failure.textContent).toContain('Mail server didn’t reply.');
+      expect(failure.querySelector('.cinder-tool-call-rail__diagnostic')?.textContent).toBe(
+        'Connecting to smtp.example.com:587 timed out.\nCode: ETIMEDOUT',
+      );
+      // The error is said under the row, not again after an arrow on it.
+      expect(rowOf(container, 'c1')?.textContent).not.toContain('→');
+      const links = [...failure.querySelectorAll<HTMLButtonElement>('button')];
+      const named = (name: string) => links.find((link) => link.textContent?.trim() === name);
+      expect(named('Retry this step')).not.toBeUndefined();
+
+      await fireEvent.click(named('Copy error')!);
+      expect(written).toEqual([
+        'Mail server didn’t reply.\nConnecting to smtp.example.com:587 timed out.\nCode: ETIMEDOUT',
+      ]);
+      await fireEvent.click(named('Retry this step')!);
+      expect(retried).toEqual(['c1']);
+    } finally {
+      if (clipboard === undefined) Reflect.deleteProperty(navigator, 'clipboard');
+      else Object.defineProperty(navigator, 'clipboard', clipboard);
+    }
+  });
+
+  test('a failed step offers no Retry this step where the page cannot run it again', () => {
+    const { container } = render(Harness, {
+      props: {
+        entries: [entry({ callId: 'c1', state: 'failed', summary: 'Down.' })],
+      },
+    } as never);
+    const failure = container.querySelector<HTMLElement>('.cinder-tool-call-rail__failure')!;
+    expect(failure.textContent).toContain('Copy error');
+    expect(failure.textContent).not.toContain('Retry this step');
+  });
+
+  test('a running turn says Step N of M, where the call under way falls among the calls so far (COR-2283 R1)', () => {
+    const { container } = render(Harness, {
+      props: {
+        entries: [
+          entry({ callId: 'c1' }),
+          entry({ callId: 'c2' }),
+          entry({ callId: 'c3', state: 'running', summary: '', result: undefined }),
+        ],
+      },
+    } as never);
+    expect(container.querySelector('[data-cinder-step-position]')?.textContent?.trim()).toBe(
+      'Step 3 of 3',
+    );
+  });
+
   test('a call the person refused reads Denied in its own words, never Failed', () => {
     const { container } = render(Harness, {
       props: { entries: [entry({ callId: 'c1', state: 'denied', summary: 'Too much' })] },

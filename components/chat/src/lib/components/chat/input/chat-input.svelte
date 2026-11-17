@@ -410,8 +410,18 @@
 
   const markdownSegments = $derived(markdownStyling ? highlightComposerMarkdown(value) : []);
   const statusText = $derived(status ? composerStatusText(status) : undefined);
+  /**
+   * A reconnecting turn's connection notice already says the reconnect by the composer, with its
+   * try, of how many, and the countdown; the composer's own reconnect status is then only announced,
+   * never drawn a second time as a drawer or a line.
+   */
+  const connectionCarriesStatus = $derived(
+    status?.kind === 'reconnecting' && connectionNotice !== undefined,
+  );
   /** A status drawn as a drawer above the composer (offline, a restored draft), not the line. */
-  const drawerStatus = $derived(isComposerDrawerStatus(status) ? status : undefined);
+  const drawerStatus = $derived(
+    isComposerDrawerStatus(status) && !connectionCarriesStatus ? status : undefined,
+  );
   /** The browser has no connection: the draft stays, and Send waits for it to come back. */
   const offline = $derived(status?.kind === 'offline');
   /** The tone one composer notice paints: offline is a warning, the rest say their own. */
@@ -2296,7 +2306,7 @@
     </form>
   {/if}
   {#if blocked === undefined && notice === undefined}
-    {#if statusText && drawerStatus === undefined}
+    {#if statusText && drawerStatus === undefined && !connectionCarriesStatus}
       <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
     {:else if hintText !== undefined && status?.kind !== 'reconnecting'}
       <p class="chat-input-hint" aria-hidden="true" data-chat-keyboard-hint={keyboardHint}>

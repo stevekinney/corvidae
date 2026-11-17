@@ -67,6 +67,8 @@
     resolveMessageNotes,
     type ChatAvailability,
     type ChatRowContext,
+    type ChatTurnState,
+    type Message,
     type MessageNoteInfo,
   } from '@lostgradient/chat';
   import { parseStepRowIdentifier } from '@lostgradient/operative';
@@ -161,6 +163,7 @@
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
   import { draftTime, forgetChatDraft, readChatDraft, writeChatDraft } from './chat-drafts.ts';
+  import { lastAssistantId, turnStateOf } from './turn-states.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
@@ -988,6 +991,35 @@
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
   // turn again.
   const retryNoteId = $derived(failedStopNoteId(shown));
+  // A failed step offers Retry this step in the last turn, after the person's last message, while
+  // that turn can run again (COR-2283 R7): it runs the turn again, as the status line's Retry does.
+  const lastTurnStart = $derived(
+    shown.ids.findLastIndex((id) => shown.messages[id]?.role === 'user'),
+  );
+  const retriesStep = (messageId: string): boolean =>
+    !session.streaming && session.canRetryTurn && shown.ids.indexOf(messageId) > lastTurnStart;
+
+  // Where the turns stand, as Chat draws them (`turn-states.ts`, COR-2283 R3): the turn whose
+  // stream dropped is reconnecting, with the try the session scheduled, of how many, and a
+  // countdown read again each second while it lasts. Its Retry reads the run again at once.
+  const lastAssistant = $derived(lastAssistantId(shown));
+  let reconnectNow = $state(Date.now());
+  $effect(() => {
+    if (session.reconnectSchedule === undefined) return;
+    reconnectNow = Date.now();
+    // poll-reason: clock
+    const timer = setInterval(() => {
+      reconnectNow = Date.now();
+    }, 1000);
+    return () => clearInterval(timer);
+  });
+  function turnState(message: Message): ChatTurnState | undefined {
+    return turnStateOf(message, {
+      reconnect: session.reconnectSchedule,
+      lastAssistantId: lastAssistant,
+      now: reconnectNow,
+    });
+  }
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.
@@ -2179,6 +2211,8 @@
             : CHAT_COPY.questionAnswerLabel
           : CHAT_COPY.composer.placeholder(agentShown)}
         {composerStatus}
+        messageTurnState={turnState}
+        onRetryConnection={() => void session.reconnect()}
         onComposerInput={rememberDraft}
         composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
         composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
@@ -2309,6 +2343,7 @@
               decided={decisionContext}
               selectedId={selectedCallId}
               onSelect={selectCall}
+              onRetryStep={retriesStep(message.id) ? () => void retryTurn() : undefined}
               opensPanel={(entry) =>
                 chatToolPanelFor(entry) !== undefined && structuredResultText(entry) !== undefined}
               endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}

@@ -191,6 +191,12 @@ export const CHAT_COPY = {
     expiredBeforeDecision: 'Expired before a decision was made.',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished, no reply',
+    /** A failed step's machine code, at the end of its diagnostic. */
+    errorCode: (code: string): string => `Code: ${code}`,
+    /** The links under a failed step (COR-2283 R7). */
+    retryStep: 'Retry this step',
+    copyError: 'Copy error',
+    copied: 'Copied',
     /**
      * How a decided approval is worded on the rail and under the call: "Approved by you 10:33 AM",
      * and, for one decided on a page that is not this one, "Approved by you in Reviews 10:46 AM".

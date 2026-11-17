@@ -12,12 +12,13 @@
     duration?: string;
     onSelect?: (callId: string) => void;
     selectedId?: string;
+    onRetryStep?: (callId: string) => void;
   }
 
-  let { entries, endLabel, duration, onSelect, selectedId }: HarnessProps = $props();
+  let { entries, endLabel, duration, onSelect, selectedId, onRetryStep }: HarnessProps = $props();
 </script>
 
-<ToolCalls id="turn-1" {entries} {endLabel} {duration} {onSelect} {selectedId}>
+<ToolCalls id="turn-1" {entries} {endLabel} {duration} {onSelect} {selectedId} {onRetryStep}>
   {#snippet decision(entry)}
     <p>Decide on {entry.name}</p>
   {/snippet}

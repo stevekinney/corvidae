@@ -162,6 +162,28 @@ describe('Chat — run outcomes on the turn', () => {
     expect(kindOf()).toBeNull();
   });
 
+  test('a reconnecting turn and the composer’s reconnect status draw one notice by the composer, and Stop stays', async () => {
+    const conversation = answered('one-reconnect-notice');
+    const { container } = render(Chat, {
+      id: 'one-reconnect-notice',
+      conversation,
+      variant: 'transcript',
+      composerStatus: { kind: 'reconnecting', attempt: 2 },
+      messageTurnState: () => ({ kind: 'reconnecting', attempt: 2, attempts: 7, nextTryIn: 2 }),
+      onRetryConnection: () => undefined,
+    });
+    await tick();
+
+    expect(container.querySelectorAll('.chat-connection-notice')).toHaveLength(1);
+    expect(container.textContent).toContain(
+      'Connection lost. Reconnecting, attempt 2 of 7. Next try in 2s.',
+    );
+    expect(container.querySelector('[data-chat-composer-drawer="reconnecting"]')).toBeNull();
+    expect(container.querySelector('.chat-input-status')).toBeNull();
+    expect(container.textContent).not.toContain('Reconnecting… attempt 2');
+    expect(container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull();
+  });
+
   test('a callback that throws leaves every turn as Chat sees it', async () => {
     const conversation = answered('throwing-turn');
     const { container } = render(Chat, {
