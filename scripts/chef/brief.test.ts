@@ -393,12 +393,13 @@ describe('charter rules', () => {
     const rule = normalize(
       charterRules.find((candidate) => candidate.startsWith('**Processes:**')) ?? '',
     );
-    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid', 'it waits'])
+    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid'])
       expect(rule, phrase).toContain(phrase);
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = read(path);
       expect(text, path).toContain('never end a process by name or pattern');
       expect(text, path).toContain('by pid');
+      expect(text, path).toContain('at most five minutes for a test pool slot');
     }
   });
 
