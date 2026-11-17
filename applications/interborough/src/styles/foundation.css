@@ -247,11 +247,6 @@
   align-items: center;
   gap: var(--cinder-space-2);
   padding: 0 var(--cinder-space-4);
-}
-
-/* A bar beside a sidebar is a surface with a rule; a bar over a drawer navigation carries Cinder's
- * translucent ground (Cinder's, set where the bar is drawn) and no rule, as AppBar does. */
-.weft-shell-topbar:not(.weft-shell-topbar--translucent) {
   border-bottom: 1px solid var(--cinder-border);
   background: var(--cinder-surface);
 }
@@ -328,29 +323,19 @@
  * and quick settings as icon buttons, and the search field with its ⌘K hint returns at 640px. The
  * menu button is drawn only while the navigation is a drawer (`topbar.svelte`), which is also the
  * case for a touch tablet, so it is not part of this width rule. No page scrolls sideways at 320px.
- * Each control keeps the compact painted face of a Button (40px) and reaches 44px through the
- * Button's own hit area, which takes no layout space (COR-2445): the controls pitch 44px apart with
- * a `--cinder-space-1` gap, their hit areas meet and never overlap, and the title starts at the
- * content edge after the menu button's face. */
+ * Each control is a Button with its own icon-only face, and reaches 44px through the Button's own
+ * hit area, a positioned pseudo-element that takes no layout space (COR-2445). The faces sit a
+ * `--cinder-space-1` gap apart, and neighbours' hit areas may overlap invisibly. */
 @media (max-width: 639.98px) {
   .weft-shell-topbar {
     gap: var(--cinder-space-1);
     padding: 0 var(--cinder-space-2);
   }
 
-  /* One painted face for every control in the bar, 40px in pixels, not in `rem`: at 200% text size
-   * five faces that grew with the text would leave the title no room. The 44px tap is the Button's
-   * hit area, not layout. */
-  .weft-shell-topbar .weft-shell-topbar-control {
-    block-size: 40px;
-    min-block-size: 40px;
-    min-inline-size: 40px;
-  }
-
-  /* The search trigger is icon-only at this width, as wide as the icon buttons beside it. */
+  /* The search trigger is icon-only at this width: square, as wide as the Button's face is tall,
+   * like the icon buttons beside it. */
   .weft-shell-topbar .weft-shell-search-trigger {
-    min-width: 40px;
-    inline-size: 40px;
+    aspect-ratio: 1;
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;
@@ -420,11 +405,6 @@
   border-radius: 9999px;
   background: var(--cinder-accent-solid);
   box-shadow: 0 0 0 2px var(--cinder-surface);
-}
-
-/* Over the drawer navigation's translucent bar the ring is the canvas the bar is mixed from. */
-.weft-shell-topbar--translucent .weft-notification-bell__dot {
-  box-shadow: 0 0 0 2px var(--cinder-surface-canvas);
 }
 
 /* Cinder's popover pads its panel and caps it at 28rem; the rows run edge to edge, in a panel 420px wide on every screen. */

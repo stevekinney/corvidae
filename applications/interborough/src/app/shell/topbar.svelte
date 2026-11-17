@@ -82,15 +82,7 @@
 <!-- A page below a top-level one has a parent, which the trail offers as a back link on a phone
      (design row 06m: "‹ Chat", "‹ Health"). That link takes the menu button's place there
      (`data-nested`), so the title keeps the room: the menu is one step back, on the list. -->
-<!-- While the navigation is a drawer (a phone, or a touch tablet) the bar takes Cinder's translucent,
-     rule-free ground, as AppBar does; a bar beside a sidebar keeps its surface and its rule. -->
-<header
-  class={[
-    'weft-shell-topbar',
-    shell?.mode === 'drawer' && 'weft-shell-topbar--translucent cinder-translucent-surface',
-  ]}
-  data-nested={trail.length > 1 ? '' : undefined}
->
+<header class="weft-shell-topbar" data-nested={trail.length > 1 ? '' : undefined}>
   {#if shell?.mode === 'drawer'}
     <Button
       variant="ghost"
