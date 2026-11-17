@@ -1,9 +1,9 @@
+import { FIXTURE_ORIGIN, FIXTURE_PORT } from '@lostgradient/testing/browser/fixture-port';
 import { defineConfig, devices } from '@playwright/test';
 import { resolve } from 'node:path';
 import { HANG_GUARD_MILLISECONDS } from '../../testing/testing/src/hang-guard.ts';
 import { TEST_TIMEOUT_MILLISECONDS } from '../test-deadlines.ts';
 import { environmentConfiguration } from './environment-configuration.ts';
-import { FIXTURE_ORIGIN, FIXTURE_PORT } from './scripts/fixture-port.ts';
 
 // Playwright forces color in its workers and web servers. Remove the conflicting
 // inherited opt-out in this test process before those children are created.
@@ -48,18 +48,7 @@ export default defineConfig({
       testMatch: '**/keyboard-scroll.playwright.ts',
       use: { ...devices['Desktop Safari'] },
     },
-    // The terminal proof runs in all three engines; the baselines belong to Chromium alone.
-    {
-      name: 'firefox-terminal',
-      testMatch: '**/terminal-*.playwright.ts',
-      testIgnore: '**/terminal-visual.playwright.ts',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit-terminal',
-      testMatch: '**/terminal-*.playwright.ts',
-      testIgnore: '**/terminal-visual.playwright.ts',
-      use: { ...devices['Desktop Safari'] },
-    },
+    // The terminal's specs and their Firefox and WebKit projects are the terminal package's
+    // (`components/terminal/browser/playwright.config.ts`, COR-2080).
   ],
 });

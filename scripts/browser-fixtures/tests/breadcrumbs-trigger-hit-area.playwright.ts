@@ -12,8 +12,8 @@
  * `isMobile`, not from `page.emulateMedia`.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const PAINTED = 30;
 const TRIGGER = '[data-testid="popover-trail"] .cinder-breadcrumbs__trigger';

@@ -16,13 +16,14 @@
   "scripts": {
     "types": "bun ../../internal/component-tooling/scripts/emit-declarations.ts",
     "metadata": "bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root .",
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root . --check && bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/lib/components",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts browser && bun ../../scripts/check-inherited-key-reads.ts && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root . --check && bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/lib/components",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts' --conditions browser --conditions svelte --parallel=4 src",
     "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts --conditions browser --conditions svelte --parallel=1 .slow.test.ts .integration.test.ts",
     "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test.ts --conditions browser --conditions svelte --coverage --coverage-reporter=text --coverage-reporter=lcov src",
-    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts browser",
+    "test:browser": "bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --project=chromium --workers=4"
   },
   "dependencies": {
     "@ag-ui/core": "catalog:",
@@ -43,11 +44,14 @@
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@playwright/test": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
+    "@types/pngjs": "catalog:",
     "ajv": "catalog:",
     "happy-dom": "catalog:",
     "oxlint": "catalog:",
+    "pngjs": "catalog:",
     "postcss": "catalog:",
     "prettier": "catalog:",
     "svelte-check": "catalog:",

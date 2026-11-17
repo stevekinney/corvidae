@@ -8,8 +8,8 @@
  * are read in one pass, once the toast has finished arriving.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 test('at 375px a toast sits above the bottom navigation bar and never covers it', async ({
   page,

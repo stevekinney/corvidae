@@ -196,10 +196,17 @@ const SKIPPED_DIRECTORIES = new Set([
   // Playwright end-to-end suites run through `test:browser`, outside `check` and `validate`.
   'e2e',
 ]);
-// `scripts/browser-fixtures/tests` holds the Playwright specs (`*.playwright.ts`) and their helpers;
-// `test:browser` runs them, outside `check` and `validate`. The Bun tests that `test:browser-fixtures`
-// runs live in `scripts/browser-fixtures/scripts` and are scanned.
-const PLAYWRIGHT_LANE_DIRECTORY = join('scripts', 'browser-fixtures', 'tests');
+// `scripts/browser-fixtures/tests` and the packages' `browser/tests` (COR-2080) hold the Playwright
+// specs (`*.playwright.ts`) and their helpers, and `testing/testing/src/playwright` the helpers they
+// share; `test:browser` runs them, outside `check` and `validate`. The Bun tests that
+// `test:browser-fixtures` runs live in `scripts/browser-fixtures/scripts` and are scanned, as are
+// the harness's in `testing/testing/src/browser`.
+const PLAYWRIGHT_BROWSER_SUITE_PACKAGES = ['chat', 'editor', 'terminal'];
+const PLAYWRIGHT_LANE_DIRECTORIES = new Set([
+  join('scripts', 'browser-fixtures', 'tests'),
+  join('testing', 'testing', 'src', 'playwright'),
+  ...PLAYWRIGHT_BROWSER_SUITE_PACKAGES.map((name) => join('components', name, 'browser', 'tests')),
+]);
 
 export type DeadlineRule =
   | 'bun-test-timeout'
@@ -2222,12 +2229,14 @@ export function findPlaywrightConfigurationViolations(
 const PLAYWRIGHT_CONFIGURATIONS = [
   join('applications', 'interborough', 'playwright.config.ts'),
   join('scripts', 'browser-fixtures', 'playwright.config.ts'),
+  // Every package browser suite's `playwright.config.ts` calls this one `defineConfig`.
+  join('testing', 'testing', 'src', 'browser', 'playwright-configuration.ts'),
 ];
 /** The directories whose Playwright specs and helpers `playwright-timeout` reads. */
 export const PLAYWRIGHT_SPEC_DIRECTORIES = [
   join('applications', 'interborough', 'tests', 'e2e'),
   join('applications', 'interborough', 'tests', 'panels'),
-  join('scripts', 'browser-fixtures', 'tests'),
+  ...PLAYWRIGHT_LANE_DIRECTORIES,
 ];
 
 function playwrightSources(directory: string): string[] {
@@ -2273,7 +2282,7 @@ export function collectFiles(directory: string, tests: string[], runners: string
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      if (relative(root, path) === PLAYWRIGHT_LANE_DIRECTORY) continue;
+      if (PLAYWRIGHT_LANE_DIRECTORIES.has(relative(root, path))) continue;
       collectFiles(path, tests, runners);
     } else if (entry.isFile() && isTestFile(entry.name, relative(root, directory))) {
       tests.push(path);

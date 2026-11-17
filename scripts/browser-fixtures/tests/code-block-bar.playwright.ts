@@ -8,8 +8,8 @@
  */
 
 import { loadManifest } from '@lostgradient/testing';
+import { test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { expect, type Page } from '@playwright/test';
-import { test } from './component-page-fixture.ts';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'code-block');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'bar');

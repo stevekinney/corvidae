@@ -10,9 +10,9 @@
  * `hasTouch` and `isMobile` rather than from `page.emulateMedia`.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const TOGGLE = 'button.cinder-toggle';
 const TRACK = { width: 32, height: 18 };

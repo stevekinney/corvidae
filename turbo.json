@@ -174,6 +174,72 @@
       "cache": false,
       "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
     },
+    "@lostgradient/chat#test:browser": {
+      "dependsOn": ["transit"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+      ],
+      "outputs": []
+    },
+    "@lostgradient/editor#test:browser": {
+      "dependsOn": ["transit"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+      ],
+      "outputs": []
+    },
+    "@lostgradient/terminal#test:browser": {
+      "dependsOn": ["transit"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+      ],
+      "outputs": []
+    },
     "@lostgradient/interborough#build": {
       "dependsOn": ["transit"],
       "outputs": ["build/**"],
@@ -903,7 +969,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/components/*/src/**",
-        "$TURBO_ROOT$/components/*/browser-fixtures/**",
+        "$TURBO_ROOT$/components/*/browser/fixtures/**",
         "$TURBO_ROOT$/components/*/*.json",
         "$TURBO_ROOT$/components/*/README.md",
         "$TURBO_ROOT$/components/cinder/scripts/**",

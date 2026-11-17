@@ -47,8 +47,9 @@
  *      `--cinder-review-editor-popover-width`) — so a stale reference there is
  *      the same defect this audit exists to catch. {@link defaultScanRoots}
  *      additionally walks every `components/*` workspace the root
- *      `package.json` names, each one's browser-fixture directory, and
- *      `scripts/browser-fixtures/src` ({@link workspaceScanRoots}): a fixture tree has no per-directory
+ *      `package.json` names, each one's `browser/fixtures` (the application fixtures
+ *      COR-2080 moved), and `scripts/browser-fixtures/src` ({@link workspaceScanRoots}):
+ *      a fixture tree has no per-directory
  *      component-ownership convention of its own (a test fixture), but COR-348
  *      found undeclared `--cinder-border-*` references in exactly that kind of
  *      tree, so leaving it out would leave the audit blind to the class of site
@@ -478,8 +479,8 @@ export function defaultScanRoots(sourceRoot?: string): ScanRoot[] {
 
 /** Where a component workspace keeps its components, in the order they are looked for. */
 const COMPONENT_DIRECTORIES = ['src/components', 'src/lib/components'];
-/** A package's own browser-fixture directory (COR-2092 moves fixtures there). */
-export const PACKAGE_FIXTURE_DIRECTORY = 'browser-fixtures';
+/** A package's own browser-fixture directory (COR-2080 moved the application fixtures there). */
+export const PACKAGE_FIXTURE_DIRECTORY = 'browser/fixtures';
 /** The repository's shared browser-fixture tree, walked while it exists. */
 const SHARED_FIXTURE_DIRECTORY = 'scripts/browser-fixtures/src';
 

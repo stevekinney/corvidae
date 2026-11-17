@@ -5,9 +5,9 @@
  * the geometry is measured in a browser on the `leading-checkbox` fixture.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
 import { ALIGNMENT_TOLERANCE, boxOf, firstLineOf } from './first-line-alignment.ts';
-import { fixtureRoute } from './overlay-fixture.ts';
 
 const TASK_BOX = 20;
 
