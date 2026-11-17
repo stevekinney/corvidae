@@ -86,7 +86,7 @@
   // with its UUID cut to eight characters). That value is cut by the page, not by the cell's width,
   // so it keeps the tooltip and the tab stop even when the short form fits.
   const shortened = $derived(
-    title != null && renderedText !== undefined && title.trim() !== renderedText,
+    typeof title === 'string' && renderedText !== undefined && title.trim() !== renderedText,
   );
   const fullTextShown = $derived(textCut.cut || shortened);
 </script>
