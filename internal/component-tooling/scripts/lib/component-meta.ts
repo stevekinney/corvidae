@@ -18,6 +18,7 @@ import { categories, statusLevels } from '../../src/manifest.meta.ts';
 import {
   componentsRootOf,
   CORE_PACKAGE,
+  CORE_ROOT,
   familyPackages,
 } from '../discover-component-directories.ts';
 
@@ -26,15 +27,16 @@ export type { CategoryId, StatusLevel };
 /** The component tooling's own directory, which holds the schemas. */
 const toolingRoot = join(import.meta.dir, '..', '..');
 const componentsDirectory = join(toolingRoot, '..', '..', 'components');
-const cinderRoot = join(componentsDirectory, 'cinder');
+const cinderRoot = CORE_ROOT;
 
-/** The four packages whose components carry a `<name>.meta.json`. */
+/**
+ * The four packages whose components carry a `<name>.meta.json`: Cinder's core (which lists its
+ * families' components too), chat, editor and terminal.
+ */
 export const COMPONENT_PACKAGE_ROOTS: readonly string[] = [
-  'cinder',
-  'chat',
-  'editor',
-  'terminal',
-].map((name) => join(componentsDirectory, name));
+  CORE_ROOT,
+  ...['chat', 'editor', 'terminal'].map((name) => join(componentsDirectory, name)),
+];
 
 /** The schema every `<name>.meta.json` names in its `$schema`. */
 export const COMPONENT_META_SCHEMA_PATH = join(

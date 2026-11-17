@@ -4,6 +4,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
+import { cinderComponentRoots } from './discover-component-directories.ts';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
 const repositoryRoot = resolve(packageRoot, '..', '..');
@@ -605,6 +607,8 @@ export async function scan(
 ): Promise<PropConventionViolation[]> {
   const violations = new Map<string, PropConventionViolation>();
   for (const componentsDir of componentsDirs) {
+    // Core names its own `src/components`, which is gone once every family has left it (P-COR-101).
+    if (!existsSync(resolve(componentsDir))) continue;
     for (const violation of await scanDirectory(resolve(componentsDir))) {
       violations.set(
         `${violation.filePath}:${violation.line}:${violation.propName}:${violation.message}`,
@@ -660,13 +664,17 @@ function isComponentDirectory(directory: string, name: string): boolean {
  * catch a NEW component name that is a bare plural of an existing singular
  * component instead of `<Singular>Group`.
  */
-export function existingComponentDirectoryNames(root: string = componentsDirectory): Set<string> {
+export function existingComponentDirectoryNames(
+  roots: string | readonly string[] = cinderComponentRoots(),
+): Set<string> {
   const names = new Set<string>();
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-    if (entry.name === 'icons') continue;
-    const directory = join(root, entry.name);
-    if (isComponentDirectory(directory, entry.name)) names.add(entry.name);
+  for (const root of typeof roots === 'string' ? [roots] : roots) {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      if (entry.name === 'icons') continue;
+      const directory = join(root, entry.name);
+      if (isComponentDirectory(directory, entry.name)) names.add(entry.name);
+    }
   }
   return names;
 }
@@ -688,14 +696,18 @@ export function existingComponentDirectoryNames(root: string = componentsDirecto
  * shadows the `_radio`-backed singular even though no public `radio`
  * directory exists.
  */
-export function namespaceOnlySingularNames(root: string = componentsDirectory): Set<string> {
+export function namespaceOnlySingularNames(
+  roots: string | readonly string[] = cinderComponentRoots(),
+): Set<string> {
   const names = new Set<string>();
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith('_')) continue;
-    const bareName = entry.name.slice(1);
-    if (!bareName) continue;
-    const directory = join(root, entry.name);
-    if (hasComponentFiles(directory, bareName)) names.add(bareName);
+  for (const root of typeof roots === 'string' ? [roots] : roots) {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith('_')) continue;
+      const bareName = entry.name.slice(1);
+      if (!bareName) continue;
+      const directory = join(root, entry.name);
+      if (hasComponentFiles(directory, bareName)) names.add(bareName);
+    }
   }
   return names;
 }

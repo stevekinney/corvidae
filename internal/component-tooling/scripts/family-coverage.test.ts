@@ -21,6 +21,7 @@ import { matchMediaScanFiles } from './check-no-inline-match-media.ts';
 import { staticStyleScanFiles } from './check-no-static-style-attributes.ts';
 import { placeholderDocumentFiles } from './check-placeholder-docs.ts';
 import { platformScanFiles } from './check-platform-features.ts';
+import { existingComponentDirectoryNames } from './check-prop-conventions.ts';
 import { componentNames, proseSourcePaths } from './check-prose-component-references.ts';
 import { readmeComponents } from './check-readme-usage.ts';
 import {
@@ -135,6 +136,10 @@ describe('each check sees the family package', () => {
       reportPrefix: '../fixture-family/src/components',
       componentsPrefix: '../fixture-family/src/components',
     });
+  });
+
+  test('component name shadowing (prop conventions)', () => {
+    expect(existingComponentDirectoryNames(componentRoots())).toContain(fixture.familyComponent);
   });
 
   test('aggregator completeness', () => {

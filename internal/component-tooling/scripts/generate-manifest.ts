@@ -375,9 +375,8 @@ export async function buildManifest(packageRoot: string = PACKAGE_ROOT): Promise
   //     alternatives may name any component core lists (P-COR-101).
   const isCinderFamily =
     !pkg.isCinder && cinderPackages(CORE_ROOT).some(([, root]) => resolve(root) === pkg.root);
-  const cinderIds = isCinderFamily
-    ? (await discoverComponentDirectories(CORE_ROOT)).map((component) => component.name)
-    : [];
+  const cinderComponents = isCinderFamily ? await discoverComponentDirectories(CORE_ROOT) : [];
+  const cinderIds = cinderComponents.map((component) => component.name);
   const danglingAlternatives = findDanglingAlternatives(componentEntries, cinderIds);
   if (danglingAlternatives.length > 0) {
     throw new Error(formatDanglingAlternativeMessage(danglingAlternatives));

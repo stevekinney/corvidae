@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 
 import Ajv from 'ajv/dist/2020.js';
 
+import { cinderComponentRoots } from '../discover-component-directories.ts';
 import {
   buildComponentMetaSchema,
   COMPONENT_META_SCHEMA_PATH,
@@ -20,8 +21,11 @@ const components = COMPONENT_PACKAGE_ROOTS.flatMap(discoverMetaComponents);
 
 describe('authored component metadata', () => {
   test('finds the components of all four packages', () => {
-    const packages = new Set(components.map((component) => component.packageRoot));
-    expect(packages.size).toBe(4);
+    // Core lists its own and its families' components (P-COR-101), so each of the four roots
+    // contributes components.
+    for (const root of COMPONENT_PACKAGE_ROOTS) {
+      expect(discoverMetaComponents(root).length).toBeGreaterThan(0);
+    }
     expect(components.length).toBeGreaterThan(200);
   });
 
@@ -59,8 +63,12 @@ describe('authored component metadata', () => {
   test('every meta.json in the four packages, part files included, validates against its $schema', () => {
     const ajv = new Ajv({ allErrors: true, strict: true });
     const validate = ajv.compile(JSON.parse(readFileSync(COMPONENT_META_SCHEMA_PATH, 'utf8')));
-    const files = COMPONENT_PACKAGE_ROOTS.flatMap((root) =>
-      readdirSync(componentsRootOf(root), { recursive: true, withFileTypes: true })
+    // Core's components may sit in the packages the split moved them into (P-COR-101).
+    const componentRoots = COMPONENT_PACKAGE_ROOTS.flatMap((root, index) =>
+      index === 0 ? cinderComponentRoots(root) : [componentsRootOf(root)],
+    );
+    const files = componentRoots.flatMap((root) =>
+      readdirSync(root, { recursive: true, withFileTypes: true })
         .filter((entry) => entry.isFile() && entry.name.endsWith('.meta.json'))
         .map((entry) => join(entry.parentPath, entry.name)),
     );
