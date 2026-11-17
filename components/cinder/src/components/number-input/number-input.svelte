@@ -371,6 +371,14 @@
     focus: () => inputElement?.focus(),
   });
 
+  // A press on the unit, or on the slack after it, focuses the field. Preventing the default keeps
+  // the press from moving focus to the body first, which would blur a field already in use.
+  function focusFromAdornment(event: PointerEvent) {
+    if (resolvedDisabled || event.button !== 0) return;
+    event.preventDefault();
+    inputElement?.focus();
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     if (resolvedDisabled) return;
     if (event.key === 'Enter') {
@@ -474,7 +482,12 @@
 {/snippet}
 
 {#snippet trailingContent()}
-  {#if adornment}<span class="cinder-number-input__adornment"
+  <!-- The text area is only as wide as its digits, so the unit and the slack after it (this span
+       fills it) take the press for the field: the whole face left of the steppers focuses it. -->
+  {#if adornment}<span
+      class="cinder-number-input__adornment"
+      role="presentation"
+      onpointerdown={focusFromAdornment}
       >{#if typeof adornment === 'string'}{adornment}{:else}{@render adornment()}{/if}</span
     >{/if}
   {@render steppers()}

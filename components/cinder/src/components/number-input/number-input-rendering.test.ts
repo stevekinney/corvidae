@@ -45,6 +45,30 @@ describe('NumberInput unit and stepper order', () => {
       /@supports \(field-sizing: content\)\s*\{[^@]*\.cinder-number-input__input\s*\{[^}]*field-sizing:\s*content;[^}]*inline-size:\s*auto;[^}]*flex:\s*0 1 auto;/,
     );
   });
+
+  // The text area is only as wide as its digits, so the unit and the slack after it take the press.
+  test('a press on the unit focuses the field, and does nothing while disabled', () => {
+    const { container, unmount } = render(NumberInput, {
+      props: { id: 'n', value: 90, adornment: 'days' },
+    });
+    const adornment = container.querySelector('.cinder-number-input__adornment');
+    expect(document.activeElement).not.toBe(getInput(container));
+    const press = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+    adornment?.dispatchEvent(press);
+    expect(document.activeElement).toBe(getInput(container));
+    expect(press.defaultPrevented).toBe(true);
+    unmount();
+
+    const disabled = render(NumberInput, {
+      props: { id: 'n', value: 90, adornment: 'days', disabled: true },
+    });
+    disabled.container
+      .querySelector('.cinder-number-input__adornment')
+      ?.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    expect(document.activeElement).not.toBe(getInput(disabled.container));
+  });
 });
 
 describe('NumberInput basics', () => {
