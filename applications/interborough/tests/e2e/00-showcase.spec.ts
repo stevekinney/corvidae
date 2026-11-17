@@ -150,7 +150,18 @@ for (const width of WIDTHS) {
       source: '00-showcase.spec.ts',
     });
 
-    await page.getByRole('button', { name: 'Workflow', exact: true }).click();
+    // On a phone the chips fold into the Filter menu (05t), where Workflow is a row that opens its
+    // options; on a wider screen Workflow is a chip of its own.
+    const filterMenu = page.getByRole('button', { name: /^Filter/ });
+    if (width === 375) {
+      await filterMenu.click();
+      await page
+        .locator('.cinder-filter-bar__menu')
+        .getByRole('button', { name: /^Workflow/ })
+        .click();
+    } else {
+      await page.getByRole('button', { name: 'Workflow', exact: true }).click();
+    }
     await expect(page.locator('.cinder-filter-bar__options')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/runs',

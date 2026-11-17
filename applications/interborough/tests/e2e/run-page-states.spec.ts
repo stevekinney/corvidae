@@ -20,6 +20,7 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { openTab } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -94,8 +95,9 @@ for (const width of WIDTHS) {
         (await connect.getAttribute('id')) ?? '',
       );
       await page.getByRole('button', { name: /^How it ran/ }).click();
-      // The Run inspector card is on How it ran's Inspector tab (row 54i).
-      await page.getByRole('tab', { name: 'Inspector' }).click();
+      // The Run inspector card is on How it ran's Inspector tab (row 54i), which a phone chooses
+      // from the select the tab bar folds into.
+      await openTab(page.locator('[data-section="how-it-ran"]'), 'Inspector');
       await expect(page.locator('[data-section="run-inspector"]')).toContainText(
         'Finished; nothing left to do',
       );
