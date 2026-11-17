@@ -295,6 +295,19 @@
   let savedRevision: number | null = null;
   /** The hook changed in the Bureau under a form with unsaved edits. */
   let changed = $state(false);
+  /**
+   * Counts the revisions of the hook the form adopted. The configuration form takes its value only
+   * when it is made, so it is made again under this key whenever a revision is adopted (a refresh,
+   * Reload, or this page's own save), and never on an edit of the draft.
+   */
+  let adoptions = $state(0);
+  /** Fills the form from `adopted`, the revision of the hook it now edits. */
+  function loadRevision(adopted: Hook): void {
+    loadedRevision = adopted.revision;
+    form.load(adopted);
+    adoptions += 1;
+    changed = false;
+  }
   $effect(() => {
     const current = hook;
     if (current === undefined) return;
@@ -304,9 +317,7 @@
         changed = true;
         return;
       }
-      loadedRevision = current.revision;
-      form.load(current);
-      changed = false;
+      loadRevision(current);
     });
   });
 
@@ -320,9 +331,7 @@
         retry: false,
       });
       savedRevision = null;
-      loadedRevision = fresh.revision;
-      form.load(fresh);
-      changed = false;
+      loadRevision(fresh);
       stale = false;
       failure = null;
     } catch (error) {
@@ -1014,18 +1023,20 @@
               {#if savedKind !== undefined}
                 <div class="ib-hook-editor__contributed" data-testid="contributed-action">
                   <p class="ib-hook-editor__plain">{savedKind.description}</p>
-                  <HookConfiguration
-                    kindId={hookActionKindId(savedKind)}
-                    schema={savedKind.configuration}
-                    value={form.contributedConfiguration}
-                    readOnly={isDefault}
-                    issues={configurationIssues}
-                    disabled={saving.isPending}
-                    plugin={hook.action.plugin}
-                    onChange={(next) => {
-                      form.contributedConfiguration = next;
-                    }}
-                  />
+                  {#key adoptions}
+                    <HookConfiguration
+                      kindId={hookActionKindId(savedKind)}
+                      schema={savedKind.configuration}
+                      value={form.contributedConfiguration}
+                      readOnly={isDefault}
+                      issues={configurationIssues}
+                      disabled={saving.isPending}
+                      plugin={hook.action.plugin}
+                      onChange={(next) => {
+                        form.contributedConfiguration = next;
+                      }}
+                    />
+                  {/key}
                 </div>
               {:else if contributed.isSuccess && storedSchema !== null}
                 <!-- The action is not offered now, so its schema is unknown: the saved pairs are

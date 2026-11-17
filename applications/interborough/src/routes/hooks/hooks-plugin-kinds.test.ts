@@ -5,6 +5,7 @@
  * formatter's sentence is written for it.
  */
 import { HttpClient } from '@lostgradient/weft';
+import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -261,6 +262,66 @@ function testDelivery(status: 'delivered' | 'exhausted') {
     maxAttempts: 1,
   };
 }
+
+describe('the configuration of a saved plugin hook when another revision is adopted (COR-2181)', () => {
+  const teamField = (view: ReturnType<typeof open>) =>
+    waitFor(() => view.getByLabelText(/team/i) as HTMLInputElement);
+
+  test('shows a newer revision’s configuration after a refresh, so the next save does not put the old one back', async () => {
+    let served = { ...PAGER_HOOK };
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => served,
+      'bureau.hooks.update': (params) => ({ ...served, ...params, revision: served.revision + 1 }),
+    });
+    expect((await teamField(view)).value).toBe('ops');
+
+    // Another client changes the configuration; the unedited form adopts the newer revision.
+    served = {
+      ...PAGER_HOOK,
+      revision: 2,
+      action: { ...PAGER_HOOK.action, configuration: { team: 'platform' } },
+    };
+    const reads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(reads));
+    await waitFor(async () => expect((await teamField(view)).value).toBe('platform'));
+
+    // An edit of the draft keeps the field it was typed into: the form is not made again.
+    const field = await teamField(view);
+    await fireEvent.input(field, { target: { value: 'platform-oncall' } });
+    expect(field.isConnected).toBe(true);
+    expect((await teamField(view)).value).toBe('platform-oncall');
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).toMatchObject({
+      expectedRevision: 2,
+      action: { configuration: { team: 'platform-oncall' } },
+    });
+  });
+
+  test('shows the reloaded configuration after Reload discards what was typed', async () => {
+    let served = { ...PAGER_HOOK };
+    const view = open('/hooks/pager-hook', { 'bureau.hooks.get': () => served });
+    await fireEvent.input(await teamField(view), { target: { value: 'mine' } });
+
+    // The hook changes under the edit: the form keeps the edit and offers Reload.
+    served = {
+      ...PAGER_HOOK,
+      revision: 2,
+      action: { ...PAGER_HOOK.action, configuration: { team: 'theirs' } },
+    };
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await view.findByTestId('hook-changed');
+    expect((await teamField(view)).value).toBe('mine');
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.reload }));
+    await waitFor(async () => expect((await teamField(view)).value).toBe('theirs'));
+    expect(view.queryByTestId('hook-changed')).toBeNull();
+  });
+});
 
 describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix line 115)', () => {
   const copy = HOOKS_COPY.editor.check;
