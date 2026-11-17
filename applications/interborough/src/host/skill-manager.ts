@@ -67,6 +67,7 @@ import {
   type SkillCatalogChange,
   type SkillCatalogRevision,
   type SkillSource,
+  type SkillSourceKind,
 } from '@lostgradient/bureau/skills';
 import {
   DIRECTORY_POLL_INTERVAL_MILLISECONDS,
@@ -92,6 +93,20 @@ import {
   type SkillsConfiguration,
 } from './skills-configuration.ts';
 import { SecretPublicationError } from './workspace-secrets.ts';
+
+/**
+ * Which kinds of skill source live in a directory on this machine, and so can be watched with
+ * `fs.watch`. A table keyed by the kind, not a comparison against a name, so a new kind of source
+ * does not compile until it says whether it has a directory (COR-2468, `home-branches.test.ts`).
+ */
+const WATCHED_SOURCE_KINDS: Readonly<Record<SkillSourceKind, boolean>> = {
+  project: true,
+  user: true,
+  'built-in': true,
+  plugin: true,
+  remote: false,
+  storage: false,
+};
 
 /** A write the home does not allow: the reason is the one `settings.get` reports for a locked key. */
 export class SkillWriteLockedError extends Error {
@@ -351,7 +366,7 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     if (watchMode === 'poll') return;
     const wanted = new Set(
       sources
-        .filter((source) => source.kind !== 'remote' && source.kind !== 'storage')
+        .filter((source) => WATCHED_SOURCE_KINDS[source.kind])
         .map((source) => source.location),
     );
     const inodes = new Map<string, number | bigint>();
