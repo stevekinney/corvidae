@@ -368,7 +368,7 @@
       </header>
     {:else if toggleShown}
       <header class="cinder-list-detail__header" data-cinder-list-toggle="">
-        {@render listToggle()}
+        <CompactActions>{@render listToggle()}</CompactActions>
       </header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>

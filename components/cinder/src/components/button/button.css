@@ -763,7 +763,13 @@
        their hit areas would overlap across a header's 8px gap. The following one steps away by
        the rest, widening the gap while both keep their drawn size (COR-2388). */
     .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only]
-      + .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only] {
+      + .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only],
+    /* A Tooltip wraps its button in a span of its own, so neighbours are the wrappers. */
+    .cinder-tooltip-wrapper:has(
+        > .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only]
+      )
+      + .cinder-tooltip-wrapper
+      > .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only] {
       margin-inline-start: calc(
         var(--cinder-touch-target-min) - var(--_cinder-compact-control-height) -
           var(--cinder-space-2)

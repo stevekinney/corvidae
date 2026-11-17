@@ -336,7 +336,8 @@
 
 .ib-chats__title-actions {
   display: inline-flex;
-  gap: var(--cinder-space-1);
+  /* The header actions' gap, which Cinder tops up on a coarse pointer so their hit areas never meet. */
+  gap: var(--cinder-space-2);
   align-items: center;
 }
 

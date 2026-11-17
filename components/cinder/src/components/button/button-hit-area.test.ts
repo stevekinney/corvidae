@@ -5,6 +5,7 @@
  * the CSS and token shapes.
  */
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 const buttonCss = await Bun.file(new URL('./button.css', import.meta.url)).text();
 const tokens = await Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text();
@@ -94,11 +95,23 @@ describe('adjacent compact icon-only header buttons on a coarse pointer (COR-238
     expect(next.get('margin-inline-start')).toBe(
       'calc(var(--cinder-touch-target-min) - var(--_cinder-compact-control-height) - var(--cinder-space-2))',
     );
-    const gap = rem('2') * 16;
+    // Evaluate the margin with the real tokens: the gap and the margin together must hold both
+    // extensions, (touch - drawn) / 2 past each button's face.
+    const foundation = readFileSync(
+      new URL('../../styles/foundation.css', import.meta.url),
+      'utf8',
+    );
+    const drawn =
+      Number(/--_cinder-compact-control-height:\s*([\d.]+)rem;/.exec(foundation)?.[1]) * 16;
     const touch = Number(/--cinder-touch-target-min:\s*(\d+)px/.exec(tokens)?.[1]);
-    const drawn = 24;
-    expect(gap + (touch - drawn - gap)).toBeGreaterThanOrEqual(touch - drawn);
-    expect(touch - drawn - gap).toBeGreaterThan(0);
+    const gap = rem('2') * 16;
+    expect(drawn).toBe(24);
+    expect(touch).toBe(44);
+    const margin = touch - drawn - gap;
+    expect(margin).toBeGreaterThan(0);
+    expect(gap + margin).toBeGreaterThanOrEqual(touch - drawn);
+    // A Tooltip puts its button in a wrapper span, so neighbours there are the wrappers.
+    expect(buttonCss).toContain('.cinder-tooltip-wrapper:has(');
     // The visible button keeps its drawn size.
     expect(declarationsFor(buttonCss, COMPACT).get('min-width')).toBe(
       'var(--_cinder-compact-control-height)',
