@@ -104,6 +104,13 @@ const NAMED: [string, string, string][] = [
     "reportPrefix: 'cinder/browser-fixtures'",
     "reportPrefix: 'core/browser-fixtures'",
   ],
+  // A live link in an exempt document: the process documents' link check follows it. Only the
+  // link target changes; the document's history stays as written.
+  [
+    'documentation/repository/guards.md',
+    `(../../${OLD}/README.md#content)`,
+    `(../../${NEW}/README.md#content)`,
+  ],
   // The resolver returns the real path of `@lostgradient/cinder`'s files, under its directory.
   [
     'applications/interborough/src/host/panel-build.test.ts',
@@ -218,14 +225,16 @@ export function run(root: string, dryRun: boolean): string[] {
   // After a dry-run move the files are still at their old paths; rewrite what they would hold.
   const rewrites = new Map<string, string>();
   for (const file of trackedFiles(root)) {
-    if (isExempt(file)) continue;
+    // An exempt file keeps every mention, except an exact string NAMED gives for it.
+    const exempt = isExempt(file);
+    if (exempt && !NAMED.some(([named]) => named === file)) continue;
     const absolute = join(root, file);
     // A tracked symbolic link or submodule is not a text file to rewrite.
     if (!existsSync(absolute) || !lstatSync(absolute).isFile()) continue;
     const bytes = readFileSync(absolute);
     if (bytes.includes(0)) continue;
     const source = bytes.toString('utf8');
-    let next = rewritePaths(source);
+    let next = exempt ? source : rewritePaths(source);
     for (const [named, before, after] of NAMED) {
       if (named === file) next = next.replaceAll(before, after);
     }
