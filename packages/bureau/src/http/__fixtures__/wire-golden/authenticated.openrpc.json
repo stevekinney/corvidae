@@ -32782,6 +32782,123 @@
       }
     },
     {
+      "description": "Returns one executable skill’s SKILL.md as the host catalogued it, named by the skill’s `name` (never a path): `instructions` holds the file’s `text` (frontmatter and body), cut at 65536 bytes (`truncated`), and its whole `size` in bytes. It reads only the catalog record’s own SKILL.md, refusing a symbolic link that leaves the skill’s directory and a file that changed since it was catalogued. `instructions` is `null` with `unavailableReason` `not-found` for a name no skill has, `changed` for files that changed since discovery, and `unavailable` for files that cannot be read back. A read is never an activation: an untrusted skill’s file is shown too, and nothing enters a run. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        }
+      ],
+      "name": "bureau.skills.get",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "name",
+          "required": true,
+          "schema": {
+            "description": "The skill’s `name`, as `bureau.skills.list` lists it. Never a path.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "instructions": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "size": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "size",
+                    "truncated"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "unavailableReason": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "not-found",
+                    "changed",
+                    "unavailable"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "instructions",
+            "unavailableReason"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read one skill’s SKILL.md",
+      "tags": [
+        {
+          "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The skill’s `name`, as `bureau.skills.list` lists it. Never a path.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Returns the routing of a worker deployment: `currentBuildId`, `rampingBuildId` (or `null`) with its share `rampBasisPoints` (0 to 10000), `previousBuildId` (the build a roll back returns to, or `null` before the current build has changed), and the `generation` to pass as `expectedGeneration` to a move. A deployment with no routing pointer yet is `NotFound`. Requires `bureau.deployments:read` unless the caller owns the deployment’s worker deployments; anyone else is answered `NotFound`, and a Bureau without a worker deployment catalog answers `UnsupportedCapability`.",
       "errors": [
         {

@@ -117,6 +117,8 @@ export const queryKeys = {
     list: () => ['skills', 'list'] as const,
     /** The agents that name each skill, read from the code-defined agents' own statements. */
     users: () => ['skills', 'users'] as const,
+    /** One skill's SKILL.md (`bureau.skills.get`, COR-2435). */
+    instructions: (name: string) => ['skills', 'instructions', name] as const,
   },
   /** The guardrails installed in the Bureau (`bureau.guardrails.list`). */
   guardrails: {

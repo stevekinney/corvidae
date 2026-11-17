@@ -104,6 +104,10 @@ export const OPERATION_MAP = {
     workspaceClass: 'member-shared-read',
     exempt: 'the host discovers skills and decides their trust; the handler only reports it',
   },
+  'bureau.skills.get': {
+    workspaceClass: 'member-shared-read',
+    exempt: 'reads a catalogued skill’s SKILL.md back through the host’s artifact loader',
+  },
 
   'bureau.tasks.list': { workspaceClass: 'private-owned', member: 'tasks.list' },
   'bureau.tasks.get': { workspaceClass: 'private-owned', member: 'tasks.get' },

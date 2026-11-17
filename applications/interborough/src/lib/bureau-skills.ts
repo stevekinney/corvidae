@@ -50,6 +50,32 @@ export async function listSkillCatalog(
   return { skills: parsed.skills, sourceCount: parsed.sources.length };
 }
 
+const instructionsSchema = z.object({
+  name: z.string(),
+  instructions: z.object({ text: z.string(), size: z.number(), truncated: z.boolean() }).nullable(),
+  unavailableReason: z.string().nullable(),
+});
+
+/**
+ * One skill's SKILL.md as the host catalogued it (`bureau.skills.get`, COR-2435): its text, cut
+ * at the host's bound, its whole size in bytes, and why it is not served when it is not.
+ */
+export type SkillInstructions = z.infer<typeof instructionsSchema>;
+
+/** One skill's SKILL.md, by the skill's name. */
+export async function getSkillInstructions(
+  name: string,
+  options?: Options,
+): Promise<SkillInstructions> {
+  return instructionsSchema.parse(await callBureau('bureau.skills.get', { name }, options));
+}
+
+/** The body of a SKILL.md: the text after its frontmatter, which is what the agent is told. */
+export function skillBody(text: string): string {
+  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(text);
+  return (match === null ? text : text.slice(match[0].length)).trim();
+}
+
 /** The executable skills the host discovered, trusted or not. */
 export async function listSkills(options?: Options): Promise<readonly Skill[]> {
   const catalog = await listSkillCatalog(options);

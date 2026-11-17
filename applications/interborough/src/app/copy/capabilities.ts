@@ -184,6 +184,31 @@ export const CAPABILITIES_COPY = {
       caption: (skill: string): string => `Tools the ${skill} skill brings`,
       columns: { tool: 'Tool', risk: 'Risk', asks: 'Asks' },
     },
+    /**
+     * What the skill tells an agent (row 31n, COR-2435): its SKILL.md rendered in a card headed
+     * with the file's name and size, then the raw file in a collapsed disclosure last.
+     */
+    instructions: {
+      heading: 'What it tells the agent',
+      showAll: 'Show all',
+      showLess: 'Show less',
+      cardTitle: 'Instructions',
+      cardFile: (size: string): string => `SKILL.md, ${size}`,
+      raw: 'SKILL.md',
+      rawLabel: (skill: string): string => `The SKILL.md file of ${skill}`,
+      loading: 'Reading SKILL.md',
+      empty: 'The SKILL.md file says nothing besides its name and description.',
+      truncated: 'The file is longer than the host shows here; this is its beginning.',
+      unavailable: {
+        'not-found': 'The host no longer lists this skill.',
+        changed:
+          'Its files changed since the host read them, so they are not shown. Restart Interborough to read them again.',
+        unavailable: 'The host could not read its files.',
+      } as Readonly<Record<string, string>>,
+      failed: 'What this skill tells the agent could not be read.',
+    },
+    /** Beside an agent in Used by (row 31m): when the agent loads it, in the skill's own words. */
+    loadsWhen: (description: string): string => `Loads it when relevant: ${description}`,
     trust: 'Trust',
     source: 'Where it comes from',
     allowedTools: 'Asks to keep these tools',

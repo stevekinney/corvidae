@@ -22,6 +22,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { readInstructions, type SkillArtifactLoader } from '../../skills/client/artifact-loader.ts';
 import type { SkillCatalogRevision } from '../../skills/discovery/catalog.ts';
 import type { SkillSourceKind, SkillTrustState } from '../../skills/discovery/source.ts';
 import { mayAccessAgents } from '../agent-access.ts';
@@ -68,6 +69,12 @@ export type BureauSkillsOperationHost = BureauOwnershipHost & {
      * tools that name it. Omitted, no skill brings tools.
      */
     readonly tools?: () => readonly { readonly name: string; readonly skill: string | null }[];
+    /**
+     * Reads a catalogued skill's files back, as an activation does (`bureau.skills.get`,
+     * COR-2435): the loader refuses a symbolic link that leaves the skill's directory and files
+     * that changed since discovery. Omitted, no skill's SKILL.md can be read.
+     */
+    readonly loadArtifact?: SkillArtifactLoader;
   };
 };
 
@@ -197,5 +204,132 @@ export const skillsListOperation = defineOperation<
   },
 });
 
+/** The most bytes of a skill's SKILL.md `bureau.skills.get` returns; a longer file is cut. */
+export const MAXIMUM_SKILL_INSTRUCTIONS_BYTES = 64 * 1024;
+
+/** The longest skill name `bureau.skills.get` reads: the Agent Skills limit, with room. */
+const MAXIMUM_SKILL_NAME_LENGTH = 128;
+
+const getInput = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(MAXIMUM_SKILL_NAME_LENGTH)
+    .describe('The skill’s `name`, as `bureau.skills.list` lists it. Never a path.'),
+});
+const getOutput = z.object({
+  /** The skill's name, as asked. */
+  name: z.string(),
+  /**
+   * Its SKILL.md as the host catalogued it: the file's text (frontmatter and body), cut at
+   * `MAXIMUM_SKILL_INSTRUCTIONS_BYTES`, the file's whole size in bytes, and whether the text was
+   * cut. `null` when it cannot be served, and `unavailableReason` says why.
+   */
+  instructions: z
+    .object({ text: z.string(), size: z.number().int().nonnegative(), truncated: z.boolean() })
+    .nullable(),
+  /**
+   * Why `instructions` is `null`: `not-found` (no skill of that name is catalogued), `changed`
+   * (its files changed since they were catalogued), or `unavailable` (they cannot be read back, such
+   * as a skill that does not live in a directory); `null` when they are served.
+   */
+  unavailableReason: z.enum(['not-found', 'changed', 'unavailable']).nullable(),
+});
+
+/** Whether `name` is one directory entry: no separator, and not `.` or `..`. */
+function isOneEntry(name: string): boolean {
+  return name !== '' && name !== '.' && name !== '..' && !/[/\\]/.test(name);
+}
+
+/** `text` cut to at most `limit` bytes of UTF-8, never in the middle of a character. */
+function cutToBytes(
+  text: string,
+  limit: number,
+): { text: string; size: number; truncated: boolean } {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.byteLength <= limit) return { text, size: bytes.byteLength, truncated: false };
+  let end = limit;
+  // A continuation byte (10xxxxxx) starts no character: back up to the first byte of one.
+  while (end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+  return {
+    text: new TextDecoder().decode(bytes.subarray(0, end)),
+    size: bytes.byteLength,
+    truncated: true,
+  };
+}
+
+/**
+ * `bureau.skills.get` (COR-2435): what one catalogued skill tells an agent, its SKILL.md, for a
+ * person to read before an agent loads it. It is a read, never an activation: nothing enters a
+ * run, and an untrusted skill's file is shown as it is.
+ *
+ * The skill is named, never addressed by a path: the operation finds the catalog record of that
+ * name and reads that record's own SKILL.md back through the artifact loader, which refuses a
+ * symbolic link that leaves the skill's directory and a file that changed since it was catalogued.
+ * A record whose directory is not one entry under its source is refused too. Authorized like
+ * `bureau.skills.list`: `bureau.agents:read`, unless the caller owns the deployment's agents.
+ */
+export const skillsGetOperation = defineOperation<
+  typeof getInput,
+  typeof getOutput,
+  BureauSkillsOperationHost
+>({
+  name: 'bureau.skills.get',
+  authorize: authorizeWorkspaceOperation('bureau.skills.get'),
+  mcpExposable: false,
+  summary: 'Read one skill’s SKILL.md',
+  description: `Returns one executable skill’s SKILL.md as the host catalogued it, named by the skill’s \`name\` (never a path): \`instructions\` holds the file’s \`text\` (frontmatter and body), cut at ${String(MAXIMUM_SKILL_INSTRUCTIONS_BYTES)} bytes (\`truncated\`), and its whole \`size\` in bytes. It reads only the catalog record’s own SKILL.md, refusing a symbolic link that leaves the skill’s directory and a file that changed since it was catalogued. \`instructions\` is \`null\` with \`unavailableReason\` \`not-found\` for a name no skill has, \`changed\` for files that changed since discovery, and \`unavailable\` for files that cannot be read back. A read is never an activation: an untrusted skill’s file is shown too, and nothing enters a run. Requires \`bureau.agents:read\` unless the caller owns the deployment’s agents; anyone else is refused with \`Forbidden\`.`,
+  destructive: false,
+  tags: ['Agents'],
+  inputSchema: getInput,
+  outputSchema: getOutput,
+  producibleFaults: ['InvalidParams', 'Forbidden'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ host, principal, input }) => {
+    // The scope is checked before the catalog is read, so a refusal says nothing of what exists.
+    if (!mayAccessAgents(host.ownership, principal, 'bureau.agents:read')) {
+      throw {
+        code: 'Forbidden',
+        message: 'Reading a skill requires bureau.agents:read',
+        data: { reason: 'missing scope bureau.agents:read' },
+      } satisfies OperationFault;
+    }
+    const name = input.name;
+    const unavailable = (reason: 'not-found' | 'changed' | 'unavailable') => ({
+      name,
+      instructions: null,
+      unavailableReason: reason,
+    });
+    const standing = await host.skills.standing();
+    // The record an agent would load: the available one of that name, else the first listed.
+    const records = standing?.catalog.records.filter((record) => record.name === name) ?? [];
+    const record = records.find((candidate) => candidate.available) ?? records[0];
+    if (record === undefined) return unavailable('not-found');
+    if (record.directoryName !== undefined && !isOneEntry(record.directoryName)) {
+      return unavailable('unavailable');
+    }
+    const load = host.skills.loadArtifact;
+    if (load === undefined) return unavailable('unavailable');
+    let loaded: Awaited<ReturnType<typeof load>>;
+    try {
+      loaded = await load(record);
+    } catch {
+      return unavailable('unavailable');
+    }
+    if (!loaded.loaded)
+      return unavailable(loaded.failure === 'changed' ? 'changed' : 'unavailable');
+    const text = readInstructions(loaded.artifact);
+    if (text === undefined) return unavailable('unavailable');
+    return {
+      name,
+      instructions: cutToBytes(text, MAXIMUM_SKILL_INSTRUCTIONS_BYTES),
+      unavailableReason: null,
+    };
+  },
+});
+
 /** The skills operations, in the order the handler serves them. */
-export const bureauSkillsOperations = [skillsListOperation] as const;
+export const bureauSkillsOperations = [skillsListOperation, skillsGetOperation] as const;

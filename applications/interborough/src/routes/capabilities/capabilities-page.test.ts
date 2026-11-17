@@ -946,6 +946,94 @@ const metaOf = (detail: Element) =>
   );
 
 describe('a skill’s page', () => {
+  test('shows what it tells the agent: the SKILL.md rendered in a card with its size, Show all, and the raw file last (rows 31m, 31n)', async () => {
+    const file = [
+      '---',
+      'name: summarize',
+      'description: Summarizes a document.',
+      '---',
+      '',
+      'Group the merged pull requests by what changed for a customer.',
+      '',
+      '- Lead with the change, not the pull request number.',
+      '- Keep each entry to one sentence.',
+      '',
+      '<script>window.injected = true</script>',
+      '',
+    ].join('\n');
+    const calls = bureau({
+      'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+      'bureau.skills.list': () => ({ revision: 1, skills: SKILLS, sources: [], trustLocked: null }),
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': (params) => codeDetail(String(params['id']), ['summarize']),
+      'bureau.skills.get': (params) => ({
+        name: String(params['name']),
+        instructions: { text: file, size: 1229, truncated: false },
+        unavailableReason: null,
+      }),
+    });
+    restore = calls.restore;
+    const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
+
+    const section = await waitFor(() => {
+      const found = detail.querySelector('[data-testid="skill-instructions-body"]');
+      if (found === null) throw new Error('the instructions are not read yet');
+      return found;
+    });
+    expect(calls.calls.find((call) => call.method === 'bureau.skills.get')?.params).toEqual({
+      name: 'summarize',
+    });
+    expect(
+      detail.querySelector('[data-testid="skill-instructions-title"]')?.textContent?.trim(),
+    ).toMatch(/^Instructions\s+SKILL\.md, 1\.2 KB$/);
+    // The body, not the frontmatter, is rendered; the file is untrusted, so no script survives.
+    expect(section.querySelector('p')?.textContent).toBe(
+      'Group the merged pull requests by what changed for a customer.',
+    );
+    expect([...section.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
+      'Lead with the change, not the pull request number.',
+      'Keep each entry to one sentence.',
+    ]);
+    expect(section.textContent).not.toContain('name: summarize');
+    expect(section.querySelector('script')).toBeNull();
+    // Show all opens the rest of the rendered file.
+    const toggle = detail.querySelector<HTMLElement>('[data-testid="skill-instructions-toggle"]')!;
+    expect(toggle.textContent?.trim()).toBe(copy.skill.instructions.showAll);
+    expect(section.hasAttribute('data-clamped')).toBe(true);
+    await fireEvent.click(toggle);
+    expect(section.hasAttribute('data-clamped')).toBe(false);
+    // The raw file is a disclosure, last in the section.
+    expect(detail.querySelector('[data-testid="skill-instructions-raw"]')).not.toBeNull();
+    // Used by says when the agent loads it, in the skill's own words.
+    await waitFor(() =>
+      expect(
+        detail.querySelector('[data-testid="capability-user-note"]')?.textContent?.trim(),
+      ).toBe(copy.skill.loadsWhen('Summarizes a document.')),
+    );
+  });
+
+  test('says why a skill’s SKILL.md is not shown when the host does not serve it', async () => {
+    restore = bureau({
+      'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+      'bureau.skills.list': () => ({ revision: 1, skills: SKILLS, sources: [], trustLocked: null }),
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': (params) => codeDetail(String(params['id']), ['summarize']),
+      'bureau.skills.get': () => ({
+        name: 'summarize',
+        instructions: null,
+        unavailableReason: 'changed',
+      }),
+    }).restore;
+    const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
+
+    await waitFor(() =>
+      expect(
+        detail.querySelector('[data-testid="skill-instructions-unavailable"]')?.textContent?.trim(),
+      ).toBe(copy.skill.instructions.unavailable['changed']),
+    );
+    expect(detail.querySelector('[data-testid="skill-instructions-toggle"]')).toBeNull();
+  });
+
   test('opens with its name for a person, its identifier beside it, the sentence and the muted line', async () => {
     restore = serve().restore;
     const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');

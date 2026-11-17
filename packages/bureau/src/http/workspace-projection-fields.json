@@ -2046,6 +2046,14 @@
   ],
   "output:bureau.settings.schema": ["$.schema", "$.schema.*", "$.schema.*.*"],
   "output:bureau.settings.update": ["$.pendingRestart", "$.revision"],
+  "output:bureau.skills.get": [
+    "$.instructions",
+    "$.instructions|anyOf[0].size",
+    "$.instructions|anyOf[0].text",
+    "$.instructions|anyOf[0].truncated",
+    "$.name",
+    "$.unavailableReason"
+  ],
   "output:bureau.skills.list": [
     "$.revision",
     "$.skills",
