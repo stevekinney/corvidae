@@ -158,7 +158,13 @@ export function packageStylesheetPath(
   const stylePackage = packages.dependencies.find(
     (candidate) => candidate.urlSegment === urlSegment,
   );
-  return stylePackage === undefined ? null : resolveSafePath(stylePackage.root, path);
+  if (stylePackage === undefined) return null;
+  // A package's root holds its `node_modules`, whose links lead out of the package, so the request
+  // may not name one, and an existing file must really be inside the root, not only lexically.
+  if (path.split(/[/\\]/u).includes('node_modules')) return null;
+  const resolved = resolveSafePath(stylePackage.root, path);
+  if (resolved === null || !existsSync(resolved)) return resolved;
+  return within(stylePackage.root, realpathSync(resolved)) === undefined ? null : resolved;
 }
 
 /** `@import '<specifier>'`, `@import "<specifier>"`, and `@import url('<specifier>')`. */

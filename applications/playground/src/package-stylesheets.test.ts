@@ -157,4 +157,24 @@ describe('packageStylesheetPath', () => {
     expect(packageStylesheetPath('cinder', 'src/styles/index.css', packages)).toBeNull();
     expect(packageStylesheetPath('absent', 'src/styles/index.css', packages)).toBeNull();
   });
+
+  // A package directory holds `node_modules`, whose links lead out of it: lexically inside the
+  // root, really outside it.
+  test("refuses a path through the family's node_modules or a link out of its root", () => {
+    mkdirSync(join(fixture.familyRoot, 'node_modules', '@lostgradient'), { recursive: true });
+    symlinkSync(
+      join('..', '..', '..', 'core'),
+      join(fixture.familyRoot, 'node_modules', '@lostgradient', 'cinder'),
+    );
+    symlinkSync(join('..', 'core', 'src', 'styles'), join(fixture.familyRoot, 'linked'));
+
+    expect(
+      packageStylesheetPath(
+        'fixture-family',
+        'node_modules/@lostgradient/cinder/src/styles/components.css',
+        packages,
+      ),
+    ).toBeNull();
+    expect(packageStylesheetPath('fixture-family', 'linked/components.css', packages)).toBeNull();
+  });
 });
