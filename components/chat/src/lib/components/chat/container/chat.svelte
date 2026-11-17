@@ -66,12 +66,9 @@
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
   import {
     approvalActionRow,
-    approvalActionRowShift,
+    approvalArrivalBox,
     approvalArrivalShift,
-    approvalReviewBox,
     approvalRowVisible,
-    approvalTallerThanTranscript,
-    approvalVisibleBox,
     focusPendingApproval,
     PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
@@ -1644,6 +1641,9 @@
       !isComposerNoticeStatus(composerStatus),
   );
   let approvalFullyVisible = $state(false);
+  // Whether the waiting approval's arrival placement has settled; the reminder is drawn only from
+  // a settled placement, so it never takes room from the transcript while the card is being placed.
+  let approvalArrivalSettled = $state(false);
   // The room the reminder takes from the transcript (its height and margins), last read while it
   // was on screen; the estimate holds until the first read. It is not state: nothing renders from
   // it, and it only keeps the box the row is judged against the same with the reminder on and off.
@@ -1744,59 +1744,60 @@
     };
   });
 
-  // When an approval arrives the transcript scrolls so the card's row of decision buttons clears
-  // the composer and any notice above it, and keeps doing so as the layout settles (the notice
-  // itself shrinks the transcript) until the person scrolls, wheels, touches or presses a key
-  // there, or focus is inside the card. A card taller than the transcript is the lift's to place.
-  // The row is judged against the box the transcript has without the reminder, the same box that
-  // decides whether the reminder shows.
+  // When an approval arrives the transcript settles it into view once: the whole card when it fits
+  // the transcript, and otherwise its bottom, Deny and Approve, on the transcript's bottom with the
+  // clearance to spare (COR-2327). The placement is judged against the box the transcript has
+  // WITHOUT the reminder, the same box that decides whether the reminder shows, and the reminder is
+  // drawn only once the placement has settled, so the reminder (which takes room from the
+  // transcript) and the placement can never feed each other into a state that depends on timing.
+  // The placement runs again whenever the transcript, the card or the fonts change its layout,
+  // until a pass moves nothing, and never on a timer; it stops when the person scrolls, wheels,
+  // touches or presses a key there, or when focus is inside the card.
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
+    approvalArrivalSettled = false;
     if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
     let released = false;
     let frame = 0;
+    let observedCard: HTMLElement | null = null;
+    const settled = (): void => {
+      approvalArrivalSettled = true;
+    };
     const settle = (): void => {
       frame = 0;
-      if (released) return;
+      if (released) return settled();
       const card = pendingApprovalCard(containerRef, messageId);
       const actionRow = card === null ? null : approvalActionRow(card);
-      if (card === null || actionRow === null) return;
-      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
-      // The same box the reminder is judged against, so a row this puts in view is one the
-      // reminder agrees is in view, with it on screen or not.
-      const reminder = readApprovalReminder();
-      const viewportBox = approvalVisibleBox(
-        scroller.getBoundingClientRect(),
-        reminder.shown,
-        reminder.blockSize,
-      );
-      const cardBox = card.getBoundingClientRect();
-      // A layout not yet measured (zero-sized boxes) says nothing about where the card stands.
-      if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return;
-      // A card taller than the transcript has its bottom, Deny and Approve, aligned to the
-      // transcript's bottom with the clearance to spare (COR-2327); the lift leaves such a card
-      // alone, so the two never pull against each other.
-      const shift = approvalTallerThanTranscript(cardBox, viewportBox)
-        ? approvalArrivalShift(cardBox, viewportBox)
-        : approvalActionRowShift(
-            approvalReviewBox(
-              actionRow.getBoundingClientRect(),
-              cardBox,
-              viewportBox.bottom - viewportBox.top,
-            ),
-            viewportBox,
-            0,
-          );
-      if (shift !== 0) {
-        scroller.scrollTop += shift;
+      // Nothing drawn to place (a row not yet mounted, or a card with no decision row): the
+      // reminder follows what is in view.
+      if (card === null || actionRow === null) return settled();
+      if (card !== observedCard) {
+        if (observedCard !== null) resizes?.unobserve(observedCard);
+        observedCard = card;
+        resizes?.observe(card);
       }
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return settled();
+      const viewportBox = approvalArrivalBox(scroller);
+      const cardBox = card.getBoundingClientRect();
+      // A layout not yet measured (zero-sized boxes) says nothing about where the card stands, so
+      // the reminder stays available; the resize that measures it places the card.
+      if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
+      const shift = approvalArrivalShift(cardBox, viewportBox);
+      if (shift === 0) return settled();
+      const before = scroller.scrollTop;
+      scroller.scrollTop += shift;
+      // A transcript already at its end or its start cannot move further: that is where it rests.
+      if (Math.abs(scroller.scrollTop - before) < 0.5) return settled();
+      // Look once more after the scroll lands, until a pass moves nothing.
+      schedule();
     };
     const schedule = (): void => {
-      if (frame === 0 && !released) frame = requestAnimationFrame(settle);
+      if (frame === 0) frame = requestAnimationFrame(settle);
     };
     const release = (): void => {
       released = true;
+      settled();
     };
     const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
     for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
@@ -1805,8 +1806,15 @@
     resizes?.observe(scroller);
     const changes = new MutationObserver(schedule);
     changes.observe(scroller, { childList: true, subtree: true });
+    // Web fonts change every line's height once they load; place the card again then.
+    let disposed = false;
+    void scroller.ownerDocument.fonts?.ready.then(() => {
+      if (!disposed) schedule();
+      return undefined;
+    });
     schedule();
     return () => {
+      disposed = true;
       if (frame !== 0) cancelAnimationFrame(frame);
       resizes?.disconnect();
       changes.disconnect();
@@ -1855,17 +1863,9 @@
       );
       if (!pinned) return;
       const targetBox = target.getBoundingClientRect();
-      // A waiting approval taller than the transcript keeps its Deny and Approve in view: the
-      // arrival settle aligns its bottom, and lifting its top would push them off (COR-2327).
-      if (target.matches(PENDING_APPROVAL_CARD_SELECTOR)) {
-        const reminder = readApprovalReminder();
-        const box = approvalVisibleBox(
-          scroller.getBoundingClientRect(),
-          reminder.shown,
-          reminder.blockSize,
-        );
-        if (approvalTallerThanTranscript(targetBox, box)) return;
-      }
+      // A waiting approval the arrival placement owns is placed there alone, by one rule against
+      // one box; a lift by a second rule would pull against it (COR-2327).
+      if (untrack(() => approvalWaiting) && target.matches(PENDING_APPROVAL_CARD_SELECTOR)) return;
       const shift = revealTopShift(
         {
           viewportTop: scroller.getBoundingClientRect().top,
@@ -2959,7 +2959,7 @@
             {@render composerLead()}
           </div>
         {/if}
-        {#if approvalWaiting && !approvalFullyVisible}
+        {#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}
           <ChatApprovalDrawer
             labels={chatLabels}
             draft={composerDraft.trim() !== ''}

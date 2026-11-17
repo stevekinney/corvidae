@@ -331,6 +331,22 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       // The blocked row stands under the transcript; its action has a line of its own (06m).
       expect(read.blocked).not.toBeNull();
     }).toPass();
+    // Settled, not a passing moment: after the fonts and two more frames the card is where it was,
+    // still whole, and the reminder has not come and moved it (COR-2327).
+    const settled = await readApprovalPlacement(page);
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+    });
+    const again = await readApprovalPlacement(page);
+    expectDecisionInView(again);
+    expectQuestionAndApproveInView(again);
+    expect(Math.abs(again.question!.y - settled.question!.y)).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(again.buttons.at(-1)!.box!.y - settled.buttons.at(-1)!.box!.y),
+    ).toBeLessThanOrEqual(0.5);
 
     // Scrolled back up, the approval leaves the view and the reminder comes: one row, its glyph,
     // its words and a small Review at the row's end, never a button stacked under the words.
@@ -356,9 +372,14 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       element.parentElement!.append(space);
       const token = space.getBoundingClientRect().height;
       space.remove();
+      const words = element.querySelector('.chat-approval-drawer-text')!;
       return {
+        // A `normal` line height reads as no number; the font's 1.5 stands in for it then.
+        lineHeight:
+          Number.parseFloat(getComputedStyle(words).lineHeight) ||
+          Number.parseFloat(getComputedStyle(words).fontSize) * 1.5,
         drawer: rectOf(element),
-        text: rectOf(element.querySelector('.chat-approval-drawer-text')),
+        text: rectOf(words),
         button: rectOf(element.querySelector('button')),
         gapBelow:
           next === null
@@ -379,6 +400,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       source: SOURCE,
     });
     expect(reminder.drawer.height).toBeLessThanOrEqual(60);
+    // Its words are one line beside Review at 320 (COR-2327 N1).
+    expect(reminder.text.height).toBeLessThanOrEqual(reminder.lineHeight + 1);
     expect(reminder.button.x).toBeGreaterThanOrEqual(reminder.text.x + reminder.text.width - 1);
     expect(reminder.button.y).toBeLessThan(reminder.text.y + reminder.text.height);
     expect(

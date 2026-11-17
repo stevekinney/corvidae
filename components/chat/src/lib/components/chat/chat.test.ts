@@ -406,6 +406,26 @@ describe('Chat — scrollFadeVisible', () => {
     expect(timeline?.classList.contains('chat-timeline-mask-fade')).toBe(true);
   });
 
+  test('the reminder is drawn only from a settled arrival placement, which one rule owns', async () => {
+    const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
+    const text = await Bun.file(chatSveltePath).text();
+    const source = text.replace(/\s+/g, ' ');
+    // The reminder takes room from the transcript, so it waits for the placement to settle.
+    expect(source).toContain(
+      '{#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}',
+    );
+    // The placement is judged against the transcript without the reminder, by one rule, and runs
+    // again on the transcript's, the card's and the fonts' layout changes, never on a timer.
+    expect(source).toContain('const viewportBox = approvalArrivalBox(scroller);');
+    expect(source).toContain('const shift = approvalArrivalShift(cardBox, viewportBox);');
+    expect(source).toContain('resizes?.observe(card);');
+    expect(source).toContain('fonts?.ready.then(');
+    // The lift leaves a waiting approval to that placement.
+    expect(source).toContain(
+      'if (untrack(() => approvalWaiting) && target.matches(PENDING_APPROVAL_CARD_SELECTOR)) return;',
+    );
+  });
+
   test('the approval reminder stands one --cinder-space-3 gap clear of the row under it', async () => {
     const drawerPath = new URL('./container/chat-approval-drawer.svelte', import.meta.url);
     const text = await Bun.file(drawerPath).text();

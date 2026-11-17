@@ -2,7 +2,7 @@ import type { ApprovalState } from '@lostgradient/cinder';
 import type { Message } from '../conversation-model.ts';
 
 /** The words the composer drawer says while an approval waits on the person. */
-export const APPROVAL_DRAWER_TEXT = 'Needs your approval.';
+export const APPROVAL_DRAWER_TEXT = 'Approval needed.';
 
 /** The drawer's action: it takes the person to the approval that waits. */
 export const APPROVAL_DRAWER_ACTION = 'Review approval';
@@ -113,6 +113,37 @@ export function approvalArrivalShift(
   else if (below > 0) shift = below;
   else if (card.top < viewport.top) shift = card.top - viewport.top;
   return Math.abs(shift) <= 0.5 ? 0 : shift;
+}
+
+/**
+ * The room a drawn approval reminder takes from the transcript under `root`: its height and its
+ * block margins, or 0 when none is drawn. Read from the page, so it is what is drawn now.
+ */
+export function approvalReminderRoom(root: ParentNode | null | undefined): number {
+  const reminder = root?.querySelector<HTMLElement>('[data-chat-approval-drawer]');
+  if (reminder === null || reminder === undefined) return 0;
+  const style = getComputedStyle(reminder);
+  return (
+    reminder.getBoundingClientRect().height +
+    (Number.parseFloat(style.marginTop) || 0) +
+    (Number.parseFloat(style.marginBottom) || 0)
+  );
+}
+
+/**
+ * The transcript's visible box for placing a waiting approval, measured without the reminder:
+ * the reminder takes room from the transcript while it shows, so a placement judged against the
+ * box it leaves would move the card the reminder is about, and the two would feed each other
+ * (COR-2327). A host that brings the approval into view itself reads this same box.
+ */
+export function approvalArrivalBox(
+  transcript: HTMLElement,
+): Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'> {
+  const box = transcript.getBoundingClientRect();
+  const room = approvalReminderRoom(
+    transcript.closest('.chat-container') ?? transcript.parentElement,
+  );
+  return { top: box.top, bottom: box.bottom + room, left: box.left, right: box.right };
 }
 
 /** The selector of a pending approval card's row of decision buttons. */

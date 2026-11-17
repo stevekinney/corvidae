@@ -16,6 +16,7 @@ import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
+  approvalArrivalBox,
   approvalArrivalShift,
   approvalCardFitsViewport,
   approvalReviewBox,
@@ -75,7 +76,7 @@ function withDeadline(messages: readonly Message[], expiresAt: string): readonly
 describe('approval drawer words', () => {
   test('say exactly what is waiting and what the action does', () => {
     // Short enough to sit on one line beside Review on a 320px phone (COR-2327).
-    expect(APPROVAL_DRAWER_TEXT).toBe('Needs your approval.');
+    expect(APPROVAL_DRAWER_TEXT).toBe('Approval needed.');
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
     expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
   });
@@ -281,6 +282,47 @@ describe('approval action row shift', () => {
 
   test('does nothing when the row cannot fit the viewport with its inset', () => {
     expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('the box an arriving approval is placed against (COR-2327)', () => {
+  /** A rectangle that reads as `top` to `bottom`, whatever the DOM implementation measures. */
+  function stubBox(element: Element, top: number, bottom: number): void {
+    element.getBoundingClientRect = () =>
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 320,
+        x: 0,
+        y: top,
+        width: 320,
+        height: bottom - top,
+      }) as DOMRect;
+  }
+
+  test('is the transcript without the reminder, so the reminder cannot move the card it is about', () => {
+    const container = document.createElement('div');
+    container.className = 'chat-container';
+    const transcript = document.createElement('div');
+    container.append(transcript);
+    document.body.append(container);
+    stubBox(transcript, 160, 380);
+
+    // No reminder drawn: the transcript's own box.
+    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 160, bottom: 380 });
+
+    // A reminder 46px tall with 4px and 12px margins takes 62px from the transcript; the box the
+    // card is placed against is the same one either way.
+    const reminder = document.createElement('div');
+    reminder.setAttribute('data-chat-approval-drawer', '');
+    reminder.style.marginTop = '4px';
+    reminder.style.marginBottom = '12px';
+    container.append(reminder);
+    stubBox(reminder, 322, 368);
+    stubBox(transcript, 160, 318);
+    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 160, bottom: 380 });
+    container.remove();
   });
 });
 

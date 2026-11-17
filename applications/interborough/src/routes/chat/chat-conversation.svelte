@@ -57,8 +57,8 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
+    approvalArrivalBox,
     approvalArrivalShift,
-    approvalTallerThanTranscript,
     Chat,
     ChatNote,
     ChatQuestion,
@@ -792,18 +792,19 @@
   });
 
   /**
-   * Brings a waiting approval into view (COR-2327): centred while the whole card fits the
-   * transcript, and otherwise with its bottom, where Deny and Approve are, on the transcript's
-   * bottom with Chat's clearance to spare, so the decision is in view and its top may scroll off.
+   * Brings a waiting approval into view (COR-2327) by Chat's arrival rule: the whole card while it
+   * fits the transcript without the reminder, and otherwise its bottom, where Deny and Approve are,
+   * on the transcript's bottom with Chat's clearance to spare, its top free to scroll off.
    */
   function bringApprovalIntoView(row: HTMLElement): void {
     const transcript = row.closest<HTMLElement>('.chat-timeline');
     if (transcript !== null) {
       const card = row.getBoundingClientRect();
-      const box = transcript.getBoundingClientRect();
+      // Chat's own rule against Chat's own box, the transcript without the reminder, so this and
+      // Chat's arrival placement agree and the reminder cannot move the card (COR-2327).
+      const box = approvalArrivalBox(transcript);
       // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
-      const measured = card.height > 0 && box.height > 0;
-      if (measured && approvalTallerThanTranscript(card, box)) {
+      if (card.height > 0 && box.bottom - box.top > 0) {
         transcript.scrollTop += approvalArrivalShift(card, box);
         return;
       }

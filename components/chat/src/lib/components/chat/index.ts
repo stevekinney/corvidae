@@ -30,6 +30,7 @@ export type {
   TypingParticipant,
 } from './chat.types.ts';
 export {
+  approvalArrivalBox,
   approvalArrivalShift,
   approvalTallerThanTranscript,
 } from './container/chat-approval-review.ts';
