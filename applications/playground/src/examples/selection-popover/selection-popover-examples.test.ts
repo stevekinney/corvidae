@@ -213,11 +213,11 @@ describe('selection-popover examples — source analysis helpers (unit)', () => 
     expect(extractSelectionPopoverSites(source)).toHaveLength(2);
   });
 
-  it('extractSelectionPopoverSites does not match type imports like SelectionPopoverPosition', () => {
-    // The sample names no Cinder package: a package name here would read as this test importing
-    // it, and the family map would give the test to core, away from the examples it reads.
+  it('extractSelectionPopoverSites does not match type names like SelectionPopoverPosition', () => {
+    // The sample holds no import statement: one would read as this test importing its package,
+    // and the family map would give the test to core, away from the examples it reads.
     const source = `
-      import type { SelectionPopoverPosition } from 'selection-popover-types';
+      let position: SelectionPopoverPosition | null = null;
       <SelectionPopover id="a" open={isOpen} />
     `;
     expect(extractSelectionPopoverSites(source)).toHaveLength(1);
