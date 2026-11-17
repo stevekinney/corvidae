@@ -97,6 +97,8 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   goals: '/goals',
   hooks: '/hooks',
   health: '/health',
+  // The main host serves no plugin page: its states are `plugin-page.spec.ts`'s, on the host that does.
+  'plugin-page': '/plugins/nobody/overview',
 };
 
 /** The states this spec drives from the view's own path: a view is not found only at an item's address, which `21-chat.spec.ts` covers. */
@@ -135,7 +137,7 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
  * chat list words its own loading, first use and failure inside its pane, so `/chats` has none
  * (`chat-list.spec.ts`). A new chat has one, which `chat/new` states cover.
  */
-type ProbedView = Exclude<ViewName, 'health' | 'home' | 'chat'>;
+type ProbedView = Exclude<ViewName, 'health' | 'home' | 'chat' | 'plugin-page'>;
 
 const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
@@ -245,7 +247,10 @@ async function holdOnlyScopes(page: Page, scopes: readonly string[]): Promise<vo
 
 /** The probe a view asks, which Health does not have. */
 function probeOf(view: ViewName): ProbeRoute {
-  const probe = view === 'health' || view === 'home' || view === 'chat' ? undefined : PROBES[view];
+  const probe =
+    view === 'health' || view === 'home' || view === 'chat' || view === 'plugin-page'
+      ? undefined
+      : PROBES[view];
   if (probe === undefined) throw new Error(`${view} has no probe to answer`);
   return probe;
 }
@@ -322,6 +327,9 @@ function statesOf(view: ViewName): Outcome[] {
   // Home has no probe either: each of its cards reads on its own, so the view is only ever ready.
   // The chat list is the same: its states are the list's own, drawn in its pane (`chat-list.spec.ts`).
   if (view === 'home' || view === 'chat') return ['ready'];
+  // A plugin's page needs a host that serves one, which the main host does not: `plugin-page.spec.ts`
+  // drives its ready, loading, failed, not-found and disabled states on the host that does.
+  if (view === 'plugin-page') return [];
   // A view that owns its states keeps its header in each, so its page says them and not the frame:
   // its own specification drives them (`schedules-states.spec.ts`). The frame still refuses it.
   if (VIEWS[view].ownsStates === true) return ['forbidden', 'ready'];

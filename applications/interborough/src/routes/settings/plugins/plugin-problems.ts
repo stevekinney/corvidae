@@ -33,6 +33,8 @@ export type ProblemView = {
   readonly status: { readonly label: string; readonly dot: StatusDotStatus };
   readonly title: string;
   readonly body: string;
+  /** An identifier the body names because the thing has no title, which the card sets in monospace. */
+  readonly identifier?: string;
   readonly action?: ProblemAction;
 };
 
@@ -164,6 +166,27 @@ function nameClashView(problem: PluginProblem): ProblemView {
 }
 
 /**
+ * The panel a `panel-failed` or `panel-changed` problem names, as a person reads it: the title its
+ * plugin lists the panel under, else the identifier the problem carries. The identifier is returned
+ * as `identifier`, so the card can set it in monospace, only when there is no title (COR-2213, row
+ * PL8-17).
+ */
+function panelWords(
+  problem: PluginProblem,
+  plugin: PluginStanding | undefined,
+): { readonly name: string; readonly monospace: { readonly identifier?: string } } {
+  const app = text(problem, 'app');
+  const listed = plugin?.contributions.find(
+    (contribution) =>
+      contribution.kind === 'panel' && contribution.id === `${plugin.descriptor.name}:${app}`,
+  );
+  if (listed?.title !== undefined && listed.title !== '') {
+    return { name: listed.title, monospace: {} };
+  }
+  return { name: app, monospace: app === '' ? {} : { identifier: app } };
+}
+
+/**
  * The words for one problem. `plugin` is the plugin it belongs to, which lets a body name what the
  * plugin adds as a person reads it instead of by identifier.
  */
@@ -252,12 +275,15 @@ export function problemView(problem: PluginProblem, plugin?: PluginStanding): Pr
         title: words.startFailed.title,
         body: words.startFailed.body(text(problem, 'message')),
       };
-    case 'panel-failed':
+    case 'panel-failed': {
+      const panel = panelWords(problem, plugin);
       return {
         status: { label: words.panelFailed.status, dot: WARNING },
         title: words.panelFailed.title,
-        body: words.panelFailed.body(text(problem, 'app'), text(problem, 'message')),
+        body: words.panelFailed.body(panel.name, text(problem, 'message')),
+        ...panel.monospace,
       };
+    }
     case 'hook-invalid': {
       const path = text(problem, 'path');
       return {
@@ -271,12 +297,15 @@ export function problemView(problem: PluginProblem, plugin?: PluginStanding): Pr
         ),
       };
     }
-    case 'panel-changed':
+    case 'panel-changed': {
+      const panel = panelWords(problem, plugin);
       return {
         status: { label: words.panelChanged.status, dot: WARNING },
         title: words.panelChanged.title,
-        body: words.panelChanged.body(text(problem, 'app')),
+        body: words.panelChanged.body(panel.name),
+        ...panel.monospace,
       };
+    }
     default:
       return {
         status: { label: words.unknownStatus, dot: 'neutral' },

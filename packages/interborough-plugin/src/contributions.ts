@@ -573,15 +573,30 @@ export interface PluginEmbedder {
  */
 export type PluginPanelPlacement =
   | {
-      /** The panel is a page of its own in the host's router. */
+      /**
+       * The panel is a page of its own in the host's router, at `/plugins/<plugin>/<path>`. The host
+       * draws the page's header (the panel's `title`, and the plugin's title as where it comes from),
+       * so the app does not repeat its title under it, and fills the page with the app, which
+       * scrolls inside itself.
+       */
       readonly kind: 'page';
-      /** The route path under the host, in lowercase segments of letters, digits and hyphens. */
+      /**
+       * The route path under the plugin's own, in lowercase segments of letters, digits and
+       * hyphens. A path shared by two of one plugin's placements belongs to the first the host lists.
+       */
       readonly path: string;
-      /** A sidebar entry for the page; without one the page is reachable only by its path. */
+      /**
+       * A sidebar entry for the page, labelled with the panel's `title` and marked as a plugin's
+       * entry; without one the page is reachable only from the command palette and by its path.
+       */
       readonly sidebar?: {
-        /** The sidebar group the entry sits in. */
+        /** The sidebar group the entry sits in, after the group's built-in entries, in load order. */
         readonly group: 'work' | 'build' | 'system';
-        /** The name of a Lucide icon drawn beside the entry. */
+        /**
+         * The name of a Lucide icon drawn beside the entry. Only `puzzle`, `plug`, `blocks`,
+         * `chart-line`, `list-checks`, `bell`, `workflow` and `book-open` are drawn; any other name
+         * draws `puzzle`.
+         */
         readonly icon?: string;
       };
     }
@@ -625,7 +640,10 @@ export interface PluginPanel {
   readonly entry: URL;
   /** The CSS inlined into the page's `<style>` element, so it needs no origin to load from. */
   readonly styles?: string;
-  /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
+  /**
+   * The Bureau MCP tool names the panel may call. A panel may call no other tool. Every entry
+   * begins `bureau.`: setup refuses a panel that lists any other name, so the plugin is skipped.
+   */
   readonly allowedTools: string[];
   /**
    * Bureau operations callable only by this host panel, outside the generic MCP inventory. Each

@@ -6,7 +6,7 @@
    * Interborough's own API at `/api/openapi.json`, and the tool server is at this server's own
    * address; the agent card is the host's directory card.
    */
-  import { CopyButton, FormSection, SettingRow } from '@lostgradient/cinder';
+  import { CopyableValue, FormSection, SettingRow } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
@@ -54,10 +54,8 @@
         >
           {#snippet control()}
             <div class="ib-discovery__address">
-              <code id={`ib-discovery-${document.id}`} class="ib-discovery__code"
-                >{document.address}</code
-              >
-              <CopyButton
+              <CopyableValue
+                id={`ib-discovery-${document.id}`}
                 value={document.address}
                 label={copy.copy(document.title)}
                 copiedLabel={copy.copied(document.title)}
@@ -80,18 +78,9 @@
   }
 
   .ib-discovery__address {
-    display: flex;
-    gap: var(--cinder-space-2);
-    align-items: center;
-    justify-content: flex-end;
     min-inline-size: 0;
     inline-size: 100%;
-  }
-
-  .ib-discovery__code {
-    min-inline-size: 0;
     font-size: var(--cinder-text-xs);
-    overflow-wrap: anywhere;
     text-align: end;
   }
 </style>

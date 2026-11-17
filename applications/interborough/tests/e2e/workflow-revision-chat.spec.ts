@@ -94,14 +94,23 @@ test.describe('workflow revision review in Chat', () => {
       .evaluate((element) =>
         getComputedStyle(element).getPropertyValue('--color-text-primary').trim(),
       );
-    const frameText = await frame
-      .locator('.revision-status')
-      .evaluate((element) =>
-        getComputedStyle(element).getPropertyValue('--color-text-tertiary').trim(),
-      );
+    // The panel is a Svelte page on the Cinder panel kit: its status line is the polite live region
+    // in the Callout (there is no `.revision-status` class), and the kit fills each Cinder token from
+    // the MCP Apps variable the host sent (`PANEL_TOKEN_MAP`: `--color-text-secondary` fills
+    // `--cinder-text-muted`), so the text the panel draws follows the host's own tokens.
+    const status = frame.locator('[role="status"][data-state]');
+    await expect(status).toBeVisible();
+    const frameMuted = await status.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('--cinder-text-muted').trim(),
+    );
+    const frameDefault = await status.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('--cinder-text-default').trim(),
+    );
     expect(hostText).not.toBe('');
     expect(framePrimary).toBe(hostText);
-    expect(frameText).toBe(hostMuted);
+    expect(frameDefault).toBe(hostText);
+    expect(hostMuted).not.toBe('');
+    expect(frameMuted).toBe(hostMuted);
     await frame.locator('.revision-comparison').focus();
     await expect(frame.locator('.revision-comparison')).toBeFocused();
     const ringWidth = await page
@@ -111,11 +120,13 @@ test.describe('workflow revision review in Chat', () => {
       );
     const frameRing = await frame.locator('.revision-comparison').evaluate((element) => {
       const style = getComputedStyle(element);
-      return { outline: style.outlineWidth, shadow: style.boxShadow };
+      return { outline: style.outlineWidth, style: style.outlineStyle };
     });
     expect(ringWidth).toBe('2px');
+    // The panel draws Cinder's own focus ring, an outline as wide as the host's ring token (the page
+    // sets no ring of its own), so it reserves the same channel as a host control.
+    expect(frameRing.style).toBe('solid');
     expect(frameRing.outline).toBe(ringWidth);
-    expect(frameRing.shadow).toMatch(/0px 0px 0px 2px/);
     await captureForDesignReview(page, {
       route: `/chats/${thread}`,
       state: 'workflow revision proposal',
@@ -413,7 +424,10 @@ test.describe('workflow revision review in Chat', () => {
       state: 'workflow revision resource failure',
       source: 'workflow-revision-chat.spec.ts',
     });
-    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Couldn’t open Review workflow revision' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
     await expect(page.locator('iframe[title="Review workflow revision"]')).toBeVisible();
     expect(resourceAttempts).toBe(2);
     await captureForDesignReview(page, {

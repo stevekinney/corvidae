@@ -128,12 +128,16 @@ describe('the Agent2Agent section', () => {
     });
     expect(card.textContent).toContain(A2A_COPY.cardUrl.label);
     expect(card.textContent).toContain(A2A_COPY.cardUrl.description);
+    // The address is a Cinder CopyableValue: the text in monospace with its copy button inside it.
     await waitFor(() =>
-      expect((within(card).getByTestId('a2a-card-url') as HTMLInputElement).value).toBe(
+      expect(within(card).getByTestId('a2a-card-url').textContent).toContain(
         STUB_A2A_DIRECTORY_URL,
       ),
     );
-    expect(within(card).getByRole('button', { name: A2A_COPY.cardUrl.copy })).not.toBeNull();
+    const value = within(card).getByTestId('a2a-card-url');
+    expect(value.classList.contains('cinder-copyable-value')).toBe(true);
+    expect(within(card).queryByRole('textbox')).toBeNull();
+    expect(within(value).getByRole('button', { name: A2A_COPY.cardUrl.copy })).not.toBeNull();
   });
 
   test('Shared agents lists all eight agents in the Agents order, with a switch each', async () => {

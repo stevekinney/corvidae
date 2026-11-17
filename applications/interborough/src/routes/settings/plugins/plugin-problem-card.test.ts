@@ -225,6 +225,34 @@ describe('the cards for the codes the host added', () => {
     expect(root.textContent).toContain('The team key is required.');
   });
 
+  test('panel-changed shows the panel’s title, or its identifier in monospace when it has none (COR-2213)', () => {
+    const changed = (app: string) => ({
+      code: 'panel-changed',
+      app,
+      uri: 'ui://inspectors/x/v1',
+      previousDigest: 'sha256:old',
+      contentDigest: 'sha256:new',
+    });
+    const plugin = {
+      descriptor: { name: 'inspectors' },
+      contributions: [
+        {
+          kind: 'panel',
+          id: 'inspectors:workflow-revision-review',
+          title: 'Review workflow revision',
+        },
+      ],
+    };
+    const titled = card(changed('workflow-revision-review'), { plugin });
+    expect(titled.root.textContent).toContain('The panel Review workflow revision serves');
+    expect(titled.root.textContent).not.toContain('workflow-revision-review');
+    expect(titled.root.querySelector('code')).toBeNull();
+    cleanup();
+    const untitled = card(changed('untitled'), { plugin });
+    expect(untitled.root.querySelector('code')?.textContent).toBe('untitled');
+    expect(untitled.root.textContent).toContain('The panel untitled serves');
+  });
+
   test('start-failed keeps the plugin loaded', () => {
     const { root } = card({ code: 'start-failed', message: 'Connection refused.' });
     expect(root.textContent).toContain('Loaded, a step after startup failed');

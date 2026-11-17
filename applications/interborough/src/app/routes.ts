@@ -2,6 +2,7 @@ import type { Component } from 'svelte';
 
 import { AGENT_PAGE_COPY } from './copy/agents.ts';
 import { CAPABILITIES_COPY } from './copy/capabilities.ts';
+import { PLUGIN_PAGE_COPY } from './copy/plugin-pages.ts';
 import { SETTINGS_SECTION_COPY } from './copy/settings.ts';
 import { VIEW_COPY } from './copy/view-pages.ts';
 import { WORKFLOW_COPY } from './copy/workflows.ts';
@@ -442,5 +443,16 @@ export const routes: readonly RouteDefinition[] = [
     crumb: SETTINGS_SECTION_COPY.apiReference,
     view: 'settings',
     load: () => import('../routes/settings/api-reference/index.svelte'),
+  },
+  // A page a plugin's panel places with `{ kind: 'page', path }` (COR-2212, COR-2213): the path is
+  // the placement's own and can span several segments, which the final `*` captures. The crumb is
+  // a word until the page names itself by its panel's title, and `/plugins` and
+  // `/plugins/<plugin>` are no pages, so the route has no ancestors to name.
+  {
+    pattern: '/plugins/:plugin/*',
+    kind: 'reading',
+    crumb: PLUGIN_PAGE_COPY.crumb,
+    view: 'plugin-page',
+    load: () => import('../routes/plugin-page/index.svelte'),
   },
 ];

@@ -13,7 +13,10 @@ import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
 import { defaultAgentQuery, workflowAuthorQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
+import { getPanels, loadPluginApp } from '../lib/host-panels.ts';
+import { getPlugins, type PluginStanding } from '../lib/host-plugins.ts';
 import { startedFromWorkflows } from '../lib/new-chat-address.ts';
+import { findPluginPage } from '../lib/plugin-pages.ts';
 import { queryKeys } from '../lib/query.ts';
 import {
   CATALOG_STALE_TIME_MS,
@@ -22,6 +25,8 @@ import {
   resolveWorkflow,
 } from '../lib/workflow-catalog.ts';
 import { getWorkflowFile } from '../lib/workflow-files.ts';
+import { PLUGIN_PAGE_COPY } from './copy/plugin-pages.ts';
+import type { ViewLink } from './copy/views.ts';
 import type { ViewName } from './views.ts';
 
 /**
@@ -44,14 +49,27 @@ const AGENT_LIST_STALE_TIME_MS = 5_000;
 /** How often an empty runs page asks again while the feed that would fill it is not live, the poll `/tasks/:id` uses for a task that has ended. */
 export const RUNS_RECHECK_MS = 5_000;
 
+/**
+ * The words a not-found page says for one missing thing when they name something the route's own
+ * copy cannot, such as the plugin that is disabled (`ViewProbeFault.words`).
+ */
+export type ViewProbeFaultWords = {
+  readonly title: string;
+  readonly description: string;
+  readonly back: ViewLink;
+};
+
 /** A failure with an HTTP status, for a probe that does not go through Weft's client. */
 export class ViewProbeFault extends Error {
   readonly status: number;
+  /** The not-found words this fault says in place of the view's own, when it has some. */
+  readonly words: ViewProbeFaultWords | undefined;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, words?: ViewProbeFaultWords) {
     super(message);
     this.name = 'ViewProbeFault';
     this.status = status;
+    this.words = words;
   }
 }
 
@@ -189,6 +207,59 @@ async function probeWorkflowType(
       : { empty: false };
   }
   return { empty: false };
+}
+
+/**
+ * A plugin's page: found when a panel the host lists places a page at the address, and loaded when
+ * the page the panel serves can be read. Otherwise it is
+ * not found, and when the plugin is listed and disabled the fault says so in the words of
+ * `PLUGIN_PAGE_COPY.disabled`, with a way to its place in Settings (design rows PL8-11 and PL8-12).
+ * The read of the panels goes through the query cache under the sidebar's own key, current each
+ * time, so a plugin turned off is not a page the next time it is asked.
+ */
+async function probePluginPage(
+  queryClient: QueryClient,
+  plugin: string,
+  path: string,
+): Promise<ViewProbeResult> {
+  const panels = await queryClient.fetchQuery({
+    queryKey: queryKeys.hostPanels(),
+    queryFn: ({ signal }) => getPanels({ signal }),
+    staleTime: 0,
+    retry: false,
+  });
+  const page = findPluginPage(panels, plugin, path);
+  if (page !== undefined) {
+    // The page the panel serves is read here too, under the key the page reads it under, so a page
+    // that cannot be loaded is the frame's failed state and a page being loaded its loading state.
+    // A failure is the page's own to word (`pageOwnsFailure`), and "Try again" asks this probe again.
+    await queryClient.fetchQuery({
+      queryKey: queryKeys.hostPanelPage(plugin, page.app),
+      queryFn: ({ signal }) => loadPluginApp(plugin, page.app, { signal }),
+      staleTime: 0,
+      retry: false,
+    });
+    return { empty: false };
+  }
+  let standing: PluginStanding | undefined;
+  try {
+    const snapshot = await queryClient.fetchQuery({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      staleTime: 0,
+      retry: false,
+    });
+    standing = snapshot.plugins.find((candidate) => candidate.descriptor.name === plugin);
+  } catch {
+    // A host that cannot list its plugins cannot say one is disabled: the address is simply not a page.
+  }
+  if (standing?.status !== 'disabled') throw notFound('page');
+  const title = standing.descriptor.title;
+  throw new ViewProbeFault(`The plugin "${plugin}" is disabled.`, 404, {
+    title: PLUGIN_PAGE_COPY.disabled.title(title),
+    description: PLUGIN_PAGE_COPY.disabled.description,
+    back: PLUGIN_PAGE_COPY.disabled.back(title, plugin),
+  });
 }
 
 /**
@@ -354,6 +425,13 @@ export function probeFor(
         await client.operations['weft.storage.capabilities']({});
         return { empty: false };
       };
+    case 'plugin-page': {
+      const plugin = parameters['plugin'];
+      const path = parameters['*'];
+      return plugin === undefined || path === undefined
+        ? undefined
+        : (_client, queryClient) => probePluginPage(queryClient, plugin, path);
+    }
     case 'home':
       // Home reads what other views read, each card on its own, so one failing read shows its own
       // state inside its own card and never replaces the page.
