@@ -558,15 +558,45 @@ describe('Select — ghost variant', () => {
       'border: 1px solid var(--cinder-control-border)',
     );
 
-    const lead = styles.slice(
-      styles.indexOf(".cinder-select-field[data-cinder-variant='ghost']:first-child {"),
-    );
-    const leadBlock = lead.slice(0, lead.indexOf('}'));
-    expect(leadBlock).toContain(`margin-inline-start: calc(-1 * (${leadingPadding} + 1px));`);
-    // Only the leading one: a ghost select after another keeps its place, so none overlap.
+    const flush =
+      /\.cinder-select-field\[data-cinder-variant='ghost'\]\[data-cinder-flush\]\s+\.cinder-select-field__control \{([^}]*)\}/.exec(
+        styles,
+      )?.[1];
+    expect(flush).toContain(`margin-inline-start: calc(-1 * (${leadingPadding} + 1px));`);
+    // Opt-in, and the control moves, not the field, so a label or a message keeps the edge and a
+    // ghost select after another control keeps its place.
     expect(styles).not.toMatch(
-      /\.cinder-select-field\[data-cinder-variant='ghost'\] \{[^}]*margin-inline-start/,
+      /\.cinder-select-field\[data-cinder-variant='ghost'\](:first-child)? \{[^}]*margin-inline-start/,
     );
+  });
+
+  test('flush marks only a ghost select, and is off by default', () => {
+    const flush = render(Select, {
+      props: {
+        id: 'flush',
+        label: 'Agent',
+        options: defaultOptions,
+        variant: 'ghost',
+        flush: true,
+      },
+    });
+    expect(
+      flush.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-flush'),
+    ).toBe(true);
+    flush.unmount();
+    const plain = render(Select, {
+      props: { id: 'plain', label: 'Agent', options: defaultOptions, variant: 'ghost' },
+    });
+    expect(
+      plain.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-flush'),
+    ).toBe(false);
+    plain.unmount();
+    const bordered = render(Select, {
+      props: { id: 'bordered', label: 'Agent', options: defaultOptions, flush: true },
+    });
+    expect(
+      bordered.container.querySelector('.cinder-select-field')?.hasAttribute('data-cinder-flush'),
+    ).toBe(false);
   });
 
   test('the ghost focus ring wraps the whole control through the shared ring, border transparent', () => {

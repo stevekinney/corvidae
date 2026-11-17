@@ -252,12 +252,14 @@
     max-inline-size: 100%;
   }
 
-  /* A ghost select draws no face at rest, so its words are what the eye lines up. The one that
-   * leads its row is pulled back by its inline padding and its 1px transparent border, so its text
-   * starts at the field edge, on the text above it, rather than 11px inside it; only its hover tint
-   * and ring reach past the edge (COR-2489). A ghost select after another keeps its place, so a row
-   * of them never overlaps. */
-  .cinder-select-field[data-cinder-variant='ghost']:first-child {
+  /* A ghost select draws no face at rest, so its words are what the eye lines up. A `flush` one,
+   * which leads its row under text, is pulled back by its inline padding and its 1px transparent
+   * border, so its text starts at the field edge, on the text above it, rather than 11px inside it;
+   * only its hover tint and ring reach past the edge (COR-2489). The control moves, not the field,
+   * so a visible label or a message under it keeps the edge. It is opt-in: a ghost select after
+   * another control keeps its place, so a row never overlaps. */
+  .cinder-select-field[data-cinder-variant='ghost'][data-cinder-flush]
+    .cinder-select-field__control {
     margin-inline-start: calc(-1 * (var(--cinder-pad-control) + 1px));
   }
 
