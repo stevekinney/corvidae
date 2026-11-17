@@ -31,7 +31,9 @@ function rule(css: string, selector: string): Map<string, string> {
   parse(css).walkRules((candidate) => {
     const names = candidate.selector.split(',').map((entry) => entry.replace(/\s+/g, ' ').trim());
     if (!names.includes(wanted)) return;
-    candidate.walkDecls((declaration) => found.set(declaration.prop, declaration.value));
+    candidate.walkDecls((declaration) => {
+      found.set(declaration.prop, declaration.value);
+    });
   });
   expect(found.size, `${selector} must declare something`).toBeGreaterThan(0);
   return found;
