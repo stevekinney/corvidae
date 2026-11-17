@@ -490,6 +490,9 @@
     },
     activityTitle: titleOfActivity,
     workflowTitle: titleOfWorkflow,
+    showJson: () => {
+      tab = 'json';
+    },
   };
   provideBuilderHost(host);
 

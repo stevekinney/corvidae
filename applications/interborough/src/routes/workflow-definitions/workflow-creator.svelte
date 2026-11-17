@@ -21,6 +21,7 @@
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import {
@@ -143,7 +144,10 @@
       label: creator.saveAction,
       group: copy.builder.shortcutGroup,
       scope: { route: '/workflows/new' },
-      handler: () => submit(),
+      // Below 640 pixels the builder is read-only, so the shortcut creates nothing there either.
+      handler: () => {
+        if (!phoneViewport.current) submit();
+      },
     }),
   );
 

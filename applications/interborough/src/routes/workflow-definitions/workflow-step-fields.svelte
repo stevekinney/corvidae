@@ -149,8 +149,16 @@
 {/snippet}
 
 {#if step.kind === 'other'}
-  <p class="weft-step-fields__other">{step.label}</p>
-  <p class="weft-step-fields__note">{copy.otherStepNote}</p>
+  <!-- A kind the builder can't draw is read-only, kept exactly as written, and changed in the JSON
+       tab; it can still be moved or deleted (row 66a). -->
+  <p class="weft-step-fields__other" data-testid="workflow-step-other">
+    {copy.otherStepLine}
+    <span class="weft-step-fields__other-kind">{step.label}</span>
+  </p>
+  <p class="weft-step-fields__note">
+    {copy.otherStepNote}
+    <Button variant="ghost-accent" size="sm" onclick={host.showJson}>{copy.editInJson}</Button>
+  </p>
 {:else}
   <Input
     id={`${id}-title`}
@@ -370,7 +378,14 @@
 
   .weft-step-fields__other {
     margin: 0;
+    font-weight: 600;
     overflow-wrap: anywhere;
+  }
+
+  /* The kind as the file writes it, after the line, in the muted weight. */
+  .weft-step-fields__other-kind {
+    color: var(--cinder-text-muted);
+    font-weight: 400;
   }
 
   .weft-step-fields__note {

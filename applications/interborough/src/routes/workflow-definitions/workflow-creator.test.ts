@@ -761,8 +761,24 @@ describe('the builder', () => {
     );
     await fireEvent.click(builderTab(container));
     await ready(container);
+    // COR-2432, row 66a: read-only, kept as written, with a way to the JSON tab.
+    expect(container.textContent).toContain(BUILDER.otherStepLine);
     expect(container.textContent).toContain(BUILDER.otherStepNote);
     expect(container.textContent).toContain(BUILDER.otherTrigger);
+    const editInJson = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === BUILDER.editInJson,
+    );
+    if (editInJson === undefined) throw new Error('Expected Edit in JSON');
+    await fireEvent.click(editInJson);
+    await waitFor(() =>
+      expect(
+        [...container.querySelectorAll('[role="tab"]')]
+          .find((tab) => tab.textContent?.trim() === BUILDER.jsonTab)
+          ?.getAttribute('aria-selected'),
+      ).toBe('true'),
+    );
+    await fireEvent.click(builderTab(container));
+    await ready(container);
     expect(container.querySelector('#workflow-builder-step-1-message')).toBeNull();
     expect(
       container.querySelector('#workflow-builder-trigger-kind')?.getAttribute('aria-disabled'),
@@ -907,6 +923,20 @@ describe('the builder', () => {
       true,
     );
     expect(container.textContent).toContain(BUILDER.phone.message);
+  });
+
+  test('COR-2432: ⌘Enter creates nothing below 640 pixels, where the builder is read-only', async () => {
+    phone();
+    const { container } = open(listed('demo:assistant'));
+    await ready(container);
+    shortcuts.handleKey(
+      { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+      { routePattern: '/workflows/new', regions: [] },
+      Date.now(),
+    );
+    await Promise.resolve();
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/new');
   });
 
   test('turns the Builder tab off with the reason while the JSON is not valid, and says nothing is dropped', async () => {

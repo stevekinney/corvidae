@@ -918,6 +918,42 @@ describe('the step builder in the editor', () => {
     expect(definition).not.toHaveProperty('name');
   });
 
+  test('COR-2432: Cancel on a changed form asks to discard, Keep editing stays, and an untouched form leaves at once (row 66h)', async () => {
+    const DISCARD = WORKFLOW_COPY.builder.discard;
+    const untouched = open('/workflows/digest/edit');
+    await builderReady(untouched.container);
+    await fireEvent.click(untouched.getByRole('button', { name: EDITOR.cancelAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    expect(untouched.queryByRole('dialog', { name: DISCARD.title })).toBeNull();
+    cleanup();
+    stub?.restore();
+
+    const { container, getByRole, findByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    await fireEvent.input(field(container, 'workflow-builder-title'), {
+      target: { value: 'Changed' },
+    });
+    await fireEvent.click(getByRole('button', { name: EDITOR.cancelAction }));
+    const dialog = await findByRole('dialog', { name: DISCARD.title });
+    expect(dialog.textContent).toContain(DISCARD.description);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    const keep = [...dialog.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === DISCARD.keep,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(keep ?? null));
+    await fireEvent.click(keep as HTMLElement);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    expect(field(container, 'workflow-builder-title').value).toBe('Changed');
+
+    await fireEvent.click(getByRole('button', { name: EDITOR.cancelAction }));
+    const again = await findByRole('dialog', { name: DISCARD.title });
+    const discard = [...again.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === DISCARD.confirm,
+    );
+    await fireEvent.click(discard as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+  });
+
   test('keeps the draft in the builder when the file changed underneath it', async () => {
     const { container, findByRole, getByRole } = open('/workflows/digest/edit');
     await builderReady(container);

@@ -664,7 +664,10 @@ export const WORKFLOW_COPY = {
     stepsUnreadable:
       'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
     notAnObject: 'This is not an object',
-    otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
+    /** A step of a kind the builder can't draw: read-only, kept as written (row 66a). */
+    otherStepLine: 'The builder can’t show this kind of step',
+    otherStepNote: 'It is kept exactly as written and saved unchanged.',
+    editInJson: 'Edit in JSON',
     /**
      * What each card is, at its top beside its number. A card for an activity reads the activity's
      * own title; `activity` is what it reads before the catalog says.

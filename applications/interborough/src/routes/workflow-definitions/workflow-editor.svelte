@@ -35,6 +35,7 @@
     Button,
     Callout,
     CodeLocation,
+    ConfirmDialog,
     PageHeader,
     Skeleton,
     Tabs,
@@ -54,7 +55,8 @@
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
+  import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import type { CatalogRow } from '../../lib/workflow-catalog.ts';
   import {
@@ -127,6 +129,11 @@
 
   // The page draws the connection banner itself, in the edit form's own words (row 66c).
   $effect(() => connection.claimBanner());
+
+  // Leaving with changes that are not saved asks first: Cancel, the breadcrumb, a link, back. An
+  // untouched form, and the text it was last filled from, leave at once (row 66h).
+  const leaveGuard = new LeaveGuard(() => loaded !== undefined && text !== (loaded.text ?? ''));
+  $effect(() => leaveGuard.attach());
 
   function fill(file: WorkflowFileDetail): void {
     loaded = file;
@@ -257,6 +264,8 @@
     },
     onSuccess: () => {
       unapplied = false;
+      // What was typed is saved, so leaving for the workflow's page asks nothing.
+      leaveGuard.release();
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
       router.navigate(workflowTypePath(type));
     },
@@ -320,8 +329,9 @@
       label: editor.saveAction,
       group: copy.builder.shortcutGroup,
       scope: { route: '/workflows/:workflow/edit' },
+      // Below 640 pixels the builder is read-only, so the shortcut saves nothing there either.
       handler: () => {
-        if (editable) submit();
+        if (editable && !phoneViewport.current) submit();
       },
     }),
   );
@@ -517,6 +527,18 @@
     {/if}
   {/if}
 </div>
+
+<!-- Asked before changes that are not saved are left behind (row 66h): the creator's own dialog.
+     Focus starts on Keep editing, Cinder's cancel button. -->
+<ConfirmDialog
+  bind:open={leaveGuard.asking}
+  title={copy.builder.discard.title}
+  description={copy.builder.discard.description}
+  confirmLabel={copy.builder.discard.confirm}
+  cancelLabel={copy.builder.discard.keep}
+  destructive
+  onConfirm={() => leaveGuard.leave()}
+/>
 
 <style>
   .weft-workflow-editor {
