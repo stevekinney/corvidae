@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const componentsRoot = resolve(import.meta.dir, '../../components');
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
+/** A component's file, wherever the split put the component (P-COR-101). */
+const componentFile = (path: string) => cinderComponentFile(path);
 
 describe('shared label/value hierarchy', () => {
   test('defines every axis of the shared hierarchy', () => {
@@ -24,7 +27,7 @@ describe('shared label/value hierarchy', () => {
     ['description-list/description-list.svelte', 'cinder-_label-text', 'cinder-_value-text'],
     ['footer/footer.svelte', 'cinder-_label-text', 'cinder-_value-text'],
   ])('%s composes the shared label and value roles', (relativePath, labelClass, valueClass) => {
-    const source = readFileSync(resolve(componentsRoot, relativePath), 'utf8');
+    const source = readFileSync(componentFile(relativePath), 'utf8');
 
     expect(source).toContain(labelClass);
     expect(source).toContain(valueClass);

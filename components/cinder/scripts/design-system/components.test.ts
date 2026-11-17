@@ -94,7 +94,12 @@ describe('componentReadme', () => {
 
   test('truncates a README over the cap at a line boundary', () => {
     const line = `${'é'.repeat(99)}\n`;
-    const readme = componentReadme(tabs, manifest, `# Tabs\n\n${line.repeat(400)}`);
+    const readme = componentReadme(
+      tabs,
+      manifest,
+      `# Tabs\n\n${line.repeat(400)}`,
+      'components/cinder/src/components/tabs/README.md',
+    );
     expect(Buffer.byteLength(readme)).toBeLessThanOrEqual(README_CAP);
     expect(readme).not.toContain('�');
     expect(readme).toEndWith(

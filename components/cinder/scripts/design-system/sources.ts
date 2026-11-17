@@ -5,11 +5,26 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import type { BundleSource } from './bundle.ts';
 import type { ComponentManifest, ManifestSource } from './manifest.ts';
 import { cinderRoot, editorRoot } from './paths.ts';
+
+/**
+ * The directory holding component `id`'s folder: the source's components directory, or, for a
+ * Cinder component the split moved into a package of its own (P-COR-101), that package's, as the
+ * manifest's `source` names it.
+ */
+export function componentsDirectoryOf(source: ManifestSource, id: string): string {
+  const entry = source.manifest.components.find((component) => component.id === id) as
+    { source?: { packageRoot?: unknown; directory?: unknown } } | undefined;
+  const located = entry?.source;
+  if (typeof located?.packageRoot !== 'string' || typeof located.directory !== 'string') {
+    return source.componentsDirectory;
+  }
+  return dirname(join(dirname(dirname(source.entry)), located.packageRoot, located.directory));
+}
 
 function readManifest(workspace: string): ComponentManifest {
   return JSON.parse(

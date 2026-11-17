@@ -3,6 +3,17 @@ import { join } from 'node:path';
 
 const componentsRoot = join(import.meta.dir, 'components');
 
+/**
+ * A Cinder component's barrel, in core or in the package the split moved it into (P-COR-101): the
+ * one `components/<package>/src/components/<name>/index.ts` that exists.
+ */
+function cinderComponentIndex(name: string): string {
+  const workspaces = join(import.meta.dir, '../../..');
+  const [found] = new Bun.Glob(`*/src/components/${name}/index.ts`).scanSync({ cwd: workspaces });
+  if (found === undefined) throw new Error(`No Cinder package holds ${name}/index.ts.`);
+  return join(workspaces, found);
+}
+
 describe('Chat package style contracts', () => {
   for (const [component, dependency, stylesheet] of [
     ['chat-composer-popover', 'CommandMenu', 'command-menu'],
@@ -22,9 +33,7 @@ describe('Chat package style contracts', () => {
           `import\\s*\\{[^}]*\\b${dependency}\\b[^}]*\\}\\s*from\\s*['"]@lostgradient/cinder['"]`,
         ),
       );
-      const dependencyEntry = await Bun.file(
-        join(import.meta.dir, '../../../cinder/src/components', stylesheet, 'index.ts'),
-      ).text();
+      const dependencyEntry = await Bun.file(cinderComponentIndex(stylesheet)).text();
       expect(dependencyEntry).toContain(`import './${stylesheet}.css'`);
     });
   }

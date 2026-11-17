@@ -32,7 +32,8 @@ export const sourcePaths = {
     'components/editor/.metadata/components.json',
   ],
   examples: [
-    'components/cinder/src/components/*/examples',
+    // Core's components, and those of the packages the split moved them into (P-COR-101).
+    'components/*/src/components/*/examples',
     'components/editor/src/lib/components/*/examples',
   ],
 };

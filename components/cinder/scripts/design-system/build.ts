@@ -61,7 +61,7 @@ import {
   planPublishBatches,
   replacementCharacterPositions,
 } from './publish.ts';
-import { bundleSources, readManifestSources } from './sources.ts';
+import { bundleSources, componentsDirectoryOf, readManifestSources } from './sources.ts';
 import { buildTokens, type ResolvedContext } from './tokens.ts';
 
 const { values: options } = parseArgs({
@@ -198,7 +198,10 @@ async function main(): Promise<number> {
 
   const plans = new Map<string, PreviewPlan>();
   for (const component of manifest.components) {
-    const plan = planPreview(component.id, sourceOf(component.id).componentsDirectory);
+    const plan = planPreview(
+      component.id,
+      componentsDirectoryOf(sourceOf(component.id), component.id),
+    );
     if (plan) plans.set(component.id, plan);
   }
   step(`previews: bundling ${plans.size} in ${SHARD_COUNT} shards`);
@@ -229,7 +232,11 @@ async function main(): Promise<number> {
       if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) throw new Error(`bad export name ${name}`);
       const directory = join(componentsDirectory, name);
       mkdirSync(directory, { recursive: true });
-      const leaf = join(sourceOf(component.id).componentsDirectory, component.id, 'README.md');
+      const leaf = join(
+        componentsDirectoryOf(sourceOf(component.id), component.id),
+        component.id,
+        'README.md',
+      );
       const leafReadme = existsSync(leaf) ? readFileSync(leaf, 'utf8') : undefined;
       writeFileSync(
         join(directory, 'README.md'),

@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const componentsRoot = resolve(import.meta.dir, '../../components');
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
+/** A component's file, wherever the split put the component (P-COR-101). */
+const componentFile = (path: string) => cinderComponentFile(path);
 
 describe('shared row-item boundary', () => {
   test('suppresses a divider on both sides of a hovered row', () => {
@@ -32,12 +35,12 @@ describe('shared row-item boundary', () => {
     expect(shared).toContain('padding: var(--cinder-space-1-5) var(--cinder-space-2);');
     expect(floatingSurface).not.toContain('.cinder-_option-row');
     for (const family of ['dropdown-item', 'command-item', 'navigation-item']) {
-      expect(readFileSync(resolve(componentsRoot, family, `${family}.svelte`), 'utf8')).toContain(
+      expect(readFileSync(componentFile(`${family}/${family}.svelte`), 'utf8')).toContain(
         'cinder-_row-item',
       );
     }
     for (const family of ['combobox', 'autocomplete', 'multi-select', 'transfer-list']) {
-      expect(readFileSync(resolve(componentsRoot, family, `${family}.svelte`), 'utf8')).toContain(
+      expect(readFileSync(componentFile(`${family}/${family}.svelte`), 'utf8')).toContain(
         'cinder-_option-row',
       );
     }
@@ -48,9 +51,9 @@ describe('shared row-item boundary', () => {
       'choice-grid-item',
       'tree-item',
     ]) {
-      expect(
-        readFileSync(resolve(componentsRoot, family, `${family}.svelte`), 'utf8'),
-      ).not.toContain('cinder-_row-item');
+      expect(readFileSync(componentFile(`${family}/${family}.svelte`), 'utf8')).not.toContain(
+        'cinder-_row-item',
+      );
     }
   });
 });

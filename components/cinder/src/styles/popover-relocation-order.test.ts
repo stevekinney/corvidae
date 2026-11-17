@@ -1,7 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
+
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 /**
  * The popover's base rules used to load from an aggregator imported between `feed/feed.css` and
@@ -11,14 +13,20 @@ import { describe, expect, test } from 'bun:test';
  * served again by the sidecars that import `popover/popover.css`.
  */
 const stylesDirectory = import.meta.dir;
-const componentsDirectory = resolve(stylesDirectory, '../components');
+/** A component's stylesheet, wherever the split put the component (P-COR-101). */
+const componentFile = (path: string) => realpathSync(cinderComponentFile(path));
 const componentsStylesheet = resolve(stylesDirectory, 'components.css');
-const surface = resolve(componentsDirectory, 'popover/popover-surface.css');
+const surface = componentFile('popover/popover-surface.css');
 const IMPORT = /@import\s+(?:url\(\s*)?["']?([^"')\s]+\.css)["']?/g;
 
 function importsOf(file: string): string[] {
   const source = readFileSync(file, 'utf8');
-  return [...source.matchAll(IMPORT)].map((match) => resolve(dirname(file), match[1]!));
+  // A package specifier is read through the package's `exports`.
+  return [...source.matchAll(IMPORT)].map((match) =>
+    match[1]!.startsWith('.')
+      ? resolve(dirname(file), match[1]!)
+      : realpathSync(Bun.resolveSync(match[1]!, dirname(file))),
+  );
 }
 
 describe('popover surface stylesheet', () => {
@@ -27,8 +35,8 @@ describe('popover surface stylesheet', () => {
 
   test('sits where the experimental aggregator sat: after feed.css, before file-upload.css', () => {
     expect(at).toBeGreaterThan(0);
-    expect(entries[at - 1]).toBe(resolve(componentsDirectory, 'feed/feed.css'));
-    expect(entries[at + 1]).toBe(resolve(componentsDirectory, 'file-upload/file-upload.css'));
+    expect(entries[at - 1]).toBe(componentFile('feed/feed.css'));
+    expect(entries[at + 1]).toBe(componentFile('file-upload/file-upload.css'));
   });
 
   test('is imported once, by components.css, and by no other stylesheet or module', async () => {

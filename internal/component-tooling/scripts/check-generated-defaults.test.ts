@@ -19,11 +19,10 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-const COMPONENTS_DIR = join(import.meta.dir, '../../../components/cinder/src/components');
+import { cinderComponentFile } from './discover-component-directories.ts';
 
 /** Splits a Markdown table row on unescaped `|`, using GFM's backslash-parity rule. */
 function splitTableRow(line: string): string[] {
@@ -51,7 +50,8 @@ function splitTableRow(line: string): string[] {
 
 /** Reads a component's README's Default column value for a given prop. */
 function defaultCellFor(componentId: string, propName: string): string | undefined {
-  const readmePath = join(COMPONENTS_DIR, componentId, 'README.md');
+  // Wherever the component lives: core, or the package the split moved it into (P-COR-101).
+  const readmePath = cinderComponentFile(`${componentId}/README.md`);
   const readme = readFileSync(readmePath, 'utf8');
 
   for (const line of readme.split('\n')) {

@@ -6,7 +6,7 @@
  * themes with `data-theme`.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const IMPORT = /^@import\s+'([^']+)'(?:\s+layer\(([^)]+)\))?\s*;\s*$/gm;
@@ -19,8 +19,13 @@ export function inlineImports(entry: string, seen = new Set<string>()): string {
   if (seen.has(entry)) return '';
   seen.add(entry);
   const text = readFileSync(entry, 'utf8');
-  return text.replace(IMPORT, (_line, relative: string, layer: string | undefined) => {
-    const body = inlineImports(resolve(dirname(entry), relative), seen);
+  return text.replace(IMPORT, (_line, specifier: string, layer: string | undefined) => {
+    // A package specifier (the packages the split moved Cinder's stylesheets into, P-COR-101)
+    // resolves through the package's `exports`.
+    const target = specifier.startsWith('.')
+      ? resolve(dirname(entry), specifier)
+      : realpathSync(Bun.resolveSync(specifier, dirname(entry)));
+    const body = inlineImports(target, seen);
     return layer ? `@layer ${layer} {\n${body}\n}` : body;
   });
 }

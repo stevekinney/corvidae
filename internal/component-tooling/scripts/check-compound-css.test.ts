@@ -14,12 +14,22 @@
 
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
-const COMPONENTS = join(import.meta.dir, '../../../components/cinder/src/components');
+import { cinderComponentFile } from './discover-component-directories.ts';
 
 function readCss(componentPath: string): string {
-  return readFileSync(join(COMPONENTS, componentPath), 'utf-8');
+  // Wherever the component lives: core, or the package the split moved it into (P-COR-101).
+  return readFileSync(cinderComponentFile(componentPath), 'utf-8');
+}
+
+/**
+ * An `@import` of `<directory>/<name>.css`: by relative path while one package holds both, or by
+ * the holding package's specifier once the split moved it into another (P-COR-101).
+ */
+function importOf(directory: string, name: string): RegExp {
+  return new RegExp(
+    `@import\\s+['"](?:\\.\\./${directory}/|@lostgradient/[\\w-]+/(?:components/${directory}/)?)${name}\\.css['"]`,
+  );
 }
 
 describe('Compound component CSS dependency contracts', () => {
@@ -27,7 +37,7 @@ describe('Compound component CSS dependency contracts', () => {
     const commandMenuCss = readCss('command-menu/command-menu.css');
 
     test('command-menu.css @imports command-item.css', () => {
-      expect(commandMenuCss).toMatch(/@import\s+['"]\.\.\/command-item\/command-item\.css['"]/);
+      expect(commandMenuCss).toMatch(importOf('command-item', 'command-item'));
     });
   });
 
@@ -35,7 +45,7 @@ describe('Compound component CSS dependency contracts', () => {
     const commandPaletteCss = readCss('command-palette/command-palette.css');
 
     test('command-palette.css @imports command-item.css', () => {
-      expect(commandPaletteCss).toMatch(/@import\s+['"]\.\.\/command-item\/command-item\.css['"]/);
+      expect(commandPaletteCss).toMatch(importOf('command-item', 'command-item'));
     });
 
     test('CommandItem rules are NOT duplicated inline in command-palette.css', () => {
@@ -66,7 +76,7 @@ describe('Compound component CSS dependency contracts', () => {
     test('context-menu.css @imports dropdown.css', () => {
       // ContextMenu renders DropdownItem, DropdownMenu, DropdownGroup, DropdownLabel,
       // and DropdownSeparator. Their styles live in dropdown/dropdown.css.
-      expect(contextMenuCss).toMatch(/@import\s+['"]\.\.\/dropdown\/dropdown\.css['"]/);
+      expect(contextMenuCss).toMatch(importOf('dropdown', 'dropdown'));
     });
   });
 
@@ -75,7 +85,7 @@ describe('Compound component CSS dependency contracts', () => {
 
     test('menu-bar.css @imports dropdown.css', () => {
       // MenuBar renders DropdownItem as its overflow-menu items.
-      expect(menuBarCss).toMatch(/@import\s+['"]\.\.\/dropdown\/dropdown\.css['"]/);
+      expect(menuBarCss).toMatch(importOf('dropdown', 'dropdown'));
     });
   });
 
@@ -85,14 +95,14 @@ describe('Compound component CSS dependency contracts', () => {
     test('side-navigation.css @imports navigation-item.css', () => {
       // SideNavigationItem delegates rendering to NavigationItem.
       expect(sideNavigationCss).toMatch(
-        /@import\s+['"]\.\.\/navigation-item\/navigation-item\.css['"]/,
+        importOf('navigation-item', 'navigation-item'),
       );
     });
 
     test('side-navigation.css still @imports side-navigation-group.css', () => {
       // Pre-existing import that must not be removed.
       expect(sideNavigationCss).toMatch(
-        /@import\s+['"]\.\.\/side-navigation-group\/side-navigation-group\.css['"]/,
+        importOf('side-navigation-group', 'side-navigation-group'),
       );
     });
   });
@@ -101,15 +111,15 @@ describe('Compound component CSS dependency contracts', () => {
     const tabsCss = readCss('tabs/tabs.css');
 
     test('tabs.css @imports tab.css', () => {
-      expect(tabsCss).toMatch(/@import\s+['"]\.\.\/tab\/tab\.css['"]/);
+      expect(tabsCss).toMatch(importOf('tab', 'tab'));
     });
 
     test('tabs.css @imports tab-list.css', () => {
-      expect(tabsCss).toMatch(/@import\s+['"]\.\.\/tab-list\/tab-list\.css['"]/);
+      expect(tabsCss).toMatch(importOf('tab-list', 'tab-list'));
     });
 
     test('tabs.css @imports tab-panel.css', () => {
-      expect(tabsCss).toMatch(/@import\s+['"]\.\.\/tab-panel\/tab-panel\.css['"]/);
+      expect(tabsCss).toMatch(importOf('tab-panel', 'tab-panel'));
     });
   });
 
@@ -117,11 +127,11 @@ describe('Compound component CSS dependency contracts', () => {
     const tableCss = readCss('table/table.css');
 
     test('table.css @imports table-row.css', () => {
-      expect(tableCss).toMatch(/@import\s+['"]\.\.\/table-row\/table-row\.css['"]/);
+      expect(tableCss).toMatch(importOf('table-row', 'table-row'));
     });
 
     test('table.css @imports table-header.css', () => {
-      expect(tableCss).toMatch(/@import\s+['"]\.\.\/table-header\/table-header\.css['"]/);
+      expect(tableCss).toMatch(importOf('table-header', 'table-header'));
     });
   });
 });
