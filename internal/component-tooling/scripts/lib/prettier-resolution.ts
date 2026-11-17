@@ -29,7 +29,7 @@ let checked: { version: string; resolvedFrom: string } | null = null;
  * own `node_modules`; the artifact pipeline then formatted with 3.9.6 while the
  * root stayed locked at 3.8.1, and 3.9's markdown printer moved blank lines
  * around the `<!-- generated:variables:* -->` markers -- so `components:check`
- * reported ~150 READMEs stale on a branch that never touched `components/cinder`
+ * reported ~150 READMEs stale on a branch that never touched `components/core`
  * (CIN-456).
  *
  * The invariant is not "one prettier in the lockfile" -- transitives such as

@@ -54,7 +54,7 @@ async function runManifestCheck(): Promise<{ stage: CheckStage; manifest?: Manif
     const { buildManifest } = await import('./generate-manifest.ts');
     const { formatGenerated } = await import('./component-artifact-operations.ts');
     const manifest = await buildManifest();
-    const manifestPath = join(import.meta.dir, '../../../components/cinder/components.json');
+    const manifestPath = join(import.meta.dir, '../../../components/core/components.json');
     const generated = await formatGenerated(JSON.stringify(manifest, null, 2) + '\n', manifestPath);
     const committed = existsSync(manifestPath) ? await Bun.file(manifestPath).text() : undefined;
     const drift = committed === undefined || generated !== committed;

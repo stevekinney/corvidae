@@ -1,5 +1,5 @@
 /**
- * Builds and writes `components/cinder/a2ui-catalog.json`, Cinder's opt-in A2UI
+ * Builds and writes `components/core/a2ui-catalog.json`, Cinder's opt-in A2UI
  * catalog: a projection of an explicit allowlist of Cinder components, taken
  * from their generated `*.schema.json` files and `components.json`.
  *
@@ -182,7 +182,7 @@ export type VendoredSchemas = {
 // Paths
 // ---------------------------------------------------------------------------
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
+const PACKAGE_ROOT = join(import.meta.dir, '../../../components/core');
 
 /** Absolute path of the checked-in catalog. */
 export const CATALOG_PATH = join(PACKAGE_ROOT, 'a2ui-catalog.json');

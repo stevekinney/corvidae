@@ -71,7 +71,7 @@ describe('CIN-245: structural border tier classification', () => {
  * a sweep, because the sweep cannot tell a button's resting edge from a card's.
  */
 describe('COR-1552: bordered button resting edges keep the control tier', () => {
-  const COMPONENTS_ROOT = join(import.meta.dirname, '../../../../components/cinder/src/components');
+  const COMPONENTS_ROOT = join(import.meta.dirname, '../../../../components/core/src/components');
   const CHAT_ROOT = join(import.meta.dirname, '../../../../components/chat/src/lib/components');
   const EDITOR_ROOT = join(import.meta.dirname, '../../../../components/editor/src/lib/components');
 
@@ -250,7 +250,7 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
 
   test('the secondary Button edge reads the control tier through --cinder-button-border', () => {
     const tokens = readFileSync(
-      join(import.meta.dirname, '../../../../components/cinder/src/styles/tokens-base.css'),
+      join(import.meta.dirname, '../../../../components/core/src/styles/tokens-base.css'),
       'utf8',
     );
     const declarations = [...tokens.matchAll(/--cinder-button-border:\s*([^;]+);/g)].map((match) =>

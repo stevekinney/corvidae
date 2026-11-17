@@ -33,7 +33,7 @@ describe("Bureau's other vendored A2UI schemas", () => {
       'server-to-client.schema.json',
       'internal/component-tooling/scripts/a2ui/server_to_client.json',
     ],
-    ['cinder-catalog.schema.json', 'components/cinder/a2ui-catalog.json'],
+    ['cinder-catalog.schema.json', 'components/core/a2ui-catalog.json'],
   ];
 
   for (const [name, source] of copies) {

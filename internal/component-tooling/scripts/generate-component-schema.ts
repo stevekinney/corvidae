@@ -1088,9 +1088,7 @@ function isDeclaredInComponentTypesFile(type: Type): boolean {
 
   return declarations.some((declaration) => {
     const filePath = declaration.getSourceFile().getFilePath();
-    return (
-      filePath.includes('/components/cinder/src/components/') && filePath.endsWith('.types.ts')
-    );
+    return filePath.includes('/components/core/src/components/') && filePath.endsWith('.types.ts');
   });
 }
 

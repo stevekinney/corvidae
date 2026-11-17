@@ -8,7 +8,7 @@ import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import type { Manifest } from './generate-manifest.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
+const PACKAGE_ROOT = join(import.meta.dir, '../../../components/core');
 const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
 const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
 const SCHEMA_PATH = join(

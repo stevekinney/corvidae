@@ -9,7 +9,7 @@ import {
   toIdentifier,
 } from './readme-usage-contract.ts';
 
-const COMPONENTS_ROOT = join(import.meta.dir, '../../../components/cinder/src/components');
+const COMPONENTS_ROOT = join(import.meta.dir, '../../../components/core/src/components');
 
 export type ReadmeUsageFailure = {
   componentId: string;

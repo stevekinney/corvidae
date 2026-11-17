@@ -37,11 +37,11 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_FILE_SCAN_CONCURRENCY, mapWithConcurrencyLimit } from './validation-utilities.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const componentsSource = join(componentsRoot, 'src');
 const defaultBaselinePath = join(
   scriptDirectory,
-  '../../../components/cinder/scripts/platform-viewport-baseline.json',
+  '../../../components/core/scripts/platform-viewport-baseline.json',
 );
 
 /** A classified feature and the regex that detects its usage in source. */

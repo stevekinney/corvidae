@@ -373,7 +373,7 @@ export const FIXTURE_SPECS_COMMAND =
  */
 export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
 
-const cinderSource = 'components/cinder/src/';
+const cinderSource = 'components/core/src/';
 const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
 const editorComponent = /^components\/editor\/src\/lib\/components\/([^/]+)\//;
 

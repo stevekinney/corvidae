@@ -20,7 +20,7 @@ type Metafile = {
 const CINDER_ROOT = '@lostgradient/cinder';
 /** The curated highlighter the playground publishes beneath every component it mounts. */
 const CURATED_SHIKI_ADAPTER_PATH = join(PLAYGROUND_ROOT, 'src', 'curated-shiki-adapter.ts');
-const BARREL_SUFFIX = 'components/cinder/src/index.ts';
+const BARREL_SUFFIX = 'components/core/src/index.ts';
 const GRAMMAR = /@shikijs[\\/]langs[\\/]dist[\\/]([^\\/]+)$/u;
 
 async function metafileOf(entrypoint: string, publicPath: string): Promise<Metafile> {
@@ -157,7 +157,7 @@ describe('the shared shell bundle (CIN-588 preservation)', () => {
     const barrelFile = join(PLAYGROUND_ROOT, barrelPath!);
     const starts: string[] = [];
     for (const [path, input] of Object.entries(shell.inputs)) {
-      if (path.endsWith(BARREL_SUFFIX) || path.includes('components/cinder/src/')) continue;
+      if (path.endsWith(BARREL_SUFFIX) || path.includes('components/core/src/')) continue;
       if (!input.imports.some((edge) => edge.original === CINDER_ROOT)) continue;
       for (const name of namedCinderImports(readFileSync(join(PLAYGROUND_ROOT, path), 'utf8'))) {
         const module = resolveExport(barrelFile, name);
@@ -170,7 +170,7 @@ describe('the shared shell bundle (CIN-588 preservation)', () => {
     const shippedComponents = [...shipped]
       .filter(
         ([path, bytes]) =>
-          bytes > 0 && path.includes('components/cinder/src/components/') && !path.endsWith('.css'),
+          bytes > 0 && path.includes('components/core/src/components/') && !path.endsWith('.css'),
       )
       .map(([path]) => path);
     expect(shippedComponents.length).toBeGreaterThan(0);

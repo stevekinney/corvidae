@@ -29,8 +29,8 @@ export type DiscoveredComponent = {
   packageRoot: string;
 };
 
-/** Core's directory, `components/cinder`. */
-export const CORE_ROOT = join(import.meta.dir, '../../../components/cinder');
+/** Core's directory, `components/core`. */
+export const CORE_ROOT = join(import.meta.dir, '../../../components/core');
 
 type PackageManifest = { name?: unknown; dependencies?: unknown; workspaces?: unknown };
 

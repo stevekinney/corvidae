@@ -51,11 +51,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const componentsSource = join(componentsRoot, 'src');
 const defaultBaselinePath = join(
   scriptDirectory,
-  '../../../components/cinder/scripts/raw-color-baseline.json',
+  '../../../components/core/scripts/raw-color-baseline.json',
 );
 
 /**

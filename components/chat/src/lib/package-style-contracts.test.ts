@@ -23,7 +23,7 @@ describe('Chat package style contracts', () => {
         ),
       );
       const dependencyEntry = await Bun.file(
-        join(import.meta.dir, '../../../cinder/src/components', stylesheet, 'index.ts'),
+        join(import.meta.dir, '../../../core/src/components', stylesheet, 'index.ts'),
       ).text();
       expect(dependencyEntry).toContain(`import './${stylesheet}.css'`);
     });

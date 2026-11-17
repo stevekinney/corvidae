@@ -92,7 +92,7 @@ describe('the token runtime browser bundle', () => {
     expect(bundleText.length).toBeGreaterThan(200_000);
     expect(graph.length).toBeGreaterThan(30);
     expect(
-      graph.some((file) => file.path.endsWith('components/cinder/src/tokens/runtime/index.ts')),
+      graph.some((file) => file.path.endsWith('components/core/src/tokens/runtime/index.ts')),
     ).toBe(true);
   });
 
@@ -161,7 +161,7 @@ describe('the token runtime browser bundle', () => {
         ) &&
         !file.path.endsWith('/entry.ts') &&
         // A pure, import-free helper (one `Object.hasOwn` read) the token runtime shares.
-        !file.path.endsWith('/components/cinder/src/_internal/own-entry.ts'),
+        !file.path.endsWith('/components/core/src/_internal/own-entry.ts'),
     );
     expect(outside.map((file) => file.path)).toEqual([]);
   });

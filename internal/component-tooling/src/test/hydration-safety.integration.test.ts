@@ -28,7 +28,7 @@ import {
 
 const fixturesDir = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../../components/cinder/src/test/fixtures',
+  '../../../../components/core/src/test/fixtures',
 );
 const fixture = (name: string): string => join(fixturesDir, `${name}.svelte`);
 const browserFlagFixture = fixture('hydration-probe-browser-flag');

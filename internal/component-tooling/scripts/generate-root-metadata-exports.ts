@@ -4,7 +4,7 @@ import { join, relative } from 'node:path';
 import { formatGenerated } from './component-artifact-operations.ts';
 import type { Manifest, ManifestComponent } from './generate-manifest.ts';
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
+const PACKAGE_ROOT = join(import.meta.dir, '../../../components/core');
 const EXPORTS_DIRECTORY = join(PACKAGE_ROOT, 'src', 'exports');
 
 type MetadataKind = 'schema' | 'variables' | 'constraints' | 'examples';

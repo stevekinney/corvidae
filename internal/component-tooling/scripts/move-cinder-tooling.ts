@@ -6,7 +6,7 @@
  * bun internal/component-tooling/scripts/move-cinder-tooling.ts --dry-run  # print the plan
  * ```
  *
- * What moves: every tracked file under `components/cinder/scripts` except the token pipeline
+ * What moves: every tracked file under `components/core/scripts` except the token pipeline
  * (`tokens/`), the design-system bundle (`design-system/`), the baselines and the A2UI catalog
  * allowlist, which stay beside Cinder; and every Cinder module `families.json`'s rules give the
  * tooling (the schemas, `manifest.meta.ts`, `schema-types.ts`, the component-free test helpers and
@@ -23,7 +23,7 @@
  *     `dirname(fileURLToPath(import.meta.url))` or a constant bound to one, through `join(...)` or
  *     `resolve(...)` with literal segments, or `new URL('<literal>', import.meta.url)`;
  *   - every file path in a `package.json` script or a `bunfig.toml`;
- *   - every repository-relative mention (`components/cinder/scripts/x.ts`) in tracked text files.
+ *   - every repository-relative mention (`components/core/scripts/x.ts`) in tracked text files.
  *
  * A run with nothing left to move still repairs a relative import that no longer resolves when the
  * old path's counterpart exists in the tooling, so it can run again after a merge brings in files
@@ -37,7 +37,7 @@ import { deriveFamilies, readPackageTree, readRules } from './derive-families.ts
 
 const TOOLING = 'internal/component-tooling';
 const TOOLING_PACKAGE = '@lostgradient/component-tooling';
-const CINDER = 'components/cinder';
+const CINDER = 'components/core';
 const KEPT_SCRIPTS = [
   /^scripts\/tokens\//,
   /^scripts\/design-system\//,

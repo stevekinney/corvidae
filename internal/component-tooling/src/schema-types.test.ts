@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-const COMPONENTS_DIR = join(import.meta.dir, '../../../components/cinder/src/components');
+const COMPONENTS_DIR = join(import.meta.dir, '../../../components/core/src/components');
 
 const EXCLUDED_COMPONENTS = new Set<string>();
 

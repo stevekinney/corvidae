@@ -7,7 +7,7 @@ COR-516 (DR-2, "Implement revision-bound diff-review state and persistence") req
 - **Linear project:** [Cinder: Diff review and agent handoff](https://linear.app/lost-gradient/project/cinder-diff-review-and-agent-handoff-b8e4cf1ce5d8/overview)
 - **Linear document (full plan, review ledger, and amendment):** [Diff review signed-off project plan and five-reviewer evidence](https://linear.app/lost-gradient/document/diff-review-signed-off-project-plan-and-five-reviewer-evidence-df4c4cfea5bd)
 
-The project originated in the retired standalone `stevekinney/cinder` repository and its issue IDs (`CIN-554`..`CIN-562`) were translated into this workspace's Corvidae issues (`COR-508`, `COR-509`..`COR-516`) with matching `DR-1`..`DR-9` aliases. `packages/editor` there is `components/editor` here; `packages/components` there is `components/cinder` here.
+The project originated in the retired standalone `stevekinney/cinder` repository and its issue IDs (`CIN-554`..`CIN-562`) were translated into this workspace's Corvidae issues (`COR-508`, `COR-509`..`COR-516`) with matching `DR-1`..`DR-9` aliases. `packages/editor` there is `components/editor` here; `packages/components` there is `components/core` here.
 
 No product or API decision is reopened by this document. It transcribes the ratified contract; it does not re-litigate it. Implementers translate these choices into types, fixtures, and code.
 
@@ -91,7 +91,7 @@ Restore matches supplied targets by target ID, never path. Reorder keeps matchin
 
 ## Component inventory and admission boundary (existing, documented here)
 
-This module (`diff-review-state`) is a pure state/data module, not a component leaf, so it carries no generated component-artifact/admission record of its own; `components/cinder`'s `generate-component-artifacts.ts` script (invoked as `components:generate`/`components:check`) covers Editor's discoverable _component_ leaves (`DiffViewer`, `ReviewEditor`, `MarkdownEditor`, and later `DiffReview`/`DiffReviewComments`) via prop-convention inspection; it does not enumerate non-component library exports like this one. This module's own admission gate is its focused test suite (`DiffReview state`), `typecheck`, and its registration in `corvidae-mirror/src/package-surface.json` and `src/index.ts`, following the existing `./export` and `./session` subpath precedent.
+This module (`diff-review-state`) is a pure state/data module, not a component leaf, so it carries no generated component-artifact/admission record of its own; `components/core`'s `generate-component-artifacts.ts` script (invoked as `components:generate`/`components:check`) covers Editor's discoverable _component_ leaves (`DiffViewer`, `ReviewEditor`, `MarkdownEditor`, and later `DiffReview`/`DiffReviewComments`) via prop-convention inspection; it does not enumerate non-component library exports like this one. This module's own admission gate is its focused test suite (`DiffReview state`), `typecheck`, and its registration in `corvidae-mirror/src/package-surface.json` and `src/index.ts`, following the existing `./export` and `./session` subpath precedent.
 
 ## Agent export format (DR-5, `COR-513`)
 

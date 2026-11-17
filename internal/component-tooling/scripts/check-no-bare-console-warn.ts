@@ -8,7 +8,7 @@
  * and is dead-code-eliminated from production bundles. A bare `console.warn` in
  * component source ships the warning string (and internal naming) to end users.
  *
- * This script walks `components/cinder/src/components/**` and fails on any
+ * This script walks `components/core/src/components/**` and fails on any
  * `.svelte` or `.ts` file that calls `console.warn` directly. `dev-warn.ts`
  * itself is the single allowed `console.warn` call site.
  *
@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_FILE_SCAN_CONCURRENCY, mapWithConcurrencyLimit } from './validation-utilities.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder/src/components');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core/src/components');
 
 /**
  * Component-relative paths permitted to call `console.warn` directly. Currently
