@@ -51,6 +51,9 @@ describe('Duplicate on an agent’s page', () => {
 
     const duplicate = await findByRole('link', { name: AGENT_PAGE_COPY.duplicate });
     expect(duplicate.getAttribute('href')).toBe('/agents/new?from=assistant');
+    // A secondary action is an icon: the name is the accessible name, never visible text.
+    expect(duplicate.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(duplicate.textContent?.trim()).toBe('');
     expect(queryByRole('link', { name: AGENT_EDITOR_COPY.editAction })).toBeNull();
 
     await fireEvent.click(duplicate);

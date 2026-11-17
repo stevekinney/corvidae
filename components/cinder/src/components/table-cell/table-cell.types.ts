@@ -4,10 +4,11 @@ import type { HTMLTdAttributes } from 'svelte/elements';
 export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'> & {
   /**
    * Keeps the cell's text on one line and ends it with an ellipsis. The full
-   * text is the `title`, so it shows on hover. The text may grow to a maximum
+   * text is a tooltip on hover and focus, and the cut text takes focus, so a
+   * keyboard or touch user reaches it too. The text may grow to a maximum
    * inline size and no further, so one very long value (a storage key, a hash,
    * a URL) cannot widen the table. Set it on every cell in the column.
-   * Unless you pass `title`, the title is read from the rendered text.
+   * Unless you pass `title`, the tooltip is read from the rendered text.
    * @default false
    */
   truncate?: boolean;
@@ -18,20 +19,34 @@ export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'>
    * control that keeps its own size, such as a checkbox or a switch: the cell does not stretch it or
    * set a minimum width.
    *
-   * A table stacks its rows on a narrow container only while a cell has this set. When it
-   * stacks, the control cells move to a line of their own under the other cells, each at least 44px
-   * tall, and a `'fit'` cell shows its column's header text beside the control.
+   * A table that is not `fit` stacks its rows on a narrow container only while a cell has this
+   * set. When it stacks, the control cells move to a line of their own under the other cells, each
+   * at least 44px tall, and a `'fit'` cell shows its column's header text beside the control. On a
+   * `fit` table whose controls are all `'fit'`, the control sits at the trailing edge of the row
+   * and takes its own accessible name; a control that fills its cell keeps the line of its own.
    * @default false
    */
   controls?: boolean | 'fit';
   /**
    * Secondary content that follows `children` in the same cell: an identifier, a description, a
-   * note. It reads as part of the cell until the table stacks its rows into cards, where it is
-   * dropped, so the first line of a card carries the name and its one-word facts only (a tool's
-   * name and risk, not its identifier and description). It is not a place for anything the reader
-   * needs on a phone, because it is not drawn there.
+   * note. It reads as part of the cell until the table stacks its rows. A table with controls
+   * drops it from its cards, so the first line carries the name and its one-word facts only. A
+   * `fit` table's title cell keeps it as one muted line under the title, cut with an ellipsis, and
+   * drops it from every other cell. It is not a place for anything the reader needs on a phone
+   * beyond an identifier. Give it block content, so it sits under the name at every width.
    */
   detail?: Snippet;
+  /**
+   * The part this cell plays on a `fit` table's stacked row, below `stackBelow`:
+   *
+   * - `'end'`: a short value at the inline end of the title line (a time, a count).
+   * - `'status'`: a status that starts the second line, never cut.
+   * - `'plain'`: prose under the title, with no label.
+   *
+   * A cell with no `stack` is a line of its column's header text and its value. The title is the
+   * `as="th"` cell. It has no effect at other widths or on a table that is not `fit`.
+   */
+  stack?: 'end' | 'status' | 'plain';
   /** Visual alignment for numeric columns. @default "left" */
   align?: 'left' | 'center' | 'right';
   /**

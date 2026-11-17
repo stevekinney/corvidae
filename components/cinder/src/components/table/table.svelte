@@ -26,6 +26,15 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import Select from '../select/select.svelte';
+  import {
+    applySortOption,
+    holdSortButtonsOutOfTabOrder,
+    markCardCells,
+    readSortOptions,
+    unmarkCardCells,
+    type StackSortOption,
+  } from './table-stack.ts';
   import { lengthToPixels } from './table.length.ts';
   import { setTableContext } from './table.context.ts';
   import type { TableProps } from './table.types.ts';
@@ -64,28 +73,37 @@
   // when `scrollable`). Until the container has a measurable width (the server, the first paint,
   // an engine with no layout) the viewport stands in for it.
   let controlRegistrations = 0;
+  let fillRegistrations = 0;
   let hasControls = $state(false);
+  let hasFillControls = $state(false);
   let containerNarrow = $state<boolean | undefined>(undefined);
-  const stacked = $derived(hasControls && (containerNarrow ?? narrowViewport.current));
+  // A `fit` table stacks too, as cards, unless a control that fills its cell asks for the control
+  // layout (a table of form fields, where each control keeps a line of its own).
+  const stacked = $derived((hasControls || fit) && (containerNarrow ?? narrowViewport.current));
+  const stackCard = $derived(stacked && fit && !hasFillControls);
 
-  function registerControls(): () => void {
-    // A plain counter, so registering inside a cell's effect never reads the state it writes.
+  function registerControls(fill = true): () => void {
+    // Plain counters, so registering inside a cell's effect never reads the state it writes.
     controlRegistrations += 1;
+    if (fill) fillRegistrations += 1;
     hasControls = true;
+    hasFillControls = fillRegistrations > 0;
     return () => {
       controlRegistrations -= 1;
+      if (fill) fillRegistrations -= 1;
       hasControls = controlRegistrations > 0;
+      hasFillControls = fillRegistrations > 0;
     };
   }
 
   const measureContainer: Attachment<HTMLTableElement> = (table) => {
     const container = table.parentElement;
     const breakpoint = stackBreakpoint;
-    // Only a table with a control in it can stack, so only that table watches its container.
+    // Only a table that can stack (a control in it, or `fit`) watches its container.
     if (
       !container ||
       breakpoint === undefined ||
-      !hasControls ||
+      !(hasControls || fit) ||
       typeof ResizeObserver === 'undefined'
     ) {
       containerNarrow = undefined;
@@ -175,18 +193,64 @@
     }
   }
 
+  // A stacked sortable `fit` table sorts from one Select above the rows: its options are the sortable
+  // columns the header names, and choosing one activates that column's header button.
+  let tableElement: HTMLTableElement | undefined;
+  let sortOptions = $state<StackSortOption[]>([]);
+  let chosenSort = $state<{ value: string; column: string; direction: string } | undefined>();
+  const selectedSort = $derived(
+    chosenSort && sort?.column === chosenSort.column && sort.direction === chosenSort.direction
+      ? chosenSort.value
+      : '',
+  );
+  const instanceId = $props.id();
+  const sortSelectId = `cinder-table-sort-${instanceId}`;
+  // The options last handed to the Select, kept apart from the state so reading them in the
+  // attachment below does not make the attachment depend on what it writes.
+  let sortOptionsSeen: StackSortOption[] = [];
+
+  function chooseSort(value: string): void {
+    if (!tableElement) return;
+    applySortOption(tableElement, value, () => sort?.direction);
+    if (sort) chosenSort = { value, column: sort.column, direction: sort.direction };
+  }
+
+  function sameOptions(a: StackSortOption[], b: StackSortOption[]): boolean {
+    return (
+      a.length === b.length &&
+      a.every((option, i) => option.value === b[i]?.value && option.label === b[i]?.label)
+    );
+  }
+
   const labelCellsWhileStacked: Attachment<HTMLTableElement> = (table) => {
     if (!stacked) return;
+    const card = stackCard;
     const roled = new Set<Element>();
+    tableElement = table;
+    const releaseSortButtons = card ? holdSortButtonsOutOfTabOrder(table) : undefined;
     const update = (): void => {
       labelStackedCells(table);
       keepTableRoles(table, roled);
+      if (!card) return;
+      markCardCells(table);
+      const options = readSortOptions(table);
+      if (!sameOptions(options, sortOptionsSeen)) {
+        sortOptionsSeen = options;
+        sortOptions = options;
+      }
     };
     update();
     const observer = new MutationObserver(update);
     observer.observe(table, { childList: true, characterData: true, subtree: true });
     return () => {
       observer.disconnect();
+      releaseSortButtons?.();
+      if (card) {
+        unmarkCardCells(table);
+        sortOptionsSeen = [];
+        sortOptions = [];
+      }
+      if (tableElement === table) tableElement = undefined;
       for (const part of roled) part.removeAttribute('role');
     };
   };
@@ -268,6 +332,9 @@
     get selectionEnabled() {
       return selectable;
     },
+    get stackCard() {
+      return stackCard;
+    },
     onSortChange,
     registerControls,
   });
@@ -281,6 +348,7 @@
     data-cinder-density={density}
     data-cinder-selectable={selectable || undefined}
     data-cinder-stacked={stacked || undefined}
+    data-cinder-stack-card={stackCard || undefined}
     data-cinder-frameless={frameless || undefined}
     data-cinder-fit={fit || undefined}
     style:--cinder-table-caption-height={normalizedCaption ? `${captionHeight}px` : undefined}
@@ -294,6 +362,22 @@
   </table>
 {/snippet}
 
+{#if stackCard && sortOptions.length > 0}
+  <div class="cinder-table__stack-sort">
+    <Select
+      id={sortSelectId}
+      label="Sort by"
+      labelVisible={false}
+      placeholder="Sort by"
+      size="sm"
+      presentation="native"
+      options={sortOptions}
+      {...selectedSort ? { value: selectedSort } : {}}
+      onValueChange={chooseSort}
+    />
+  </div>
+{/if}
+
 {#if scrollable}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
@@ -304,6 +388,7 @@
     aria-labelledby={wrapperAriaLabelledBy}
     tabindex={wrapperTabindex}
     data-cinder-frameless={frameless || undefined}
+    data-cinder-stack-card={stackCard || undefined}
     {@attach overflowFadeEdges('inline')}
   >
     {@render table()}

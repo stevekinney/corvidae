@@ -315,6 +315,9 @@ describe('the page of an agent a disabled plugin ships', () => {
       name: AGENT_PAGE_COPY.plugin.duplicate,
     });
     expect(duplicate.getAttribute('data-cinder-variant')).toBe('secondary');
+    // A secondary action is an icon: the name is the accessible name, never visible text.
+    expect(duplicate.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(duplicate.textContent?.trim()).toBe('');
     expect(queryByRole('link', { name: 'Edit' })).toBeNull();
     // Held, not removed: it stays focusable and says why it is off.
     const newChat = within(header).getByRole('button', { name: 'New chat' });

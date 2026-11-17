@@ -259,7 +259,7 @@ describe('the models', () => {
     ...container.querySelectorAll<HTMLElement>('tbody tr'),
   ];
   const cells = (row: HTMLElement) =>
-    [...row.querySelectorAll('td')].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
+    [...row.children].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
 
   test('are a table of Model, Abilities, Context and Allowed for the connected providers’ models', async () => {
     const { container } = open();
@@ -267,12 +267,12 @@ describe('the models', () => {
     await waitFor(() => expect(table(container)).not.toBeNull());
 
     expect(
-      [...table(container)!.querySelectorAll('th')].map((th) => th.textContent?.trim()),
+      [...table(container)!.querySelectorAll('thead th')].map((th) => th.textContent?.trim()),
     ).toEqual(['Model', 'Abilities', 'Context', 'Allowed']);
     expect(container.textContent).toContain(MODELS_COPY.models.description);
     expect(rowOf(container, 'openai/gpt-5')).toBeNull();
     expect(cells(rowOf(container, 'anthropic/claude-sonnet-5')!)).toEqual([
-      'Claude Sonnet 5 claude-sonnet-5',
+      'Claude Sonnet 5claude-sonnet-5',
       'Tools',
       '200K',
       'Allowed',
@@ -287,7 +287,7 @@ describe('the models', () => {
 
     const row = rowOf(container, 'anthropic/claude-sonnet-5')!;
     expect(row.querySelector('code')?.textContent).toBe('claude-sonnet-5');
-    expect(row.querySelector('[data-layout="stacked"]')).not.toBeNull();
+    expect(row.querySelector('th .ib-models__identifier')).not.toBeNull();
     expect(row.querySelector('[data-cinder-status="success"]')).not.toBeNull();
   });
 
