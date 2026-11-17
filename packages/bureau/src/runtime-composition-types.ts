@@ -47,7 +47,7 @@ import type { ConditionalTextValueStore, Storage } from '@lostgradient/storage';
 import type { AnyToolbox, ToolRequestContext } from 'armorer';
 import type { FileAgentBinding } from './agent-file-catalog';
 import type { GoalAttemptFence, GoalAttemptTarget } from './goal-attempt-fence';
-import type { MissedFireBuffer } from './bureau-event-forwarders';
+import type { MissedFireBuffer, WorkflowVersionMismatchBuffer } from './bureau-event-forwarders';
 import type {
   SessionTaintPublication,
   SessionTaintSource,
@@ -500,6 +500,12 @@ export interface DurableComposition {
    * rest of the composition was still being built.
    */
   missedFires: MissedFireBuffer;
+  /**
+   * COR-2097 — the engine's `workflow.version-mismatch` observations, held from the moment recovery
+   * can report one and delivered to the first listener, for the same reason as {@link missedFires}:
+   * recovery reports from a callback, before the Bureau's event emitter exists.
+   */
+  versionMismatches: WorkflowVersionMismatchBuffer;
   /**
    * COR-1811 — the Weft log store behind the engine's persisted `ctx.log` lines, present only when
    * the composition was asked for one (`RuntimeCompositionDependencies.workflowLogs`).

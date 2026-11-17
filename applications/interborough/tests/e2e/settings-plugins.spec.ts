@@ -15,6 +15,7 @@ import { PLUGINS_COPY } from '../../src/app/copy/plugins.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { withSampleCatalog } from './sample-catalog.ts';
 
 const SOURCE = 'settings-plugins.spec.ts';
@@ -156,7 +157,7 @@ test.describe('Settings › Plugins', () => {
     const save = detail(page, 'guardrails').getByRole('button', { name: 'Save configuration' });
     await save.click();
 
-    const failure = page.getByTestId('plugin-configuration-failed');
+    const failure = detail(page, 'guardrails').locator('.cinder-form-actions__error');
     await expect(failure).toContainText('Couldn’t save the configuration.');
     await expect(failure).toContainText('Interborough didn’t answer.');
     await expect(field).toHaveValue('0.5');
@@ -245,8 +246,67 @@ test.describe('Settings › Plugins', () => {
     }
     await expect(configuration.locator('[data-cinder-field="region"] select')).toHaveValue('');
     await checkA11y('settings plugins, every kind of configuration field, at 1280px');
+
+    // Wide: a row's label leads and its control sits to the right on the same line (a text, a select
+    // and a switch), and Save sits at the inline end of the form (COR-2500).
+    const controlOf = (key: string, selector: string) =>
+      configuration.locator(`[data-cinder-field="${key}"]`).locator(selector).first();
+    const labelOf = (key: string) =>
+      configuration.locator(`[data-cinder-field="${key}"] .cinder-form-field__label`).first();
+    // At 1264px a 15px scrollbar that never hides takes the room the rows need, so the rows must
+    // still sit side by side there.
+    for (const wideWidth of [1264, 1280] as const) {
+      await page.setViewportSize({ width: wideWidth, height: 900 });
+      // Settled: every control is visible at this width before any box is read.
+      await expect(controlOf('includeSnippets', '[role="switch"]')).toBeVisible();
+      await expect(controlOf('blockedSites', '.cinder-tag-input__control')).toBeVisible();
+      const saveButton = configuration.getByRole('button', { name: 'Save configuration' });
+      await expect(saveButton).toBeVisible();
+      // One evaluation reads every box, so they all come from one layout.
+      const boxes = await readBoxes(page, {
+        searchAddressLabel: labelOf('searchAddress'),
+        searchAddress: controlOf('searchAddress', 'input'),
+        regionLabel: labelOf('region'),
+        region: controlOf('region', 'select'),
+        limitLabel: labelOf('limit'),
+        limit: controlOf('limit', 'input'),
+        includeSnippetsLabel: labelOf('includeSnippets'),
+        includeSnippets: controlOf('includeSnippets', '[role="switch"]'),
+        tagsRow: configuration.locator('[data-cinder-field="blockedSites"] .cinder-setting-row'),
+        tags: controlOf('blockedSites', '.cinder-tag-input__control'),
+        form: configuration.locator('form'),
+        save: saveButton,
+      });
+      for (const key of ['searchAddress', 'region', 'limit', 'includeSnippets'] as const) {
+        const label = boxes[`${key}Label`];
+        const control = boxes[key];
+        expect(
+          control.x,
+          `${key} control sits right of its label at ${wideWidth}px`,
+        ).toBeGreaterThan(label.x);
+        expect(control.y < label.y + label.height && label.y < control.y + control.height).toBe(
+          true,
+        );
+      }
+      // Text entry shares one leading edge down the rows.
+      expect(Math.abs(boxes.region.x - boxes.searchAddress.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(boxes.limit.x - boxes.searchAddress.x)).toBeLessThanOrEqual(1);
+      // The tag list sits under its row at the row's width, not squeezed into the control column.
+      expect(boxes.tags.width).toBeGreaterThan(boxes.tagsRow.width * 0.6);
+      expect(
+        Math.abs(boxes.form.x + boxes.form.width - (boxes.save.x + boxes.save.width)),
+      ).toBeLessThanOrEqual(2);
+    }
+
     for (const width of [1280, 320] as const) {
       await page.setViewportSize({ width, height: 900 });
+      if (width === 320) {
+        const overflow = await page.evaluate(() => {
+          const scroller = document.scrollingElement;
+          return scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
+        });
+        expect(overflow, 'nothing overflows horizontally at 320px').toBe(0);
+      }
       await configuration.scrollIntoViewIfNeeded();
       await captureForDesignReview(page, {
         route: ROUTE,
@@ -292,7 +352,16 @@ test.describe('Settings › Plugins', () => {
     const secret = anthropic.locator('[data-secret="anthropic-api-key"]');
     await expect(secret).toContainText('anthropic-api-key');
     await expect(secret).toContainText('Missing');
-    await expect(secret.getByRole('button', { name: /Add the key/ })).toBeVisible();
+    const addKey = secret.getByRole('button', { name: /Add the key/ });
+    await expect(addKey).toBeVisible();
+    // At 1280px the row's one action sits at its inline end.
+    const { secretBox, addKeyBox } = await readBoxes(page, {
+      secretBox: secret,
+      addKeyBox: addKey,
+    });
+    expect(
+      Math.abs(secretBox.x + secretBox.width - (addKeyBox.x + addKeyBox.width)),
+    ).toBeLessThanOrEqual(2);
     await expect(anthropic.getByTestId('plugin-secret-note')).toContainText(
       'readable only by you. The models appear as soon as the key passes a test.',
     );

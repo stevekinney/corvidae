@@ -5,8 +5,13 @@
 // about 470K tokens of context per call, and about 88% of the spend was re-reading it.
 //
 // Usage:
-//   bun scripts/chef/brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>]
-//                             [--run <id>] [--out-dir <dir>] [--stdout] [--json]
+//   bun scripts/chef/brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]...
+//                             [--model <name>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]
+//
+// Several IDs write one batch brief (owner decision, 2026-11-16: batch work, one CI run per batch)
+// to `<IDs joined by _>.md`: each issue keeps its own heading with its criteria, blockers and
+// claim, in the given order; the files, verification, scratch directory and charter rules follow
+// once. A blocker that names an earlier issue of the batch counts as cleared by its commit.
 //
 // It reads the issue with `linear.ts`'s client and writes `<main checkout>/tmp/chef/briefs/<ID>.md`
 // (gitignored; `--out-dir` replaces the directory), or with `--stdout` prints the brief and writes
@@ -73,6 +78,13 @@ import { resolveMainCheckout } from './repository-locations.ts';
 export { UsageError };
 
 /**
+ * The push rule (COR-2464): a restart that strands a worker must leave its commits on the remote.
+ * The agent definitions restate its key phrase, and `brief.test.ts` pins both.
+ */
+export const pushRule =
+  'after every commit, push your own branch to origin (`git push origin HEAD:<your branch>`), never to `main`, and do not wait for the focused checks before that push (they still gate ready-for-review); run the revert check before each push.';
+
+/**
  * The delivery shape, stated once: every brief carries this sentence, and no other worker-facing
  * document restates it (`brief.test.ts` checks the agent definition and the Codex protocol).
  */
@@ -85,10 +97,11 @@ export const deliveryRule =
  */
 export const charterRules = [
   '**Cost:** batch independent reads and searches into one message. Edit with Edit or Write, never a shell heredoc (a throwaway codemod for a mechanical multi-file rewrite is the exception).',
-  '**Checks:** run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check`: `bun scripts/chef/focused-checks.ts`; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` when your change reaches one. The full suite only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts, and then on GitHub with `gh workflow run main.yml --ref <branch>`, never a local `bun run validate`. Delivery runs no gate.',
-  "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When your change reaches a browser suite, push, run `gh workflow run main.yml --ref <branch>`, and wait for it in a background command. Before any re-run, read the failing test names and download the failing shard's artifact: a re-run makes the first attempt's artifact unreachable.",
+  '**Checks:** local checks run only direct tests (owner decision, 2026-11-16). Run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check` and never the affected-test graph: `bun scripts/chef/focused-checks.ts`; fix every failed step, and never rerun it until green. It runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and only the test files of what you changed: changed `*.test.ts` files, plus the test files beside each changed source file (same directory, same stem). A test file that starts a process is named `*.integration.test.ts`; it and `*.slow.test.ts` files in that set run the way the isolated lane does. The full test evidence is CI on the pushed branch, run once per batch with `gh workflow run main.yml --ref <branch>` and never waited on by you; the full suite only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts, never a local `bun run validate`. Delivery runs no gate.',
+  "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When your change reaches a browser suite, push, run `gh workflow run main.yml --ref <branch>` once per batch, and do not wait on it (owner decision, 2026-11-16). Before any re-run, read the failing test names and download the failing shard's artifact: a re-run makes the first attempt's artifact unreachable.",
   '**Processes:** never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): a worker ends only a process it started, by pid, and when the test pool queue is long it waits (a `pkill -f "run test:self"` ended other sessions\' runs on 2026-11-13).',
   '**Scratch:** keep your logs and temporary files only in the scratch directory this brief names under `## Scratch directory`, never in `/tmp` or any path another worker can write.',
+  `**Push:** ${pushRule}`,
   '**Branch:** update from `main` only by a real merge (`git fetch origin main && git merge FETCH_HEAD`), never `git reset --soft` onto a newer `main`. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`; a file you did not mean to change means a stale tree.',
   `**Delivery:** ${deliveryRule}`,
   '**Review rounds, with a pull request open (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; then open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
@@ -242,7 +255,12 @@ export function rowCarriage(description: string, rows: string[]): RowCarriage {
   return { criteria, deferred, moved };
 }
 
-function designLines(identifier: string, description: string, descriptionIncluded: boolean) {
+function designLines(
+  identifier: string,
+  description: string,
+  descriptionIncluded: boolean,
+  depth = 0,
+) {
   const source = sectionOf(description, /design\s+(?:source|rows?)/i);
   const links = designLinks(description);
   // Without a design section, a canvas-linked issue's rows are the IDs it names anywhere.
@@ -253,7 +271,7 @@ function designLines(identifier: string, description: string, descriptionInclude
     (row) => !carriage.criteria.has(row) && !carriage.deferred.has(row) && !carriage.moved.has(row),
   );
   return [
-    '## Design',
+    `${'#'.repeat(2 + depth)} Design`,
     '',
     'This issue implements an agreed design. Its rows are requirements, not context: a departure from a board is a defect.',
     '',
@@ -387,7 +405,7 @@ export function scratchName(identifier: string): string {
 }
 
 /** The "Open blockers" section: never "None" unless the relations were actually read. */
-export function blockerLines(blockers: BlockerRead | undefined): string[] {
+export function blockerLines(blockers: BlockerRead | undefined, depth = 0): string[] {
   const body =
     blockers === undefined
       ? ['- (not read; run `bun scripts/chef/linear.ts blockers <ID>` before starting)']
@@ -402,22 +420,121 @@ export function blockerLines(blockers: BlockerRead | undefined): string[] {
               '',
               'Do not start while a blocker is open: return blocked. A Canceled or Duplicate blocker is a question for the owner, not a release.',
             ];
-  return ['## Open blockers', '', ...body, ''];
+  return [`${'#'.repeat(2 + depth)} Open blockers`, '', ...body, ''];
+}
+
+/** The repository paths an issue's brief names: `--path`, else its Files section or description. */
+function pathsOfIssue(issue: IssueSummary, options: BriefOptions): string[] {
+  if (options.paths.length > 0) return options.paths;
+  const description = stripShared((issue.description ?? '').trim()).text.trim();
+  const filesSection = sectionOf(description, /^files?\b|files? to (?:change|touch)/i);
+  return (filesSection !== undefined ? pathsIn(filesSection) : []).concat(
+    filesSection === undefined ? pathsIn(description) : [],
+  );
 }
 
 /** Render the brief for `issue`. Pure. */
 export function renderBrief(issue: IssueSummary, options: BriefOptions): string {
+  const lines = [
+    ...issueLines(issue, options, 0),
+    ...scratchLines(options),
+    ...filesAndRules(options, [issue]),
+  ];
+  return withSize(lines.join('\n'));
+}
+
+function scratchLines(options: BriefOptions): string[] {
+  return options.scratch === undefined
+    ? []
+    : [
+        '## Scratch directory',
+        '',
+        `\`${options.scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
+        '',
+      ];
+}
+
+/** The files, verification and charter sections that close every brief. */
+function filesAndRules(options: BriefOptions, issues: readonly IssueSummary[]): string[] {
+  const paths = [...new Set(issues.flatMap((issue) => pathsOfIssue(issue, options)))];
+  const verification = issues.flatMap((issue) => {
+    const description = stripShared((issue.description ?? '').trim()).text.trim();
+    const section =
+      sectionOf(description, briefHeading) !== undefined && options.verify.length === 0
+        ? sectionOf(description, /^verification\b/i)
+        : undefined;
+    return section === undefined ? [] : [{ identifier: issue.identifier, section }];
+  });
+  const single = issues.length === 1;
+  const verificationBody =
+    verification.length === 0
+      ? verificationCommands(options.verify).map((command) => `- \`${command}\``)
+      : [
+          ...verification.flatMap(({ identifier, section }) =>
+            single ? [section] : [`${identifier}:`, '', section, ''],
+          ),
+          ...(verification.some(({ section }) => runsRootLint(section))
+            ? []
+            : [`- \`${rootLint}\``]),
+        ];
+  return [
+    '## Files',
+    '',
+    ...(paths.length > 0
+      ? paths.slice(0, pathLimit).map((path) => `- \`${path}\``)
+      : ['- (none named; inspect the nearby code first and keep the change inside one workspace)']),
+    '',
+    '## Verification',
+    '',
+    ...verificationBody,
+    '',
+    '## Charter rules',
+    '',
+    ...charterRules.map((rule) => `- ${rule}`),
+    '',
+  ];
+}
+
+/**
+ * One brief for a batch of consecutive issues in one area, in dependency order. The worker commits
+ * once per issue and pushes once, so the batch gets one CI run, one review and one merge. Each
+ * issue keeps its own heading, execution brief, criteria, blockers and claim; the files,
+ * verification and charter rules follow once. Pure.
+ */
+export function renderBatchBrief(
+  issues: readonly { issue: IssueSummary; options: BriefOptions }[],
+  options: BriefOptions,
+): string {
+  const lines = [
+    `# Batch: ${issues.map(({ issue }) => issue.identifier).join(', ')}`,
+    '',
+    `Model: ${options.model} (use another only with a stated reason). One fresh session for this batch; it ends when the batch merges.`,
+    '',
+    "Implement the issues in the order below, in one worktree on one branch. Commit once per issue, in this order, naming the issue in each commit message, and push once at the end; the batch gets one CI run, one review and one merge. An open blocker that names an earlier issue of this batch counts as cleared by that issue's own commit; every other open blocker means return blocked. Report each issue's acceptance criteria separately, under its own heading.",
+    '',
+  ];
+  for (const entry of issues)
+    lines.push(...issueLines(entry.issue, { ...options, ...entry.options }, 1));
+  lines.push(
+    ...scratchLines(options),
+    ...filesAndRules(
+      options,
+      issues.map(({ issue }) => issue),
+    ),
+  );
+  return withSize(lines.join('\n'));
+}
+
+/**
+ * The part of a brief that belongs to one issue: its title, execution brief, carried sections,
+ * blockers, claim and design. `depth` 1 puts every heading one level lower, under a batch heading.
+ */
+function issueLines(issue: IssueSummary, options: BriefOptions, depth: number): string[] {
+  const heading = (title: string, level = 2) => `${'#'.repeat(level + depth)} ${title}`;
   const fullDescription = (issue.description ?? '').trim();
   const stripped = stripShared(fullDescription);
   const description = stripped.text.trim();
   const execution = sectionOf(description, briefHeading);
-  const filesSection = sectionOf(description, /^files?\b|files? to (?:change|touch)/i);
-  const paths =
-    options.paths.length > 0
-      ? options.paths
-      : (filesSection !== undefined ? pathsIn(filesSection) : []).concat(
-          filesSection === undefined ? pathsIn(description) : [],
-        );
   // Without a brief heading, the whole description is the brief: its scope, verification, and
   // delivery sections would otherwise be dropped.
   const source =
@@ -427,11 +544,13 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
         : description
       : undefined;
   const lines = [
-    `# ${issue.identifier}: ${issue.title}`,
+    heading(`${issue.identifier}: ${issue.title}`, 1),
     '',
-    `State: ${issue.state.name}. Model: ${options.model} (use another only with a stated reason). One fresh session for this issue; it ends when its change merges.`,
+    depth === 0
+      ? `State: ${issue.state.name}. Model: ${options.model} (use another only with a stated reason). One fresh session for this issue; it ends when its change merges.`
+      : `State: ${issue.state.name}.`,
     '',
-    '## Execution brief',
+    heading('Execution brief'),
     '',
     execution ?? (source || '(the issue has no description)'),
     '',
@@ -439,19 +558,19 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
   if (execution !== undefined) {
     for (const section of carriedSections) {
       const body = sectionOf(description, section.heading) ?? section.missing;
-      if (body !== undefined) lines.push(`## ${section.title}`, '', body, '');
+      if (body !== undefined) lines.push(heading(section.title), '', body, '');
     }
     // Dated revisions settle decisions and amend criteria, so they travel whole and in order.
     for (const revision of sectionsOf(description).filter((entry) =>
       /\brevision\b/i.test(entry.heading),
     ))
-      lines.push(`## ${revision.heading}`, '', revision.body.trim(), '');
+      lines.push(heading(revision.heading), '', revision.body.trim(), '');
   }
   // A shared section outside the carried sections would otherwise drop its link with its text.
   const pointers = stripped.omitted.filter((entry) => !lines.join('\n').includes(entry.link));
   if (pointers.length > 0)
     lines.push(
-      '## Shared programme text',
+      heading('Shared programme text'),
       '',
       ...pointers.map(
         (entry) =>
@@ -459,40 +578,10 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       ),
       '',
     );
-  lines.push(...blockerLines(options.blockers));
-  if (options.claim !== undefined) lines.push('## Claim', '', options.claim, '');
-  lines.push(...designLines(issue.identifier, fullDescription, execution === undefined));
-  if (options.scratch !== undefined)
-    lines.push(
-      '## Scratch directory',
-      '',
-      `\`${options.scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
-      '',
-    );
-  lines.push('## Files', '');
-  const issueVerification =
-    execution !== undefined && options.verify.length === 0
-      ? sectionOf(description, /^verification\b/i)
-      : undefined;
-  lines.push(
-    ...(paths.length > 0
-      ? paths.slice(0, pathLimit).map((path) => `- \`${path}\``)
-      : ['- (none named; inspect the nearby code first and keep the change inside one workspace)']),
-    '',
-    '## Verification',
-    '',
-    ...(issueVerification === undefined
-      ? verificationCommands(options.verify).map((command) => `- \`${command}\``)
-      : runsRootLint(issueVerification)
-        ? [issueVerification]
-        : [issueVerification, `- \`${rootLint}\``]),
-    '',
-    '## Charter rules',
-    '',
-    ...charterRules.map((rule) => `- ${rule}`),
-    '',
-  );
-  return withSize(lines.join('\n'));
+  lines.push(...blockerLines(options.blockers, depth));
+  if (options.claim !== undefined) lines.push(heading('Claim'), '', options.claim, '');
+  lines.push(...designLines(issue.identifier, fullDescription, execution === undefined, depth));
+  return lines;
 }
 
 /** `text` followed by a last line giving the byte size of the whole brief, that line included. */
@@ -515,6 +604,86 @@ export interface BriefResult {
   scratch?: string;
 }
 
+/** One issue as read from Linear for a brief: its blockers, its claim line and any foreign claim. */
+async function readIssue(
+  identifier: string,
+  options: BriefOptions,
+  dependencies: LinearDependencies,
+  clearedBlockers: ReadonlySet<string> = new Set(),
+): Promise<{
+  issue: IssueSummary;
+  options: BriefOptions;
+  foreignClaim?: string;
+}> {
+  const client = createClient(dependencies);
+  const now = (dependencies.now ?? (() => new Date()))();
+  const issue = await fetchIssue(client, identifier);
+  const claim = latestClaim(await fetchComments(client, issue.identifier));
+  const claimLine = describeClaim(claim, now);
+  const foreign =
+    claim !== undefined && claimIsLive(claim.marker, now) && claim.marker.run !== options.run;
+  let blockers: BlockerRead;
+  try {
+    // A blocker an earlier issue of the same batch closes counts as cleared by that issue's commit.
+    const open = await openBlockers(client, issue.identifier);
+    blockers = { open: open.filter((blocker) => !clearedBlockers.has(blocker.identifier)) };
+  } catch (error) {
+    if (!(error instanceof LinearError)) throw error;
+    blockers = { unreadable: error.message };
+  }
+  // The worker's one standing duty toward its claim: record each push, so the claim names a head
+  // another run can verify.
+  const checkpoint =
+    claim !== undefined && !foreign && claimIsLive(claim.marker, now)
+      ? `\n\nCheckpoint after every push, with the pushed head: \`bun scripts/chef/linear.ts claim ${issue.identifier} --run ${claim.marker.run} --branch ${claim.marker.branch} --head <sha>\`.`
+      : '';
+  return {
+    issue,
+    options: { ...options, blockers, claim: `${claimLine}${checkpoint}` },
+    ...(foreign ? { foreignClaim: claimLine } : {}),
+  };
+}
+
+/**
+ * Reads every issue of a batch and renders one brief, in the given order. An issue's blocker that
+ * names an earlier issue of the batch is dropped from its open blockers.
+ */
+export async function readBatchBrief(
+  identifiers: readonly string[],
+  options: BriefOptions,
+  dependencies: LinearDependencies = {},
+): Promise<{
+  identifier: string;
+  identifiers: string[];
+  text: string;
+  bytes: number;
+  scratch?: string;
+  foreignClaim?: string;
+}> {
+  const cleared = new Set<string>();
+  const entries: { issue: IssueSummary; options: BriefOptions }[] = [];
+  let foreignClaim: string | undefined;
+  for (const identifier of identifiers) {
+    const read = await readIssue(identifier, options, dependencies, cleared);
+    entries.push(read);
+    cleared.add(read.issue.identifier);
+    if (read.foreignClaim !== undefined && foreignClaim === undefined)
+      foreignClaim = `${read.issue.identifier} is ${read.foreignClaim}`;
+  }
+  const first = entries[0]?.issue.identifier ?? 'batch';
+  const scratch =
+    options.scratchRoot === undefined ? undefined : join(options.scratchRoot, scratchName(first));
+  const text = renderBatchBrief(entries, { ...options, scratch });
+  return {
+    identifier: entries.map(({ issue }) => issue.identifier).join('_'),
+    identifiers: entries.map(({ issue }) => issue.identifier),
+    text,
+    bytes: Buffer.byteLength(text),
+    ...(scratch === undefined ? {} : { scratch }),
+    ...(foreignClaim === undefined ? {} : { foreignClaim }),
+  };
+}
+
 /** Reads the issue and its blockers and renders the brief; writes nothing. */
 export async function readBrief(
   identifier: string,
@@ -527,42 +696,41 @@ export async function readBrief(
   scratch?: string;
   foreignClaim?: string;
 }> {
-  const client = createClient(dependencies);
-  const now = (dependencies.now ?? (() => new Date()))();
-  const issue = await fetchIssue(client, identifier);
-  const claim = latestClaim(await fetchComments(client, issue.identifier));
-  const claimLine = describeClaim(claim, now);
-  const foreign =
-    claim !== undefined && claimIsLive(claim.marker, now) && claim.marker.run !== options.run;
-  let blockers: BlockerRead;
-  try {
-    blockers = { open: await openBlockers(client, issue.identifier) };
-  } catch (error) {
-    if (!(error instanceof LinearError)) throw error;
-    blockers = { unreadable: error.message };
-  }
-  // The worker's one standing duty toward its claim: record each push, so the claim names a head
-  // another run can verify.
-  const checkpoint =
-    claim !== undefined && !foreign && claimIsLive(claim.marker, now)
-      ? `\n\nCheckpoint after every push, with the pushed head: \`bun scripts/chef/linear.ts claim ${issue.identifier} --run ${claim.marker.run} --branch ${claim.marker.branch} --head <sha>\`.`
-      : '';
+  const { issue, options: read, foreignClaim } = await readIssue(identifier, options, dependencies);
   const scratch =
     options.scratchRoot === undefined
       ? undefined
       : join(options.scratchRoot, scratchName(issue.identifier));
-  const text = renderBrief(issue, {
-    ...options,
-    blockers,
-    claim: `${claimLine}${checkpoint}`,
-    scratch,
-  });
+  const text = renderBrief(issue, { ...read, scratch });
   return {
     identifier: issue.identifier,
     text,
     bytes: Buffer.byteLength(text),
     ...(scratch === undefined ? {} : { scratch }),
-    ...(foreign ? { foreignClaim: claimLine } : {}),
+    ...(foreignClaim === undefined ? {} : { foreignClaim }),
+  };
+}
+
+/** Writes one batch brief for `identifiers`, in the given order, to `<out-dir>/<IDs joined by _>.md`. */
+export async function writeBatchBrief(
+  identifiers: readonly string[],
+  options: BriefOptions & { outDirectory: string },
+  dependencies: LinearDependencies = {},
+): Promise<BriefResult> {
+  const brief = await readBatchBrief(identifiers, options, dependencies);
+  if (brief.foreignClaim !== undefined)
+    throw new LinearError(
+      `Refused: ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
+    );
+  mkdirSync(options.outDirectory, { recursive: true });
+  if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
+  const path = join(options.outDirectory, `${brief.identifier}.md`);
+  writeFileSync(path, brief.text);
+  return {
+    path,
+    identifier: brief.identifier,
+    bytes: brief.bytes,
+    ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
   };
 }
 
@@ -598,15 +766,17 @@ export async function run(
     repeated: ['path', 'verify'],
     flags: ['json', 'stdout'],
   });
-  const [identifier, ...extra] = parsed.positionals;
+  const identifiers = parsed.positionals;
+  const [identifier] = identifiers;
   if (
     identifier === undefined ||
-    extra.length > 0 ||
-    !/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(identifier)
+    identifiers.some((entry) => !/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(entry)) ||
+    new Set(identifiers).size !== identifiers.length
   )
     throw new UsageError(
-      'Usage: brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
+      'Usage: brief.ts <ID> [<ID>...] [--path <file>]... [--verify <command>]... [--model <name>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
     );
+  const batch = identifiers.length > 1;
   const stdout = parsed.flags.has('stdout');
   if (stdout && parsed.values['out-dir'] !== undefined)
     throw new UsageError('--stdout writes nothing, so it takes no --out-dir.');
@@ -619,7 +789,9 @@ export async function run(
   const json = parsed.flags.has('json');
   try {
     if (stdout) {
-      const brief = await readBrief(identifier, options, dependencies);
+      const brief = batch
+        ? await readBatchBrief(identifiers, options, dependencies)
+        : await readBrief(identifier, options, dependencies);
       return {
         code: 0,
         output: json ? JSON.stringify({ ok: true, ...brief }) : brief.text,
@@ -633,16 +805,14 @@ export async function run(
       customDirectory === undefined
         ? join(checkout, 'tmp', 'chef', 'scratch')
         : join(customDirectory, 'scratch');
-    const result = await writeBrief(
-      identifier,
-      { ...options, outDirectory, scratchRoot },
-      dependencies,
-    );
+    const result = batch
+      ? await writeBatchBrief(identifiers, { ...options, outDirectory, scratchRoot }, dependencies)
+      : await writeBrief(identifier, { ...options, outDirectory, scratchRoot }, dependencies);
     return {
       code: 0,
       output: json
         ? JSON.stringify({ ok: true, ...result })
-        : `Brief for ${result.identifier} written to ${result.path} (${result.bytes} bytes); scratch directory ${result.scratch}.`,
+        : `Brief for ${batch ? identifiers.join(', ') : result.identifier} written to ${result.path} (${result.bytes} bytes); scratch directory ${result.scratch}.`,
     };
   } catch (error) {
     if (!(error instanceof LinearError)) throw error;

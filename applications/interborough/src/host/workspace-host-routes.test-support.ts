@@ -121,6 +121,11 @@ export async function exerciseAdministratorRoutes(
         path: '/host/plugins/shared-integration/secrets/shared-secret',
         body: { value: 'route-integration-secret' },
       },
+      {
+        key: 'DELETE /host/plugins/:name/secrets/:key',
+        path: '/host/plugins/shared-integration/secrets/shared-secret',
+        body: {},
+      },
       { key: 'GET /host/tool-sources', path: '/host/tool-sources' },
       {
         key: 'GET /host/tool-sources/:id/affected-agents',

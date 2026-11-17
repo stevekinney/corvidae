@@ -20,14 +20,17 @@ Default to direct execution for small cohesive work, decided at planning while t
 
 ## Run the team
 
-The coordinator is thin: it reads compact verdicts, and it reserves an agent for interpretation that needs judgment. An economical lookup agent may summarize a long issue body.
+The coordinator is thin: it reads compact verdicts, and it reserves an agent for interpretation that needs judgment.
+
+- After any coordinator restart or resume, first run `bun scripts/chef/workers.ts <run log>` (read-only); silence is not proof a worker runs ([why](../../../../documentation/repository/orphaned-background-agents.md)).
+- Record each live worker in the run log at dispatch and mark it ended on return ([format](execution-record.md#worker-entries)).
 
 By default a worker pushes a branch, and the coordinator verifies it (the focused checks the worker ran, the revert check, a review where one earns its keep) and squash-merges it with `bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file>`. A worker opens a pull request only when its brief asks, for what AGENTS.md "Workflow" names: CI workflows, the lock and concurrency infrastructure, and one-way doors. Either way the worker does not merge.
 
 - Give each issue, or each cluster of issues in one area, its own fresh `chef-worker` with a brief of five to eight items ([why](../../../../documentation/repository/guards.md#agent-edits-and-worker-briefs)); never keep one long-lived worker per stream, and never dispatch an implementation worker as `general-purpose` (it starts near 69K tokens of context against 18K). A worker ends when its change merges, and has no context ceiling (owner decision, 2026-11-13).
 - Implement with an economical coding model (Sonnet, or the Codex equivalent) when the interfaces are known and the issue has tests; reserve stronger models for review, one-way doors, and defects that survived two corrections.
 - Deliver each change as AGENTS.md "Gate on local checks" describes, plus one review fix pass. An exception's full suite runs on GitHub, `gh workflow run main.yml --ref <branch>`, one at a time. Do not wait for bots to go quiet.
-- A broadcast to running sessions names the commit and the section that changed, for example "rules changed at `<sha>`; reread AGENTS.md "Parallel runs"".
+- A broadcast to running sessions names the commit and the section that changed.
 - When an owner instruction outranks a rule, the coordinator decides, records the waived guard on the pull request or merge commit and in its log, and files any reassessment as a follow-up issue.
 - Workers record every background process they start and leave none running. Wait on a completion, never poll from turns, and audit every progress claim, yours and the workers', against a tool result from this run.
 - Before every correction dispatch or delivery, read the live state as [review and deliver](review-and-deliver.md#preflights) describes, so a merge or ownership change elsewhere stops duplicate work.

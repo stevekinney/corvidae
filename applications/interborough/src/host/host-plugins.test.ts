@@ -11,7 +11,7 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * manager and a real Bureau with a home that cannot write.
  */
 import { createLocalSecretProvider, parseSecretReference } from '@lostgradient/bungalow';
-import { createBureau, type BureauPluginEntry } from '@lostgradient/bureau';
+import { createBureau, type BureauPluginEntry, type PluginListing } from '@lostgradient/bureau';
 import {
   definePlugin,
   type PluginDescriptor,
@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
+import type { HostEventArguments, HostEventPublisher } from './host-events.ts';
 import { startHost, type Host } from './host.ts';
 import { createHostMemory } from './memory.ts';
 import { createPluginManager, type PluginAuditEntry } from './plugin-manager.ts';
@@ -808,6 +809,285 @@ describe('a remote home', () => {
     expect(home.writes).toEqual([]);
     const snapshot = await manager.snapshot();
     expect(snapshot.lockReason).toBe('deployment');
+  });
+});
+
+describe('the events a plugin manager reports (COR-2098)', () => {
+  interface Reported {
+    readonly kind: string;
+    readonly payload: unknown;
+  }
+
+  /** Records, in one trace, the audit entries and the reported events, so their order can be read. */
+  function recorder(options: { readonly throwOn?: ReadonlySet<string> } = {}) {
+    const trace: string[] = [];
+    const reported: Reported[] = [];
+    return {
+      trace,
+      reported,
+      audit: async (entry: PluginAuditEntry) => {
+        trace.push(`audit:${entry.type}`);
+      },
+      events: {
+        publish(...[kind, payload]: HostEventArguments): void {
+          trace.push(`event:${kind}`);
+          reported.push({ kind, payload });
+          if (options.throwOn?.has(kind) === true) throw new Error('the listener failed');
+        },
+      } satisfies HostEventPublisher,
+    };
+  }
+
+  /** A plugin with two declared secrets, which stays `needs-setup` until both are set. */
+  const PAIR_KEYS = ['pair-api-key', 'pair-signing-key'] as const;
+  const pairPlugin = (): BureauPluginEntry => ({
+    descriptor: definePlugin({
+      name: 'pair',
+      version: '1.0.0',
+      description: 'Needs two keys.',
+      secrets: [...PAIR_KEYS],
+    }),
+    source: 'package',
+    location: '@fixture/pair',
+  });
+
+  /** What Bureau lists for `entry`, with the status it lists it at. */
+  function listed(entry: BureauPluginEntry, status: PluginListing['status']): PluginListing {
+    return {
+      descriptor: {
+        name: entry.descriptor.name,
+        title: entry.descriptor.name,
+        version: entry.descriptor.version,
+        description: entry.descriptor.description,
+        required: false,
+        enabledByDefault: true,
+        secrets: (entry.descriptor.secrets ?? []).map((declaration) =>
+          typeof declaration === 'string'
+            ? { key: declaration, generated: false }
+            : { key: declaration.key, generated: declaration.generated === true },
+        ),
+      },
+      source: entry.source,
+      location: entry.location,
+      status,
+      problems: [],
+      contributions: [],
+    };
+  }
+
+  async function managerFor(
+    home: ReturnType<typeof managerHome>,
+    reporting: ReturnType<typeof recorder>,
+    listing: (plugins: readonly BureauPluginEntry[]) => readonly PluginListing[] = () => [],
+  ) {
+    const plugins = [...fixturePlugins(), pairPlugin()];
+    return createPluginManager({
+      bungalow: home.bungalow,
+      plugins,
+      listing: async () => listing(plugins),
+      reservedSecretKeys: [],
+      reservedSecretPrefixes: [],
+      audit: reporting.audit,
+      events: reporting.events,
+    });
+  }
+
+  /** Bureau's listing of the fixture plugins as it stays while its gate has not rechecked: running, whatever the secrets. */
+  const stillRunning = (plugins: readonly BureauPluginEntry[]) =>
+    plugins.map((entry) => listed(entry, 'running'));
+
+  test('reports a secret after the audit, and the plugin’s status from the secrets, not from a listing that has not caught up', async () => {
+    const reporting = recorder();
+    const manager = await managerFor(managerHome(), reporting, stillRunning);
+
+    await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE);
+    expect(reporting.trace).toEqual([
+      'audit:plugin.configured',
+      'event:secret.set',
+      'event:plugin.status-changed',
+    ]);
+    expect(reporting.reported).toEqual([
+      { kind: 'secret.set', payload: { plugin: 'keyed', key: KEYED_SECRET } },
+      {
+        kind: 'plugin.status-changed',
+        payload: {
+          plugin: 'keyed',
+          previousStatus: 'needs-setup',
+          status: 'running',
+          problemCodes: [],
+        },
+      },
+    ]);
+
+    reporting.reported.length = 0;
+    const removed = await manager.removeSecret('keyed', KEYED_SECRET);
+    expect(removed).toEqual({ plugin: 'keyed', key: KEYED_SECRET, set: false });
+    expect(reporting.reported).toEqual([
+      { kind: 'secret.removed', payload: { plugin: 'keyed', key: KEYED_SECRET } },
+      {
+        kind: 'plugin.status-changed',
+        payload: {
+          plugin: 'keyed',
+          previousStatus: 'running',
+          status: 'needs-setup',
+          problemCodes: ['secret-missing'],
+        },
+      },
+    ]);
+    expect(JSON.stringify(reporting.reported)).not.toContain(SECRET_VALUE);
+  });
+
+  test('reports a settings write, then each secret it had the host create, after its audit, and discards what startup creates', async () => {
+    const reporting = recorder();
+    const manager = await managerFor(managerHome(), reporting);
+
+    await manager.ensureGeneratedSecrets();
+    expect(reporting.trace).toEqual([]);
+
+    await manager.update('later', { enabled: true });
+
+    expect(reporting.trace).toEqual([
+      'audit:plugin.configured',
+      'event:plugin.settings-changed',
+      'event:secret.set',
+    ]);
+    expect(reporting.reported).toEqual([
+      {
+        kind: 'plugin.settings-changed',
+        payload: { plugin: 'later', enabled: true, restartRequired: true },
+      },
+      { kind: 'secret.set', payload: { plugin: 'later', key: LATER_SECRET } },
+    ]);
+  });
+
+  test('reports no event for a write that did not commit', async () => {
+    for (const outcome of ['conflict', 'unknown'] as const) {
+      const reporting = recorder();
+      const manager = await managerFor(managerHome({ outcome }), reporting);
+
+      await rejectionOf(manager.update('limited', { configuration: { limit: 7 } }));
+      await rejectionOf(manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE));
+      await rejectionOf(manager.removeSecret('keyed', KEYED_SECRET));
+
+      expect(reporting.trace).toEqual([]);
+    }
+  });
+
+  test('refuses a key the plugin does not declare without repeating it, and reports nothing', async () => {
+    const reporting = recorder();
+    const manager = await managerFor(managerHome(), reporting);
+    const hostile = `not-declared-${SECRET_VALUE}`;
+
+    const removal = await rejectionOf(manager.removeSecret('keyed', hostile));
+    const save = await rejectionOf(manager.saveSecret('keyed', hostile, SECRET_VALUE));
+    const skippedPlugin = await rejectionOf(manager.removeSecret('ghost', KEYED_SECRET));
+
+    expect(String(removal)).not.toContain(hostile);
+    expect(String(save)).not.toContain(hostile);
+    expect(removal).toMatchObject({ field: 'key' });
+    expect(skippedPlugin).toMatchObject({ name: 'PluginNotFoundError' });
+    expect(reporting.trace).toEqual([]);
+  });
+
+  test('is not stopped by a listener that throws: the write returns and the later events still go', async () => {
+    const reporting = recorder({ throwOn: new Set(['secret.set']) });
+    const manager = await managerFor(managerHome(), reporting, stillRunning);
+
+    const change = await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE);
+
+    expect(change).toEqual({ plugin: 'keyed', key: KEYED_SECRET, set: true });
+    expect(reporting.trace).toEqual([
+      'audit:plugin.configured',
+      'event:secret.set',
+      'event:plugin.status-changed',
+    ]);
+  });
+
+  test('reports two writes in the order they committed', async () => {
+    const reporting = recorder();
+    const manager = await managerFor(managerHome(), reporting);
+
+    await Promise.all([
+      manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE),
+      manager.saveSecret('pair', PAIR_KEYS[0], SECRET_VALUE),
+      manager.removeSecret('keyed', KEYED_SECRET),
+    ]);
+
+    expect(
+      reporting.reported.map((event) => [event.kind, (event.payload as { plugin: string }).plugin]),
+    ).toEqual([
+      ['secret.set', 'keyed'],
+      ['secret.set', 'pair'],
+      ['secret.removed', 'keyed'],
+    ]);
+  });
+
+  test('reports only the codes of the problems a plugin lists, never their messages, files or keys', async () => {
+    const reporting = recorder();
+    const hostile = 'CANARY-2098-PROBLEM-TEXT-8e2d';
+    const withProblems = (plugins: readonly BureauPluginEntry[]) =>
+      plugins.map((entry) => ({
+        ...listed(entry, 'running'),
+        problems:
+          entry.descriptor.name === 'keyed'
+            ? [
+                { code: 'setup-failed' as const, message: `setup said ${hostile}` },
+                {
+                  code: 'reference-unresolved' as const,
+                  file: `plugin:keyed/${hostile}`,
+                  id: hostile,
+                },
+              ]
+            : [],
+      }));
+    const manager = await managerFor(managerHome(), reporting, withProblems);
+
+    await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE);
+
+    expect(reporting.reported).toEqual([
+      { kind: 'secret.set', payload: { plugin: 'keyed', key: KEYED_SECRET } },
+      {
+        kind: 'plugin.status-changed',
+        payload: {
+          plugin: 'keyed',
+          previousStatus: 'needs-setup',
+          status: 'running',
+          problemCodes: ['setup-failed', 'reference-unresolved'],
+        },
+      },
+    ]);
+    expect(JSON.stringify(reporting.reported)).not.toContain(hostile);
+  });
+
+  test('reports no status for a plugin Bureau does not list yet', async () => {
+    const reporting = recorder();
+    const manager = await managerFor(managerHome(), reporting);
+
+    await manager.saveSecret('keyed', KEYED_SECRET, SECRET_VALUE);
+
+    expect(reporting.reported.map((event) => event.kind)).toEqual(['secret.set']);
+  });
+
+  test('reports no status for a write that leaves the status and the problems as they were, and one when the last key is set', async () => {
+    const reporting = recorder();
+    const manager = await managerFor(managerHome(), reporting, stillRunning);
+
+    // Two keys: the first leaves the plugin needs-setup with secret-missing, as it was.
+    await manager.saveSecret('pair', PAIR_KEYS[0], SECRET_VALUE);
+    expect(reporting.reported.map((event) => event.kind)).toEqual(['secret.set']);
+
+    await manager.saveSecret('pair', PAIR_KEYS[1], SECRET_VALUE);
+    expect(reporting.reported.map((event) => event.kind)).toEqual([
+      'secret.set',
+      'secret.set',
+      'plugin.status-changed',
+    ]);
+    expect(reporting.reported.at(-1)?.payload).toEqual({
+      plugin: 'pair',
+      previousStatus: 'needs-setup',
+      status: 'running',
+      problemCodes: [],
+    });
   });
 });
 

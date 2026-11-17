@@ -76,6 +76,11 @@
       "type": "string",
       "description": "The width of the column the control sits in, as a CSS length (`\"25rem\"`). Leave it unset for the\ndefault of `15rem`, which fits a switch, a short field or a select; give a control that needs\nmore room, such as the address of a feed or a list of switches, its own. Below the container\nwidth where the row stacks, the control takes the row's width whatever this says."
     },
+    "controlAlign": {
+      "enum": ["end", "stretch"],
+      "description": "Where the control sits in its column. `end` (the default) sizes the control to its content and\nputs it at the inline end, which suits a switch or a button. `stretch` makes the control fill\nthe column, so text-entry controls (a field, a select, a number) share one leading edge and one\nwidth down a list of rows.",
+      "default": "end"
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged with the component's root class."

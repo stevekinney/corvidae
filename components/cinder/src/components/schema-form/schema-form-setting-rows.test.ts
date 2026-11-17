@@ -120,6 +120,23 @@ describe('SchemaForm setting-rows variant', () => {
     // A string array is tags: a field to add one, no JSON editor.
     expect(rowOf(view, 'blockedSites').querySelector('textarea')).toBeNull();
     expect(rowOf(view, 'blockedSites').querySelector('input')).not.toBeNull();
+    // The tag input sits under its row at the row's full width, outside the control column.
+    expect(
+      rowOf(view, 'blockedSites').querySelector('input')?.closest('.cinder-setting-row__field'),
+    ).toBeNull();
+    // Text entry fills the control column; the switch stays at the end.
+    for (const key of ['searchAddress', 'region', 'limit', 'cacheMs']) {
+      expect(
+        rowOf(view, key)
+          .querySelector('.cinder-setting-row')
+          ?.getAttribute('data-cinder-control-align'),
+      ).toBe('stretch');
+    }
+    expect(
+      rowOf(view, 'includeSnippets')
+        .querySelector('.cinder-setting-row')
+        ?.hasAttribute('data-cinder-control-align'),
+    ).toBe(false);
     // A duration keeps its unit control.
     expect(rowOf(view, 'cacheMs').querySelector('select')).not.toBeNull();
     // The row's control is the one at the inline end: switch rows size to the switch.

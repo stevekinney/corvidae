@@ -27,6 +27,7 @@ import { connectProvider, open, openStatesChat } from './chat-states-support.ts'
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -249,8 +250,8 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     const note = page.locator('.weft-chat-approval__provider-note');
     await expect(note).toHaveText('Tool runner continues once a provider is connected.');
     // The note is muted text under the approval, outside its card.
-    const [card, line] = await Promise.all([approval.boundingBox(), note.boundingBox()]);
-    expect(line!.y).toBeGreaterThanOrEqual(card!.y + card!.height - 1);
+    const { card, line } = await readBoxes(page, { card: approval, line: note });
+    expect(line.y).toBeGreaterThanOrEqual(card.y + card.height - 1);
     // Nothing pretends to be pending: no queued message, no "Sending" line.
     await expect(page.getByText(/^Queued/)).toHaveCount(0);
     await expect(page.getByText(/Sending…|Sending resumes/)).toHaveCount(0);
@@ -356,9 +357,11 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     );
     await expect(banner.getByRole('button')).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    const bannerBox = await banner.boundingBox();
-    const headerBox = await page.getByTestId('chat-header').boundingBox();
-    expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(headerBox!.y);
+    const { bannerBox, headerBox } = await readBoxes(page, {
+      bannerBox: banner,
+      headerBox: page.getByTestId('chat-header'),
+    });
+    expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(headerBox.y);
     expect(
       await page.evaluate(() => document.querySelector('.weft-shell')?.hasAttribute('inert')),
     ).toBe(false);

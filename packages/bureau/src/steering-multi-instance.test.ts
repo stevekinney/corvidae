@@ -42,7 +42,7 @@ import {
 } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
@@ -1868,23 +1868,30 @@ describe('durable steering across two Bureau processes', () => {
       const sessionId = await startRunningSession(bureau);
       const kv = bureau.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
-      // Only the steering log's listing fails: the task records' listing is not what this tests.
-      const listTasks = kv.list.bind(kv);
+      // Only the steering log's listing fails: the other listings (the task records and the child
+      // topology a deletion reads to find the chat's runs, the audit trail the outbox drain checks
+      // before it acknowledges the deletion, after which the log is removed) are not what this tests.
+      const listOthers = kv.list.bind(kv);
       const listing = spyOn(kv, 'list').mockImplementation((prefix: string) =>
-        // The task records and the child topology are read to find the chat's runs.
-        prefix.startsWith('bureau-task') || prefix.startsWith('bureau-child')
-          ? listTasks(prefix)
-          : Promise.reject(new Error('listing unavailable')),
+        prefix.startsWith('steering-log:')
+          ? Promise.reject(new Error('listing unavailable'))
+          : listOthers(prefix),
       );
       try {
         await bureau.contexts.delete(sessionId);
+        // COR-2097: the log is removed beside the drain, once the `session.deleted` entry is
+        // acknowledged, so the removal's failure is reported after the deletion returned.
+        await waitUntil(
+          () =>
+            diagnostics.some((message) =>
+              message.includes('its steering log could not be removed'),
+            ),
+          { message: 'the removal failure is reported' },
+        );
       } finally {
         listing.mockRestore();
       }
       expect(await bureau.contexts.get(sessionId)).toBeUndefined();
-      expect(
-        diagnostics.some((message) => message.includes('its steering log could not be removed')),
-      ).toBe(true);
     } finally {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });

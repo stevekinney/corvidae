@@ -375,8 +375,13 @@ test.describe('the memory page', () => {
       .click();
     await expect(page.locator('[data-governance-outcome]')).toContainText(label.slice(0, 20));
     await expect(rowOf(page, label)).toHaveCount(0);
-    // Back from the quarantined view, the memory is in the ordinary list again.
-    await page.getByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel }).click();
+    // Back from the quarantined view, the memory is in the ordinary list again. The view is empty
+    // now, so its empty state also offers a link named "Back to Memory" (as Chats' archived view
+    // does): the header's way back is the one this means, found by its own attribute.
+    await page
+      .getByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel })
+      .and(page.locator('[data-memory-view-back]'))
+      .click();
     await expect(rowOf(page, label)).toHaveCount(1);
   });
 

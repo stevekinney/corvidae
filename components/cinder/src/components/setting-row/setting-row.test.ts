@@ -27,6 +27,28 @@ describe('SettingRow', () => {
     expect(container.querySelector('.cinder-setting-row')).not.toBeNull();
   });
 
+  test('the control sits at the end unless controlAlign asks it to fill the column', () => {
+    const control = createRawSnippet(() => ({
+      render: () => '<input id="align-setting" />',
+    }));
+    const end = render(SettingRow, {
+      props: { id: 'align-setting', label: 'Name', control },
+    });
+    expect(
+      end.container.querySelector('.cinder-setting-row')?.hasAttribute('data-cinder-control-align'),
+    ).toBe(false);
+    end.unmount();
+
+    const stretch = render(SettingRow, {
+      props: { id: 'align-setting', label: 'Name', controlAlign: 'stretch', control },
+    });
+    expect(
+      stretch.container
+        .querySelector('.cinder-setting-row')
+        ?.getAttribute('data-cinder-control-align'),
+    ).toBe('stretch');
+  });
+
   test('draws a description action after the description, inside the described paragraph', () => {
     const { container } = render(SettingRow, {
       props: {

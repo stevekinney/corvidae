@@ -18,6 +18,7 @@ import {
   SessionDeletedEvent,
   SessionSavedEvent,
   SteeringAcceptedEvent,
+  WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 
 import { runOfPayload } from './hooks/hook-origin.ts';
@@ -37,6 +38,20 @@ import {
   ActionEvent,
   AssetLifecycleEvent,
   BureauDisposedEvent,
+  ChildWorkflowAbortedRecordedEvent,
+  ChildWorkflowCompletedRecordedEvent,
+  ChildWorkflowFailedRecordedEvent,
+  ChildWorkflowStartedRecordedEvent,
+  HandoffOccurredRecordedEvent,
+  HookPlanFailedRecordedEvent,
+  PluginSecretRemovedEvent,
+  PluginSecretSetEvent,
+  PluginSettingsChangedEvent,
+  PluginStatusChangedEvent,
+  SteeringAppliedRecordedEvent,
+  SteeringCommandFailedEvent,
+  SteeringCommandRejectedEvent,
+  SteeringCommandSupersededEvent,
   DecisionMadeEvent,
   DefinitionsChangedEvent,
   DiagnosticEvent,
@@ -119,6 +134,7 @@ const GOAL = (kind: ConstructorParameters<typeof GoalLifecycleEvent>[0]) => ({
         validator: { name: 'check', version: '1' },
         source: { kind: 'bureau', name: 'bureau', version: '0.1.0' },
       },
+      retryReason: 'failed',
       terminalReason: 'done',
       validatorError: { kind: 'error', code: 'E', message: 'dropped' },
       controllerRestarts: 1,
@@ -157,6 +173,12 @@ const GUARDRAIL_DETAIL = {
   confidence: 0.9,
 };
 const TOOL_DETAIL = { toolName: 'refund', toolCallId: 'call-1' };
+const CHILD_DETAIL = {
+  parentAgentName: 'planner',
+  parentRunId: 'run-1',
+  childAgentName: 'worker',
+  childRunId: 'child-1',
+};
 
 const SKILL = (
   Skill:
@@ -227,6 +249,65 @@ const EVENTS: Record<
     sparsest: () =>
       new ToolErrorRecordedEvent(
         recordedAction('tool.error', { ...TOOL_DETAIL, error: new Error('no code') }),
+      ),
+  },
+  // COR-2097: what a run records of its children, its handoffs, its steering and its hook plan.
+  'multiagent.child-workflow.started': {
+    sparsest: () =>
+      new ChildWorkflowStartedRecordedEvent(
+        recordedAction('multiagent.child-workflow.started', CHILD_DETAIL),
+      ),
+  },
+  'multiagent.child-workflow.completed': {
+    sparsest: () =>
+      new ChildWorkflowCompletedRecordedEvent(
+        recordedAction('multiagent.child-workflow.completed', CHILD_DETAIL),
+      ),
+  },
+  'multiagent.child-workflow.failed': {
+    sparsest: () =>
+      new ChildWorkflowFailedRecordedEvent(
+        recordedAction('multiagent.child-workflow.failed', { ...CHILD_DETAIL, reason: 'error' }),
+      ),
+  },
+  'multiagent.child-workflow.aborted': {
+    sparsest: () =>
+      new ChildWorkflowAbortedRecordedEvent(
+        recordedAction('multiagent.child-workflow.aborted', CHILD_DETAIL),
+      ),
+  },
+  'multiagent.handoff.occurred': {
+    sparsest: () =>
+      new HandoffOccurredRecordedEvent(
+        recordedAction('multiagent.handoff.occurred', {
+          sourceAgentName: 'planner',
+          targetAgentName: 'worker',
+        }),
+      ),
+  },
+  'steering.applied': {
+    sparsest: () =>
+      new SteeringAppliedRecordedEvent(
+        recordedAction('steering.applied', { sessionId: 'session-1', effective: {} }),
+      ),
+  },
+  'hook-plan.failed': {
+    sparsest: () =>
+      new HookPlanFailedRecordedEvent(
+        recordedAction('hook-plan.failed', {
+          hookName: 'prepareStep',
+          hookId: 'agent:own',
+          error: new Error('no code'),
+        }),
+      ),
+    fullest: () =>
+      new HookPlanFailedRecordedEvent(
+        recordedAction('hook-plan.failed', {
+          hookName: 'prepareStep',
+          hookId: 'agent:own',
+          source: 'agent',
+          error: new Error('no code'),
+        }),
       ),
   },
   'run.registered': { sparsest: () => new RunRegisteredEvent('run-1') },
@@ -327,10 +408,60 @@ const EVENTS: Record<
   },
   'review.superseded': reviewOf(ReviewSupersededEvent),
   'steering.accepted': { sparsest: () => new SteeringAcceptedEvent('s', 'command-1', 2) },
+  'steering.rejected': {
+    sparsest: () =>
+      new SteeringCommandRejectedEvent({ sessionId: 's', failureReason: 'policy-denied' }),
+    fullest: () =>
+      new SteeringCommandRejectedEvent({
+        sessionId: 's',
+        commandId: 'command-1',
+        failureReason: 'policy-denied',
+      }),
+  },
+  'steering.superseded': {
+    sparsest: () =>
+      new SteeringCommandSupersededEvent({ sessionId: 's', failureReason: 'superseded-by' }),
+    fullest: () =>
+      new SteeringCommandSupersededEvent({
+        sessionId: 's',
+        commandId: 'command-1',
+        failureReason: 'superseded-by',
+      }),
+  },
+  'steering.failed': {
+    sparsest: () =>
+      new SteeringCommandFailedEvent({ sessionId: 's', failureReason: 'deadline-passed' }),
+    fullest: () =>
+      new SteeringCommandFailedEvent({
+        sessionId: 's',
+        commandId: 'command-1',
+        failureReason: 'deadline-passed',
+      }),
+  },
+  'workflow.version-mismatch': {
+    sparsest: () => new WorkflowVersionMismatchEvent('workflow-1', '1.0.0', '2.0.0'),
+  },
   'goal.started': GOAL('goal.started'),
   'goal.attempt.started': GOAL('goal.attempt.started'),
   'goal.attempt.evaluating': GOAL('goal.attempt.evaluating'),
   'goal.attempt.validated': GOAL('goal.attempt.validated'),
+  // The two live-only kinds are always built whole, so each field is required.
+  'goal.feedback.recorded': {
+    sparsest: () =>
+      new GoalLifecycleEvent('goal.feedback.recorded', {
+        goalRunId: 'goal-1',
+        attemptId: 'attempt-1',
+        feedbackDigest: 'digest',
+      }),
+  },
+  'goal.retrying': {
+    sparsest: () =>
+      new GoalLifecycleEvent('goal.retrying', {
+        goalRunId: 'goal-1',
+        attemptIndex: 0,
+        retryReason: 'failed',
+      }),
+  },
   'goal.succeeded': GOAL('goal.succeeded'),
   'goal.exhausted': GOAL('goal.exhausted'),
   'goal.canceled': GOAL('goal.canceled'),
@@ -368,6 +499,16 @@ const EVENTS: Record<
         recordIds: ['r-1'],
         operationId: 'op-1',
       }),
+  },
+  // COR-2098: what a host reports of its plugins and their secrets.
+  'secret.set': { sparsest: () => new PluginSecretSetEvent('kit', 'kit-api-key') },
+  'secret.removed': { sparsest: () => new PluginSecretRemovedEvent('kit', 'kit-api-key') },
+  'plugin.settings-changed': {
+    sparsest: () => new PluginSettingsChangedEvent('kit', false, true),
+  },
+  'plugin.status-changed': {
+    sparsest: () =>
+      new PluginStatusChangedEvent('kit', 'running', 'needs-setup', ['secret-missing']),
   },
   // Sparsest: a refusal no model was reached for. Fullest: every field set.
   'decision.made': {
@@ -494,12 +635,16 @@ describe('the Bureau event catalog', () => {
         'diagnostic',
         'memory.governance',
         'notification.created',
+        'plugin.settings-changed',
+        'plugin.status-changed',
         'schedule.attempted',
         'schedule.cancelled',
         'schedule.created',
         'schedule.paused',
         'schedule.resumed',
         'schedule.skipped',
+        'secret.removed',
+        'secret.set',
         'session.created',
         'session.deleted',
         'session.saved',
@@ -509,6 +654,11 @@ describe('the Bureau event catalog', () => {
         'skill.loaded',
         'skill.rejected',
         'steering.accepted',
+        'steering.applied',
+        'steering.failed',
+        'steering.rejected',
+        'steering.superseded',
+        'workflow.version-mismatch',
       ].toSorted(),
     );
     // A narrow allowlist: each needs an argument that no run can cause it (see the catalog).
@@ -545,7 +695,7 @@ describe('the Bureau event catalog', () => {
           (field) =>
             !field.optional &&
             field.type === 'string' &&
-            ['runId', 'goalRunId', 'taskId'].includes(field.name),
+            ['runId', 'goalRunId', 'taskId', 'parentRunId'].includes(field.name),
         );
         expect(requiredRunField).toBe(true);
       }

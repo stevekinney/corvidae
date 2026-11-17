@@ -28,7 +28,16 @@ import {
 import { eventSourceOf } from './event-source.ts';
 import { PluginPublishedEvent } from './plugin-published-event.ts';
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
-import { publishableErrorCode, publishableErrorKind } from './published-error-names.ts';
+import {
+  publishableErrorCode,
+  publishableErrorKind,
+  publishableFinishReason,
+  publishablePluginStatus,
+  publishableProblemCodes,
+  publishableSecretKey,
+  publishableSteeringFailureReason,
+  publishableToken,
+} from './published-error-names.ts';
 import {
   ActionEvent,
   AssetLifecycleEvent,
@@ -36,7 +45,17 @@ import {
   type BureauAssetEventKind,
   BureauDisposedEvent,
   type BureauEventMap,
+  ChildWorkflowAbortedRecordedEvent,
+  ChildWorkflowCompletedRecordedEvent,
+  ChildWorkflowFailedRecordedEvent,
+  ChildWorkflowStartedRecordedEvent,
   DecisionMadeEvent,
+  HandoffOccurredRecordedEvent,
+  HookPlanFailedRecordedEvent,
+  SteeringAppliedRecordedEvent,
+  SteeringCommandFailedEvent,
+  SteeringCommandRejectedEvent,
+  SteeringCommandSupersededEvent,
   DefinitionsChangedEvent,
   DiagnosticEvent,
   GOAL_EVENT_KINDS,
@@ -44,6 +63,10 @@ import {
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
+  PluginSecretRemovedEvent,
+  PluginSecretSetEvent,
+  PluginSettingsChangedEvent,
+  PluginStatusChangedEvent,
   ScheduleMissedEvent,
   ScorerThresholdBreachedEvent,
   SessionTaintEvent,
@@ -86,6 +109,7 @@ import {
   SessionDeletedEvent,
   SessionSavedEvent,
   SteeringAcceptedEvent,
+  WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -180,6 +204,25 @@ function projectGuardrail(action: Action): Record<string, unknown> {
   };
 }
 
+/**
+ * What the four `multiagent.child-workflow.*` kinds publish (COR-2097): the parent run that
+ * recorded the event, the child and the child's agent. The parent is the run the action belongs to,
+ * never the `parentRunId` the dispatching tool wrote into the event, because a hook and a workspace
+ * read the run the id names, and only the id the store holds is one they can resolve. The child's
+ * prompt (`input`) and the reason it ended are not read here.
+ */
+function projectChild(action: Action): Record<string, unknown> {
+  const detail = detailOf(action);
+  return {
+    parentRunId: action.runId,
+    childRunId: detailString(detail, 'childRunId'),
+    childAgentName: detailString(detail, 'childAgentName'),
+  };
+}
+
+/** What a registrant's hook id, hook point or a version publishes as when it is not one token. */
+const FALLBACK_TOKEN = 'UNKNOWN';
+
 /** The code a `run.error` publishes for a failure whose own code is not an identifier. */
 const FALLBACK_RUN_ERROR_CODE = 'UNKNOWN';
 
@@ -230,6 +273,13 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'budget.threshold': 'published',
   'tool.policy-denied': 'published',
   'tool.error': 'published',
+  'multiagent.child-workflow.started': 'published',
+  'multiagent.child-workflow.completed': 'published',
+  'multiagent.child-workflow.failed': 'published',
+  'multiagent.child-workflow.aborted': 'published',
+  'multiagent.handoff.occurred': 'published',
+  'steering.applied': 'published',
+  'hook-plan.failed': 'published',
   'run.registered': 'published',
   'run.settled': 'published',
   'run.completed': 'published',
@@ -267,10 +317,16 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'review.canceled': 'published',
   'review.superseded': 'published',
   'steering.accepted': 'published',
+  'steering.rejected': 'published',
+  'steering.superseded': 'published',
+  'steering.failed': 'published',
+  'workflow.version-mismatch': 'published',
   'goal.started': 'published',
   'goal.attempt.started': 'published',
   'goal.attempt.evaluating': 'published',
   'goal.attempt.validated': 'published',
+  'goal.feedback.recorded': 'published',
+  'goal.retrying': 'published',
   'goal.succeeded': 'published',
   'goal.exhausted': 'published',
   'goal.canceled': 'published',
@@ -287,6 +343,10 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   diagnostic: 'published',
   'memory.governance': 'published',
   'decision.made': 'published',
+  'secret.set': 'published',
+  'secret.removed': 'published',
+  'plugin.settings-changed': 'published',
+  'plugin.status-changed': 'published',
   'scorer.threshold-breached': 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
 
@@ -354,6 +414,84 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
       errorCode: toolErrorCode(Object.hasOwn(detail, 'error') ? detail['error'] : undefined),
     });
   }),
+  // What a run records of its children, its handoffs, its steering and its hook plan (COR-2097),
+  // published field by field: never a child's prompt, a rejection's message, a steering command's
+  // effective state, or a hook's error.
+  projection(
+    ChildWorkflowStartedRecordedEvent.type,
+    isInstance(ChildWorkflowStartedRecordedEvent),
+    (event) => definedFields(projectChild(event.action)),
+  ),
+  projection(
+    ChildWorkflowCompletedRecordedEvent.type,
+    isInstance(ChildWorkflowCompletedRecordedEvent),
+    (event) => definedFields(projectChild(event.action)),
+  ),
+  projection(
+    ChildWorkflowFailedRecordedEvent.type,
+    isInstance(ChildWorkflowFailedRecordedEvent),
+    (event) =>
+      definedFields({
+        ...projectChild(event.action),
+        // `reason` is the child's finish reason, or the message of a rejection: the message never crosses.
+        finishReason: publishableFinishReason(
+          detailString(detailOf(event.action), 'reason'),
+          'error',
+        ),
+      }),
+  ),
+  projection(
+    ChildWorkflowAbortedRecordedEvent.type,
+    isInstance(ChildWorkflowAbortedRecordedEvent),
+    (event) => definedFields(projectChild(event.action)),
+  ),
+  projection(
+    HandoffOccurredRecordedEvent.type,
+    isInstance(HandoffOccurredRecordedEvent),
+    (event) => {
+      const detail = detailOf(event.action);
+      return definedFields({
+        runId: event.action.runId,
+        sourceAgentName: detailString(detail, 'sourceAgentName'),
+        targetAgentName: detailString(detail, 'targetAgentName'),
+      });
+    },
+  ),
+  projection(SteeringAppliedRecordedEvent.type, isInstance(SteeringAppliedRecordedEvent), (event) =>
+    definedFields({ sessionId: detailString(detailOf(event.action), 'sessionId') }),
+  ),
+  projection(HookPlanFailedRecordedEvent.type, isInstance(HookPlanFailedRecordedEvent), (event) => {
+    const detail = detailOf(event.action);
+    return definedFields({
+      runId: event.action.runId,
+      hookId: publishableToken(detailString(detail, 'hookId')) ?? FALLBACK_TOKEN,
+      hookName: publishableToken(detailString(detail, 'hookName')) ?? FALLBACK_TOKEN,
+      source: publishableToken(detailString(detail, 'source')),
+      errorCode: toolErrorCode(Object.hasOwn(detail, 'error') ? detail['error'] : undefined),
+    });
+  }),
+  // A steering command's refusal, supersession or failure (COR-2097): the session, the command and
+  // the gate's reason from a closed list; never the requested value, the successor's id or a time.
+  ...[SteeringCommandRejectedEvent, SteeringCommandSupersededEvent, SteeringCommandFailedEvent].map(
+    (EventClass) =>
+      projection(EventClass.type, isInstance(EventClass), (event) =>
+        definedFields({
+          sessionId: event.sessionId,
+          commandId: publishableToken(event.commandId),
+          failureReason: publishableSteeringFailureReason(event.failureReason),
+        }),
+      ),
+  ),
+  // The durable engine's own event (COR-2097), named for what it is: the workflow, and the version
+  // it was checkpointed under and the one it resumes under. A version that is not one token is not
+  // published.
+  projection(WorkflowVersionMismatchEvent.type, isInstance(WorkflowVersionMismatchEvent), (event) =>
+    definedFields({
+      workflowId: event.runId,
+      storedVersion: publishableToken(event.storedVersion) ?? FALLBACK_TOKEN,
+      registeredVersion: publishableToken(event.registeredVersion) ?? FALLBACK_TOKEN,
+    }),
+  ),
   projection(RunRegisteredEvent.type, isInstance(RunRegisteredEvent), (event) => ({
     runId: event.runId,
   })),
@@ -599,6 +737,37 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
       at: event.at,
       recordIds: [...event.recordIds],
       operationId: event.operationId,
+    }),
+  ),
+  // What a host reports of its plugins and their secrets (COR-2098), checked again here: the
+  // plugin and the key a plugin declared, flags, and the status and problem codes from their lists.
+  // Never a secret's value, its length, a digest or a prefix of it, a configuration value or a
+  // problem's message, none of which the event holds.
+  projection(PluginSecretSetEvent.type, isInstance(PluginSecretSetEvent), (event) =>
+    definedFields({
+      plugin: publishableToken(event.plugin),
+      key: publishableSecretKey(event.key),
+    }),
+  ),
+  projection(PluginSecretRemovedEvent.type, isInstance(PluginSecretRemovedEvent), (event) =>
+    definedFields({
+      plugin: publishableToken(event.plugin),
+      key: publishableSecretKey(event.key),
+    }),
+  ),
+  projection(PluginSettingsChangedEvent.type, isInstance(PluginSettingsChangedEvent), (event) =>
+    definedFields({
+      plugin: publishableToken(event.plugin),
+      enabled: event.enabled,
+      restartRequired: event.restartRequired,
+    }),
+  ),
+  projection(PluginStatusChangedEvent.type, isInstance(PluginStatusChangedEvent), (event) =>
+    definedFields({
+      plugin: publishableToken(event.plugin),
+      previousStatus: publishablePluginStatus(event.previousStatus),
+      status: publishablePluginStatus(event.status),
+      problemCodes: publishableProblemCodes(event.problemCodes) ?? [],
     }),
   ),
   // The decision's kind, how it ended, the row that answered and the path, and the task: never the
