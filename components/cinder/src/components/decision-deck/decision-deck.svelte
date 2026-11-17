@@ -365,7 +365,7 @@
 >
   {#if total > 0}
     <div class="cinder-decision-deck__progress">
-      <p id={progressId} class="cinder-decision-deck__progress-text">{progressLabel}</p>
+      <p id={progressId} class="cinder-decision-deck__progress-text"><bdi>{progressLabel}</bdi></p>
       <div
         class="cinder-decision-deck__progress-track"
         role="progressbar"

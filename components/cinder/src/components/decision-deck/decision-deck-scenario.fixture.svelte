@@ -116,6 +116,7 @@
 <div
   bind:this={host}
   dir={scenario === 'drag-rtl' ? 'rtl' : undefined}
+  lang={scenario === 'drag-rtl' ? 'ar' : undefined}
   data-preserve-motion
   data-testid="decision-deck-scenario"
 >

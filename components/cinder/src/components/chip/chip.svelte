@@ -165,14 +165,13 @@
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
-    {#if suggested}
-      <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). -->
-      <span class="cinder-chip__suggested-mark" aria-hidden="true"
-        ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
-      >
-    {/if}
+    <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). The glyph
+         is inline in the label, not a flex item of its own: a flex container takes its baseline
+         from its first item, so a glyph ahead of the label moved the chip off the line it sits on. -->
     <span class="cinder-chip__label"
-      >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
+      >{#if suggested}<span class="cinder-chip__suggested-mark" aria-hidden="true"
+          ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
+        ><span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
     >
   </button>
 {:else if mode === 'removable'}
@@ -194,14 +193,13 @@
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
-    {#if suggested}
-      <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). -->
-      <span class="cinder-chip__suggested-mark" aria-hidden="true"
-        ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
-      >
-    {/if}
+    <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). The glyph
+         is inline in the label, not a flex item of its own: a flex container takes its baseline
+         from its first item, so a glyph ahead of the label moved the chip off the line it sits on. -->
     <span class="cinder-chip__label"
-      >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
+      >{#if suggested}<span class="cinder-chip__suggested-mark" aria-hidden="true"
+          ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
+        ><span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
     >
     <button
       type="button"
@@ -230,14 +228,13 @@
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
-    {#if suggested}
-      <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). -->
-      <span class="cinder-chip__suggested-mark" aria-hidden="true"
-        ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
-      >
-    {/if}
+    <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). The glyph
+         is inline in the label, not a flex item of its own: a flex container takes its baseline
+         from its first item, so a glyph ahead of the label moved the chip off the line it sits on. -->
     <span class="cinder-chip__label"
-      >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
+      >{#if suggested}<span class="cinder-chip__suggested-mark" aria-hidden="true"
+          ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
+        ><span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
     >
   </span>
 {/if}

@@ -124,6 +124,46 @@ describe('DecisionDeck exit under reduced motion', () => {
   });
 });
 
+describe('DecisionDeck stamps', () => {
+  test('a stamp sits in a band the card keeps free at its block end, never over the text', () => {
+    // COR-2441: measured in a browser by decision-deck-layout.playwright.ts; the source pins the
+    // geometry that makes it hold: the card's block-end padding is the stamp band and the stamp
+    // sits inside it, in the corner the card travels toward.
+    expect(css).toMatch(
+      /\.cinder-decision-card \{\s*--_cinder-decision-stamp-band: 2\.5rem;\s*padding-block-end: calc\(\s*var\(--cinder-space-3\) \+ var\(--_cinder-decision-stamp-band\) \+ var\(--cinder-space-2\)\s*\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-decision-card__stamp \{[^}]*inset-block-end: var\(--cinder-space-3\);[^}]*block-size: var\(--_cinder-decision-stamp-band\)/,
+    );
+    expect(css).not.toMatch(/\.cinder-decision-card__stamp \{[^}]*inset-block-start/);
+    expect(css).toMatch(/\[data-stamp='accept'\] \{[^}]*inset-inline-end: var\(--cinder-space-4\)/);
+    expect(css).toMatch(
+      /\[data-stamp='reject'\] \{[^}]*inset-inline-start: var\(--cinder-space-4\)/,
+    );
+  });
+});
+
+describe('DecisionDeck progress', () => {
+  test('the progress phrase is one isolated run, so right to left cannot reorder it', () => {
+    const { container } = render(DecisionDeck, { items });
+    const text = container.querySelector('.cinder-decision-deck__progress-text');
+    expect(text?.children).toHaveLength(1);
+    expect(text?.firstElementChild?.tagName).toBe('BDI');
+    expect(text?.firstElementChild?.textContent).toBe('1 of 2');
+    expect(text?.textContent).toBe('1 of 2');
+  });
+
+  test('a custom progress phrase is isolated the same way', () => {
+    const { container } = render(DecisionDeck, {
+      items,
+      progressText: (position: number, total: number) => `${position} من ${total}`,
+    });
+    expect(container.querySelector('.cinder-decision-deck__progress-text bdi')?.textContent).toBe(
+      '1 من 2',
+    );
+  });
+});
+
 describe('DecisionDeck custom body note', () => {
   test('the README says the card snippet renders a second time while the copy leaves', () => {
     expect(readme).toContain('rendered a second time');

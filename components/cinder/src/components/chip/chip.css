@@ -339,9 +339,11 @@
      glyph before the label, in the same accent as the neutral suggested label. The words
      "Suggested" stay for assistive technology. */
   .cinder-chip__suggested-mark {
-    display: inline-flex;
-    align-items: center;
-    flex-shrink: 0;
+    display: inline-block;
+    margin-inline-end: var(--cinder-space-1);
+    /* Centred on the lowercase letters and no taller than the line, so the label's own line box
+       sets the chip's height and baseline, with or without the glyph. */
+    vertical-align: -0.2em;
     line-height: 0;
     color: var(--cinder-accent-text);
   }

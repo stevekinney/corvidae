@@ -174,28 +174,43 @@
   }
 
   /* The stamps fade in with the drag (their opacity is set from the card's offset). Each carries
-     its word, so the outcome is never colour alone. */
+     its word, so the outcome is never colour alone. A stamp sits in a band the card keeps free at
+     its block end (the card's padding grows by the band), in the corner the card is travelling
+     toward: accept at the inline-end corner, reject at the inline-start corner. It never covers
+     the card's text, whatever the text holds. */
+  .cinder-decision-card {
+    --_cinder-decision-stamp-band: 2.5rem;
+    padding-block-end: calc(
+      var(--cinder-space-3) + var(--_cinder-decision-stamp-band) + var(--cinder-space-2)
+    );
+  }
+
   .cinder-decision-card__stamp {
     position: absolute;
-    inset-block-start: var(--cinder-space-4);
-    padding: var(--cinder-space-1) var(--cinder-space-3);
+    inset-block-end: var(--cinder-space-3);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    block-size: var(--_cinder-decision-stamp-band);
+    padding-inline: var(--cinder-space-3);
     border: 3px solid currentColor;
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-bold);
+    line-height: 1;
     opacity: 0;
     pointer-events: none;
   }
 
   .cinder-decision-card__stamp[data-stamp='accept'] {
-    inset-inline-start: var(--cinder-space-4);
+    inset-inline-end: var(--cinder-space-4);
     color: var(--cinder-accent-text);
     transform: rotate(-8deg);
   }
 
   .cinder-decision-card__stamp[data-stamp='reject'] {
-    inset-inline-end: var(--cinder-space-4);
+    inset-inline-start: var(--cinder-space-4);
     color: var(--cinder-status-warning-text);
     transform: rotate(8deg);
   }

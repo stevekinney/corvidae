@@ -36,10 +36,12 @@ describe('suggested Chip visible cue', () => {
       expect(mark?.getAttribute('aria-hidden')).toBe('true');
       expect(mark?.querySelector('svg')).not.toBeNull();
       const chip = container.querySelector('.cinder-chip');
-      const children = [...(chip?.children ?? [])];
-      expect(children.indexOf(mark as Element)).toBeLessThan(
-        children.findIndex((child) => child.classList.contains('cinder-chip__label')),
-      );
+      // The glyph is inline at the start of the label, not a flex item ahead of it: a flex
+      // container takes its baseline from its first item, which moved the chip off its line.
+      const label = chip?.querySelector('.cinder-chip__label');
+      expect(mark?.parentElement === label).toBe(true);
+      expect(label?.firstElementChild === mark).toBe(true);
+      expect([...(chip?.children ?? [])].includes(mark as Element)).toBe(false);
       // The screen-reader word stays, so the cue is not announced twice.
       expect(chip?.querySelector('.cinder-sr-only')?.textContent).toBe('Suggested: ');
     }
@@ -50,9 +52,9 @@ describe('suggested Chip visible cue', () => {
     expect(container.querySelector('.cinder-chip__suggested-mark')).toBeNull();
   });
 
-  test('the glyph takes the accent text colour and never shrinks', () => {
+  test('the glyph takes the accent text colour, sits inline and adds no line height', () => {
     expect(chipCss).toMatch(
-      /\.cinder-chip__suggested-mark \{[^}]*flex-shrink: 0;[^}]*color: var\(--cinder-accent-text\)/,
+      /\.cinder-chip__suggested-mark \{[^}]*display: inline-block;[^}]*vertical-align: -0\.2em;[^}]*line-height: 0;[^}]*color: var\(--cinder-accent-text\)/,
     );
   });
 });
