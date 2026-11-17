@@ -6,11 +6,13 @@ import {
   manifestDigest,
   parseComponentFilter,
   THEMES,
+  TOUCH_VIEWPORT,
   VIEWPORTS,
 } from '@lostgradient/testing';
 
 import { resolve } from 'node:path';
 import { environmentConfiguration } from '../environment-configuration.ts';
+import { coarsePointerSlugs, TOUCH_FIXTURE, TOUCH_THEMES } from '../scripts/touch-profile.ts';
 import { expect, test } from './component-page-fixture.ts';
 import { runFixtureSweep } from './component-sweep.ts';
 
@@ -738,6 +740,23 @@ for (const entry of entries) {
           });
         }
       }
+    }
+  });
+}
+
+// The touch-pointer profile (COR-2440): a component whose own styles have an `any-pointer:
+// coarse` rule draws its assertion fixture once more at the phone width with a touch screen.
+const coarseSlugs = new Set(coarsePointerSlugs());
+for (const entry of entries.filter((candidate) => coarseSlugs.has(candidate.slug))) {
+  const fixture = entry.fixtures?.find((candidate) => candidate.name === TOUCH_FIXTURE);
+  if (fixture === undefined) continue;
+  test.describe(`${entry.name} on a touch screen`, () => {
+    for (const theme of TOUCH_THEMES) {
+      test(`${theme}-touch-${fixture.name}`, async ({ componentPage }) => {
+        await runFixtureSweep(componentPage, entry, theme, TOUCH_VIEWPORT, fixture, {
+          hasTouch: true,
+        });
+      });
     }
   });
 }

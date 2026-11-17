@@ -4,8 +4,12 @@ import type { FixtureCategory, InteractionStep, MaskRule } from '../visual-fixtu
 
 /** Supported browser color themes. */
 export type Theme = 'light' | 'dark';
-/** Supported browser viewport names. */
-export type ViewportName = 'mobile' | 'tablet' | 'desktop';
+/**
+ * Supported browser viewport names. `touch` is the phone width with a touch screen and a coarse
+ * pointer ({@link TOUCH_VIEWPORT}), drawn only for a component that has an `any-pointer: coarse`
+ * rule.
+ */
+export type ViewportName = 'mobile' | 'tablet' | 'desktop' | 'touch';
 /** Dimensions associated with a viewport name. */
 export type Viewport = {
   /** Viewport name. */
@@ -59,6 +63,13 @@ export const VIEWPORTS: readonly Viewport[] = [
   { name: 'tablet', width: 768, height: 900 },
   { name: 'desktop', width: 1280, height: 900 },
 ] as const;
+
+/**
+ * The touch-pointer profile (COR-2440): the phone width, opened with a touch screen so the page
+ * matches `any-pointer: coarse`. Not part of {@link VIEWPORTS}: only a component with a coarse-pointer
+ * rule is drawn at it, so its compact-on-touch changes can be judged from baselines.
+ */
+export const TOUCH_VIEWPORT: Viewport = { name: 'touch', width: 375, height: 900 };
 
 type ManifestFile = { digest: string; entries: ComponentEntry[] };
 
