@@ -61,6 +61,10 @@ import {
 } from '../../workflow-runtime.ts';
 import { TASK_PERSON_SURFACES } from '../../task-origin.ts';
 import { WorkflowInputInvalidError } from '../../workflow-schema.ts';
+import {
+  WORKFLOW_RETRY_ID_MAXIMUM_LENGTH,
+  WorkflowRetryRefusedError,
+} from '../../workflow-run-retry.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -1205,6 +1209,94 @@ export const workflowsRunsCancelOperation = defineOperation<
   },
 });
 
+const runsRetryInput = z.object({
+  runId: z.string().min(1).describe('The identifier of the failed workflow instance to run again.'),
+  step: z
+    .number()
+    .int()
+    .min(1)
+    .describe(
+      'The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.',
+    ),
+  retryId: z
+    .string()
+    .min(1)
+    .max(WORKFLOW_RETRY_ID_MAXIMUM_LENGTH)
+    .optional()
+    .describe(
+      'The caller’s identifier of this request. The same request repeated with it answers what the first did, and finishes it when the first stopped partway; without it, a repeat finds the instance running and is refused `run-not-failed`.',
+    ),
+});
+const runsRetryOutput = z.object({
+  runId: z.string(),
+  step: z.number().int().describe('The step that runs again, counted from 1.'),
+  workflowVersion: z.string().describe('The revision the instance runs on: the one it began on.'),
+  retryId: z.string().nullable(),
+});
+
+export const workflowsRunsRetryOperation = defineOperation<
+  typeof runsRetryInput,
+  typeof runsRetryOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.runs.retry',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.runs.retry'),
+  mcpExposable: false,
+  summary: 'Run a failed workflow run again from the step it failed at',
+  description:
+    'Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: runsRetryInput,
+  outputSchema: runsRetryOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'Unprocessable', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    // Authorized as `bureau.workflows.runs.cancel` is: the owner or the write scope, and for a
+    // workspace member, the run's own owner with the right to manage.
+    const workflows = workflowsFor(
+      host,
+      principal,
+      principal.method === 'unauthenticated' || principal.workspace === undefined
+        ? 'bureau.workflows:write'
+        : 'bureau.workflows:read',
+      'run',
+      input.runId,
+    );
+    if (
+      principal.method !== 'unauthenticated' &&
+      principal.workspace !== undefined &&
+      !host.ownership.mayAccess({
+        principal,
+        resourceOwner: await host.ownership.runOwner(input.runId),
+        operatorScope: 'bureau.workflows:write',
+      })
+    ) {
+      throw resourceNotFound('run', input.runId);
+    }
+    try {
+      return await workflows.retryRun(input.runId, {
+        step: input.step,
+        ...(input.retryId === undefined ? {} : { retryId: input.retryId }),
+      });
+    } catch (error) {
+      if (error instanceof BureauError && error.code === 'NOT_FOUND')
+        throw resourceNotFound('run', input.runId);
+      if (error instanceof WorkflowRetryRefusedError) {
+        throw {
+          code: 'Unprocessable',
+          message: error.message,
+          data: { reason: error.code },
+        } satisfies OperationFault;
+      }
+      throw error;
+    }
+  },
+});
+
 const runsHistoryInput = z.object({
   runId: z.string().min(1).describe('The identifier of the workflow instance to inspect.'),
   limit: z
@@ -1728,6 +1820,7 @@ export const bureauWorkflowsOperations = [
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
   workflowsRunsCancelOperation,
+  workflowsRunsRetryOperation,
   workflowsRunsHistoryOperation,
   workflowsStartOperation,
   workflowsInternalGetOperation,

@@ -212,7 +212,8 @@ type ReactivatedFailedWorkflow = {
   terminalCleanupTimerId: string | undefined;
 };
 
-async function reactivateFailedWorkflowFromCheckpoint(
+/** Reactivate a failed run from its checkpoint; shared with `engine.retryFailed` (`retry-failed-workflow.ts`). */
+export async function reactivateFailedWorkflowFromCheckpoint(
   internals: EngineInternals,
   state: WorkflowState,
 ): Promise<void> {

@@ -36,7 +36,9 @@ import {
   encode,
   type Engine,
   type RegisteredWorkflowDocument,
+  type RetryFailedWorkflowResult,
   WorkflowDocumentValidationError,
+  WorkflowRevisionUnavailableError,
   type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
   type WorkflowState,
@@ -69,7 +71,22 @@ import {
   workflowFileStepsInCanonicalOrder,
   type WorkflowFileDefinition,
   WorkflowFileError,
+  type WorkflowFileStep,
 } from './workflow-file';
+import {
+  createWorkflowRetryReceipts,
+  type WorkflowRetryReceipts,
+  type WorkflowRetryRequest,
+} from './workflow-retry-receipts';
+import {
+  canonicalStepCount,
+  failedStepIndexOf,
+  isRetryableStep,
+  type WorkflowRetryOptions,
+  type WorkflowRetryRefusal,
+  WorkflowRetryRefusedError,
+  type WorkflowRetryResult,
+} from './workflow-run-retry';
 import {
   createWorkflowRevisionLedger,
   planWorkflowRevision,
@@ -580,6 +597,17 @@ export interface BureauWorkflows {
   readonly cancel: (
     runId: string,
   ) => Promise<{ readonly runId: string; readonly status: 'cancel-requested' }>;
+  /**
+   * COR-2424 — run a failed instance again from the step it failed at, in place and on the version
+   * it ran: the step runs again, and every step before it keeps its result and never runs again
+   * (`engine.retryFailed`). `options.step` must be that step, counted from 1. Throws
+   * {@link WorkflowRetryRefusedError} with the reason when it cannot (see
+   * {@link WorkflowRetryRefusal}), changing nothing, and `NOT_FOUND` for a run that is no instance
+   * of a workflow file. A request repeated with its `retryId` answers what it did; without one, a
+   * repeat finds the instance running and is refused `run-not-failed`. It reactivates an instance
+   * at most once per failure.
+   */
+  readonly retryRun: (runId: string, options: WorkflowRetryOptions) => Promise<WorkflowRetryResult>;
   /** Read a bounded, sanitized history projection for one workflow-file run. */
   readonly historyRuns: (
     runId: string,
@@ -816,6 +844,11 @@ export interface WorkflowRuntimeOptions {
    */
   readonly revisionLedger?: WorkflowRevisionLedger | undefined;
   /**
+   * Where each instance's retries are recorded (COR-2424): the store the `agent` step reads its
+   * run's generation from. One that lasts as long as the process when omitted.
+   */
+  readonly retryReceipts?: WorkflowRetryReceipts | undefined;
+  /**
    * Where the schedules held for a file that stopped parsing are recorded (COR-2009); one that
    * lasts as long as the process when omitted.
    */
@@ -909,6 +942,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   const revisionLedger =
     options.revisionLedger ??
     createWorkflowRevisionLedger({ nowISO: () => options.runtime.clock.nowISO() });
+  const retryReceipts = options.retryReceipts ?? createWorkflowRetryReceipts();
   const scheduleHolds =
     options.scheduleHolds ??
     createWorkflowScheduleHolds({ nowISO: () => options.runtime.clock.nowISO() });
@@ -1377,6 +1411,229 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       : { workflow: id, title: saved.content.title, steps: saved.content.steps };
   }
 
+  /** Note what the engine now has registered: its types, and which steps of each revision are reviews. */
+  async function noteRegistered(registered: readonly RegisteredWorkflowDocument[]): Promise<void> {
+    for (const entry of registered) {
+      registeredTypes.add(bureauNameOf(entry.name));
+      const written = await revisionOf(bureauNameOf(entry.name), entry.workflowVersion);
+      reviewStepsByRevision.set(
+        reviewKey(entry.name, entry.workflowVersion),
+        new Set(
+          workflowFileStepsInCanonicalOrder(written?.steps ?? []).flatMap(({ step, index }) =>
+            step['kind'] === 'await-signal' && step['review'] === true ? [index] : [],
+          ),
+        ),
+      );
+    }
+  }
+
+  /**
+   * COR-2424 — register the revision `workflowVersion` of workflow `id` from its stored snapshot,
+   * as `retained`, so a failed instance pinned to it can run on it again. A failed instance is not
+   * in flight, so a boot does not register its revision when it is no longer the file's. Already
+   * registered, it registers nothing. Refuses with `version-unavailable` when the snapshot is gone
+   * or unreadable, no longer validates, or pins an activity or code workflow that is not loaded.
+   */
+  async function registerRevisionForRetry(
+    id: string,
+    workflowVersion: string,
+    runId: string,
+  ): Promise<void> {
+    const unavailable = (why: string): WorkflowRetryRefusedError =>
+      new WorkflowRetryRefusedError(
+        'version-unavailable',
+        runId,
+        `Run "${runId}" cannot run again on the version it ran (${workflowVersion}): ${why}.`,
+      );
+    let snapshot: WorkflowSnapshot | undefined;
+    try {
+      snapshot = await snapshots.load(id, workflowVersion);
+    } catch (error) {
+      throw unavailable(error instanceof Error ? error.message : String(error));
+    }
+    if (snapshot === undefined) throw unavailable('that version is no longer stored');
+    const pin = unresolvedPin(snapshot.document);
+    if (pin !== undefined) {
+      throw unavailable(`it pins ${pinnedIdOf(pin)}, which is not loaded (${pin.reason})`);
+    }
+    let document: WorkflowDocument;
+    try {
+      document = validateBureauWorkflowDocument(snapshot.document, registrationHost, {
+        allowCompensate: true,
+      });
+    } catch (error) {
+      if (!(error instanceof WorkflowDocumentValidationError)) throw error;
+      throw unavailable(`it no longer validates against this Bureau (${error.message})`);
+    }
+    await withRegistration(async () => {
+      await noteRegistered(
+        await registerBureauWorkflowDocuments(engine, registrationHost, {
+          active: [],
+          retained: [document],
+        }),
+      );
+    });
+  }
+
+  /** COR-2424 — the retry requests of each instance this process is carrying out. */
+  const retriesInFlight = new Map<string, Promise<void>>();
+
+  /**
+   * COR-2424 — the step a failed instance failed at, counted from 1, once the request names it and
+   * it can run again; otherwise the refusal. `steps` are the steps as written of the version the
+   * instance ran.
+   */
+  async function checkRetryStep(
+    state: WorkflowState,
+    steps: readonly WorkflowFileStep[],
+    step: number,
+  ): Promise<void> {
+    const runId = state.id;
+    const refuse = (code: WorkflowRetryRefusal, message: string): never => {
+      throw new WorkflowRetryRefusedError(code, runId, message);
+    };
+    const total = canonicalStepCount(steps);
+    if (!Number.isSafeInteger(step) || step < 1 || step > total) {
+      refuse(
+        'step-not-found',
+        `Run "${runId}" has no step ${String(step)}: the version it ran has ${String(total)}.`,
+      );
+    }
+    const code = errorCodeOf(state.errorStack);
+    if (code !== null) {
+      refuse(
+        'step-not-retryable',
+        code === 'review-rejected'
+          ? `Run "${runId}" ended because a person rejected it at a review, which a retry would read again.`
+          : `Run "${runId}" failed outside a step (${code}), so no step can run again.`,
+      );
+    }
+    const failedIndex = failedStepIndexOf(await engine.getTimeline(runId));
+    if (failedIndex === undefined) {
+      refuse('step-not-retryable', `Run "${runId}" did not fail at a step.`);
+    }
+    const failedStep = failedIndex! + 1;
+    if (step > failedStep) {
+      refuse(
+        'earlier-steps-incomplete',
+        `Run "${runId}" failed at step ${String(failedStep)}, so the steps before step ${String(step)} did not all complete.`,
+      );
+    }
+    if (step < failedStep) {
+      refuse(
+        'step-completed',
+        `Step ${String(step)} of run "${runId}" completed; the run failed at step ${String(failedStep)}, the step a retry runs again.`,
+      );
+    }
+    if (!isRetryableStep(steps, failedIndex!)) {
+      refuse(
+        'step-not-retryable',
+        `Step ${String(step)} of run "${runId}" would fail the same way again: only an activity step outside a parallel step can run again.`,
+      );
+    }
+  }
+
+  /** COR-2424 — {@link BureauWorkflows.retryRun}, one request at a time per instance. */
+  async function retryRunNow(
+    runId: string,
+    retryOptions: WorkflowRetryOptions,
+  ): Promise<WorkflowRetryResult> {
+    const state: WorkflowState | null | undefined = await engine.get(runId);
+    if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
+      throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
+    }
+    const id = bureauNameOf(state.type);
+    const workflowVersion = state.versionTuple.workflowVersion;
+    const retryId = retryOptions.retryId ?? null;
+    const answer = (step: number): WorkflowRetryResult => ({
+      runId,
+      step,
+      workflowVersion,
+      retryId,
+    });
+    const receipt = await retryReceipts.get(runId);
+    // The same request again: it answers what it did, and finishes what it left partway.
+    if (retryId !== null && receipt?.applied?.retryId === retryId) {
+      return answer(receipt.applied.step);
+    }
+    const pending = retryId !== null && receipt?.pending?.retryId === retryId ? receipt : undefined;
+    if (state.status !== 'failed') {
+      const finished = pending?.pending ?? null;
+      if (pending !== undefined && finished !== null) {
+        await retryReceipts.put({ ...pending, pending: null, applied: finished });
+        return answer(finished.step);
+      }
+      throw new WorkflowRetryRefusedError(
+        'run-not-failed',
+        runId,
+        `Run "${runId}" is ${state.status}, not failed.`,
+      );
+    }
+    const written = await revisionOf(id, workflowVersion);
+    if (written === undefined) {
+      throw new WorkflowRetryRefusedError(
+        'version-unavailable',
+        runId,
+        `Run "${runId}" cannot run again: the steps of the version it ran (${workflowVersion}) are no longer recorded.`,
+      );
+    }
+    await checkRetryStep(state, written.steps, retryOptions.step);
+    await registerRevisionForRetry(id, workflowVersion, runId);
+    const request: WorkflowRetryRequest = {
+      retryId,
+      step: retryOptions.step,
+      requestedAt: options.runtime.clock.nowISO(),
+    };
+    const generation = pending?.generation ?? (receipt?.generation ?? 0) + 1;
+    // Written before the engine reactivates the instance: a step that runs after it reads the
+    // generation, and a crash between the two leaves the request for its repeat to finish.
+    await retryReceipts.put({
+      schemaVersion: 1,
+      runId,
+      generation,
+      pending: request,
+      applied: receipt?.applied ?? null,
+    });
+    let outcome: RetryFailedWorkflowResult;
+    try {
+      outcome = await engine.retryFailed(runId);
+    } catch (error) {
+      if (error instanceof WorkflowRevisionUnavailableError) {
+        throw new WorkflowRetryRefusedError(
+          'version-unavailable',
+          runId,
+          `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+    if (outcome.status === 'not-found') {
+      throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
+    }
+    if (outcome.status === 'not-failed') {
+      throw new WorkflowRetryRefusedError(
+        'run-not-failed',
+        runId,
+        `Run "${runId}" is ${outcome.currentStatus}, not failed.`,
+      );
+    }
+    if (outcome.status === 'no-checkpoint') {
+      throw new WorkflowRetryRefusedError(
+        'no-checkpoint',
+        runId,
+        `Run "${runId}" kept nothing to resume from, so a retry would run every step again.`,
+      );
+    }
+    await retryReceipts.put({
+      schemaVersion: 1,
+      runId,
+      generation,
+      pending: null,
+      applied: request,
+    });
+    return answer(retryOptions.step);
+  }
+
   /** Register the files' documents, and the older revisions that still have an instance in flight. */
   async function register(retained: readonly WorkflowDocument[]): Promise<void> {
     const files = readyFiles();
@@ -1391,18 +1648,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             active: files.map((file) => file.document),
             retained,
           });
-        for (const entry of registered) {
-          registeredTypes.add(bureauNameOf(entry.name));
-          const written = await revisionOf(bureauNameOf(entry.name), entry.workflowVersion);
-          reviewStepsByRevision.set(
-            reviewKey(entry.name, entry.workflowVersion),
-            new Set(
-              workflowFileStepsInCanonicalOrder(written?.steps ?? []).flatMap(({ step, index }) =>
-                step['kind'] === 'await-signal' && step['review'] === true ? [index] : [],
-              ),
-            ),
-          );
-        }
+        await noteRegistered(registered);
         appliedFiles = new Map(files.map((file) => [file.id, file]));
         registrationFailure = undefined;
       } catch (error) {
@@ -2688,6 +2934,24 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         return { runId, status: 'cancel-requested' as const };
       }
       return { runId, status: 'cancel-requested' as const };
+    },
+
+    retryRun(runId, retryOptions) {
+      // One request per instance at a time in this process, so two requests never both bump the
+      // generation; the engine's own status check stops a second reactivation in any case.
+      const result = (retriesInFlight.get(runId) ?? Promise.resolve()).then(
+        () => retryRunNow(runId, retryOptions),
+        () => retryRunNow(runId, retryOptions),
+      );
+      const settledResult = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      retriesInFlight.set(runId, settledResult);
+      void settledResult.then(() =>
+        retriesInFlight.get(runId) === settledResult ? retriesInFlight.delete(runId) : false,
+      );
+      return result;
     },
 
     async historyRuns(runId, limit) {

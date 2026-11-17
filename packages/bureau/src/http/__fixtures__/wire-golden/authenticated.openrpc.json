@@ -20417,6 +20417,136 @@
       }
     },
     {
+      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.workflows.runs.retry",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "retryId",
+          "required": false,
+          "schema": {
+            "description": "The caller’s identifier of this request. The same request repeated with it answers what the first did, and finishes it when the first stopped partway; without it, a repeat finds the instance running and is refused `run-not-failed`.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed workflow instance to run again.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "step",
+          "required": true,
+          "schema": {
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "retryId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "runId": {
+              "type": "string"
+            },
+            "step": {
+              "description": "The step that runs again, counted from 1.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "workflowVersion": {
+              "description": "The revision the instance runs on: the one it began on.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId",
+            "step",
+            "workflowVersion",
+            "retryId"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Run a failed workflow run again from the step it failed at",
+      "tags": [
+        {
+          "name": "Workflows"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "retryId": {
+            "description": "The caller’s identifier of this request. The same request repeated with it answers what the first did, and finishes it when the first stopped partway; without it, a repeat finds the instance running and is refused `run-not-failed`.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runId": {
+            "description": "The identifier of the failed workflow instance to run again.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "step": {
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runId",
+          "step"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Reads bounded, sanitized step history for a Bureau workflow-file instance. Raw event data is never returned.",
       "errors": [
         {

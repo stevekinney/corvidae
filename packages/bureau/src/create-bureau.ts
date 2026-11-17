@@ -233,6 +233,7 @@ import { everySchedule, readAttention } from './attention-feed';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
+import { createWorkflowRetryReceipts } from './workflow-retry-receipts';
 import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
 import { createAgentOverrideStore } from './agent-override-store';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
@@ -3094,6 +3095,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
+            // COR-2424: the store the `agent` step reads an instance's retry generation from.
+            retryReceipts: createWorkflowRetryReceipts({ store: runtime.kv }),
             scheduleHolds: createWorkflowScheduleHolds({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,

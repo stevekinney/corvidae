@@ -186,6 +186,7 @@ export const OPERATION_MAP = {
   'bureau.workflows.runs.list': { workspaceClass: 'private-owned', member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { workspaceClass: 'private-owned', member: 'workflows.getRun' },
   'bureau.workflows.runs.cancel': { workspaceClass: 'private-owned', member: 'workflows.cancel' },
+  'bureau.workflows.runs.retry': { workspaceClass: 'private-owned', member: 'workflows.retryRun' },
   'bureau.workflows.runs.history': {
     workspaceClass: 'private-owned',
     member: 'workflows.historyRuns',
