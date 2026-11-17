@@ -145,8 +145,10 @@ export function occurrenceWords(at: number, zone: string): string {
 }
 
 /**
- * Line two of the missed row: "Schedule, Assistant, every day at 3:00 AM (9:00 AM UTC), missed 4
- * times since Oct 30". The schedule's own zone stays in the cadence; the occurrences are the viewer's.
+ * Line two of the missed row: "Schedule, missed 4 times since Oct 30, Assistant, every day at 3:00
+ * AM (9:00 AM UTC)". The point of the row comes first, so a line cut short on a phone or a tablet
+ * drops the cadence, then the agent, and keeps how many runs were missed. The schedule's own zone
+ * stays in the cadence; the occurrences are the viewer's.
  */
 export function missedLineTwo(
   missed: MissedRuns,
@@ -156,8 +158,8 @@ export function missedLineTwo(
   const copy = TASK_COPY.list;
   return [
     copy.kinds.schedule,
+    copy.missed.since(missed.count, missedDay(missed.since, zone)),
     ...(missed.agentName === null ? [] : [agentLabel(missed.agentName)]),
     missed.cadence,
-    copy.missed.since(missed.count, missedDay(missed.since, zone)),
   ].join(copy.separator);
 }

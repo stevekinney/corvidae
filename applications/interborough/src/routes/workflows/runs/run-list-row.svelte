@@ -56,16 +56,17 @@
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
     }),
   );
-  const lineTwo = $derived(
-    readable
-      ? baseLineTwo
-      : `${baseLineTwo}${TASK_COPY.list.separator}${TASK_COPY.list.engineRunLocked}`,
-  );
+  // Line two keeps what the run was; why the row does not open is the row's own description, so a
+  // line cut short never drops it first.
+  const lineTwo = $derived(baseLineTwo);
 </script>
+
+{#snippet lockedNote()}{TASK_COPY.list.engineRunLocked}{/snippet}
 
 <StackedListItem
   data-run={row.id}
   data-status={word}
+  {...readable ? {} : { description: lockedNote }}
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}

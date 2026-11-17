@@ -444,7 +444,8 @@ describe('a goal’s attempt', () => {
   ] as const)('an attempt that %s is shown as %s', async (status, state) => {
     const view = open('/runs/goal-1-a0', { goals: [attempt(status)], scopes: BUREAU_ONLY });
 
-    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    // The goal's own name, which the fixture writes as "Goal goal-1".
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     expect(header(view.container)?.textContent).toContain(WORD[state]);
     expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
@@ -472,7 +473,7 @@ describe('a goal’s attempt', () => {
       throw new Error('No such session');
     });
 
-    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });

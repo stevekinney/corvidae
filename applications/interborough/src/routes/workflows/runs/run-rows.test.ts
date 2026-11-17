@@ -30,6 +30,7 @@ const chat = {
 
 const goal = {
   goalRunId: 'seeded-goal',
+  identity: { name: 'Seeded goal', version: '1' },
   agentName: 'assistant',
   bounds: { maximumAttempts: 1 },
   attempts: [

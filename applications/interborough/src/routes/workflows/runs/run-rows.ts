@@ -29,6 +29,7 @@ import {
 } from '../../../lib/bureau-tasks.ts';
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
+import { oneLine } from '../../../lib/one-line.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
 import { taskStatusWord, type StatusWord } from '../../../lib/status.ts';
 import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
@@ -521,7 +522,9 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
         session:
           attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
       },
-      title: goalTitle(goal.goalRunId),
+      // The goal's own name, as the goals list says it; the identifier only when it has none.
+      title:
+        goal.identity.name.trim() === '' ? goalTitle(goal.goalRunId) : goal.identity.name.trim(),
       summary: attempt.status === 'passed' ? '' : (attempt.finishReason ?? ''),
       startedAt,
       updatedAt: completedAt ?? startedAt,
@@ -866,7 +869,11 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       if (steps !== null && steps !== undefined && reached !== null) {
         parts.push(copy.failedAtStep(reached, steps.total));
       }
-      if (row.summary !== '') parts.push(row.summary);
+      // What the run said, never the error's own JSON: "GitHub didn’t answer (HTTP 503)".
+      if (row.summary !== '') {
+        const said = oneLine(row.summary, { keepParenthetical: true });
+        if (said !== '') parts.push(said);
+      }
       parts.push(took);
       break;
     case 'completed':

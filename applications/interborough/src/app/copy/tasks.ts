@@ -17,7 +17,7 @@ export const TASK_COPY = {
       all: 'All',
       waiting: 'Waiting on you',
       /** A run parked on a signal: it needs nobody at the page, and is drawn only while one is. */
-      signal: 'Waiting',
+      signal: 'Waiting for a signal',
       running: 'Running',
       done: 'Done',
       failed: 'Failed',
@@ -72,7 +72,7 @@ export const TASK_COPY = {
      * Said on the row of a run only the workflow engine holds, for a caller who may not read the
      * engine: the row does not open, because its page is the engine's (COR-2424).
      */
-    engineRunLocked: 'Opening it needs workflows:read',
+    engineRunLocked: 'Only someone who can see workflow runs can open this',
     /** How long a run has waited on a person, at the end of line two. */
     waitingFor: (duration: string): string => `waiting ${duration}`,
     /** How long a run has been going, at the end of line two. */
