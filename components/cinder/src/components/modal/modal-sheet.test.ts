@@ -13,6 +13,7 @@ installModalDialogStubs();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Modal } = await import('./modal.svelte');
 const { default: ConfirmDialog } = await import('../confirm-dialog/confirm-dialog.svelte');
+const { PHONE_VIEWPORT_BREAKPOINT } = await import('../../_internal/viewport-below.svelte.ts');
 const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
 
 const modalCss = await Bun.file(new URL('./modal.css', import.meta.url)).text();
@@ -29,9 +30,47 @@ afterEach(() => {
 });
 
 describe('Modal sheetBelow (row 05d)', () => {
-  test('is a centred card by default, even on a phone', async () => {
+  // COR-2448 AC5: one phone presentation for every dialog. A plain Modal (the "Connect Anthropic"
+  // form) takes the same docked sheet as a ConfirmDialog (Restart, Disable), because the rule that
+  // picks it is shared: Modal's `sheetBelow` defaults to PHONE_VIEWPORT_BREAKPOINT, which
+  // ConfirmDialog passes straight through.
+  test('docks on a phone by default, as ConfirmDialog does: one shared presentation rule', async () => {
     setTestViewportWidth(375);
+    const modal = render(Modal, { open: true, title: 'Connect Anthropic', children: emptySnippet });
+    await waitUntil(() => modal.container.querySelector('.cinder-modal__panel') !== null);
+    expect(modal.container.querySelector('dialog')?.getAttribute('data-cinder-sheet')).toBe(
+      'docked',
+    );
+    expect(modal.container.querySelector('.cinder-modal__grabber')).not.toBeNull();
+    modal.unmount();
+
+    const confirm = render(ConfirmDialog, {
+      open: true,
+      title: 'Restart?',
+      confirmLabel: 'Restart',
+      onConfirm: () => {},
+    });
+    await waitUntil(() => confirm.container.querySelector('.cinder-modal__footer') !== null);
+    expect(confirm.container.querySelector('dialog')?.getAttribute('data-cinder-sheet')).toBe(
+      'docked',
+    );
+    expect(PHONE_VIEWPORT_BREAKPOINT).toBe('640px');
+  });
+
+  test('is a centred card on a desktop by default', async () => {
     const { container } = render(Modal, { open: true, title: 'Title', children: emptySnippet });
+    await waitUntil(() => container.querySelector('.cinder-modal__panel') !== null);
+    expect(container.querySelector('dialog')?.hasAttribute('data-cinder-sheet')).toBe(false);
+  });
+
+  test('sheetBelow={false} keeps a centred card on a phone', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(Modal, {
+      open: true,
+      title: 'Title',
+      sheetBelow: false,
+      children: emptySnippet,
+    });
     await waitUntil(() => container.querySelector('.cinder-modal__panel') !== null);
     expect(container.querySelector('dialog')?.hasAttribute('data-cinder-sheet')).toBe(false);
     expect(container.querySelector('.cinder-modal__grabber')).toBeNull();

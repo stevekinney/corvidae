@@ -159,9 +159,20 @@
     padding-block: var(--cinder-space-4);
     padding-inline-start: var(--cinder-space-5);
     padding-inline-end: calc(var(--cinder-space-5) + 2.25rem);
-    border-block-end: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface);
+    /* The rule is drawn only while the body scrolls (below); a short confirmation has nothing to
+       separate from. The border keeps its width so the header does not move when it appears. */
+    border-block-end: 1px solid;
+    border-block-end-color: transparent;
+    background: var(--cinder-surface-raised);
     flex-shrink: 0;
+  }
+
+  .cinder-modal__panel:has(> .cinder-modal__body[data-cinder-scrollable]) .cinder-modal__header {
+    border-block-end-color: var(--cinder-border-muted);
+  }
+
+  .cinder-modal__panel:has(> .cinder-modal__body[data-cinder-scrollable]) .cinder-modal__footer {
+    border-block-start-color: var(--cinder-border-muted);
   }
 
   /* With no close button to keep clear of, a header that carries trailing content uses the same
@@ -267,7 +278,7 @@
  * ---------------------------------------- */
 
   .cinder-modal__body {
-    --_cinder-scroll-fade-color: var(--cinder-surface);
+    --_cinder-scroll-fade-color: var(--cinder-surface-raised);
 
     flex: 1;
     overflow-y: auto;
@@ -276,7 +287,7 @@
        made the body's inline-end inset wider than its start whenever the scrollbar is classic,
        even when nothing scrolls. */
     padding: var(--cinder-space-6) var(--cinder-space-5);
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
     overscroll-behavior: contain;
     scrollbar-gutter: auto;
     /* The body container is focused on open (tabindex=-1) when the dialog has
@@ -319,8 +330,9 @@
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
-    border-block-start: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface);
+    border-block-start: 1px solid;
+    border-block-start-color: transparent;
+    background: var(--cinder-surface-raised);
     flex-shrink: 0;
   }
 
@@ -391,7 +403,7 @@
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel {
     border-width: 1px 0 0;
     border-radius: 1.25rem 1.25rem 0 0;
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
     box-shadow: 0 -0.5rem 1.5rem -0.25rem color-mix(in oklch, black, transparent 80%);
     padding-block-end: max(var(--cinder-space-8), env(safe-area-inset-bottom));
   }

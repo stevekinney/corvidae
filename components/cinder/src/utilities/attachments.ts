@@ -124,6 +124,12 @@ export type OverflowFadeOptions = {
    * cannot be scrolled without a pointer (WCAG 2.1.1; axe `scrollable-region-focusable`).
    */
   keyboardScrollable?: boolean;
+  /**
+   * Also marks the container `data-cinder-scrollable` for as long as its content overflows, at any
+   * scroll position. `data-cinder-overflows` clears at the end of the scroll; this one does not,
+   * so a dialog can keep its header and footer rules while its body scrolls at all.
+   */
+  markScrollable?: boolean;
 };
 
 /**
@@ -167,6 +173,9 @@ export function overflowFade(options: OverflowFadeOptions = {}): Attachment<HTML
       const overflows = node.scrollHeight - node.clientHeight > 1;
       const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
       node.toggleAttribute('data-cinder-overflows', overflows && !atBottom);
+      if (options.markScrollable === true) {
+        node.toggleAttribute('data-cinder-scrollable', overflows);
+      }
       if (options.keyboardScrollable === true) {
         node.setAttribute('tabindex', overflows ? '0' : '-1');
       }

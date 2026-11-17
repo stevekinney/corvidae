@@ -1,0 +1,86 @@
+/// <reference lib="dom" />
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { parse } from 'postcss';
+import { resetScrollLock } from '../../_internal/overlay.ts';
+import {
+  flushOverflowFadeAnimationFrames,
+  installOverflowFadeTestEnvironment,
+  OverflowFadeResizeObserver,
+  setScrollMeasurements,
+} from '../../test/overflow-fade-test-helpers.ts';
+import { installModalDialogStubs, textSnippet } from './modal-test-helpers.ts';
+
+setupHappyDom();
+installModalDialogStubs();
+const { cleanup, render } = await import('@testing-library/svelte');
+const { default: Modal } = await import('./modal.svelte');
+
+const css = await Bun.file(new URL('./modal.css', import.meta.url)).text();
+
+/** The value of `property` in the rule whose selector list holds exactly `selector`. */
+function declared(selector: string, property: string): string | undefined {
+  let value: string | undefined;
+  parse(css).walkRules((rule) => {
+    if (!rule.selectors.includes(selector)) return;
+    rule.walkDecls(property, (declaration) => {
+      value = declaration.value;
+    });
+  });
+  return value;
+}
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+  resetScrollLock();
+});
+
+// A short confirmation has nothing to separate from: the header and footer rules appear only
+// while the body scrolls (COR-2448 AC4).
+describe('Modal header and footer rules (COR-2448 AC4)', () => {
+  const scrollingPanel = '.cinder-modal__panel:has(> .cinder-modal__body[data-cinder-scrollable])';
+
+  test('the header and footer rules are transparent unless the body scrolls', () => {
+    expect(declared('.cinder-modal__header', 'border-block-end-color')).toBe('transparent');
+    expect(declared('.cinder-modal__footer', 'border-block-start-color')).toBe('transparent');
+    expect(declared(`${scrollingPanel} .cinder-modal__header`, 'border-block-end-color')).toBe(
+      'var(--cinder-border-muted)',
+    );
+    expect(declared(`${scrollingPanel} .cinder-modal__footer`, 'border-block-start-color')).toBe(
+      'var(--cinder-border-muted)',
+    );
+  });
+
+  test('a two-sentence body is not marked scrollable, a body taller than its box is', () => {
+    const cleanupOverflowFade = installOverflowFadeTestEnvironment();
+    try {
+      const { container } = render(Modal, {
+        props: {
+          open: true,
+          title: 'Restart',
+          children: textSnippet('Restart the worker. Running jobs finish first.'),
+        },
+      });
+      const body = requiredInstance(container.querySelector('.cinder-modal__body'), HTMLElement);
+
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.hasAttribute('data-cinder-scrollable')).toBe(false);
+
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.hasAttribute('data-cinder-scrollable')).toBe(true);
+
+      // Scrolled to the end it still scrolls, so the rules stay.
+      setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 400, scrollTop: 300 });
+      body.dispatchEvent(new Event('scroll'));
+      flushOverflowFadeAnimationFrames();
+      expect(body.hasAttribute('data-cinder-scrollable')).toBe(true);
+    } finally {
+      cleanupOverflowFade();
+    }
+  });
+});
