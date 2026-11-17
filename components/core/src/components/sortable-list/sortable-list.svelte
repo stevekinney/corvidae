@@ -4,13 +4,13 @@
 
 <script lang="ts" generics="Item">
   import { untrack } from 'svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     SortableController,
     setSortableContext,
     reorder,
-  } from '../../utilities/sortable-controller.svelte.ts';
-  import { useAnnouncer } from '../../utilities/use-announcer.svelte.ts';
+  } from '@lostgradient/foundation/utilities/sortable-controller.svelte.ts';
+  import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
   import SortableItem from '../_sortable-item.svelte';
   import type { SortableListProps } from './sortable-list.types.ts';
 

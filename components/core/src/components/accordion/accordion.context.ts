@@ -1,4 +1,4 @@
-import { strictStableContext } from '../../_internal/strict-stable-context.ts';
+import { strictStableContext } from '@lostgradient/foundation/_internal/strict-stable-context.ts';
 import type { AccordionContext } from './accordion.types.ts';
 
 export type { AccordionContext };

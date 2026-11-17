@@ -6,7 +6,7 @@ import type {
   ToastOptions,
   ToastPosition,
   ToastVariant,
-} from '../../_internal/toast-context.ts';
+} from '@lostgradient/foundation/_internal/toast-context.ts';
 
 export type { ToastApi, ToastItem, ToastOptions, ToastPosition, ToastVariant };
 

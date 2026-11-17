@@ -1,8 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { SurfaceTone } from '../../_internal/surface-context.ts';
-export type { SurfaceTone } from '../../_internal/surface-context.ts';
+import type { SurfaceTone } from '@lostgradient/foundation/_internal/surface-context.ts';
+export type { SurfaceTone } from '@lostgradient/foundation/_internal/surface-context.ts';
 
 export type SurfaceProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   tone?: SurfaceTone;

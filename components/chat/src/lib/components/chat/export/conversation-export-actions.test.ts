@@ -23,7 +23,7 @@ const { render, cleanup } = await import('@testing-library/svelte');
 const { default: ConversationExportActions } = await import('./conversation-export-actions.svelte');
 
 const cinderSrOnlyCss = await Bun.file(
-  new URL('../../../../../../core/src/styles/utilities.css', import.meta.url),
+  new URL('../../../../../../foundation/src/styles/utilities.css', import.meta.url),
 ).text();
 
 afterEach(() => {

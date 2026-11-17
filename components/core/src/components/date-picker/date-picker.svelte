@@ -5,9 +5,9 @@
 <script lang="ts">
   import CalendarDays from '@lucide/svelte/icons/calendar-days';
   import type { DatePickerProps } from './date-picker.types.ts';
-  import { normalizeDateValue as normalizeValue } from '../../_internal/date-value.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { normalizeDateValue as normalizeValue } from '@lostgradient/foundation/_internal/date-value.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Calendar from '../calendar/calendar.svelte';
   import Popover from '../popover/popover.svelte';
 

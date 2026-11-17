@@ -6,7 +6,7 @@
   import { ChevronRight } from '@lucide/svelte';
   import type { HTMLAttributes } from 'svelte/elements';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { LinkProps } from './link.types.ts';
 
   let {

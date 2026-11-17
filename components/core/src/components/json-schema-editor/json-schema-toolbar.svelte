@@ -17,8 +17,8 @@
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import { untrack } from 'svelte';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
   import Badge from '../badge/badge.svelte';
   import Button from '../button/button.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';

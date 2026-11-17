@@ -16,7 +16,8 @@ const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/s
 const { default: Autocomplete } = await import('./autocomplete.svelte');
 const { default: FormFieldAutocompleteFixture } =
   await import('../../test/fixtures/form-field-autocomplete-fixture.svelte');
-const { resetEscapeStack, pushEscapeHandler } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack, pushEscapeHandler } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 type Suggestion = {
   value: string;
@@ -513,7 +514,7 @@ describe('Autocomplete — keyboard completion', () => {
     // must inset a `--cinder-ring-color` ring (the system focus-ring token,
     // tuned to clear 3:1 against near-white surfaces).
     const sharedCss = await Bun.file(
-      new URL('../../styles/components/_row-item.css', import.meta.url),
+      new URL('../../../../foundation/src/styles/components/_row-item.css', import.meta.url),
     ).text();
     const sharedCssWithoutComments = sharedCss.replace(/\/\*[\s\S]*?\*\//g, '');
     expect(sharedCssWithoutComments).toMatch(

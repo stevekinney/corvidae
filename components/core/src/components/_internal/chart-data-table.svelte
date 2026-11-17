@@ -5,7 +5,7 @@
   import TableHeader from '../../components/table-header/table-header.svelte';
   import TableRow from '../../components/table-row/table-row.svelte';
   import TableRoot from '../../components/table/table.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   type ChartDataTableRow = { id: string; header: string; cells: string[] };
 

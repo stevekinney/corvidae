@@ -15,7 +15,7 @@
     "allowedCount": 2
   },
   {
-    "filePath": "src/styles/components/_control-item.css",
+    "filePath": "../foundation/src/styles/components/_control-item.css",
     "name": "--cinder-control-height-md",
     "allowedCount": 1
   }

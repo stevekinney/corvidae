@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { GuidanceApi } from '../../_internal/guidance-context.ts';
+  import type { GuidanceApi } from '@lostgradient/foundation/_internal/guidance-context.ts';
   import GuidanceRegion from './guidance-region.svelte';
   import GuidanceRegionProbe from './guidance-region-probe.test.svelte';
   import ModalRegion from '../modal-region/modal-region.svelte';
@@ -9,7 +9,7 @@
     storage,
   }: {
     onReady: (api: GuidanceApi) => void;
-    storage?: import('../../_internal/guidance-context.ts').GuidanceStorage;
+    storage?: import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceStorage;
   } = $props();
 </script>
 

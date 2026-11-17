@@ -14,12 +14,12 @@
   import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
   import { tick, untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
   import { Button } from '../button/index.ts';
   import { DataList } from '../data-list/index.ts';
   import { EmptyState } from '../empty-state/index.ts';
-  import { ChevronLeft } from '../icons/index.ts';
+  import { ChevronLeft } from '@lostgradient/foundation/components/icons/index.ts';
   import { ResizablePanels } from '../resizable-panels/index.ts';
   import { Skeleton } from '../skeleton/index.ts';
   import type {

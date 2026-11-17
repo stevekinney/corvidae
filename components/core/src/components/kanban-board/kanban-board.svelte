@@ -9,14 +9,14 @@
 </script>
 
 <script lang="ts" generics="Card">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import {
     SortableController,
     setSortableContext,
-  } from '../../utilities/sortable-controller.svelte.ts';
-  import { useAnnouncer } from '../../utilities/use-announcer.svelte.ts';
+  } from '@lostgradient/foundation/utilities/sortable-controller.svelte.ts';
+  import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
   import { default as Button } from '../button/index.ts';
   import SortableItem from '../_sortable-item.svelte';
   import {

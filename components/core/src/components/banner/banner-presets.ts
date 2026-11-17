@@ -1,4 +1,8 @@
-import { formatDate, formatTimeOfDay, formatTimeZoneLabel } from '../../utilities/format-date.ts';
+import {
+  formatDate,
+  formatTimeOfDay,
+  formatTimeZoneLabel,
+} from '@lostgradient/foundation/utilities/format-date.ts';
 
 /**
  * The connection presets of {@link Banner}, in the order the design lists them. Every preset is

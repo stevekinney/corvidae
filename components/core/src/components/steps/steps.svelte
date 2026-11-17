@@ -12,7 +12,7 @@
   import type { Snippet } from 'svelte';
 
   import type { StepItemState, StepsProps } from './steps.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Check from '@lucide/svelte/icons/check';
 
   let {

@@ -1,4 +1,4 @@
-import { waitForTransitionCompletion } from '../../_internal/transition-completion.ts';
+import { waitForTransitionCompletion } from '@lostgradient/foundation/_internal/transition-completion.ts';
 
 /**
  * Waits for every one of Speed Dial's individually-transitioning action

@@ -11,15 +11,15 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
   import {
     elementDirectionStyleOverride,
     composedParentElement,
     observeTextDirectionMediaQueries,
     observeTextDirection,
     resolveTextDirection,
-  } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { MegaMenuProps } from './mega-menu.types.ts';
   import MegaMenuContent from './mega-menu-content.svelte';
 

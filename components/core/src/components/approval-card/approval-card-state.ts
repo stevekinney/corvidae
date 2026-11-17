@@ -4,8 +4,8 @@ import {
   formatDateTime,
   formatTimeOfDay,
   formatTimeZoneLabel,
-} from '../../utilities/format-date.ts';
-import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
+} from '@lostgradient/foundation/utilities/format-date.ts';
+import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
 import { readPayloadEntries } from '../payload-inspector/payload-inspector-fields.ts';
 import { describeContents, describeScalar } from '../payload-inspector/payload-inspector-model.ts';
 import {

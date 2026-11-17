@@ -3,8 +3,8 @@
 </script>
 
 <script lang="ts">
-  import { createMultiSelection } from '../../_internal/collection.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { createMultiSelection } from '@lostgradient/foundation/_internal/collection.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { setAccordionContext } from './accordion.context.ts';
   import type { AccordionProps } from './accordion.types.ts';
 

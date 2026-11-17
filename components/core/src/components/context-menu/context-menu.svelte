@@ -5,13 +5,16 @@
 <script lang="ts">
   import type { ContextMenuProps } from './context-menu.types.ts';
   import type { VirtualElement } from '@floating-ui/dom';
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { captureFocus } from '../../_internal/overlay.ts';
-  import { observeTextDirection, resolveTextDirection } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { restoreFocusTo } from '../../utilities/focus.ts';
-  import { createClickOutside } from '../../utilities/attachments.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import { captureFocus } from '@lostgradient/foundation/_internal/overlay.ts';
+  import {
+    observeTextDirection,
+    resolveTextDirection,
+  } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { restoreFocusTo } from '@lostgradient/foundation/utilities/focus.ts';
+  import { createClickOutside } from '@lostgradient/foundation/utilities/attachments.ts';
   import {
     setDropdownContext,
     setDropdownRegister,

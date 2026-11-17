@@ -2,8 +2,8 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import type { SurfaceTone } from '@lostgradient/foundation/_internal/surface-context.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import type { SurfaceTone } from '../../_internal/surface-context.ts';
 
 setupHappyDom();
 

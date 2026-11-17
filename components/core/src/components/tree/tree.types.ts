@@ -1,8 +1,11 @@
+import type {
+  DataAttributes,
+  WithoutDataAttributes,
+} from '@lostgradient/foundation/_internal/union-props.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 import type { FlattenedTreeDataItem, TreeDataItem } from '../../_internal/tree-data.ts';
 import type { TreeReorderTarget } from '../../_internal/tree-drag-controller.svelte.ts';
-import type { DataAttributes, WithoutDataAttributes } from '../../_internal/union-props.ts';
 /** Selection model for a Tree. */
 export type TreeSelectionMode = 'none' | 'single' | 'multiple';
 /** Selection behavior for multiple-selection trees. */

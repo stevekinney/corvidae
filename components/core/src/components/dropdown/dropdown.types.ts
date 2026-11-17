@@ -1,12 +1,12 @@
 import type { Placement } from '@floating-ui/dom';
-import type { Snippet } from 'svelte';
-import type { HTMLAttributes } from 'svelte/elements';
-import type { AnchoredOverlayWidthMode } from '../../_internal/anchored-overlay.svelte.ts';
+import type { AnchoredOverlayWidthMode } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
 import type {
   DataAttributes,
   PadUnion,
   WithoutDataAttributes,
-} from '../../_internal/union-props.ts';
+} from '@lostgradient/foundation/_internal/union-props.ts';
+import type { Snippet } from 'svelte';
+import type { HTMLAttributes } from 'svelte/elements';
 export type DropdownPlacement = 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end';
 export type DropdownContext = {
   get menuId(): string;

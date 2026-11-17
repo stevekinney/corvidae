@@ -1,4 +1,4 @@
-import { reorder } from '../../utilities/sortable-controller.svelte.ts';
+import { reorder } from '@lostgradient/foundation/utilities/sortable-controller.svelte.ts';
 import type {
   KanbanBoardCardMoveChange,
   KanbanBoardChange,

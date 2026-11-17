@@ -1,5 +1,5 @@
+import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
 import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
-import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonSchemaObject = Record<string, unknown>;

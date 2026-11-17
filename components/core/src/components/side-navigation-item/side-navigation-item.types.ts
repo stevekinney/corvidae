@@ -1,5 +1,5 @@
+import type { DataAttributes, PadUnion } from '@lostgradient/foundation/_internal/union-props.ts';
 import type { Snippet } from 'svelte';
-import type { DataAttributes, PadUnion } from '../../_internal/union-props.ts';
 import type {
   NavigationItemButtonExtra,
   NavigationItemLinkExtra,

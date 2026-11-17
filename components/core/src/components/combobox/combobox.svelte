@@ -12,20 +12,26 @@
   import type { ComboboxFooterContext, ComboboxOption, ComboboxProps } from './combobox.types.ts';
   import { tick, untrack } from 'svelte';
 
-  import { composeDescribedBy, resolveFieldControl } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { getSequentialFocusTargets } from '../../utilities/focus.ts';
-  import { rowDividerAttachment } from '../../utilities/row-divider.ts';
-  import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
-  import { groupOptions, hasGroupedOptions } from '../_internal/group-options.ts';
+  import {
+    composeDescribedBy,
+    resolveFieldControl,
+  } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { getSequentialFocusTargets } from '@lostgradient/foundation/utilities/focus.ts';
+  import { rowDividerAttachment } from '@lostgradient/foundation/utilities/row-divider.ts';
+  import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';
+  import {
+    groupOptions,
+    hasGroupedOptions,
+  } from '@lostgradient/foundation/components/_internal/group-options.ts';
   import Button from '../button/button.svelte';
   import Popover from '../popover/popover.svelte';
   import ComboboxSearch from './combobox-search.svelte';
   import Skeleton from '../skeleton/skeleton.svelte';
-  import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
+  import { PHONE_VIEWPORT_BREAKPOINT } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
 
   let {
     id,

@@ -13,7 +13,8 @@ setupHappyDom();
 const { render, cleanup } = await import('@testing-library/svelte');
 const { flushSync } = await import('svelte');
 const { default: NavigationBar } = await import('./navigation-bar.svelte');
-const { DOCKED_BAR_HEIGHT_PROPERTY } = await import('../../_internal/docked-bar-height.ts');
+const { DOCKED_BAR_HEIGHT_PROPERTY } =
+  await import('@lostgradient/foundation/_internal/docked-bar-height.ts');
 
 const originalRect = HTMLElement.prototype.getBoundingClientRect;
 

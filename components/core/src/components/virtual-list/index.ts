@@ -7,11 +7,11 @@ export {
   parsePixelLength,
   resolveVirtualItemHeight,
   resolveVirtualOverscan,
-} from '../../utilities/fixed-virtual-window.ts';
+} from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 export type {
   FixedVirtualWindow,
   FixedVirtualWindowItem,
-} from '../../utilities/fixed-virtual-window.ts';
+} from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 export type {
   VirtualListProps,
   VirtualListRef,

@@ -10,7 +10,8 @@ import {
 } from './navigation-bar-test-helpers.ts';
 setupHappyDom();
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 const { default: NavigationBar } = await import('./navigation-bar.svelte');
 const { createRawSnippet, tick } = await import('svelte');
 const navigationBarSource = readFileSync(

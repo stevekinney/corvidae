@@ -1,4 +1,4 @@
-import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
 import {
   copyInheritedPortalAttributes as copyAttributes,
   type PortalFallbackAttributes,

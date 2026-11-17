@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { SortableItemContext } from '../utilities/sortable-controller.types.ts';
+  import type { SortableItemContext } from '@lostgradient/foundation/utilities/sortable-controller.types.ts';
   import type { SortableReorderMode } from './sortable-list/sortable-list.types.ts';
 
   /** Internal props for SortableItem — not part of the public package API. */
@@ -28,10 +28,10 @@
 
 <script lang="ts" generics="Item">
   import { tick } from 'svelte';
-  import { getSortableContext } from '../utilities/sortable-controller.svelte.ts';
-  import { classNames } from '../utilities/class-names.ts';
+  import { getSortableContext } from '@lostgradient/foundation/utilities/sortable-controller.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from './button/button.svelte';
-  import { ArrowDown, ArrowUp } from './icons/index.ts';
+  import { ArrowDown, ArrowUp } from '@lostgradient/foundation/components/icons/index.ts';
 
   let {
     item: _item,

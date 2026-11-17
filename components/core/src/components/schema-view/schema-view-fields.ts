@@ -1,4 +1,4 @@
-import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
+import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
 
 /** One field of a schema, ready to show: a formatted label, a type, and its nested fields. */
 export type SchemaViewField = {

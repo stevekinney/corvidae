@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import type { Highlighter } from '@lostgradient/foundation/utilities/highlighter.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import type { Highlighter } from '../../utilities/highlighter.ts';
 import { decorateHighlightedLines } from './code-block-lines.ts';
 
 setupHappyDom();

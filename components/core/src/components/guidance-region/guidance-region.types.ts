@@ -1,5 +1,8 @@
+import type {
+  GuidanceClaim,
+  GuidanceStorage,
+} from '@lostgradient/foundation/_internal/guidance-context.ts';
 import type { Snippet } from 'svelte';
-import type { GuidanceClaim, GuidanceStorage } from '../../_internal/guidance-context.ts';
 export type GuidanceRegionProps = {
   /**
    * Registered guidance claims available to descendants through

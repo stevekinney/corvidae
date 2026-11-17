@@ -6,9 +6,9 @@
   import { untrack } from 'svelte';
   import Check from '@lucide/svelte/icons/check';
   import X from '@lucide/svelte/icons/x';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Spinner from '../spinner/spinner.svelte';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
   import type { InlineLoadingProps, InlineLoadingStatus } from './inline-loading.types.ts';
 
   const fallbackStatusLabel: Record<Exclude<InlineLoadingStatus, 'inactive'>, string> = {

@@ -13,7 +13,9 @@ const { default: TransferListFixture } = await import('./transfer-list.fixture.s
 test('uses the shared option-row cursor with its forced-colors fallback', async () => {
   const [source, rowRecipe] = await Promise.all([
     Bun.file(new URL('./transfer-list.svelte', import.meta.url)).text(),
-    Bun.file(new URL('../../styles/components/_row-item.css', import.meta.url)).text(),
+    Bun.file(
+      new URL('../../../../foundation/src/styles/components/_row-item.css', import.meta.url),
+    ).text(),
   ]);
 
   expect(source).toContain('cinder-_option-row cinder-transfer-list__option');

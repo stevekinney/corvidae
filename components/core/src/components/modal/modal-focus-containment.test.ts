@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, tick } from 'svelte';
-import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
 setupHappyDom();

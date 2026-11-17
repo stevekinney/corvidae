@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
 
-  import type { SurfaceTone } from '../../_internal/surface-context.ts';
+  import type { SurfaceTone } from '@lostgradient/foundation/_internal/surface-context.ts';
 
   export type SurfaceToneMutatorProps = {
     initial: SurfaceTone;

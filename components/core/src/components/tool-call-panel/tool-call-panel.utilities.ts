@@ -1,5 +1,5 @@
-import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
-import { stringify } from '../../utilities/stringify.ts';
+import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
+import { stringify } from '@lostgradient/foundation/utilities/stringify.ts';
 import {
   isIdentifierField,
   readPayloadEntries,

@@ -5,7 +5,7 @@
 
   import Button from '../button/button.svelte';
   import Progress from '../progress/progress.svelte';
-  import { formatBytes } from '../../utilities/format-bytes.ts';
+  import { formatBytes } from '@lostgradient/foundation/utilities/format-bytes.ts';
   import { fileTypeIcon } from './file-upload-utilities.ts';
   import type { FileUploadEntry } from './file-upload.types.ts';
 

@@ -7,9 +7,9 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import type { Attachment } from 'svelte/attachments';
   import { getCodeHighlighterContext } from '../../_internal/code-highlighter-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { overflowFadeEdges } from '../../utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { overflowFadeEdges } from '@lostgradient/foundation/utilities/attachments.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import {
     annotationToneClass,

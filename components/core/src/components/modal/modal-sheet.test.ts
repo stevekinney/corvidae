@@ -5,9 +5,9 @@ import {
   DEFAULT_TEST_VIEWPORT,
   setTestViewportWidth,
 } from '@lostgradient/component-tooling/test/viewport.ts';
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
 setupHappyDom();
@@ -16,7 +16,8 @@ installModalDialogStubs();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Modal } = await import('./modal.svelte');
 const { default: ConfirmDialog } = await import('../confirm-dialog/confirm-dialog.svelte');
-const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
+const { KEYBOARD_INSET_PROPERTY } =
+  await import('@lostgradient/foundation/_internal/keyboard-inset.ts');
 
 const modalCss = await Bun.file(new URL('./modal.css', import.meta.url)).text();
 const confirmCss = await Bun.file(

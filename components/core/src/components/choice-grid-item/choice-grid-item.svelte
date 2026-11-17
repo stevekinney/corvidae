@@ -6,9 +6,9 @@
   import type { ChoiceGridItemProps } from './choice-grid-item.types.ts';
   import { untrack } from 'svelte';
   import { getChoiceGridContext } from '../choice-grid/choice-grid-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { rovingTabIndex } from '../../_internal/collection.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { rovingTabIndex } from '@lostgradient/foundation/_internal/collection.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
   const ITEM_STATES = ['neutral', 'correct', 'incorrect', 'pending'] as const;
 

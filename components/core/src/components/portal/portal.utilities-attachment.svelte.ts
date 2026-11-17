@@ -1,8 +1,8 @@
 import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 
-import { devWarn } from '../../utilities/dev-warn.ts';
-import { readOption } from '../../utilities/read-option.ts';
+import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+import { readOption } from '@lostgradient/foundation/utilities/read-option.ts';
 import type { PortalAttachmentOptions } from './portal-attachment-types.ts';
 import {
   copyInheritedPortalAttributes,

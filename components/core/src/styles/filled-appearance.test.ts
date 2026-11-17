@@ -41,7 +41,7 @@ function flatten(path: string): string {
 const inputCss = flatten('../components/input/input.css');
 const textareaCss = flatten('../components/textarea/textarea.css');
 const selectCss = flatten('../components/select/select.css');
-const fieldChevronCss = flatten('./components/_field-chevron.css');
+const fieldChevronCss = flatten('../../../foundation/src/styles/components/_field-chevron.css');
 
 /** The density default selector: a field with no explicit outlined appearance in a comfortable subtree. */
 function densityDefault(component: string): string {
@@ -385,7 +385,10 @@ describe('Filled edge contrast (WCAG 1.4.11)', () => {
     expect(translucentContrastOn(borderContrast.light, comfortableInset)).toBeGreaterThanOrEqual(
       NON_TEXT,
     );
-    const foundation = readFileSync(new URL('./foundation.css', import.meta.url), 'utf8');
+    const foundation = readFileSync(
+      new URL('../../../foundation/src/styles/foundation.css', import.meta.url),
+      'utf8',
+    );
     expect(foundation).toContain(
       '--cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), oklch(21% 0.012 265));',
     );

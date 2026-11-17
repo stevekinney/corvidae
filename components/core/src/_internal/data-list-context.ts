@@ -16,8 +16,8 @@
 
 import { createContext } from 'svelte';
 
+import { optionalContext } from '@lostgradient/foundation/_internal/optional-context.ts';
 import type { StackedListItemDensity } from '../components/stacked-list-item/stacked-list-item.types.ts';
-import { optionalContext } from './optional-context.ts';
 
 /**
  * Context published by `<DataList>` for descendant rows. `density` is a getter

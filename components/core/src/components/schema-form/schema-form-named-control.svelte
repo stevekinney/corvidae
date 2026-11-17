@@ -8,9 +8,9 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import type { FormFieldContext } from '../../_internal/form-field-context.ts';
-  import FormFieldProvider from '../../_internal/form-field-provider.svelte';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import type { FormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import FormFieldProvider from '@lostgradient/foundation/_internal/form-field-provider.svelte';
 
   let {
     id,
