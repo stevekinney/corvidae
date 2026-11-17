@@ -1,0 +1,273 @@
+{
+  "$comment": "The Cinder family map's input (COR-2446). derive-families.ts combines it with the import graph and writes families.json. Paths are relative to packageRoot. Every component directory not named in a family is a single-component family named after its directory; a private (underscore) directory must be named. Moves match top to bottom and the first match wins. A test that sits beside a module a row places (the same directory, named after it) goes with that module.",
+  "packageRoot": "components/cinder",
+  "componentsDirectory": "src/components",
+  "families": [
+    { "name": "accordion", "components": ["accordion", "accordion-item"], "reason": "compound" },
+    {
+      "name": "button",
+      "components": ["button", "button-group"],
+      "reason": "they share button-group-context"
+    },
+    {
+      "name": "chart",
+      "components": [
+        "area-chart",
+        "bar-chart",
+        "line-chart",
+        "donut-chart",
+        "matrix-chart",
+        "spectrum-chart",
+        "sparkbar",
+        "spectrogram",
+        "waveform"
+      ],
+      "reason": "they share the chart internals"
+    },
+    {
+      "name": "choice-grid",
+      "components": ["choice-grid", "choice-grid-item"],
+      "reason": "compound"
+    },
+    {
+      "name": "command-menu",
+      "components": ["command-menu", "command-item"],
+      "reason": "compound"
+    },
+    {
+      "name": "context-menu",
+      "components": ["context-menu", "context-menu-trigger"],
+      "reason": "compound"
+    },
+    {
+      "name": "data-list",
+      "components": ["data-list", "stacked-list-item"],
+      "reason": "they share data-list-context"
+    },
+    {
+      "name": "dropdown",
+      "components": [
+        "dropdown",
+        "dropdown-trigger",
+        "dropdown-menu",
+        "dropdown-item",
+        "dropdown-label",
+        "dropdown-separator",
+        "dropdown-group"
+      ],
+      "reason": "compound"
+    },
+    { "name": "feed", "components": ["feed", "feed-event", "feed-boundary"], "reason": "compound" },
+    { "name": "grid", "components": ["grid", "grid-item"], "reason": "compound" },
+    { "name": "grid-list", "components": ["grid-list", "grid-list-item"], "reason": "compound" },
+    {
+      "name": "grouped-list",
+      "components": ["grouped-list", "grouped-list-item"],
+      "reason": "parent and row pair (coordinator decision, 2026-11-17)"
+    },
+    {
+      "name": "inspector",
+      "components": ["inspector", "inspector-row"],
+      "reason": "parent and row pair (coordinator decision, 2026-11-17)"
+    },
+    {
+      "name": "media-player",
+      "components": ["audio-player", "video-player"],
+      "reason": "they share media-player-state"
+    },
+    {
+      "name": "radio-group",
+      "components": ["radio-group", "_radio"],
+      "reason": "private helper in an import cycle"
+    },
+    {
+      "name": "segmented-control",
+      "components": ["segmented-control", "segment"],
+      "reason": "compound"
+    },
+    {
+      "name": "side-navigation",
+      "components": ["side-navigation", "side-navigation-group", "side-navigation-item", "sidebar"],
+      "reason": "compound; sidebar shares sidebar-context"
+    },
+    {
+      "name": "speed-dial",
+      "components": ["speed-dial", "speed-dial-action"],
+      "reason": "compound"
+    },
+    { "name": "statistic", "components": ["statistic-group", "statistic"], "reason": "compound" },
+    {
+      "name": "table",
+      "components": [
+        "table",
+        "table-body",
+        "table-cell",
+        "table-header",
+        "table-header-cell",
+        "table-row"
+      ],
+      "reason": "compound"
+    },
+    {
+      "name": "tabs",
+      "components": ["tabs", "tab-list", "tab", "tab-panel"],
+      "reason": "compound"
+    },
+    {
+      "name": "timeline",
+      "components": ["timeline", "_timeline-item"],
+      "reason": "private helper in an import cycle"
+    },
+    {
+      "name": "tree",
+      "components": ["tree", "tree-item", "_tree-expand-all", "_tree-select-all"],
+      "reason": "compound"
+    }
+  ],
+  "moves": [
+    {
+      "patterns": [
+        "src/components/_internal/chart-tooltip.*",
+        "src/components/_internal/chart-data-table.svelte",
+        "src/components/chart.types.ts",
+        "src/_internal/chart/**"
+      ],
+      "target": "chart"
+    },
+    {
+      "patterns": [
+        "src/components/_internal/media-player-state.svelte.ts",
+        "src/components/_internal/media-controls.*",
+        "src/components/_internal/media-time.ts"
+      ],
+      "target": "media-player",
+      "note": "media-controls and media-time: coordinator decision, 2026-11-17"
+    },
+    {
+      "patterns": [
+        "src/components/_internal/side-navigation-group-context.ts",
+        "src/_internal/sidebar-context.ts"
+      ],
+      "target": "side-navigation"
+    },
+    {
+      "patterns": ["src/_internal/data-list-context.ts", "src/_internal/scroll-anchor.ts"],
+      "target": "data-list"
+    },
+    { "patterns": ["src/_internal/button-group-context.ts"], "target": "button" },
+    {
+      "patterns": [
+        "src/_internal/tree-*",
+        "src/_internal/use-virtualizer.svelte.ts",
+        "src/_internal/virtual-item.ts",
+        "src/components/_tree-test-harness.svelte"
+      ],
+      "target": "tree"
+    },
+    {
+      "patterns": ["src/_internal/code-highlighter-context.ts", "src/highlighters/**"],
+      "target": "code-block"
+    },
+    { "patterns": ["src/_internal/time-parts.ts"], "target": "time-field" },
+    { "patterns": ["src/components/textarea-count.ts"], "target": "textarea" },
+    {
+      "patterns": [
+        "src/components/icons/**",
+        "src/_internal/date-value.ts",
+        "src/components/_internal/create-command-list-state.svelte.ts",
+        "src/components/_internal/command-list-context.ts",
+        "src/components/_internal/group-options.ts",
+        "src/components/_internal/checkbox-indicator-shell.*",
+        "src/components/_internal/create-sliding-dialog-state.svelte.ts",
+        "src/components/_sortable-item.svelte",
+        "src/components/_visually-hidden-live-region.svelte"
+      ],
+      "target": "foundation"
+    },
+    {
+      "patterns": [
+        "src/tokens/**",
+        "src/styles/tokens.css",
+        "src/styles/tokens.css.d.ts",
+        "src/styles/tokens-base.css",
+        "src/styles/tokens/**",
+        "scripts/tokens/**",
+        "src/styles/check-token-contrast-*",
+        "src/utilities/theme-transition-guard.ts"
+      ],
+      "target": "tokens",
+      "note": "theme-transition-guard: coordinator decision, 2026-11-17"
+    },
+    {
+      "patterns": [
+        "src/exports/**",
+        "src/index.ts",
+        "src/styles/index.css",
+        "src/styles/all.css",
+        "src/styles/components.css",
+        "src/manifest.test.ts",
+        "src/api-contract.ts",
+        "src/domain-suite.test.ts",
+        "src/convention*.ts",
+        "src/components.test.ts",
+        "src/root-*.test.ts",
+        "src/index.test.ts"
+      ],
+      "target": "core"
+    },
+    {
+      "patterns": [
+        "src/manifest.meta.ts",
+        "src/schema-types.ts",
+        "src/schema-types.test.ts",
+        "src/schemas/**"
+      ],
+      "target": "tooling",
+      "note": "The generators import them, and tooling cannot depend on core; core re-exports any type it needs."
+    },
+    {
+      "patterns": ["src/**/*.test.ts"],
+      "when": "names-sibling-package",
+      "target": "tooling",
+      "note": "A test that names a path inside components/chat, components/editor or components/terminal runs in the tooling's test task."
+    },
+    {
+      "patterns": ["src/styles/**/*.test.ts"],
+      "when": "names-component-stylesheet",
+      "target": "core",
+      "note": "A test under src/styles that names a path under src/components or components.css."
+    },
+    {
+      "patterns": ["src/test/*.test.ts"],
+      "when": "component-free",
+      "target": "tooling",
+      "note": "A test of a component-free helper goes with its helper."
+    },
+    {
+      "patterns": ["src/test/fixtures/**", "src/test/*.test.ts"],
+      "target": "by-imports",
+      "note": "The family whose tests import it, when every package it mounts is that family or one it already depends on; otherwise core, with every test that imports or builds it."
+    },
+    {
+      "patterns": ["src/test/**"],
+      "target": "tooling",
+      "helper": true,
+      "note": "Component-free test helpers, exported as test helpers. A helper that imports a component fails."
+    },
+    {
+      "patterns": ["src/**"],
+      "when": "companion-test",
+      "target": "companion",
+      "note": "A test beside a module a row places, named after it, goes with that module (media-player-state.svelte.test.ts with media-player-state.svelte.ts)."
+    },
+    {
+      "patterns": [
+        "src/_internal/**",
+        "src/utilities/**",
+        "src/components/_internal/**",
+        "src/styles/**"
+      ],
+      "target": "foundation"
+    }
+  ]
+}

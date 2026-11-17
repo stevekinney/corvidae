@@ -1,0 +1,22 @@
+{
+  "name": "@lostgradient/component-tooling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json scripts",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' scripts",
+    "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts",
+    "families:generate": "bun scripts/derive-families.ts",
+    "families:check": "bun scripts/derive-families.ts --check",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json scripts"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:"
+  }
+}

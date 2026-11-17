@@ -296,6 +296,17 @@
         "typescript": "catalog:",
       },
     },
+    "internal/component-tooling": {
+      "name": "@lostgradient/component-tooling",
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "prettier": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "internal/typescript": {
       "name": "@lostgradient/typescript",
     },
@@ -1309,6 +1320,8 @@
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 
     "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/cinder"],
+
+    "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
 
     "@lostgradient/cryptography": ["@lostgradient/cryptography@workspace:packages/cryptography"],
 
