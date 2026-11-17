@@ -231,9 +231,26 @@ const attemptSchema = z.object({
   responseTruncated: z.boolean().nullable(),
   error: z.string().nullable(),
   receipt: z
-    .object({ runId: z.string().nullable(), notificationId: z.string().nullable() })
+    .object({
+      runId: z.string().nullable(),
+      notificationId: z.string().nullable(),
+      id: z
+        .string()
+        .nullable()
+        .describe('What a plugin’s reaction made in the other service, as it named it.'),
+      url: z
+        .string()
+        .nullable()
+        .describe('Where to see it: an `https:` address; a reaction’s other value is dropped.'),
+      summary: z
+        .string()
+        .nullable()
+        .describe('What was made, at most 200 characters; a longer one is dropped.'),
+    })
     .nullable()
-    .describe('What a `completed` `start-workflow` or `notify` attempt made.'),
+    .describe(
+      'What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt.',
+    ),
 });
 
 const deliverySchema = z.object({
@@ -317,11 +334,37 @@ const deliverySummarySchema = z.object({
   updatedAt: z.number(),
 });
 
+const hookProblemSchema = z.discriminatedUnion('code', [
+  z.object({
+    code: z.literal('reaction-unavailable'),
+  }),
+  z.object({
+    code: z.literal('configuration-invalid'),
+    issues: z
+      .array(
+        z.object({
+          path: z
+            .array(z.string())
+            .describe('The path to the field, from the configuration’s root.'),
+          code: z.string().describe('Zod’s issue code, such as `invalid_type` or `too_small`.'),
+        }),
+      )
+      .describe(
+        'Every field the reaction’s schema refuses, by its path and Zod’s code, never a message.',
+      ),
+  }),
+]);
+
 const listedHookSchema = hookSchema.extend({
   lastDelivery: deliverySummarySchema
     .nullable()
     .describe(
       'The hook’s newest delivery, a test included, without its request, work or response: `bureau.hooks.deliveries` has those. `null` for a hook with none.',
+    ),
+  problems: z
+    .array(hookProblemSchema)
+    .describe(
+      'Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.',
     ),
 });
 
@@ -395,6 +438,14 @@ function listedHookViewOf(hook: ListedHook): z.infer<typeof listedHookSchema> {
   return {
     ...hookViewOf(hook),
     lastDelivery: hook.lastDelivery === null ? null : deliverySummaryViewOf(hook.lastDelivery),
+    problems: hook.problems.map((problem) =>
+      problem.code === 'reaction-unavailable'
+        ? { code: problem.code }
+        : {
+            code: problem.code,
+            issues: problem.issues.map(({ path, code }) => ({ path: [...path], code })),
+          },
+    ),
   };
 }
 
@@ -468,6 +519,9 @@ function deliveryViewOf(delivery: HookDelivery): z.infer<typeof deliverySchema> 
           : {
               runId: attempt.receipt.runId ?? null,
               notificationId: attempt.receipt.notificationId ?? null,
+              id: attempt.receipt.id ?? null,
+              url: attempt.receipt.url ?? null,
+              summary: attempt.receipt.summary ?? null,
             },
     })),
     maxAttempts: delivery.maxAttempts,

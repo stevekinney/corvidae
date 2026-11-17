@@ -124,7 +124,21 @@ const attemptSchema = z.object({
   responseExcerpt: z.string().nullable(),
   responseTruncated: z.boolean().nullable(),
   error: z.string().nullable(),
+  // Absent from an answer of a Bureau that predates receipts, which then reads as none.
+  receipt: z
+    .object({
+      runId: z.string().nullable().default(null),
+      notificationId: z.string().nullable().default(null),
+      id: z.string().nullable().default(null),
+      url: z.string().nullable().default(null),
+      summary: z.string().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
 });
+
+/** What a completed attempt made, as the Bureau shows it: a run, a notification, or a plugin reaction's receipt. */
+export type HookReceipt = NonNullable<z.infer<typeof attemptSchema>['receipt']>;
 
 /** Every status a delivery can have. */
 export const HOOK_DELIVERY_STATUSES = [
@@ -204,7 +218,22 @@ const deliverySummarySchema = z.object({
 /** A hook's newest delivery as a list shows it: where it stands and how its last attempt ended. */
 export type HookDeliverySummary = z.infer<typeof deliverySummarySchema>;
 
-const listedHookSchema = hookSchema.extend({ lastDelivery: deliverySummarySchema.nullable() });
+const hookProblemSchema = z.discriminatedUnion('code', [
+  z.object({ code: z.literal('reaction-unavailable') }),
+  z.object({
+    code: z.literal('configuration-invalid'),
+    issues: z.array(z.object({ path: z.array(z.string()), code: z.string() })),
+  }),
+]);
+
+/** Why a plugin hook cannot do what it says: its reaction is not registered, or its configuration is refused now. */
+export type HookProblem = z.infer<typeof hookProblemSchema>;
+
+const listedHookSchema = hookSchema.extend({
+  lastDelivery: deliverySummarySchema.nullable(),
+  // Absent from an answer of a Bureau that predates it, which then reads as nothing wrong.
+  problems: z.array(hookProblemSchema).default([]),
+});
 
 /** One hook as `bureau.hooks.list` shows it, with its newest delivery. */
 export type ListedHook = z.infer<typeof listedHookSchema>;

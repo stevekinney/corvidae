@@ -11,7 +11,12 @@ import { waitForCondition } from '../../test';
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
 import { HOOK_SIGNATURE_HEADER, verifyHookSignature } from '../../hooks/hook-signature.ts';
 import { HOOK_DELIVERY_KEY_PREFIX } from '../../hooks/hook-store.ts';
-import type { HookDeliveryRecord, HookSecretStore } from '../../hooks/hook-types.ts';
+import type {
+  HookActionKindRegistration,
+  HookDeliveryRecord,
+  HookSecretStore,
+} from '../../hooks/hook-types.ts';
+import { z } from 'zod';
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import { bureauHooksOperations } from './hooks-operations.ts';
 import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
@@ -29,6 +34,7 @@ async function open(
     storage?: MemoryStorage;
     workspace?: WorkspaceMembershipOptions;
     script?: Parameters<typeof createReceiver>[0];
+    actionKinds?: readonly HookActionKindRegistration[];
   } = {},
 ) {
   const receiver = createReceiver(
@@ -42,7 +48,10 @@ async function open(
       ...(options.withoutHooks === true
         ? {}
         : {
-            hooks: options.secrets === undefined ? {} : { secrets: options.secrets },
+            hooks: {
+              ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
+              ...(options.actionKinds === undefined ? {} : { actionKinds: options.actionKinds }),
+            },
             answerEncryption: { current: await generateEncryptionKey() },
           }),
       webhooks: { targets: [], fetch: receiver.fetch, sleep: () => Promise.resolve() },
@@ -981,4 +990,118 @@ it('projects hook delivery summaries for their owner and trusted local operator,
     'bob-observer-key',
   );
   expect(foreignUpdate.error?.data?.httpStatus).toBe(403);
+});
+
+/** A plugin reaction that resolves a receipt from `dryRun`, for the wire to show. */
+const pagerKind = (configuration: z.ZodType = z.object({ channel: z.string() })) =>
+  ({
+    plugin: 'pager',
+    kind: {
+      name: 'page',
+      description: 'Pages a team.',
+      configuration,
+      run: () => Promise.resolve(),
+      dryRun: () =>
+        Promise.resolve({
+          receipt: { id: 'page-1', url: 'https://pager.example/p/1', summary: 'Paged the team' },
+        }),
+    },
+  }) satisfies HookActionKindRegistration;
+
+describe('bureau.hooks.* problems and receipts (COR-2182)', () => {
+  const ACTION = {
+    type: 'plugin',
+    plugin: 'pager',
+    kind: 'page',
+    configuration: { channel: 'ops' },
+  } as const;
+
+  it('shows a reaction’s receipt, with its id, url and summary, on the attempt', async () => {
+    const { opened } = await open({ actionKinds: [pagerKind()] });
+    const created = await wire(
+      opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action: ACTION },
+      'alice-observer-key',
+    );
+
+    const tested = await wire(opened, 'bureau.hooks.test', { hookId: created.id }, 'alice-key');
+
+    expect(tested.attempts[0]).toMatchObject({
+      outcome: 'completed',
+      receipt: {
+        runId: null,
+        notificationId: null,
+        id: 'page-1',
+        url: 'https://pager.example/p/1',
+        summary: 'Paged the team',
+      },
+    });
+  });
+
+  it('lists a hook whose reaction is not registered with a reaction-unavailable problem, a default hook included', async () => {
+    const storage = new MemoryStorage();
+    const first = await open({ storage, actionKinds: [pagerKind()] });
+    const owned = await wire(
+      first.opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action: ACTION },
+      'alice-observer-key',
+    );
+    await first.opened.bureau.hooks!.reconcileDeclared('pager', [
+      {
+        name: 'Page on settle',
+        events: ['run.settled'],
+        reaction: 'page',
+        configuration: { channel: 'ops' },
+      },
+    ]);
+    const registered = await wire(first.opened, 'bureau.hooks.list', {}, 'hooks-reader-key');
+    expect(registered.hooks.map((hook: { problems: unknown }) => hook.problems)).toEqual([[], []]);
+    await first.opened.dispose();
+    cleanups.splice(cleanups.length - 1, 1);
+
+    // The Bureau starts again with the plugin disabled: no reaction is registered.
+    const second = await open({ storage });
+    const listed = await wire(second.opened, 'bureau.hooks.list', {}, 'hooks-reader-key');
+
+    expect(
+      listed.hooks.map((hook: { id: string; problems: unknown }) => [hook.id, hook.problems]),
+    ).toEqual(
+      expect.arrayContaining([
+        [owned.id, [{ code: 'reaction-unavailable' }]],
+        [expect.stringMatching(/^default-/), [{ code: 'reaction-unavailable' }]],
+      ]),
+    );
+    expect(listed.hooks).toHaveLength(2);
+  });
+
+  it('lists the paths and codes of what the reaction’s schema now refuses, and no message', async () => {
+    const storage = new MemoryStorage();
+    const first = await open({ storage, actionKinds: [pagerKind()] });
+    await wire(
+      first.opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action: ACTION },
+      'alice-observer-key',
+    );
+    await first.opened.dispose();
+    cleanups.splice(cleanups.length - 1, 1);
+
+    const upgraded = await open({
+      storage,
+      actionKinds: [pagerKind(z.object({ channel: z.number(), team: z.string() }))],
+    });
+    const listed = await wire(upgraded.opened, 'bureau.hooks.list', {}, 'alice-key');
+
+    expect(listed.hooks[0].problems).toEqual([
+      {
+        code: 'configuration-invalid',
+        issues: [
+          { path: ['channel'], code: 'invalid_type' },
+          { path: ['team'], code: 'invalid_type' },
+        ],
+      },
+    ]);
+  });
 });

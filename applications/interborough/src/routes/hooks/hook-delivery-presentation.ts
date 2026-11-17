@@ -144,7 +144,18 @@ export type DeliveryFact = {
   readonly value: string;
   /** The raw event kind, drawn small and monospaced after the value. */
   readonly code?: string;
+  /** Where the value links to: an `https:` address a reaction's receipt gave. */
+  readonly href?: string;
 };
+
+/** The host of a receipt's address, which is how the link reads; the whole address when it has no host. */
+function receiptHost(address: string): string {
+  try {
+    return new URL(address).host || address;
+  } catch {
+    return address;
+  }
+}
 
 /** What an open delivery's facts say: the event, where it was sent, and the last answer with its time. */
 export function deliveryFacts(delivery: HookDelivery): DeliveryFact[] {
@@ -163,6 +174,16 @@ export function deliveryFacts(delivery: HookDelivery): DeliveryFact[] {
       label: copy.lastResponse,
       value: `${attemptAnswer(last)}, ${deliveryStamp(last.finishedAt ?? last.startedAt)}`,
     });
+  }
+  // What a plugin's reaction says it made (COR-2182): its summary as text, its address as a link,
+  // and the identifier it named, drawn as an identifier.
+  const receipt = delivery.actionType === 'plugin' ? last?.receipt : null;
+  if (receipt !== null && receipt !== undefined) {
+    if (receipt.summary !== null) facts.push({ label: copy.made, value: receipt.summary });
+    if (receipt.url !== null) {
+      facts.push({ label: copy.link, value: receiptHost(receipt.url), href: receipt.url });
+    }
+    if (receipt.id !== null) facts.push({ label: copy.reference, value: '', code: receipt.id });
   }
   return facts;
 }

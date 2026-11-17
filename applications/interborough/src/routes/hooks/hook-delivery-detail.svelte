@@ -6,7 +6,7 @@
    * inspector (Fields first, with JSON and Copy), and "Retry delivery" for one that failed. The log
    * owns the retry itself; this draws what the delivery says and asks the log to send it again.
    */
-  import { Button, PayloadInspector } from '@lostgradient/cinder';
+  import { Button, Link, PayloadInspector } from '@lostgradient/cinder';
   import { RefreshCw } from '@lucide/svelte';
 
   import type { HookDelivery } from '../../lib/bureau-hooks.ts';
@@ -55,7 +55,11 @@
       <div class="ib-hook-delivery__fact">
         <dt>{fact.label}</dt>
         <dd>
-          {fact.value}
+          {#if fact.href !== undefined}
+            <Link href={fact.href} external>{fact.value}</Link>
+          {:else}
+            {fact.value}
+          {/if}
           {#if fact.code !== undefined}
             <code class="ib-hook-delivery__code">{fact.code}</code>
           {/if}

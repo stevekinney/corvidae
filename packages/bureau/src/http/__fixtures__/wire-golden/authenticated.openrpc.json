@@ -35627,6 +35627,66 @@
                     "description": "The principal that owns the hook.",
                     "type": "string"
                   },
+                  "problems": {
+                    "description": "Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "reaction-unavailable",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "configuration-invalid",
+                              "type": "string"
+                            },
+                            "issues": {
+                              "description": "Every field the reaction’s schema refuses, by its path and Zod’s code, never a message.",
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "code": {
+                                    "description": "Zod’s issue code, such as `invalid_type` or `too_small`.",
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "description": "The path to the field, from the configuration’s root.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "code"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "issues"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
                   "revision": {
                     "description": "Pass it back as `expectedRevision`.",
                     "maximum": 9007199254740991,
@@ -35673,7 +35733,8 @@
                   "createdAt",
                   "updatedAt",
                   "revision",
-                  "lastDelivery"
+                  "lastDelivery",
+                  "problems"
                 ],
                 "type": "object"
               },
@@ -35818,6 +35879,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -35829,11 +35897,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -35841,7 +35926,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -36184,6 +36269,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -36195,11 +36287,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -36207,7 +36316,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [
@@ -36563,6 +36672,13 @@
                             {
                               "additionalProperties": false,
                               "properties": {
+                                "id": {
+                                  "description": "What a plugin’s reaction made in the other service, as it named it.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
                                 "notificationId": {
                                   "type": [
                                     "string",
@@ -36574,11 +36690,28 @@
                                     "string",
                                     "null"
                                   ]
+                                },
+                                "summary": {
+                                  "description": "What was made, at most 200 characters; a longer one is dropped.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "url": {
+                                  "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
                                 "runId",
-                                "notificationId"
+                                "notificationId",
+                                "id",
+                                "url",
+                                "summary"
                               ],
                               "type": "object"
                             },
@@ -36586,7 +36719,7 @@
                               "type": "null"
                             }
                           ],
-                          "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                          "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                         },
                         "responseExcerpt": {
                           "type": [
@@ -36946,6 +37079,13 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "id": {
+                            "description": "What a plugin’s reaction made in the other service, as it named it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "notificationId": {
                             "type": [
                               "string",
@@ -36957,11 +37097,28 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "summary": {
+                            "description": "What was made, at most 200 characters; a longer one is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
                           "runId",
-                          "notificationId"
+                          "notificationId",
+                          "id",
+                          "url",
+                          "summary"
                         ],
                         "type": "object"
                       },
@@ -36969,7 +37126,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                    "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                   },
                   "responseExcerpt": {
                     "type": [

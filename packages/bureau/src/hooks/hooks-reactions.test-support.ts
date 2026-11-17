@@ -5,7 +5,7 @@
  * one `kv` and one `clock` are a restart.
  */
 import type { generateEncryptionKey } from '@lostgradient/cryptography';
-import type { PluginReactionContext } from '@lostgradient/interborough-plugin';
+import type { PluginReactionContext, PluginReceipt } from '@lostgradient/interborough-plugin';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { expect } from 'bun:test';
@@ -40,7 +40,10 @@ export const DEFAULT_TIMEOUT = 10_000;
 export type Kv = ReturnType<typeof textValueStore>;
 
 /** What a run does; `call` counts from 1 across the harness. */
-export type RunBehavior = (context: PluginReactionContext, call: number) => Promise<void>;
+export type RunBehavior = (
+  context: PluginReactionContext,
+  call: number,
+) => Promise<void | { readonly receipt?: PluginReceipt }>;
 
 export interface HarnessOptions {
   /** Shared by two harnesses, a restart reads what the first left. */
@@ -70,7 +73,7 @@ export interface HarnessOptions {
   /** How long a request may take; the default timeout of a reaction that sets none. */
   readonly requestTimeoutMilliseconds?: number;
   readonly registrations?: (
-    run: (context: PluginReactionContext) => Promise<void>,
+    run: (context: PluginReactionContext) => Promise<void | { readonly receipt?: PluginReceipt }>,
   ) => readonly HookActionKindRegistration[];
   readonly fetch?: typeof fetch;
   readonly keys?: Awaited<ReturnType<typeof generateEncryptionKey>>;
@@ -166,13 +169,17 @@ export function harness(options: HarnessOptions = {}) {
     tracked: (_id, _hookId, work) => work(),
   };
   const run: RunBehavior = options.run ?? (() => Promise.resolve());
-  const execute = (context: PluginReactionContext): Promise<void> => {
+  const execute = (
+    context: PluginReactionContext,
+  ): Promise<void | { readonly receipt?: PluginReceipt }> => {
     calls.push(context);
     return run(context, calls.length);
   };
   const dryRunCalls: PluginReactionContext[] = [];
   const dryRunBehavior = options.dryRun;
-  const executeDryRun = (context: PluginReactionContext): Promise<void> => {
+  const executeDryRun = (
+    context: PluginReactionContext,
+  ): Promise<void | { readonly receipt?: PluginReceipt }> => {
     dryRunCalls.push(context);
     return dryRunBehavior === undefined
       ? Promise.resolve()

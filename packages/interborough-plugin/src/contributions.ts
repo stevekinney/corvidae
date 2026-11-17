@@ -481,9 +481,11 @@ export interface PluginReaction {
    * Carries out the action for one event. A rejection fails that attempt, and the delivery is tried
    * again until it runs out of attempts. Reject with a `PluginReactionError` whose `permanent`
    * is `true` when a retry cannot change the answer (the channel does not exist, the service
-   * refuses the input for good): the delivery then ends `failed` after that one attempt.
+   * refuses the input for good): the delivery then ends `failed` after that one attempt. It can
+   * resolve `{ receipt }` to say what it made, and the delivery keeps it on the attempt for the
+   * owner to read ({@link PluginReceipt}).
    */
-  run(context: PluginReactionContext): Promise<void>;
+  run(context: PluginReactionContext): Promise<void | { readonly receipt?: PluginReceipt }>;
   /**
    * What `hooks.test` runs instead of `run`: the same checks and the same effect, without the part
    * a person cannot take back (a message not sent, a record not written). It gets the same context
@@ -494,7 +496,23 @@ export interface PluginReaction {
    * `hooks.test` is refused: a test would otherwise call `run` for a real effect. A rejection, a
    * timeout and a `PluginReactionError` are handled as for `run`.
    */
-  dryRun?(context: PluginReactionContext): Promise<void>;
+  dryRun?(context: PluginReactionContext): Promise<void | { readonly receipt?: PluginReceipt }>;
+}
+
+/**
+ * What a reaction says it made (COR-2182): resolved from `run` or `dryRun` as `{ receipt }`, kept on
+ * the attempt, and shown with the delivery. Every member is optional and checked by the host: a
+ * `url` that is not `https:` and a `summary` of more than 200 characters are dropped, the delivery
+ * stays completed, and the host reports one warning. Hold nothing secret in it: it is stored and
+ * shown to the hook's owner as it is.
+ */
+export interface PluginReceipt {
+  /** The identifier of what the reaction made in the other service, such as a message id. */
+  readonly id?: string;
+  /** Where the owner can see it, an `https:` address. */
+  readonly url?: string;
+  /** What was made, in a sentence of at most 200 characters. */
+  readonly summary?: string;
 }
 
 /**

@@ -112,9 +112,12 @@ import {
   type Stored,
 } from './hook-store.ts';
 import {
+  HOOK_RECEIPT_SUMMARY_LIMIT,
   HOOK_SCOPE_KINDS,
   HookActionError,
   type HookActionKindRegistration,
+  type HookActionReceipt,
+  type HookConfigurationIssue,
   HookError,
   NOTIFICATION_CREATED_EVENT_KIND,
   REACTION_MAXIMUM_ATTEMPTS,
@@ -125,6 +128,7 @@ import {
   type HookDelivery,
   type HookDeliveryRecord,
   type HookDeliverySummary,
+  type HookProblem,
   type HookRecord,
   type HookScope,
   type HookScopeKind,
@@ -140,6 +144,7 @@ import {
   secretFieldAt,
   secretFieldsOf,
   withValueAt,
+  withoutValues,
 } from './secret-references.ts';
 import {
   type HookEventSubjects,
@@ -633,7 +638,13 @@ function parsedConfiguration(
   configuration: unknown,
   secretPaths: readonly (readonly string[])[] = [],
 ):
-  { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string } {
+  | { readonly ok: true; readonly value: unknown }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      /** Each refused field by its path and Zod's code, which carry no value (COR-2182). */
+      readonly issues: readonly HookConfigurationIssue[];
+    } {
   const parsed = registration.kind.configuration.safeParse(configuration);
   if (parsed.success) return { ok: true, value: parsed.data };
   const issues = parsed.error.issues.filter((issue) => !issueIsAtSecret(issue.path, secretPaths));
@@ -643,7 +654,59 @@ function parsedConfiguration(
     reason: issues
       .map((issue) => `${issue.path.join('.') || 'configuration'}: ${issue.message}`)
       .join('; '),
+    issues: issues.map((issue) => ({ path: issue.path.map(String), code: issue.code })),
   };
+}
+
+/** The most characters of an `id` a reaction's receipt keeps. */
+const RECEIPT_ID_LIMIT = 200;
+/** The most characters of a `url` a reaction's receipt keeps, as a hook's own URL is held to. */
+const RECEIPT_URL_LIMIT = 2048;
+
+/**
+ * The receipt a reaction resolved, as the attempt keeps it (COR-2182): its `id`, `url` and `summary`
+ * and nothing else. A field that is not text, an `id` over {@link RECEIPT_ID_LIMIT} characters, a
+ * `url` that is not an `https:` address of at most {@link RECEIPT_URL_LIMIT} characters, and a
+ * `summary` over {@link HOOK_RECEIPT_SUMMARY_LIMIT} characters is dropped, and `dropped` names the
+ * fields (never what they held). A secret value the attempt resolved is removed from `id` and
+ * `summary`, and a `url` that holds one is dropped, so the record never keeps what a reference named.
+ */
+function receiptOf(
+  resolved: unknown,
+  secrets: ReadonlySet<string>,
+): { readonly receipt: HookActionReceipt; readonly dropped: readonly string[] } {
+  const given: unknown =
+    typeof resolved === 'object' && resolved !== null
+      ? (resolved as { readonly receipt?: unknown }).receipt
+      : undefined;
+  if (typeof given !== 'object' || given === null || Array.isArray(given)) {
+    return { receipt: {}, dropped: [] };
+  }
+  const { id, url, summary } = given as Record<'id' | 'url' | 'summary', unknown>;
+  const receipt: { id?: string; url?: string; summary?: string } = {};
+  const dropped: string[] = [];
+  if (id !== undefined) {
+    if (typeof id === 'string' && id.length <= RECEIPT_ID_LIMIT)
+      receipt.id = withoutValues(id, secrets);
+    else dropped.push('id');
+  }
+  if (url !== undefined) {
+    if (
+      typeof url === 'string' &&
+      url.length <= RECEIPT_URL_LIMIT &&
+      withoutValues(url, secrets) === url &&
+      URL.canParse(url) &&
+      new URL(url).protocol === 'https:'
+    ) {
+      receipt.url = url;
+    } else dropped.push('url');
+  }
+  if (summary !== undefined) {
+    if (typeof summary === 'string' && summary.length <= HOOK_RECEIPT_SUMMARY_LIMIT) {
+      receipt.summary = withoutValues(summary, secrets);
+    } else dropped.push('summary');
+  }
+  return { receipt, dropped };
 }
 
 /** Checks and copies the fields of `input` that its `type` names; every other field is dropped. */
@@ -953,6 +1016,35 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   const mayStartWorkflows =
     dependencies.mayStartWorkflows ?? ((owner: string) => owner === ownerOrLocal(undefined));
 
+  /**
+   * COR-2182 — whether `hook` runs a plugin's reaction that is not registered now: the plugin is
+   * disabled, was removed, failed to set up, or dropped the kind. One answer for the two places that
+   * act on it, so a hook that lists the problem is the hook dispatch writes nothing for.
+   */
+  function reactionUnavailable(hook: HookRecord): boolean {
+    return (
+      hook.action.type === 'plugin' &&
+      !actionKinds.has(actionKindKey(hook.action.plugin, hook.action.kind))
+    );
+  }
+
+  /**
+   * COR-2182 — what is wrong with `hook` as it is now: its reaction is not registered, or its
+   * reaction's schema refuses the configuration it stored (a plugin upgrade changed the schema).
+   * The configuration is checked as `create` checks it, so a secret field that holds a reference is
+   * no problem. Empty when nothing is, and for every action but a plugin's.
+   */
+  function problemsOf(hook: HookRecord): readonly HookProblem[] {
+    if (hook.action.type !== 'plugin') return [];
+    if (reactionUnavailable(hook)) return [{ code: 'reaction-unavailable' }];
+    const registration = actionKinds.get(actionKindKey(hook.action.plugin, hook.action.kind));
+    if (registration === undefined) return [];
+    const secretFields = secretFieldsOf(registration.kind.configuration);
+    const paths = 'refusal' in secretFields ? [] : secretFields.paths;
+    const checked = parsedConfiguration(registration, hook.action.configuration, paths);
+    return checked.ok ? [] : [{ code: 'configuration-invalid', issues: checked.issues }];
+  }
+
   /** The action `input` asks for: `action`, or the webhook that `url` stands for. */
   function actionOfCreate(input: HookCreateInput): HookAction {
     if (input.url !== undefined && input.action !== undefined) {
@@ -1168,13 +1260,22 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         };
         try {
           // `dryRun` was checked above, before anything was resolved.
-          if (context.test) await registration.kind.dryRun?.(reaction);
-          else await registration.kind.run(reaction);
+          const resolved: unknown = context.test
+            ? await registration.kind.dryRun?.(reaction)
+            : await registration.kind.run(reaction);
+          // What it says it made (COR-2182): a field that is not allowed is dropped, one warning
+          // names them, and the delivery is still completed.
+          const { receipt, dropped } = receiptOf(resolved, context.resolvedSecrets);
+          if (dropped.length > 0) {
+            dependencies.notice?.(
+              `[bureau] Hook ${context.hookId} dropped the ${dropped.join(' and ')} of the receipt of ${work.plugin}/${work.kind}: ${dropped.length === 1 ? 'it is' : 'they are'} not allowed in a receipt`,
+            );
+          }
+          return receipt;
         } catch (error) {
           if (isPermanentReactionError(error)) throw new HookActionError(error.message, true);
           throw error;
         }
-        return {};
       }
       const notifications = dependencies.notifications?.();
       if (notifications === undefined) {
@@ -1607,6 +1708,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         return {
           ...viewOf(hook),
           lastDelivery: last === undefined ? null : deliverySummaryOf(last),
+          problems: problemsOf(hook),
         };
       });
     },
@@ -2031,6 +2133,9 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
             );
             continue;
           }
+          // COR-2182 — nothing is written for a hook whose reaction is not registered (its plugin is
+          // disabled or gone): a delivery would only fail, and the hook lists the problem instead.
+          if (reactionUnavailable(hook)) continue;
           const projected =
             dependencies.eventForHookOwner === undefined
               ? event

@@ -397,6 +397,13 @@
                     {
                       "additionalProperties": false,
                       "properties": {
+                        "id": {
+                          "description": "What a plugin’s reaction made in the other service, as it named it.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
                         "notificationId": {
                           "type": [
                             "string",
@@ -408,11 +415,28 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "summary": {
+                          "description": "What was made, at most 200 characters; a longer one is dropped.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "url": {
+                          "description": "Where to see it: an `https:` address; a reaction’s other value is dropped.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         }
                       },
                       "required": [
                         "runId",
-                        "notificationId"
+                        "notificationId",
+                        "id",
+                        "url",
+                        "summary"
                       ],
                       "type": "object"
                     },
@@ -420,7 +444,7 @@
                       "type": "null"
                     }
                   ],
-                  "description": "What a `completed` `start-workflow` or `notify` attempt made."
+                  "description": "What a `completed` attempt made: the run, the notification, or a plugin reaction’s receipt."
                 },
                 "responseExcerpt": {
                   "type": [

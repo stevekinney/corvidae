@@ -417,7 +417,15 @@ export const HOOKS_COPY = {
       noPayloadTest: 'This test sends nothing, by design.',
       /** The Event field of the payload's Fields view: the event in words, and its kind. */
       eventField: (words: string, kind: string): string => `${words} (${kind})`,
-      facts: { event: 'Event', sentTo: 'Sent to', lastResponse: 'Last response' },
+      facts: {
+        event: 'Event',
+        sentTo: 'Sent to',
+        lastResponse: 'Last response',
+        /** What a plugin's reaction says it made, from its receipt. */
+        made: 'Made',
+        link: 'See it',
+        reference: 'Reference',
+      },
       /** Why a delivery ended badly, and what to try, said at the head of its open line. */
       cause: {
         receiver: 'The receiver',

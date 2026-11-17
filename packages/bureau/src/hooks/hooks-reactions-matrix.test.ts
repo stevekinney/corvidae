@@ -391,17 +391,26 @@ const BASELINE_ROWS: readonly Row[] = [
     owner: 'main',
     name: 'a kind that is gone, a version that changed or a configuration that is refused fails the delivery',
     check: async () => {
-      // The kind is gone.
+      // The kind is gone while the delivery waited (a delivery made after it is gone is never
+      // written: COR-2182).
       const goneKv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
-      const before = harness({ kv: goneKv });
+      const before: Harness = harness({
+        kv: goneKv,
+        run: () => {
+          before.shutdown();
+          return Promise.reject(new Error('the process is stopping'));
+        },
+      });
       const goneHook = await before.hook();
+      await before.open();
+      before.dispatch();
+      await before.drain();
       const gone = harness({ kv: goneKv, registrations: () => [] });
       await gone.open();
-      gone.dispatch();
       await gone.drain();
       const goneDelivery = await gone.only(goneHook.id);
       expect(goneDelivery.status).toBe('failed');
-      expect(outcomes(goneDelivery)).toEqual(['rejected']);
+      expect(outcomes(goneDelivery)).toEqual(['interrupted', 'rejected']);
 
       // The version changed while the delivery waited.
       const versionKv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });

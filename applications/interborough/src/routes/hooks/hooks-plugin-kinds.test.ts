@@ -459,6 +459,60 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
     expect(payload.textContent).toBe(HOOKS_COPY.editor.deliveries.noPayloadTest);
     expect(payload.textContent).not.toContain('sent no payload');
   });
+
+  test('shows a reaction’s receipt in the open delivery: its summary as text, its url as a link, its id as an identifier (COR-2182)', async () => {
+    const withReceipt = testDelivery('delivered');
+    withReceipt.attempts[0]!.receipt = {
+      runId: null,
+      notificationId: null,
+      id: 'page-1',
+      url: 'https://pager.example/incidents/1',
+      summary: 'Paged the on-call team',
+    } as never;
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.deliveries': () => ({ deliveries: [withReceipt] }),
+    });
+    const log = await view.findByTestId('hook-deliveries');
+    const item = await waitFor(() => {
+      const found = log.querySelector<HTMLElement>('li[data-delivery="test-1"]');
+      if (found === null) throw new Error('no delivery');
+      return found;
+    });
+    await fireEvent.click(item.querySelector<HTMLButtonElement>('button[aria-expanded]')!);
+
+    const facts = await within(item).findByTestId('hook-delivery-facts');
+    const facts_copy = HOOKS_COPY.editor.deliveries.facts;
+    expect(within(facts).getByText('Paged the on-call team')).toBeTruthy();
+    const link = within(facts).getByRole('link', { name: 'pager.example' });
+    expect(link.getAttribute('href')).toBe('https://pager.example/incidents/1');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    const reference = within(facts).getByText('page-1');
+    expect(reference.tagName).toBe('CODE');
+    expect(facts.textContent).toContain(facts_copy.made);
+    expect(facts.textContent).toContain(facts_copy.link);
+    expect(facts.textContent).toContain(facts_copy.reference);
+  });
+
+  test('shows no receipt facts for a delivery whose attempt made none', async () => {
+    const view = open('/hooks/pager-hook', {
+      'bureau.hooks.get': () => PAGER_HOOK,
+      'bureau.plugins.contributions': TESTABLE,
+      'bureau.hooks.deliveries': () => ({ deliveries: [testDelivery('delivered')] }),
+    });
+    const log = await view.findByTestId('hook-deliveries');
+    const item = await waitFor(() => {
+      const found = log.querySelector<HTMLElement>('li[data-delivery="test-1"]');
+      if (found === null) throw new Error('no delivery');
+      return found;
+    });
+    await fireEvent.click(item.querySelector<HTMLButtonElement>('button[aria-expanded]')!);
+
+    const facts = await within(item).findByTestId('hook-delivery-facts');
+    expect(facts.textContent).not.toContain(HOOKS_COPY.editor.deliveries.facts.made);
+    expect(within(facts).queryByRole('link')).toBeNull();
+  });
 });
 
 describe('an event in a hook’s deliveries', () => {
