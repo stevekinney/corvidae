@@ -6,9 +6,8 @@ import {
   assignComponentFamilies,
   deriveFamilies,
   FamilyDerivationError,
-  readPackageTree,
+  readRepositoryTree,
   readRules,
-  REPOSITORY_ROOT,
   SHARED_PACKAGES,
   TOOLING_ROOT,
   type DerivedFamilies,
@@ -206,10 +205,11 @@ describe('family-rules.json', () => {
   const fixture = JSON.parse(
     readFileSync(join(TOOLING_ROOT, 'family-rules.fixture.json'), 'utf8'),
   ) as FamilyRules;
-  const tree = readPackageTree(join(REPOSITORY_ROOT, rules.packageRoot));
+  // Core joined with every package already extracted from it, the tree the map was derived from.
+  const { files: tree, split } = readRepositoryTree(rules);
 
   test('derives a map of Cinder with no package cycle, tokens and tooling at the bottom', () => {
-    const derived = deriveFamilies(tree, rules);
+    const derived = deriveFamilies(tree, rules, split);
     expectNoPackageCycle(derived);
     expect(derived.packages['tokens']?.dependencies).toEqual([]);
     expect(derived.packages['tooling']?.dependencies).toEqual([]);

@@ -23,6 +23,8 @@ import { dirname, join, posix, resolve } from 'node:path';
 
 import { format } from 'prettier';
 
+import { isGenerated, PACKAGE_SCOPE, virtualPathFor } from './split-layout.ts';
+
 export interface FamilyRule {
   name: string;
   components: string[];
@@ -131,6 +133,43 @@ function resolveImport(
   ];
   return candidates.find((candidate) => files.has(candidate));
 }
+
+/**
+ * The files of a split tree (see `split-layout.ts`) that a specifier names: a relative one as
+ * {@link resolveImport} resolves it; a package one of the split by its virtual path, and a
+ * generated barrel or stylesheet as every file it names in turn.
+ */
+function resolveSplitImport(
+  files: ReadonlyMap<string, string>,
+  split: SplitPackages,
+  from: string,
+  specifier: string,
+  seen = new Set<string>(),
+): string[] {
+  if (specifier.startsWith('.')) {
+    const target = resolveImport(files, from, specifier);
+    return target === undefined ? [] : [target];
+  }
+  const named = virtualPathFor(specifier);
+  if (named === undefined || !split.packages.has(named.name)) return [];
+  // A package's generated barrel shares its virtual path with core's, so it is looked up first.
+  const key = `${named.name}:${named.path}`;
+  const generated = split.generated.get(key);
+  if (generated === undefined) return files.has(named.path) ? [named.path] : [];
+  if (seen.has(key)) return [];
+  seen.add(key);
+  return importSpecifiers(generated).flatMap((inner) =>
+    resolveSplitImport(files, split, named.path, inner, seen),
+  );
+}
+
+/** The packages a split tree holds and its generated files, keyed `<package>:<virtual path>`. */
+export interface SplitPackages {
+  packages: ReadonlySet<string>;
+  generated: ReadonlyMap<string, string>;
+}
+
+const UNSPLIT: SplitPackages = { packages: new Set(['tooling']), generated: new Map() };
 
 function globsMatch(patterns: readonly string[], path: string): boolean {
   return patterns.some((pattern) => new Bun.Glob(pattern).match(path));
@@ -414,14 +453,18 @@ function packagesNeeded(
   return needed;
 }
 
-function buildImports(files: ReadonlyMap<string, string>): Map<string, string[]> {
+function buildImports(
+  files: ReadonlyMap<string, string>,
+  split: SplitPackages,
+): Map<string, string[]> {
   const imports = new Map<string, string[]>();
   for (const [path, content] of files) {
     if (!CODE_FILE.test(path)) continue;
     const targets = new Set<string>();
     for (const specifier of importSpecifiers(content)) {
-      const target = resolveImport(files, path, specifier);
-      if (target !== undefined && target !== path) targets.add(target);
+      for (const target of resolveSplitImport(files, split, path, specifier)) {
+        if (target !== path) targets.add(target);
+      }
     }
     imports.set(path, [...targets]);
   }
@@ -615,11 +658,12 @@ function checkHelpers(context: Context, placements: ReadonlyMap<string, Placemen
 export function deriveFamilies(
   files: ReadonlyMap<string, string>,
   rules: FamilyRules,
+  split: SplitPackages = UNSPLIT,
 ): DerivedFamilies {
   const context: Context = {
     files,
     rules,
-    imports: buildImports(files),
+    imports: buildImports(files, split),
     componentOf: new Map(),
     problems: [],
   };
@@ -736,6 +780,50 @@ export function readPackageTree(packageRoot: string): Map<string, string> {
   return files;
 }
 
+/** A tree as the derivation reads it: its files, and what the split's packages add to them. */
+export interface RepositoryTree {
+  files: Map<string, string>;
+  split: SplitPackages;
+}
+
+/**
+ * Core's tree joined with every package already extracted from it (`split-layout.ts`): each
+ * `@lostgradient/<name>` workspace core depends on under `components/<name>`. Every package keeps
+ * core's layout, so the union is the tree the family map was derived from; a generated barrel or
+ * stylesheet is left out of it and kept to resolve the specifiers that name it.
+ */
+export function readRepositoryTree(
+  rules: FamilyRules = readRules(),
+  root: string = REPOSITORY_ROOT,
+): RepositoryTree {
+  const coreRoot = join(root, rules.packageRoot);
+  const packages = new Set<string>(['tooling']);
+  const generated = new Map<string, string>();
+  const files = new Map<string, string>();
+  const add = (name: string, tree: ReadonlyMap<string, string>) => {
+    for (const [path, content] of tree) {
+      if (isGenerated(content)) generated.set(`${name}:${path}`, content);
+      else if (files.has(path)) {
+        throw new FamilyDerivationError([`${path} is in both core and components/${name}.`]);
+      } else files.set(path, content);
+    }
+  };
+  add('core', readPackageTree(coreRoot));
+  const manifestPath = join(coreRoot, 'package.json');
+  const manifest = existsSync(manifestPath)
+    ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { dependencies?: Record<string, string> })
+    : {};
+  for (const dependency of Object.keys(manifest.dependencies ?? {}).toSorted()) {
+    if (!dependency.startsWith(PACKAGE_SCOPE)) continue;
+    const name = dependency.slice(PACKAGE_SCOPE.length);
+    const directory = join(root, 'components', name);
+    if (directory === coreRoot || !existsSync(join(directory, 'package.json'))) continue;
+    packages.add(name);
+    add(name, readPackageTree(directory));
+  }
+  return { files, split: { packages, generated } };
+}
+
 export const TOOLING_ROOT = resolve(import.meta.dir, '..');
 export const REPOSITORY_ROOT = resolve(TOOLING_ROOT, '../..');
 export const RULES_PATH = join(TOOLING_ROOT, 'family-rules.json');
@@ -760,8 +848,9 @@ export async function renderFamilies(derived: DerivedFamilies): Promise<string> 
   });
 }
 
-export function deriveFromRepository(rules = readRules()): DerivedFamilies {
-  return deriveFamilies(readPackageTree(join(REPOSITORY_ROOT, rules.packageRoot)), rules);
+export function deriveFromRepository(rules = readRules(), root = REPOSITORY_ROOT): DerivedFamilies {
+  const { files, split } = readRepositoryTree(rules, root);
+  return deriveFamilies(files, rules, split);
 }
 
 async function main(argv: readonly string[]): Promise<number> {

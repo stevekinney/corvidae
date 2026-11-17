@@ -1,0 +1,1157 @@
+/**
+ * Extracts packages from Cinder's core into workspaces of their own (P-COR-101: COR-2083 tokens,
+ * COR-2084 foundation, COR-2087 to COR-2091 the family layers), as `families.json` places them.
+ *
+ * ```sh
+ * bun internal/component-tooling/scripts/extract-families.ts --package tokens [--dry-run]
+ * bun internal/component-tooling/scripts/extract-families.ts --package foundation
+ * bun internal/component-tooling/scripts/extract-families.ts --layer 1 --half 1   # COR-2087
+ * bun internal/component-tooling/scripts/extract-families.ts --layer 1 --half 2   # COR-2088
+ * bun internal/component-tooling/scripts/extract-families.ts --layer 2            # COR-2089
+ * bun internal/component-tooling/scripts/extract-families.ts --all                # every package left
+ * ```
+ *
+ * `--layer` counts the way `families.json` does: layer 0 is tokens, foundation and the tooling, so
+ * the issues' "layer 0 families" are `--layer 1`, their "layer 1" is `--layer 2`, and so on.
+ * `--core <dir>` names core's directory (default: `components/core`, else `components/cinder`);
+ * `--no-install` skips `bun install`; `--dry-run` prints the plan and writes nothing.
+ *
+ * For each selected package it creates the workspace with `create-package`, moves the package's
+ * files to the same path under `components/<package>` (`split-layout.ts`), rewrites every import
+ * that now crosses a package to a package specifier, every relative path string that does to a
+ * path that still reaches its file, and every `<core>/src/…` path in the repository's text files;
+ * moves core's barrel statements that re-export the package into the package's barrel, leaving
+ * core re-exporting the same names; regenerates core's `components.css` from
+ * `components-css-order.json` (created from today's order on the first run); writes each package's
+ * dependencies, exports and scripts; shards the inherited-key-reads allowlist; and stages the
+ * result. It is idempotent: a file already moved is skipped, a statement already moved stays, and
+ * a second run with the same selection changes nothing.
+ *
+ * It refuses to run while `families.json` is stale (run `derive-families.ts` first and commit the
+ * diff) or while a selected package depends on one still in core.
+ */
+
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, posix, relative } from 'node:path';
+import { parseArgs } from 'node:util';
+
+import ts from 'typescript';
+
+import { createPackage } from './create-package.ts';
+import {
+  type DerivedFamilies,
+  type FamilyRules,
+  deriveFromRepository,
+  FAMILIES_PATH,
+  findCycles,
+  isTestFile,
+  readRules,
+  renderFamilies,
+  REPOSITORY_ROOT,
+} from './derive-families.ts';
+import { exportNames } from './export-names.ts';
+import {
+  GENERATED_MARKER,
+  isGenerated,
+  joinVirtual,
+  kindOf,
+  PACKAGE_SCOPE,
+  relativeSpecifier,
+  resolutionCandidates,
+  specifierFor,
+  TOOLING_PACKAGE,
+} from './split-layout.ts';
+
+/** The packages core never hands over: core itself, and the tooling, which is already a workspace. */
+const KEPT = new Set(['core', 'tooling']);
+const CODE_FILE = /\.(?:ts|js|mjs|svelte|css)$/;
+const TEXT_FILE =
+  /\.(?:ts|js|mjs|cjs|svelte|css|json|jsonc|md|toml|ya?ml|html|txt)$|(?:^|\/)\.[a-z]+ignore$|\.oxlintrc\.json$/;
+const SPECIFIER =
+  /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?|\bmock\.module\(\s*)(['"])([^'"\n]+)\2/g;
+const PATH_STRING = /(['"`])(\.\.?\/[^'"`\n$*{}]+)\1/g;
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.types', '.turbo', 'coverage', '.metadata']);
+export const ORDER_FILE = 'components-css-order.json';
+const COMPONENTS_CSS = 'src/styles/components.css';
+const BARREL = 'src/index.ts';
+const PACKAGE_STYLESHEET = 'src/styles/index.css';
+const ALLOWLIST = 'inherited-key-reads-allowlist.json';
+/** Files the extraction never rewrites: the map it reads and its own source. */
+const UNREWRITTEN = [
+  'internal/component-tooling/families.json',
+  'internal/component-tooling/family-rules.json',
+  'internal/component-tooling/family-rules.fixture.json',
+  'internal/component-tooling/scripts/extract-families.ts',
+  'internal/component-tooling/scripts/extract-families.test.ts',
+  'internal/component-tooling/scripts/split-layout.ts',
+  'internal/component-tooling/scripts/derive-families.ts',
+  'internal/component-tooling/scripts/derive-families.test.ts',
+];
+
+export type Selection =
+  | { kind: 'packages'; names: string[] }
+  | { kind: 'layer'; layer: number; half?: 1 | 2 }
+  | { kind: 'all' };
+
+export interface ExtractOptions {
+  root: string;
+  /** Core's directory, relative to `root`. */
+  core: string;
+  families: DerivedFamilies;
+  rules: FamilyRules;
+  selection: Selection;
+  dryRun?: boolean;
+  /** Every file under a directory (relative to `root`), as paths relative to that directory. */
+  listFiles?: (directory: string) => string[];
+  /** Formats a file's text the way the repository's Prettier configuration does. */
+  format?: (path: string, text: string) => Promise<string>;
+}
+
+export interface Rewrite {
+  importer: string;
+  specifier: string;
+  target: string;
+}
+
+export interface ExtractResult {
+  selected: string[];
+  moves: { from: string; to: string }[];
+  created: string[];
+  written: string[];
+  rewrites: Rewrite[];
+  warnings: string[];
+}
+
+/** Every file under `directory`, skipping installs and build output. */
+export function walkFiles(root: string, directory: string): string[] {
+  const files: string[] = [];
+  const walk = (relativeDirectory: string) => {
+    const absolute = join(root, directory, relativeDirectory);
+    if (!existsSync(absolute)) return;
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      const path = posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) files.push(path);
+    }
+  };
+  walk('');
+  return files.toSorted();
+}
+
+/** The packages a selection names, dependencies first. */
+export function selectPackages(families: DerivedFamilies, selection: Selection): string[] {
+  const names = Object.keys(families.packages).filter((name) => !KEPT.has(name));
+  let selected: string[];
+  if (selection.kind === 'all') selected = names;
+  else if (selection.kind === 'packages') {
+    const unknown = selection.names.filter((name) => !names.includes(name));
+    if (unknown.length > 0)
+      throw new Error(`No extractable package is named ${unknown.join(', ')}.`);
+    selected = selection.names;
+  } else {
+    const layer = names
+      .filter((name) => families.packages[name]?.layer === selection.layer)
+      .toSorted();
+    if (selection.half === undefined) selected = layer;
+    else {
+      const middle = Math.ceil(layer.length / 2);
+      selected = selection.half === 1 ? layer.slice(0, middle) : layer.slice(middle);
+    }
+  }
+  const layerOf = (name: string) => families.packages[name]?.layer ?? 0;
+  return [...new Set(selected)].toSorted((a, b) => layerOf(a) - layerOf(b) || a.localeCompare(b));
+}
+
+interface Plan {
+  options: Required<Omit<ExtractOptions, 'selection'>> & { selection: Selection };
+  /** Every package of the map extracted once this run is done. */
+  extracted: Set<string>;
+  selected: string[];
+  /** Each virtual path's package. */
+  owner: Map<string, string>;
+  /** Each package's component directories. */
+  components: Map<string, string[]>;
+  result: ExtractResult;
+  /** Export keys each package needs for the modules other packages import. */
+  exportKeys: Map<string, Set<string>>;
+  pending: Map<string, string>;
+}
+
+function packageDirectory(plan: Plan, name: string): string {
+  return plan.extracted.has(name) ? posix.join('components', name) : plan.options.core;
+}
+
+/** Where a virtual path of `name` is now: its new home once moved, core's until then. */
+function currentPath(plan: Plan, name: string, path: string): string {
+  const home = posix.join(packageDirectory(plan, name), path);
+  return plan.pending.has(home) || existsSync(join(plan.options.root, home))
+    ? home
+    : posix.join(plan.options.core, path);
+}
+
+function read(plan: Plan, path: string): string {
+  const pending = plan.pending.get(path);
+  if (pending !== undefined) return pending;
+  return readFileSync(join(plan.options.root, path), 'utf8');
+}
+
+function write(plan: Plan, path: string, text: string): void {
+  const absolute = join(plan.options.root, path);
+  if (existsSync(absolute) && readFileSync(absolute, 'utf8') === text && !plan.pending.has(path)) {
+    return;
+  }
+  if (!plan.result.written.includes(path)) plan.result.written.push(path);
+  if (plan.options.dryRun) {
+    plan.pending.set(path, text);
+    return;
+  }
+  mkdirSync(dirname(absolute), { recursive: true });
+  writeFileSync(absolute, text);
+}
+
+function isExtractedPackage(root: string, core: string, name: string): boolean {
+  const directory = posix.join('components', name);
+  if (directory === core) return false;
+  const manifest = join(root, directory, 'package.json');
+  if (!existsSync(manifest)) return false;
+  const { name: packageName } = JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string };
+  if (packageName !== `${PACKAGE_SCOPE}${name}`) {
+    throw new Error(`${directory} is ${packageName}, not ${PACKAGE_SCOPE}${name}.`);
+  }
+  return true;
+}
+
+/** Each virtual path the map places, from the files core and the extracted packages hold now. */
+function buildOwnership(plan: Plan): string[] {
+  const { families, rules, root, core, listFiles } = plan.options;
+  const problems: string[] = [];
+  const componentOwner = new Map<string, string>();
+  for (const [name, entry] of Object.entries(families.packages)) {
+    plan.components.set(name, entry.components);
+    for (const component of entry.components) componentOwner.set(component, name);
+    for (const module of entry.modules) plan.owner.set(module, name);
+  }
+  const movedToCore = new Set(
+    families.testMoves.filter((move) => move.to === 'core').map((move) => move.file),
+  );
+  // The derivation reads src only; a row's patterns outside it (the token scripts) place the rest.
+  const outside = rules.moves
+    .filter((row) => row.when === undefined)
+    .map((row) => ({
+      target: row.target,
+      patterns: row.patterns.filter((pattern) => !pattern.startsWith('src/')),
+    }));
+  const directories = [core, ...[...plan.extracted].map((name) => posix.join('components', name))];
+  for (const directory of directories) {
+    for (const path of listFiles(directory)) {
+      const absolute = join(root, directory, path);
+      if (
+        CODE_FILE.test(path) &&
+        existsSync(absolute) &&
+        isGenerated(readFileSync(absolute, 'utf8'))
+      ) {
+        continue;
+      }
+      const component = /^src\/components\/([^/]+)\//.exec(path)?.[1];
+      if (path.startsWith('src/') && component !== undefined && componentOwner.has(component)) {
+        if (!plan.owner.has(path)) {
+          plan.owner.set(
+            path,
+            movedToCore.has(path) ? 'core' : (componentOwner.get(component) as string),
+          );
+        }
+        continue;
+      }
+      const row = path.startsWith('src/')
+        ? undefined
+        : outside.find((candidate) =>
+            candidate.patterns.some((pattern) => new Bun.Glob(pattern).match(path)),
+          );
+      if (row !== undefined) {
+        plan.owner.set(path, row.target);
+        continue;
+      }
+      if (path.startsWith('src/') && !plan.owner.has(path)) {
+        problems.push(`${posix.join(directory, path)} is in no package of families.json.`);
+      }
+    }
+  }
+  return problems;
+}
+
+function planMoves(plan: Plan): void {
+  const { root, core } = plan.options;
+  for (const [path, name] of plan.owner) {
+    if (!plan.selected.includes(name)) continue;
+    const from = posix.join(core, path);
+    const to = posix.join('components', name, path);
+    if (existsSync(join(root, from))) {
+      if (existsSync(join(root, to))) throw new Error(`Both ${from} and ${to} exist.`);
+      plan.result.moves.push({ from, to });
+    }
+  }
+}
+
+function applyMoves(plan: Plan): void {
+  const { root } = plan.options;
+  for (const { from, to } of plan.result.moves) {
+    mkdirSync(dirname(join(root, to)), { recursive: true });
+    renameSync(join(root, from), join(root, to));
+  }
+  // Leave no empty directory behind in core.
+  const directories = new Set(plan.result.moves.map(({ from }) => dirname(join(root, from))));
+  for (const directory of [...directories].toSorted((a, b) => b.length - a.length)) {
+    let at = directory;
+    while (
+      at.startsWith(join(root, plan.options.core, 'src')) ||
+      at.startsWith(join(root, plan.options.core, 'scripts'))
+    ) {
+      if (!existsSync(at) || readdirSync(at).length > 0) break;
+      rmSync(at, { recursive: true });
+      at = dirname(at);
+    }
+  }
+}
+
+/** Creates each selected package that has no manifest yet, without the scaffold's placeholders. */
+function scaffold(plan: Plan): void {
+  const { root, core } = plan.options;
+  for (const name of plan.selected) {
+    const directory = posix.join('components', name);
+    if (existsSync(join(root, directory, 'package.json'))) continue;
+    plan.result.created.push(directory);
+    if (plan.options.dryRun) continue;
+    createPackage(root, name);
+    for (const placeholder of [
+      `src/components/${name}/${name}.svelte`,
+      'src/index.test.ts',
+      'src/index.ts',
+      PACKAGE_STYLESHEET,
+    ]) {
+      rmSync(join(root, directory, placeholder), { force: true });
+    }
+    for (const empty of [`src/components/${name}`, 'src/components', 'src/styles']) {
+      const absolute = join(root, directory, empty);
+      if (existsSync(absolute) && readdirSync(absolute).length === 0)
+        rmSync(absolute, { recursive: true });
+    }
+    // Every package configures TypeScript and tests the way core does.
+    for (const file of ['tsconfig.json', 'tsconfig.browser.json', 'bunfig.toml']) {
+      const source = join(root, core, file);
+      if (existsSync(source))
+        writeFileSync(join(root, directory, file), readFileSync(source, 'utf8'));
+    }
+  }
+}
+
+/** The virtual path a relative reference in `importer` names, if the map places it. */
+function resolveVirtual(plan: Plan, importer: string, specifier: string): string | undefined {
+  const base = joinVirtual(importer, specifier);
+  return resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
+}
+
+/** Packages whose files sit under a virtual directory. */
+function ownersUnder(plan: Plan, directory: string): Set<string> {
+  const owners = new Set<string>();
+  const prefix = directory.endsWith('/') ? directory : `${directory}/`;
+  for (const [path, name] of plan.owner) if (path.startsWith(prefix)) owners.add(name);
+  return owners;
+}
+
+function addExportKey(plan: Plan, name: string, key: string | undefined): void {
+  if (key === undefined) return;
+  const keys = plan.exportKeys.get(name) ?? new Set<string>();
+  keys.add(key);
+  plan.exportKeys.set(name, keys);
+}
+
+function packageOf(plan: Plan, path: string): { name: string; virtual: string } | undefined {
+  for (const name of plan.extracted) {
+    const prefix = `components/${name}/`;
+    if (path.startsWith(prefix)) return { name, virtual: path.slice(prefix.length) };
+  }
+  const prefix = `${plan.options.core}/`;
+  return path.startsWith(prefix) ? { name: 'core', virtual: path.slice(prefix.length) } : undefined;
+}
+
+/**
+ * Rewrites one file of core or of an extracted package: an import that now crosses packages to a
+ * package specifier, and a relative path string that does to a relative path that still reaches it.
+ */
+function rewriteFile(plan: Plan, path: string): void {
+  const home = packageOf(plan, path);
+  if (home === undefined || !CODE_FILE.test(path)) return;
+  const directory = packageDirectory(plan, home.name);
+  const original = read(plan, path);
+  if (isGenerated(original)) return;
+  const rewritten = new Map<number, { length: number; text: string }>();
+  for (const match of original.matchAll(SPECIFIER)) {
+    const specifier = match[3] ?? '';
+    if (!specifier.startsWith('.')) continue;
+    const target = resolveVirtual(plan, home.virtual, specifier);
+    if (target === undefined) continue;
+    const name = plan.owner.get(target) as string;
+    if (packageDirectory(plan, name) === directory) continue;
+    if (name === 'core') {
+      plan.result.warnings.push(`${path} imports ${specifier}, which core keeps.`);
+      continue;
+    }
+    const named = specifierFor(name, target, plan.components.get(name));
+    addExportKey(plan, name, named.exportKey);
+    const query = specifier.includes('?') ? specifier.slice(specifier.indexOf('?')) : '';
+    const start = (match.index ?? 0) + (match[1] ?? '').length + 1;
+    rewritten.set(start, { length: specifier.length, text: `${named.specifier}${query}` });
+    plan.result.rewrites.push({
+      importer: path,
+      specifier: `${named.specifier}${query}`,
+      target: posix.join(packageDirectory(plan, name), target),
+    });
+  }
+  for (const match of original.matchAll(PATH_STRING)) {
+    const start = (match.index ?? 0) + 1;
+    if (rewritten.has(start)) continue;
+    const text = match[2] ?? '';
+    // A specifier is handled above; skip any string the specifier pattern matched.
+    const before = original.slice(Math.max(0, (match.index ?? 0) - 24), match.index);
+    if (
+      /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?|mock\.module\(\s*)$/.test(
+        before,
+      )
+    ) {
+      continue;
+    }
+    const base = joinVirtual(home.virtual, text);
+    const file = resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
+    let owner: string | undefined = file === undefined ? undefined : plan.owner.get(file);
+    if (owner === undefined) {
+      const owners = ownersUnder(plan, base);
+      if (owners.size === 1) owner = [...owners][0];
+      else if (
+        owners.size > 1 &&
+        [...owners].some((name) => packageDirectory(plan, name) !== directory)
+      ) {
+        plan.result.warnings.push(`${path}: ${text} names a directory several packages share.`);
+      }
+    }
+    if (owner === undefined || packageDirectory(plan, owner) === directory) continue;
+    const absoluteTarget = posix.join(packageDirectory(plan, owner), base);
+    let replacement = posix.relative(posix.dirname(path), absoluteTarget);
+    if (text.endsWith('/') && !replacement.endsWith('/')) replacement += '/';
+    if (!replacement.startsWith('.')) replacement = `./${replacement}`;
+    rewritten.set(start, { length: text.length, text: replacement });
+  }
+  if (rewritten.size === 0) return;
+  let next = original;
+  for (const [start, { length, text }] of [...rewritten].toSorted(([a], [b]) => b - a)) {
+    next = `${next.slice(0, start)}${text}${next.slice(start + length)}`;
+  }
+  write(plan, path, next);
+}
+
+/**
+ * Rewrites `<core>/src/…` and `<core>/scripts/…` paths in a text file anywhere in the repository to
+ * the package that now holds the file or directory they name.
+ */
+function rewriteRepositoryPaths(plan: Plan, path: string): void {
+  const { core } = plan.options;
+  if (UNREWRITTEN.includes(path) || !TEXT_FILE.test(path)) return;
+  const original = read(plan, path);
+  if (!original.includes(core)) return;
+  const pattern = new RegExp(
+    `${core.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}/((?:src|scripts)(?:/[\\w.@-]+)*)`,
+    'g',
+  );
+  const next = original.replace(pattern, (whole, virtual: string) => {
+    let owner = plan.owner.get(virtual);
+    if (owner === undefined) {
+      const owners = ownersUnder(plan, virtual);
+      if (owners.size === 1) owner = [...owners][0];
+    }
+    if (owner === undefined || packageDirectory(plan, owner) === core) return whole;
+    return `${packageDirectory(plan, owner)}/${virtual}`;
+  });
+  if (next !== original) write(plan, path, next);
+}
+
+type ExportedNames = { runtime: string[]; types: string[] };
+
+function clauseNames(declaration: ts.ExportDeclaration): ExportedNames | undefined {
+  const clause = declaration.exportClause;
+  if (clause === undefined) return undefined;
+  if (ts.isNamespaceExport(clause)) {
+    return declaration.isTypeOnly
+      ? { runtime: [], types: [clause.name.text] }
+      : { runtime: [clause.name.text], types: [] };
+  }
+  const names: ExportedNames = { runtime: [], types: [] };
+  for (const element of clause.elements) {
+    if (declaration.isTypeOnly || element.isTypeOnly) names.types.push(element.name.text);
+    else names.runtime.push(element.name.text);
+  }
+  return names;
+}
+
+function reexport(names: ExportedNames, specifier: string): string {
+  const lines: string[] = [];
+  if (names.runtime.length > 0)
+    lines.push(`export { ${names.runtime.join(', ')} } from '${specifier}';`);
+  if (names.types.length > 0)
+    lines.push(`export type { ${names.types.join(', ')} } from '${specifier}';`);
+  return lines.join('\n');
+}
+
+function barrelHeader(name: string): string {
+  return `// ${GENERATED_MARKER}: the barrel of ${PACKAGE_SCOPE}${name}, which core's barrel re-exports by name.\n`;
+}
+
+/**
+ * Moves each statement of core's barrel that re-exports a selected package into that package's
+ * barrel, and leaves core re-exporting the same names from the package, so core's export list is
+ * unchanged. An `export *` becomes the names it exports, which `export-names.ts` can read.
+ */
+function splitBarrel(plan: Plan): void {
+  const { core } = plan.options;
+  const path = posix.join(core, BARREL);
+  const source = read(plan, path);
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const moved = new Map<string, string[]>();
+  const replacements: { start: number; end: number; text: string }[] = [];
+  for (const statement of file.statements) {
+    if (!ts.isExportDeclaration(statement) || statement.moduleSpecifier === undefined) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const specifier = statement.moduleSpecifier.text;
+    if (!specifier.startsWith('.')) continue;
+    const target = resolveVirtual(plan, BARREL, specifier);
+    const name = target === undefined ? undefined : plan.owner.get(target);
+    if (target === undefined || name === undefined || !plan.extracted.has(name)) continue;
+    let names = clauseNames(statement);
+    if (names === undefined) {
+      const absolute = join(plan.options.root, currentPath(plan, name, target));
+      const all = exportNames(absolute);
+      names = { runtime: all.runtime.filter((entry) => entry !== 'default'), types: all.types };
+    }
+    const statements = moved.get(name) ?? [];
+    statements.push(source.slice(statement.getFullStart(), statement.getEnd()).trim());
+    moved.set(name, statements);
+    replacements.push({
+      start: statement.getStart(),
+      end: statement.getEnd(),
+      text: reexport(names, `${PACKAGE_SCOPE}${name}`),
+    });
+  }
+  if (replacements.length === 0) return;
+  let next = source;
+  for (const { start, end, text } of replacements.toSorted((a, b) => b.start - a.start)) {
+    next = `${next.slice(0, start)}${text}${next.slice(end)}`;
+  }
+  write(plan, path, next);
+  for (const [name, statements] of moved) {
+    const barrel = posix.join('components', name, BARREL);
+    const absolute = join(plan.options.root, barrel);
+    const existing =
+      plan.pending.get(barrel) ?? (existsSync(absolute) ? readFileSync(absolute, 'utf8') : '');
+    const body = isGenerated(existing) ? existing : barrelHeader(name);
+    const normalize = (text: string) => text.replaceAll(/\s+/g, ' ');
+    const present = normalize(body);
+    const added = statements.filter((statement) => !present.includes(normalize(statement)));
+    write(plan, barrel, `${body.trimEnd()}\n\n${added.join('\n\n')}\n`);
+  }
+}
+
+/** Each package that has no barrel statement yet still gets an (empty) barrel. */
+function ensureBarrels(plan: Plan): void {
+  for (const name of plan.selected) {
+    const barrel = posix.join('components', name, BARREL);
+    if (plan.pending.has(barrel) || existsSync(join(plan.options.root, barrel))) continue;
+    write(plan, barrel, `${barrelHeader(name)}\nexport {};\n`);
+  }
+}
+
+export interface OrderEntry {
+  /** The virtual path of the stylesheet. */
+  path: string;
+  /** The comment that preceded its import, verbatim. */
+  comment?: string;
+}
+
+export interface ComponentsCssOrder {
+  $comment: string;
+  imports: OrderEntry[];
+  /** Text after the last import. */
+  trailer?: string;
+}
+
+const IMPORT_LINE = /@import\s+(['"])([^'"]+)\1\s*;/g;
+
+/** The order file for a `components.css` that still imports every stylesheet by relative path. */
+export function readComponentsCssOrder(text: string): ComponentsCssOrder {
+  const imports: OrderEntry[] = [];
+  let last = 0;
+  for (const match of text.matchAll(IMPORT_LINE)) {
+    const specifier = match[2] ?? '';
+    if (!specifier.startsWith('.')) {
+      throw new Error(
+        `${COMPONENTS_CSS} imports ${specifier}; create ${ORDER_FILE} from a components.css that imports by relative path.`,
+      );
+    }
+    const comment = text.slice(last, match.index).trim();
+    imports.push({
+      path: joinVirtual(COMPONENTS_CSS, specifier),
+      ...(comment === '' ? {} : { comment }),
+    });
+    last = (match.index ?? 0) + match[0].length;
+  }
+  const trailer = text.slice(last).trim();
+  return {
+    $comment:
+      "The order of core's components.css (P-COR-101). extract-families.ts regenerates components.css from it; a component stylesheet missing from it fails the extraction, so place a new component here.",
+    imports,
+    ...(trailer === '' ? {} : { trailer }),
+  };
+}
+
+function stylesheetSpecifier(plan: Plan, path: string, aggregate: boolean): string {
+  const name = plan.owner.get(path);
+  if (name === undefined) throw new Error(`${ORDER_FILE} names ${path}, which no package holds.`);
+  if (packageDirectory(plan, name) === plan.options.core)
+    return relativeSpecifier(COMPONENTS_CSS, path);
+  const components = plan.components.get(name) ?? [];
+  if (aggregate && kindOf(name) === 'family' && components.length === 1) {
+    return `${PACKAGE_SCOPE}${name}/styles`;
+  }
+  return specifierFor(name, path, components).specifier;
+}
+
+/** The order file, created from today's `components.css` on the first run, before any rewrite. */
+function readOrder(plan: Plan): ComponentsCssOrder {
+  const { core, root } = plan.options;
+  const orderPath = posix.join(core, ORDER_FILE);
+  if (plan.pending.has(orderPath) || existsSync(join(root, orderPath))) {
+    return JSON.parse(read(plan, orderPath)) as ComponentsCssOrder;
+  }
+  const order = readComponentsCssOrder(read(plan, posix.join(core, COMPONENTS_CSS)));
+  write(plan, orderPath, `${JSON.stringify(order, null, 2)}\n`);
+  return order;
+}
+
+/** Regenerates core's `components.css` and each extracted family's stylesheet from the order file. */
+function regenerateStylesheets(plan: Plan): void {
+  const { core } = plan.options;
+  const orderPath = posix.join(core, ORDER_FILE);
+  const order = readOrder(plan);
+  const listed = new Set(order.imports.map((entry) => entry.path));
+  for (const [path, name] of plan.owner) {
+    const component = /^src\/components\/([^/]+)\/([^/]+)\.css$/.exec(path);
+    if (component === null || component[1] !== component[2] || name === 'core') continue;
+    if (!listed.has(path)) {
+      throw new Error(`${path} is in no line of ${orderPath}: place it in the order, then re-run.`);
+    }
+  }
+  const lines: string[] = [];
+  for (const entry of order.imports) {
+    if (entry.comment !== undefined) lines.push('', entry.comment);
+    lines.push(`@import '${stylesheetSpecifier(plan, entry.path, true)}';`);
+  }
+  if (order.trailer !== undefined) lines.push('', order.trailer);
+  write(plan, posix.join(core, COMPONENTS_CSS), `${lines.join('\n').trim()}\n`);
+  for (const name of plan.extracted) {
+    if (kindOf(name) !== 'family') continue;
+    const own = order.imports.filter((entry) => plan.owner.get(entry.path) === name);
+    const imports = own.map(
+      (entry) => `@import '${relativeSpecifier(PACKAGE_STYLESHEET, entry.path)}';`,
+    );
+    write(
+      plan,
+      posix.join('components', name, PACKAGE_STYLESHEET),
+      `/* ${GENERATED_MARKER}: the stylesheet of ${PACKAGE_SCOPE}${name}, in ${ORDER_FILE}'s order. */\n${imports.join('\n')}\n`,
+    );
+  }
+}
+
+type Manifest = {
+  name?: string;
+  exports?: Record<string, unknown>;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  [key: string]: unknown;
+};
+
+const BUILTIN = /^(?:node:|bun:|bun$|\$)/;
+
+function packageNameOf(specifier: string): string | undefined {
+  if (specifier.startsWith('.') || specifier.startsWith('/') || BUILTIN.test(specifier))
+    return undefined;
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+}
+
+function sortRecord(record: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).toSorted(([a], [b]) => a.localeCompare(b)));
+}
+
+function readManifest(plan: Plan, path: string): Manifest {
+  return JSON.parse(read(plan, path)) as Manifest;
+}
+
+const ENTRY = (path: string) => ({
+  types: `./.types/${path.replace(/\.ts$/, '.d.ts')}`,
+  svelte: `./${path}`,
+  default: `./${path}`,
+});
+
+/** The dependencies a package's files import, as the version core's manifest gives each. */
+function scanDependencies(
+  plan: Plan,
+  name: string,
+  coreManifest: Manifest,
+): {
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  problems: string[];
+} {
+  const dependencies: Record<string, string> = {};
+  const devDependencies: Record<string, string> = {};
+  const problems: string[] = [];
+  const versions = { ...coreManifest.devDependencies, ...coreManifest.dependencies };
+  for (const [path, owner] of plan.owner) {
+    if (owner !== name || !CODE_FILE.test(path)) continue;
+    const text = read(plan, currentPath(plan, name, path));
+    for (const match of text.matchAll(SPECIFIER)) {
+      const dependency = packageNameOf(match[3] ?? '');
+      if (dependency === undefined || dependency === `${PACKAGE_SCOPE}${name}`) continue;
+      const workspace = dependency.startsWith(PACKAGE_SCOPE);
+      const version = workspace ? 'workspace:*' : versions[dependency];
+      if (version === undefined) {
+        problems.push(`${path} imports ${dependency}, which core's manifest does not list.`);
+        continue;
+      }
+      if (isTestFile(path) || path.startsWith('scripts/')) devDependencies[dependency] = version;
+      else dependencies[dependency] = version;
+    }
+  }
+  for (const dependency of Object.keys(dependencies)) delete devDependencies[dependency];
+  return { dependencies, devDependencies, problems };
+}
+
+/** Writes each extracted package's manifest and core's, from the map and the imports. */
+function writeManifests(plan: Plan): void {
+  const { core, families } = plan.options;
+  const corePath = posix.join(core, 'package.json');
+  const coreManifest = readManifest(plan, corePath);
+  const graph = new Map<string, Set<string>>();
+  for (const name of [...plan.extracted].toSorted()) {
+    const path = posix.join('components', name, 'package.json');
+    if (!plan.pending.has(path) && !existsSync(join(plan.options.root, path))) continue;
+    const manifest = readManifest(plan, path);
+    const kind = kindOf(name);
+    const exportsField: Record<string, unknown> = { '.': ENTRY('src/index.ts') };
+    if (kind === 'family') {
+      exportsField['./styles'] = './src/styles/index.css';
+      exportsField['./*.css'] = './src/components/*/*.css';
+      exportsField['./components/*'] = './src/components/*';
+    } else {
+      exportsField['./*.css'] = './src/styles/*.css';
+      exportsField['./*'] = './src/*';
+    }
+    const previous = manifest.exports ?? {};
+    const keys = new Set([
+      ...Object.keys(previous).filter((key) => !(key in exportsField)),
+      ...(plan.exportKeys.get(name) ?? []),
+    ]);
+    if (kind === 'family') {
+      for (const key of [...keys].toSorted()) exportsField[key] = `./src/${key.slice(2)}`;
+    }
+    const scanned = scanDependencies(plan, name, coreManifest);
+    plan.result.warnings.push(...scanned.problems);
+    const dependencies: Record<string, string> = { svelte: 'catalog:', ...scanned.dependencies };
+    for (const dependency of families.packages[name]?.dependencies ?? []) {
+      dependencies[dependency === 'tooling' ? TOOLING_PACKAGE : `${PACKAGE_SCOPE}${dependency}`] =
+        'workspace:*';
+    }
+    const devDependencies: Record<string, string> = {
+      ...manifest.devDependencies,
+      ...scanned.devDependencies,
+    };
+    for (const dependency of Object.keys(dependencies)) delete devDependencies[dependency];
+    const edges = new Set<string>();
+    for (const dependency of [...Object.keys(dependencies), ...Object.keys(devDependencies)]) {
+      if (!dependency.startsWith(PACKAGE_SCOPE)) continue;
+      const target = dependency.slice(PACKAGE_SCOPE.length);
+      if (target === 'cinder') {
+        plan.result.warnings.push(`${name} imports ${PACKAGE_SCOPE}cinder, which depends on it.`);
+      }
+      if (plan.extracted.has(target)) edges.add(target);
+    }
+    graph.set(name, edges);
+    const hasDirectory = (directory: string) =>
+      plan.owner.has(directory) ||
+      [...plan.owner].some(([file, owner]) => owner === name && file.startsWith(`${directory}/`));
+    const sources = hasDirectory('scripts') ? 'src scripts' : 'src';
+    const scripts = { ...manifest.scripts };
+    const checks = [
+      `oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json ${sources}`,
+      'bun ../../scripts/check-inherited-key-reads.ts',
+    ];
+    if (hasDirectory('src/components')) {
+      checks.push(
+        'bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/components',
+      );
+    }
+    if (name === 'foundation') {
+      checks.push('bun ../../internal/component-tooling/scripts/check-foundation-imports.ts');
+    }
+    for (const moved of Object.keys(movedScripts(plan, coreManifest, name)))
+      checks.push(`bun run ${moved}`);
+    scripts['lint'] = checks.join(' && ');
+    scripts['lint:fix'] =
+      `oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json ${sources}`;
+    scripts['test'] = (scripts['test'] ?? '').replace(/ src$/, ` ${sources}`);
+    Object.assign(scripts, movedScripts(plan, coreManifest, name));
+    const next: Manifest = {
+      ...manifest,
+      exports: exportsField,
+      scripts,
+      dependencies: sortRecord(dependencies),
+      devDependencies: sortRecord(devDependencies),
+    };
+    write(plan, path, `${JSON.stringify(next, null, 2)}\n`);
+  }
+  const cycles = findCycles(graph);
+  if (cycles.length > 0) {
+    throw new Error(
+      `The extracted packages' manifests form cycles: ${cycles.map((cycle) => cycle.join(' -> ')).join('; ')}.`,
+    );
+  }
+  writeCoreManifest(plan, corePath, coreManifest);
+}
+
+/** Core's scripts that run a file `name` now holds, which move to `name`'s manifest. */
+function movedScripts(plan: Plan, coreManifest: Manifest, name: string): Record<string, string> {
+  const moved: Record<string, string> = {};
+  for (const [script, command] of Object.entries(coreManifest.scripts ?? {})) {
+    const paths = [...command.matchAll(/\b((?:src|scripts)\/[\w./-]+\.ts)\b/g)].map(
+      (match) => match[1] ?? '',
+    );
+    if (
+      paths.length > 0 &&
+      paths.every((path) => plan.owner.get(path) === name && plan.extracted.has(name))
+    ) {
+      moved[script] = command;
+    }
+  }
+  return moved;
+}
+
+function writeCoreManifest(plan: Plan, path: string, manifest: Manifest): void {
+  const scripts = { ...manifest.scripts };
+  for (const name of plan.extracted) {
+    for (const script of Object.keys(movedScripts(plan, manifest, name))) {
+      delete scripts[script];
+      for (const [other, command] of Object.entries(scripts)) {
+        scripts[other] = command
+          .replaceAll(` && bun run ${script}`, '')
+          .replaceAll(`bun run ${script} && `, '');
+      }
+    }
+  }
+  const dependencies = { ...manifest.dependencies };
+  for (const name of plan.extracted) dependencies[`${PACKAGE_SCOPE}${name}`] = 'workspace:*';
+  const exportsField: Record<string, unknown> = { ...manifest.exports };
+  for (const [key, value] of Object.entries(exportsField)) {
+    const target = typeof value === 'string' ? value : (value as { default?: string }).default;
+    if (target === undefined || !target.startsWith('./src/')) continue;
+    const virtual = target.slice(2);
+    const owner = plan.owner.get(virtual);
+    if (owner === undefined || !plan.extracted.has(owner)) continue;
+    // Core keeps the subpath: a one-line entry re-exports it from the package that now holds it.
+    const entry = `src/exports/${key.slice(2).replaceAll('/', '-')}.ts`;
+    const specifier = specifierFor(owner, virtual, plan.components.get(owner)).specifier;
+    write(
+      plan,
+      posix.join(plan.options.core, entry),
+      `// ${GENERATED_MARKER}: core's ${key} subpath, which ${PACKAGE_SCOPE}${owner} now holds.\nexport * from '${specifier}';\n`,
+    );
+    exportsField[key] = ENTRY(entry);
+  }
+  write(
+    plan,
+    path,
+    `${JSON.stringify({ ...manifest, exports: exportsField, scripts, dependencies: sortRecord(dependencies) }, null, 2)}\n`,
+  );
+}
+
+type AllowlistFile = { description: string; entries: { file: string }[] };
+
+/** Moves each inherited-key-reads allowlist entry to the package that now holds its file. */
+function shardAllowlists(plan: Plan): void {
+  const { core } = plan.options;
+  const corePath = posix.join(core, ALLOWLIST);
+  if (!plan.pending.has(corePath) && !existsSync(join(plan.options.root, corePath))) return;
+  const coreList = JSON.parse(read(plan, corePath)) as AllowlistFile;
+  const kept: AllowlistFile['entries'] = [];
+  const moved = new Map<string, AllowlistFile['entries']>();
+  for (const entry of coreList.entries) {
+    const owner = plan.owner.get(entry.file);
+    if (owner === undefined || !plan.extracted.has(owner)) kept.push(entry);
+    else moved.set(owner, [...(moved.get(owner) ?? []), entry]);
+  }
+  if (moved.size === 0) return;
+  write(plan, corePath, `${JSON.stringify({ ...coreList, entries: kept }, null, 2)}\n`);
+  for (const [name, entries] of moved) {
+    const path = posix.join('components', name, ALLOWLIST);
+    const existing =
+      plan.pending.has(path) || existsSync(join(plan.options.root, path))
+        ? (JSON.parse(read(plan, path)) as AllowlistFile)
+        : { description: coreList.description, entries: [] };
+    const all = [...existing.entries, ...entries].toSorted((a, b) => a.file.localeCompare(b.file));
+    write(plan, path, `${JSON.stringify({ ...existing, entries: all }, null, 2)}\n`);
+  }
+}
+
+/**
+ * COR-2078 (branch `split-a-metadata`) makes `metadata` a Turborepo task. When it lands, this step
+ * makes core's `metadata` task depend on `^metadata` and copy each extracted family's `.metadata/`
+ * into core's `.metadata/`, so core's wildcard subpath exports keep resolving. Until then there is
+ * no task to wire, and it only reports the packages it will wire.
+ */
+function wireMetadata(plan: Plan): void {
+  const families = [...plan.extracted].filter((name) => kindOf(name) === 'family');
+  if (families.length > 0) {
+    plan.result.warnings.push(
+      `metadata: ${families.length} famil${families.length === 1 ? 'y' : 'ies'} to wire into core's metadata task once COR-2078 lands.`,
+    );
+  }
+}
+
+/** Plans, and unless it is a dry run applies, one extraction. */
+export async function extractFamilies(options: ExtractOptions): Promise<ExtractResult> {
+  const plan: Plan = {
+    options: {
+      dryRun: false,
+      listFiles: (directory) => walkFiles(options.root, directory),
+      format: async (_path, text) => text,
+      ...options,
+    },
+    extracted: new Set(),
+    selected: selectPackages(options.families, options.selection),
+    owner: new Map(),
+    components: new Map(),
+    result: { selected: [], moves: [], created: [], written: [], rewrites: [], warnings: [] },
+    exportKeys: new Map(),
+    pending: new Map(),
+  };
+  const { root, core, families } = plan.options;
+  plan.result.selected = plan.selected;
+  for (const name of Object.keys(families.packages)) {
+    if (!KEPT.has(name) && isExtractedPackage(root, core, name)) plan.extracted.add(name);
+  }
+  const missing = plan.selected.flatMap((name) =>
+    (families.packages[name]?.dependencies ?? [])
+      .filter(
+        (dependency) =>
+          !KEPT.has(dependency) &&
+          !plan.extracted.has(dependency) &&
+          !plan.selected.includes(dependency),
+      )
+      .map(
+        (dependency) =>
+          `${name} depends on ${dependency}, which is still in core: extract it first.`,
+      ),
+  );
+  if (missing.length > 0) throw new Error(missing.join('\n'));
+  // Ownership reads the tree before this run, so packages selected now are listed from core.
+  const problems = buildOwnership(plan);
+  if (problems.length > 0) {
+    throw new Error(
+      `families.json is stale; run derive-families.ts and commit the diff:\n- ${problems.join('\n- ')}`,
+    );
+  }
+  readOrder(plan);
+  planMoves(plan);
+  scaffold(plan);
+  for (const name of plan.selected) plan.extracted.add(name);
+  if (!plan.options.dryRun) applyMoves(plan);
+  splitBarrel(plan);
+  ensureBarrels(plan);
+  const directories = [core, ...[...plan.extracted].map((name) => posix.join('components', name))];
+  for (const directory of directories) {
+    for (const path of plan.options.listFiles(directory))
+      rewriteFile(plan, posix.join(directory, path));
+  }
+  regenerateStylesheets(plan);
+  writeManifests(plan);
+  shardAllowlists(plan);
+  wireMetadata(plan);
+  for (const path of plan.options.listFiles('.')) rewriteRepositoryPaths(plan, path);
+  if (!plan.options.dryRun) {
+    for (const path of plan.result.written) {
+      if (!/\.(?:ts|css|json|svelte)$/.test(path)) continue;
+      const absolute = join(root, path);
+      const text = readFileSync(absolute, 'utf8');
+      const formatted = await plan.options.format(absolute, text);
+      if (formatted !== text) writeFileSync(absolute, formatted);
+    }
+  }
+  return plan.result;
+}
+
+/** Core's directory: `components/core` once COR-2082 renames it, `components/cinder` until then. */
+export function defaultCore(root: string): string {
+  for (const candidate of ['components/core', 'components/cinder']) {
+    if (existsSync(join(root, candidate, 'package.json'))) return candidate;
+  }
+  throw new Error('Neither components/core nor components/cinder exists.');
+}
+
+function trackedFiles(root: string, directory: string): string[] {
+  const result = Bun.spawnSync(
+    ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', directory],
+    { cwd: root, stdout: 'pipe', stderr: 'inherit' },
+  );
+  if (result.exitCode !== 0) throw new Error(`git ls-files ${directory} failed.`);
+  const prefix = directory === '.' ? '' : `${directory}/`;
+  return result.stdout
+    .toString()
+    .split('\0')
+    .filter((path) => path !== '' && existsSync(join(root, path)))
+    .map((path) => path.slice(prefix.length))
+    .toSorted();
+}
+
+async function prettierFormat(path: string, text: string): Promise<string> {
+  const prettier = await import('prettier');
+  const options = await prettier.resolveConfig(path);
+  const info = await prettier.getFileInfo(path, {
+    ignorePath: join(REPOSITORY_ROOT, '.prettierignore'),
+  });
+  if (info.ignored) return text;
+  return prettier.format(text, { ...options, filepath: path });
+}
+
+function verify(root: string, rewrites: readonly Rewrite[]): string[] {
+  const failures: string[] = [];
+  for (const { importer, specifier, target } of rewrites) {
+    let resolved: string;
+    try {
+      resolved = Bun.resolveSync(specifier.split('?')[0] ?? '', dirname(join(root, importer)));
+    } catch (error) {
+      failures.push(`${importer}: ${specifier} does not resolve (${(error as Error).message}).`);
+      continue;
+    }
+    if (relative(root, resolved) !== target && !resolved.endsWith(target)) {
+      failures.push(
+        `${importer}: ${specifier} resolves to ${relative(root, resolved)}, not ${target}.`,
+      );
+    }
+  }
+  return failures;
+}
+
+async function main(argv: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      package: { type: 'string', multiple: true },
+      layer: { type: 'string' },
+      half: { type: 'string' },
+      all: { type: 'boolean' },
+      core: { type: 'string' },
+      'dry-run': { type: 'boolean' },
+      'no-install': { type: 'boolean' },
+      'skip-derive-check': { type: 'boolean' },
+    },
+  });
+  let selection: Selection;
+  if (values.all === true) selection = { kind: 'all' };
+  else if (values.layer !== undefined) {
+    const half = values.half === undefined ? undefined : Number(values.half);
+    if (half !== undefined && half !== 1 && half !== 2) throw new Error('--half is 1 or 2.');
+    selection = {
+      kind: 'layer',
+      layer: Number(values.layer),
+      ...(half === undefined ? {} : { half }),
+    };
+  } else if (values.package !== undefined) selection = { kind: 'packages', names: values.package };
+  else {
+    process.stderr.write(
+      'Usage: extract-families.ts (--package <name>… | --layer <n> [--half 1|2] | --all) [--core <dir>] [--dry-run] [--no-install]\n',
+    );
+    return 2;
+  }
+  const root = REPOSITORY_ROOT;
+  const core = values.core ?? defaultCore(root);
+  const rules = readRules();
+  const families = JSON.parse(readFileSync(FAMILIES_PATH, 'utf8')) as DerivedFamilies;
+  if (values['skip-derive-check'] !== true) {
+    const current = await renderFamilies(
+      deriveFromRepository({ ...rules, packageRoot: core }, root),
+    );
+    if (current !== readFileSync(FAMILIES_PATH, 'utf8')) {
+      process.stderr.write(
+        'families.json is stale: run `bun internal/component-tooling/scripts/derive-families.ts` and commit the diff first.\n',
+      );
+      return 1;
+    }
+  }
+  const dryRun = values['dry-run'] === true;
+  const result = await extractFamilies({
+    root,
+    core,
+    families,
+    rules,
+    selection,
+    dryRun,
+    listFiles: (directory) => trackedFiles(root, directory),
+    format: prettierFormat,
+  });
+  const out = (line: string) => process.stdout.write(`${line}\n`);
+  out(
+    `${dryRun ? 'Would extract' : 'Extracted'} ${result.selected.length} package(s): ${result.selected.join(', ')}`,
+  );
+  out(
+    `${result.created.length} created, ${result.moves.length} files moved, ${result.rewrites.length} imports rewritten, ${result.written.length} files written.`,
+  );
+  for (const warning of result.warnings) out(`warning: ${warning}`);
+  if (dryRun) {
+    for (const { from, to } of result.moves.slice(0, 40)) out(`  ${from} -> ${to}`);
+    if (result.moves.length > 40) out(`  … and ${result.moves.length - 40} more moves`);
+    return 0;
+  }
+  if (values['no-install'] !== true) {
+    const install = Bun.spawnSync(['bun', 'install'], {
+      cwd: root,
+      stdout: 'inherit',
+      stderr: 'inherit',
+    });
+    if (install.exitCode !== 0) return install.exitCode ?? 1;
+    const failures = verify(root, result.rewrites);
+    for (const failure of failures) out(`unresolved: ${failure}`);
+    if (failures.length > 0) return 1;
+  }
+  const stage = Bun.spawnSync(
+    [
+      'git',
+      'add',
+      '-A',
+      '--',
+      core,
+      ...result.selected.map((name) => `components/${name}`),
+      ...result.written,
+      'bun.lock',
+    ],
+    { cwd: root, stdout: 'inherit', stderr: 'inherit' },
+  );
+  return stage.exitCode ?? 1;
+}
+
+if (import.meta.main) process.exitCode = await main(process.argv.slice(2));
