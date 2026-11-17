@@ -297,10 +297,22 @@
   /* Status on line two (the chat list, or a phone) sits beside 12px preview text, not the title,
      so it has no strut. */
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
-    .cinder-stacked-list-item__status::before,
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
     .cinder-stacked-list-item__status::before {
     display: none;
+  }
+
+  /* The phone form is chosen by the row's own width, not the viewport's (COR-2448): every rule
+     below that is "on a phone" sits in `@container cinder-stacked-list-item (max-width: 639.98px)`,
+     which asks the row itself. `:not(.cinder-stacked-list-item--band)` is true of every two-line
+     row (a band row is never one) and stands where the viewport attribute stood, so each rule
+     keeps the specificity it had. */
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__status::before {
+      display: none;
+    }
   }
 
   /* The dot centres on the word's line box while the word's baseline is the flex baseline. */
@@ -385,8 +397,11 @@
     overflow-wrap: anywhere;
   }
 
-  .cinder-stacked-list-item--lines[data-cinder-phone] .cinder-stacked-list-item__detail {
-    grid-column: 2 / 5;
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not(.cinder-stacked-list-item--band)
+      .cinder-stacked-list-item__detail {
+      grid-column: 2 / 5;
+    }
   }
 
   /* A row whose details failed to load (row 14q): line two is the message in the danger text
@@ -426,8 +441,6 @@
      title and the time, and line two is the status in its own fixed-width column, then the
      preview, so previews line up. A phone leading row takes the same shape with an unfixed width. */
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
-    > .cinder-stacked-list-item__layout,
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
     > .cinder-stacked-list-item__layout {
     grid-template-columns:
       [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
@@ -436,6 +449,21 @@
       'leading title title time trailing'
       'leading status line line trailing'
       '. . details details .';
+  }
+
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout {
+      grid-template-columns:
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
+        [trailing] auto;
+      grid-template-areas:
+        'leading title title time trailing'
+        'leading status line line trailing'
+        '. . details details .';
+    }
   }
 
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two.cinder-stacked-list-item--status-column
@@ -454,34 +482,46 @@
   /* A phone puts the status of either placement on line two with no fixed column. The chat list's
      line-two status gives up its column here too (a phone-only exception, COR-2016): the word, a
      comma, then the latest message. */
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
-    > .cinder-stacked-list-item__layout,
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
-    > .cinder-stacked-list-item__layout {
-    --_cinder-status-track: auto;
-  }
+  @container cinder-stacked-list-item (max-width: 639.98px) {
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading
+      > .cinder-stacked-list-item__layout,
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-line-two
+      > .cinder-stacked-list-item__layout {
+      --_cinder-status-track: auto;
+    }
 
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
-    .cinder-stacked-list-item__status,
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
-    .cinder-stacked-list-item__status {
-    align-items: center;
-    min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
-    padding-inline-end: 0;
-  }
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading
+      .cinder-stacked-list-item__status,
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-line-two
+      .cinder-stacked-list-item__status {
+      align-items: center;
+      min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
+      padding-inline-end: 0;
+    }
 
-  /* On a phone the status moves to line two beside the kind and agent: "Waiting on you, Chat". The
-     comma follows only a status that drew something (`:has(*)`), so a row whose status snippet
-     drew nothing has no stray comma at the start of line two. */
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading:not(
-      .cinder-stacked-list-item--no-line-two
-    )
-    .cinder-stacked-list-item__status:has(*)::after,
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
-    .cinder-stacked-list-item__status:has(*)::after {
-    content: ',' / '';
-    margin-inline-end: var(--cinder-space-1-5);
-    color: var(--cinder-text-subtle);
+    /* On a phone the status moves to line two beside the kind and agent: "Waiting on you, Chat".
+       The comma follows only a status that drew something (`:has(*)`), so a row whose status
+       snippet drew nothing has no stray comma at the start of line two. */
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-leading:not(.cinder-stacked-list-item--no-line-two)
+      .cinder-stacked-list-item__status:has(*)::after,
+    .cinder-stacked-list-item--lines:not(
+        .cinder-stacked-list-item--band
+      ).cinder-stacked-list-item--status-line-two
+      .cinder-stacked-list-item__status:has(*)::after {
+      content: ',' / '';
+      margin-inline-end: var(--cinder-space-1-5);
+      color: var(--cinder-text-subtle);
+    }
   }
 
   /* ----------------------------------------
@@ -738,7 +778,11 @@
       '. . details details';
   }
 
-  .cinder-stacked-list-item--lines.cinder-stacked-list-item--phone-buttons[data-cinder-phone].cinder-stacked-list-item--status-leading
+  /* `--phone-buttons` is set only on a row narrower than 640px, the same row the phone-form
+     container query above asks about. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--phone-buttons:not(
+      .cinder-stacked-list-item--band
+    ).cinder-stacked-list-item--status-leading
     > .cinder-stacked-list-item__layout {
     grid-template-columns:
       [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)

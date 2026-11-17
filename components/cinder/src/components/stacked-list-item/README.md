@@ -71,7 +71,7 @@ The status column is optional. A row (or a list) that has nothing to say about s
 
 ### Phone and the chat list
 
-On a phone (a viewport narrower than 640px) the status moves to line two beside the kind and agent (`Waiting on you, Chat, Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
+On a phone (a row narrower than 640px: its own width, not the viewport's, so a 360px pane in a wide window takes it too) the status moves to line two beside the kind and agent (`Waiting on you, Chat, Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
 
 The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you, I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
 
@@ -143,7 +143,7 @@ Pass `leadingTone` to draw `leading` as a 32px rounded tile tinted with that ton
 
 ### Trailing actions
 
-Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each is a secondary small button on a tablet or desktop; below 640px they collapse into one menu button ("More actions", 44px under a coarse pointer) with the same actions. A disabled action keeps `aria-disabled` and stays focusable, with `disabledReason` as its description and tooltip, in the menu too.
+Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each is a secondary small button on a tablet or desktop; below 640px of row width they collapse into one menu button ("More actions", 44px under a coarse pointer) with the same actions. A disabled action keeps `aria-disabled` and stays focusable, with `disabledReason` as its description and tooltip, in the menu too.
 
 Trailing actions sit in a fixed column. The trailing region is the row's last grid column and is only as wide as its actions, so they sit against the row's end edge whatever the body holds. A status badge or other metadata in the body can lengthen or shorten the text beside the actions, and it never changes where an action button lands, because the body column takes the slack. Keep it that way: put a badge with the metadata in the content column (`meta`, `description` or the status cell), never inside `trailing` or `actions`, where it would take width from the buttons and move them from one row to the next. Below 448px of row width the trailing region drops under the body, or collapses to one menu button, on every row alike.
 
