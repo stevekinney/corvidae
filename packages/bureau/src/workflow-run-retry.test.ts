@@ -126,6 +126,21 @@ describe('retrying a failed workflow run from its failed step', () => {
     expect(await engineStatus(harness, workflowStepRunId(runId, 1, 1))).toBe('completed');
   });
 
+  it('reads the output name of the version a run ran, and null for a file without one', async () => {
+    const { harness, control } = await failingHarness();
+    control.failing = false;
+    const plain = await harness.bureau.workflows!.start('notes', { owner: OWNER });
+    await settled(harness, plain.runId, 'completed');
+    const before = await runOf(harness, plain.runId);
+    expect(before?.outputName).toBeNull();
+
+    await harness.putWorkflow('notes', { ...twoSteps, outputName: 'notes' });
+    const named = await harness.bureau.workflows!.start('notes', { owner: OWNER });
+    await settled(harness, named.runId, 'completed');
+    const after = await runOf(harness, named.runId);
+    expect(after?.outputName).toBe('notes');
+  });
+
   it('keeps the id every run had before retries existed for generation 0', () => {
     expect(workflowStepRunId('victim-run', 0)).toBe(workflowStepRunId('victim-run', 0, 0));
     expect(workflowStepRunId('victim-run', 0, 1)).not.toBe(workflowStepRunId('victim-run', 0));

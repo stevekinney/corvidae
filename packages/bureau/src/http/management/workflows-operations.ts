@@ -147,6 +147,8 @@ const workflowListingSchema = z.object({
   inputSchema: jsonSchemaField.nullable(),
   /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
   outputSchema: jsonSchemaField.nullable(),
+  /** The name of what an instance produces, such as `notes`, or `null` when the file gives none. */
+  outputName: z.string().nullable(),
   version: z.string().nullable(),
   /**
    * The file's trigger as written, `{ kind, ... }` with a schedule's `timezone`, `catchUp`, `name`, and `input`, for
@@ -209,6 +211,12 @@ const definitionSchema = z
       .describe(
         'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. An instance whose result breaks it fails with `output-invalid`.',
       ),
+    outputName: z
+      .string()
+      .optional()
+      .describe(
+        'The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.',
+      ),
     trigger: z
       .looseObject({ kind: z.string() })
       .describe(
@@ -221,7 +229,7 @@ const definitionSchema = z
       ),
   })
   .describe(
-    'The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.',
+    'The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.',
   );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
@@ -269,6 +277,12 @@ const runDetailSchema = runSummarySchema.extend({
    * the workflow’s schema (`error` lists the issues), else `null`.
    */
   finishReason: z.enum(['input-invalid', 'output-invalid']).nullable(),
+  /**
+   * The name of what the instance produces (COR-2424), as the version it ran declares it: the
+   * file’s when the instance runs on the file’s current version, else the newest saved version of
+   * that revision’s. `null` when that version declares none, or its content is no longer recorded.
+   */
+  outputName: z.string().nullable(),
 });
 
 const runHistoryEventSchema = z.object({
@@ -357,6 +371,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     paused: listing.paused,
     inputSchema: listing.inputSchema === null ? null : { ...listing.inputSchema },
     outputSchema: listing.outputSchema === null ? null : { ...listing.outputSchema },
+    outputName: listing.outputName,
     version: listing.version ?? null,
     trigger: listing.trigger === null ? null : { ...listing.trigger },
     listener: listing.listener === null ? null : { ...listing.listener },
@@ -1118,7 +1133,7 @@ export const workflowsRunsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one instance of a workflow',
   description:
-    'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',
+    'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. `outputName` is the name the version it ran gives what it produces, or `null`. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: runsGetInput,
@@ -1154,6 +1169,7 @@ export const workflowsRunsGetOperation = defineOperation<
       result: (run.result ?? null) as never,
       error: run.error ?? null,
       finishReason: run.finishReason,
+      outputName: run.outputName,
     };
   },
 });
@@ -1605,6 +1621,12 @@ const revisionChangeSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('input-schema'), breaking: z.literal(true) }),
   z.object({ kind: z.literal('output-schema'), breaking: z.literal(true) }),
+  z.object({
+    kind: z.literal('output-name'),
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    breaking: z.literal(false),
+  }),
   z.object({ kind: z.literal('step-added'), step: z.number().int(), breaking: z.literal(false) }),
   z.object({ kind: z.literal('step-removed'), step: z.number().int(), breaking: z.literal(true) }),
   z.object({ kind: z.literal('step-replaced'), step: z.number().int(), breaking: z.literal(true) }),
@@ -1675,6 +1697,10 @@ const historyOutput = z.object({
       steps: z.array(z.record(z.string(), z.unknown())),
       inputSchema: jsonSchemaField.nullable(),
       outputSchema: jsonSchemaField.nullable(),
+      outputName: z
+        .string()
+        .nullable()
+        .describe('The name of what an instance produces, or `null` when the version gives none.'),
       previousVersion: z.string().nullable(),
       changes: z.array(revisionChangeSchema),
       compatibility: revisionCompatibilitySchema,
@@ -1730,6 +1756,7 @@ export const workflowsHistoryOperation = defineOperation<
         inputSchema: entry.content.inputSchema === null ? null : { ...entry.content.inputSchema },
         outputSchema:
           entry.content.outputSchema === null ? null : { ...entry.content.outputSchema },
+        outputName: entry.content.outputName ?? null,
         previousVersion: entry.previousVersion,
         changes: entry.changes.map((change) => ({ ...change })),
         compatibility: entry.compatibility,

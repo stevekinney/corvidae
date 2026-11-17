@@ -308,6 +308,49 @@ describe('reading the extended format', () => {
     expect(contentsOf({ ...MORNING_BRIEFING, title: 'x'.repeat(120) }).title).toHaveLength(120);
   });
 
+  it('reads an output name, keeps it out of the document Weft is handed, and leaves the version alone (COR-2424)', () => {
+    const file = contentsOf({ ...MORNING_BRIEFING, outputName: 'briefing' });
+    expect(file.outputName).toBe('briefing');
+    expect(Object.keys(file.document)).not.toContain('outputName');
+    expect(workflowVersionOf(file.document)).toBe(
+      workflowVersionOf(contentsOf(MORNING_BRIEFING).document),
+    );
+    // A file written before the field existed has none.
+    expect(contentsOf(MORNING_BRIEFING).outputName).toBeNull();
+    expect(contentsOf({ ...MORNING_BRIEFING, outputName: `a${'b'.repeat(63)}` }).outputName).toBe(
+      `a${'b'.repeat(63)}`,
+    );
+  });
+
+  it('refuses an output name that is blank, too long, not identifier-like, or not a string', () => {
+    for (const outputName of ['', ' notes', '1notes', 'release notes', 'a'.repeat(65), 7, null]) {
+      expect(issuesOf({ ...MORNING_BRIEFING, outputName }).map((issue) => issue.path)).toEqual([
+        'outputName',
+      ]);
+    }
+  });
+
+  it('writes the output name after the schemas and reads it back exactly', () => {
+    const definition: WorkflowFileDefinition = {
+      title: 'Morning briefing',
+      trigger: { kind: 'manual' },
+      outputSchema: { type: 'object' },
+      outputName: 'briefing',
+      steps: [{ kind: 'sleep', duration: '15m' }],
+    };
+    const text = serializeWorkflowFile('morning-briefing', definition);
+    expect(Object.keys(JSON.parse(text) as object)).toEqual([
+      'name',
+      'title',
+      'trigger',
+      'outputSchema',
+      'outputName',
+      'steps',
+    ]);
+    const parsed = parseWorkflowFile('morning-briefing', text, host);
+    expect(parsed.ok && parsed.file.outputName).toBe('briefing');
+  });
+
   it('takes review only as true, and only on an await-signal step', () => {
     expect(
       issuesOf(withStep(1, { kind: 'await-signal', signal: 'approve-briefing', review: false })),
@@ -530,6 +573,19 @@ describe('the extended format on a Bureau', () => {
       trigger: SCHEDULED.trigger,
       steps: SCHEDULED.steps,
     });
+    expect(after.version).toBe(before.version);
+  });
+
+  it('keeps the output name when it pauses and resumes the file (COR-2424)', async () => {
+    const harness = await start();
+    await harness.putWorkflow('release-notes', { ...SCHEDULED, outputName: 'notes' });
+    const workflows = harness.bureau.workflows!;
+    const before = workflows.list()[0]!;
+    expect(before.outputName).toBe('notes');
+    const paused = await workflows.pause('release-notes', { expectedHash: before.hash! });
+    await workflows.resume('release-notes', { expectedHash: paused.hash });
+    const after = workflows.list()[0]!;
+    expect(after).toMatchObject({ paused: false, outputName: 'notes' });
     expect(after.version).toBe(before.version);
   });
 

@@ -273,6 +273,13 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
    */
   readonly finishReason: WorkflowFinishReason | null;
   /**
+   * COR-2424 — the name of what the instance produces, as the version it ran declares it
+   * (`outputName`): the file's, when the instance runs on its current revision, else the newest
+   * saved version that registered as that revision. `null` when that version declares none, which
+   * every file written before the field existed is, or its content is no longer recorded.
+   */
+  readonly outputName: string | null;
+  /**
    * Present when Bureau cancelled the instance at startup because a contributed activity its
    * revision pins is not loaded: `missing` when no version of it is, `version-mismatch` when only
    * other versions are (COR-1874). The instance is never resumed on another version.
@@ -1634,6 +1641,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return answer(retryOptions.step);
   }
 
+  /**
+   * COR-2424 — the `outputName` of the revision of workflow `id` at `workflowVersion`: the file's,
+   * when it is the current one, else the newest saved version with that Weft version (an output
+   * name, like a title, leaves the Weft version as it was, so the newest save of it wins).
+   */
+  async function outputNameOf(id: string, workflowVersion: string): Promise<string | null> {
+    const file = catalog.find(id);
+    if (file?.version === workflowVersion) return file.outputName;
+    const records = await revisionLedger.list(id);
+    const saved = records.findLast((record) => record.workflowVersion === workflowVersion);
+    return saved?.content.outputName ?? null;
+  }
+
   /** Register the files' documents, and the older revisions that still have an instance in flight. */
   async function register(retained: readonly WorkflowDocument[]): Promise<void> {
     const files = readyFiles();
@@ -2918,6 +2938,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
         finishReason: state.status === 'failed' ? finishReasonOf(state.errorStack) : null,
+        outputName: await outputNameOf(
+          bureauNameOf(state.type),
+          state.versionTuple.workflowVersion,
+        ),
         ...(cancellation?.pin === undefined && unloaded === undefined
           ? {}
           : { unresumable: cancellation?.pin ?? unloaded! }),

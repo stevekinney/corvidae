@@ -15708,7 +15708,7 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15723,6 +15723,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -15829,7 +15833,7 @@
         "properties": {
           "definition": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15844,6 +15848,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -15953,7 +15961,7 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -15968,6 +15976,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -16083,7 +16095,7 @@
         "properties": {
           "definition": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -16098,6 +16110,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -16225,6 +16241,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -16429,6 +16449,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -17101,6 +17125,12 @@
                 }
               ]
             },
+            "outputName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "outputSchema": {
               "anyOf": [
                 {
@@ -17273,6 +17303,7 @@
             "paused",
             "inputSchema",
             "outputSchema",
+            "outputName",
             "version",
             "trigger",
             "listener",
@@ -17521,6 +17552,12 @@
                           }
                         ]
                       },
+                      "outputName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "outputSchema": {
                         "anyOf": [
                           {
@@ -17687,6 +17724,7 @@
                       "paused",
                       "inputSchema",
                       "outputSchema",
+                      "outputName",
                       "version",
                       "trigger",
                       "listener",
@@ -18335,6 +18373,38 @@
                               "const": false,
                               "type": "boolean"
                             },
+                            "from": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "kind": {
+                              "const": "output-name",
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "from",
+                            "to",
+                            "breaking"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "breaking": {
+                              "const": false,
+                              "type": "boolean"
+                            },
                             "kind": {
                               "const": "step-added",
                               "type": "string"
@@ -18660,6 +18730,13 @@
                     ],
                     "type": "string"
                   },
+                  "outputName": {
+                    "description": "The name of what an instance produces, or `null` when the version gives none.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "outputSchema": {
                     "anyOf": [
                       {
@@ -18779,6 +18856,7 @@
                   "steps",
                   "inputSchema",
                   "outputSchema",
+                  "outputName",
                   "previousVersion",
                   "changes",
                   "compatibility",
@@ -18853,7 +18931,7 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -18868,6 +18946,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -19052,6 +19134,38 @@
                     },
                     "required": [
                       "kind",
+                      "breaking"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "breaking": {
+                        "const": false,
+                        "type": "boolean"
+                      },
+                      "from": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "const": "output-name",
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "from",
+                      "to",
                       "breaking"
                     ],
                     "type": "object"
@@ -19405,7 +19519,7 @@
         "properties": {
           "definition": {
             "additionalProperties": false,
-            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.",
+            "description": "The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.",
             "properties": {
               "agent": {
                 "type": "string"
@@ -19420,6 +19534,10 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "outputName": {
+                "description": "The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.",
+                "type": "string"
               },
               "outputSchema": {
                 "additionalProperties": {},
@@ -19904,7 +20022,7 @@
       }
     },
     {
-      "description": "Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.",
+      "description": "Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. `outputName` is the name the version it ran gives what it produces, or `null`. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -20254,6 +20372,12 @@
                 }
               ]
             },
+            "outputName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "result": {
               "anyOf": [
                 {
@@ -20307,7 +20431,8 @@
             "trigger",
             "result",
             "error",
-            "finishReason"
+            "finishReason",
+            "outputName"
           ],
           "type": "object"
         }
