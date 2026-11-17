@@ -478,6 +478,8 @@ export type {
   RunFailureDetail,
   RunSettledStatus,
   SteeringOutcomeDetail,
+  TriggerEventKind,
+  TriggerFireOutcome,
 } from './events';
 export {
   ActionEvent,
@@ -509,6 +511,7 @@ export {
   ScorerThresholdBreachedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  TriggerLifecycleEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,

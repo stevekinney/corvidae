@@ -38,6 +38,21 @@ describe('what starts a workflow', () => {
     expect(startsPart(null)).toBeNull();
   });
 
+  test('says what a plugin’s trigger starts it on, where it used to say nothing (COR-2171)', () => {
+    expect(startsPart({ kind: 'plugin', words: 'GitHub sends a push or a pull request' })).toEqual([
+      { text: 'Starts when GitHub sends a push or a pull request' },
+    ]);
+    const line = startsLine({
+      trigger: { kind: 'plugin', words: 'GitHub sends a push or a pull request' },
+      canStart: true,
+      agent: null,
+    });
+    expect(line?.parts).toEqual([
+      [{ text: 'Starts when GitHub sends a push or a pull request' }],
+      [{ text: 'you can also start it yourself' }],
+    ]);
+  });
+
   test('joins the facts of the first line in order: what starts it, a person can too, the agent', () => {
     const line = startsLine({
       trigger: { kind: 'schedule', words: 'Every hour' },

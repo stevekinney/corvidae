@@ -16,6 +16,7 @@ import {
   inSegment,
   internalCells,
   internalWords,
+  pluginTriggerSummary,
   rowSegment,
   scheduleLabel,
   schedulesSummary,
@@ -437,6 +438,44 @@ describe('a schedule trigger’s spec in words', () => {
     expect(triggerSummary({ kind: 'other' })).toBeNull();
     expect(triggerSummary({ kind: 'schedule' })).toBeNull();
     expect(triggerSummary(null)).toBeNull();
+  });
+
+  test('says what starts a plugin’s trigger from its kind’s own description, after "Starts when" (COR-2171)', () => {
+    const kinds = [
+      { id: 'github:webhook', description: 'GitHub sends a push or a pull request.' },
+      { id: 'linear:issues', description: 'An issue changes in Linear.' },
+      { id: 'clock:tick', description: 'The clock strikes the hour' },
+      { id: 'quiet:none', description: ' . ' },
+    ];
+    expect(pluginTriggerSummary({ kind: 'github:webhook' }, kinds)).toEqual({
+      kind: 'plugin',
+      words: 'GitHub sends a push or a pull request',
+    });
+    // A leading article is lower-cased, so it reads after "Starts when", and a name keeps its capital.
+    expect(pluginTriggerSummary({ kind: 'linear:issues' }, kinds)).toEqual({
+      kind: 'plugin',
+      words: 'an issue changes in Linear',
+    });
+    expect(pluginTriggerSummary({ kind: 'clock:tick' }, kinds)).toEqual({
+      kind: 'plugin',
+      words: 'the clock strikes the hour',
+    });
+  });
+
+  test('says nothing for a plugin trigger whose kind is not loaded, says nothing, or is no kind (COR-2171)', () => {
+    const kinds = [
+      { id: 'github:webhook', description: 'GitHub sends a push.' },
+      { id: 'quiet:none', description: ' . ' },
+    ];
+    expect(pluginTriggerSummary({ kind: 'github:webhook' }, undefined)).toBeNull();
+    expect(pluginTriggerSummary({ kind: 'linear:issues' }, kinds)).toBeNull();
+    expect(pluginTriggerSummary({ kind: 'quiet:none' }, kinds)).toBeNull();
+    expect(pluginTriggerSummary({ kind: 7 }, kinds)).toBeNull();
+    expect(pluginTriggerSummary(null, kinds)).toBeNull();
+  });
+
+  test('keeps saying nothing for a plugin trigger from triggerSummary, which reads only the built-in kinds', () => {
+    expect(triggerSummary({ kind: 'github:webhook' })).toBeNull();
   });
 
   test('says the schedules of a code-defined type: none, one in words, or several by count', () => {

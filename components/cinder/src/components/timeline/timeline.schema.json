@@ -92,6 +92,10 @@
               "Connected",
               "Draining",
               "Disconnected",
+              "Listening",
+              "Ready",
+              "Standby",
+              "Waiting for a secret",
               "Live",
               "Reconnecting…"
             ],

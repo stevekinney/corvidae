@@ -62,6 +62,11 @@ const schema = {
       type: 'string',
       description: "Text of the error's retry button. Default `Try again`.",
     },
+    trailingGlyph: {
+      type: 'boolean',
+      description:
+        'Marks `trailing` as a non-interactive glyph, such as a chevron. Below 448px of row width a\nglyph stays beside the body, as the phone menu button does, where trailing actions drop under\nit. Default `false`.',
+    },
     actionsLabel: {
       type: 'string',
       description:

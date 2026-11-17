@@ -490,6 +490,11 @@ export interface PluginTriggerListing {
   /** The version the listener runs at, the kind's own else its plugin's; a change restarts it. */
   readonly version: string;
   /**
+   * Whether the kind defines `receive` (COR-2168), so a file whose trigger is one takes requests at
+   * `/triggers/<workflow-id>`; a client shows that address (COR-2171).
+   */
+  readonly receives: boolean;
+  /**
    * The kind's configuration schema as JSON Schema (the fields a trigger holds besides `kind`), or
    * `null` when the schema cannot be written as one.
    */

@@ -159,6 +159,12 @@ type StackedListItemBase = ForwardedLiAttributes & {
   /** Trailing region (chevron, action button, dropdown trigger). */
   trailing?: Snippet;
   /**
+   * Marks `trailing` as a non-interactive glyph, such as a chevron. Below 448px of row width a
+   * glyph stays beside the body, as the phone menu button does, where trailing actions drop under
+   * it. Default `false`.
+   */
+  trailingGlyph?: boolean;
+  /**
    * Text actions at the end of the row. On a tablet or desktop each is a secondary small button;
    * on a phone (below 640px) they collapse into one menu button with the same actions, which is a
    * 44px target under a coarse pointer.
