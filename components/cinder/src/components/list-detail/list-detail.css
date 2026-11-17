@@ -80,10 +80,12 @@
 
   /* The heading in the header starts after the toggle: the toggle's width, which with its own
    * inset and the gap after it is the header's inset again. The search and the filter under the
-   * title keep the header's full width. */
+   * title keep the header's full width. A page that puts a row of its own above the heading (a way
+   * back) marks it `data-cinder-list-detail-header-start`, and it starts after the toggle too, so
+   * no page reaches into this component's markup to find out whether the toggle is there. */
   .cinder-list-detail[data-cinder-toggle-shown]
     .cinder-list-detail__header
-    .cinder-section-heading__primary {
+    :is(.cinder-section-heading__primary, [data-cinder-list-detail-header-start]) {
     padding-inline-start: var(--cinder-button-height-sm);
   }
 

@@ -650,7 +650,9 @@
         {#if showingArchived}
           <!-- The archived view's way back to the chats, above its title. Its label says where it
                goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
-          <div class="ib-chats__back-row">
+          <!-- `data-cinder-list-detail-header-start`: ListDetail starts this row after its list
+               toggle while the toggle stands in the header's start corner. -->
+          <div class="ib-chats__back-row" data-cinder-list-detail-header-start>
             <Button
               data-chats-view-back
               href={router.href(viewPath(false))}

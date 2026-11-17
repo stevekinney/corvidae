@@ -17,7 +17,9 @@ function trimmedLabel(): Map<string, string> {
   parse(css).walkAtRules('supports', (atRule) => {
     if (atRule.params.replaceAll(/\s+/g, '') !== '(text-box-trim:trim-both)') return;
     atRule.walkRules('.cinder-breadcrumbs__trigger-label', (rule) => {
-      rule.walkDecls((declaration) => found.set(declaration.prop, declaration.value));
+      rule.walkDecls((declaration) => {
+        found.set(declaration.prop, declaration.value);
+      });
     });
   });
   return found;

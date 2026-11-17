@@ -60,4 +60,15 @@ describe('ListDetail pane header with actions', () => {
       expect(rule.get('padding-inline')).toBe('var(--cinder-button-padding-x-sm)');
     });
   });
+
+  // A page puts a row of its own above the heading (a way back) and marks it; ListDetail starts it
+  // after the list toggle, so no page reaches into this component's markup to learn the toggle is
+  // there (Interborough's interface lint refuses a page selector that names a Cinder class).
+  test('the heading, and a row a page marks as the header start, begin after the list toggle', async () => {
+    const text = await Bun.file(new URL('./list-detail.css', import.meta.url)).text();
+    const flat = text.replace(/\s+/g, ' ');
+    expect(flat).toContain(
+      '.cinder-list-detail[data-cinder-toggle-shown] .cinder-list-detail__header :is(.cinder-section-heading__primary, [data-cinder-list-detail-header-start]) { padding-inline-start: var(--cinder-button-height-sm); }',
+    );
+  });
 });
