@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "beta",
   "purpose": "Number plus unit for a duration that is stored in milliseconds, so a person types 30 and picks seconds while the value stays one number.",

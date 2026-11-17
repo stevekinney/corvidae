@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "stable",
   "purpose": "Compose-only trigger region that opens a context-menu on right-click or touch long-press.",

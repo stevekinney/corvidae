@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Fieldset that owns the bound value, shared name, and validation state for a set of mutually exclusive radio children.",

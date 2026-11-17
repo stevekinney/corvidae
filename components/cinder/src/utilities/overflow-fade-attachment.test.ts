@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
+import { captureZeroDelayTimers } from '@lostgradient/component-tooling/test/zero-delay-timers.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { captureZeroDelayTimers } from '../test/zero-delay-timers.ts';
 import {
   animationFrameCallbacks,
   FakeMutationObserver,

@@ -2,8 +2,8 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { tick } from 'svelte';
 
+import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { stripCinderComponentsLayer } from '../../test/css.ts';
 import { lengthToPixels } from './table.length.ts';
 import type { TableScrollContainerProps } from './table.types.ts';
 

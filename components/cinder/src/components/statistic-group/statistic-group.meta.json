@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "stable",
   "purpose": "Grid container that arranges a set of statistic tiles into a responsive multi-column layout with shared labelling.",

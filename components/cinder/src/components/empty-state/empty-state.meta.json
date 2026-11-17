@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "stable",
   "purpose": "Centered placeholder with optional icon, title, description, and call-to-action for views that have no data to render.",

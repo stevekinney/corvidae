@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 
-import { environmentConfiguration } from '../../scripts/environment-configuration.ts';
+import { environmentConfiguration } from '@lostgradient/component-tooling/scripts/environment-configuration.ts';
 import { formatNumber } from './format-number.ts';
 
 beforeAll(() => {

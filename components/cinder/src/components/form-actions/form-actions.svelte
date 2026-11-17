@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-  import { trackDockedBarHeight } from '../../_internal/docked-bar-height.ts';
+  import { trackDockedBar } from '../../_internal/docked-bar-height.ts';
   import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import Alert from '../alert/alert.svelte';
@@ -29,15 +29,15 @@
     changeCount === 1 ? '1 unsaved change' : `${changeCount} unsaved changes`,
   );
 
-  // A sticky bar publishes its height so a toast sits above it, and rides above the on-screen
-  // keyboard, as the docked action bar does.
+  // A sticky bar is tracked so a toast sits above it while it is docked, and rides above the
+  // on-screen keyboard, as the docked action bar does.
   $effect(() => {
     if (!sticky) return;
     return trackKeyboardInset();
   });
   $effect(() => {
     if (!sticky || !barElement) return;
-    return trackDockedBarHeight(barElement);
+    return trackDockedBar(barElement);
   });
 </script>
 

@@ -15,9 +15,9 @@
     "./*/examples": "./.metadata/*/examples.json"
   },
   "scripts": {
-    "types": "bun ../cinder/scripts/emit-declarations.ts",
-    "metadata": "bun ../cinder/scripts/generate-component-artifacts.ts --package-root .",
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts && bun ../cinder/scripts/generate-component-artifacts.ts --package-root . --check",
+    "types": "bun ../../internal/component-tooling/scripts/emit-declarations.ts",
+    "metadata": "bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root .",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root . --check",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",

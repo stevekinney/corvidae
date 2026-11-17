@@ -1,10 +1,10 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import Ajv2020 from 'ajv/dist/2020';
 import { createRawSnippet } from 'svelte';
-import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 import type {
   RunStep,
   RunStepBranchGroup,

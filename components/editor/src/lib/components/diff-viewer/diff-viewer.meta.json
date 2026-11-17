@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "domain",
   "status": "domain-suite",
   "purpose": "Side-by-side or unified Markdown diff surface with hunk grouping, word-level inline changes, and size-based debounce gating.",

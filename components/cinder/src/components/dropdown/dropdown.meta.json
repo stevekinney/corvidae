@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "stable",
   "purpose": "Root container that wires a trigger to a popover-backed menu and coordinates open state, keyboard navigation, and CSS Anchor Positioning for descendant menu parts.",

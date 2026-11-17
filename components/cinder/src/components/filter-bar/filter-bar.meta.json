@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "beta",
   "purpose": "Single-row filtering toolbar for list views: status segments, select and chip facets, a search field, and a collapse to a select and a Filter menu on narrow screens.",

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "stable",
   "purpose": "Page-level dismissible region landmark that surfaces a persistent informational, success, warning, or danger message.",

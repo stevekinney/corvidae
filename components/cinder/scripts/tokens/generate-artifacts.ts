@@ -8,11 +8,11 @@
 
 import { mkdir, readFile } from 'node:fs/promises';
 
+import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { format } from 'prettier';
 import babelPlugin from 'prettier/plugins/babel';
 import estreePlugin from 'prettier/plugins/estree';
 import typescriptPlugin from 'prettier/plugins/typescript';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 
 import { buildAuthoringCatalogue } from '../../src/tokens/runtime/authoring-catalogue.ts';
 import { RESOLVED_CONTEXT_COMBOS } from '../../src/tokens/runtime/context-order.ts';

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "beta",
   "purpose": "Wide primary navigation menu with trigger/content panels, shared viewport, active indicator, and nested submenu support.",

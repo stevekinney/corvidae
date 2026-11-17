@@ -1,10 +1,13 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import {
+  DEFAULT_TEST_VIEWPORT,
+  setTestViewportWidth,
+} from '@lostgradient/component-tooling/test/viewport.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { resetScrollLock } from '../../_internal/overlay.ts';
-import { DEFAULT_TEST_VIEWPORT, setTestViewportWidth } from '../../test/viewport.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
 setupHappyDom();

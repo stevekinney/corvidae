@@ -6,7 +6,7 @@
 
 import { join } from 'node:path';
 
-import { buildManifest } from '../generate-manifest.ts';
+import { buildManifest } from '@lostgradient/component-tooling/scripts/generate-manifest.ts';
 
 import type { BundleSource } from './bundle.ts';
 import type { ComponentManifest, ManifestSource } from './manifest.ts';

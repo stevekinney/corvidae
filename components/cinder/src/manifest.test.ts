@@ -10,10 +10,18 @@
 
 import { beforeAll, describe, expect, test } from 'bun:test';
 
-import type { ComponentMetadata, ExtractError } from '../scripts/lib/component-meta.ts';
-import { extractAllComponentMetadata } from '../scripts/lib/component-meta.ts';
-import { discoverComponents } from '../scripts/lib/discover-components.ts';
-import { categories, overlapFamilies, requiredConstraints, statusLevels } from './manifest.meta.ts';
+import {
+  categories,
+  overlapFamilies,
+  requiredConstraints,
+  statusLevels,
+} from '@lostgradient/component-tooling/manifest.meta';
+import type {
+  ComponentMetadata,
+  ExtractError,
+} from '@lostgradient/component-tooling/scripts/lib/component-meta.ts';
+import { extractAllComponentMetadata } from '@lostgradient/component-tooling/scripts/lib/component-meta.ts';
+import { discoverComponents } from '@lostgradient/component-tooling/scripts/lib/discover-components.ts';
 
 // State populated in beforeAll — shared across all describe blocks.
 let allMetadata: ComponentMetadata[] = [];

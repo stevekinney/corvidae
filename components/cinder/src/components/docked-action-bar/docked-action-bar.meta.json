@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "beta",
   "purpose": "Bar that docks a page's main actions to the bottom of its scrolling area, above the safe area and the on-screen keyboard, while the page scrolls behind it.",

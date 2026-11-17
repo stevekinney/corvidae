@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "alpha",
   "purpose": "Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from columns and rows, with custom cells, day groups, a footer and rows that open a detail pane.",

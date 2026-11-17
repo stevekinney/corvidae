@@ -26,13 +26,13 @@ import { fileURLToPath } from 'node:url';
 import {
   collectScanTargets,
   loadDeclaredDependencyNames,
-} from '../../../../scripts/check-virtual-list-dependency-free-graph.ts';
+} from '@lostgradient/component-tooling/scripts/check-virtual-list-dependency-free-graph.ts';
 import {
   FORBIDDEN_SPECIFIER,
   classifySpecifier,
   findDependencyViolations,
   packageNameFromSpecifier,
-} from '../../../../scripts/check-virtual-list-dependency-free-policy.ts';
+} from '@lostgradient/component-tooling/scripts/check-virtual-list-dependency-free-policy.ts';
 
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(testDirectory, '..', '..', '..', '..');

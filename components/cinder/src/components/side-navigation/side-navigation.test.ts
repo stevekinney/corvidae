@@ -2,8 +2,8 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { readComponentVariables } from '../../../scripts/lib/metadata-files.ts';
 
 setupHappyDom();
 

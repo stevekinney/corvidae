@@ -14,9 +14,9 @@ import babelPlugin from 'prettier/plugins/babel';
 import estreePlugin from 'prettier/plugins/estree';
 import typescriptPlugin from 'prettier/plugins/typescript';
 
+import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { computeSourceDigest } from '../../src/tokens/runtime/source-digest.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import {
   PRETTIER_OPTIONS,
   REGENERATE_COMMAND,

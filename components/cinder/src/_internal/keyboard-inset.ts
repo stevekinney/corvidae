@@ -9,7 +9,7 @@ let trackers = 0;
 let stopListening: (() => void) | null = null;
 
 /** The height of the layout viewport the visual viewport no longer covers, never negative. */
-function readKeyboardInset(): number {
+export function readKeyboardInset(): number {
   const visualViewport = window.visualViewport;
   // A pinch zoom shrinks the visual viewport too, and that is not a keyboard.
   if (!visualViewport || visualViewport.scale !== 1) return 0;

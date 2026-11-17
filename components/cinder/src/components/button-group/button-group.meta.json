@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "action",
   "status": "stable",
   "purpose": "Visual and semantic grouping of related buttons that share a single accessible label and present as one connected control.",

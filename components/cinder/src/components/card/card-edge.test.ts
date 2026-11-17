@@ -4,7 +4,7 @@ import type { Snippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import type { CardEdge, CardProps } from './card.types.ts';
 
 setupHappyDom();

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "stable",
   "purpose": "Generic media box that enforces a fixed aspect ratio for arbitrary embedded content using the native CSS aspect-ratio property.",

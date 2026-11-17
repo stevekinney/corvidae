@@ -120,6 +120,7 @@
       },
       "devDependencies": {
         "@axe-core/playwright": "catalog:",
+        "@lostgradient/component-tooling": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
@@ -195,6 +196,7 @@
         "@codemirror/view": "catalog:",
         "@floating-ui/dom": "catalog:",
         "@lezer/highlight": "catalog:",
+        "@lostgradient/component-tooling": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
         "@lucide/svelte": "catalog:",
         "@shikijs/engine-oniguruma": "catalog:",
@@ -295,6 +297,35 @@
         "oxlint": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
+      },
+    },
+    "internal/component-tooling": {
+      "name": "@lostgradient/component-tooling",
+      "dependencies": {
+        "@lostgradient/environmentalist": "catalog:",
+        "@tanstack/virtual-core": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
+        "esm-env": "catalog:",
+        "postcss": "catalog:",
+        "postcss-selector-parser": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte2tsx": "catalog:",
+        "ts-morph": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/dom": "catalog:",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "happy-dom": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
       },
     },
     "internal/typescript": {
@@ -1331,6 +1362,8 @@
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 
     "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/cinder"],
+
+    "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
 
     "@lostgradient/cryptography": ["@lostgradient/cryptography@workspace:packages/cryptography"],
 

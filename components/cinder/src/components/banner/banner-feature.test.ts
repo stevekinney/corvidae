@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import Banner from './banner.svelte';
 
 const css = await Bun.file(new URL('./banner.css', import.meta.url)).text();

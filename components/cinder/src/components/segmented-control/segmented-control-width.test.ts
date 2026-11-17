@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { CONTRAST_PAIRINGS } from '../../tokens/runtime/index.ts';
 
 const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');

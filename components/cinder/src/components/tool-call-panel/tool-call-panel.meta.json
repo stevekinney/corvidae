@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "beta",
   "purpose": "One tool call's side panel: its state, its input and result as fields, a failure's message first with next steps, and a waiting call's note and decision. Docks from 1280px; a Drawer below.",

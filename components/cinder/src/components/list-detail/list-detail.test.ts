@@ -55,7 +55,7 @@ const { cleanup, fireEvent, render } = await import('@testing-library/svelte/pur
 const { flushSync, tick } = await import('svelte');
 const { default: ListDetailFixture } = await import('./list-detail.fixture.svelte');
 const { default: ListDetailTableFixture } = await import('./list-detail-table.fixture.svelte');
-const { stripCinderComponentsLayer } = await import('../../test/css.ts');
+const { stripCinderComponentsLayer } = await import('@lostgradient/component-tooling/test/css.ts');
 const { LIST_DETAIL_SHORTCUTS } = await import('./list-detail.constants.ts');
 
 afterEach(() => {

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "stable",
   "purpose": "Determinate or indeterminate progressbar rendered as a horizontal bar or ring with full ARIA value semantics.",

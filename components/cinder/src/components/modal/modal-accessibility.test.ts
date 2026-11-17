@@ -1,14 +1,14 @@
 /// <reference lib="dom" />
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { createRawSnippet } from 'svelte';
-import { resetScrollLock } from '../../_internal/overlay.ts';
 import {
   flushOverflowFadeAnimationFrames,
   installOverflowFadeTestEnvironment,
   OverflowFadeResizeObserver,
   setScrollMeasurements,
-} from '../../test/overflow-fade-test-helpers.ts';
+} from '@lostgradient/component-tooling/test/overflow-fade-test-helpers.ts';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { createRawSnippet } from 'svelte';
+import { resetScrollLock } from '../../_internal/overlay.ts';
 import {
   emptySnippet,
   fireNativeClose,

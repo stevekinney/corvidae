@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { injectStrippedStyles } from '../test/css.ts';
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 
 setupHappyDom();
 

@@ -98,6 +98,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/storage-web-extension',
   '@lostgradient/testing',
   '@lostgradient/typescript',
+  '@lostgradient/component-tooling',
   '@lostgradient/interborough',
   '@lostgradient/playground',
   '@lostgradient/terminal',
@@ -299,6 +300,7 @@ describe('internal workspace architecture', () => {
     expect(configuration.exports).toEqual({
       './library.json': './library.json',
       './browser.json': './browser.json',
+      './component.json': './component.json',
     });
     expect(configuration.scripts).toBeUndefined();
     expect(await Bun.file(join(root, 'internal/typescript/base.json')).exists()).toBe(true);
@@ -308,6 +310,12 @@ describe('internal workspace architecture', () => {
       expect(contents.extends).toBe('./base.json');
       expect(import.meta.resolve(`@lostgradient/typescript/${preset}`)).toEndWith(preset);
     }
+    // A component package's whole tsconfig is `extends` this one (COR-2079).
+    const component = await Bun.file(join(root, 'internal/typescript/component.json')).json();
+    expect(component.extends).toBe('./browser.json');
+    expect(import.meta.resolve('@lostgradient/typescript/component.json')).toEndWith(
+      'component.json',
+    );
     for (const privatePreset of ['base.json', 'server.json']) {
       expect(() => import.meta.resolve(`@lostgradient/typescript/${privatePreset}`)).toThrow();
     }

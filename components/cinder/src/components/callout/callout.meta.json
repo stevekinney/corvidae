@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "stable",
   "purpose": "Inline static note or aside that highlights supporting commentary alongside body content without claiming live-region urgency.",

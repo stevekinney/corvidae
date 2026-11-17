@@ -1,14 +1,14 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 import {
   prepareSvelteServerSource,
   renderSvelteOnServer,
   requiredInstance,
   setupHappyDom,
 } from '@lostgradient/testing';
-import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
-import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
 

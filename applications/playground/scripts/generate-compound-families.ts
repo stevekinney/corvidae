@@ -16,12 +16,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { prettier } from '../../../components/cinder/scripts/lib/node-prettier.ts';
+import { prettier } from '@lostgradient/component-tooling/scripts/lib/node-prettier.ts';
 
 import {
   COMPONENT_PACKAGE_ROOTS,
   readPackageMeta,
-} from '../../../components/cinder/scripts/lib/component-meta.ts';
+} from '@lostgradient/component-tooling/scripts/lib/component-meta.ts';
 
 export const COMPOUND_FAMILIES_MODULE = join(
   import.meta.dir,

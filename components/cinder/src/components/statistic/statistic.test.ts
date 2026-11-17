@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { readComponentVariables } from '../../../scripts/lib/metadata-files.ts';
 
 setupHappyDom();
 

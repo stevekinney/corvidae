@@ -22,8 +22,8 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import { discoverComponentDirectories } from '../../scripts/discover-component-directories.ts';
-import { readComponentVariables } from '../../scripts/lib/metadata-files.ts';
+import { discoverComponentDirectories } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 
 const TOKEN_REGISTRY = join(import.meta.dir, '..', 'tokens', 'registry.generated.json');
 

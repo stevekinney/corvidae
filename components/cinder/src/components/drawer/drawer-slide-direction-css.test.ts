@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
+import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { installDrawerDialogStubs, installDrawerStyleProbe } from './drawer-test-helpers.ts';
 

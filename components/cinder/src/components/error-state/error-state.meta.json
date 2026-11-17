@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "feedback",
   "status": "stable",
   "purpose": "Centred error placeholder with a disc, title, description, progress line, retry, secondary action and details disclosure for a failed load, or a neutral not-found state.",

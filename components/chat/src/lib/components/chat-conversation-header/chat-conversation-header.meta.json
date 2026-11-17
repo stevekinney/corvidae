@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "domain",
   "status": "domain-suite",
   "purpose": "Header primitive for the active Chat conversation, composed as a sibling above Chat rather than inside it.",

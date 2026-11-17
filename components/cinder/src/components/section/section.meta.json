@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schemas/component-meta.schema.json",
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "beta",
   "purpose": "Heading, optional description and action, and content, separated from neighbouring sections by space instead of a box.",

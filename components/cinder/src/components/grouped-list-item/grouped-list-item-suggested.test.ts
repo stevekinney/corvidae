@@ -7,7 +7,7 @@ import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { declarationsFor } from '../../test/css.ts';
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
 setupHappyDom();
 
