@@ -200,12 +200,19 @@
    * indicator), as a Button does. The extension rises above the tab, because the bar's bottom edge
    * is the rule the active indicator sits on and a row above the tabs is empty. The list scrolls
    * sideways, which clips its other axis too, so it pads its top by the extension's reach and
-   * cancels the padding with a matching negative margin: the bar does not move. A vertical bar
-   * stacks tabs a few pixels apart, so it keeps the painted box. */
+   * cancels the padding with a matching negative margin: the bar does not move. That padding
+   * overlaps whatever sits above the bar, so the list itself takes no taps and only its tabs (and
+   * their extensions) do: a button above the bar keeps its whole hit area. A vertical bar stacks
+   * tabs a few pixels apart, so it keeps the painted box. */
   @media (pointer: coarse) {
     .cinder-tab-list:not([data-cinder-orientation='vertical']) {
       padding-block-start: var(--cinder-space-3);
       margin-block-start: calc(var(--cinder-space-3) * -1);
+      pointer-events: none;
+    }
+
+    .cinder-tab-list:not([data-cinder-orientation='vertical']) > * {
+      pointer-events: auto;
     }
 
     .cinder-tab:not([data-variant='vertical'])::before {

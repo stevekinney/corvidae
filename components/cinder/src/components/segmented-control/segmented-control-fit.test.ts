@@ -235,6 +235,15 @@ describe('SegmentedControl falls back when its options do not fit (COR-2448 AC3)
     expect(css).toContain("@import '../radio-group/radio-group.css';");
   });
 
+  test('stacked, the radio sits on the column edge, focused or not', () => {
+    const flat = css.replace(/\s+/g, ' ');
+    const row =
+      ".cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control .cinder-segmented-control-option[role='radio'] {";
+    const rowRule = flat.slice(flat.indexOf(row), flat.indexOf('}', flat.indexOf(row)));
+    expect(flat).toContain(row);
+    expect(rowRule).toContain('padding-inline: 0 var(--cinder-space-1);');
+  });
+
   test('the stylesheet gives the stacked list the full width, one option per row', () => {
     expect(css).toMatch(
       /\.cinder-segmented-control-container\[data-cinder-stacked\]\s*\{[^}]*display:\s*flex/,

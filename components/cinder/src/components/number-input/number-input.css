@@ -43,6 +43,10 @@
   @supports (field-sizing: content) {
     .cinder-input-group:has(.cinder-number-input__adornment) > .cinder-number-input__input {
       field-sizing: content;
+      /* Content sizing applies only to an automatic width, and Input declares a full one: without
+       * this a field in a fixed-width box kept its share of the row, and the unit sat a field's
+       * width from the number. */
+      inline-size: auto;
       flex: 0 1 auto;
       min-inline-size: 4ch;
     }

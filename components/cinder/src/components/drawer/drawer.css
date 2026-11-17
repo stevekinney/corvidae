@@ -216,10 +216,10 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-4);
-    /* 8px under the title plus the body's 16px above it: the title stays close to what it
-     * introduces, with or without the rule. Unconditional, so it cannot change whether the body
-     * scrolls. */
-    padding: var(--cinder-space-4) var(--cinder-space-5) var(--cinder-space-2);
+    /* 12px under the title plus the body's 12px above it: the title stays close to what it
+     * introduces with no rule, and has the same room above and below it when the rule is drawn.
+     * Unconditional, so it cannot change whether the body scrolls. */
+    padding: var(--cinder-space-3) var(--cinder-space-5);
     /* The rule is drawn only while the body scrolls (below); a short confirmation has nothing to
      * separate from. The border keeps its width so the header does not move when it appears. */
     border-block-end: 1px solid;
@@ -327,7 +327,7 @@
        and the footer actions start on one edge (s4#8). No gutter is reserved: a reserved gutter
        made the body's inline-end inset wider than its start whenever the scrollbar is classic,
        even when nothing scrolls. */
-    padding: var(--cinder-space-4) var(--cinder-space-5);
+    padding: var(--cinder-space-3) var(--cinder-space-5) var(--cinder-space-4);
     overscroll-behavior: contain;
     scrollbar-gutter: auto;
     background: var(--cinder-surface-raised);

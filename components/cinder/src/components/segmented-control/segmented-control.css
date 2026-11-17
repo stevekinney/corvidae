@@ -134,9 +134,16 @@
 
   .cinder-segmented-control-container[data-cinder-stacked]
     .cinder-segmented-control
-    .cinder-segmented-control-option[role='radio']:not(:focus-visible) {
+    .cinder-segmented-control-option[role='radio'] {
     gap: var(--cinder-space-3);
-    padding-inline: var(--cinder-space-1);
+    /* The radio sits on the column's own edge, as RadioGroup's does: the label above and the help
+       text below start where the radios start. Focused or not, so a row does not shift. */
+    padding-inline: 0 var(--cinder-space-1);
+  }
+
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control
+    .cinder-segmented-control-option[role='radio']:not(:focus-visible) {
     border: 0;
     border-radius: var(--cinder-radius-md);
     background: transparent;

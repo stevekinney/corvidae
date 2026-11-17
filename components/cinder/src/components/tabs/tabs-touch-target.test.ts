@@ -43,4 +43,11 @@ describe('Tabs touch target on a coarse pointer', () => {
     expect(list['padding-block-start']).toBe('var(--cinder-space-3)');
     expect(list['margin-block-start']).toBe('calc(var(--cinder-space-3) * -1)');
   });
+
+  test('the list padding takes no tap from what sits above the bar; only the tabs do', () => {
+    const list = coarse(".cinder-tab-list:not([data-cinder-orientation='vertical'])");
+    expect(list['pointer-events']).toBe('none');
+    const children = coarse(".cinder-tab-list:not([data-cinder-orientation='vertical']) > *");
+    expect(children['pointer-events']).toBe('auto');
+  });
 });

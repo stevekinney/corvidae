@@ -53,15 +53,14 @@ describe('Modal header and footer rules (COR-2448 AC4)', () => {
   });
 
   // COR-2448 review B: without the rule the title must not float away from its body. The header's
-  // 8px under the title and the body's 16px above it are one 24px gap, drawn the same whether or
-  // not the rule is, and no padding follows `data-cinder-scrollable` (that attribute is measured
-  // from the body's overflow, so padding that followed it could flip whether the body scrolls).
-  test('the title sits 8px above the body padding, unconditionally', () => {
-    expect(declared('.cinder-modal__header', 'padding-block')).toBe(
-      'var(--cinder-space-4) var(--cinder-space-2)',
-    );
+  // 12px under the title and the body's 12px above it are one 24px gap, and the title has the
+  // same 12px above it, so it is centred over the rule when the rule is drawn. No padding follows
+  // `data-cinder-scrollable` (that attribute is measured from the body's overflow, so padding that
+  // followed it could flip whether the body scrolls).
+  test('the title sits 12px above the body padding and 12px below the top, unconditionally', () => {
+    expect(declared('.cinder-modal__header', 'padding-block')).toBe('var(--cinder-space-3)');
     expect(declared('.cinder-modal__body', 'padding')).toBe(
-      'var(--cinder-space-4) var(--cinder-space-5)',
+      'var(--cinder-space-3) var(--cinder-space-5) var(--cinder-space-4)',
     );
     parse(css).walkRules((rule) => {
       if (!rule.selector.includes('data-cinder-scrollable')) return;

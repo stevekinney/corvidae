@@ -42,7 +42,7 @@ describe('NumberInput unit and stepper order', () => {
     // is sized to its value so the unit follows the digits.
     expect(css).not.toMatch(/text-align:\s*end/);
     expect(css).toMatch(
-      /@supports \(field-sizing: content\)\s*\{[^@]*\.cinder-number-input__input\s*\{[^}]*field-sizing:\s*content;[^}]*flex:\s*0 1 auto;/,
+      /@supports \(field-sizing: content\)\s*\{[^@]*\.cinder-number-input__input\s*\{[^}]*field-sizing:\s*content;[^}]*inline-size:\s*auto;[^}]*flex:\s*0 1 auto;/,
     );
   });
 });

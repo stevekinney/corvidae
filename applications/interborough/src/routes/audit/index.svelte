@@ -530,6 +530,7 @@
         <div data-testid="audit-loading" aria-busy="true">
           <Skeleton
             variant="list"
+            framed
             rows={5}
             statusMarker="dot"
             statusColumn={false}

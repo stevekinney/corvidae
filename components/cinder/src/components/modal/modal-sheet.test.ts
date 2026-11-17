@@ -205,7 +205,8 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
       ".cinder-modal[data-cinder-sheet='docked'] :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)";
     expect(flat).toContain(`${shared} { flex-wrap: wrap-reverse;`);
     expect(flat).toContain(`${shared} > * { flex: 1 1 auto; }`);
-    expect(flat).toContain(`${shared} > :first-child:not(:only-child) { flex: 0 0 auto; }`);
+    // Every action but the confirmation keeps its own width: a middle action does not grow.
+    expect(flat).toContain(`${shared} > :not(:last-child) { flex: 0 0 auto; }`);
     expect(modalCss).not.toContain('column-reverse');
     // The body's fields are full 44px targets; the footer's buttons are drawn compact and reach
     // 44px through their hit area, so no sheet rule sets a height on them.
