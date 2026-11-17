@@ -58,8 +58,8 @@ export const workflowRevisionReview: PluginPanel = {
 export default definePlugin({
   name: 'inspectors',
   title: 'Inspectors',
-  version: '1.0.0',
+  version: '1.0.1',
   description:
-    'Adds the run inspector and the pending-review list as interface panels over the run and review tools.',
+    'Adds the run inspector, the pending-review list and the workflow revision review as interface panels over the run, review and workflow tools.',
   setup: () => ({ panels: [runInspector, pendingReview, workflowRevisionReview] }),
 });

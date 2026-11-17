@@ -34,6 +34,7 @@ import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
 import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
+import { workspacePlugins } from '../../src/host/plugins.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
@@ -52,6 +53,7 @@ import {
   E2E_LONG_POLL_BUILD_ID,
   E2E_LONG_POLL_DEPLOYMENT_NAME,
   E2E_LONG_POLL_QUEUE,
+  E2E_PLUGIN_PAGES_PORT,
   E2E_PORT,
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_SHOWCASE_PORT,
@@ -62,6 +64,7 @@ import { createEchoAgents } from './echo-agent.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
 import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
+import { pagePanelPlugins } from './page-panel-plugins.ts';
 import { createQuestionAgents } from './question-agents.ts';
 import { createRegenerationProofAgent } from './regeneration-proof-agent.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
@@ -620,6 +623,29 @@ const secondaryResults = await Promise.allSettled([
   (async () => {
     return showcaseStartup;
   })(),
+  (async () => {
+    // The host that places plugin pages (`plugin-page.spec.ts`): the workspace's plugins beside the
+    // fixture plugins that add pages, so the main host's sidebar stays what the other specs count.
+    const pluginPagesHome = join(scratch, 'plugin-pages-home');
+    await mkdir(pluginPagesHome, { recursive: true });
+    let started: Host | undefined;
+    try {
+      started = await startHost({
+        environment: { INTERBOROUGH_HOME: pluginPagesHome },
+        plugins: [...workspacePlugins(), ...pagePanelPlugins()],
+        resolveProviderGenerate: fakeProvider('Hello from the plugin-page provider stub.').resolver,
+        port: E2E_PLUGIN_PAGES_PORT,
+        buildDirectory,
+      });
+      await started.bureau.plugins.ready();
+      trackStartupResource(started);
+      reportStartupPhase('plugin-pages-ready');
+      return started;
+    } catch (error) {
+      await started?.close();
+      throw error;
+    }
+  })(),
 ]);
 
 const failedSecondary = secondaryResults.find((result) => result.status === 'rejected');
@@ -630,12 +656,11 @@ if (failedSecondary !== undefined) {
   throw failedSecondary.reason;
 }
 
-const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost] = secondaryResults.map(
-  (result) => {
+const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost, pluginPagesHost] =
+  secondaryResults.map((result) => {
     if (result.status === 'rejected') throw result.reason;
     return result.value;
-  },
-) as [Host, Host, Host, ConnectHost, Host];
+  }) as [Host, Host, Host, ConnectHost, Host, Host];
 startupComplete = true;
 process.off('SIGINT', handleStartupSignal);
 process.off('SIGTERM', handleStartupSignal);
@@ -721,6 +746,7 @@ process.stdout.write(
     `Interborough E2E journey host listening on ${journeyHost.url}`,
     `Interborough E2E first-run host listening on ${firstRunHost.url}`,
     `Interborough E2E showcase host listening on ${showcaseHost.url}`,
+    `Interborough E2E plugin-page host listening on ${pluginPagesHost.url}`,
     `Interborough E2E connect host listening on http://127.0.0.1:${E2E_CONNECT_PORT}/`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
@@ -738,6 +764,7 @@ async function shutDown(): Promise<void> {
   await longPollWorker.stop();
   await fleetWorker.disconnect();
   await connectHost.stop();
+  await pluginPagesHost.close();
   await showcaseHost.close();
   await firstRunHost.close();
   await journeyHost.close();

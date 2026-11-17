@@ -13,9 +13,9 @@ describe('the inspectors plugin', () => {
     const host = await createPluginTestHost(inspectors);
     try {
       expect(host.plugins.panels()).toEqual([
-        { plugin: 'inspectors', version: '1.0.0', app: runInspector },
-        { plugin: 'inspectors', version: '1.0.0', app: pendingReview },
-        { plugin: 'inspectors', version: '1.0.0', app: workflowRevisionReview },
+        { plugin: 'inspectors', version: '1.0.1', app: runInspector },
+        { plugin: 'inspectors', version: '1.0.1', app: pendingReview },
+        { plugin: 'inspectors', version: '1.0.1', app: workflowRevisionReview },
       ]);
     } finally {
       await host.dispose();

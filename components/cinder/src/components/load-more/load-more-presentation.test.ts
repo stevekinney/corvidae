@@ -69,6 +69,45 @@ describe('LoadMore', () => {
     });
   });
 
+  test('draws its button as Cinder’s Button at the compact size, secondary, never a hand-drawn one', () => {
+    const { getByRole, container } = render(LoadMore, {
+      props: { onLoadMore: () => {}, loadedCount: 10, totalCount: 19 },
+    });
+
+    const button = requiredInstance(getByRole('button', { name: 'Load more' }), HTMLButtonElement);
+    expect(button.classList.contains('cinder-button')).toBe(true);
+    expect(button.getAttribute('data-cinder-size')).toBe('sm');
+    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    // The class stays so a page can find the footer's button without a second name for it.
+    expect(button.classList.contains('cinder-load-more__button')).toBe(true);
+    expect(container.querySelectorAll('button')).toHaveLength(1);
+  });
+
+  test('puts the spinner inside the button only while a load is in flight', async () => {
+    let resolveRequest: (() => void) | undefined;
+    const { container, getByRole } = render(LoadMore, {
+      props: {
+        onLoadMore: () =>
+          new Promise<void>((resolve) => {
+            resolveRequest = resolve;
+          }),
+      },
+    });
+    expect(container.querySelector('.cinder-load-more__spinner')).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+
+    await waitFor(() => {
+      const spinner = container.querySelector('.cinder-load-more__spinner');
+      expect(spinner).not.toBeNull();
+      expect(spinner?.closest('button')).not.toBeNull();
+    });
+    resolveRequest?.();
+    await waitFor(() => {
+      expect(container.querySelector('.cinder-load-more__spinner')?.outerHTML ?? null).toBeNull();
+    });
+  });
+
   test('disables the button while loading unless the component is in retry mode', () => {
     const { getByRole } = render(LoadMore, {
       props: {

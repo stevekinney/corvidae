@@ -197,10 +197,24 @@ describe('side navigation item: indicators and the collapsed rail (rows 02q, 03b
     expect(declaration(dot, 'position')).toBe('absolute');
   });
 
-  test('carries the StatusDot and Tooltip styles it renders, and no Badge', () => {
-    for (const sheet of ['status-dot/status-dot', 'tooltip/tooltip']) {
+  test('the badge takes the count’s trailing edge, is never shrunk, and steps aside on the rail (COR-2213)', () => {
+    const [badge] = rulesFor(sideNavigationItemCss, '.cinder-side-navigation-item__badge');
+    expect(declaration(badge, 'margin-inline-start')).toBe('auto');
+    expect(declaration(badge, 'flex')).toBe('none');
+    const [collapsedBadge] = rulesFor(
+      sideNavigationItemCss,
+      `${COLLAPSED} .cinder-side-navigation-item__badge`,
+    );
+    expect(declaration(collapsedBadge, 'display')).toBe('none');
+    // The label is what gives up room: it shrinks and ends in an ellipsis.
+    const [label] = rulesFor(sideNavigationItemCss, '.cinder-side-navigation-item__label');
+    expect(declaration(label, 'text-overflow')).toBe('ellipsis');
+    expect(declaration(label, 'flex')).toBe('0 1 auto');
+  });
+
+  test('carries the StatusDot, Badge and Tooltip styles it renders', () => {
+    for (const sheet of ['status-dot/status-dot', 'badge/badge', 'tooltip/tooltip']) {
       expect(sideNavigationItemCss).toContain(`@import '../${sheet}.css';`);
     }
-    expect(sideNavigationItemCss).not.toContain('badge/badge.css');
   });
 });

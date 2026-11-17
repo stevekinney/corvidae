@@ -381,6 +381,7 @@
       variant="ghost-accent"
       size="xs"
       label={copy.problem.embedAgain}
+      data-changes
       onclick={() => askSwitch(inUse)}
     />
   {:else if cause === undefined && embedding !== undefined && embedding.embedders.length === 1}
@@ -425,6 +426,7 @@
         {options}
         {value}
         disabled={inert}
+        data-changes
         aria-describedby={running ? lineId : undefined}
         onValueChangeRequest={(next: string) => {
           if (next !== inUse) askSwitch(next);
@@ -471,6 +473,7 @@
                   variant="secondary"
                   size="sm"
                   label={copy.running.cancel}
+                  data-changes
                   onclick={askCancel}
                 />
               {/if}
@@ -481,6 +484,7 @@
                 variant="secondary"
                 size="sm"
                 label={copy.failed.retry}
+                data-changes
                 onclick={() => askSwitch(failedTarget)}
               />
             </div>

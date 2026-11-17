@@ -403,6 +403,42 @@ describe('problemView', () => {
     });
   });
 
+  test('names a changed or failed panel by its title, and by its identifier only when it has none (COR-2213)', () => {
+    const titled = {
+      descriptor: { name: 'inspectors' },
+      contributions: [
+        {
+          kind: 'panel',
+          id: 'inspectors:workflow-revision-review',
+          title: 'Review workflow revision',
+        },
+        { kind: 'panel', id: 'inspectors:untitled' },
+      ],
+    } as unknown as PluginStanding;
+    const changed = (app: string) => ({
+      code: 'panel-changed',
+      app,
+      uri: 'ui://inspectors/x/v1',
+      previousDigest: 'sha256:old',
+      contentDigest: 'sha256:new',
+    });
+    const withTitle = problemView(changed('workflow-revision-review'), titled);
+    expect(withTitle.body).toContain('The panel Review workflow revision serves');
+    expect(withTitle.body).not.toContain('workflow-revision-review');
+    expect(withTitle.identifier).toBeUndefined();
+    const failed = problemView(
+      { code: 'panel-failed', app: 'workflow-revision-review', message: 'no entry' },
+      titled,
+    );
+    expect(failed.body).toBe('The panel Review workflow revision is not served. no entry');
+    expect(failed.identifier).toBeUndefined();
+    // No title listed for it, or no plugin to ask: the identifier names it, and the card sets it in monospace.
+    expect(problemView(changed('untitled'), titled).identifier).toBe('untitled');
+    expect(problemView(changed('untitled'), titled).body).toContain('The panel untitled serves');
+    expect(problemView(changed('absent'), titled).identifier).toBe('absent');
+    expect(problemView(changed('one')).identifier).toBe('one');
+  });
+
   test('reads an empty field as the whole configuration, and a model list as its own problem', () => {
     expect(problemView({ code: 'configuration-invalid', field: '', message: 'bad' }).body).toBe(
       'bad',

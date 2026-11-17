@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
-   * The Checks panel under Advanced: the areas the Bureau checks (storage, schedules, providers,
+   * The System checks panel under Advanced (it is not the Checks page, which lists the results of
+   * every goal's check, scorer and guardrail): the areas the Bureau checks (storage, schedules, providers,
    * hooks, plugins, workers and runs), each with how many problems it found and what they are. It reads the
    * same list as Needs attention, so the two cannot disagree. Below it, lease and recovery, which
    * is what the engine reports about its own health.

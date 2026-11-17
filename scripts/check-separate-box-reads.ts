@@ -290,7 +290,7 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
         'health-overview.spec.ts': 2,
         'health-states.spec.ts': 2,
         'health-storage.spec.ts': 5,
-        'health-workers-states.spec.ts': 5,
+        'health-workers-states.spec.ts': 3,
         'run-page.spec.ts': 4,
         'run-steps.spec.ts': 2,
         'schedules-detail.spec.ts': 7,
