@@ -575,6 +575,16 @@ export type ToolSourceProbeTest = {
 };
 
 /**
+ * What an MCP server said of itself when a probe reached it (COR-2436), so Connect tools fills in
+ * Name after the test: its name for a person, one line within the length a saved name may have,
+ * and its instructions, cut. The server's own untrusted text; `null` when it gave none.
+ */
+export type ToolSourceProbeServer = {
+  readonly name: string | null;
+  readonly instructions: string | null;
+};
+
+/**
  * What a probe found. A source that cannot be reached is an answer, not an error: `message` says
  * why in words that hold no URL, command, header or value.
  */
@@ -586,6 +596,8 @@ export type ToolSourceProbe =
       readonly skipped: readonly { readonly tool: string; readonly reason: string }[];
       /** For an OpenAPI source with a tool that reads and needs no input: the call made with the key. */
       readonly test?: ToolSourceProbeTest;
+      /** For an MCP server that said what it is when it connected (COR-2436). */
+      readonly server?: ToolSourceProbeServer;
     }
   /** The server is there and asks for a sign-in, which can only happen once the source is saved. */
   | { readonly outcome: 'needs-authorization' }
@@ -1272,7 +1284,9 @@ async function listedProbe(
   id: string,
   source: ToolSourceDescription,
   loaded: readonly Tool[],
+  information?: LoadedToolSource['server'],
 ): Promise<ToolSourceProbe> {
+  const server = probeServerOf(information);
   const names = qualifyToolNames(
     id,
     loaded.map((tool) => tool.name),
@@ -1296,6 +1310,31 @@ async function listedProbe(
     tools,
     skipped: names.skipped,
     ...(test === undefined ? {} : { test }),
+    ...(server === undefined ? {} : { server }),
+  };
+}
+
+/** The longest server instructions a probe repeats, in characters. */
+const MAXIMUM_PROBE_INSTRUCTIONS_LENGTH = 2000;
+
+/**
+ * What a probe repeats of what an MCP server said of itself (COR-2436): its name for a person
+ * (`title`, else `name`), cut to the length a saved name may have, and its instructions, cut. Both
+ * are the server's own untrusted text: a page shows them as text and a person may change them.
+ */
+function probeServerOf(information: LoadedToolSource['server']): ToolSourceProbeServer | undefined {
+  if (information === undefined) return undefined;
+  // A control character, a line break among them, never reaches a label.
+  // eslint-disable-next-line no-control-regex -- a control character is what this removes.
+  const oneLine = (value: string) => value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  const name = oneLine(information.title ?? information.name).slice(
+    0,
+    MAXIMUM_TOOL_SOURCE_NAME_LENGTH,
+  );
+  const instructions = information.instructions?.trim().slice(0, MAXIMUM_PROBE_INSTRUCTIONS_LENGTH);
+  return {
+    name: name === '' ? null : name,
+    instructions: instructions === undefined || instructions === '' ? null : instructions,
   };
 }
 
@@ -2068,7 +2107,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         return { outcome: 'failed' as const, message: describeFailure(error) };
       }
       try {
-        return await listedProbe(id, source, loaded.tools);
+        return await listedProbe(id, source, loaded.tools, loaded.server);
       } finally {
         await loaded.close().catch(() => undefined);
       }
@@ -2131,7 +2170,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         return { outcome: 'failed' as const, message: describeFailure(error) };
       }
       try {
-        const listed = await listedProbe(id, source, loaded.tools);
+        const listed = await listedProbe(id, source, loaded.tools, loaded.server);
         // Stamped with the description reached: `snapshot` reports it only while that is the one saved.
         reached.set(id, { description, at: now() });
         await rememberListing(source, loaded.tools);

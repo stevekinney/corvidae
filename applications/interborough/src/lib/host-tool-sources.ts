@@ -156,6 +156,10 @@ const probeSchema = z.discriminatedUnion('outcome', [
         message: z.string().optional(),
       })
       .optional(),
+    /** What an MCP server said of itself (COR-2436): its name for a person and its instructions. */
+    server: z
+      .object({ name: z.string().nullable(), instructions: z.string().nullable() })
+      .optional(),
   }),
   z.object({ outcome: z.literal('needs-authorization') }),
   z.object({ outcome: z.literal('failed'), message: z.string() }),

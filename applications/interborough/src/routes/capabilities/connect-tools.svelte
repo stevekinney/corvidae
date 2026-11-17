@@ -193,6 +193,23 @@
   let prefilledName = '';
   let prefilledBaseUrl = '';
 
+  /**
+   * The sentence the server's instructions give, which the source is saved with (row 31o): their
+   * first line, cut to what a saved description may hold. Empty until a test has listed it.
+   */
+  let serverDescription = $state('');
+
+  /** The name an address's host reads as, before the source is named: `mcp.github.example` is `github`. */
+  function serverLabelOf(address: string): string {
+    try {
+      const labels = new URL(address.trim()).hostname.split('.');
+      const named = labels.find((label) => !['mcp', 'api', 'www'].includes(label));
+      return named ?? labels[0] ?? '';
+    } catch {
+      return '';
+    }
+  }
+
   function authenticationOf(value: string): ToolSourceForm['authentication'] {
     return value === 'bearer' || value === 'oauth' || value === 'api-key' ? value : 'none';
   }
@@ -200,9 +217,16 @@
   const form: ToolSourceForm = $derived({
     ...EMPTY_TOOL_SOURCE_FORM,
     kind: kind === 'openapi' ? 'openapi' : 'mcp',
-    // An edit replaces the source it opened on, whatever it is now called.
-    id: editId ?? toolSourceIdentifier(name),
+    // An edit replaces the source it opened on, whatever it is now called. An MCP server tested
+    // before it is named is tested under its address's name, and the server's own name then fills
+    // in Name (row 33f); Connect still asks for a name.
+    id:
+      editId ??
+      (name.trim() === '' && kind !== 'openapi' && transport !== 'stdio'
+        ? toolSourceIdentifier(serverLabelOf(url))
+        : toolSourceIdentifier(name)),
     name,
+    description: serverDescription,
     transport: transport === 'stdio' ? 'stdio' : 'http',
     url,
     command,
@@ -259,7 +283,13 @@
     ),
   );
   const built = $derived(buildToolSourceRequest(form, editing.data?.credentials ?? []));
-  const signature = $derived('request' in built ? JSON.stringify(built.request) : '');
+  // What a test is good for: where the source is and how it signs in. Its labels are left out, so
+  // the name and sentence a test fills in do not make that test stale (row 33f).
+  const signature = $derived.by(() => {
+    if (!('request' in built)) return '';
+    const { name: _name, description: _description, ...contacted } = built.request;
+    return JSON.stringify(contacted);
+  });
   const taken = $derived(form.id !== '' && existing.includes(form.id));
   const fileTooLarge = $derived(fileError !== '');
   const shownName = $derived(form.name.trim() === '' ? form.id : form.name.trim());
@@ -326,6 +356,21 @@
       duplicate: duplicate !== undefined,
     }),
   );
+
+  // What the server said of itself fills in Name, unless a person typed one, and the sentence the
+  // source is saved with (rows 33f, 31o). The server's words are text; a person may change Name.
+  $effect(() => {
+    const server = listedProbe?.server;
+    if (server === undefined || editId !== undefined) return;
+    untrack(() => {
+      if (server.name !== null && (name.trim() === '' || name === prefilledName)) {
+        name = server.name;
+        prefilledName = server.name;
+      }
+      const sentence = (server.instructions ?? '').split('\n', 1)[0]?.trim() ?? '';
+      serverDescription = sentence.slice(0, 500);
+    });
+  });
 
   // A spec's operations are its tools: seed their starting choices once it is read (row 33w).
   $effect(() => {
@@ -506,6 +551,12 @@
     if (connection.unreachable) return;
     if (duplicate !== undefined) {
       showDuplicate();
+      return;
+    }
+    // A source is saved under a name: a test may run before one is typed, and fills it in.
+    if (name.trim() === '' && editId === undefined) {
+      submitted = true;
+      hostError = { field: 'id', message: copy.errors.idRequired };
       return;
     }
     const request = requestToSend();
