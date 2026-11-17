@@ -280,7 +280,7 @@ describe('invalidatePortalDirection integration', () => {
   // the library's existing public hook for CSSOM edits that emit no DOM mutation.
   test('clears the index so a same-count in-place edit is picked up', async () => {
     const { invalidatePortalDirection } =
-      await import('../components/portal/portal.utilities.svelte.ts');
+      await import('@lostgradient/portal/components/portal/portal.utilities.svelte.ts');
 
     const rules: CSSStyleRule[] = [styleRule('.a')];
     const target = sheet(rules);

@@ -12,7 +12,7 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render, fireEvent, screen, cleanup } = await import('@testing-library/svelte');
-const { default: Toggle } = await import('./toggle.svelte');
+const { default: Toggle } = await import('@lostgradient/toggle/components/toggle/toggle.svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

@@ -39,7 +39,10 @@ describe('Sidebar surface', () => {
     expect(drawerSelected.has('box-shadow')).toBe(false);
 
     const navigationItemCss = await Bun.file(
-      new URL('../navigation-item/navigation-item.css', import.meta.url),
+      new URL(
+        '../../../../navigation-item/src/components/navigation-item/navigation-item.css',
+        import.meta.url,
+      ),
     ).text();
     const selected = declarationsFor(
       navigationItemCss,
@@ -60,7 +63,10 @@ describe('Sidebar surface', () => {
     // the white raised surface with a border and no shadow. `declarationsFor` splits
     // `:is(a, button)` on its comma, so the button rule is read with a pattern.
     const navigationItemCss = await Bun.file(
-      new URL('../navigation-item/navigation-item.css', import.meta.url),
+      new URL(
+        '../../../../navigation-item/src/components/navigation-item/navigation-item.css',
+        import.meta.url,
+      ),
     ).text();
     const sideNavigationCss = await Bun.file(
       new URL('../side-navigation/side-navigation.css', import.meta.url),

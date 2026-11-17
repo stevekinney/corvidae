@@ -26,7 +26,7 @@
     getTabIndexValue,
   } from '@lostgradient/foundation/utilities/focus.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
-  import { createPortalAttachment } from '../portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
   import {
     closestAcrossShadow,
     createInheritedPortalStyle,
@@ -35,7 +35,7 @@
     isRedispatchedPortaledEvent,
     observePortalSourceAvailability,
     redispatchPortaledEvent,
-  } from '../portal/portal.utilities.svelte.ts';
+  } from '@lostgradient/portal/components/portal/portal.utilities.svelte.ts';
   import {
     findFirstBrandFocusTargetAfterToggle,
     findFocusTargetAfterNavigationItems,

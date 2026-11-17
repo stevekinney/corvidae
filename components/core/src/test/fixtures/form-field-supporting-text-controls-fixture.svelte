@@ -1,9 +1,9 @@
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
   import PhoneInput from '../../components/phone-input/phone-input.svelte';
-  import PinInput from '../../components/pin-input/pin-input.svelte';
-  import Rating from '../../components/rating/rating.svelte';
-  import Toggle from '../../components/toggle/toggle.svelte';
+  import PinInput from '@lostgradient/pin-input/components/pin-input/pin-input.svelte';
+  import Rating from '@lostgradient/rating/components/rating/rating.svelte';
+  import Toggle from '@lostgradient/toggle/components/toggle/toggle.svelte';
 </script>
 
 <FormField

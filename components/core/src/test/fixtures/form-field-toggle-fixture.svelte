@@ -1,6 +1,6 @@
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import Toggle from '../../components/toggle/toggle.svelte';
+  import Toggle from '@lostgradient/toggle/components/toggle/toggle.svelte';
 
   let {
     fieldId,

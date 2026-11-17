@@ -14,7 +14,7 @@ A status message that communicates contextual feedback and can optionally be dis
 
 ## Keep controls out of an alert
 
-An alert states a result or a condition and carries at most the buttons that act on it (`actions`). Do not wrap a form control or an inline choice, such as a [`SegmentedControl`](../../../../core/src/components/segmented-control/README.md), in a tinted alert: the tint reads as a warning about the control, the control stretches to fill a box it was not drawn for, and its own colours clash with the status colour. Put the control in the page flow with a plain label, such as a [`FormField`](../../../../form-field/src/components/form-field/README.md) or a heading and the control beneath it, and keep the alert for a message about it.
+An alert states a result or a condition and carries at most the buttons that act on it (`actions`). Do not wrap a form control or an inline choice, such as a [`SegmentedControl`](../../../../segmented-control/src/components/segmented-control/README.md), in a tinted alert: the tint reads as a warning about the control, the control stretches to fill a box it was not drawn for, and its own colours clash with the status colour. Put the control in the page flow with a plain label, such as a [`FormField`](../../../../form-field/src/components/form-field/README.md) or a heading and the control beneath it, and keep the alert for a message about it.
 
 ## Props
 

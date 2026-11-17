@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../spinner/spinner.css';
+@import '@lostgradient/spinner/spinner.css';
 
 @layer cinder.components {
   .cinder-inline-loading {

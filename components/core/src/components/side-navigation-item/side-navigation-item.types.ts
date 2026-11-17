@@ -1,10 +1,10 @@
 import type { DataAttributes, PadUnion } from '@lostgradient/foundation/_internal/union-props.ts';
-import type { Snippet } from 'svelte';
 import type {
   NavigationItemButtonExtra,
   NavigationItemLinkExtra,
   NavigationItemSharedHtmlAttributes,
-} from '../navigation-item/navigation-item.types.ts';
+} from '@lostgradient/navigation-item/components/navigation-item/navigation-item.types.ts';
+import type { Snippet } from 'svelte';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 
 /**

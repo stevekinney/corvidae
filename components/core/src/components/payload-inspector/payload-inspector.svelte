@@ -20,9 +20,9 @@
   import CopyButton from '../copy-button/copy-button.svelte';
   import InlineLoading from '../inline-loading/inline-loading.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
-  import Segment from '../segment/segment.svelte';
+  import Segment from '@lostgradient/segmented-control/components/segment/segment.svelte';
 
-  import SegmentedControl from '../segmented-control/segmented-control.svelte';
+  import SegmentedControl from '@lostgradient/segmented-control/components/segmented-control/segmented-control.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { formatBytes } from '@lostgradient/foundation/utilities/format-bytes.ts';
   import {

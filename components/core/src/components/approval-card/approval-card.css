@@ -16,7 +16,7 @@
 @import '@lostgradient/link/link.css';
 @import '../payload-inspector/payload-inspector.css';
 @import '../status-dot/status-dot.css';
-@import '../textarea/textarea.css';
+@import '@lostgradient/textarea/textarea.css';
 @import '../tooltip/tooltip.css';
 
 @layer cinder.components {

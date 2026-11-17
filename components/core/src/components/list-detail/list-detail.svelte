@@ -20,12 +20,12 @@
   import { DataList } from '../data-list/index.ts';
   import { EmptyState } from '../empty-state/index.ts';
   import { ChevronLeft } from '@lostgradient/foundation/components/icons/index.ts';
-  import { ResizablePanels } from '../resizable-panels/index.ts';
+  import { ResizablePanels } from '@lostgradient/resizable-panels/components/resizable-panels/index.ts';
   import { Skeleton } from '../skeleton/index.ts';
   import type {
     ResizablePanelDefinition,
     ResizablePanelsResizeEvent,
-  } from '../resizable-panels/index.ts';
+  } from '@lostgradient/resizable-panels/components/resizable-panels/index.ts';
   import {
     createBrowserSelectionLocation,
     clampListWidth,

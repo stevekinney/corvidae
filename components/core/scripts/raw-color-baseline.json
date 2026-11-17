@@ -35,7 +35,7 @@
     "allowedCount": 2
   },
   {
-    "filePath": "src/components/rating/rating.css",
+    "filePath": "../rating/src/components/rating/rating.css",
     "colorClass": "oklch",
     "allowedCount": 1
   },
@@ -50,7 +50,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/theme-switch/theme-switch.css",
+    "filePath": "../theme-switch/src/components/theme-switch/theme-switch.css",
     "colorClass": "oklch",
     "allowedCount": 13
   },
@@ -60,7 +60,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/toggle/toggle.css",
+    "filePath": "../toggle/src/components/toggle/toggle.css",
     "colorClass": "hex",
     "allowedCount": 1
   },
