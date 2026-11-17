@@ -3,6 +3,7 @@ import {
   compare,
   failingSteps,
   failingTests,
+  failureRecords,
   matchFlakeIssues,
   renderComparison,
   run,
@@ -105,6 +106,16 @@ describe('failingTests', () => {
     ].join('\n');
     expect(failingSteps(log)).toEqual(new Map([['Root checks', ['bun run lint:root']]]));
   });
+
+  test('keeps a test launcher without a qualified failed test unknown', () => {
+    const log = [
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run bun test src/x.test.ts',
+      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    expect(failureRecords(log).get('Tests')).toEqual([
+      { kind: 'unknown', job: 'Tests', command: 'bun test src/x.test.ts' },
+    ]);
+  });
 });
 
 describe('compare', () => {
@@ -159,7 +170,17 @@ describe('compare', () => {
         id: '1',
         status: 'completed',
         conclusion: 'failure',
-        jobs: [{ name: 'Unit', tests: ['known'], steps: ['lint'] }],
+        jobs: [
+          {
+            name: 'Unit',
+            tests: ['known'],
+            steps: ['lint'],
+            failures: [
+              { kind: 'test', job: 'Unit', identity: 'known' },
+              { kind: 'step', job: 'Unit', command: 'lint', diagnostic: 'new diagnostic' },
+            ],
+          },
+        ],
       },
       [
         {
@@ -180,14 +201,34 @@ describe('compare', () => {
         id: '1',
         status: 'completed',
         conclusion: 'failure',
-        jobs: [{ name: 'Unit', tests: ['new'], steps: ['lint'] }],
+        jobs: [
+          {
+            name: 'Unit',
+            tests: ['new'],
+            steps: ['lint'],
+            failures: [
+              { kind: 'test', job: 'Unit', identity: 'new' },
+              { kind: 'step', job: 'Unit', command: 'lint', diagnostic: 'audit failed' },
+            ],
+          },
+        ],
       },
       [
         {
           id: '2',
           status: 'completed',
           conclusion: 'failure',
-          jobs: [{ name: 'Unit', tests: ['known'], steps: ['lint'] }],
+          jobs: [
+            {
+              name: 'Unit',
+              tests: ['known'],
+              steps: ['lint'],
+              failures: [
+                { kind: 'test', job: 'Unit', identity: 'known' },
+                { kind: 'step', job: 'Unit', command: 'lint', diagnostic: 'audit failed' },
+              ],
+            },
+          ],
         },
       ],
     );
@@ -207,6 +248,47 @@ describe('compare', () => {
     );
     expect(result.hasNew).toBe(true);
     expect(result.jobs[0]?.unknown).toBe(true);
+  });
+
+  test('a same non-test command with a different or absent diagnostic remains new', () => {
+    const comparison = (diagnostic: string | undefined) =>
+      compare(
+        {
+          id: '1',
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [
+            {
+              name: 'Root',
+              tests: [],
+              failures: [{ kind: 'step', job: 'Root', command: 'bun run lint:root', diagnostic }],
+            },
+          ],
+        },
+        [
+          {
+            id: '2',
+            status: 'completed',
+            conclusion: 'failure',
+            jobs: [
+              {
+                name: 'Root',
+                tests: [],
+                failures: [
+                  {
+                    kind: 'step',
+                    job: 'Root',
+                    command: 'bun run lint:root',
+                    diagnostic: 'error: script "audit" exited with code 1',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      );
+    expect(comparison('error: script "lint:root" exited with code 1').hasNew).toBe(true);
+    expect(comparison(undefined).hasNew).toBe(true);
   });
 
   test('a file-qualified test seen under a different control topology is known', () => {

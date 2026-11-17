@@ -35,6 +35,16 @@ export interface FailedJob {
   steps?: string[];
   /** A test error whose file/title/assertion identity could not be safely parsed. */
   unknown?: boolean;
+  /** Tagged evidence preserves the failure's role instead of comparing flattened display strings. */
+  failures?: FailureRecord[];
+}
+
+export interface FailureRecord {
+  kind: 'test' | 'step' | 'unknown';
+  job: string;
+  command?: string | undefined;
+  identity?: string | undefined;
+  diagnostic?: string | undefined;
 }
 
 export interface RunFailures {
@@ -185,6 +195,60 @@ export function failingSteps(log: string): Map<string, string[]> {
   return new Map([...byJob].map(([job, steps]) => [job, [...steps].toSorted()]));
 }
 
+function stepFailures(log: string): FailureRecord[] {
+  const steps = new Map<string, { command: string; diagnostic?: string | undefined }>();
+  const found: FailureRecord[] = [];
+  for (const line of log.split('\n')) {
+    const step = RUN_STEP.exec(line);
+    if (step !== null) {
+      steps.set(step[1] ?? '', { command: step[2] ?? '' });
+      continue;
+    }
+    const error = BUN_ERROR.exec(line);
+    if (error !== null && steps.has(error[1] ?? '')) {
+      steps.get(error[1] ?? '')!.diagnostic = line.split('error: ').at(-1)?.trim();
+      continue;
+    }
+    const failed = STEP_FAILURE.exec(line);
+    if (failed === null) continue;
+    const job = failed[1] ?? '';
+    const current = steps.get(job);
+    if (current !== undefined) found.push({ kind: 'step', job, ...current });
+  }
+  return found;
+}
+
+function isTestLauncher(command: string): boolean {
+  return /\b(?:bun(?:\s+--bun)?\s+(?:test|playwright)|run-gated-browser-suite)\b/.test(command);
+}
+
+/** Parse all failure roles; unqualified launchers and diagnostics remain explicit unknown evidence. */
+export function failureRecords(log: string): Map<string, FailureRecord[]> {
+  const tests = failingTests(log);
+  const unknown = unparseableTestJobs(log);
+  const records = new Map<string, FailureRecord[]>();
+  const add = (job: string, record: FailureRecord) => {
+    const values = records.get(job) ?? [];
+    values.push(record);
+    records.set(job, values);
+  };
+  for (const [job, identities] of tests)
+    for (const identity of identities) add(job, { kind: 'test', job, identity });
+  for (const job of unknown)
+    add(job, { kind: 'unknown', job, diagnostic: 'unparseable test error' });
+  for (const step of stepFailures(log)) {
+    const hasTest = (records.get(step.job) ?? []).some((record) => record.kind === 'test');
+    if (isTestLauncher(step.command ?? '')) {
+      if (!hasTest) add(step.job, { kind: 'unknown', job: step.job, command: step.command });
+      continue;
+    }
+    if (step.diagnostic === undefined)
+      add(step.job, { kind: 'unknown', job: step.job, command: step.command });
+    else add(step.job, step);
+  }
+  return records;
+}
+
 /** Test-file errors without a complete identity stay unknown instead of inheriting a known step. */
 export function unparseableTestJobs(log: string): Set<string> {
   const files = new Set<string>();
@@ -227,6 +291,7 @@ export function readFailures(runner: Runner, repository: string, id: string): Ru
   const tests = failingTests(log);
   const steps = failingSteps(log);
   const unknown = unparseableTestJobs(log);
+  const records = failureRecords(log);
   return {
     id,
     status: view.status ?? '',
@@ -236,6 +301,7 @@ export function readFailures(runner: Runner, repository: string, id: string): Ru
       tests: tests.get(name) ?? [],
       steps: steps.get(name) ?? [],
       unknown: unknown.has(name),
+      failures: records.get(name) ?? [],
     })),
   };
 }
@@ -284,41 +350,60 @@ function isStableTestIdentity(name: string): boolean {
   );
 }
 
+function recordsFor(job: FailedJob): FailureRecord[] {
+  if (job.failures !== undefined) return job.failures;
+  return [
+    ...job.tests.map((identity) => ({ kind: 'test' as const, job: job.name, identity })),
+    ...(job.steps ?? []).map((command) => ({ kind: 'step' as const, job: job.name, command })),
+    ...(job.unknown === true ? [{ kind: 'unknown' as const, job: job.name }] : []),
+  ];
+}
+
+function sameFailure(left: FailureRecord, right: FailureRecord): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'unknown') return false;
+  if (left.kind === 'test')
+    return (
+      left.identity === right.identity &&
+      (left.job === right.job || isStableTestIdentity(left.identity ?? ''))
+    );
+  return (
+    left.job === right.job &&
+    left.command === right.command &&
+    left.diagnostic !== undefined &&
+    left.diagnostic === right.diagnostic
+  );
+}
+
 /** Judge each failure of `target` against the failures of `main` runs. */
 export function compare(target: RunFailures, main: RunFailures[]): Comparison {
   const jobs = target.jobs.map((job): JudgedJob => {
-    const sameJobRuns = main
-      .filter((m) => m.jobs.some((j) => j.name === job.name))
-      .map((m) => m.id);
-    // A named test remains the same failure if a workflow or shard topology changes. A test job
-    // with no named failure is still unknown, because its job name alone proves nothing.
-    const tests = job.tests.map((name): JudgedTest => ({
-      name,
+    const records = recordsFor(job);
+    const judgeFailure = (record: FailureRecord): JudgedTest => ({
+      name:
+        record.kind === 'test'
+          ? (record.identity ?? '<unknown test>')
+          : record.kind === 'step'
+            ? `${record.command ?? '<unknown step>'}: ${record.diagnostic ?? '<unknown diagnostic>'}`
+            : (record.diagnostic ?? '<unknown failure>'),
       seenIn: main
         .filter((m) =>
-          m.jobs.some(
-            (j) => j.tests.includes(name) && (j.name === job.name || isStableTestIdentity(name)),
-          ),
+          m.jobs.some((other) => recordsFor(other).some((item) => sameFailure(record, item))),
         )
         .map((m) => m.id),
-    }));
-    const steps = (job.steps ?? []).map((name): JudgedTest => ({
-      name,
-      seenIn: main
-        .filter((m) => m.jobs.some((j) => j.name === job.name && (j.steps ?? []).includes(name)))
-        .map((m) => m.id),
-    }));
-    // A test job whose log names no failing test cannot be judged by its name alone: a new failure
-    // in a shard that is already red on main would read as known.
+    });
+    const tests = records.filter((record) => record.kind === 'test').map(judgeFailure);
+    const steps = records.filter((record) => record.kind === 'step').map(judgeFailure);
     const unknown =
-      job.unknown === true || (tests.length === 0 && steps.length === 0 && TEST_JOB.test(job.name));
+      records.some((record) => record.kind === 'unknown') ||
+      (records.length === 0 && TEST_JOB.test(job.name));
     const seenIn =
-      tests.length === 0 && steps.length === 0
-        ? sameJobRuns
+      records.length === 0
+        ? main.filter((m) => m.jobs.some((other) => other.name === job.name)).map((m) => m.id)
         : [...new Set([...tests, ...steps].flatMap((failure) => failure.seenIn))];
     const isNew =
       unknown ||
-      (tests.length === 0 && steps.length === 0
+      (records.length === 0
         ? seenIn.length === 0
         : [...tests, ...steps].some((failure) => failure.seenIn.length === 0));
     return { name: job.name, seenIn, tests, steps, isNew, unknown };
