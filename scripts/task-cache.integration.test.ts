@@ -882,6 +882,10 @@ test('a package task keys on every root script it runs and every root script tho
   // deleted here and a new one cannot be added without review.
   const knownOverDeclarations = [
     '@lostgradient/ventriloquist#typecheck declares scripts/typecheck-contracts.ts, which no script it runs reaches',
+    // Interborough's `test` runs the tests of `run-gated-browser-suite.ts` and the design-review
+    // scripts, which import it (COR-2398); this scan does not follow test files. It shows here only
+    // since the package `test:browser` tasks (COR-2080) reach the script directly.
+    'test declares scripts/host-slots.ts, which no script it runs reaches',
     'test:slow declares scripts/bun-test.ts, which no script it runs reaches',
   ];
   expect(unreachable.toSorted()).toEqual(knownOverDeclarations);
