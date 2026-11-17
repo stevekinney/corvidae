@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Button from '../../components/button/button.svelte';
-  import ButtonGroup from '../../components/button-group/button-group.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import ButtonGroup from '@lostgradient/button/components/button-group/button-group.svelte';
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
   import Input from '@lostgradient/input/components/input/input.svelte';
 

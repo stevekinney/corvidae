@@ -44,7 +44,7 @@ describe('one inline inset for header, body and footer (s4#8)', () => {
 
   test('the modal header starts, and its body and footer pad, at the same inset', async () => {
     const modalCss = await Bun.file(
-      new URL('../../../../core/src/components/modal/modal.css', import.meta.url),
+      new URL('../../../../modal/src/components/modal/modal.css', import.meta.url),
     ).text();
     expect(declared('.cinder-modal__header', 'padding-inline-start', modalCss)).toBe(
       'var(--cinder-space-5)',

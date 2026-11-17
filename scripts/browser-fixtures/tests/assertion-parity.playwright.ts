@@ -17,7 +17,7 @@ test.describe('table scroll recipe', () => {
     page,
   }) => {
     const tableCss = readFileSync(
-      new URL('../../../components/core/src/components/table/table.css', import.meta.url),
+      new URL('../../../components/table/src/components/table/table.css', import.meta.url),
       'utf8',
     ).replaceAll(/^@import\s+[^;]+;\s*$/gm, '');
 

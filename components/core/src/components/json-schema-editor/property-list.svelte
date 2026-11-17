@@ -24,12 +24,12 @@
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Alert from '@lostgradient/alert/components/alert/alert.svelte';
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
   import Chip from '@lostgradient/chip/components/chip/chip.svelte';
   import { default as Badge } from '@lostgradient/badge/components/badge/index.ts';
-  import { default as Collapsible } from '../collapsible/index.ts';
-  import { default as Table } from '../table/index.ts';
+  import { default as Collapsible } from '@lostgradient/collapsible/components/collapsible/index.ts';
+  import { default as Table } from '@lostgradient/table/components/table/index.ts';
   import Input from '@lostgradient/input/components/input/input.svelte';
   import PropertyEditor from './property-editor.svelte';
   import { calculatePropertyValidationErrorCount } from './property-list-validation.ts';

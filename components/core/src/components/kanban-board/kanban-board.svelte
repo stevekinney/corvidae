@@ -17,8 +17,8 @@
     setSortableContext,
   } from '@lostgradient/foundation/utilities/sortable-controller.svelte.ts';
   import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
-  import { default as Button } from '../button/index.ts';
-  import SortableItem from '../_sortable-item.svelte';
+  import { default as Button } from '@lostgradient/button/components/button/index.ts';
+  import SortableItem from '@lostgradient/sortable-list/components/_sortable-item.svelte';
   import {
     buildCardLocationMap,
     findCard,

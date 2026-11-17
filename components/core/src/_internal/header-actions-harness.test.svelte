@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Button from '../components/button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Card from '@lostgradient/card/components/card/card.svelte';
-  import SectionHeading from '../components/section-heading/section-heading.svelte';
+  import SectionHeading from '@lostgradient/section-heading/components/section-heading/section-heading.svelte';
 
   import ErrorScope from '@lostgradient/foundation/_internal/error-scope.test.svelte';
 

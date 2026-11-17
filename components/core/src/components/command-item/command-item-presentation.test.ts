@@ -45,7 +45,12 @@ describe('CommandItem leading tone and meta (row 03c)', () => {
 
 describe('CommandItem meta separator', () => {
   test('a meta with nothing in it is not drawn, so no stray "," trails the label', async () => {
-    const css = await Bun.file(new URL('./command-item.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../command-menu/src/components/command-item/command-item.css',
+        import.meta.url,
+      ),
+    ).text();
     expect(css).toMatch(/\.cinder-command-item__meta:empty\s*\{\s*display:\s*none;/);
     expect(css).toMatch(/\.cinder-command-item__meta::before\s*\{[^}]*content:\s*',';/);
   });

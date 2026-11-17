@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
-  import { default as JsonEditor } from '../json-editor/index.ts';
+  import { default as JsonEditor } from '@lostgradient/json-editor/components/json-editor/index.ts';
   import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import { formatEditableArguments, parseJsonText } from './approval-card-state.ts';

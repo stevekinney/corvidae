@@ -6,8 +6,8 @@
    * neutral form-field context for the field it holds, so it stays an ordinary search box.
    */
   import { setFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
-  import SearchField from '../search-field/search-field.svelte';
-  import type { SearchFieldProps } from '../search-field/search-field.types.ts';
+  import SearchField from '@lostgradient/search-field/components/search-field/search-field.svelte';
+  import type { SearchFieldProps } from '@lostgradient/search-field/components/search-field/search-field.types.ts';
 
   let { id, ...rest }: SearchFieldProps & { id: string } = $props();
 

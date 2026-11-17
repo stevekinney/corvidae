@@ -9,8 +9,9 @@ setupHappyDom();
 const { render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/dropdown-compound-fixture.svelte');
 const { default: OnclickFixture } =
-  await import('../../test/fixtures/dropdown-trigger-onclick-fixture.svelte');
-const { default: DropdownTrigger } = await import('./dropdown-trigger.svelte');
+  await import('@lostgradient/dropdown/test/fixtures/dropdown-trigger-onclick-fixture.svelte');
+const { default: DropdownTrigger } =
+  await import('@lostgradient/dropdown/components/dropdown-trigger/dropdown-trigger.svelte');
 
 describe('DropdownTrigger', () => {
   test('throws when rendered outside a Dropdown', () => {

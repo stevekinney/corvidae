@@ -2,8 +2,8 @@
   import Chip from '@lostgradient/chip/components/chip/chip.svelte';
   import Combobox from '../combobox/combobox.svelte';
   import type { ComboboxFooterContext, ComboboxOption } from '../combobox/combobox.types.ts';
-  import NumberInput from '../number-input/number-input.svelte';
-  import Select from '../select/select.svelte';
+  import NumberInput from '@lostgradient/number-input/components/number-input/number-input.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
   import ScheduleBuilderTimeInput from './schedule-builder-time-input.svelte';
   import CronFields from './schedule-builder-cron-fields.svelte';
   import type {

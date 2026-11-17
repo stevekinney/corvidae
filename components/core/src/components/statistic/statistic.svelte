@@ -7,8 +7,8 @@
 </script>
 
 <script lang="ts">
-  import Skeleton from '../skeleton/skeleton.svelte';
-  import { resolveChartTheme } from '../../_internal/chart/chart-utilities.ts';
+  import Skeleton from '@lostgradient/skeleton/components/skeleton/skeleton.svelte';
+  import { resolveChartTheme } from '@lostgradient/chart/_internal/chart/chart-utilities.ts';
   import type { StatisticProps } from './statistic.types.ts';
   import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';

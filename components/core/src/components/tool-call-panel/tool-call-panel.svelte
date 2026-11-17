@@ -23,8 +23,8 @@
   } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import { phoneViewport } from '@lostgradient/foundation/_internal/phone-viewport.svelte.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Button from '../button/button.svelte';
-  import CopyButton from '../copy-button/copy-button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import CopyButton from '@lostgradient/copy-button/components/copy-button/copy-button.svelte';
   import Drawer from '@lostgradient/drawer/components/drawer/drawer.svelte';
   import Spinner from '@lostgradient/spinner/components/spinner/spinner.svelte';
   import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';

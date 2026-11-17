@@ -1,8 +1,8 @@
 <script lang="ts">
   import ContextMenu from './context-menu.svelte';
   import ContextMenuTrigger from '../context-menu-trigger/context-menu-trigger.svelte';
-  import DropdownItem from '../dropdown-item/dropdown-item.svelte';
-  import DropdownMenu from '../dropdown-menu/dropdown-menu.svelte';
+  import DropdownItem from '@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte';
+  import DropdownMenu from '@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte';
   import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
 
   let {

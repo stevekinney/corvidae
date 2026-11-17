@@ -87,7 +87,7 @@ describe('analyzeComponent — button.svelte', () => {
     // page's inline payload, so an absolute path would make the export depend on (and reveal)
     // the directory it was built in.
     const manifest = await analyzeComponent(componentPath('button'));
-    expect(manifest.file).toBe('components/core/src/components/button/button.svelte');
+    expect(manifest.file).toBe('components/button/src/components/button/button.svelte');
   });
 });
 

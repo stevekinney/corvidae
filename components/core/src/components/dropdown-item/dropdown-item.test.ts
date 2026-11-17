@@ -9,10 +9,11 @@ setupHappyDom();
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/dropdown-compound-fixture.svelte');
 const { default: PolyFixture } =
-  await import('../../test/fixtures/dropdown-item-polymorphic-fixture.svelte');
+  await import('@lostgradient/dropdown/test/fixtures/dropdown-item-polymorphic-fixture.svelte');
 const { default: RadioFixture } =
-  await import('../../test/fixtures/dropdown-item-radio-fixture.svelte');
-const { default: DropdownItem } = await import('./dropdown-item.svelte');
+  await import('@lostgradient/dropdown/test/fixtures/dropdown-item-radio-fixture.svelte');
+const { default: DropdownItem } =
+  await import('@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

@@ -27,10 +27,10 @@
     groupOptions,
     hasGroupedOptions,
   } from '@lostgradient/foundation/components/_internal/group-options.ts';
-  import Button from '../button/button.svelte';
-  import Popover from '../popover/popover.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import Popover from '@lostgradient/popover/components/popover/popover.svelte';
   import ComboboxSearch from './combobox-search.svelte';
-  import Skeleton from '../skeleton/skeleton.svelte';
+  import Skeleton from '@lostgradient/skeleton/components/skeleton/skeleton.svelte';
   import { PHONE_VIEWPORT_BREAKPOINT } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
 
   let {

@@ -33,13 +33,13 @@ A bottom drawer is a sheet, and every sheet follows the same rules (design rows 
 
 ## Choosing something else
 
-- Full-screen workflows that require the user's full attention — use a [`Modal`](../../../../core/src/components/modal/README.md) or navigate to a new page.
-- Brief contextual explanations or single-action prompts — use a [`Popover`](../../../../core/src/components/popover/README.md) instead.
+- Full-screen workflows that require the user's full attention — use a [`Modal`](../../../../modal/src/components/modal/README.md) or navigate to a new page.
+- Brief contextual explanations or single-action prompts — use a [`Popover`](../../../../popover/src/components/popover/README.md) instead.
 
 ## Related components
 
-- [`Modal`](../../../../core/src/components/modal/README.md) — blocking full-attention overlay when the user cannot continue without acting.
-- [`Sidebar`](../../../../core/src/components/sidebar/README.md) — persistent side panel that is always visible (not overlaid).
+- [`Modal`](../../../../modal/src/components/modal/README.md) — blocking full-attention overlay when the user cannot continue without acting.
+- [`Sidebar`](../../../../side-navigation/src/components/sidebar/README.md) — persistent side panel that is always visible (not overlaid).
 
 ## Usage
 

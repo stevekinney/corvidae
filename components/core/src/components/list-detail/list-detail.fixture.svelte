@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SelectableRow } from '../selectable-row/index.ts';
+  import { SelectableRow } from '@lostgradient/selectable-row/components/selectable-row/index.ts';
   import ListDetail from './list-detail.svelte';
   import type { ListDetailProps } from './list-detail.types.ts';
 

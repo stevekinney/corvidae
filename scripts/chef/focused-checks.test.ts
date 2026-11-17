@@ -585,7 +585,7 @@ describe('runChecks', () => {
 
   test('a component change warns with its fixture specs and runs no browser step', async () => {
     const { runner } = fakeRunner({
-      changed: ['components/core/src/components/citation/citation.svelte'],
+      changed: ['components/citation/src/components/citation/citation.svelte'],
     });
     const deps = {
       ...dependencies(runner),

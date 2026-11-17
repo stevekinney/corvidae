@@ -1,8 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { TableDensity, TableSort } from '@lostgradient/table/components/table/table.types.ts';
 import type { DataListGroup } from '../data-list/data-list.types.ts';
-import type { TableDensity, TableSort } from '../table/table.types.ts';
 
 /**
  * A generic record type representing a single data row.

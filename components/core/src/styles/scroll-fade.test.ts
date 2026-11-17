@@ -225,7 +225,7 @@ describe('shared scroll-fade recipe', () => {
 
 describe('scroll-fade regression: overlay bodies never reintroduce a mask (PR #972)', () => {
   const overlayFiles = [
-    `${import.meta.dir}/../components/modal/modal.css`,
+    `${import.meta.dir}/../../../modal/src/components/modal/modal.css`,
     `${import.meta.dir}/../../../drawer/src/components/drawer/drawer.css`,
   ];
 

@@ -21,8 +21,8 @@
   import { phoneViewport } from '@lostgradient/foundation/_internal/phone-viewport.svelte.ts';
   import type { StackedListItemProps } from './stacked-list-item.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Button from '../button/button.svelte';
-  import { Dropdown } from '../dropdown/index.ts';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import { Dropdown } from '@lostgradient/dropdown/components/dropdown/index.ts';
 
   let {
     density,

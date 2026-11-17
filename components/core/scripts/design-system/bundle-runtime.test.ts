@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { ButtonGroup } from '@lostgradient/button/components/button-group/index.ts';
+import { Button } from '@lostgradient/button/components/button/index.ts';
 import { Card } from '@lostgradient/card/components/card/index.ts';
 import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
-import { ButtonGroup } from '../../src/components/button-group/index.ts';
-import { Button } from '../../src/components/button/index.ts';
-import { Modal } from '../../src/components/modal/index.ts';
-import { installModalDialogStubs } from '../../src/components/modal/modal-test-helpers.ts';
+import { Modal } from '@lostgradient/modal/components/modal/index.ts';
+import { installModalDialogStubs } from '@lostgradient/modal/components/modal/modal-test-helpers.ts';
 import { contextsFor } from './bundle-host.ts';
 import {
   type CinderComponent,

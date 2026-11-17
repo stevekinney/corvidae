@@ -13,7 +13,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { installModalDialogStubs } from '../../src/components/modal/modal-test-helpers.ts';
+import { installModalDialogStubs } from '@lostgradient/modal/components/modal/modal-test-helpers.ts';
 import { buildComponentBundle } from './bundle-build.ts';
 import type { CinderGlobal, MountedCinder } from './bundle-runtime.svelte.ts';
 import { bundleHeader } from './bundle.ts';

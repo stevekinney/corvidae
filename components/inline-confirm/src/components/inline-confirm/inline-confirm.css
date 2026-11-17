@@ -1,0 +1,124 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '@lostgradient/button/button.css';
+@layer cinder.components {
+  /*
+   * A soft strip, not a status banner: the tone is carried by the prompt
+   * (text color, and a glyph when destructive) rather than by a saturated
+   * fill. The fills are status backgrounds mixed into the raised surface in
+   * oklab, which keeps the status hue instead of travelling toward the
+   * neutrals' (see status-mix-space.test.ts).
+   */
+  .cinder-inline-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-3);
+    background: color-mix(
+      in oklab,
+      var(--cinder-status-neutral-background) 60%,
+      var(--cinder-surface-raised)
+    );
+    border-block: 1px solid var(--cinder-status-neutral-border);
+  }
+  /*
+   * `flush`: the strip sits inside a bordered container, where its own rule at
+   * the container's start or end would sit on the container's edge and double
+   * it, so it leaves that edge to the container. Opt-in, because CSS cannot see
+   * whether a parent draws a border: a standalone strip keeps both edges.
+   */
+  .cinder-inline-confirm[data-cinder-flush]:first-child {
+    border-block-start: 0;
+  }
+  .cinder-inline-confirm[data-cinder-flush]:last-child {
+    border-block-end: 0;
+  }
+  .cinder-inline-confirm__prompt {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    margin: 0;
+    color: var(--cinder-status-neutral-text);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+  }
+  .cinder-inline-confirm__glyph {
+    flex: none;
+  }
+  .cinder-inline-confirm__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--cinder-space-2);
+    /* On its own line the pair still ends at the trailing edge, the confirming action last. */
+    margin-inline-start: auto;
+  }
+
+  /* Confirmation words must remain readable inside a narrow in-flow strip. Button's default
+   * label contract is single-line elsewhere; this local pair may reflow so a long destructive
+   * command never truncates or overlaps its Cancel target. */
+  .cinder-inline-confirm__actions .cinder-button {
+    max-inline-size: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-inline-confirm__actions .cinder-button__label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  .cinder-inline-confirm[data-cinder-destructive] {
+    background: color-mix(
+      in oklab,
+      var(--cinder-status-danger-background) 45%,
+      var(--cinder-surface-raised)
+    );
+    border-color: var(--cinder-status-danger-border);
+  }
+  .cinder-inline-confirm[data-cinder-destructive] .cinder-inline-confirm__prompt {
+    color: var(--cinder-status-danger-text);
+  }
+  .cinder-inline-confirm__two-press {
+    display: inline-flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--cinder-space-1);
+  }
+  .cinder-inline-confirm__two-press .cinder-button {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  .cinder-inline-confirm__two-press .cinder-button__label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  .cinder-inline-confirm__two-press-hint {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-tight);
+    text-align: center;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-inline-confirm__armed-escape {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      clip-path: inset(50%);
+      border: 0;
+      white-space: nowrap;
+    }
+  }
+}

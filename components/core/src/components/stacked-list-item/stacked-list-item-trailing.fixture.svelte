@@ -1,7 +1,7 @@
 <script lang="ts">
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
-  import { Button } from '../button/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
   import { DataList } from '../data-list/index.ts';
   import { StackedListItem } from './index.ts';
 

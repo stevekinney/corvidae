@@ -29,7 +29,7 @@ const { render } = await import('@testing-library/svelte');
 const { default: Input } = await import('@lostgradient/input/components/input/input.svelte');
 const { default: Textarea } =
   await import('@lostgradient/textarea/components/textarea/textarea.svelte');
-const { default: Select } = await import('../components/select/select.svelte');
+const { default: Select } = await import('@lostgradient/select/components/select/select.svelte');
 
 /** A stylesheet on one line per whitespace run, so a selector the formatter wrapped still matches. */
 function flatten(path: string): string {
@@ -41,7 +41,7 @@ function flatten(path: string): string {
 
 const inputCss = flatten('../../../input/src/components/input/input.css');
 const textareaCss = flatten('../../../textarea/src/components/textarea/textarea.css');
-const selectCss = flatten('../components/select/select.css');
+const selectCss = flatten('../../../select/src/components/select/select.css');
 const fieldChevronCss = flatten('../../../foundation/src/styles/components/_field-chevron.css');
 
 /** The density default selector: a field with no explicit outlined appearance in a comfortable subtree. */

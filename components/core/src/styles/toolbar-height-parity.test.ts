@@ -97,7 +97,7 @@ type ControlRow = {
 };
 
 const button: ControlRow = {
-  path: '../components/button/button.css',
+  path: '../../../button/src/components/button/button.css',
   base: '.cinder-button',
   property: 'min-height',
   frame: 0,
@@ -117,7 +117,7 @@ const searchField: ControlRow = {
   frame: 2 * BORDER,
 };
 const select: ControlRow = {
-  path: '../components/select/select.css',
+  path: '../../../select/src/components/select/select.css',
   base: '.cinder-select',
   property: 'min-height',
   frame: 0,

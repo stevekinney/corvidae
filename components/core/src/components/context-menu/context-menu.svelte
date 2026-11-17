@@ -20,7 +20,7 @@
     setDropdownRegister,
     setDropdownRegisterTrigger,
     setDropdownSetOpen,
-  } from '../dropdown/dropdown.context.ts';
+  } from '@lostgradient/dropdown/components/dropdown/dropdown.context.ts';
   import { setContextMenuContext } from './context-menu.context.ts';
 
   let {
