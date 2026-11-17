@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, CopyButton, Modal, Textarea } from '@lostgradient/cinder';
+  import { Button, Modal, Textarea } from '@lostgradient/cinder';
   import { tick, untrack } from 'svelte';
 
   import type { Inspection } from './inspection-controller.ts';
@@ -34,6 +34,19 @@
 
   const searchSummary = $derived(describeSearch(view.search, view.selectionFailed));
   const notices = $derived(view.snapshot === undefined ? [] : describeSnapshot(view.snapshot));
+
+  /** The snapshot text Copy last put on the clipboard: Copy reads Copied while that text shows. */
+  let copiedText = $state<string | undefined>();
+  const snapshotText = $derived(view.snapshot?.snapshot.text ?? '');
+  async function copySnapshot(): Promise<void> {
+    const text = snapshotText;
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedText = text;
+    } catch {
+      copiedText = undefined;
+    }
+  }
 
   /** Focus returns to the control that opened the dialog while it is mounted, else to the frame. */
   function restoreFocus(trigger: HTMLElement | null, whenLost = false): void {
@@ -181,7 +194,11 @@
       disabled={view.snapshot === undefined || !view.snapshot.refreshable}
       onclick={refresh}>Refresh</Button
     >
-    <CopyButton value={view.snapshot?.snapshot.text ?? ''} label="Copy" textVisible />
+    <!-- A secondary Button like its siblings, not the compact CopyButton, so the footer's four
+         actions are one size (COR-2440). -->
+    <Button variant="secondary" onclick={() => void copySnapshot()}
+      >{copiedText !== undefined && copiedText === snapshotText ? 'Copied' : 'Copy'}</Button
+    >
     <Button variant="secondary" onclick={() => inspection.downloadExport()}>Download</Button>
     <Button variant="primary" onclick={() => inspection.closeSnapshot()}>Close</Button>
   {/snippet}
