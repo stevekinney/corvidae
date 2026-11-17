@@ -117,6 +117,15 @@ describe('ErrorState retry', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  test('the full-page Retry leads with the RefreshCw glyph, as Banner’s and ToolCallPanel’s Retry do (COR-2289)', () => {
+    const { getByRole } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
+    });
+    const glyph = getByRole('button', { name: 'Try again' }).querySelector('svg');
+    expect(glyph?.classList.contains('lucide-refresh-cw')).toBe(true);
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+  });
+
   test('retryLabel overrides the button text', () => {
     const { getByRole } = render(ErrorState, {
       props: {

@@ -225,9 +225,15 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     ).text();
 
     expect(source).toMatch(/\.chat-follow-up-ghost\s*\{[^}]*min-block-size:\s*2\.75rem;/s);
+    // Every row is one height: the hairline is inside the 44px, so the last row is not shorter.
+    expect(source).toMatch(/\.chat-follow-up-ghost\s*\{[^}]*box-sizing:\s*border-box;/s);
     expect(source).toMatch(/\.chat-follow-up-ghost-actions\s*\{[^}]*display:\s*flex;/s);
-    // Edit and Remove stand a 40px pitch apart, and the header has block padding at any pointer.
+    // Edit and Remove stand at most a 36px pitch apart (a 28px face and 8px, COR-2440), and the
+    // header has block padding at any pointer.
     expect(source).toMatch(
+      /\.chat-follow-up-ghost-actions\s*\{[^}]*gap:\s*var\(--cinder-space-2\);/s,
+    );
+    expect(source).not.toMatch(
       /\.chat-follow-up-ghost-actions\s*\{[^}]*gap:\s*var\(--cinder-space-3\);/s,
     );
     expect(source).toMatch(

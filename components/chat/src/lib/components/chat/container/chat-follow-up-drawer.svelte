@@ -192,9 +192,12 @@
     list-style: none;
   }
 
+  /* Every row is the same 44px with its hairline inside it, so the last row, which has none, is not
+   * a pixel shorter than the rest (COR-2440). */
   .chat-follow-up-ghost {
     position: relative;
     display: flex;
+    box-sizing: border-box;
     align-items: center;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
@@ -247,8 +250,9 @@
     }
 
     .chat-follow-up-ghost-actions {
-      /* A 28px face and 12px: a 40px pitch, the later control winning the hit-area overlap. */
-      gap: var(--cinder-space-3);
+      /* A 28px face and 8px: a 36px pitch, Edit and Remove read as one pair (COR-2440), the later
+       * control winning the hit-area overlap. */
+      gap: var(--cinder-space-2);
     }
   }
   /* The Cinder icon Buttons paint compact and take their 44 px hit area from a pseudo-element. */
