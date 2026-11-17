@@ -40,6 +40,15 @@ Strategy A needs no per-component `@media (forced-colors: active)` override: a s
 
 - `src/styles/foundation.css` — bare `:focus-visible` selector (global default). This is the only place Strategy A is sanctioned going forward.
 
+## Script focus targets
+
+A target the page focuses by script and nobody tabs to (`tabindex="-1"`: the card a chat opens on, a region that takes focus when an item opens) draws the ring only after keyboard input. The browser matches `:focus-visible` on a script focus when the element focused before it showed a ring (a composer always does) or when nothing has been touched yet, so a tap, a reload or a send from the composer could draw a ring round a card nobody moved to.
+
+- `trackInputModality()` (exported from `@lostgradient/cinder`) writes `data-cinder-input-modality="keyboard"` or `"pointer"` on the document element from the last key press (a modifier alone does not count) or press, and writes nothing before the first input. An application installs it once, in its shell, and removes it with the function it returns.
+- `foundation.css` removes the ring from `[tabindex='-1']:focus-visible` unless the attribute says `keyboard`. The target is still focused and still announced; only the ring is withheld.
+- Cost: a keyboard user who arrives by typing an address (or reloading) gets no ring on the landing target until the first key press.
+- Targets that draw no ring of their own are unchanged: Chat's transcript viewport and ListDetail's detail region already draw none.
+
 ## Strategy B — Box-shadow ring with transparent outline placeholder
 
 Use when:

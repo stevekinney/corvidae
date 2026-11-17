@@ -16,14 +16,13 @@
    * the composer included, and never under Shift (⌘⇧K is the composer's link shortcut); the plain
    * keys never act inside a field, and a person can turn them off in Settings.
    */
-  import { Banner, guardThemeTransitions } from '@lostgradient/cinder';
+  import { Banner, guardThemeTransitions, trackInputModality } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
-  import { trackInputModality } from '../../lib/input-modality.ts';
   import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';

@@ -7,4 +7,4 @@
  */
 
 export const BASE_SOURCE_DIGEST =
-  'sha256:879b9a1b15948fe11d03cf8eff204deb247fb18e4cc3acc0286c076a061e12f5';
+  'sha256:499ea801e971deae8e75caf53c3cc8e326d81bc2ab09c618c076e7e2975d1081';
