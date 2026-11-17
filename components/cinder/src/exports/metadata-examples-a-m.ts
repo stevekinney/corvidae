@@ -46,6 +46,7 @@ import connectionIndicatorExamplesJson from '../components/connection-indicator/
 import containerExamplesJson from '../components/container/container.examples.json' with { type: 'json' };
 import contextMenuExamplesJson from '../components/context-menu/context-menu.examples.json' with { type: 'json' };
 import copyButtonExamplesJson from '../components/copy-button/copy-button.examples.json' with { type: 'json' };
+import copyableValueExamplesJson from '../components/copyable-value/copyable-value.examples.json' with { type: 'json' };
 import dataGridExamplesJson from '../components/data-grid/data-grid.examples.json' with { type: 'json' };
 import dataListExamplesJson from '../components/data-list/data-list.examples.json' with { type: 'json' };
 import dataTableExamplesJson from '../components/data-table/data-table.examples.json' with { type: 'json' };
@@ -203,6 +204,8 @@ export const containerExamples = containerExamplesJson;
 export const contextMenuExamples = contextMenuExamplesJson;
 /** Code examples for this component. */
 export const copyButtonExamples = copyButtonExamplesJson;
+/** Code examples for this component. */
+export const copyableValueExamples = copyableValueExamplesJson;
 /** Code examples for this component. */
 export const dataGridExamples = dataGridExamplesJson;
 /** Code examples for this component. */
