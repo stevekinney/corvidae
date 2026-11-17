@@ -465,7 +465,9 @@ describe('vertical navigation-item geometry lives on the item', () => {
     // The current page is the soft accent tint (owner, 2026-11-16): in light the sidebar surface
     // and the raised surface are both white, so a raised pill vanished. The label stays the
     // default text colour: the accent is for actions and links.
-    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-accent-background)');
+    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-selected-background)');
+    // A flat row: no shadow, so the vertical row's inset focus ring is never overridden.
+    expect(declValue(rule!, 'box-shadow')).toBeUndefined();
     expect(declValue(rule!, 'color')).toBe('var(--cinder-text-default)');
     // A selected row is a fill, never an accent stripe (COR-1821).
     expect(declValue(rule!, 'border-inline-start-color')).toBeUndefined();

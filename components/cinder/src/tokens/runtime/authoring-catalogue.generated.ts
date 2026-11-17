@@ -10647,6 +10647,60 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'selected.background',
+      cssProperty: '--cinder-selected-background',
+      category: 'color',
+      component: null,
+      description:
+        'Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'selected.background' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'selected.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'selected.background' },
+            },
+            inputs: {
+              aliases: ['accent.background'],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-accent-background', path: 'accent.background' }],
+            },
+          },
+        },
+      ],
+    },
+    {
       path: 'list.row.min-height',
       cssProperty: '--cinder-list-row-min-height',
       category: 'size',

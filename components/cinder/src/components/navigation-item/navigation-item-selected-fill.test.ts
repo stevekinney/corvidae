@@ -35,14 +35,30 @@ function hoverOver(surface: OklchColor, arm: 'light' | 'dark'): number {
 }
 
 describe('selected vertical NavigationItem fill', () => {
-  test('is the soft accent tint, at rest and on hover', () => {
+  test('is the one selected fill, at rest and on hover', () => {
     expect(declarationsFor(navigationItemCss, SELECTED).get('background-color')).toBe(
-      'var(--cinder-accent-background)',
+      'var(--cinder-selected-background)',
     );
     // The hover rule for the selected row lives inside `@media (hover: hover)`.
     expect(navigationItemCss).toMatch(
-      /\[data-variant='vertical'\]\[data-active='true'\]:hover \{\s*background-color: var\(--cinder-accent-background\);/,
+      /\[data-variant='vertical'\]\[data-active='true'\]:hover \{\s*background-color: var\(--cinder-selected-background\);/,
     );
+  });
+
+  test('is the same fill a selected StackedListItem paints, so the app has one selected recipe', async () => {
+    const stackedListItemCss = await Bun.file(
+      new URL('../stacked-list-item/stacked-list-item.css', import.meta.url),
+    ).text();
+    expect(
+      declarationsFor(
+        stackedListItemCss,
+        '.cinder-stacked-list-item.cinder-stacked-list-item--selected',
+      ).get('background'),
+    ).toBe('var(--cinder-selected-background)');
+    const tokensCss = await Bun.file(
+      new URL('../../styles/tokens-base.css', import.meta.url),
+    ).text();
+    expect(tokensCss).toContain('--cinder-selected-background: var(--cinder-accent-background);');
   });
 
   test('the hover rule for unselected rows is the 4% ink this test composites', () => {
@@ -51,9 +67,10 @@ describe('selected vertical NavigationItem fill', () => {
     );
   });
 
-  // `--cinder-accent-background` mixes the accent into `--cinder-surface`, the sidebar's own
-  // surface, so its resolved value is the colour the row paints in the sidebar.
-  const fill = readOklchToken('--cinder-accent-background');
+  // `--cinder-selected-background` is `--cinder-accent-background`, which mixes the accent into
+  // `--cinder-surface`, the sidebar's own surface, so its resolved value is the colour the row
+  // paints in the sidebar.
+  const fill = readOklchToken('--cinder-selected-background');
   const surface = readOklchToken('--cinder-surface');
   const label = readOklchToken('--cinder-text-default');
 

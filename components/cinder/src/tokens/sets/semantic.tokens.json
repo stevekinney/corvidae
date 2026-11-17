@@ -1194,6 +1194,21 @@
       }
     }
   },
+  "selected": {
+    "background": {
+      "$type": "color",
+      "$value": "{accent.background}",
+      "$description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-selected-background",
+          "public": true,
+          "category": "color",
+          "cssRecipe": "var(--cinder-accent-background)"
+        }
+      }
+    }
+  },
   "list": {
     "row": {
       "min-height": {

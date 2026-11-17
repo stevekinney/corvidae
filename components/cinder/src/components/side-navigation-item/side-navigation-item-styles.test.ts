@@ -91,31 +91,28 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
 });
 
 describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
-  // The soft accent tint (owner, 2026-11-16): the light surface and raised surface are both
+  // The one selected fill (owner, 2026-11-16): the light surface and raised surface are both
   // white, so a raised pill no longer reads on the sidebar.
-  const SELECTED_FILL = 'var(--cinder-accent-background)';
-  // The pill's shadow reads a private hook first, so a surface that drops the pill (the phone
-  // drawer, `sidebar.css`) sets the hook and never `box-shadow`, and keeps the focus ring.
-  const SHADOW = 'var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm))';
+  const SELECTED_FILL = 'var(--cinder-selected-background)';
 
-  test('is a soft accent pill with the hairline shadow, default text and semibold weight (AC2, AC9)', () => {
+  test('is a flat selected fill with no shadow, default text and semibold weight (AC2, AC9)', () => {
     const rule = rulesFor(navigationItemCss, ACTIVE).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
     expect(declaration(rule, 'background-color')).toBe(SELECTED_FILL);
-    expect(declaration(rule, 'box-shadow')).toBe(SHADOW);
+    expect(declaration(rule, 'box-shadow')).toBeUndefined();
     expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
     expect(declaration(rule, 'font-weight')).toBe('var(--cinder-font-semibold)');
   });
 
-  test('keeps the pill shadow beside the focus ring when the active row is focused', () => {
-    const rule = rulesFor(navigationItemCss, `${ACTIVE}:focus-visible`).find(
+  test('a focused active row draws the vertical inset ring, which no active rule overrides', () => {
+    expect(rulesFor(navigationItemCss, `${ACTIVE}:focus-visible`)).toEqual([]);
+    const rule = rulesFor(navigationItemCss, `${VERTICAL}:focus-visible`).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
     const shadow = declaration(rule, 'box-shadow');
     expect(shadow).toContain('inset 0 0 0 var(--cinder-ring-width)');
     expect(shadow).toContain('var(--_cinder-navigation-item-ring, var(--cinder-ring-color))');
-    expect(shadow).toEndWith(SHADOW);
   });
 
   test('never colours its label with the accent: the accent text is for actions and links', () => {

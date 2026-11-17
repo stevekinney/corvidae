@@ -2225,6 +2225,19 @@
     "$description": "Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card.",
     "$type": "color"
   },
+  "selected.background": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.9424, 0.0288, 257.04] },
+    "$description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-selected-background",
+        "public": true,
+        "category": "color",
+        "cssRecipe": "var(--cinder-accent-background)"
+      }
+    }
+  },
   "list.row.min-height": {
     "$type": "dimension",
     "$value": { "value": 0, "unit": "px" },

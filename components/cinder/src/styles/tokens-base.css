@@ -379,6 +379,8 @@
   --cinder-gap-inline: var(--cinder-space-2);
   /* Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card. */
   --cinder-skeleton-background: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
+  /* Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links. */
+  --cinder-selected-background: var(--cinder-accent-background);
   /* Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`. */
   --cinder-list-row-min-height: 0px;
   /* Default control padding. */
