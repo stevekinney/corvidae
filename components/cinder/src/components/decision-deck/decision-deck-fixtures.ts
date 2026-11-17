@@ -6,8 +6,9 @@
  * .svelte`): `drag-accept` and `drag-reject` hold a card mid-drag so its stamp shows, `drag-rtl`
  * does the same right to left (a drag toward the left accepts), `last-card` decides the only card
  * with reduced motion on so the screenshot is the resting frame (the Undo bar beside "All caught
- * up"), and `focused-long-title` focuses the top card with the keyboard ring while a long title and
- * description wrap. An exit frozen mid-animation is not captured: the fixture harness forces
+ * up"), and `focused-long-title` wraps a long title and description (its capture cannot show the keyboard
+ * ring, because the harness blurs the page first; `decision-deck-layout.playwright.ts` asserts the
+ * ring on a real keyboard focus instead). An exit frozen mid-animation is not captured: the fixture harness forces
  * transitions and animations to zero, so it cannot hold the frame deterministically.
  */
 export default [

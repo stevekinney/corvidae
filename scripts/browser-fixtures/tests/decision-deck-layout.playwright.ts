@@ -131,4 +131,32 @@ for (const theme of ['light', 'dark'] as const) {
     });
     expect(one!).toBeLessThan(three!);
   });
+
+  // The `focused-long-title` capture cannot show the keyboard ring: the harness blurs the page
+  // before it screenshots, and `:focus-visible` cannot be forced on from a fixture. So the ring is
+  // asserted here instead, on a real keyboard focus of the top card.
+  test(`the top card draws the keyboard focus ring when focused with the keyboard (${theme})`, async ({
+    componentPage,
+  }) => {
+    const page = await open(componentPage, theme, 'focused-long-title');
+    const card = page.locator('[data-cinder-decision-card][data-depth="0"]');
+    await card.waitFor({ state: 'visible' });
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    for (let presses = 0; presses < 6; presses += 1) {
+      await page.keyboard.press('Tab');
+      if (await card.evaluate((element) => element === document.activeElement)) break;
+    }
+    await expect(card).toBeFocused();
+    const { shadow, ring } = await card.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--cinder-ring-color)';
+      element.append(probe);
+      const ringColour = getComputedStyle(probe).color;
+      probe.remove();
+      return { shadow: getComputedStyle(element).boxShadow, ring: ringColour };
+    });
+    // A two-part ring (offset gap, then the ring colour) on top of the card's own shadow.
+    expect(shadow).not.toBe('none');
+    expect(shadow).toContain(ring);
+  });
 }

@@ -349,6 +349,54 @@
     }
   }
 
+  /* A suggested row with a trailing value or a chevron takes the narrow layout at every width
+     (COR-2441): the word "Suggested" on a line of its own above, and the value and the chevron on
+     the title's first line. Wide, the text column is a block with the word above the title, and
+     a vertically centred value would sit between the word and the title and read "Suggested
+     Friday". A time-led row keeps its text column. */
+  .cinder-grouped-list-item[data-cinder-suggested]:not(.cinder-grouped-list-item--timed):is(
+      .cinder-grouped-list-item--trailing,
+      .cinder-grouped-list-item--linked
+    )
+    > .cinder-grouped-list-item__content {
+    flex-wrap: wrap;
+    row-gap: var(--cinder-space-0-5);
+  }
+
+  .cinder-grouped-list-item[data-cinder-suggested]:not(.cinder-grouped-list-item--timed):is(
+      .cinder-grouped-list-item--trailing,
+      .cinder-grouped-list-item--linked
+    )
+    .cinder-grouped-list-item__text {
+    display: contents;
+  }
+
+  .cinder-grouped-list-item[data-cinder-suggested]:not(.cinder-grouped-list-item--timed):is(
+      .cinder-grouped-list-item--trailing,
+      .cinder-grouped-list-item--linked
+    )
+    .cinder-grouped-list-item__suggested {
+    flex: 1 0 100%;
+    order: -1;
+  }
+
+  .cinder-grouped-list-item[data-cinder-suggested]:not(.cinder-grouped-list-item--timed):is(
+      .cinder-grouped-list-item--trailing,
+      .cinder-grouped-list-item--linked
+    )
+    .cinder-grouped-list-item__title {
+    flex: 1 1 5rem;
+  }
+
+  .cinder-grouped-list-item[data-cinder-suggested]:not(.cinder-grouped-list-item--timed):is(
+      .cinder-grouped-list-item--trailing,
+      .cinder-grouped-list-item--linked
+    )
+    .cinder-grouped-list-item__subtitle {
+    flex: 1 0 100%;
+    order: 1;
+  }
+
   /* ----------------------------------------
  * The row is the link
  * ---------------------------------------- */

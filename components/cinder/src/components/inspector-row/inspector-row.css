@@ -209,6 +209,14 @@
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
+  /* Beside the label (700px and wider) a suggested row's label column is two lines, the word and the
+     label, so a vertically centred value sat between them ("Suggested", "Phone", "Context", COR-2441).
+     The value starts at the top instead, one word-line down, so it shares the label's own line. */
+  .cinder-inspector-row[data-cinder-suggested] > .cinder-inspector-row__value {
+    align-items: flex-start;
+    padding-block-start: calc(var(--cinder-text-sm) * var(--cinder-leading-snug));
+  }
+
   /* ----------------------------------------
  * Phones: the label stacks above the value
  * ---------------------------------------- */
@@ -235,6 +243,12 @@
 
     .cinder-inspector-row__trigger {
       min-block-size: 2rem;
+    }
+
+    /* Stacked under the label, the value is on a line of its own and needs no offset. */
+    .cinder-inspector-row[data-cinder-suggested] > .cinder-inspector-row__value {
+      align-items: center;
+      padding-block-start: 0;
     }
   }
 
