@@ -74,8 +74,8 @@ export function anchorClaims(
     const nodes: Text[] = [];
     let text = '';
     for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-      if (insideCode(node)) continue;
-      nodes.push(node as Text);
+      if (!(node instanceof Text) || insideCode(node)) continue;
+      nodes.push(node);
       text += node.nodeValue ?? '';
     }
     const match = claimPattern(claim).exec(text);
