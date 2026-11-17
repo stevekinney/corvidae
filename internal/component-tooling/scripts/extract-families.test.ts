@@ -314,6 +314,13 @@ describe('the layout', () => {
       { path: 'src/components/button/button.css' },
       { path: 'src/components/card/card.css', comment: '/* Card sits after button. */' },
     ]);
+    // A comment right under an import (a generated region's end) keeps having no blank line.
+    expect(
+      readComponentsCssOrder("@import './a.css';\n/* end */\n\n@import './b.css';\n").imports,
+    ).toEqual([
+      { path: 'src/styles/a.css' },
+      { path: 'src/styles/b.css', comment: '/* end */', tight: true },
+    ]);
   });
 });
 

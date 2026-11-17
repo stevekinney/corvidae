@@ -1183,7 +1183,9 @@ export function readComponentsCssOrder(text: string): ComponentsCssOrder {
     imports.push({
       path: joinVirtual(COMPONENTS_CSS, specifier),
       ...(comment === '' ? {} : { comment }),
-      ...(comment !== '' && !/^[ \t]*\n[ \t]*\n/.test(between) ? { tight: true as const } : {}),
+      ...(comment !== '' && last > 0 && !/^[ \t]*\n[ \t]*\n/.test(between)
+        ? { tight: true as const }
+        : {}),
     });
     last = (match.index ?? 0) + match[0].length;
   }
