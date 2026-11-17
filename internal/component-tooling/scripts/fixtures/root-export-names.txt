@@ -332,6 +332,7 @@ createShikiModule
 darkThemeTokens
 describeScheduleFields
 detectTrigger
+dockedToBottom
 durationUnitFor
 focusFirstProblem
 formatBannerAsOf

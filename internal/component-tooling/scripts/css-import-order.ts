@@ -83,8 +83,9 @@ export function cssImportOrder(entry: string): string[] {
 }
 
 if (import.meta.main) {
-  const entry = process.argv[2] ?? join(import.meta.dir, '../../../components/cinder/src/index.ts');
-  const packageRoot = join(import.meta.dir, '../../../components/cinder');
+  // The package is the working directory, as for every tooling command run from a package.
+  const packageRoot = process.cwd();
+  const entry = resolve(packageRoot, process.argv[2] ?? join('src', 'index.ts'));
   for (const stylesheet of cssImportOrder(entry)) {
     process.stdout.write(`${relative(packageRoot, stylesheet)}\n`);
   }
