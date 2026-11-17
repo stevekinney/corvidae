@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { runInThisContext } from 'node:vm';
 
 import { Button } from '../../src/components/button/index.ts';
 import {
@@ -15,16 +16,20 @@ type HarnessGlobals = { React?: unknown; ReactDOM?: unknown; Cinder?: unknown };
 const scope = globalThis as unknown as HarnessGlobals;
 
 /** Runs a script as a page's classic `<script>` would: in the global scope. */
-function runClassicScript(path: string): void {
-  // Indirect eval: the UMD builds find no module system here and assign their globals.
-  (0, eval)(readFileSync(path, 'utf8'));
+function runClassicScript(source: string, filename: string): void {
+  // The UMD builds find no module system in the global scope, so they assign their globals.
+  runInThisContext(source, { filename });
+}
+
+function runClassicFile(path: string): void {
+  runClassicScript(readFileSync(path, 'utf8'), path);
 }
 
 beforeAll(() => {
   // The harness's React, from the published UMD builds it loads: React is no dependency of this
   // repository, so nothing here imports it.
-  runClassicScript(REACT_HARNESS_SCRIPTS.react);
-  runClassicScript(REACT_HARNESS_SCRIPTS.reactDom);
+  runClassicFile(REACT_HARNESS_SCRIPTS.react);
+  runClassicFile(REACT_HARNESS_SCRIPTS.reactDom);
 });
 
 afterEach(() => {
@@ -84,7 +89,7 @@ describe('probeCinderBundle', () => {
   test('fails a bundle that threw while loading and so never assigned window.Cinder', () => {
     let loadError = '';
     try {
-      (0, eval)('throw new TypeError("bundle.js: x is not a function")');
+      runClassicScript('throw new TypeError("x is not a function")', 'bundle.js');
     } catch (error) {
       loadError = String(error);
     }

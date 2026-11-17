@@ -6,13 +6,13 @@
  * would not notice, so the build checks the bundle on a page of its own.
  *
  * React is not a repository dependency: the bundle carries none, and the canvas supplies it. The
- * harness loads React's published UMD builds from `harness/`, byte for byte as npm ships them, the
- * way the canvas loads its own.
+ * harness loads React 18.3.1's published UMD builds from `vendor/react/`, byte for byte as npm
+ * ships them (with React's licence), the way the canvas loads its own.
  */
 
 import { join } from 'node:path';
 
-const harnessDirectory = join(import.meta.dir, 'harness');
+const harnessDirectory = join(import.meta.dir, 'vendor', 'react');
 
 /** React 18.3.1's UMD builds, in the order a page loads them: React, then ReactDOM. */
 export const REACT_HARNESS_SCRIPTS = {

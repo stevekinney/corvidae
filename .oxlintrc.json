@@ -73,7 +73,7 @@
     "**/node_modules/**",
     "**/*.generated.d.ts",
     "**/src/tokens/runtime/*-validator.generated.js",
-    "**/scripts/design-system/harness/*.production.min.js",
+    "**/scripts/design-system/vendor/**",
     "*.lock",
     "**/.playwright/**",
     "**/.hutch/**",

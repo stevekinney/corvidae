@@ -35,10 +35,13 @@ export const SCANNED_DIRECTORIES = [
   'applications/interborough',
 ];
 
-// Installed dependencies and generated output, mirroring `.gitignore`. Dot directories
-// (`.svelte-kit`, `.turbo`, `.types`) are skipped wholesale.
+// Installed dependencies and generated output, mirroring `.gitignore`, and `vendor`, which holds a
+// third party's published build byte for byte (React's UMD builds, for the design-system render
+// check) and writes no copy. Dot directories (`.svelte-kit`, `.turbo`, `.types`) are skipped
+// wholesale.
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
+  'vendor',
   'build',
   'dist',
   'artifacts',

@@ -64,7 +64,7 @@ describe('middle-dot separators', () => {
 });
 
 describe('scanned file discovery', () => {
-  test('collects text files, skips binaries, dependencies and dot directories', () => {
+  test('collects text files, skips binaries, dependencies, vendored builds and dot directories', () => {
     const directory = mkdtempSync(join(tmpdir(), 'middle-dot-scan-'));
     try {
       for (const path of [
@@ -73,6 +73,7 @@ describe('scanned file discovery', () => {
         'README.md',
         'src/assets/social.png',
         'node_modules/dependency/index.js',
+        'scripts/vendor/react/react.production.min.js',
         '.svelte-kit/generated.ts',
       ]) {
         mkdirSync(dirname(join(directory, path)), { recursive: true });
