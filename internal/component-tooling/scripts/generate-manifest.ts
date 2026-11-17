@@ -115,7 +115,7 @@ export type Manifest = {
 
 const PACKAGE_ROOT = CORE_ROOT;
 
-/** Every package's manifest validates against Cinder's manifest schema. */
+/** Every package's manifest validates against the manifest schema the tooling owns. */
 const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'manifest.schema.json');
 
 /** Where the `metadata` task writes a package's `components.json`. */

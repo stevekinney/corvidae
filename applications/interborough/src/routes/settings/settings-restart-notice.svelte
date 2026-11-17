@@ -4,8 +4,9 @@
    * "same restart banner" rows of each section): a sticky warning banner that counts the saved
    * changes waiting for a restart and offers Revert and Restart now, the question before a restart
    * and its progress, and the banner that says the host is back. Restart now is never one click: it
-   * asks first, naming the effect on running work. Below 640px the buttons stack, each a full-width
-   * 44px target, and the question opens as a bottom sheet (board ResponsiveAndDark, "Phone").
+   * asks first, naming the effect on running work. Below 640px the two buttons sit side by side
+   * under the words, sized to their labels, each with a 44px touch target (COR-2511), and the question opens as a
+   * bottom sheet (board ResponsiveAndDark, "Phone").
    *
    * The page owns the {@link HostRestartFlow} and the {@link SettingsRevert}, because it also
    * words each row from them (a reverted row, "In effect since"); this draws what they say. It
@@ -99,7 +100,6 @@
       <Banner
         variant="warning"
         sticky
-        stackActions
         dismissible={false}
         title={copy.title(labels.length)}
         titleLayout="stacked"
@@ -149,6 +149,13 @@
     inset-block-start: 0;
     z-index: 1;
     min-inline-size: 0;
+    /* A page that gives the notice a column of its own sets the frame's cap here; the others leave it open. */
+    max-inline-size: var(--ib-settings-banner-measure, none);
     margin-block-end: var(--cinder-space-4);
   }
+
+  /* On a phone the two buttons are compact, sized to their labels and side by side under the words,
+     because the notice does not ask the Banner to stack its actions (`stackActions` makes each a
+     full-width bar). A Button reaches a 44px touch target through its own hit area on a touch
+     screen, so its painted face stays compact. */
 </style>

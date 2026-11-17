@@ -12,7 +12,7 @@ import {
 } from './check-component-constraints.ts';
 
 const fixture: ConstraintsDocument & { $schema: string } = {
-  $schema: '../../schemas/constraints.schema.json',
+  $schema: '../../../../../internal/component-tooling/src/schemas/constraints.schema.json',
   component: 'button',
   summary: 'A fixture.',
   rules: [

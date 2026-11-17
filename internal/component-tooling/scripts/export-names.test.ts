@@ -122,7 +122,7 @@ export interface Merged {}
  * snapshot: `bun scripts/export-names.ts src/index.ts > scripts/fixtures/root-export-names.txt`.
  */
 test('the package root still exports every recorded name, each of the same kind', () => {
-  const packageRoot = join(import.meta.dir, '..');
+  const packageRoot = join(import.meta.dir, '../../../components/cinder');
   const recorded = readFileSync(join(import.meta.dir, 'fixtures', 'root-export-names.txt'), 'utf8');
   const [runtimeText = '', typesText = ''] = recorded.split('# types\n');
   const recordedRuntime = runtimeText.replace('# runtime\n', '').split('\n').filter(Boolean);

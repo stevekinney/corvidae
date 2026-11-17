@@ -32,7 +32,10 @@ describe('the vendored A2UI basic catalog', () => {
 describe("Bureau's other vendored A2UI schemas", () => {
   const copies: readonly [string, string][] = [
     ['common-types.schema.json', 'internal/component-tooling/scripts/a2ui/common_types.json'],
-    ['server-to-client.schema.json', 'internal/component-tooling/scripts/a2ui/server_to_client.json'],
+    [
+      'server-to-client.schema.json',
+      'internal/component-tooling/scripts/a2ui/server_to_client.json',
+    ],
   ];
 
   for (const [name, source] of copies) {

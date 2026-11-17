@@ -5,7 +5,7 @@
  *
  *  1. have the document shape (id is the kebab-case directory name, rule ids are unique, severity
  *     and combinator values are in their closed sets, every predicate is exactly one shape);
- *  2. name `../../schemas/constraints.schema.json` as its `$schema`;
+ *  2. name the tooling's `src/schemas/constraints.schema.json` as its `$schema` (`SCHEMA_REF`);
  *  3. name only props and snippets the component has (the prop cross-check): the properties of
  *     the `<Pascal>Props` type its `{name}.types.ts` exports.
  *
@@ -31,7 +31,9 @@ import { isObjectRecord } from './validation-utilities.ts';
 // Constants
 // ---------------------------------------------------------------------------
 
-const SCHEMA_REF = '../../schemas/constraints.schema.json';
+/** The constraints schema the tooling owns, from a Cinder component directory. */
+export const SCHEMA_REF =
+  '../../../../../internal/component-tooling/src/schemas/constraints.schema.json';
 const VALID_SEVERITIES = new Set<ConstraintSeverity>(['error', 'warning', 'info']);
 const VALID_COMBINATORS = new Set<Combinator>(['exactlyOne', 'anyOf', 'allOf', 'requires']);
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9-]*$/;

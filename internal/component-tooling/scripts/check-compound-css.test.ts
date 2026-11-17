@@ -94,16 +94,12 @@ describe('Compound component CSS dependency contracts', () => {
 
     test('side-navigation.css @imports navigation-item.css', () => {
       // SideNavigationItem delegates rendering to NavigationItem.
-      expect(sideNavigationCss).toMatch(
-        importOf('navigation-item', 'navigation-item'),
-      );
+      expect(sideNavigationCss).toMatch(importOf('navigation-item', 'navigation-item'));
     });
 
     test('side-navigation.css still @imports side-navigation-group.css', () => {
       // Pre-existing import that must not be removed.
-      expect(sideNavigationCss).toMatch(
-        importOf('side-navigation-group', 'side-navigation-group'),
-      );
+      expect(sideNavigationCss).toMatch(importOf('side-navigation-group', 'side-navigation-group'));
     });
   });
 

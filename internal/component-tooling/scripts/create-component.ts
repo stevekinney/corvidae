@@ -48,6 +48,7 @@ import { join } from 'node:path';
 
 import { collectPropConventionViolations } from './check-prop-conventions.ts';
 import { cinderComponentRoots } from './discover-component-directories.ts';
+import { metaSchemaReference } from './lib/component-meta.ts';
 
 const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
 const COMPONENTS_DIR = join(PACKAGE_ROOT, 'src', 'components');
@@ -112,9 +113,9 @@ export function buildContext(inputName: string): CreationContext {
  * field, which `scripts/lib/component-meta.ts` reads and the inventory check holds to account.
  */
 export function renderMeta(context: CreationContext): string {
-  const { name, pascalName } = context;
+  const { name, pascalName, directory } = context;
   const meta = {
-    $schema: '../../schemas/component-meta.schema.json',
+    $schema: metaSchemaReference(directory),
     category: 'data-display',
     status: 'beta',
     purpose: `TODO: one-sentence description of what ${pascalName} renders and when to reach for it.`,

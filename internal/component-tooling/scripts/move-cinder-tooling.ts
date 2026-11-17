@@ -11,8 +11,8 @@
  * allowlist, which stay beside Cinder; and every Cinder module `families.json`'s rules give the
  * tooling (the schemas, `manifest.meta.ts`, `schema-types.ts`, the component-free test helpers and
  * the tests that read sibling packages). A moved file keeps its path below `scripts/` or `src/`.
- * `src/schema-types.ts` leaves a type re-export behind, because 228 generated schema modules import
- * it and core re-exports the types it needs.
+ * A module listed in `REEXPORTED` leaves a re-export at its old path; since the `metadata` task
+ * (COR-2078) stopped committing generated schema modules, none needs one.
  *
  * Then it rewrites what pointed at the old places:
  *   - every relative import, export and dynamic import, resolved where the file was before the move
@@ -44,13 +44,8 @@ const KEPT_SCRIPTS = [
   /^scripts\/[a-z-]+-baseline\.json$/,
   /^scripts\/a2ui-catalog-allowlist\.json$/,
 ];
-/** Moved, but a re-export stays at the old path for everything outside the tooling. */
-const REEXPORTED = new Map([
-  [
-    `${CINDER}/src/schema-types.ts`,
-    "/** Core re-exports the schema types the tooling owns (COR-2079). */\nexport type * from '@lostgradient/component-tooling/schema-types';\n",
-  ],
-]);
+/** Moved, but a re-export stays at the old path for everything outside the tooling: path -> text. */
+const REEXPORTED = new Map<string, string>();
 /** Specifiers for paths inside the tooling, longest prefix first: [tooling path, specifier]. */
 const EXPORTS: [string, string][] = [
   ['src/test/', 'test/'],
@@ -110,7 +105,8 @@ export function planMoves(root: string, tracked: readonly string[]): Plan {
 /**
  * Where a pre-move path is now. A moved file maps to its new path; a directory every tracked file
  * of which moved maps to its new directory; anything else stays, so a path into a directory that
- * only partly moved (Cinder's `src`) still points at Cinder.
+ * only partly moved (Cinder's `src`) still points at Cinder. A Cinder path that an earlier run
+ * moved (it is gone, and the tooling holds its counterpart) maps to that counterpart.
  */
 function mapPath(path: string, moves: ReadonlyMap<string, string>, before: ReadonlySet<string>) {
   const moved = moves.get(path);
@@ -123,11 +119,22 @@ function mapPath(path: string, moves: ReadonlyMap<string, string>, before: Reado
     if (!moves.has(file)) return path;
     any = true;
   }
-  if (!any) return path;
+  if (!any) return movedEarlier(path) ?? path;
   const first = [...moves].find(([from]) => from.startsWith(prefix));
   if (first === undefined) return path;
   const [from, to] = first;
   return to.slice(0, to.length - (from.length - path.length));
+}
+
+/** The repository root of the current run; {@link movedEarlier} reads the tree under it. */
+let repositoryRoot = '';
+
+/** The tooling counterpart of a Cinder path an earlier run moved, when only the counterpart exists. */
+function movedEarlier(path: string): string | undefined {
+  if (repositoryRoot === '' || !path.startsWith(`${CINDER}/`)) return undefined;
+  if (existsSync(join(repositoryRoot, path))) return undefined;
+  const counterpart = `${TOOLING}/${path.slice(CINDER.length + 1)}`;
+  return existsSync(join(repositoryRoot, counterpart)) ? counterpart : undefined;
 }
 
 const insideTooling = (path: string) => path === TOOLING || path.startsWith(`${TOOLING}/`);
@@ -397,6 +404,31 @@ function addDevelopmentDependency(root: string, manifestPath: string): boolean {
   return true;
 }
 
+/**
+ * Repoints a JSON file's relative `"$schema"` at the schema's new place when the schema moved in
+ * this run, or when it no longer exists and the tooling holds its counterpart.
+ */
+function rewriteSchemaReferences(context: Context, file: string, source: string): string {
+  const directory = posix.dirname(context.origins.get(file) ?? file);
+  return source.replace(
+    /("\$schema"\s*:\s*")(\.{1,2}\/[^"\n]+)(")/g,
+    (whole, lead: string, reference: string, tail: string) => {
+      const old = posix.normalize(posix.join(directory, reference));
+      let target: string | undefined = context.moves.get(old);
+      if (
+        target === undefined &&
+        !existsSync(join(context.root, old)) &&
+        old.startsWith(`${CINDER}/`)
+      ) {
+        const counterpart = `${TOOLING}/${old.slice(CINDER.length + 1)}`;
+        if (existsSync(join(context.root, counterpart))) target = counterpart;
+      }
+      if (target === undefined) return whole;
+      return `${lead}${posix.relative(posix.dirname(file), target)}${tail}`;
+    },
+  );
+}
+
 /** The tooling file a `@lostgradient/component-tooling/<subpath>` specifier names. */
 function toolingPathOf(subpath: string): string | undefined {
   for (const [prefix, exported] of EXPORTS) {
@@ -451,6 +483,7 @@ const SKIP_MENTIONS = [
 ];
 
 export function run(root: string, dryRun: boolean): string[] {
+  repositoryRoot = root;
   const tracked = trackedFiles(root);
   const before = new Set(tracked);
   const { moves } = planMoves(root, tracked);
@@ -487,6 +520,7 @@ export function run(root: string, dryRun: boolean): string[] {
     if (posix.basename(file) === 'package.json' || posix.basename(file) === 'bunfig.toml') {
       next = rewriteManifestPaths(context, file, next);
     }
+    if (file.endsWith('.json')) next = rewriteSchemaReferences(context, file, next);
     if (!SKIP_MENTIONS.includes(file)) next = rewriteMentions(context, next);
     if (next !== source) {
       writeFileSync(absolute, next);

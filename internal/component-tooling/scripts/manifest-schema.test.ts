@@ -18,7 +18,7 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 // ---------------------------------------------------------------------------
 
 import { SYNTHETIC_COMPONENTS, buildSyntheticManifest } from './manifest.test-support.ts';
-const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'manifest.schema.json');
+const SCHEMA_PATH = join(import.meta.dir, '../src/schemas/manifest.schema.json');
 
 async function loadManifestSchema(): Promise<object> {
   const text = await Bun.file(SCHEMA_PATH).text();

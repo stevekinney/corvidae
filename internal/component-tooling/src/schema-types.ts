@@ -1,10 +1,9 @@
 /**
- * Internal schema types used by every generated `<name>.schema.ts` module.
+ * The shape of every generated component schema, which the `metadata` task writes to
+ * `.metadata/<name>/schema.json` and the package exports as `@lostgradient/cinder/<name>/schema`.
  *
- * This file is not exposed as a public package subpath. It ships in the tarball
- * so emitted declarations can resolve the `ComponentSchema` reference, but
- * consumers import schema modules via `@lostgradient/cinder/<name>/schema`, not this type
- * directly.
+ * This file is not exposed as a public package subpath; the generator and Cinder's own tests
+ * type the JSON they read with it.
  *
  * Schema dialect: JSON Schema draft 2020-12. The `$schema` URI is included on
  * every emitted schema and validated by the generator.

@@ -10,16 +10,26 @@ import {
   findUninvokedChecks,
 } from './gate-wiring.ts';
 
-const PACKAGE_ROOT = join(import.meta.dirname, '../../../components/cinder');
+const REPOSITORY_ROOT = join(import.meta.dirname, '../../..');
+const PACKAGE_ROOT = join(REPOSITORY_ROOT, 'components/cinder');
 const SCRIPTS_DIRECTORY = import.meta.dirname;
+/** The packages whose gates run the tooling's checks. */
+const GATED_PACKAGES = [
+  'components/cinder',
+  'components/chat',
+  'components/editor',
+  'internal/component-tooling',
+].map((path) => join(REPOSITORY_ROOT, path));
 
-function readPackageScripts(): Record<string, string> {
-  const manifest: unknown = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'));
+function readPackageScripts(packageRoot = PACKAGE_ROOT): Record<string, string> {
+  const manifest: unknown = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   if (typeof manifest !== 'object' || manifest === null || !('scripts' in manifest)) {
-    throw new Error('components/cinder/package.json has no scripts.');
+    throw new Error(`${packageRoot}/package.json has no scripts.`);
   }
   return manifest.scripts as Record<string, string>;
 }
+
+const TOOLING = '../../internal/component-tooling/scripts';
 
 const ENTRY_POINT = 'export function run() {}\nif (import.meta.main) run();\n';
 const LIBRARY = 'export function helper() {}\n';
@@ -47,43 +57,69 @@ describe("Cinder's own gates", () => {
   // fails here. `--strict` is what makes two of them gates: without it they only report.
   test('lint runs every check, with the flags that make it a gate', () => {
     expect(findGateInvocations(readPackageScripts(), ['lint'])).toEqual([
-      'scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components',
-      'scripts/check-test-cleanup.ts',
-      'scripts/check-aggregator-completeness.ts',
-      'scripts/check-component-css-raw-colors.ts --strict',
-      'scripts/check-component-constraints.ts',
-      'scripts/check-component-examples.ts',
-      'scripts/generate-component-artifacts.ts --check',
-      'scripts/check-component-inventory.ts',
-      'scripts/convert-component-metadata.ts --check',
-      'scripts/check-component-variable-registry.ts',
-      'scripts/check-css-duplication.ts',
-      'scripts/check-data-cinder-boolean-attributes.ts',
-      'scripts/check-design-token-literals.ts --strict',
-      'scripts/check-no-bare-console-warn.ts',
-      'scripts/check-no-inline-match-media.ts',
-      'scripts/check-no-static-style-attributes.ts',
-      'scripts/check-placeholder-docs.ts',
-      'scripts/check-platform-features.ts --strict',
-      'scripts/check-prose-component-references.ts',
-      'scripts/check-readme-usage.ts',
-      'scripts/check-svelte-ts-runtime-types.ts',
-      'scripts/check-token-naming.ts',
-      'scripts/check-token-registry-privacy.ts',
-      'scripts/check-virtual-list-dependency-free.ts',
+      `${TOOLING}/check-prop-conventions.ts src/components`,
+      `${TOOLING}/check-test-cleanup.ts`,
+      `${TOOLING}/check-aggregator-completeness.ts`,
+      `${TOOLING}/check-component-css-raw-colors.ts --strict`,
+      `${TOOLING}/check-component-constraints.ts`,
+      `${TOOLING}/check-component-examples.ts`,
+      `${TOOLING}/generate-component-artifacts.ts --check`,
+      `${TOOLING}/check-component-inventory.ts`,
+      `${TOOLING}/convert-component-metadata.ts --check`,
+      `${TOOLING}/check-component-variable-registry.ts`,
+      `${TOOLING}/check-css-duplication.ts`,
+      `${TOOLING}/check-data-cinder-boolean-attributes.ts`,
+      `${TOOLING}/check-design-token-literals.ts --strict`,
+      `${TOOLING}/check-no-bare-console-warn.ts`,
+      `${TOOLING}/check-no-inline-match-media.ts`,
+      `${TOOLING}/check-no-static-style-attributes.ts`,
+      `${TOOLING}/check-placeholder-docs.ts`,
+      `${TOOLING}/check-platform-features.ts --strict`,
+      `${TOOLING}/check-prose-component-references.ts`,
+      `${TOOLING}/check-readme-usage.ts`,
+      `${TOOLING}/check-svelte-ts-runtime-types.ts`,
+      `${TOOLING}/check-token-naming.ts`,
+      `${TOOLING}/check-token-registry-privacy.ts`,
+      `${TOOLING}/check-virtual-list-dependency-free.ts`,
       'scripts/tokens/validate-corpus.ts',
       'scripts/tokens/generate-artifacts.ts --check',
-      'scripts/check-component-css-token-usage.ts --strict',
       '../../scripts/check-inherited-key-reads.ts',
     ]);
   });
 
+  test('chat and editor check their own components, and the tooling test runs the token audit', () => {
+    for (const name of ['chat', 'editor']) {
+      expect(
+        findGateInvocations(readPackageScripts(join(REPOSITORY_ROOT, 'components', name)), [
+          'lint',
+        ]),
+      ).toContain(`${TOOLING}/check-prop-conventions.ts src/lib/components`);
+    }
+    expect(
+      findGateInvocations(readPackageScripts(join(REPOSITORY_ROOT, 'internal/component-tooling')), [
+        'test',
+      ]),
+    ).toContain('scripts/check-component-css-token-usage.ts --strict');
+  });
+
   test('every check command is run by a gate', () => {
-    expect(findUninvokedChecks(SCRIPTS_DIRECTORY, readPackageScripts())).toEqual([]);
+    // A check is wired when any package's gates run it.
+    const uninvoked = GATED_PACKAGES.map(
+      (packageRoot) =>
+        new Set(
+          findUninvokedChecks(SCRIPTS_DIRECTORY, readPackageScripts(packageRoot), packageRoot),
+        ),
+    );
+    const [first = new Set<string>(), ...rest] = uninvoked;
+    expect([...first].filter((name) => rest.every((set) => set.has(name)))).toEqual([]);
   });
 
   test('no gate runs a check in its report-only mode', () => {
-    expect(findReportOnlyInvocations(SCRIPTS_DIRECTORY, readPackageScripts())).toEqual([]);
+    for (const packageRoot of GATED_PACKAGES) {
+      expect(
+        findReportOnlyInvocations(SCRIPTS_DIRECTORY, readPackageScripts(packageRoot), packageRoot),
+      ).toEqual([]);
+    }
   });
 
   test('no check runs on import without an entry-point guard', () => {

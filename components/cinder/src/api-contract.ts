@@ -546,6 +546,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
+      onLoadingCancel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
       backVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: B(true) },
       detailLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Details') },

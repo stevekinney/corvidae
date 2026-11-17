@@ -17,7 +17,7 @@
 
 ## Setting Rows
 
-- The `setting-rows` variant draws each top-level property as a `SettingRow`: the visible label is a `<label>` for the row's control, the key is outside the label so it is not part of the control's name, and the description and error are connected to the control with `aria-describedby`.
+- The `setting-rows` variant draws each top-level property as a `SettingRow`: the visible label is a `<label>` for the row's control, the key is outside the label so it is not part of the control's name, and the description and error are connected to the control with `aria-describedby`. A group of one short field is one row: the row is a `role="group"` named by the group's title, and the control keeps the field's own label as its name (drawn for assistive technology only).
 - A property drawn under its row (an object, an array of objects) keeps its label and description on the row; the nested fields and the JSON editor carry their own names. No group has a border, and none is a `fieldset` unless the schema nests a group inside another.
 - The row stacks the control under the label when its container is narrow; the reading and focus order do not change.
 

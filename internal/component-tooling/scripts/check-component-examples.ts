@@ -15,8 +15,8 @@ import {
 import { componentMetadataPath, manifestMetadataPath } from './lib/metadata-files.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
-/** Every package's examples validate against Cinder's examples schema. */
-const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'examples.schema.json');
+/** Every package's examples validate against the examples schema the tooling owns. */
+const SCHEMA_PATH = join(import.meta.dir, '../src/schemas/examples.schema.json');
 
 /**
  * The package `checkCommittedExamples` is checking (cinder unless it was given another root). The

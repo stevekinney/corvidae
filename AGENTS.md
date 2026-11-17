@@ -38,7 +38,7 @@ This software is pre-1.0 and still being prototyped: spend review effort where a
 - `applications/*` holds deployable applications, `components/*` browser component libraries, `packages/*` other shared libraries, `internal/*` repository configuration, `testing/*` verification tooling (only in libraries' `devDependencies`), and `plugins/*` Interborough plugins (`scripts/plugin-dependency-rules.ts`). Every workspace is named `@lostgradient/*` except `armorer` and `conversationalist`. The full rules are in [workspace layout](documentation/repository/workspace-layout.md).
 - Internal dependencies use `workspace:*`; shared tool versions belong in the root Bun `catalog`, runtime dependencies in the workspace that imports them.
 - Component source uses the shared browser TypeScript configuration and lint policy; keep Bun and Node APIs in tests or scripts.
-- `internal/typescript` exports only `library.json`, `browser.json` and `component.json`; `base.json` is private.
+- `internal/typescript` exports `library.json`, `browser.json` and `component.json`; `base.json` is private.
 - Shared libraries export TypeScript source that consumers compile at runtime; add no build step without a packaging need. A library another package type-checks against emits declarations with its `types` script, which consumers list under `references`.
 - Use Bun commands only. `bun.lock` is authoritative; update it with `bun install`. Keep `typescript` explicit at the root.
 
