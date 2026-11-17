@@ -12,7 +12,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { type HooksDependencies } from './create-hooks.ts';
-import { HOOK_KEY_PREFIX, createHookStore } from './hook-store.ts';
+import { HOOK_DELIVERY_KEY_PREFIX, HOOK_KEY_PREFIX, createHookStore } from './hook-store.ts';
 import { HookError } from './hook-types.ts';
 import {
   ACTION,
@@ -23,6 +23,7 @@ import {
   START,
   availabilityGate,
   deferred,
+  deliveryEventShape,
   gateRegistration,
   harness,
   never,
@@ -42,7 +43,16 @@ const NOTICE_PREFIX = '[bureau] Hook hook-1 did not run its plugin action: Skipp
 interface Row {
   readonly line: number;
   readonly owner:
-    'main' | 'COR-2173' | 'COR-2174' | 'COR-2175' | 'COR-2176' | 'COR-2177' | 'COR-2183';
+    | 'main'
+    | 'COR-2173'
+    | 'COR-2174'
+    | 'COR-2175'
+    | 'COR-2176'
+    | 'COR-2177'
+    | 'COR-2183'
+    | 'COR-2099';
+  /** Where the row comes from, for a row of the event-feed batch 3 matrix (`EVT-3-matrix.md`). */
+  readonly source?: string;
   readonly name: string;
   readonly check: () => Promise<void>;
 }
@@ -269,7 +279,7 @@ const LOOP_GUARD_ROWS: readonly Row[] = [
   {
     line: 132,
     owner: 'main',
-    name: 'hook.delivery events are not a published kind a hook can list: no guard exists for them here',
+    name: 'hook.delivery.exhausted is an audit type, not a published kind a hook can list (hook.delivery.failed and hook.delivery.gave-up are the published ones, COR-2099)',
     check: async () => {
       const h = harness();
       const error = await h.created.hooks
@@ -3561,5 +3571,736 @@ const REACTIONS_2_ROWS: readonly Row[] = [...MAX_ATTEMPTS_ROWS, ...CONTEXT_ROWS,
 describe('the outcome matrix of dryRun, a reaction’s maxAttempts and the richer context (reactions-2)', () => {
   for (const row of REACTIONS_2_ROWS) {
     it(`[${row.owner}, reactions-2 matrix line ${row.line}] ${row.name}`, row.check);
+  }
+});
+
+/** What `hook.delivery.failed` publishes (COR-2099). */
+const failedEvent = (
+  hookId: string,
+  deliveryId: string,
+  attempt: number,
+  outcome: string,
+  status?: number,
+) => ({
+  kind: 'hook.delivery.failed',
+  hookId,
+  deliveryId,
+  attempt,
+  outcome,
+  ...(status === undefined ? {} : { status }),
+});
+
+/** What `hook.delivery.gave-up` publishes (COR-2099). */
+const gaveUpEvent = (hookId: string, deliveryId: string, attempts: number) => ({
+  kind: 'hook.delivery.gave-up',
+  hookId,
+  deliveryId,
+  attempts,
+});
+
+/** A run that always fails with a text a leak would show. */
+const slackIsDown = () =>
+  Promise.reject(new Error('Slack is down at https://slack.example/?token=abc123'));
+
+/** `refusal`'s path and message of a write the hooks refuse. */
+async function refusedWith(write: Promise<unknown>): Promise<HookError> {
+  const error = await write.then(
+    () => undefined,
+    (thrown: unknown) => thrown,
+  );
+  expect(error).toBeInstanceOf(HookError);
+  return error as HookError;
+}
+
+/**
+ * The rows of COR-2099 (E4b) that run over a plugin reaction, from `EVT-3-matrix.md` (the number of
+ * the row in that matrix's file is `line`). The webhook rows are in `hooks-delivery-events.test.ts`.
+ */
+const DELIVERY_EVENT_ROWS: readonly Row[] = [
+  {
+    line: 47,
+    owner: 'COR-2099',
+    source: 'Rev ("a timeout `error` is retried")',
+    name: 'a reaction past its timeout publishes failed with outcome error for each attempt, and gave-up after the last',
+    check: async () => {
+      const h = harness({ run: untilAborted });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      for (const attempt of [1, 2, 3]) {
+        await waitUntil(() => h.timeouts.length === attempt && h.calls.length === attempt, {
+          message: `attempt ${attempt} and its timeout`,
+        });
+        h.timeouts[attempt - 1]!.fire();
+      }
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(h.published).toEqual([
+        failedEvent(hook.id, delivery.id, 1, 'error'),
+        failedEvent(hook.id, delivery.id, 2, 'error'),
+        failedEvent(hook.id, delivery.id, 3, 'error'),
+        gaveUpEvent(hook.id, delivery.id, 3),
+      ]);
+    },
+  },
+  {
+    line: 48,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a plain error from a reaction publishes failed with outcome error and no text, though the attempt keeps it',
+    check: async () => {
+      const h = harness({ run: slackIsDown });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.attempts[0]?.error).toContain('abc123');
+      expect(h.published.map((event) => event.kind)).toEqual([
+        'hook.delivery.failed',
+        'hook.delivery.failed',
+        'hook.delivery.failed',
+        'hook.delivery.gave-up',
+      ]);
+      expect(h.published[0]).toEqual(failedEvent(hook.id, delivery.id, 1, 'error'));
+      expect(JSON.stringify(h.published)).not.toContain('abc123');
+      expect(JSON.stringify(h.published)).not.toContain('Slack is down');
+    },
+  },
+  {
+    line: 49,
+    owner: 'COR-2099',
+    source: 'Rev 2026-11-15, Rev',
+    name: 'a permanent refusal publishes one failed with outcome rejected and no gave-up',
+    check: async () => {
+      const h = harness({
+        run: () => Promise.reject(new PluginReactionError('No such channel', { permanent: true })),
+      });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(h.published).toEqual([failedEvent(hook.id, delivery.id, 1, 'rejected')]);
+    },
+  },
+  {
+    line: 50,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a plugin action kind that is gone, or whose version pin changed, publishes one failed with outcome rejected and no gave-up',
+    check: async () => {
+      const goneKv = memory();
+      // The kind is gone while the delivery waited (a delivery made after it is gone is never
+      // written: COR-2182).
+      const before: Harness = harness({
+        kv: goneKv,
+        run: () => {
+          before.shutdown();
+          return Promise.reject(new Error('the process is stopping'));
+        },
+      });
+      const goneHook = await before.hook();
+      await before.open();
+      before.dispatch();
+      await before.drain();
+      const gone = harness({ kv: goneKv, registrations: () => [] });
+      await gone.open();
+      await gone.drain();
+      const goneDelivery = await gone.only(goneHook.id);
+      expect(before.published).toEqual([]);
+      expect(gone.published).toEqual([failedEvent(goneHook.id, goneDelivery.id, 2, 'rejected')]);
+
+      const versionKv = memory();
+      const first: Harness = harness({
+        kv: versionKv,
+        version: '1.0.0',
+        run: () => {
+          first.shutdown();
+          return Promise.reject(new Error('the process is stopping'));
+        },
+      });
+      const versionHook = await first.hook();
+      await first.open();
+      first.dispatch();
+      await first.drain();
+      const upgraded = harness({ kv: versionKv, version: '2.0.0' });
+      await upgraded.open();
+      await upgraded.drain();
+      const versionDelivery = await upgraded.only(versionHook.id);
+      expect(first.published).toEqual([]);
+      expect(upgraded.published).toEqual([
+        failedEvent(versionHook.id, versionDelivery.id, 2, 'rejected'),
+      ]);
+    },
+  },
+  {
+    line: 53,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a plugin that needs setup before the attempt publishes nothing',
+    check: async () => {
+      const h = harness({ gate: availabilityGate(false) });
+      await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 54,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a plugin that turns needs-setup during the run publishes nothing',
+    check: async () => {
+      const h = harness({ gate: availabilityGate(true), run: () => Promise.reject(needsSetup()) });
+      await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 55,
+    owner: 'COR-2099',
+    source: 'Rev ("Nothing is published on `done.aborted`")',
+    name: 'a hook disabled while its reaction runs publishes nothing, not even for the attempt that closes error',
+    check: async () => {
+      const h = harness({ run: untilAborted });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await runStarted(h);
+      await h.hooks.update(hook.id, { enabled: false });
+      await h.drain();
+      expect(await h.status(hook.id)).toBe('aborted');
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 56,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a hook disabled during a backoff keeps the earlier failed and publishes nothing for the abort',
+    check: async () => {
+      const h = harness({ backoff: 1_000, run: slackIsDown });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await waitUntil(() => h.held.length === 1, { message: 'the backoff wait' });
+      await h.hooks.update(hook.id, { enabled: false });
+      h.releaseWaits();
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.status).toBe('aborted');
+      expect(h.published).toEqual([failedEvent(hook.id, delivery.id, 1, 'error')]);
+    },
+  },
+  {
+    line: 58,
+    owner: 'COR-2099',
+    source: 'Rev 2026-11-15 ("after the write that commits")',
+    name: 'a hook deleted while its reaction is in flight loses the closing write and publishes nothing',
+    check: async () => {
+      const h = harness({ run: untilAborted });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await runStarted(h);
+      expect(await h.hooks.delete(hook.id)).toBe(true);
+      await h.drain();
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 59,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a hook deleted while its delivery waits publishes nothing more',
+    check: async () => {
+      const h = harness({ backoff: 1_000, run: slackIsDown });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await waitUntil(() => h.held.length === 1, { message: 'the backoff wait' });
+      const delivery = await h.only(hook.id);
+      expect(await h.hooks.delete(hook.id)).toBe(true);
+      h.releaseWaits();
+      await h.drain();
+      expect(h.published).toEqual([failedEvent(hook.id, delivery.id, 1, 'error')]);
+    },
+  },
+  {
+    line: 61,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a shutdown during an attempt publishes nothing for it',
+    check: async () => {
+      const h: Harness = harness({
+        run: () => {
+          h.shutdown();
+          return Promise.reject(new Error('the process is stopping'));
+        },
+      });
+      await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 62,
+    owner: 'COR-2099',
+    source: 'Rev ("including the resume path past `maxAttempts`")',
+    name: 'interrupted attempts that fill maxAttempts publish gave-up with the recorded attempts and no failed',
+    check: async () => {
+      const kv = memory();
+      const hook = await harness({ kv }).hook();
+      const store = createHookStore(kv);
+      await store.createDelivery({
+        version: 1,
+        id: 'hook-delivery-full',
+        hookId: hook.id,
+        owner: hook.owner,
+        actionType: 'plugin',
+        kind: 'run.settled',
+        test: false,
+        status: 'pending',
+        work: {
+          type: 'plugin',
+          plugin: 'slack',
+          kind: 'post-message',
+          configuration: { channel: 'ops' },
+          event: {
+            kind: 'run.settled',
+            bureauId: 'matrix-bureau',
+            emittedAtMs: START,
+            payload: {},
+          },
+        },
+        attempts: [1, 2, 3].map((number) => ({
+          number,
+          startedAt: START,
+          finishedAt: START,
+          outcome: 'interrupted' as const,
+        })),
+        maxAttempts: 3,
+        createdAt: START,
+        updatedAt: START,
+        leaseUntil: 0,
+        revision: 0,
+      });
+      const second = harness({ kv });
+      await second.open();
+      await second.drain();
+      expect(second.published).toEqual([gaveUpEvent(hook.id, 'hook-delivery-full', 3)]);
+    },
+  },
+  {
+    line: 63,
+    owner: 'COR-2099',
+    source: 'Rev 2026-11-15',
+    name: 'a hooks.test delivery whose dryRun fails publishes nothing',
+    check: async () => {
+      const h = harness({ dryRun: slackIsDown });
+      const hook = await h.hook();
+      const delivery = await tested(h, hook.id);
+      expect(delivery.status).toBe('exhausted');
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 65,
+    owner: 'COR-2099',
+    source: 'O-B4',
+    name: 'a start-workflow delivery written with a skip is failed and publishes nothing',
+    check: async () => {
+      const h = harness({
+        workflows: () => ({
+          assertStartable: () => undefined,
+          findStart: () => Promise.resolve(undefined),
+          start: () => Promise.reject(new Error('never started')),
+        }),
+      });
+      const hook = await h.created.hooks.create({
+        events: ['run.settled'],
+        action: { type: 'start-workflow', workflowId: 'lookup' },
+      });
+      await h.open();
+      // A run event that names no run cannot be told from one about a run a hook started.
+      h.dispatch({ payload: {} });
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(outcomes(delivery)).toEqual(['rejected']);
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 66,
+    owner: 'COR-2099',
+    source: 'O-B3',
+    name: 'a manual retry of an exhausted delivery that fails again publishes failed and gave-up again with the new count',
+    check: async () => {
+      const h = harness({ run: slackIsDown });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const exhausted = await h.only(hook.id);
+      expect(h.published).toHaveLength(4);
+      const retried = await h.hooks.retryDelivery(hook.id, exhausted.id);
+      expect(retried?.status).toBe('exhausted');
+      expect(h.published.slice(4)).toEqual([
+        failedEvent(hook.id, exhausted.id, 4, 'error'),
+        gaveUpEvent(hook.id, exhausted.id, 4),
+      ]);
+    },
+  },
+  {
+    line: 67,
+    owner: 'COR-2099',
+    source: 'Rev, O-B5',
+    name: 'a process whose closing write lost the fence to one that took the delivery publishes nothing, and the winner publishes its own attempts',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const answer = deferred();
+      const a = harness({ kv, clock, run: () => answer.promise });
+      const hook = await a.hook();
+      await a.open();
+      a.dispatch();
+      await runStarted(a);
+      clock.milliseconds += 1_000_000;
+      const b = harness({ kv, clock, run: slackIsDown });
+      await b.open();
+      await b.drain();
+      const delivery = await b.only(hook.id);
+      expect(delivery.status).toBe('exhausted');
+      answer.reject(new Error('Slack is down'));
+      await a.drain();
+      expect(a.published).toEqual([]);
+      // `attempts` counts the recorded attempts, the interrupted one included.
+      expect(b.published).toEqual([
+        failedEvent(hook.id, delivery.id, 2, 'error'),
+        failedEvent(hook.id, delivery.id, 3, 'error'),
+        gaveUpEvent(hook.id, delivery.id, 3),
+      ]);
+    },
+  },
+  {
+    line: 68,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'two processes over one delivery publish at most one failed for each attempt number: only the writer whose write committed',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const answer = deferred();
+      const a = harness({ kv, clock, backoff: 1_000, run: () => answer.promise });
+      const hook = await a.hook();
+      await a.open();
+      a.dispatch();
+      await runStarted(a);
+      const stored = await kv.list(HOOK_DELIVERY_KEY_PREFIX);
+      // Another writer moved the record on while this one's request was in flight.
+      const raw = JSON.parse((await kv.get(stored[0]!))!) as { revision: number };
+      await kv.set(stored[0]!, JSON.stringify({ ...raw, revision: raw.revision + 1 }));
+      answer.reject(new Error('Slack is down'));
+      await a.drain();
+      expect(a.published).toEqual([]);
+      expect(a.held).toEqual([]);
+      expect(await a.status(hook.id)).toBe('pending');
+    },
+  },
+  {
+    line: 69,
+    owner: 'COR-2099',
+    source: 'O-B5',
+    name: 'a restart after the events went out publishes them again for nothing: at most once',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({ kv, clock, run: slackIsDown });
+      const hook = await first.hook();
+      await first.open();
+      first.dispatch();
+      await first.drain();
+      expect(first.published).toHaveLength(4);
+      const restart = harness({ kv, clock, run: slackIsDown });
+      await restart.open();
+      await restart.drain();
+      expect(restart.published).toEqual([]);
+      expect(await restart.statuses(hook.id)).toEqual(['exhausted']);
+    },
+  },
+  {
+    line: 71,
+    owner: 'COR-2099',
+    source: 'brief, Rev',
+    name: 'a hook subscribed to hook.delivery.failed whose own delivery fails records that kind and publishes neither kind',
+    check: async () => {
+      const h = harness({ run: slackIsDown });
+      const hook = await h.hook(['hook.delivery.failed']);
+      await h.open();
+      h.dispatch({ kind: 'hook.delivery.failed', payload: { hookId: 'other' } });
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.kind).toBe('hook.delivery.failed');
+      expect(delivery.status).toBe('exhausted');
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 72,
+    owner: 'COR-2099',
+    source: 'AC2',
+    name: 'two hooks on hook.delivery.failed at failing targets settle without cascading: only the trigger’s failures are published',
+    check: async () => {
+      const h: Harness = harness({
+        run: slackIsDown,
+        publish: (event) => {
+          // The feed hands each published event back to the hooks, as the Bureau's does.
+          const { kind, ...payload } = deliveryEventShape(event);
+          h.dispatch({ kind, payload });
+        },
+      });
+      const trigger = await h.hook(['run.settled']);
+      const first = await h.hook(['hook.delivery.failed']);
+      const second = await h.hook(['hook.delivery.failed']);
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const triggered = await h.only(trigger.id);
+      expect(h.published).toEqual([
+        failedEvent(trigger.id, triggered.id, 1, 'error'),
+        failedEvent(trigger.id, triggered.id, 2, 'error'),
+        failedEvent(trigger.id, triggered.id, 3, 'error'),
+        gaveUpEvent(trigger.id, triggered.id, 3),
+      ]);
+      for (const listener of [first, second]) {
+        const deliveries = await h.deliveries(listener.id);
+        expect(deliveries.map((delivery) => delivery.status)).toEqual([
+          'exhausted',
+          'exhausted',
+          'exhausted',
+        ]);
+        expect(deliveries.map((delivery) => delivery.kind)).toEqual([
+          'hook.delivery.failed',
+          'hook.delivery.failed',
+          'hook.delivery.failed',
+        ]);
+      }
+    },
+  },
+  {
+    line: 73,
+    owner: 'COR-2099',
+    source: 'Rev 2026-11-15; matrix line 75 (depth), brief',
+    name: 'a hook on hook.delivery.gave-up whose delivery fails publishes nothing, and a delivery of any other kind still publishes: one level, never deeper',
+    check: async () => {
+      const h: Harness = harness({
+        run: slackIsDown,
+        publish: (event) => {
+          const { kind, ...payload } = deliveryEventShape(event);
+          h.dispatch({ kind, payload });
+        },
+      });
+      const trigger = await h.hook(['run.settled']);
+      const listener = await h.hook(['hook.delivery.gave-up']);
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const triggered = await h.only(trigger.id);
+      expect(h.published.map((event) => event.kind)).toEqual([
+        'hook.delivery.failed',
+        'hook.delivery.failed',
+        'hook.delivery.failed',
+        'hook.delivery.gave-up',
+      ]);
+      const heard = await h.only(listener.id);
+      expect(heard.kind).toBe('hook.delivery.gave-up');
+      expect(heard.status).toBe('exhausted');
+      expect(triggered.kind).toBe('run.settled');
+    },
+  },
+  {
+    line: 74,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'the guard reads the stored record’s kind, so a resumed delivery of a hook.delivery.* event publishes nothing in the process that drives it',
+    check: async () => {
+      const kv = memory();
+      const first: Harness = harness({
+        kv,
+        run: () => {
+          first.shutdown();
+          return Promise.reject(new Error('the process is stopping'));
+        },
+      });
+      const hook = await first.hook(['hook.delivery.failed']);
+      await first.open();
+      first.dispatch({ kind: 'hook.delivery.failed', payload: { hookId: 'other' } });
+      await first.drain();
+      const second = harness({ kv, run: slackIsDown });
+      await second.open();
+      await second.drain();
+      const delivery = await second.only(hook.id);
+      expect(delivery.kind).toBe('hook.delivery.failed');
+      expect(delivery.status).toBe('exhausted');
+      expect(first.published).toEqual([]);
+      expect(second.published).toEqual([]);
+    },
+  },
+  {
+    line: 76,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a reaction on hook.delivery.failed that fails publishes nothing: the event carries no source, so the plugin guard does not apply',
+    check: async () => {
+      const h = harness({ run: slackIsDown });
+      const hook = await h.hook(['hook.delivery.failed']);
+      await h.open();
+      h.dispatch({ kind: 'hook.delivery.failed', payload: { hookId: 'other' } });
+      await h.drain();
+      expect(await h.status(hook.id)).toBe('exhausted');
+      expect(h.notices).toEqual([]);
+      expect(h.published).toEqual([]);
+    },
+  },
+  {
+    line: 77,
+    owner: 'COR-2099',
+    source: 'O-B1',
+    name: 'a notify hook cannot list a hook.delivery.* kind, on create or update, and a stored one is not fired',
+    check: async () => {
+      const notified: string[] = [];
+      const h = harness({
+        notifications: () =>
+          ({
+            create: (input: { readonly title: string }) => {
+              notified.push(input.title);
+              return Promise.resolve({ notification: { id: 'notification-1' } });
+            },
+          }) as unknown as ReturnType<NonNullable<HooksDependencies['notifications']>>,
+      });
+      for (const kind of ['hook.delivery.failed', 'hook.delivery.gave-up']) {
+        const refused = await refusedWith(
+          h.created.hooks.create({ events: [kind], action: { type: 'notify', title: 'Failed' } }),
+        );
+        expect(refused.issues[0]?.path).toEqual(['events']);
+        expect(refused.message).toContain('A notify hook cannot fire on hook.delivery.');
+      }
+      const hook = await h.created.hooks.create({
+        events: ['run.settled'],
+        action: { type: 'notify', title: 'Failed' },
+      });
+      const moved = await refusedWith(
+        h.created.hooks.update(hook.id, { events: ['hook.delivery.failed'] }),
+      );
+      expect(moved.issues[0]?.path).toEqual(['events']);
+      // Something that skipped the check wrote the kind into the stored record anyway.
+      const raw = JSON.parse((await h.kv.get(`${HOOK_KEY_PREFIX}${hook.id}`))!) as {
+        revision: number;
+      };
+      await h.kv.set(
+        `${HOOK_KEY_PREFIX}${hook.id}`,
+        JSON.stringify({ ...raw, events: ['hook.delivery.failed'], revision: raw.revision + 1 }),
+      );
+      await h.open();
+      h.dispatch({ kind: 'hook.delivery.failed', payload: { hookId: 'other' } });
+      await h.drain();
+      expect(await h.deliveries(hook.id)).toEqual([]);
+      expect(notified).toEqual([]);
+    },
+  },
+  {
+    line: 78,
+    owner: 'COR-2099',
+    source: 'Rev 2026-11-15, main',
+    name: 'a start-workflow hook cannot list either kind: both are unattributed, refused at events',
+    check: async () => {
+      const h = harness({
+        workflows: () => ({
+          assertStartable: () => undefined,
+          findStart: () => Promise.resolve(undefined),
+          start: () => Promise.reject(new Error('never started')),
+        }),
+      });
+      for (const kind of ['hook.delivery.failed', 'hook.delivery.gave-up']) {
+        const refused = await refusedWith(
+          h.created.hooks.create({
+            events: [kind],
+            action: { type: 'start-workflow', workflowId: 'lookup' },
+          }),
+        );
+        expect(refused.issues[0]?.path).toEqual(['events']);
+        expect(refused.message).toContain(`A start-workflow hook cannot fire on ${kind}`);
+      }
+    },
+  },
+  {
+    line: 79,
+    owner: 'COR-2099',
+    source: 'Rev 2026-11-15 (default empty scopes)',
+    name: 'a scoped hook cannot list either kind: refused at scope',
+    check: async () => {
+      const h = harness();
+      for (const kind of ['hook.delivery.failed', 'hook.delivery.gave-up']) {
+        const refused = await refusedWith(
+          h.created.hooks.create({
+            events: [kind],
+            action: ACTION,
+            scope: { kind: 'agent', id: 'alpha' },
+          }),
+        );
+        expect(refused.issues[0]?.path).toEqual(['scope']);
+      }
+    },
+  },
+  {
+    line: 80,
+    owner: 'COR-2099',
+    source: 'Rev',
+    name: 'a publish that throws goes to diagnose, and neither the delivery, the later events nor the audit is lost',
+    check: async () => {
+      const h = harness({
+        run: slackIsDown,
+        publish: () => {
+          throw new Error('the feed is down at https://feed.example/?token=abc123');
+        },
+      });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      expect(await h.status(hook.id)).toBe('exhausted');
+      // Each publish is tried on its own: a throwing `failed` does not suppress `gave-up`.
+      expect(h.published).toHaveLength(4);
+      expect(h.diagnostics).toEqual(Array(4).fill('Failed to publish a hook delivery event'));
+      expect(h.audits).toContain('hook.delivery.exhausted');
+    },
+  },
+  {
+    line: 85,
+    owner: 'COR-2099',
+    source: 'main',
+    name: 'hook.delivery.exhausted is an audit type and not a kind: a hook cannot list it',
+    check: async () => {
+      const h = harness();
+      const refused = await refusedWith(h.hook(['hook.delivery.exhausted']));
+      expect(refused.issues[0]?.path).toEqual(['events']);
+      expect(refused.message).toContain('is not a published Bureau event kind');
+    },
+  },
+];
+
+describe('the outcome matrix of the hook delivery events (event feed batch 3, COR-2099)', () => {
+  for (const row of DELIVERY_EVENT_ROWS) {
+    it(`[${row.owner}, matrix line ${row.line}, ${row.source}] ${row.name}`, row.check);
   }
 });

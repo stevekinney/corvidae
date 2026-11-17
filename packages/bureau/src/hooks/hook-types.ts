@@ -205,6 +205,13 @@ export type HookAttemptOutcome =
   /** A `start-workflow`, `notify` or `plugin` action failed in a way a retry may change; `error` says why. */
   | 'error';
 
+/**
+ * The attempts that did not deliver, which `hook.delivery.failed` publishes (COR-2099): a closed
+ * list, so the published event names how an attempt failed and never says why in free text.
+ */
+export type HookDeliveryFailureOutcome =
+  'response' | 'network-error' | 'refused' | 'error' | 'rejected';
+
 /** One attempt to deliver, in the order made. */
 export interface HookDeliveryAttempt {
   /** 1-based; one attempt record produces at most one HTTP request. */
@@ -435,6 +442,14 @@ export function isReactionMaxAttempts(value: unknown): value is number {
 
 /** The event a `notify` hook may not list: the notification it writes is announced by this event, so the hook would loop. */
 export const NOTIFICATION_CREATED_EVENT_KIND = 'notification.created';
+
+/**
+ * What every event a hook delivery publishes starts with (COR-2099: `hook.delivery.failed` and
+ * `hook.delivery.gave-up`). A delivery of such an event publishes neither, so a hook that watches
+ * its own failures, or two that watch each other's, settle after the delivery that began it. A
+ * `notify` hook cannot list one: its notification would carry the failure forward without end.
+ */
+export const HOOK_DELIVERY_EVENT_PREFIX = 'hook.delivery.';
 
 /** The longest response body kept on an attempt. */
 export const HOOK_RESPONSE_EXCERPT_BYTES = 1024;

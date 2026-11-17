@@ -7,11 +7,12 @@
  * The Bureau takes more than the form asks for, and the form fills in the rest:
  *
  * - The goal's name is the first line of the prompt, and its version is always `1`.
- * - The check is a statement a person writes ("Reply says hello"). The Bureau names a check by an
- *   exact validator name, which is that statement as a slug (`reply-says-hello`) at version `1`, as
- *   the checks this host ships are named. A name that is already a slug, such as `demo:never-passes`,
- *   is sent as it is. A check opened from a goal and left as it was is sent as that goal's own
- *   validator, name and version exactly, so Edit never renames a check it did not change.
+ * - The check is one the Bureau lists (`bureau.validators.list`, COR-2124): the form is given that
+ *   catalog, and a check is chosen by the exact name and version of a row. A check that takes a
+ *   configuration is drawn as a form from its JSON Schema, and what that form holds is sent with
+ *   the name and version. A check opened from a goal is the goal's own validator, name, version and
+ *   configuration exactly, even when the Bureau no longer lists it, so Edit never renames a check it
+ *   did not change and sends the validator only when its name, version or configuration changed.
  * - A goal needs a bound on all its attempts together besides how many it may make, so the form
  *   always names the steps.
  *
@@ -20,7 +21,9 @@
  */
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import type { AgentSummary } from '../../lib/bureau-client.ts';
-import type { Goal, GoalChange, GoalInput } from '../../lib/bureau-goals.ts';
+import type { Goal, GoalChange, GoalInput, GoalValidatorChoice } from '../../lib/bureau-goals.ts';
+import type { GoalValidator } from '../../lib/bureau-validators.ts';
+import { isSameJson } from '../../lib/contributed-configuration.ts';
 import { checkText } from './goal-rows.ts';
 
 const copy = GOALS_COPY.form;
@@ -37,7 +40,7 @@ export const DEFAULT_MAXIMUM_ATTEMPTS = 5;
 /** Steps, across all its attempts, every goal is bounded by: the Bureau needs one bound on them together. */
 export const MAXIMUM_TOTAL_STEPS = 50;
 
-/** The version every goal's name and every typed check is created at. */
+/** The version every goal's name is created at. */
 export const FORM_VERSION = '1';
 
 /** The fields that can have a problem, in the order the form draws them. */
@@ -57,22 +60,49 @@ export const GOAL_FIELD_IDS: Readonly<Record<GoalField, string>> = {
 /** What is wrong with each field, in the words shown at it. A field with nothing wrong has no key. */
 export type GoalProblems = Partial<Record<GoalField, string>>;
 
-/** A name already written as a validator's name: lowercase, with no spaces. */
-const VALIDATOR_NAME = /^[a-z0-9][a-z0-9._:-]*$/;
-
 /**
- * The validator name a typed check stands for: a name that is already one is kept, and a statement
- * is lowercased with each run of other characters made one hyphen ("Reply says hello" is
- * `reply-says-hello`).
+ * The key a check is chosen by in the picker: its exact name and version. A version holds no `@`
+ * (the Bureau refuses one), so the last `@` divides them whatever the name holds.
  */
-export function validatorNameOf(check: string): string {
-  const text = check.trim();
-  if (VALIDATOR_NAME.test(text)) return text;
-  const slug = text
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9._:]+/g, '-')
-    .replaceAll(/^[-.:]+|[-.:]+$/g, '');
-  return slug === '' ? text : slug;
+export function checkKey(validator: { readonly name: string; readonly version: string }): string {
+  return `${validator.name}@${validator.version}`;
+}
+
+/** The name and version a {@link checkKey} stands for, or `undefined` for text that is not one. */
+export function parseCheckKey(key: string): { name: string; version: string } | undefined {
+  const at = key.lastIndexOf('@');
+  if (at <= 0 || at === key.length - 1) return undefined;
+  return { name: key.slice(0, at), version: key.slice(at + 1) };
+}
+
+/** One choice of the picker: a check by its exact name and version, and the schema of what it takes. */
+export type CheckChoice = {
+  readonly key: string;
+  readonly name: string;
+  readonly version: string;
+  /** The check's words, from its name alone ("Contains phrase"); a goal's own check adds its settings. */
+  readonly label: string;
+  /** The heading the picker lists it under: where it comes from. `undefined` for a check not listed. */
+  readonly group: string | undefined;
+  /** The JSON Schema of the configuration it takes, or `null` when it takes none. */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+  /** Whether the Bureau lists it. The goal's own check stays a choice when it no longer does. */
+  readonly listed: boolean;
+};
+
+/** The heading a listed check goes under: "Built in", the plugin's name in words, or the owner's files. */
+function groupOfSource(source: GoalValidator['source']): string {
+  if (source.kind === 'bureau') return copy.checkGroups.builtIn;
+  if (source.kind === 'bungalow') return copy.checkGroups.own;
+  return checkText(source.name);
+}
+
+/** The check a new goal starts with: the first the Bureau lists, or none while it lists none. */
+export function defaultCheckKey(
+  validators: readonly Pick<GoalValidator, 'name' | 'version'>[],
+): string {
+  const first = validators[0];
+  return first === undefined ? '' : checkKey(first);
 }
 
 /** The goal's name: the first line of its prompt that says something. */
@@ -120,12 +150,27 @@ export function needsProvider(
 /** What the form was opened from, kept so Edit sends only what changed. */
 type Source = {
   readonly validator: Goal['validator'];
+  /** The configuration the goal's check holds, `undefined` when it holds none. */
+  readonly configuration: unknown;
   readonly maximumAttempts: number;
+};
+
+/** A field the Bureau refused inside the check's configuration, by its path within it. */
+export type ConfigurationIssue = {
+  readonly path: readonly (string | number)[];
+  readonly message: string;
 };
 
 export class GoalFormState {
   prompt = $state('');
-  check = $state('');
+  /** The key of the check chosen ({@link checkKey}), or an empty string while none is. */
+  #check = $state('');
+  /** What the chosen check's configuration form holds, or `undefined` while it holds nothing. */
+  configuration = $state<unknown>(undefined);
+  /** The Bureau's refusals of the configuration, each shown on the field its path names. */
+  configurationIssues = $state<readonly ConfigurationIssue[]>([]);
+  /** The checks the Bureau lists, or `undefined` while they are read or when they could not be. */
+  validators = $state<readonly GoalValidator[] | undefined>(undefined);
   agentName = $state('');
   /** The name of the goal Edit opened on: the first line of the prompt it keeps, the most the view says of it. */
   currentName = $state('');
@@ -146,13 +191,99 @@ export class GoalFormState {
    * goal's name as the first line of the prompt, because the view carries no more of it. Edit leaves
    * the prompt empty, which keeps the one the goal has.
    */
-  prefill(goal: Pick<Goal, 'agentName' | 'identity' | 'validator' | 'bounds'>): void {
+  prefill(
+    goal: Pick<Goal, 'agentName' | 'identity' | 'validator' | 'validatorConfiguration' | 'bounds'>,
+  ): void {
     this.agentName = goal.agentName;
     this.currentName = goal.identity.name.trim();
-    this.check = checkText(goal.validator.name);
     this.maximumAttempts = goal.bounds.maximumAttempts;
     this.prompt = this.#mode === 'create' ? goal.identity.name.trim() : '';
-    this.#source = { validator: goal.validator, maximumAttempts: goal.bounds.maximumAttempts };
+    const configuration = goal.validatorConfiguration ?? undefined;
+    this.#source = {
+      validator: goal.validator,
+      configuration,
+      maximumAttempts: goal.bounds.maximumAttempts,
+    };
+    // The goal's own check is chosen, with its configuration, whether or not the Bureau lists it.
+    this.#check = checkKey(goal.validator);
+    this.configuration = configuration;
+    this.configurationIssues = [];
+  }
+
+  /** The key of the check chosen, or an empty string while none is. */
+  get check(): string {
+    return this.#check;
+  }
+
+  /**
+   * Chooses a check. Its configuration form starts over, with what the goal held when the check is
+   * the goal's own, so a configuration is never kept for another check than the one it was written for.
+   */
+  set check(key: string) {
+    if (key === this.#check) return;
+    this.#check = key;
+    const source = this.#source;
+    this.configuration =
+      source !== undefined && checkKey(source.validator) === key ? source.configuration : undefined;
+    this.configurationIssues = [];
+  }
+
+  /**
+   * The checks the picker offers: each the Bureau lists, then the goal's own when the Bureau no
+   * longer lists it, so a goal opened for Edit never loses the check it has.
+   */
+  get choices(): readonly CheckChoice[] {
+    const listed: CheckChoice[] = (this.validators ?? []).map((validator) => ({
+      key: checkKey(validator),
+      name: validator.name,
+      version: validator.version,
+      label: checkText(validator.name),
+      group: groupOfSource(validator.source),
+      configuration: validator.configuration,
+      listed: true,
+    }));
+    const source = this.#source?.validator;
+    if (source !== undefined && !listed.some((choice) => choice.key === checkKey(source))) {
+      listed.push({
+        key: checkKey(source),
+        name: source.name,
+        version: source.version,
+        // Said as the goal's own page says it, with the settings the goal holds.
+        label: checkText(source.name, this.#source?.configuration),
+        group: undefined,
+        // Its schema is unknown, so what the goal holds is kept and no form is drawn for it.
+        configuration: null,
+        listed: false,
+      });
+    }
+    return listed;
+  }
+
+  /**
+   * The settings a check the Bureau no longer lists still holds, as term and words, to be shown
+   * read-only: there is no schema to draw a form from, and what the goal keeps is not lost. `undefined`
+   * when the chosen check is listed, is not the goal's own, or holds none.
+   */
+  get storedSettings():
+    readonly { readonly term: string; readonly definition: string }[] | undefined {
+    const source = this.#source;
+    const chosen = this.chosen;
+    if (source === undefined || chosen === undefined || chosen.listed) return undefined;
+    const held = source.configuration;
+    if (held === undefined || held === null) return undefined;
+    if (typeof held === 'object' && !Array.isArray(held)) {
+      const rows = Object.entries(held).map(([term, value]) => ({
+        term,
+        definition: typeof value === 'string' ? value : JSON.stringify(value),
+      }));
+      return rows.length === 0 ? undefined : rows;
+    }
+    return [{ term: copy.checkSettingsTerm, definition: JSON.stringify(held) }];
+  }
+
+  /** The choice the form holds, or `undefined` while none is chosen or the chosen one is not offered. */
+  get chosen(): CheckChoice | undefined {
+    return this.choices.find((choice) => choice.key === this.#check);
   }
 
   /** Whether the attempt limit is a whole number from 1 to 20. */
@@ -171,7 +302,8 @@ export class GoalFormState {
     const problems: GoalProblems = {};
     // Edit leaves the prompt empty to keep the one the goal has.
     if (this.#mode === 'create' && this.prompt.trim() === '') problems.prompt = copy.promptRequired;
-    if (this.check.trim() === '') problems.check = copy.checkRequired;
+    if (this.validators !== undefined && this.choices.length === 0) problems.check = copy.noChecks;
+    else if (this.chosen === undefined) problems.check = copy.checkRequired;
     if (this.agentName.trim() === '') problems.agent = copy.agentPlaceholder;
     if (!this.attemptsValid) problems.attempts = copy.maximumAttemptsInvalid;
     return problems;
@@ -201,12 +333,37 @@ export class GoalFormState {
     return this.firstProblem;
   }
 
-  /** The validator the check stands for: the goal's own while the check is as it was opened. */
-  #validator(): { readonly name: string; readonly version: string } {
+  /**
+   * The validator the check chosen stands for: its exact name and version, and what its configuration
+   * form holds. A check that takes no configuration is sent none, whatever the form once held.
+   */
+  #validator(): GoalValidatorChoice {
+    const chosen = this.chosen;
+    const named = chosen ?? parseCheckKey(this.#check) ?? { name: '', version: '' };
+    // A check the Bureau no longer lists has no known schema, so what the goal holds is kept as it is.
+    const takesConfiguration =
+      chosen === undefined || !chosen.listed || chosen.configuration !== null;
+    return {
+      name: named.name,
+      version: named.version,
+      ...(takesConfiguration && this.configuration !== undefined
+        ? { configuration: this.configuration }
+        : {}),
+    };
+  }
+
+  /**
+   * Whether the check is the one the form was opened with: the same name and version, and the same
+   * configuration whatever order its keys came in.
+   */
+  #validatorUnchanged(validator: GoalValidatorChoice): boolean {
     const source = this.#source;
-    const text = this.check.trim();
-    if (source !== undefined && text === checkText(source.validator.name)) return source.validator;
-    return { name: validatorNameOf(text), version: FORM_VERSION };
+    return (
+      source !== undefined &&
+      validator.name === source.validator.name &&
+      validator.version === source.validator.version &&
+      isSameJson(validator.configuration ?? null, source.configuration ?? null)
+    );
   }
 
   /** What the last request was, and the key it was sent under. Plain bookkeeping, not state. */
@@ -257,11 +414,7 @@ export class GoalFormState {
     const attempts = this.maximumAttempts;
     return {
       ...(prompt === '' ? {} : { prompt }),
-      ...(source !== undefined &&
-      validator.name === source.validator.name &&
-      validator.version === source.validator.version
-        ? {}
-        : { validator }),
+      ...(this.#validatorUnchanged(validator) ? {} : { validator }),
       ...(attempts === null || attempts === source?.maximumAttempts
         ? {}
         : { maximumAttempts: attempts }),

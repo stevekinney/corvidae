@@ -25,6 +25,7 @@ import type {
   SkillLoadedEvent,
   SkillRejectedEvent,
 } from './skills';
+import type { HookDeliveryFailureOutcome } from './hooks/hook-types';
 import type { PluginProblemCode } from './plugins/plugin-problem-codes';
 import type { PluginStatus } from './plugins/plugin-types';
 import type { TaskCleanupState } from './task-registry';
@@ -955,12 +956,16 @@ export class TriggerLifecycleEvent extends Event {
 }
 
 /** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
-export type DefinitionCatalogKind = 'agents' | 'workflows';
+export type DefinitionCatalogKind = 'agents' | 'workflows' | 'validators' | 'guardrails' | 'skills';
 
 /**
- * Fired on the bureau emitter after a rescan of the agent or workflow files changed what the
- * catalog holds (COR-1721), with the same identifiers its `onChange` listeners receive. `rejected`
- * names those of `added` and `changed` whose definition is invalid now and cannot run.
+ * Fired on the bureau emitter after a rescan of the agent, workflow, validator or guardrail files,
+ * or of the skill directories, changed what the catalog holds (COR-1721, and COR-2100 for skills),
+ * with the same identifiers its `onChange` listeners receive. `rejected` names those of `added`
+ * and `changed` whose definition is invalid now and cannot run. For `skills` the identifier is the
+ * skill's name, and a directory whose `SKILL.md` cannot be parsed has no name and is listed by its
+ * directory (under `rejected` too). The skills are discovered by the host, which reports each
+ * change through `BureauOptions.skillChanges`.
  */
 export class DefinitionsChangedEvent extends Event {
   static readonly type = 'definitions.changed' as const;
@@ -1063,6 +1068,76 @@ export class NotificationCreatedEvent extends Event {
     super(NotificationCreatedEvent.type);
     this.notificationId = notificationId;
     this.notificationKind = notificationKind;
+  }
+}
+
+/**
+ * Fired on the bureau emitter after a hook's delivery attempt that did not deliver is written
+ * (COR-2099): a non-2xx answer, a network error, a URL the policy refused, a reaction that threw or
+ * a permanent rejection. It names the hook, the delivery, the attempt and how it failed, never why:
+ * `outcome` is one of a closed list, and `status` is the HTTP status of a `response` outcome. The
+ * attempt's error text can hold a URL's token, so it never crosses. Neither the owner nor the URL
+ * goes with it. Nothing is published for an attempt that was interrupted, aborted by a disabled or
+ * deleted hook, or waiting for a plugin's setup, for a `hooks.test` delivery, for a skipped
+ * `start-workflow` delivery, or for a delivery of a `hook.delivery.*` event (which breaks the cycle
+ * of a hook that watches its own failures). A publish is at most once: a crash between the write and
+ * the publish loses the event.
+ */
+export class HookDeliveryFailedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'hook.delivery.failed' as const;
+
+  /** The hook whose delivery failed. */
+  readonly hookId: string;
+  /** The delivery. */
+  readonly deliveryId: string;
+  /** The number of the attempt that failed, from 1. */
+  readonly attempt: number;
+  /** How the attempt failed. */
+  readonly outcome: HookDeliveryFailureOutcome;
+  /** The HTTP status, set only for a `response` outcome. */
+  readonly status?: number;
+
+  constructor(failure: {
+    readonly hookId: string;
+    readonly deliveryId: string;
+    readonly attempt: number;
+    readonly outcome: HookDeliveryFailureOutcome;
+    readonly status?: number | undefined;
+  }) {
+    super(HookDeliveryFailedEvent.type);
+    this.hookId = failure.hookId;
+    this.deliveryId = failure.deliveryId;
+    this.attempt = failure.attempt;
+    this.outcome = failure.outcome;
+    if (failure.status !== undefined) this.status = failure.status;
+  }
+}
+
+/**
+ * Fired on the bureau emitter once a delivery's last retry has failed and the delivery is
+ * `exhausted` (COR-2099), after the `hook.delivery.failed` event of that last attempt. It names the
+ * hook and the delivery and counts the attempts the record holds, an interrupted one included, so
+ * the count can exceed the number of `hook.delivery.failed` events. A manual retry of an exhausted
+ * delivery that fails again publishes it again with the new count. The same cases as
+ * {@link HookDeliveryFailedEvent} publish nothing.
+ */
+export class HookDeliveryGaveUpEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'hook.delivery.gave-up' as const;
+
+  /** The hook whose delivery was given up. */
+  readonly hookId: string;
+  /** The delivery. */
+  readonly deliveryId: string;
+  /** How many attempts the delivery's record holds. */
+  readonly attempts: number;
+
+  constructor(hookId: string, deliveryId: string, attempts: number) {
+    super(HookDeliveryGaveUpEvent.type);
+    this.hookId = hookId;
+    this.deliveryId = deliveryId;
+    this.attempts = attempts;
   }
 }
 
@@ -1472,6 +1547,10 @@ export interface BureauEventMap extends EventMap {
   [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;
   /** A notification was written (COR-1941). */
   [NotificationCreatedEvent.type]: NotificationCreatedEvent;
+  /** A hook's delivery attempt failed (COR-2099). */
+  [HookDeliveryFailedEvent.type]: HookDeliveryFailedEvent;
+  /** A hook's delivery was given up after its last retry (COR-2099). */
+  [HookDeliveryGaveUpEvent.type]: HookDeliveryGaveUpEvent;
   [DiagnosticEvent.type]: DiagnosticEvent;
   [MemoryGovernanceEvent.type]: MemoryGovernanceEvent;
   /** A decision was made and written to the audit trail (COR-2249). */

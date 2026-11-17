@@ -382,6 +382,11 @@ export function createPluginRegistry(
   hostListing: {
     /** The rows of the guardrails the host gave the Bureau ({@link hostGuardrailRows}), listed first. */
     readonly guardrails?: readonly GuardrailListing[] | undefined;
+    /**
+     * COR-2120 — the rows of the guardrails the owner wrote as files, read on every listing and
+     * listed after the plugins'.
+     */
+    readonly owner?: (() => readonly GuardrailListing[]) | undefined;
   } = {},
 ): PluginRegistry {
   const hostGuardrails = [...(hostListing.guardrails ?? [])];
@@ -507,6 +512,7 @@ export function createPluginRegistry(
               )
             : [],
         ),
+        ...(hostListing.owner?.() ?? []),
       ],
       providers: () =>
         records.flatMap((record): PluginProviderListing[] =>

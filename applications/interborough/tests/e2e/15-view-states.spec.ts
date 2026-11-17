@@ -15,12 +15,17 @@
 import type { Page, Route } from '@playwright/test';
 
 import { AGENTS_COPY } from '../../src/app/copy/agents.ts';
+import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
 import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { NOT_FOUND_ROUTE_COPY, RETRY_LABEL } from '../../src/app/copy/views.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
+import {
+  RECORDED_GOAL_REFUSAL,
+  RECORDED_GOAL_REFUSAL_FIELD_MESSAGE,
+} from '../../src/lib/recorded-goal-refusal.test-support.ts';
 import {
   HEALTH_ATTENTION_COPY,
   HEALTH_COUNTS_COPY,
@@ -37,6 +42,21 @@ import {
   test,
   type PageErrorLog,
 } from './fixtures.ts';
+import {
+  ALL_SOURCES,
+  answerAsRecorded,
+  answerWith,
+  checkPicker,
+  chooseCheck,
+  holdMethod,
+  openPicker,
+  OWN_STAGING_NOTES,
+  patchResult,
+  refuseMethod,
+  SEEDED_GOAL,
+  verdictButton,
+  VERDICTS,
+} from './goal-check-support.ts';
 import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
@@ -982,6 +1002,334 @@ test('a miss on an asset, the Bureau, or the host is still a 404, not the shell'
   }
 });
 
+// The goal pages' check: the verdict drawer, the check picker and its settings, and a check the
+// Bureau no longer lists (COR-2124). Each capture is of the real pages against the real host, with
+// only the request named answered by the test; `goal-check-support.ts` has the rows and the verdicts.
+// `--grep "goal check"` selects them. A state is named `goal-check-…`, so no capture of these
+// routes by another source (the showcase's goals, the stress world's) is overwritten by one here.
+const GOAL_PAGE = `/goals/${SEEDED_GOAL}`;
+const GOAL_EDIT_PAGE = `${GOAL_PAGE}/edit`;
+
+/** Opens the seeded goal's page and the first attempt's verdict drawer. */
+async function openVerdict(page: Page): Promise<void> {
+  await page.goto(GOAL_PAGE);
+  await expect(page.locator('[data-attempt]').first()).toBeVisible();
+  await verdictButton(page).click();
+}
+
+for (const width of WIDTHS) {
+  const capturePage = async (
+    page: Page,
+    checkA11y: (label: string) => Promise<void>,
+    route: string,
+    state: string,
+  ): Promise<void> => {
+    await captureForDesignReview(page, {
+      route,
+      state: `goal-check-${state}`,
+      source: '15-view-states.spec.ts',
+    });
+    await checkA11y(`goal check — ${state} at ${width}px`);
+  };
+
+  for (const [name, verdict] of Object.entries(VERDICTS)) {
+    test(`goal check: the verdict drawer of ${name.replaceAll('-', ' ')}, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await answerWith(page, 'bureau.goals.verdict', verdict);
+      await openVerdict(page);
+      const body = page.getByTestId('goal-verdict-body');
+      await expect(body).toBeVisible();
+      await expect(body.getByTestId('goal-verdict-status')).toBeVisible();
+      await capturePage(page, checkA11y, GOAL_PAGE, `verdict-${name}`);
+    });
+  }
+
+  test(`goal check: the verdict drawer while the verdict loads, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await holdMethod(page, 'bureau.goals.verdict');
+    await openVerdict(page);
+    await expect(page.getByTestId('goal-verdict')).toBeVisible();
+    // The skeleton waits 300 ms before it draws, so the capture waits for what it says.
+    await expect(
+      page.getByRole('status').filter({ hasText: GOALS_COPY.detail.verdict.loading }),
+    ).toHaveCount(1);
+    await expect(page.getByTestId('goal-verdict-body')).toHaveCount(0);
+    await capturePage(page, checkA11y, GOAL_PAGE, 'verdict-loading');
+  });
+
+  test(`goal check: the verdict drawer of a goal someone else owns is private, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(404, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the verdict as the Bureau does for a goal the caller does not own',
+    });
+    // The goal reads as another person's, so the missing verdict is private, not "not judged yet".
+    await patchResult(page, 'bureau.goals.get', (goal) => ({ ...goal, owner: 'someone-else' }));
+    await refuseMethod(page, 'bureau.goals.verdict', 404, {
+      weftCode: 'NotFound',
+      message: 'No such goal.',
+    });
+    await openVerdict(page);
+    await expect(page.getByTestId('goal-verdict-note')).toHaveAttribute('data-reason', 'private');
+    await capturePage(page, checkA11y, GOAL_PAGE, 'verdict-private');
+  });
+
+  test(`goal check: the verdict drawer of an attempt not judged yet, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(404, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the verdict as the Bureau does for an attempt with none yet',
+    });
+    await refuseMethod(page, 'bureau.goals.verdict', 404, {
+      weftCode: 'NotFound',
+      message: 'No verdict yet.',
+      data: { resource: 'verdict' },
+    });
+    await openVerdict(page);
+    await expect(page.getByTestId('goal-verdict-note')).toHaveAttribute(
+      'data-reason',
+      'not-judged',
+    );
+    await capturePage(page, checkA11y, GOAL_PAGE, 'verdict-not-judged');
+  });
+
+  test(`goal check: the verdict drawer when the read failed, with Try again, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(503, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the verdict with a 503, the read that failed',
+    });
+    await refuseMethod(page, 'bureau.goals.verdict', 503, {
+      weftCode: 'Unavailable',
+      message: 'The server did not answer.',
+    });
+    await openVerdict(page);
+    const note = page.getByTestId('goal-verdict-note');
+    await expect(note).toHaveAttribute('data-reason', 'unreadable');
+    await expect(note.getByRole('button', { name: RETRY_LABEL })).toBeVisible();
+    await capturePage(page, checkA11y, GOAL_PAGE, 'verdict-read-failed');
+  });
+}
+
+for (const width of [320, 1280] as const) {
+  const capturePicker = async (
+    page: Page,
+    checkA11y: (label: string) => Promise<void>,
+    route: string,
+    state: string,
+  ): Promise<void> => {
+    await captureForDesignReview(page, {
+      route,
+      state: `goal-check-${state}`,
+      source: '15-view-states.spec.ts',
+    });
+    await checkA11y(`goal check — ${state} at ${width}px`);
+  };
+
+  test(`goal check: the picker open with checks from the host, a plugin and the owner's files, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await answerWith(page, 'bureau.validators.list', { validators: ALL_SOURCES });
+    await page.goto('/goals/new');
+    await openPicker(page);
+    // The options are the page's `option` roles, as `29-goals.spec.ts` finds them; each group's
+    // heading is the text the group is named by.
+    for (const heading of [
+      GOALS_COPY.form.checkGroups.builtIn,
+      'Demo',
+      GOALS_COPY.form.checkGroups.own,
+    ]) {
+      await expect(page.getByText(heading, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole('option', { name: /accepts any answer/i })).toBeVisible();
+    await capturePicker(page, checkA11y, '/goals/new', 'picker-open-three-sources');
+  });
+
+  test(`goal check: a check that takes a setting, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await answerWith(page, 'bureau.validators.list', { validators: ALL_SOURCES });
+    await page.goto('/goals/new');
+    await chooseCheck(page, /contains phrase/i);
+    await expect(page.getByTestId('goal-check-settings')).toBeVisible();
+    await expect(page.getByLabel('Phrase')).toBeVisible();
+    await capturePicker(page, checkA11y, '/goals/new', 'parameterized-check');
+  });
+}
+
+// The rest of the goal check captures are at the two widths the application is built for.
+for (const width of WIDTHS) {
+  const capturePicker = async (
+    page: Page,
+    checkA11y: (label: string) => Promise<void>,
+    route: string,
+    state: string,
+  ): Promise<void> => {
+    await captureForDesignReview(page, {
+      route,
+      state: `goal-check-${state}`,
+      source: '15-view-states.spec.ts',
+    });
+    await checkA11y(`goal check — ${state} at ${width}px`);
+  };
+
+  test(`goal check: a required setting left empty on submit, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // The form sends nothing a client can refuse; if it sends the empty setting, the Bureau refuses
+    // it as it does a required field that is missing, and the field says so either way.
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(400, /\/bureau\/jsonrpc/),
+      reason: 'the test answers a create that carries no setting with the Bureau’s refusal',
+    });
+    await answerWith(page, 'bureau.validators.list', { validators: ALL_SOURCES });
+    // The answer a real Bureau gave a phrase its schema refuses, whole and as recorded.
+    await answerAsRecorded(page, 'bureau.goals.create', RECORDED_GOAL_REFUSAL);
+    await page.goto('/goals/new');
+    await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Write the release notes.');
+    await chooseCheck(page, /contains phrase/i);
+    await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
+    // The field says what is missing, and the goal is not made.
+    await expect(
+      page.getByTestId('goal-check-settings').locator('[aria-invalid="true"]'),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/goals\/new$/);
+    await capturePicker(page, checkA11y, '/goals/new', 'required-setting-empty');
+  });
+
+  test(`goal check: a setting the Bureau refused, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(400, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the create with the refusal the Bureau gives a setting it rejects',
+    });
+    await answerWith(page, 'bureau.validators.list', { validators: ALL_SOURCES });
+    // The answer a real Bureau gave, whole (`recorded-goal-refusal.test-support.ts`), not a likeness.
+    await answerAsRecorded(page, 'bureau.goals.create', RECORDED_GOAL_REFUSAL);
+    await page.goto('/goals/new');
+    await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Write the release notes.');
+    await chooseCheck(page, /contains phrase/i);
+    await page.getByLabel('Phrase').fill('x');
+    await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
+    // The field says it, in the Bureau's words. The same words are in the alert's sentence, so the
+    // match is the whole text of one element: the field's message.
+    await expect(
+      page.getByText(RECORDED_GOAL_REFUSAL_FIELD_MESSAGE, { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel('Phrase')).toHaveAttribute('aria-invalid', 'true');
+    await capturePicker(page, checkA11y, '/goals/new', 'setting-refused');
+  });
+
+  test(`goal check: an empty catalog of checks, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await answerWith(page, 'bureau.validators.list', { validators: [] });
+    await page.goto('/goals/new');
+    // The field says there is nothing to choose once a submit is tried, and the goal is not made.
+    await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Write the release notes.');
+    await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
+    await expect(page.getByText(GOALS_COPY.form.noChecks, { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/goals\/new$/);
+    await capturePicker(page, checkA11y, '/goals/new', 'catalog-empty');
+  });
+
+  test(`goal check: a catalog of checks that could not be read, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(503, /\/bureau\/jsonrpc/),
+      reason: 'the test answers the list of checks with a 503',
+    });
+    await refuseMethod(page, 'bureau.validators.list', 503, {
+      weftCode: 'Unavailable',
+      message: 'The server did not answer.',
+    });
+    await page.goto('/goals/new');
+    await expect(
+      page.getByText(GOALS_COPY.form.checkUnavailableDescription, { exact: true }),
+    ).toBeVisible();
+    await capturePicker(page, checkA11y, '/goals/new', 'catalog-failed');
+  });
+
+  test(`goal check: the catalog of checks while it loads, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await holdMethod(page, 'bureau.validators.list');
+    await page.goto('/goals/new');
+    await expect(checkPicker(page)).toBeDisabled();
+    await capturePicker(page, checkA11y, '/goals/new', 'catalog-loading');
+  });
+
+  test(`goal check: a check on edit that is not installed any more, with no settings, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // The Bureau lists none of the goal's own check.
+    await answerWith(page, 'bureau.validators.list', { validators: [OWN_STAGING_NOTES] });
+    await page.goto(GOAL_EDIT_PAGE);
+    await expect(page.getByText(GOALS_COPY.form.checkUnlisted, { exact: true })).toBeVisible();
+    await expect(page.getByTestId('goal-check-stored-settings')).toHaveCount(0);
+    await capturePicker(page, checkA11y, GOAL_EDIT_PAGE, 'unlisted-check-no-settings');
+  });
+
+  test(`goal check: a check on edit that is not installed any more, with the settings the goal keeps, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await answerWith(page, 'bureau.validators.list', { validators: [OWN_STAGING_NOTES] });
+    // The goal holds settings for its check.
+    await patchResult(page, 'bureau.goals.get', (goal) => ({
+      ...goal,
+      validatorConfiguration: { phrase: 'staging fix' },
+    }));
+    await page.goto(GOAL_EDIT_PAGE);
+    await expect(page.getByText(GOALS_COPY.form.checkUnlisted, { exact: true })).toBeVisible();
+    const stored = page.getByTestId('goal-check-stored-settings');
+    await expect(stored).toContainText('staging fix');
+    // Read, not edited: no field holds them.
+    await expect(stored.locator('input, textarea, select')).toHaveCount(0);
+    await capturePicker(page, checkA11y, GOAL_EDIT_PAGE, 'unlisted-check-with-settings');
+  });
+}
+
 /*
  * COR-2171: what a workflow file's plugin trigger is doing, for the design review, which
  * `--grep "trigger state"` selects. The e2e host loads no plugin with a trigger kind, so a real
@@ -1556,7 +1904,8 @@ test.describe('trigger state', () => {
       // so the page's reads of its messages answer. Only the agent and the origin are patched.
       const threadId = newThreadId('trigger-state-run');
       await runToEnd(request, TEXT_ECHO_AGENT_NAME, threadId, 'Hello');
-      const taskId = (await taskOfSession(request, threadId)).id;
+      const sessionTask = await taskOfSession(request, threadId);
+      const taskId = sessionTask.id;
       const triggered = {
         agentName: null,
         origin: { kind: 'trigger', plugin: 'github', workflowId: TRIGGER_FILE },

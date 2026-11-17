@@ -66,7 +66,7 @@ describe('the controls', () => {
       'retention.tasks': 'form',
       'retention.receipts': 'form',
       'retention.memory': 'form',
-      'memory.embedder': 'text',
+      'memory.embedder': 'choice',
       'retention.logs': 'form',
       'retention.notifications': 'form',
       'retention.hookDeliveries': 'form',
@@ -160,6 +160,12 @@ describe('the controls', () => {
         source: 'decision-rows',
       });
     }
+  });
+
+  test('give the embedder memory uses a choice of embedders, never a text field that takes an identifier (EM6-01)', () => {
+    expect(
+      controlFor('memory.embedder', published.properties['memory.embedder'] as SchemaNode),
+    ).toEqual({ kind: 'choice', source: 'embedders' });
   });
 
   test('fall to the JSON editor for a shape nothing more specific reads, and never to an unsupported one', () => {

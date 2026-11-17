@@ -32,12 +32,12 @@ const schema = {
       type: 'string',
       description:
         'Label of the retry action drawn beside the error or the load error when `onRetry` is set.',
-      default: 'Retry',
+      default: 'Try again',
     },
     loadError: {
       type: 'string',
       description:
-        "Says that what the row's control offers did not load (\"Couldn't load the models. Retry\"), such\nas the options of a select. It is an advisory, in the warning tone and not the error's, so the\ncontrol is not marked invalid, and it takes the place of `warning` while it is set. With\n`onRetry` it ends in the same quiet Retry the error has. While `error` is also set, the Retry\nstays beside the error, which `onRetry` is for.",
+        "Says that what the row's control offers did not load (\"Couldn't load the models. Try again\"), such\nas the options of a select. It is an advisory, in the warning tone and not the error's, so the\ncontrol is not marked invalid, and it takes the place of `warning` while it is set. With\n`onRetry` it ends in the same quiet Try again the error has. While `error` is also set, the Try again\nstays beside the error, which `onRetry` is for.",
     },
     description: {
       type: 'string',
@@ -127,7 +127,7 @@ const schema = {
         name: 'onRetry',
         reason: 'function-or-snippet',
         description:
-          'Called by the quiet Retry beside the error, for a save that did not go through ("Couldn\'t\nsave. Your value is still in the field. Retry"), and beside `loadError`, for a read that did\nnot. Leave it unset for an invalid value, where retrying changes nothing and the person fixes\nthe field instead.',
+          'Called by the quiet Try again beside the error, for a save that did not go through ("Couldn\'t\nsave. Your value is still in the field. Try again"), and beside `loadError`, for a read that did\nnot. Leave it unset for an invalid value, where retrying changes nothing and the person fixes\nthe field instead.',
       },
     ],
   },

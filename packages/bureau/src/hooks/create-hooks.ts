@@ -84,6 +84,7 @@ import { captureRunWorkspaceAuthority } from '../run-authority.ts';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
+import type { HookDeliveryFailedEvent, HookDeliveryGaveUpEvent } from '../events.ts';
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record.ts';
 import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.ts';
@@ -112,6 +113,7 @@ import {
   type Stored,
 } from './hook-store.ts';
 import {
+  HOOK_DELIVERY_EVENT_PREFIX,
   HOOK_RECEIPT_SUMMARY_LIMIT,
   HOOK_SCOPE_KINDS,
   HookActionError,
@@ -515,6 +517,12 @@ export interface HooksDependencies {
   readonly diagnose: (message: string, cause?: unknown) => void;
   /** Reports something that is not a failure but that a person may want to see, such as a skipped start. */
   readonly notice?: ((message: string) => void) | undefined;
+  /**
+   * COR-2099 — publishes a delivery's `hook.delivery.failed` and `hook.delivery.gave-up` events on
+   * the Bureau's emitter. Absent, nothing is published. See {@link HookDeliveryDependencies.publish}.
+   */
+  readonly publish?:
+    ((event: HookDeliveryFailedEvent | HookDeliveryGaveUpEvent) => void) | undefined;
 }
 
 /** What {@link createHooks} returns: the public member, and the two entry points the Bureau drives. */
@@ -856,6 +864,23 @@ function assertNoNotificationLoop(action: HookAction, events: readonly string[])
       `A notify hook cannot fire on ${NOTIFICATION_CREATED_EVENT_KIND}: the notification it writes would fire it again`,
     );
   }
+  // COR-2099: a failing webhook on `notification.created` makes a failure for each notification, and
+  // a notify hook on a failure writes a notification for each, so the failures would multiply for ever.
+  const delivery = events.filter((kind) => kind.startsWith(HOOK_DELIVERY_EVENT_PREFIX));
+  if (action.type === 'notify' && delivery.length > 0) {
+    invalid(
+      'events',
+      `A notify hook cannot fire on ${delivery.join(', ')}: the notification it writes could fail to be delivered, and that failure would write another`,
+    );
+  }
+}
+
+/** Whether a stored `notify` hook lists a kind it may not (see {@link assertNoNotificationLoop}) and is skipped for it. */
+function notifyMayNotFireOn(hook: HookRecord, kind: string): boolean {
+  return (
+    hook.action.type === 'notify' &&
+    (kind === NOTIFICATION_CREATED_EVENT_KIND || kind.startsWith(HOOK_DELIVERY_EVENT_PREFIX))
+  );
 }
 
 /** Where an event of `kind` can come from: a kind the catalog does not describe is unattributed. */
@@ -1335,6 +1360,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         },
       }),
     diagnose: dependencies.diagnose,
+    publish: dependencies.publish,
   });
 
   // The hooks dispatch matches against, read from the store and kept for a few seconds: every
@@ -1362,7 +1388,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           !actionKinds.has(actionKindKey(hook.action.plugin, hook.action.kind))
         ) &&
         // A record that lists it anyway (written by something that skipped the check) is not fired.
-        !(hook.action.type === 'notify' && kind === NOTIFICATION_CREATED_EVENT_KIND),
+        !notifyMayNotFireOn(hook, kind),
     );
   }
 

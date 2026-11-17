@@ -5,11 +5,19 @@
  */
 import { default as Axe } from '@axe-core/playwright';
 import { runInspector } from '@lostgradient/plugin-inspectors';
-import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
+import type { McpUiHostContext, McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
+import {
+  expectFollowsHost,
+  firstDurationSeconds,
+  hostContextFor,
+  REDUCED_MOTION_SECONDS,
+  SCHEMES,
+  type Scheme,
+} from './host-theme.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
 
@@ -79,7 +87,7 @@ const inspection = (overrides: Record<string, unknown> = {}, taskOverrides = {})
 
 type Fixture = { inspection: unknown; events?: unknown };
 
-async function open(page: Page, fixture: Fixture) {
+async function open(page: Page, fixture: Fixture, scheme?: Scheme) {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route(`${HOST_ORIGIN}/`, (route) =>
@@ -91,9 +99,15 @@ async function open(page: Page, fixture: Fixture) {
   await page.goto(`${HOST_ORIGIN}/`);
   await page.evaluate<
     void,
-    { html: string; csp: McpUiResourceCsp; inspected: unknown; events: unknown }
+    {
+      html: string;
+      csp: McpUiResourceCsp;
+      inspected: unknown;
+      events: unknown;
+      hostContext: unknown;
+    }
   >(
-    async ({ html, csp, inspected, events }) => {
+    async ({ html, csp, inspected, events, hostContext }) => {
       const host = window.referenceHost;
       host.handlers['bureau.tasks.inspect'] = () => inspected;
       host.handlers['bureau.tasks.events'] = () => events;
@@ -101,13 +115,20 @@ async function open(page: Page, fixture: Fixture) {
         taskId: 'run-1',
         receipt: 'cancel-requested',
       });
-      await host.mount(html, csp, { taskId: 'run-1' });
+      await host.mount(
+        html,
+        csp,
+        { taskId: 'run-1' },
+        undefined,
+        hostContext as McpUiHostContext | undefined,
+      );
     },
     {
       html: pageHtml,
       csp: MCP_APP_UI_META.csp,
       inspected: fixture.inspection,
       events: fixture.events ?? { events: [], nextCursor: null, ended: false },
+      hostContext: scheme === undefined ? undefined : hostContextFor(scheme),
     },
   );
   return { errors, app: page.frameLocator('iframe[title="Run inspector"]') };
@@ -153,6 +174,18 @@ test.describe('the run inspector MCP App', () => {
       .toBe(1);
   });
 
+  for (const scheme of SCHEMES) {
+    test(`follows the host's ${scheme} theme and has no axe violations in it`, async ({ page }) => {
+      // The system says the other scheme: the host's word is the one the panel follows.
+      await page.emulateMedia({ colorScheme: scheme === 'dark' ? 'light' : 'dark' });
+      const { app } = await open(page, { inspection: inspection() }, scheme);
+      await expect(app.getByRole('heading', { level: 1, name: 'Run run-1' })).toBeVisible();
+      await expectFollowsHost(app, scheme);
+      const results = await new Axe({ page }).include('iframe').analyze();
+      expect(results.violations.filter((violation) => violation.impact !== 'minor')).toEqual([]);
+    });
+  }
+
   test('has no axe violations and honors reduced motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
     const { app } = await open(page, { inspection: inspection() });
@@ -163,7 +196,7 @@ test.describe('the run inspector MCP App', () => {
     const transition = await frame.evaluate(
       () => getComputedStyle(document.querySelector('button')!).transitionDuration,
     );
-    expect(['0s', '0.00001s']).toContain(transition === '' ? '0s' : transition.split(',')[0]);
+    expect(firstDurationSeconds(transition)).toBeLessThanOrEqual(REDUCED_MOTION_SECONDS);
   });
 
   test('cannot reach the network, the parent, or another origin', async ({ page }) => {
