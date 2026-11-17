@@ -84,14 +84,49 @@
     white-space: nowrap;
   }
 
+  /* The pieces of a metadata line (tool, risk word, who asked, when) are told apart by a gap and a
+   * step in weight and colour, never by a comma (COR-2445): the tool label is medium in the body
+   * colour; the rest of the line is regular and subtle, with the time in tabular numerals. */
   .cinder-approval-card__tool-label {
     color: var(--cinder-text-default);
-    font-weight: var(--cinder-font-semibold);
+    font-weight: var(--cinder-font-medium);
   }
 
   /* Risk words are muted regular text everywhere, "Dangerous" included. */
   .cinder-approval-card__risk-word {
+    color: var(--cinder-text-subtle);
     font-weight: var(--cinder-font-normal);
+  }
+
+  /* The gap that stands where the comma was, beside the space the markup keeps for the reader. */
+  .cinder-approval-card__keep + .cinder-approval-card__keep,
+  .cinder-approval-card__line-tool:has(*) + .cinder-approval-card__line-source,
+  .cinder-approval-card__line-source > span + time,
+  .cinder-approval-card__eyebrow > * + *,
+  .cinder-approval-card__detail-ask > * + *,
+  .cinder-approval-card__risk-word + .cinder-approval-card__undone,
+  .cinder-approval-card__tool-identifier + .cinder-approval-card__risk-word,
+  .cinder-approval-card__outcome-word + .cinder-approval-card__outcome-time,
+  .cinder-approval-card__outcome-time + .cinder-approval-card__outcome-trailing,
+  .cinder-approval-card__outcome-word + .cinder-approval-card__outcome-trailing {
+    margin-inline-start: var(--cinder-space-1-5);
+  }
+
+  /* "Can't be undone" is a step darker than the risk word beside it (the detail layout sets it
+   * in the body colour and semibold). */
+  .cinder-approval-card__risk-line .cinder-approval-card__undone {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__line time,
+  .cinder-approval-card__eyebrow time,
+  .cinder-approval-card__detail-ask time,
+  .cinder-approval-card__outcome-time {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-approval-card__input-pairs > .cinder-approval-card__pair-label:not(:first-child) {
+    margin-inline-start: var(--cinder-space-1-5);
   }
 
   /* "Can't be undone" never breaks across lines. */
@@ -141,12 +176,6 @@
     box-shadow:
       0 0 0 var(--cinder-ring-offset, 1px) var(--cinder-ring-offset-color),
       0 0 0 calc(var(--cinder-ring-offset, 1px) + var(--cinder-ring-width)) var(--cinder-ring-color);
-  }
-
-  /* A comma that ends the words before it, so it sits against them; the space after it comes from
-   * the markup. */
-  .cinder-approval-card__separator {
-    margin-inline: 0;
   }
 
   /* ----------------------------------------
@@ -1563,8 +1592,8 @@
       display: block;
     }
 
-    .cinder-approval-card__line-tool > .cinder-approval-card__source-separator {
-      display: none;
+    .cinder-approval-card__line-tool:has(*) + .cinder-approval-card__line-source {
+      margin-inline-start: 0;
     }
   }
 
@@ -1589,28 +1618,20 @@
     }
   }
 
-  /* Where even "who asked, when" cannot fit on a line, the time takes a line of its own and the
-   * comma that led to it goes, instead of stranding at the end of the line above. The row's line
-   * is short; the card's eyebrow and the detail's ask line are longer. */
+  /* Where even "who asked and when" cannot fit on a line, the time takes a line of its own. The
+   * row's line is short; the card's eyebrow and the detail's ask line are longer. */
   @container (inline-size < 14rem) {
-    .cinder-approval-card__line .cinder-approval-card__time-separator {
-      display: none;
-    }
-
     .cinder-approval-card__line time {
       display: block;
+      margin-inline-start: 0;
     }
   }
 
   @container (inline-size < 19rem) {
-    .cinder-approval-card__eyebrow .cinder-approval-card__time-separator,
-    .cinder-approval-card__detail-ask .cinder-approval-card__time-separator {
-      display: none;
-    }
-
     .cinder-approval-card__eyebrow time,
     .cinder-approval-card__detail-ask time {
       display: block;
+      margin-inline-start: 0;
     }
   }
 

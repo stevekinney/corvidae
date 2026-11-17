@@ -159,7 +159,7 @@ describe('an approval decided on another page', () => {
     expect(row?.querySelector('h4')?.textContent).toBe('Refund order 4471 for $42.00?');
     expect(
       row?.querySelector('.cinder-approval-card__outcome')?.textContent?.replace(/\s+/g, ' '),
-    ).toMatch(/^\s*Approved by you in Reviews,\s*\d{1,2}:\d{2} [AP]M\s*$/);
+    ).toMatch(/^\s*Approved by you in Reviews\s*\d{1,2}:\d{2} [AP]M\s*$/);
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     // The rail row speaks for the same decision in its own words.
