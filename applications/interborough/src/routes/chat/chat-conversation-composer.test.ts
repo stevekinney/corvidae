@@ -241,7 +241,7 @@ describe('the draft store (COR-2284 C7)', () => {
     await fireEvent.keyDown(box, { key: 'Enter' });
 
     await waitFor(() => expect(runs).toHaveLength(1));
-    await waitFor(() => expect(window.localStorage.getItem(KEY)).toBe(''));
+    await waitFor(() => expect(window.localStorage.getItem(KEY) === '').toBe(true));
     first.unmount();
     const again = mountAs();
     await loadedComposer(again.container);
