@@ -27,6 +27,10 @@ The `two-column` variant sets a muted term on the left and the value on the righ
 
 `DescriptionList` is how a record shows its label and value metadata: an owner, a created date, a price. Do not draw those pairs as a row of `Badge` or `Chip` pills; pills are for a status or a short tag. The `two-column`, `fields` and `facts` variants set the label and the value side by side, so labels line up down the page and the values read as text. For a few typed facts that each take an icon and a value, such as a kind, a neighbourhood and a price band, use [`KeyFacts`](../key-facts/README.md).
 
+### A note under a value
+
+Give an item a `note` for a muted second line under its definition: what the value is called elsewhere, such as a check read in words with its name and version beneath (`Contains phrase`, then `contains-phrase, version 1`). The note is plain text, read with the definition, and is left out when empty. Use it instead of a second row that states the same fact twice.
+
 ### Formatted values
 
 A definition can be a value the list formats, so every list shows timestamps, IDs and tags the same way:

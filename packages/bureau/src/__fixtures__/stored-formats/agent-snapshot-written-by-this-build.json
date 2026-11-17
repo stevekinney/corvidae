@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "helper",
+  "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "firstRunAt": "2026-11-16T12:00:00.000Z",
+  "lastRunAt": "2026-11-16T12:00:00.000Z",
+  "definition": {
+    "name": "Helper",
+    "description": null,
+    "model": "anthropic/claude-opus-5-5",
+    "tools": [],
+    "card": [],
+    "a2a": false,
+    "instructions": "Be helpful.\n",
+    "guardrails": ["no-sauce"]
+  },
+  "guardrailDefinitions": [
+    {
+      "id": "no-sauce",
+      "digest": "dabb0e132defcd063726b30643b0887ea7784b1e33354321c45624b970a41cd8",
+      "definition": {
+        "kind": "pattern",
+        "description": "Keeps the secret sauce secret.",
+        "checks": "output",
+        "action": "block",
+        "phrases": ["secret-sauce"],
+        "patterns": []
+      }
+    }
+  ]
+}

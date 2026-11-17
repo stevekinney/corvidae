@@ -21760,7 +21760,7 @@
       }
     },
     {
-      "description": "Lists every guardrail installed in the Bureau, one row per family it serves (`input`, `output`, `tools`, or `memory`, which guards the host’s memory and no agent file chooses): the `id` (`plugin:name`) an agent file’s `guardrails` lists, its `description`, whether it is `configurable` and its `configuration` as JSON Schema (a configurable guardrail is listed in a file as `{ id, configuration }`, and a field the configuration leaves out takes the default the schema shows), and its `source`, a running `plugin` or the `host`, with the `plugin` that contributes it. The host’s come first, then the running plugins’ in load order. Read-only; any authenticated caller may read it.",
+      "description": "Lists every guardrail installed in the Bureau, one row per family it serves (`input`, `output`, `tools`, or `memory`, which guards the host’s memory and no agent file chooses): the `id` (`plugin:name`) an agent file’s `guardrails` lists, its `description`, whether it is `configurable` and its `configuration` as JSON Schema (a configurable guardrail is listed in a file as `{ id, configuration }`, and a field the configuration leaves out takes the default the schema shows), and its `source`, a running `plugin`, the `host`, or the `bungalow` for a guardrail the owner wrote as a file in the Bungalow’s `guardrails` folder, with the `plugin` that contributes it (`null` for an owner’s guardrail, whose `id` is its file’s name, not `plugin:name`). The host’s come first, then the running plugins’ in load order, then the owner’s files by name. Read-only; any authenticated caller may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -21785,7 +21785,7 @@
           "additionalProperties": false,
           "properties": {
             "guardrails": {
-              "description": "Every installed guardrail, one row per family it serves: the host’s first, then the running plugins’ in load order.",
+              "description": "Every installed guardrail, one row per family it serves: the host’s first, then the running plugins’ in load order, then the owner’s files by name.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -21827,14 +21827,18 @@
                     "type": "string"
                   },
                   "plugin": {
-                    "description": "The contributing plugin’s name, the first half of `id`.",
-                    "type": "string"
+                    "description": "The contributing plugin’s name, the first half of `id`; `null` for an owner’s guardrail, whose `id` is its file’s name and which no plugin holds.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "source": {
-                    "description": "Who installed it: a running plugin, or the host that built the Bureau.",
+                    "description": "Who installed it: a running plugin, the host that built the Bureau, or the owner, as a file in the Bungalow’s `guardrails` folder.",
                     "enum": [
                       "plugin",
-                      "host"
+                      "host",
+                      "bungalow"
                     ],
                     "type": "string"
                   }
@@ -21875,7 +21879,7 @@
       }
     },
     {
-      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), and its `source`, the `bureau` kind for a validator the host gave the Bureau or the `plugin` kind for one a running plugin contributes, with that source’s name and version. The host’s come first, then the running plugins’ in load order. The catalog is built at startup, so a plugin enabled or disabled takes effect on the next restart. Read-only; any authenticated caller that can create a goal may read it.",
+      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), its `configuration` (the JSON Schema of what a goal may configure it with, passed as `validator.configuration` to `bureau.goals.create`, or `null` when it takes none), and its `source`, the `bureau` kind for a validator the host gave the Bureau the `plugin` kind for one a running plugin contributes, or the `bungalow` kind for one the owner wrote as a file in the Bungalow’s `validators` folder (its `version` is a digest of what the file says), with that source’s name and version. The host’s come first, then the running plugins’ in load order, then the owner’s files by name. The host’s and the plugins’ are built at startup, so a plugin enabled or disabled takes effect on the next restart; the owner’s files are read as they change. Read-only; any authenticated caller that can create a goal may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -21904,6 +21908,21 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "configuration": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The JSON Schema of the configuration a goal may give it, which the Bureau parses before it stores it; `null` when the validator takes none."
+                  },
                   "determinism": {
                     "anyOf": [
                       {
@@ -21928,19 +21947,20 @@
                     "description": "Who the validator comes from.",
                     "properties": {
                       "kind": {
-                        "description": "`bureau` for a validator the host gave the Bureau; `plugin` otherwise.",
+                        "description": "`bureau` for a validator the host gave the Bureau, `plugin` for one a plugin contributes, `bungalow` for one the owner wrote as a file.",
                         "enum": [
                           "bureau",
-                          "plugin"
+                          "plugin",
+                          "bungalow"
                         ],
                         "type": "string"
                       },
                       "name": {
-                        "description": "`bureau`, or the contributing plugin’s name.",
+                        "description": "`bureau`, the contributing plugin’s name, or `bungalow`.",
                         "type": "string"
                       },
                       "version": {
-                        "description": "Bureau’s version, or the plugin’s.",
+                        "description": "Bureau’s version, the plugin’s, or the file’s version, which is a digest of what it says.",
                         "type": "string"
                       }
                     },
@@ -21960,6 +21980,7 @@
                   "name",
                   "version",
                   "determinism",
+                  "configuration",
                   "source"
                 ],
                 "type": "object"
@@ -25827,7 +25848,8 @@
                       "version"
                     ],
                     "type": "object"
-                  }
+                  },
+                  "validatorConfiguration": {}
                 },
                 "required": [
                   "goalRunId",
@@ -25835,6 +25857,7 @@
                   "agentName",
                   "identity",
                   "validator",
+                  "validatorConfiguration",
                   "status",
                   "terminalReason",
                   "revision",
@@ -26206,7 +26229,8 @@
                 "version"
               ],
               "type": "object"
-            }
+            },
+            "validatorConfiguration": {}
           },
           "required": [
             "goalRunId",
@@ -26214,6 +26238,7 @@
             "agentName",
             "identity",
             "validator",
+            "validatorConfiguration",
             "status",
             "terminalReason",
             "revision",
@@ -26384,7 +26409,8 @@
                         "kind": {
                           "enum": [
                             "bureau",
-                            "plugin"
+                            "plugin",
+                            "bungalow"
                           ],
                           "type": "string"
                         },
@@ -26742,8 +26768,11 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "A validator this Bureau was configured with, by exact name and version.",
+            "description": "A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27066,7 +27095,8 @@
                     "version"
                   ],
                   "type": "object"
-                }
+                },
+                "validatorConfiguration": {}
               },
               "required": [
                 "goalRunId",
@@ -27074,6 +27104,7 @@
                 "agentName",
                 "identity",
                 "validator",
+                "validatorConfiguration",
                 "status",
                 "terminalReason",
                 "revision",
@@ -27254,8 +27285,11 @@
           },
           "validator": {
             "additionalProperties": false,
-            "description": "A validator this Bureau was configured with, by exact name and version.",
+            "description": "A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27517,8 +27551,11 @@
           "required": false,
           "schema": {
             "additionalProperties": false,
-            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version.",
+            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27624,8 +27661,11 @@
           },
           "validator": {
             "additionalProperties": false,
-            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version.",
+            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"

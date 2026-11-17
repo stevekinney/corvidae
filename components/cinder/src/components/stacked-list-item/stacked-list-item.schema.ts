@@ -139,7 +139,7 @@ const schema = {
         name: 'actions',
         reason: 'unknown-shape',
         description:
-          'Text actions at the end of the row. On a tablet or desktop each is a secondary small button;\non a phone (below 640px) they collapse into one menu button with the same actions, which is a\n44px target under a coarse pointer.',
+          'Text actions at the end of the row. On a tablet or desktop each is a secondary small button;\non a phone (below 640px) two or more collapse into one menu button with the same actions, and\na single action stays its own compact secondary button. Either is a 44px target under a coarse\npointer.',
       },
       {
         name: 'description',

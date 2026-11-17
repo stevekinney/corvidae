@@ -157,6 +157,11 @@ import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import { createGuardrailFileCatalog, type GuardrailFileCatalog } from './guardrail-file-catalog';
+import { ownerGuardrailRows } from './owner-guardrails';
+import { forwardOwnerFileChanges, openOwnerFileCatalog } from './owner-file-startup';
+import type { GuardrailSource, ValidatorSource } from './sources/definition-source';
+import { createValidatorFileCatalog, type ValidatorFileCatalog } from './validator-file-catalog';
 import { createWorkflowContributions } from './workflow-contributions';
 import { composeBureauGoals } from './goals-composition';
 import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
@@ -179,7 +184,12 @@ import {
   toolGrantOf,
   validateSettingsOptions,
 } from './settings/settings-options';
-import { createModels, validateModelsOptions, type Models } from './models/create-models';
+import {
+  createModels,
+  findDecisionRow,
+  validateModelsOptions,
+  type Models,
+} from './models/create-models';
 import { createScorerSampler, type ScorerSampler } from './scorers';
 import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
@@ -598,6 +608,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
+    // COR-2120: the owner's guardrail files, listed after the plugins', read as they stand.
+    owner: () => ownerGuardrailRows(guardrailFiles?.ready() ?? []),
   });
   // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
   const settingsLocked = validateSettingsOptions(options, toBadRequest);
@@ -759,6 +771,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   const lateDecisions = createLateDecisions();
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
+  // COR-2119: the owner's validator files, whose catalog is built where the other file catalogs are
+  // (it needs the runtime) and read through this holder once it exists.
+  let validatorFiles: ValidatorFileCatalog | undefined;
+  /** COR-2120: the owner's guardrail files; built before the agent files, which read them. */
+  let guardrailFiles: GuardrailFileCatalog | undefined;
+  /** Advances when the model catalog is replaced, so a `judge` file is read against the new one. */
+  let modelCatalogRevision = 0;
   const goalValidatorCatalog = createGoalValidatorCatalog(
     lateDecisions.bindValidators(options.validators),
     // COR-2111: a plugin's validators are in the contribution catalog under the plugin's source.
@@ -766,6 +785,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       const found = options.contributionCatalog?.resolve('validator', identity);
       return found?.ok === true ? found.entry.source : undefined;
     },
+    () => validatorFiles,
+    // COR-2123: a judge asks the Bureau's own decisions, which are composed later.
+    { decide: (request, decideOptions) => lateDecisions.source.decide(request, decideOptions) },
   );
   // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
   // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
@@ -2765,6 +2787,16 @@ async function constructBureau<const D extends AgentDefinitions>(
       onReplace: () => {
         // A replace after shutdown began has no one left to validate for.
         if (runAdmissionClosed) return;
+        modelCatalogRevision += 1;
+        validatorFiles?.refresh().catch((cause: unknown) =>
+          diagnose({
+            level: 'error',
+            scope: 'validator-files',
+            message:
+              '[bureau] could not validate validator files against the replaced model catalog',
+            cause,
+          }),
+        );
         fileAgents?.files.refresh().catch((cause: unknown) =>
           diagnose({
             level: 'error',
@@ -2951,6 +2983,41 @@ async function constructBureau<const D extends AgentDefinitions>(
       store: runtime.kv,
       nowISO: runtimeServices.clock.nowISO,
     });
+    // COR-2120: the owner's guardrail files, scanned before the agent files are, so an agent that
+    // names one finds it on its first scan. An edit revalidates the agent files (below), which is
+    // what makes the agents that name a changed file new agents.
+    await openOwnerFileCatalog({
+      option: 'guardrailSource',
+      kind: 'guardrail',
+      source: options.guardrailSource,
+      badRequest: toBadRequest,
+      stopForwarding,
+      onCreated: (files) => {
+        guardrailFiles = files;
+      },
+      create: (source: GuardrailSource) =>
+        createGuardrailFileCatalog({
+          source,
+          runtime: runtimeServices,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'guardrail-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+        }),
+      onChange: () => {
+        fileAgents?.files.revalidate().catch((cause: unknown) =>
+          diagnose({
+            level: 'error',
+            scope: 'agent-files',
+            message: '[bureau] could not validate agent files against the changed guardrail files',
+            cause,
+          }),
+        );
+      },
+    });
     fileAgents =
       options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
@@ -2973,6 +3040,13 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
+              // COR-2120: the owner's guardrails, which a file lists by their stems.
+              ownerGuardrails: () =>
+                (guardrailFiles?.ready() ?? []).map((file) => ({
+                  id: file.name,
+                  digest: file.digest,
+                  definition: file.definition,
+                })),
               // COR-1975: the skills a file's `skills` draws on, read through the host.
               ...(options.agentSkillCatalog === undefined
                 ? {}
@@ -3059,6 +3133,41 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(
       forwardDefinitionChanges('agents', agentCatalog, (event) => emitter.dispatch(event)),
+    );
+    // COR-2119: the owner's validator files, scanned before the first goal can be created so one that
+    // names a file finds it, and reported as `definitions.changed` after that first scan.
+    // After the first scan, so the files present at boot are not reported as added.
+    stopForwarding.push(
+      forwardOwnerFileChanges('guardrails', guardrailFiles, (event) => emitter.dispatch(event)),
+    );
+    await openOwnerFileCatalog({
+      option: 'validatorSource',
+      kind: 'validator',
+      source: options.validatorSource,
+      badRequest: toBadRequest,
+      stopForwarding,
+      onCreated: (files) => {
+        validatorFiles = files;
+      },
+      create: (source: ValidatorSource) =>
+        createValidatorFileCatalog({
+          source,
+          runtime: runtimeServices,
+          // A judge file names a row of the model catalog, as an agent file does, and is read again
+          // when the catalog is replaced.
+          modelKnown: (model) => findDecisionRow(models.catalog().descriptors, model) !== undefined,
+          revision: () => modelCatalogRevision,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'validator-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+        }),
+    });
+    stopForwarding.push(
+      forwardOwnerFileChanges('validators', validatorFiles, (event) => emitter.dispatch(event)),
     );
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs

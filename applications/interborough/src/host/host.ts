@@ -216,10 +216,12 @@ import { resolveLaunchCommand } from './launch-command.ts';
 import {
   claimWorkspaceBinding,
   createAgentSource,
+  createGuardrailSource,
   createHostStorage,
   createPluginAgentSource,
   createPluginSkillSource,
   createPluginWorkflowSource,
+  createValidatorSource,
   createWorkflowSource,
   DEFAULT_CONTENT_KINDS,
   DEFAULT_DATABASE_KINDS,
@@ -350,6 +352,19 @@ export const AGENT_DIRECTORY_NAME = 'agents';
  * included, and it runs as the deployment's one owner.
  */
 export const WORKFLOW_DIRECTORY_NAME = 'workflows';
+
+/**
+ * The directory of validator files under the Interborough home: `staging-notes.json` is the
+ * validator `staging-notes`, which a goal may name by that name and the digest of what the file
+ * says (COR-2119).
+ */
+export const VALIDATOR_DIRECTORY_NAME = 'validators';
+
+/**
+ * The directory of guardrail files under the Interborough home: `no-secrets.json` is the guardrail
+ * `no-secrets`, which an agent file lists in `guardrails` by that name (COR-2120).
+ */
+export const GUARDRAIL_DIRECTORY_NAME = 'guardrails';
 
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
@@ -1156,6 +1171,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
+    const validatorContent = bungalow.content(VALIDATOR_DIRECTORY_NAME);
+    const guardrailContent = bungalow.content(GUARDRAIL_DIRECTORY_NAME);
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
     // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
     // both run every task. The other restart-applied settings that overlap depends on are held too
@@ -1318,6 +1335,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
       pluginWorkflowSource: (plugin, shipped) =>
         createPluginWorkflowSource(plugin, shipped, directoryOptions),
+      // Validator files: JSON files in Bungalow's `validators/` directory say when a goal is done
+      // (COR-2119), watched as the agent and workflow files are.
+      validatorSource: createValidatorSource(
+        bungalow,
+        validatorContent,
+        directoryOptions,
+        contentKinds,
+      ),
+      // Guardrail files: JSON files in Bungalow's `guardrails/` directory are guardrails an agent
+      // file lists by name (COR-2120), watched as the agent files are.
+      guardrailSource: createGuardrailSource(
+        bungalow,
+        guardrailContent,
+        directoryOptions,
+        contentKinds,
+      ),
       ...(settings === undefined ? {} : { settings }),
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
