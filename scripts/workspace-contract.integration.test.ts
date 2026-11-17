@@ -50,7 +50,11 @@ const libraries = [
  * rather than each re-deriving the rule (and the exceptions) from a scope-prefix check.
  */
 const unscopedWorkspaceNames = new Set(['armorer', 'conversationalist']);
+/** Directories whose package keeps another name: `components/core` is `@lostgradient/cinder` (COR-2082). */
+const workspaceNamesByDirectory = new Map([['core', '@lostgradient/cinder']]);
 function publicWorkspaceName(directoryName: string): string {
+  const renamed = workspaceNamesByDirectory.get(directoryName);
+  if (renamed !== undefined) return renamed;
   return unscopedWorkspaceNames.has(directoryName)
     ? directoryName
     : `@lostgradient/${directoryName}`;
