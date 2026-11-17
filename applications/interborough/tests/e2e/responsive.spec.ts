@@ -832,10 +832,12 @@ for (const pattern of ['/health/runs', '/workflows/:workflow/runs']) {
       const cells = Array.from(element.querySelectorAll('tbody tr')).map(
         (row) => row.children[column] as HTMLElement,
       );
-      const limit = box.right + 0.5;
+      // The table sits inside the frame's border, so its edge is compared with the content edge.
+      const inner = box.right - Number.parseFloat(getComputedStyle(scroll).borderRightWidth);
+      const limit = inner + 0.5;
       return {
         scrolls: scroll.scrollWidth > scroll.clientWidth + 1,
-        edge: Math.abs(tableBox.right - box.right),
+        edge: Math.abs(tableBox.right - inner),
         headerWhole: updated.scrollWidth <= updated.clientWidth + 1,
         headerInside: updated.getBoundingClientRect().right <= limit,
         valuesWhole: cells.every(
@@ -856,15 +858,19 @@ for (const pattern of ['/health/runs', '/workflows/:workflow/runs']) {
         labels.map((label) => {
           const text = (label.textContent ?? '').trim();
           if (label.scrollWidth <= label.clientWidth + 1) return { text, kept: text.length };
-          const node = label.firstChild as Text | null;
+          const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+          let node = walker.nextNode();
+          while (node !== null && (node.textContent ?? '').trim() === '') node = walker.nextNode();
           const box = label.getBoundingClientRect();
           const room = box.right - Number.parseFloat(getComputedStyle(label).fontSize);
           let kept = 0;
-          if (node !== null && node.nodeType === Node.TEXT_NODE) {
+          if (node !== null) {
+            const raw = node.textContent ?? '';
+            const offset = raw.length - raw.trimStart().length;
             for (let index = 0; index < text.length; index += 1) {
               const range = document.createRange();
-              range.setStart(node, index);
-              range.setEnd(node, index + 1);
+              range.setStart(node, offset + index);
+              range.setEnd(node, offset + index + 1);
               if (range.getBoundingClientRect().right > room) break;
               kept += 1;
             }
