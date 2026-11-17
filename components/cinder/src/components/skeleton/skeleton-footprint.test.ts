@@ -63,8 +63,6 @@ function lineOf(css: string, selector: string): string {
 
 const LOADED_ROW =
   ".cinder-stacked-list-item.cinder-stacked-list-item--lines:not([data-cinder-density='condensed'])";
-const LOADED_LAYOUT =
-  '.cinder-stacked-list-item.cinder-stacked-list-item--lines > .cinder-stacked-list-item__layout';
 
 describe('the list placeholder is as tall as a two-line StackedListItem', () => {
   // A copy of the row's numbers drifted by 4px to 5px (the placeholder was 59.5px, a loaded row 64px,

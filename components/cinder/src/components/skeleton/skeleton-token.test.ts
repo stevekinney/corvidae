@@ -39,7 +39,7 @@ describe('skeleton list rows with no status word', () => {
     expect(markup).toContain(
       '<div class="cinder-stacked-list-item__leading cinder-skeleton-row-status">',
     );
-    expect(markup).toContain('!statusColumn && ' + "'cinder-stacked-list-item--has-leading'");
+    expect(markup).toContain("!statusColumn && 'cinder-stacked-list-item--has-leading'");
     expect(skeletonCss).not.toContain('@container cinder-skeleton (');
   });
 });
