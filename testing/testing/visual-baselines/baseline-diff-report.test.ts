@@ -349,7 +349,7 @@ describe('renames and orphan evidence', () => {
 
 describe('regenerated and listed baselines', () => {
   it('normalizes the container find output to baseline-relative paths', () => {
-    const base = 'components/cinder/browser/snapshots/chromium/linux';
+    const base = 'components/core/browser/snapshots/chromium/linux';
     expect(
       parseRegeneratedList(
         `${base}/chip/b.png\n./${base}/button/a.png\n${base}/provenance.json\n\n${base}/chip/b.png\n`,

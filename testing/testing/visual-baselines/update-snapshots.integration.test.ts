@@ -24,7 +24,7 @@ describe('update-snapshots helpers', () => {
       'playwright',
       'test',
       '--config',
-      'components/cinder/browser/playwright.config.ts',
+      'components/core/browser/playwright.config.ts',
       '--update-snapshots=all',
       '--retries=0',
       '--grep',

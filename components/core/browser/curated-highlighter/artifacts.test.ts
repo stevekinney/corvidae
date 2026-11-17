@@ -8,7 +8,7 @@ function artifactDirectory(): string {
   const directory = environmentConfiguration().curatedHighlighterOutputDirectory;
   if (!directory)
     throw new Error(
-      'Run bun browser/scripts/verify-curated-build.ts (in components/cinder) to build this fixture first.',
+      'Run bun browser/scripts/verify-curated-build.ts (in components/core) to build this fixture first.',
     );
   return directory;
 }

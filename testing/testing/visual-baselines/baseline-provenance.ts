@@ -32,9 +32,9 @@ export const REQUIRED_OS_CODENAME = 'jammy';
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '../../..');
 /** The browser suite whose baselines this tooling regenerates: Cinder core's (COR-2092). */
-export const BROWSER_FIXTURES_ROOT = resolve(REPOSITORY_ROOT, 'components/cinder/browser');
+export const BROWSER_FIXTURES_ROOT = resolve(REPOSITORY_ROOT, 'components/core/browser');
 /** Repository-relative directory holding the committed Linux baselines. */
-export const LINUX_BASELINE_DIRECTORY = 'components/cinder/browser/snapshots/chromium/linux';
+export const LINUX_BASELINE_DIRECTORY = 'components/core/browser/snapshots/chromium/linux';
 export const PROVENANCE_FILE_NAME = 'provenance.json';
 
 export type BaselineComponentScope = 'all' | string[];

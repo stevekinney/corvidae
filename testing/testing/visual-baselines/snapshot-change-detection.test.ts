@@ -6,7 +6,7 @@ import {
   isMeaningfulSnapshotPath,
 } from './snapshot-change-detection.ts';
 
-const LINUX = 'components/cinder/browser/snapshots/chromium/linux';
+const LINUX = 'components/core/browser/snapshots/chromium/linux';
 
 describe('snapshot change detection', () => {
   it('detects first-time untracked PNG baselines', () => {
@@ -31,7 +31,7 @@ describe('snapshot change detection', () => {
 
   it('ignores non-PNG files under the snapshot directory and PNGs elsewhere', () => {
     expect(isMeaningfulSnapshotPath(`${LINUX}/button/readme.txt`)).toBe(false);
-    expect(isMeaningfulSnapshotPath('components/cinder/browser/image.png')).toBe(false);
+    expect(isMeaningfulSnapshotPath('components/core/browser/image.png')).toBe(false);
     expect(hasMeaningfulSnapshotChanges('')).toBe(false);
   });
 

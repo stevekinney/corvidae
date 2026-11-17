@@ -649,6 +649,7 @@
       },
       "devDependencies": {
         "@floating-ui/dom": "catalog:",
+        "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
@@ -5080,18 +5081,6 @@
         "typescript": "catalog:",
       },
     },
-    "scripts/browser-fixtures": {
-      "name": "@lostgradient/browser-fixtures",
-      "devDependencies": {
-        "@lostgradient/chat": "workspace:*",
-        "@lostgradient/cinder": "workspace:*",
-        "@lostgradient/editor": "workspace:*",
-        "@lostgradient/terminal": "workspace:*",
-        "@lostgradient/testing": "workspace:*",
-        "@lostgradient/typescript": "workspace:*",
-        "conversationalist": "workspace:*",
-      },
-    },
     "scripts/groom": {
       "name": "@lostgradient/groom",
       "dependencies": {
@@ -5456,8 +5445,6 @@
     "@lostgradient/banner": ["@lostgradient/banner@workspace:components/banner"],
 
     "@lostgradient/breadcrumbs": ["@lostgradient/breadcrumbs@workspace:components/breadcrumbs"],
-
-    "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
 
     "@lostgradient/bungalow": ["@lostgradient/bungalow@workspace:packages/bungalow"],
 

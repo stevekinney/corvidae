@@ -5,7 +5,7 @@
  */
 import { REPOSITORY_ROOT } from './baseline-provenance.ts';
 
-export const SNAPSHOT_DIRECTORY = 'components/cinder/browser/snapshots/';
+export const SNAPSHOT_DIRECTORY = 'components/core/browser/snapshots/';
 
 export function extractPorcelainPath(line: string): string[] {
   const trimmed = line.slice(3).trim();
