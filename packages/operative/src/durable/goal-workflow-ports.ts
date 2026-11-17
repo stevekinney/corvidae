@@ -23,7 +23,7 @@ import type {
   ValidatorIdentity,
   ValidatorJudge,
 } from '../goal-decision';
-import type { FinishReason } from '../types';
+import type { FinishReason, JSONValue } from '../types';
 import { RUN_ENGINE_WORKFLOW_TYPE } from './run-engine-workflow-types';
 
 /** The registered workflow type, and the key `createRunEngine` registers it under. */
@@ -123,6 +123,16 @@ export interface GoalWorkflowRecord {
   /** Advances only on a controller transition; the next one commits `transitionSeq + 1`. */
   readonly transitionSeq: number;
   readonly validator: ValidatorIdentity;
+  /**
+   * COR-2117 — what the validator is configured with, read in the same load as `validator`, so a
+   * check runs a validator with the configuration its goal named for it.
+   */
+  readonly validatorConfiguration?: JSONValue | undefined;
+  /**
+   * COR-2119 — the goal's copy of an owner-defined validator's definition, read in the same load as
+   * `validator`, so a check runs the definition its goal holds and never the file as it is now.
+   */
+  readonly validatorDefinition?: JSONValue | undefined;
   readonly validatorTimeoutMs?: number | undefined;
   readonly bounds: GoalBudget;
   readonly retryPolicy?: GoalRetryPolicy | undefined;
@@ -229,6 +239,10 @@ export interface GoalWorkflowValidatorRequest {
   readonly attemptId: string;
   readonly attemptIndex: number;
   readonly validator: ValidatorIdentity;
+  /** COR-2117 — the configuration of `validator`, from the same read of the record. */
+  readonly validatorConfiguration?: JSONValue | undefined;
+  /** COR-2119 — the definition of `validator` when it is an owner-defined one, from the same read of the record. */
+  readonly validatorDefinition?: JSONValue | undefined;
   readonly validatorTimeoutMs?: number | undefined;
 }
 

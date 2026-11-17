@@ -24,13 +24,15 @@
   import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { createGoal, getGoal, type GoalCreated } from '../../lib/bureau-goals.ts';
+  import { listValidators } from '../../lib/bureau-validators.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { createFailure } from './goal-form-failure.ts';
+  import { configurationIssuesOf, createFailure } from './goal-form-failure.ts';
   import {
     defaultAgentName,
+    defaultCheckKey,
     GOAL_FIELD_IDS,
     GoalFormState,
     needsProvider,
@@ -56,6 +58,16 @@
     undefined,
   );
   const agents = $derived(agentsQuery.data);
+
+  /** The checks a goal may name, which the form's picker offers: a goal can only run one the Bureau lists. */
+  const validatorsQuery = createQuery(
+    () => ({
+      queryKey: queryKeys.goals.validators(),
+      queryFn: ({ signal }) => listValidators({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
 
   /** Whether a provider holds a key, once the host has said. */
   const providers = createQuery(
@@ -107,13 +119,27 @@
     });
   });
 
+  // A new goal starts with the first check the Bureau lists, unless Start again chose one (the
+  // goal's own check stays chosen, whether or not it is listed).
+  $effect.pre(() => {
+    const listed = validatorsQuery.data;
+    if (listed === undefined || reading) return;
+    untrack(() => {
+      form.validators = listed;
+      if (form.check === '') form.check = defaultCheckKey(listed);
+    });
+  });
+
   /** The goal the Bureau committed but could not start a controller for. */
   let notStarted = $state<GoalCreated>();
 
   const creation = createMutation(() => ({
     mutationFn: () => createGoal(form.toInput()),
     // The fault is said on the page, beside what was typed, so it is not also a toast.
-    onError: () => undefined,
+    // Each field of the check's configuration the Bureau refused is shown on that field.
+    onError: (error) => {
+      form.configurationIssues = configurationIssuesOf(error);
+    },
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.goals.list() });
       if (created.controller?.status === 'start-failed') {
@@ -190,6 +216,7 @@
     mode="create"
     {agents}
     agentsFailed={agentsQuery.isError}
+    checksFailed={validatorsQuery.isError}
     {providerConnected}
     {scripted}
     busy={submitting}

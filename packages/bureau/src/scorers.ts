@@ -999,6 +999,7 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
   async function scoreOne(
     entry: JudgeEntry,
     runResult: RunResult,
+    runId: string,
   ): Promise<RecordedScore | undefined> {
     const deadline = new AbortController();
     const timer = clock.setTimeout(() => {
@@ -1008,7 +1009,8 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
       signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal]);
     try {
       const returned = await raceAgainstAbort(
-        Promise.resolve(entry.judge.score(runResult, scorerSignal)),
+        // A `RunResult` has no run id, so the scorer is told it (COR-2204).
+        Promise.resolve(entry.judge.score(runResult, scorerSignal, { runId })),
         scorerSignal,
       );
       return signal?.aborted ? undefined : readScore(returned);
@@ -1121,7 +1123,7 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
       if (signal?.aborted) return;
 
       const startedAt = clock.now();
-      const result = await scoreOne(entry, runResult);
+      const result = await scoreOne(entry, runResult, runId);
       if (result === undefined) return;
       const durationMs = Math.max(0, clock.now() - startedAt);
 

@@ -8,6 +8,11 @@
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./panel": {
+      "types": "./.types/src/panel/index.d.ts",
+      "svelte": "./src/panel/index.ts",
+      "default": "./src/panel/index.ts"
+    },
     "./tokens/runtime": {
       "types": "./.types/src/tokens/runtime/index.d.ts",
       "svelte": "./src/tokens/runtime/index.ts",

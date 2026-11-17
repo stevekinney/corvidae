@@ -15,7 +15,7 @@ import type { TaskState } from '../../lib/bureau-tasks.ts';
 import { chatSessionPath, goalPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { WorkflowFileRun } from '../../lib/workflow-files.ts';
-import type { RunOrigin, RunRow } from '../workflows/runs/run-rows.ts';
+import { type RunOrigin, type RunRow, triggerOrigin } from '../workflows/runs/run-rows.ts';
 
 /**
  * How an instance's status reads on the Runs list. One that has not started yet is Running to
@@ -90,7 +90,8 @@ export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined):
     case 'system':
       return { kind: 'system' };
     case 'trigger':
-      return { kind: 'trigger' };
+      // The plugin and the file the origin names reach the row (COR-2171).
+      return triggerOrigin(origin.plugin, origin.workflowId);
   }
 }
 

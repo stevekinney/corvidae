@@ -69,8 +69,24 @@ export const suppliedDigest: PluginScorer = {
   score: () => ({ outcome: 'pass', message: '' }),
 };
 
-// `score` takes the run and a signal.
+// `score` takes the run, a signal and the run's id (COR-2204).
 export const callable: PluginScore | Promise<PluginScore> = scorer.score(
   run,
   new AbortController().signal,
+  { runId: 'run-1' },
 );
+
+// A scorer reads the run's id from its third argument, and a two-argument scorer is still a scorer.
+export const withContext: PluginScorer = {
+  name: 'judge',
+  version: '1',
+  score: (_run, _signal, context) => ({ outcome: 'pass', message: context.runId }),
+};
+
+// @ts-expect-error -- `score` is called without the run's id
+export const withoutContext = scorer.score(run, new AbortController().signal);
+
+type ScoreContext = Parameters<PluginScorer['score']>[2];
+
+// @ts-expect-error -- the context holds the run's id and nothing else
+export const strayKey: keyof ScoreContext = 'principal';

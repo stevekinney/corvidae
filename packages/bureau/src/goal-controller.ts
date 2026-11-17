@@ -202,7 +202,8 @@ export async function enforceDeterminism(
   record: GoalState,
 ): Promise<GoalState | undefined> {
   if (record.status !== 'pending' || record.transitionSeq !== 0) return undefined;
-  const resolution = dependencies.catalog.resolve(record.validator);
+  // The goal's own copy of an owner-defined validator, never the file as it is now (COR-2119).
+  const resolution = dependencies.catalog.resolve(record.validator, record.validatorDefinition);
   if (!resolution.ok) return undefined;
   const unsupported = decideDeterminismRequirement(
     record.requireDeterministicValidation,

@@ -17,6 +17,7 @@ const unstartedHost: PluginHost = {
   schedules: { create: async () => undefined, list: async () => undefined },
   goals: { create: async () => ({ outcome: 'rejected' }) },
   publish: async () => undefined,
+  decisions: { decide: async () => Promise.reject(new Error('No test here asks a decision.')) },
 };
 
 describe('definePlugin', () => {

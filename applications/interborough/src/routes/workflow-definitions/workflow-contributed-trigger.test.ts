@@ -37,6 +37,7 @@ const INBOX_MESSAGE = {
   id: 'inbox:message',
   description: 'A message arrives in a mailbox.',
   version: '2.0.0',
+  receives: false,
   configuration: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     type: 'object',

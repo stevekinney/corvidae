@@ -141,6 +141,8 @@ export interface AgentFileFixtureOptions {
   readonly openWatcher?: NonNullable<Parameters<typeof agentFileDirectory>[1]>['watchFactory'];
   /** The guardrails and interceptors a file may list; none by default. */
   readonly contributions?: AgentFileCatalogOptions['contributions'];
+  /** The owner's guardrail files, ready, as they are now (COR-2120); none by default. */
+  readonly ownerGuardrails?: AgentFileCatalogOptions['ownerGuardrails'];
   /** The model policy in force (COR-1980), read on every write; none by default, so nothing is denied. */
   readonly modelPolicy?: () => BureauModelPolicyOptions | undefined;
 }
@@ -198,6 +200,7 @@ export async function createAgentFileFixture(
     runtime,
     diagnose,
     ...(options.contributions === undefined ? {} : { contributions: options.contributions }),
+    ...(options.ownerGuardrails === undefined ? {} : { ownerGuardrails: options.ownerGuardrails }),
     ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
     ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
     ...(options.retainedRevisions === undefined

@@ -161,6 +161,11 @@ export const queryKeys = {
     detail: (goalRunId: string) => ['goals', 'detail', goalRunId] as const,
     /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
     runs: () => ['goals', 'runs'] as const,
+    /** The checks a goal may name (`bureau.validators.list`), read by the goal form. */
+    validators: () => ['goals', 'validators'] as const,
+    /** One attempt's verdict (`bureau.goals.verdict`), read when its panel is opened. */
+    verdict: (goalRunId: string, attemptIndex: number) =>
+      ['goals', 'verdict', goalRunId, attemptIndex] as const,
   },
   /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.contributions`). */
   pluginKinds: () => ['plugin-kinds'] as const,

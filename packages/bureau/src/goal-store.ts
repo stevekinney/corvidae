@@ -39,10 +39,14 @@ import {
   canTransitionGoalRun,
   type GoalRunStatus,
   type GoalRunTerminalReason,
+  type JSONValue,
   TERMINAL_STATUS_BY_REASON,
   type ValidatorIdentity,
 } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
+
+import { canonicalJson } from './canonical-json';
+import type { ValidatorFileDefinition } from './validator-file';
 
 import {
   auditEventForRestart,
@@ -181,6 +185,19 @@ export interface GoalConfigurationPatch {
   readonly agentName?: string | undefined;
   /** The validator each check from now on runs. */
   readonly validator?: ValidatorIdentity | undefined;
+  /**
+   * COR-2117 — the parsed configuration of the validator the patch names. When the patch changes the
+   * validator it replaces the stored configuration (absent here clears it), so a configuration never
+   * outlives the validator it was parsed for; when it leaves the validator as it is, absent here
+   * keeps the stored configuration.
+   */
+  readonly validatorConfiguration?: JSONValue | undefined;
+  /**
+   * COR-2119 — the definition of the owner-defined validator the patch names. It travels with the
+   * validator as the configuration does: a changed validator takes the patch's (absent clears it),
+   * the same validator keeps what the record holds.
+   */
+  readonly validatorDefinition?: ValidatorFileDefinition | undefined;
   /** How many attempts the goal may make in all, the ones it has made included. */
   readonly maximumAttempts?: number | undefined;
 }
@@ -668,11 +685,18 @@ function evaluateConfigurationUpdate(
   const prompt = patch.prompt ?? objective.prompt;
   const agentName = patch.agentName ?? objective.agentName;
   const nextValidator = patch.validator ?? validator;
+  const validatorChanged = !sameValidator(nextValidator, validator);
+  // The configuration was parsed for the validator the patch names, so it never carries over to
+  // another one: a changed validator takes the patch's, or none.
+  const nextConfiguration = validatorChanged
+    ? patch.validatorConfiguration
+    : (patch.validatorConfiguration ?? current.validatorConfiguration);
   const maximumAttempts = patch.maximumAttempts ?? bounds.maximumAttempts;
   if (
     prompt === objective.prompt &&
     agentName === objective.agentName &&
-    sameValidator(nextValidator, validator) &&
+    !validatorChanged &&
+    canonicalJson(nextConfiguration) === canonicalJson(current.validatorConfiguration) &&
     maximumAttempts === bounds.maximumAttempts
   ) {
     return done({ status: 'unchanged', record: current });
@@ -683,10 +707,18 @@ function evaluateConfigurationUpdate(
     if (opened >= bounds.maximumAttempts) return refuse('attempt-limit-fixed');
     if (maximumAttempts <= opened) return refuse('attempt-limit-too-low');
   }
+  const nextDefinition = validatorChanged ? patch.validatorDefinition : current.validatorDefinition;
+  const {
+    validatorConfiguration: _replacedConfiguration,
+    validatorDefinition: _replacedDefinition,
+    ...withoutValidatorCopies
+  } = current;
   const next: GoalState = {
-    ...current,
+    ...withoutValidatorCopies,
     objective: { ...objective, prompt, agentName },
     validator: { name: nextValidator.name, version: nextValidator.version },
+    ...(nextConfiguration === undefined ? {} : { validatorConfiguration: nextConfiguration }),
+    ...(nextDefinition === undefined ? {} : { validatorDefinition: nextDefinition }),
     bounds: { ...bounds, maximumAttempts },
     updatedAt: now,
   };

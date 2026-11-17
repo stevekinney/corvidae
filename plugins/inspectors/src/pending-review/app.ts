@@ -10,8 +10,11 @@
  * decision on the same review is answered by the operation as a missing id and shown as refused.
  * Reject-with-feedback is `bureau.reviews.resolve` with `decision: 'reject'` and a `reason`.
  */
+import { mountPanel } from '@lostgradient/cinder/panel';
 import { App } from '@modelcontextprotocol/ext-apps';
+import { tick, unmount } from 'svelte';
 
+import { followHostTheme } from '../host-theme.ts';
 import {
   bureauReviewsOf,
   describeResolution,
@@ -25,10 +28,10 @@ import {
   viewReview,
   type Review,
 } from './model.ts';
-import { renderReviews, type ReviewHandlers, type RowState } from './render.ts';
+import ReviewList from './review-list.svelte';
+import { createReviewsView, IDLE_ROW, type RowState } from './view.svelte.ts';
 
 const REFRESH_MILLISECONDS = 3000;
-const IDLE: RowState = { busy: false, outcome: null, rejecting: false, draft: '' };
 
 function structured<T>(
   result: { structuredContent?: unknown; isError?: boolean | undefined },
@@ -48,8 +51,11 @@ async function start(): Promise<void> {
   let notice: string | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
   let torndown = false;
-  const states = new Map<string, RowState>();
-  const rowOf = (id: string): RowState => states.get(id) ?? IDLE;
+  // The page is a Svelte component over this view: what the page learns goes into it, and the
+  // component redraws in place, so focus and a half-typed reason survive every poll.
+  const view = createReviewsView();
+  const states = view.rows;
+  const rowOf = (id: string): RowState => states.get(id) ?? IDLE_ROW;
   const patch = (id: string, change: Partial<RowState>): void => {
     states.set(id, { ...rowOf(id), ...change });
   };
@@ -58,18 +64,13 @@ async function start(): Promise<void> {
   const draw = (announcement: string | null): void => {
     if (torndown) return;
     const now = Date.now();
-    renderReviews(
-      root,
-      // Without the host's `serverTools` capability no decision can be made, so none is offered.
-      reviews.map((review) => {
-        const view = viewReview(review, now);
-        return { ...view, decidable: view.decidable && canCallServer() };
-      }),
-      states,
-      handlers,
-      announcement,
-      notice,
-    );
+    // Without the host's `serverTools` capability no decision can be made, so none is offered.
+    view.views = reviews.map((review) => {
+      const viewed = viewReview(review, now);
+      return { ...viewed, decidable: viewed.decidable && canCallServer() };
+    });
+    view.notice = notice;
+    if (announcement !== null) view.announcement = announcement;
   };
 
   const adopt = (next: Review[], announceReconnect: boolean, truncated = false): void => {
@@ -189,30 +190,33 @@ async function start(): Promise<void> {
     await refresh();
   };
 
-  const focusKey = (key: string): void => {
-    [...root.querySelectorAll<HTMLElement>('[data-focus]')]
-      .find((candidate) => candidate.getAttribute('data-focus') === key)
-      ?.focus();
+  // Focus follows the form: once the page has drawn the reason box or put the button back, the
+  // reader's place moves to it.
+  const focusId = async (id: string): Promise<void> => {
+    await tick();
+    document.getElementById(id)?.focus();
   };
 
-  const handlers: ReviewHandlers = {
-    onDecide: (id, decision) => void resolve(id, decision),
-    onOpenReject: (id) => {
+  const handlers = {
+    onDecide: (id: string, decision: 'approve' | 'deny') => void resolve(id, decision),
+    onOpenReject: (id: string) => {
       patch(id, { rejecting: true });
       draw(null);
-      focusKey(`reason:${id}`);
+      void focusId(`reason-${id}`);
     },
-    onCancelReject: (id) => {
+    onCancelReject: (id: string) => {
       patch(id, { rejecting: false, draft: '' });
       draw(null);
-      focusKey(`open:${id}`);
+      void focusId(`open-${id}`);
     },
-    onDraft: (id, text) => patch(id, { draft: text }),
-    onReject: (id) => {
+    onDraft: (id: string, text: string) => patch(id, { draft: text }),
+    onReject: (id: string) => {
       const reason = rowOf(id).draft.trim();
       if (reason !== '') void resolve(id, 'reject', reason);
     },
   };
+  const mounted = mountPanel(ReviewList, { target: root, props: { view, handlers } });
+  const applyHostTheme = followHostTheme(app);
 
   // The result that opened the page is its first render, whether or not the host lets it call back.
   app.ontoolresult = (result) => {
@@ -226,10 +230,12 @@ async function start(): Promise<void> {
   app.onteardown = async () => {
     torndown = true;
     if (timer !== undefined) clearInterval(timer);
+    void unmount(mounted);
     root.replaceChildren();
     return {};
   };
   await app.connect();
+  applyHostTheme();
   // A host that does not hand the page the opening result still shows the queue at once.
   await refresh();
   // poll-reason: mcp-transport

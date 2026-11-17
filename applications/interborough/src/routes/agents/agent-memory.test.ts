@@ -2206,6 +2206,10 @@ describe('the quarantined memories', () => {
     expect(view.container.querySelector('[aria-label="Status"]')).toBeNull();
 
     const entry = await view.findByRole('link', { name: MEMORY_COPY.quarantinedView.title });
+    // The chevron is a glyph, so in a narrow pane it stays beside the title (COR-2195).
+    expect(
+      entry.closest('li')?.classList.contains('cinder-stacked-list-item--trailing-glyph'),
+    ).toBe(true);
     await fireEvent.click(entry);
 
     await view.findByText(HELD.content);

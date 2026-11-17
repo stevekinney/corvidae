@@ -6,6 +6,7 @@
 import { humanizeIdentifier } from '@lostgradient/cinder';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
+import type { ContributedTriggerKind } from '../../lib/bureau-plugin-kinds.ts';
 import { calendarDay, clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import type {
   CatalogRow,
@@ -339,6 +340,42 @@ export function triggerSummary(
     return { kind: 'signal', name: trigger['name'] };
   }
   return null;
+}
+
+/**
+ * What starts a file whose trigger a plugin contributes (COR-2171): the kind's own description,
+ * written to follow "Starts when".
+ */
+export type PluginTriggerSummary = {
+  readonly kind: 'plugin';
+  /** The description as a clause: "GitHub sends a push or a pull request", "an issue changes in Linear". */
+  readonly words: string;
+};
+
+/**
+ * A plugin trigger kind's description as the clause after "Starts when": the closing full stop is
+ * dropped and a leading "A", "An" or "The" is lowercased, so "An issue changes in Linear." reads
+ * "Starts when an issue changes in Linear" and "GitHub sends a push." keeps its name's capital.
+ */
+export function triggerKindClause(description: string): string {
+  const withoutStop = description.trim().replace(/\.+$/, '');
+  return withoutStop.replace(/^(A|An|The)(?= )/, (article) => article.toLowerCase());
+}
+
+/**
+ * What starts a file whose trigger is a plugin's, from the description of the kind it names, or
+ * `null` when the trigger names no kind in `kinds` (the kinds have not loaded, or the plugin that
+ * contributed it is not running) or the kind says nothing.
+ */
+export function pluginTriggerSummary(
+  trigger: Readonly<Record<string, unknown>> | null,
+  kinds: readonly Pick<ContributedTriggerKind, 'id' | 'description'>[] | undefined,
+): PluginTriggerSummary | null {
+  const kind = trigger?.['kind'];
+  if (typeof kind !== 'string') return null;
+  const found = kinds?.find((candidate) => candidate.id === kind);
+  const words = found === undefined ? '' : triggerKindClause(found.description);
+  return words === '' ? null : { kind: 'plugin', words };
 }
 
 /** The schedules that start a code-defined type, as a row says them: one in words, several by count. */

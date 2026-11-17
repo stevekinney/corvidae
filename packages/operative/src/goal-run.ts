@@ -27,6 +27,8 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import type { RuntimeServices, Subscription, TypedEventTarget } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
+import type { ZodType } from 'zod';
+
 import type { AgentRun } from './agent-run';
 import type { ValidatorError } from './errors';
 import {
@@ -81,7 +83,13 @@ import {
 } from './goal-decision';
 import { executeValidator } from './goal-validator-execution';
 import type { SessionHandle } from './session/session-handle-types';
-import type { CleanupAcknowledgement, ClosedOptions, FinishReason, RunResult } from './types';
+import type {
+  CleanupAcknowledgement,
+  ClosedOptions,
+  FinishReason,
+  JSONValue,
+  RunResult,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -95,6 +103,16 @@ export interface ValidatorInput {
   readonly result: RunResult;
   /** Prior attempts, oldest first. A snapshot: mutating it affects nothing. */
   readonly history: readonly GoalAttemptRecord[];
+  /**
+   * COR-2117 — what the goal's owner configured the validator with: the value its `configuration`
+   * schema parsed, as the goal's record stores it. Absent when the goal named none.
+   */
+  readonly configuration?: JSONValue | undefined;
+  /**
+   * COR-2123 — the goal's owner of record, so a validator that spends something (a model call) does
+   * it as that owner. Absent where the goal names none.
+   */
+  readonly principal?: string | undefined;
 }
 
 export interface Validator {
@@ -105,6 +123,13 @@ export interface Validator {
    * goal as `failed`/`unsupported-validation` instead of accepting the judge.
    */
   readonly determinism?: 'deterministic' | 'stochastic' | undefined;
+  /**
+   * COR-2117 — the Zod schema of the configuration a goal may give this validator (a phrase to look
+   * for, a limit). A goal's configuration is parsed against it when the goal is created or updated,
+   * and the parsed value reaches {@link ValidatorInput.configuration}. A validator without one takes
+   * no configuration. Its parsed value must be JSON, since a goal's record stores it.
+   */
+  readonly configuration?: ZodType | undefined;
   validate(
     input: ValidatorInput,
     signal: AbortSignal,
@@ -147,6 +172,8 @@ export interface StartGoalOptions {
   /** Required by `fresh-from-artifact`, which seeds a brand-new conversation. */
   readonly instructions?: string | undefined;
   readonly validator: Validator;
+  /** COR-2117 — handed to the validator as {@link ValidatorInput.configuration}. */
+  readonly validatorConfiguration?: JSONValue | undefined;
   readonly budget: GoalBudget;
   readonly conversationPolicy: GoalConversationPolicy;
   readonly retryPolicy?: GoalRetryPolicy | undefined;
@@ -694,6 +721,10 @@ export function startGoal(options: StartGoalOptions): GoalRun {
           attemptIndex: attempt.attemptIndex,
           result,
           history: attempts.slice(0, -1).map(snapshotAttempt),
+          ...(options.validatorConfiguration === undefined
+            ? {}
+            : { configuration: options.validatorConfiguration }),
+          ...(options.principal === undefined ? {} : { principal: options.principal }),
         },
         signal,
       ),

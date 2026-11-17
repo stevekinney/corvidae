@@ -15,8 +15,9 @@ const guardrailSchema = z.object({
   description: z.string(),
   configurable: z.boolean(),
   configuration: z.record(z.string(), z.unknown()).nullable(),
-  source: z.enum(['plugin', 'host']),
-  plugin: z.string(),
+  /** `bungalow` for a guardrail the owner wrote as a file (COR-2120): its `id` is the file's stem, and no plugin holds it. */
+  source: z.enum(['plugin', 'host', 'bungalow']),
+  plugin: z.string().nullable(),
 });
 
 /**
