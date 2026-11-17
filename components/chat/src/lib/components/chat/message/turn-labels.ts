@@ -12,8 +12,8 @@ import type { ToolCallRowStatus } from './tool-call-summary.ts';
  * in its own language.
  */
 export type ChatTurnLabels = {
-  /** Heading for a group of approvals waiting on the reader. */
-  approvalWaiting: (count: number) => string;
+  /** Heading for a group of approvals waiting on the reader. Default `2 approvals waiting`. */
+  approvalsWaiting: (count: number) => string;
   /**
    * The warning on a turn whose stream dropped. Default
    * `Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.`
@@ -86,7 +86,7 @@ export type ChatTurnLabels = {
 
 /** The words a turn uses when the host sets none. */
 export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
-  approvalWaiting: (count) => `${count} approvals waiting`,
+  approvalsWaiting: (count) => `${count} approvals waiting`,
   reconnecting: (attempt, attempts, nextTryIn) =>
     `Connection lost. Reconnecting, attempt ${attempt} of ${attempts}. Next try in ${formatCountdown(nextTryIn)}.`,
   retryNow: 'Retry',

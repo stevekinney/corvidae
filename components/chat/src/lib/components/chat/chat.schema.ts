@@ -217,7 +217,7 @@ const schema = {
         name: 'labels',
         reason: 'unknown-shape',
         description:
-          'Localized labels for the Messages focus affordance, attachment status, attachment actions and approval drawer controls.',
+          'Every word Chat draws itself, in one object: the composer, attachment and approval drawer words, a turn outcome and its step group (such as `steps` for "3 steps"), the docked question, and the sources, which Chat forwards to Citation labels.',
       },
       {
         name: 'composerActions',

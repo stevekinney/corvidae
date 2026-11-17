@@ -274,7 +274,7 @@ describe('turn labels', () => {
       ...Object.values(DEFAULT_TURN_LABELS).filter(
         (value): value is string => typeof value === 'string',
       ),
-      DEFAULT_TURN_LABELS.approvalWaiting(1),
+      DEFAULT_TURN_LABELS.approvalsWaiting(1),
       DEFAULT_TURN_LABELS.reconnecting(1, 2, 3),
       DEFAULT_TURN_LABELS.stepPosition(1, 2),
       DEFAULT_TURN_LABELS.stepsDone(1, 2),

@@ -16,7 +16,6 @@ import {
   updateStreamingMessage,
   type ChatApprovalDetails,
   type ChatCapabilities,
-  type ChatTurnLabels,
   type ChatTurnState,
   type ConversationHistory,
   type Message,
@@ -88,8 +87,8 @@ export interface StressSetup {
   direction?: 'rtl';
   /** The sample sources a host can withdraw while a citation is open. */
   withdrawable: boolean;
-  /** Host wording for a turn's step summary, when a scenario has semantic count-bearing copy. */
-  turnLabels?: Partial<ChatTurnLabels>;
+  /** Host wording, such as a turn's step summary when a scenario has semantic count-bearing copy. */
+  labels?: Partial<ChatLabels>;
 }
 
 /** The empty setup every scenario starts from. */
@@ -610,7 +609,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         conversation,
         'Compared 20 recent orders. All of them match the ledger.',
       );
-      setup.turnLabels = {
+      setup.labels = {
         steps: (count) => `Compared ${count} recent orders…`,
         stepsDone: (_done, total) => `Compared ${total} recent orders…`,
       };

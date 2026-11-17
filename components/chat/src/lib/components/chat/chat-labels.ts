@@ -1,5 +1,19 @@
-/** Host-overridable words used by the composer and approval drawer. */
-export type ChatLabels = {
+import { DEFAULT_TURN_LABELS, type ChatTurnLabels } from './message/turn-labels.ts';
+import {
+  DEFAULT_QUESTION_DOCK_LABELS,
+  type ChatQuestionDockLabels,
+} from './question/question-dock-labels.ts';
+
+/**
+ * Every word Chat draws itself, in one object (owner decision, 2026-11-13): the composer's, the
+ * approval drawer's, the sources', a turn's outcome and the steps under it ({@link ChatTurnLabels},
+ * such as `steps` for `3 steps`), and the docked question's ({@link ChatQuestionDockLabels}). A host
+ * passes any of them as Chat's `labels` prop; each one left out keeps its English default.
+ */
+export type ChatLabels = ChatComposerLabels & ChatTurnLabels & ChatQuestionDockLabels;
+
+/** The words of the composer, the approval drawer and a message's sources. */
+export type ChatComposerLabels = {
   sources: string;
   /** The Sources control's text and accessible name: the count and the word, "3 sources" or "1 source". */
   sourcesCount: (count: number) => string;
@@ -148,6 +162,8 @@ export type ChatLabels = {
 };
 
 export const DEFAULT_CHAT_LABELS: ChatLabels = {
+  ...DEFAULT_TURN_LABELS,
+  ...DEFAULT_QUESTION_DOCK_LABELS,
   sources: 'Sources',
   sourcesCount: (count) => (count === 1 ? '1 source' : `${count} sources`),
   internalDocument: 'Internal document, no public link',

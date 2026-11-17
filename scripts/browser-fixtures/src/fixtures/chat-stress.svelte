@@ -414,7 +414,7 @@
         {composerStatus}
         {availability}
         messageTurnState={turnStateFor}
-        turnLabels={setup.turnLabels}
+        labels={setup.labels}
         {...Object.keys(setup.reasoning).length > 0 ? { messageReasoning: reasoningFor } : {}}
         questionPlacement={setup.questionPlacement}
         onInputSubmit={handleInputSubmit}

@@ -472,7 +472,7 @@ describe('a docked question', () => {
       conversation: single('dock-boolean-labels', { type: 'boolean' }),
       questionPlacement: 'docked',
       onInputSubmit: () => undefined,
-      questionLabels: { yes: 'Approve it', no: 'Reject it' },
+      labels: { yes: 'Approve it', no: 'Reject it' },
     });
     await settle();
 
@@ -528,7 +528,7 @@ describe('a docked question', () => {
       id: 'dock-labels',
       conversation: single('dock-labels', ENVIRONMENT),
       questionPlacement: 'docked',
-      questionLabels: { needsYou: 'Se requiere su respuesta', replyInChat: 'Responder en el chat' },
+      labels: { needsYou: 'Se requiere su respuesta', replyInChat: 'Responder en el chat' },
       onInputSubmit: () => undefined,
     });
     await settle();

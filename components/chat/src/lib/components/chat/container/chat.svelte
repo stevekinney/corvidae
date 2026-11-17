@@ -97,7 +97,6 @@
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
-  import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
@@ -177,7 +176,6 @@
     composerStatus,
     availability,
     questionPlacement = 'inline',
-    questionLabels,
     empty,
     trailing,
     trailingAskPending = false,
@@ -214,7 +212,6 @@
     messageSuggestions,
     onSuggestionSelect,
     messageTurnState,
-    turnLabels,
     labels,
     onRetryConnection,
     onContinueTurn,
@@ -248,17 +245,15 @@
     ...rest
   }: ChatImplementationProps = $props();
 
-  const chatWords = $derived(resolveTurnLabels(turnLabels));
+  // One `labels` object holds every word Chat draws (owner decision, 2026-11-13); each part of
+  // Chat reads the words it draws from it, a turn's and a step group's included.
   const chatLabels = $derived(resolveChatLabels(labels));
-  // Shared Chat words provide defaults for the dock; an explicit questionLabels override always
-  // wins so hosts can specialize question vocabulary without changing the rest of Chat.
+  // The dock's words where the composer has its own for the same thing: the host's dock word when
+  // it set one, else the composer's, so one override reads the same in both.
   const questionDockLabels = $derived({
-    answer: chatLabels.answer,
-    failed: chatLabels.answerFailed,
-    ownAnswer: chatLabels.yourOwnAnswer,
-    yes: chatLabels.yes,
-    no: chatLabels.no,
-    ...questionLabels,
+    ...chatLabels,
+    failed: labels?.failed ?? chatLabels.answerFailed,
+    ownAnswer: labels?.ownAnswer ?? chatLabels.yourOwnAnswer,
   });
   const initialCoarsePointer =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -2668,7 +2663,7 @@
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
-          {turnLabels}
+          turnLabels={chatLabels}
           {onContinueTurn}
           {onDiscardTurn}
           {onRetryTurn}
@@ -2742,7 +2737,7 @@
         <div class="chat-tool-call-group">
           {#if compactApprovalMessages.length > 1}
             <h3 class="chat-approval-group-heading">
-              {chatWords.approvalWaiting(compactApprovalMessages.length)}
+              {chatLabels.approvalsWaiting(compactApprovalMessages.length)}
             </h3>
           {/if}
           {#if ordinaryPairs.length > 0}
@@ -2760,7 +2755,7 @@
               durations={toolCallDurations(ordinaryPairs)}
               startTimes={toolCallStartTimes(ordinaryPairs)}
               {onRetryStep}
-              labels={turnLabels}
+              labels={chatLabels}
               {cardOwnedCallIds}
               onToggle={onExpandedChange}
             />
@@ -2802,7 +2797,7 @@
         {@const reconnecting = reconnectingTurn}
         <ChatConnectionNotice
           turn={reconnecting.state}
-          {turnLabels}
+          turnLabels={chatLabels}
           onRetry={onRetryConnection === undefined
             ? undefined
             : () => onRetryConnection(reconnecting.messageId)}
