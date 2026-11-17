@@ -11,7 +11,7 @@ Single metric tile displaying a labelled numeric value with optional trend or un
 ## Choosing something else
 
 - Code-change line counts (+/- additions and removals) — use [`DiffStatistics`](../../../../diff-statistics/src/components/diff-statistics/README.md), which is purpose-built for that display.
-- Long lists of data points — use a [`Table`](../table/README.md) or [`DataList`](../data-list/README.md) instead.
+- Long lists of data points — use a [`Table`](../../../../table/src/components/table/README.md) or [`DataList`](../data-list/README.md) instead.
 
 ## Related components
 

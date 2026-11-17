@@ -53,11 +53,13 @@ describe('ColorField — color picker trigger', () => {
   test('composes picker dependencies through public component entries', async () => {
     const source = await Bun.file(new URL('./color-field.svelte', import.meta.url)).text();
 
-    expect(source).toContain("from '../color-picker/index.ts';");
-    expect(source).toContain("from '../popover/index.ts';");
-    expect(source).not.toContain("from '../button/button.svelte'");
-    expect(source).not.toContain("from '../color-picker/color-picker.svelte'");
-    expect(source).not.toContain("from '../popover/popover.svelte'");
+    expect(source).toContain("from '@lostgradient/color-picker/components/color-picker/index.ts';");
+    expect(source).toContain("from '@lostgradient/popover/components/popover/index.ts';");
+    expect(source).not.toContain("from '@lostgradient/button/components/button/button.svelte'");
+    expect(source).not.toContain(
+      "from '@lostgradient/color-picker/components/color-picker/color-picker.svelte'",
+    );
+    expect(source).not.toContain("from '@lostgradient/popover/components/popover/popover.svelte'");
   });
 
   test('uses an accessible button that opens the composed ColorPicker', async () => {

@@ -14,7 +14,7 @@
   import { untrack } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { ComboboxOption } from '../combobox/combobox.types.ts';
-  import Select from '../select/select.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
   import ScheduleBuilderFields from './schedule-builder-fields.svelte';
 
   import type {

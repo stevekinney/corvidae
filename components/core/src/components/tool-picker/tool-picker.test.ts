@@ -646,6 +646,6 @@ describe('ToolPicker styles', () => {
     const css = await Bun.file(new URL('./tool-picker.css', import.meta.url)).text();
     expect(css).toMatch(/\.cinder-tool-picker__group-heading \{[^}]*position: sticky/);
     expect(css).toMatch(/\.cinder-tool-picker__list \{[^}]*overflow-y: auto/);
-    expect(css).toContain("@import '../modal/modal.css'");
+    expect(css).toContain("@import '@lostgradient/modal/modal.css'");
   });
 });

@@ -17,8 +17,8 @@
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Alert from '@lostgradient/alert/components/alert/alert.svelte';
-  import Button from '../button/button.svelte';
-  import EmptyState from '../empty-state/empty-state.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import EmptyState from '@lostgradient/empty-state/components/empty-state/empty-state.svelte';
   import PropertyEditor from './property-editor.svelte';
 
   let {

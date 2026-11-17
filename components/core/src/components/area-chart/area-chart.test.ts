@@ -19,7 +19,8 @@ afterAll(() => {
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
-const { default: AreaChart } = await import('./area-chart.svelte');
+const { default: AreaChart } =
+  await import('@lostgradient/chart/components/area-chart/area-chart.svelte');
 
 afterEach(() => cleanup());
 

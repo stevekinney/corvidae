@@ -39,9 +39,13 @@ function stripeRules(css: string): string[] {
 
 const callout = load('../../../callout/src/components/callout/callout.css');
 const calloutMarkup = load('../../../callout/src/components/callout/callout.svelte');
-const capabilityGate = load('../components/capability-gate/capability-gate.css');
+const capabilityGate = load(
+  '../../../capability-gate/src/components/capability-gate/capability-gate.css',
+);
 const jsonSchemaEditor = load('../components/json-schema-editor/json-schema-editor.css');
-const navigationBar = load('../components/navigation-bar/navigation-bar.css');
+const navigationBar = load(
+  '../../../navigation-bar/src/components/navigation-bar/navigation-bar.css',
+);
 const navigationItem = load(
   '../../../navigation-item/src/components/navigation-item/navigation-item.css',
 );

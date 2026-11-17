@@ -6,12 +6,14 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
-const { default: Steps } = await import('./steps.svelte');
+const { default: Steps } = await import('@lostgradient/steps/components/steps/steps.svelte');
 const { Steps: ExportedSteps } = await import('@lostgradient/cinder');
 
 // Read once at module load — `describe` callbacks are synchronous, so the
 // CSS-contract tests below reference this constant instead of awaiting inside them.
-const stepsCss = await Bun.file(new URL('./steps.css', import.meta.url)).text();
+const stepsCss = await Bun.file(
+  new URL('../../../../steps/src/components/steps/steps.css', import.meta.url),
+).text();
 
 const defaultSteps = [
   { id: 'a', label: 'Set up profile', description: 'Tell us about yourself' },

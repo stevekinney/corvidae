@@ -59,7 +59,7 @@ const PRESSED_FILL_TOKEN = 'var(--cinder-accent-solid-active-on-fill)';
 const cases = [
   {
     name: 'primary Button',
-    css: loadCss('../components/button/button.css'),
+    css: loadCss('../../../button/src/components/button/button.css'),
     selectorFragments: ["[data-cinder-variant='primary']", ':active'],
   },
   {

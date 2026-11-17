@@ -3,7 +3,7 @@
  * and DropdownSeparator as its leaf components. Pull in their styles so that
  * importing `cinder/context-menu` is self-sufficient without a separate
  * `cinder/dropdown` import. */
-@import '../dropdown/dropdown.css';
+@import '@lostgradient/dropdown/dropdown.css';
 
 @layer cinder.components {
   .cinder-context-menu {

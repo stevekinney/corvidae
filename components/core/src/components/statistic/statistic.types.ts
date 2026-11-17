@@ -1,6 +1,6 @@
+import type { ChartTheme, ChartThemeSchema } from '@lostgradient/chart/components/chart.types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { ChartTheme, ChartThemeSchema } from '../chart.types.ts';
 /** Direction of a stat change indicator. */
 export type StatisticChangeDirection = 'up' | 'down' | 'neutral';
 /** Data for the optional change indicator rendered below the stat value. */

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { Button } from '../button/index.ts';
-  import { GroupedList } from '../grouped-list/index.ts';
-  import { GroupedListItem } from '../grouped-list-item/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
+  import { GroupedList } from '@lostgradient/grouped-list/components/grouped-list/index.ts';
+  import { GroupedListItem } from '@lostgradient/grouped-list/components/grouped-list-item/index.ts';
   import { Drawer } from '@lostgradient/drawer/components/drawer/index.ts';
   import type { DrawerDetent } from '@lostgradient/drawer/components/drawer/index.ts';
 

@@ -22,11 +22,12 @@ afterEach(() => {
   });
 });
 
-const { default: FileUpload } = await import('./file-upload.svelte');
+const { default: FileUpload } =
+  await import('@lostgradient/file-upload/components/file-upload/file-upload.svelte');
 const { default: FormFieldFileUploadFixture } =
   await import('../../test/fixtures/form-field-file-upload-fixture.svelte');
 const { default: FileUploadFormFixture } =
-  await import('../../test/fixtures/file-upload-form-fixture.svelte');
+  await import('@lostgradient/file-upload/test/fixtures/file-upload-form-fixture.svelte');
 
 function createFile(name: string, type: string, size: number): File {
   const file = new File(['x'.repeat(Math.max(1, Math.min(size, 16)))], name, { type });
@@ -1544,7 +1545,12 @@ describe('FileUpload drag state and accessibility', () => {
 
 describe('FileUpload file list rendering', () => {
   test('file rows keep the full-strength outer border', async () => {
-    const css = await Bun.file(new URL('./file-upload.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../file-upload/src/components/file-upload/file-upload.css',
+        import.meta.url,
+      ),
+    ).text();
     const rowBlock = css.match(/\.cinder-file-upload__row\s*\{[^}]*\}/)?.[0] ?? '';
 
     expect(rowBlock).toContain('border: 1px solid var(--cinder-border)');
@@ -1787,7 +1793,12 @@ describe('FileUpload file list rendering', () => {
   });
 
   test('keeps a visible focus treatment when border beam emphasis is disabled', async () => {
-    const css = await Bun.file(new URL('./file-upload.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../file-upload/src/components/file-upload/file-upload.css',
+        import.meta.url,
+      ),
+    ).text();
 
     expect(css).toContain('@supports not selector(:has(*))');
     expect(css).toContain('.cinder-file-upload__dropzone:focus-within');

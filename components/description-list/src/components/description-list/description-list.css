@@ -1,0 +1,303 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '@lostgradient/button/button.css';
+@import '@lostgradient/chip/chip.css';
+@import '@lostgradient/copy-button/copy-button.css';
+
+@layer cinder.components {
+  /* ========================================
+ * DESCRIPTION LIST
+ * ======================================== */
+
+  .cinder-description-list {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Reset UA default margin-inline-start on <dd> (~40px in most browsers). */
+  .cinder-description-list dt,
+  .cinder-description-list dd {
+    margin: 0;
+  }
+
+  .cinder-description-list__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .cinder-description-list[data-cinder-variant='default']
+    .cinder-description-list__row:not(:first-child) {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* <dd> hosts both definition and optional actions. */
+  .cinder-description-list dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+  }
+
+  /* A value can be any string a record holds (an identifier, an address, a chat's title), and one
+   * unbroken word of it must break inside the list rather than widen every variant's columns. */
+  .cinder-description-list__definition {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-description-list__actions {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+  }
+
+  /* Striped variant: odd rows get a subtle background. */
+  .cinder-description-list[data-cinder-variant='striped']
+    .cinder-description-list__row:nth-child(odd) {
+    background: var(--cinder-surface-inset);
+  }
+
+  /* Two-column variant: term and definition share a row. */
+  .cinder-description-list[data-cinder-variant='two-column'] {
+    container-type: inline-size;
+  }
+
+  .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) 3fr;
+    align-items: baseline;
+    gap: var(--cinder-space-3);
+  }
+
+  @supports (grid-template-columns: subgrid) {
+    .cinder-description-list[data-cinder-variant='two-column'] {
+      display: grid;
+      grid-template-columns: minmax(8rem, 1fr) 3fr;
+    }
+
+    .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
+      grid-template-columns: subgrid;
+      grid-column: 1 / -1;
+    }
+  }
+
+  /* The term is the quiet side of the pair: muted, so the value carries the row.
+   * There are no row dividers in this variant (only the default variant draws them). */
+  .cinder-description-list[data-cinder-variant='two-column'] dt {
+    color: var(--cinder-text-muted);
+  }
+
+  /* Collapse two-column to stacked at narrow container widths. */
+  @container (max-width: 28rem) {
+    .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* `stack` puts the term above its value at every width. Only two-column
+   * places them side by side, so only its rows need the override; the
+   * subgrid track list collapses with them. */
+  .cinder-description-list[data-cinder-variant='two-column'][data-cinder-stacked] {
+    grid-template-columns: 1fr;
+  }
+
+  .cinder-description-list[data-cinder-variant='two-column'][data-cinder-stacked]
+    .cinder-description-list__row {
+    grid-template-columns: 1fr;
+    gap: var(--cinder-space-1);
+  }
+
+  /* Narrow variant: <dt> is sr-only (position: absolute, out-of-flow) so <dd>
+ * fills the visible row. flex-direction: row here matches the intended reading
+ * direction if a future variant needs the dt in-flow; for now the sr-only dt
+ * has no layout footprint and the dd is visually full-width. */
+  .cinder-description-list[data-cinder-variant='narrow'] .cinder-description-list__row {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+  }
+
+  /* Fields variant: a record read as a list, the record-details anatomy shared with InspectorRow. The
+   * term is a regular-weight muted label in a fixed 140px column, the value beside it in the default
+   * color, and each row is at least 44px tall. The rows sit in one tinted group, and a quiet rule
+   * under each row starts at the text. It stacks below 28rem. */
+  .cinder-description-list[data-cinder-variant='fields'] {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: 8.75rem minmax(0, 1fr);
+    padding-inline-start: var(--cinder-space-4);
+    overflow: hidden;
+    border-radius: var(--cinder-radius-surface);
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-block-size: 2.75rem;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline: 0 var(--cinder-space-3);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row:last-child {
+    border-block-end-color: transparent;
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] dd {
+    color: var(--cinder-text-default);
+  }
+
+  @container (max-width: 28rem) {
+    .cinder-description-list[data-cinder-variant='fields'] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
+      gap: var(--cinder-space-1);
+    }
+  }
+
+  /* Facts variant: one row of equal columns, each a muted term above its value, between two quiet
+   * rules. The columns wrap as the container narrows, so a phone stacks them two to a row. */
+  .cinder-description-list[data-cinder-variant='facts'] {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: var(--cinder-space-3) var(--cinder-space-4);
+    padding-block: var(--cinder-space-3);
+    border-block: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-description-list[data-cinder-variant='facts'] .cinder-description-list__row {
+    padding: 0;
+    min-width: 0;
+  }
+
+  .cinder-description-list[data-cinder-variant='facts'] dt {
+    color: var(--cinder-text-muted);
+  }
+
+  /* A wide item takes the whole row of a column variant: a long value, several lines or code. */
+  .cinder-description-list:is([data-cinder-variant='facts'], [data-cinder-variant='grid'])
+    .cinder-description-list__row[data-cinder-wide] {
+    grid-column: 1 / -1;
+  }
+
+  /* Grid variant: the pairs flow in as many equal columns as the list's own width fits, a muted term
+   * above its value at the column's start edge, with no rules and no fill. The tracks follow the
+   * list's inline size, never the viewport: a wide card reads three short pairs on one row, a phone
+   * card two, and a column narrower than two tracks one. */
+  .cinder-description-list[data-cinder-variant='grid'] {
+    --_cinder-description-list-column-min: calc(var(--cinder-space-24) + var(--cinder-space-2));
+
+    display: grid;
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, var(--_cinder-description-list-column-min)), 1fr)
+    );
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .cinder-description-list[data-cinder-variant='grid'] .cinder-description-list__row {
+    gap: 0;
+    min-width: 0;
+    padding: 0;
+  }
+
+  /* The term is the quiet half of the pair: the value's size, regular weight and muted, so the
+   * value carries the column; both keep the body line height. */
+  .cinder-description-list[data-cinder-variant='grid'] dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-description-list[data-cinder-variant='grid'] dd {
+    color: var(--cinder-text-default);
+  }
+
+  /* ----------------------------------------
+   * Formatted values
+   * ---------------------------------------- */
+
+  /* Code is shown whole in the code font and breaks anywhere, so a long value never widens a column. */
+  .cinder-description-list__code {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-description-list__timestamp {
+    font-variant-numeric: tabular-nums;
+    /* A dotted underline marks text that carries a hover title. */
+    text-decoration: underline dotted var(--cinder-text-muted);
+    text-underline-offset: 0.25em;
+    cursor: help;
+  }
+
+  .cinder-description-list__identifier-group {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-description-list__identifier {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-default);
+  }
+
+  /* The copy action is a quiet glyph here, not a bordered button. */
+  .cinder-description-list__identifier-group .cinder-copy-button {
+    border-color: transparent;
+    padding: var(--cinder-space-1);
+  }
+
+  .cinder-description-list__tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-description-list__tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* A muted second line under the definition: what the value is called in the system (a check's
+     name and version beside its words), not a second value. */
+  .cinder-description-list__note {
+    display: block;
+    margin-block-start: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-description-list__system-tags,
+  .cinder-description-list__empty {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+}

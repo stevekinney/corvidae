@@ -1,6 +1,6 @@
 <script lang="ts">
-  import DescriptionList from '../description-list/description-list.svelte';
-  import type { DescriptionListItem } from '../description-list/description-list.types.ts';
+  import DescriptionList from '@lostgradient/description-list/components/description-list/description-list.svelte';
+  import type { DescriptionListItem } from '@lostgradient/description-list/components/description-list/description-list.types.ts';
   import { INPUT_SUMMARY_ROWS, INPUT_WIDE_CHARACTERS } from './approval-card-state.ts';
   import type { InputRow } from './approval-card-state.ts';
 

@@ -87,8 +87,12 @@ describe('ApprovalCard', () => {
       'utf8',
     );
 
-    expect(actionsSource).toContain("from '../json-editor/index.ts'");
-    expect(actionsSource).not.toContain("from '../json-editor/json-editor.svelte'");
+    expect(actionsSource).toContain(
+      "from '@lostgradient/json-editor/components/json-editor/index.ts'",
+    );
+    expect(actionsSource).not.toContain(
+      "from '@lostgradient/json-editor/components/json-editor/json-editor.svelte'",
+    );
   });
 
   test('schema represents the required operation prop', () => {

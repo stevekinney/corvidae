@@ -23,14 +23,14 @@
 
   import { useViewportBelow } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
-  import { default as Button } from '../button/index.ts';
+  import { default as Button } from '@lostgradient/button/components/button/index.ts';
   import { default as Checkbox } from '@lostgradient/checkbox/components/checkbox/index.ts';
   import { default as Chip } from '@lostgradient/chip/components/chip/index.ts';
-  import { default as Popover } from '../popover/index.ts';
+  import { default as Popover } from '@lostgradient/popover/components/popover/index.ts';
   import { default as Segment } from '@lostgradient/segmented-control/components/segment/index.ts';
   import { default as SegmentedControl } from '@lostgradient/segmented-control/components/segmented-control/index.ts';
-  import { default as SearchField } from '../search-field/index.ts';
-  import { default as Select } from '../select/index.ts';
+  import { default as SearchField } from '@lostgradient/search-field/components/search-field/index.ts';
+  import { default as Select } from '@lostgradient/select/components/select/index.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import FilterBarFacetChip from './filter-bar-facet-chip.svelte';
   import FilterBarOptions from './filter-bar-options.svelte';

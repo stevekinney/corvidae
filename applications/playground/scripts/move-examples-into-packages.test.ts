@@ -33,7 +33,7 @@ const BASE = {
   'components/core/package.json': manifest('@lostgradient/cinder', {
     '@lucide/svelte': 'catalog:',
   }),
-  'components/core/src/components/button/button.svelte': '',
+  'components/button/src/components/button/button.svelte': '',
   'components/chat/package.json': manifest('@lostgradient/chat', {
     '@lostgradient/cinder': 'workspace:*',
   }),
@@ -99,7 +99,7 @@ describe('planMoves', () => {
   });
 
   test('drops a file already at its destination and stops on a different one', () => {
-    const destination = 'components/core/src/components/button/examples';
+    const destination = 'components/button/src/components/button/examples';
     const files = {
       ...BASE,
       [`${OLD}/button/same.example.svelte`]: 'same',

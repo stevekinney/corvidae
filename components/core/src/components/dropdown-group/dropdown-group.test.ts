@@ -7,7 +7,8 @@ setupHappyDom();
 
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/dropdown-compound-fixture.svelte');
-const { default: DropdownGroup } = await import('./dropdown-group.svelte');
+const { default: DropdownGroup } =
+  await import('@lostgradient/dropdown/components/dropdown-group/dropdown-group.svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

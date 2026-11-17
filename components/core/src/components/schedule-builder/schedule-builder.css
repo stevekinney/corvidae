@@ -3,8 +3,8 @@
 @import '../combobox/combobox.css';
 @import '@lostgradient/form-field/form-field.css';
 @import '@lostgradient/input/input.css';
-@import '../number-input/number-input.css';
-@import '../select/select.css';
+@import '@lostgradient/number-input/number-input.css';
+@import '@lostgradient/select/select.css';
 
 @layer cinder.components {
   /* ========================================

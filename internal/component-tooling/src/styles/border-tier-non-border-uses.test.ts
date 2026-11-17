@@ -220,10 +220,10 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/chat/src/lib/components/chat/artifact/artifact-panel.svelte': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/core/src/components/button-group/button-group.css': [
+  'components/button/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border-strong);', category: 'hairline' },
   ],
-  'components/core/src/components/matrix-chart/matrix-chart.css': [
+  'components/chart/src/components/matrix-chart/matrix-chart.css': [
     // The 1px outline of a matrix cell with no value, drawn over the page canvas.
     { declaration: 'stroke: var(--cinder-border);', category: 'hairline' },
   ],
@@ -250,7 +250,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'var(--cinder-border) 45%,', category: 'area', audit: 'color-field' },
     { declaration: 'var(--cinder-border) 55%,', category: 'area', audit: 'color-field' },
   ],
-  'components/core/src/components/data-grid/data-grid.css': [
+  'components/data-grid/src/components/data-grid/data-grid.css': [
     { declaration: 'inset -1px 0 0 var(--cinder-border),', category: 'hairline' },
     { declaration: 'inset 1px 0 0 var(--cinder-border),', category: 'hairline' },
   ],
@@ -265,14 +265,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'command-palette',
     },
   ],
-  'components/core/src/components/inspector-row/inspector-row.css': [
+  'components/inspector/src/components/inspector-row/inspector-row.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'inspector-row',
     },
   ],
-  'components/core/src/components/modal/modal.css': [
+  'components/modal/src/components/modal/modal.css': [
     { declaration: 'background: var(--cinder-border-contrast);', category: 'area', audit: 'modal' },
   ],
   'components/drawer/src/components/drawer/drawer.css': [
@@ -282,10 +282,10 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'drawer',
     },
   ],
-  'components/core/src/components/feed-boundary/feed-boundary.css': [
+  'components/feed/src/components/feed-boundary/feed-boundary.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/core/src/components/feed-event/feed-event.css': [
+  'components/feed/src/components/feed-event/feed-event.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
       declaration: 'background: var(--cinder-border-contrast);',
@@ -311,7 +311,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'mega-menu',
     },
   ],
-  'components/core/src/components/parameter-field/parameter-field.css': [
+  'components/parameter-field/src/components/parameter-field/parameter-field.css': [
     // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.contrast`.
     {
       declaration: 'background: var(--cinder-border-contrast);',
@@ -386,7 +386,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'status-dot',
     },
   ],
-  'components/core/src/components/steps/steps.css': [
+  'components/steps/src/components/steps/steps.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
       declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',

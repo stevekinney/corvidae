@@ -112,22 +112,22 @@ test('root barrel exposes ChartDataTableVisibility from all seven chart componen
 // These are authored component contracts, available through the sole package entry.
 test('root exports retain the component contract types formerly exposed through subpaths', () => {
   expectTypeOf<import('./index.ts').JsonEditorSchema>().toEqualTypeOf<
-    import('./components/json-editor/index.ts').JsonEditorSchema
+    import('@lostgradient/json-editor/components/json-editor/index.ts').JsonEditorSchema
   >();
   expectTypeOf<import('./index.ts').CarouselSlideContext>().toEqualTypeOf<
-    import('./components/carousel/index.ts').CarouselSlideContext
+    import('@lostgradient/carousel/components/carousel/index.ts').CarouselSlideContext
   >();
   expectTypeOf<import('./index.ts').ConnectionIndicatorSchemaProps>().toEqualTypeOf<
     import('@lostgradient/connection-indicator/components/connection-indicator/index.ts').ConnectionIndicatorSchemaProps
   >();
   expectTypeOf<import('./index.ts').DataGridSelectionMode>().toEqualTypeOf<
-    import('./components/data-grid/index.ts').DataGridSelectionMode
+    import('@lostgradient/data-grid/components/data-grid/index.ts').DataGridSelectionMode
   >();
   expectTypeOf<import('./index.ts').DataGridSelectionModel>().toEqualTypeOf<
-    import('./components/data-grid/index.ts').DataGridSelectionModel
+    import('@lostgradient/data-grid/components/data-grid/index.ts').DataGridSelectionModel
   >();
   expectTypeOf<import('./index.ts').DescriptionListDefinition>().toEqualTypeOf<
-    import('./components/description-list/index.ts').DescriptionListDefinition
+    import('@lostgradient/description-list/components/description-list/index.ts').DescriptionListDefinition
   >();
   expectTypeOf<import('./index.ts').InvocationRuleBuilderSchemaProps>().toEqualTypeOf<
     import('./components/invocation-rule-builder/index.ts').InvocationRuleBuilderSchemaProps

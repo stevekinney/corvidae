@@ -856,7 +856,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
       ' ',
     );
     // The card aggregates DescriptionList's styles, so its grid variant lays the pairs out.
-    expect(css).toContain("@import '../description-list/description-list.css';");
+    expect(css).toContain("@import '@lostgradient/description-list/description-list.css';");
     const list = /\.cinder-approval-card__input-list \{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(list).not.toMatch(/padding-inline|margin-inline-start|border|background/);
     expect(css).toContain(

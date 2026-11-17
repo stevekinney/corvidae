@@ -14,7 +14,8 @@ afterEach(() => {
 });
 
 const { default: Fixture } = await import('../../test/fixtures/dropdown-compound-fixture.svelte');
-const { default: DropdownSeparator } = await import('./dropdown-separator.svelte');
+const { default: DropdownSeparator } =
+  await import('@lostgradient/dropdown/components/dropdown-separator/dropdown-separator.svelte');
 
 describe('DropdownSeparator', () => {
   test('renders standalone with role="separator"', () => {

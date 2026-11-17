@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
-  import Dropdown from '../../components/dropdown/dropdown.svelte';
-  import DropdownItem from '../../components/dropdown-item/dropdown-item.svelte';
-  import DropdownMenu from '../../components/dropdown-menu/dropdown-menu.svelte';
-  import DropdownTrigger from '../../components/dropdown-trigger/dropdown-trigger.svelte';
+  import Dropdown from '@lostgradient/dropdown/components/dropdown/dropdown.svelte';
+  import DropdownItem from '@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte';
+  import DropdownMenu from '@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte';
+  import DropdownTrigger from '@lostgradient/dropdown/components/dropdown-trigger/dropdown-trigger.svelte';
   import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
 
   let {

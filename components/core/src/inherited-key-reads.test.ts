@@ -7,8 +7,8 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { normalizeBarData } from './_internal/chart/chart-bar-data.ts';
-import { formatAcceptDescription } from './components/file-upload/file-upload-utilities.ts';
+import { normalizeBarData } from '@lostgradient/chart/_internal/chart/chart-bar-data.ts';
+import { formatAcceptDescription } from '@lostgradient/file-upload/components/file-upload/file-upload-utilities.ts';
 import { setValueAtPath } from './components/schema-form/schema-form-model.ts';
 import { issuesByPath } from './components/schema-form/schema-form-validation.ts';
 

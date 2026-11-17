@@ -1,0 +1,45 @@
+{
+  "name": "@lostgradient/schema-view",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./.types/src/index.d.ts",
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./styles": "./src/styles/index.css",
+    "./*.css": "./src/components/*/*.css",
+    "./components/*": "./src/components/*"
+  },
+  "scripts": {
+    "types": "bun ../../internal/component-tooling/scripts/emit-declarations.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src && bun ../../scripts/check-inherited-key-reads.ts && bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/components",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' src",
+    "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts --conditions browser --conditions svelte .slow.test.ts .integration.test.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src",
+    "metadata": "bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root ."
+  },
+  "dependencies": {
+    "@lostgradient/collapsible": "workspace:*",
+    "@lostgradient/foundation": "workspace:*",
+    "@lostgradient/json-viewer": "workspace:*",
+    "@lucide/svelte": "catalog:",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/component-tooling": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@testing-library/svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ]
+}

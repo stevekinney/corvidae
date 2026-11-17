@@ -8,13 +8,20 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
-const dropdownMenuSource = readFileSync(new URL('./dropdown-menu.svelte', import.meta.url), 'utf8');
+const dropdownMenuSource = readFileSync(
+  new URL(
+    '../../../../dropdown/src/components/dropdown-menu/dropdown-menu.svelte',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/dropdown-compound-fixture.svelte');
 const { default: DropdownDirectionFixture } =
   await import('../../test/fixtures/dropdown-direction-fixture.svelte');
-const { default: DropdownMenu } = await import('./dropdown-menu.svelte');
+const { default: DropdownMenu } =
+  await import('@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte');
 const { pushEscapeHandler, resetEscapeStack } =
   await import('@lostgradient/foundation/_internal/overlay.ts');
 

@@ -16,12 +16,12 @@
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
-  import { Button } from '../button/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
   import { DataList } from '../data-list/index.ts';
-  import { EmptyState } from '../empty-state/index.ts';
+  import { EmptyState } from '@lostgradient/empty-state/components/empty-state/index.ts';
   import { ChevronLeft } from '@lostgradient/foundation/components/icons/index.ts';
   import { ResizablePanels } from '@lostgradient/resizable-panels/components/resizable-panels/index.ts';
-  import { Skeleton } from '../skeleton/index.ts';
+  import { Skeleton } from '@lostgradient/skeleton/components/skeleton/index.ts';
   import type {
     ResizablePanelDefinition,
     ResizablePanelsResizeEvent,

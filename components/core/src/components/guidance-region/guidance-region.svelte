@@ -13,8 +13,8 @@
   import type { GuidanceRegionProps } from './guidance-region.types.ts';
   import type { ModalApi } from '@lostgradient/foundation/_internal/modal-context.ts';
   import { useModal } from '@lostgradient/foundation/utilities/use-modal.ts';
-  import { default as Button } from '../button/index.ts';
-  import { default as Popover } from '../popover/index.ts';
+  import { default as Button } from '@lostgradient/button/components/button/index.ts';
+  import { default as Popover } from '@lostgradient/popover/components/popover/index.ts';
   const regionId = $props.id();
   let {
     claims: initialClaims = [],

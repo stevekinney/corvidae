@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { default as Collapsible } from '../collapsible/index.ts';
+  import { default as Collapsible } from '@lostgradient/collapsible/components/collapsible/index.ts';
   import { default as Input } from '@lostgradient/input/components/input/index.ts';
   import type { JsonSchemaObject } from './json-schema-editor-types.ts';
 

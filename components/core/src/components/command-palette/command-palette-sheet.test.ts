@@ -151,7 +151,10 @@ describe('command-palette.css sheet form', () => {
       /__search\s*\{[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/s,
     );
     const itemCss = await Bun.file(
-      new URL('../command-item/command-item.css', import.meta.url),
+      new URL(
+        '../../../../command-menu/src/components/command-item/command-item.css',
+        import.meta.url,
+      ),
     ).text();
     expect(itemCss).toMatch(
       /\.cinder-command-palette\[data-cinder-sheet='docked'\] \.cinder-command-item\s*\{[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/s,

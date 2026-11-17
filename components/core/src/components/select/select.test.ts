@@ -17,7 +17,7 @@ expect.extend(matchers as Parameters<typeof expect.extend>[0]);
 setupHappyDom();
 
 const { render, fireEvent } = await import('@testing-library/svelte');
-const { default: Select } = await import('./select.svelte');
+const { default: Select } = await import('@lostgradient/select/components/select/select.svelte');
 const { default: FormFieldSelectFixture } =
   await import('../../test/fixtures/form-field-select-fixture.svelte');
 
@@ -30,7 +30,12 @@ const defaultOptions = [
 function readSelectStyles(): string {
   // Strip the @layer wrapper: happy-dom does not apply layer-nested rules to
   // getComputedStyle. Inner declarations are unchanged.
-  return stripCinderComponentsLayer(readFileSync(new URL('./select.css', import.meta.url), 'utf8'));
+  return stripCinderComponentsLayer(
+    readFileSync(
+      new URL('../../../../select/src/components/select/select.css', import.meta.url),
+      'utf8',
+    ),
+  );
 }
 
 function idsIn(container: Element): string[] {

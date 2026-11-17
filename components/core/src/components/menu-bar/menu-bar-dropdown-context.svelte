@@ -7,8 +7,8 @@
     setDropdownRegister,
     setDropdownRegisterTrigger,
     setDropdownSetOpen,
-  } from '../dropdown/dropdown.context.ts';
-  import type { DropdownContext } from '../dropdown/dropdown.types.ts';
+  } from '@lostgradient/dropdown/components/dropdown/dropdown.context.ts';
+  import type { DropdownContext } from '@lostgradient/dropdown/components/dropdown/dropdown.types.ts';
 
   type Props = {
     context: DropdownContext;

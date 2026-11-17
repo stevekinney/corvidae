@@ -1,6 +1,9 @@
 <script lang="ts">
-  import Button from '../button/button.svelte';
-  import type { ButtonSize, ButtonVariant } from '../button/button.types.ts';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import type {
+    ButtonSize,
+    ButtonVariant,
+  } from '@lostgradient/button/components/button/button.types.ts';
 
   // Every variant the shortcut chip must hold on, at every size from small to large, each beside
   // the same button without a shortcut so a test can compare their heights.

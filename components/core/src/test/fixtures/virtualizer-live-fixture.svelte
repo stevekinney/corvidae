@@ -16,7 +16,7 @@
 
 <script lang="ts">
   import { TreeVirtualizer } from '@lostgradient/tree/_internal/use-virtualizer.svelte.ts';
-  import { DataGridVirtualizationAdapter } from '../../components/data-grid/_internal/virtualization-adapter.svelte.ts';
+  import { DataGridVirtualizationAdapter } from '@lostgradient/data-grid/components/data-grid/_internal/virtualization-adapter.svelte.ts';
 
   let {
     rowCount = 100,
