@@ -6,6 +6,17 @@
   // baselines and its axe sweep stay as they are.
   const narrowActions =
     new URLSearchParams(globalThis.location.search).get('narrow-actions') === '1';
+  const collapsedCase = new URLSearchParams(globalThis.location.search).get('collapsed') === '1';
+
+  $effect(() => {
+    if (!collapsedCase) return;
+    const host = document.querySelector('[data-testid="large-title-collapsed"]');
+    if (host === null) return;
+    // The title is the host's first heading; scroll until it has left the top of the viewport.
+    const title = host.querySelector('h2');
+    const top = (title ?? host).getBoundingClientRect().bottom + window.scrollY;
+    window.scrollTo({ top: top + 80 });
+  });
 </script>
 
 <div>
@@ -31,29 +42,23 @@
   <Button variant="primary">Approve</Button>
   <Button>Deny</Button>
 {/snippet}
-{#snippet viewSwitch()}
-  <SegmentedControl id="page-header-view" selectionMode="single" value="runs" label="View">
-    <Segment value="runs">Runs</Segment>
-    <Segment value="calls">Calls</Segment>
-  </SegmentedControl>
-{/snippet}
 
-{#each [false, true] as collapsed (collapsed)}
-  <div
-    data-testid={collapsed ? 'large-title-collapsed' : 'large-title-rest'}
-    style="margin-top: var(--cinder-space-4);"
+<div data-testid="large-title-rest" style="margin-top: var(--cinder-space-4);">
+  <PageHeader
+    headingLevel={2}
+    variant="large"
+    title="Refund order 4471"
+    description="Waiting on your approval."
+    decisions={decisionButtons}
   >
-    <PageHeader
-      headingLevel={2}
-      variant="large"
-      {collapsed}
-      title="Refund order 4471"
-      description="Waiting on your approval."
-      decisions={decisionButtons}
-      actions={viewSwitch}
-    />
-  </div>
-{/each}
+    {#snippet actions()}
+      <SegmentedControl id="large-rest-view" selectionMode="single" value="runs" label="View">
+        <Segment value="runs">Runs</Segment>
+        <Segment value="calls">Calls</Segment>
+      </SegmentedControl>
+    {/snippet}
+  </PageHeader>
+</div>
 
 {#each ['accent', 'night'] as const as tone (tone)}
   <div data-testid={`hero-${tone}`} style="margin-top: var(--cinder-space-4);">
@@ -66,10 +71,44 @@
       titleSoft=", made easier"
       description="Happy hours near you, open right now."
       decisions={decisionButtons}
-      actions={viewSwitch}
-    />
+    >
+      {#snippet actions()}
+        <SegmentedControl id={`hero-${tone}-view`} selectionMode="single" value="runs" label="View">
+          <Segment value="runs">Runs</Segment>
+          <Segment value="calls">Calls</Segment>
+        </SegmentedControl>
+      {/snippet}
+    </PageHeader>
   </div>
 {/each}
+
+<!-- The collapsed bar needs the large title scrolled out of view, which the header reads from the
+     page's scroll position and does not take as a prop. Behind `?collapsed=1` the page gains room
+     to scroll and scrolls past the title, so the sticky bar is drawn. -->
+{#if collapsedCase}
+  <div data-testid="large-title-collapsed" style="margin-top: var(--cinder-space-4);">
+    <PageHeader
+      headingLevel={2}
+      variant="large"
+      title="Refund order 4471"
+      description="Waiting on your approval."
+      decisions={decisionButtons}
+    >
+      {#snippet actions()}
+        <SegmentedControl
+          id="large-collapsed-view"
+          selectionMode="single"
+          value="runs"
+          label="View"
+        >
+          <Segment value="runs">Runs</Segment>
+          <Segment value="calls">Calls</Segment>
+        </SegmentedControl>
+      {/snippet}
+    </PageHeader>
+    <div style="block-size: 150vh;"></div>
+  </div>
+{/if}
 
 {#if narrowActions}
   {#each ['own-row', 'beside-status'] as const as placement (placement)}

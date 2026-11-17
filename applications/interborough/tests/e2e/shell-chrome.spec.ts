@@ -705,3 +705,43 @@ test.describe('the top bar’s popovers on the sample world', () => {
     await expect(page.getByRole('banner').locator('.weft-notification-bell__dot')).toHaveCount(0);
   });
 });
+
+test.describe('on a touch phone the top bar controls reach 44px through hit areas (COR-2445)', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('each control has a 44px hit area that takes no layout space, and no two overlap', async ({
+    page,
+  }) => {
+    await open(page, '/', 375, 812, false);
+    // One read: each control's painted face and its `::before` hit area, so the comparison never
+    // spans two reads.
+    const controls = await page.evaluate(() =>
+      [...document.querySelectorAll('header.weft-shell-topbar button')]
+        .filter((button) => button.getBoundingClientRect().width > 0)
+        .map((button) => {
+          const face = button.getBoundingClientRect();
+          const hit = getComputedStyle(button, '::before');
+          return {
+            name: button.getAttribute('aria-label') ?? button.textContent?.trim(),
+            centre: face.left + face.width / 2,
+            hitWidth: Number.parseFloat(hit.width),
+            hitHeight: Number.parseFloat(hit.height),
+          };
+        }),
+    );
+    expect(controls.length).toBeGreaterThanOrEqual(4);
+    for (const control of controls) {
+      expect(control.hitWidth, `${control.name} hit width`).toBeGreaterThanOrEqual(44);
+      expect(control.hitHeight, `${control.name} hit height`).toBeGreaterThanOrEqual(44);
+    }
+    for (let index = 1; index < controls.length; index += 1) {
+      const previous = controls[index - 1]!;
+      const next = controls[index]!;
+      const needed = (previous.hitWidth + next.hitWidth) / 2;
+      expect(
+        next.centre - previous.centre,
+        `${previous.name} to ${next.name}`,
+      ).toBeGreaterThanOrEqual(needed - 0.5);
+    }
+  });
+});

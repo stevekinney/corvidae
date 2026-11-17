@@ -246,8 +246,8 @@
 }
 
 /* A bar beside a sidebar is a surface with a rule; a bar over a drawer navigation carries Cinder's
- * translucent ground (`cinder-translucent-surface`) and no rule, as AppBar does. */
-.weft-shell-topbar:not(.cinder-translucent-surface) {
+ * translucent ground (Cinder's, set where the bar is drawn) and no rule, as AppBar does. */
+.weft-shell-topbar:not(.weft-shell-topbar--translucent) {
   border-bottom: 1px solid var(--cinder-border);
   background: var(--cinder-surface);
 }
@@ -416,6 +416,11 @@
   border-radius: 9999px;
   background: var(--cinder-accent-solid);
   box-shadow: 0 0 0 2px var(--cinder-surface);
+}
+
+/* Over the drawer navigation's translucent bar the ring is the canvas the bar is mixed from. */
+.weft-shell-topbar--translucent .weft-notification-bell__dot {
+  box-shadow: 0 0 0 2px var(--cinder-surface-canvas);
 }
 
 /* Cinder's popover pads its panel and caps it at 28rem; the rows run edge to edge, in a panel 420px wide on every screen. */

@@ -85,7 +85,10 @@
 <!-- While the navigation is a drawer (a phone, or a touch tablet) the bar takes Cinder's translucent,
      rule-free ground, as AppBar does; a bar beside a sidebar keeps its surface and its rule. -->
 <header
-  class={['weft-shell-topbar', shell?.mode === 'drawer' && 'cinder-translucent-surface']}
+  class={[
+    'weft-shell-topbar',
+    shell?.mode === 'drawer' && 'weft-shell-topbar--translucent cinder-translucent-surface',
+  ]}
   data-nested={trail.length > 1 ? '' : undefined}
 >
   {#if shell?.mode === 'drawer'}

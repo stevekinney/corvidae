@@ -4,6 +4,13 @@
   // The large title's `collapsed`, bound to the bar's `titleVisible`: the bar shows its title once
   // the large title scrolls away (COR-2445).
   let collapsed = $state(false);
+
+  // At the top of the scroller nothing sits under the sticky bar; scrolled a little, a coloured row
+  // does, and the bar's translucency shows.
+  let scroller: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    scroller?.scrollTo({ top: 72 });
+  });
 </script>
 
 {#snippet shareIcon()}
@@ -44,6 +51,7 @@
 <!-- Three icon actions over content that scrolls under the bar, so its translucency shows. -->
 <div
   data-testid="app-bar-over-content"
+  bind:this={scroller}
   style="block-size: 14rem; overflow: auto; margin-top: var(--cinder-space-4); border: 1px solid var(--cinder-border-muted);"
 >
   <AppBar
@@ -56,12 +64,11 @@
     ]}
   />
   <div style="padding: var(--cinder-space-4);">
-    {#each ['Death & Co', 'Williams & Graham', 'Little Pepper', 'Ace Eat Serve', 'Bar Helix', 'Fire'] as bar (bar)}
+    {#each [1, 2, 3, 4, 5, 6] as row (row)}
       <div
-        style="margin-block-end: var(--cinder-space-3); padding: var(--cinder-space-3); background: var(--cinder-accent-solid); color: var(--cinder-text-inverse);"
-      >
-        {bar}
-      </div>
+        aria-hidden="true"
+        style="margin-block-end: var(--cinder-space-3); block-size: 3rem; background: var(--cinder-accent-solid);"
+      ></div>
     {/each}
   </div>
 </div>

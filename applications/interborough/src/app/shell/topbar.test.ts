@@ -107,7 +107,7 @@ describe('the top bar', () => {
     }
     const css = await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text();
     expect(css).toMatch(
-      /\.weft-shell-topbar:not\(\.cinder-translucent-surface\)\s*\{[^}]*border-bottom:[^}]*background:/,
+      /\.weft-shell-topbar:not\(\.weft-shell-topbar--translucent\)\s*\{[^}]*border-bottom:[^}]*background:/,
     );
   });
 

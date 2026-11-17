@@ -5,10 +5,10 @@
   let phoneActive = $state('home');
   const phoneTabs = [
     { id: 'home', glyph: 'H', name: 'Home' },
-    { id: 'chats', glyph: 'C', name: 'Chats' },
-    { id: 'review', glyph: 'R', name: 'Review' },
-    { id: 'schedules', glyph: 'S', name: 'Schedules' },
-    { id: 'settings', glyph: 'G', name: 'Settings' },
+    { id: 'chat', glyph: 'C', name: 'Chat' },
+    { id: 'reviews', glyph: 'R', name: 'Reviews' },
+    { id: 'runs', glyph: 'U', name: 'Runs' },
+    { id: 'more', glyph: 'M', name: 'More' },
   ];
 </script>
 
