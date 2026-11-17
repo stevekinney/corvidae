@@ -32,7 +32,6 @@
         title="Please refund order 4471, it arrived damaged."
         statusPlacement="inline"
         narrowActions={placement}
-        flush
       >
         {#snippet status()}Waiting on you{/snippet}
         {#snippet actions()}
