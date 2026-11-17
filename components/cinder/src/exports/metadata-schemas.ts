@@ -50,6 +50,7 @@ export { default as containerSchema } from '../components/container/container.sc
 export { default as contextMenuTriggerSchema } from '../components/context-menu-trigger/context-menu-trigger.schema.ts';
 export { default as contextMenuSchema } from '../components/context-menu/context-menu.schema.ts';
 export { default as copyButtonSchema } from '../components/copy-button/copy-button.schema.ts';
+export { default as copyableValueSchema } from '../components/copyable-value/copyable-value.schema.ts';
 export { default as dataGridSchema } from '../components/data-grid/data-grid.schema.ts';
 export { default as dataListSchema } from '../components/data-list/data-list.schema.ts';
 export { default as dataTableSchema } from '../components/data-table/data-table.schema.ts';

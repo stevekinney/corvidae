@@ -6,15 +6,17 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  * its own.
  *
  * - Amber (`warning`) is only for waiting on you and Needs attention: "Waiting on you", "Missed
- *   runs", "Disconnected", "Needs attention" and "Needs sign-in".
+ *   runs", "Disconnected", "Needs attention", "Needs sign-in" and "Waiting for a secret" (a
+ *   workflow trigger that cannot start until its plugin has a secret).
  * - Red (`danger`) is only for "Failed", "Failed for good", "Gave up", "Can't load", "Not loaded"
  *   and "Can't find workflow" (a schedule whose workflow was deleted, which can't run at all).
  * - Everything else that finished or stopped is neutral, and "Waiting" and "Scheduled" are the
  *   hollow `pending` ring.
  *
  * Some words are scoped: "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
- * "Connected", "Draining" and "Disconnected" are workers only, "Failed for good" is a task that ran
- * out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps. The table gives them a tone; the
+ * "Connected", "Draining" and "Disconnected" are workers only, "Listening", "Ready", "Standby" and
+ * "Waiting for a secret" are a workflow trigger's states ("Failed" and "Stopped" serve it too),
+ * "Failed for good" is a task that ran out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps. The table gives them a tone; the
  * page decides where they belong.
  */
 export const statusDotWordTones = {
@@ -52,6 +54,10 @@ export const statusDotWordTones = {
   Connected: 'success',
   Draining: 'neutral',
   Disconnected: 'warning',
+  Listening: 'success',
+  Ready: 'success',
+  Standby: 'pending',
+  'Waiting for a secret': 'warning',
   Live: 'info',
   'Reconnecting…': 'pending',
 } as const satisfies Record<string, StatusDotStatus>;
