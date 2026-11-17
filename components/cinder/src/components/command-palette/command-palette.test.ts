@@ -58,15 +58,16 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const { default: CommandPalette } = await import('./command-palette.svelte');
+const { default: CommandPalette } =
+  await import('@lostgradient/command-palette/components/command-palette/command-palette.svelte');
 const { default: CommandItem } =
   await import('@lostgradient/command-menu/components/command-item/command-item.svelte');
 const { default: CommandPaletteFixture } =
   await import('../../test/fixtures/command-palette-fixture.svelte');
 const { default: CommandPaletteRichItemFixture } =
-  await import('../../test/fixtures/command-palette-rich-item-fixture.svelte');
+  await import('@lostgradient/command-palette/test/fixtures/command-palette-rich-item-fixture.svelte');
 const { default: CommandPaletteAttachFixture } =
-  await import('../../test/fixtures/command-palette-attach-fixture.svelte');
+  await import('@lostgradient/command-palette/test/fixtures/command-palette-attach-fixture.svelte');
 
 // ── Snippet helpers ────────────────────────────────────────────────────────
 
@@ -972,7 +973,12 @@ describe('CommandPalette — attachment registration', () => {
 
 describe('CommandPalette — visual contract', () => {
   test('the search input paints no ring; forced colors keep a Highlight outline (COR-1498)', async () => {
-    const css = await Bun.file(new URL('./command-palette.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../command-palette/src/components/command-palette/command-palette.css',
+        import.meta.url,
+      ),
+    ).text();
 
     // The bespoke bottom-border-recolor idiom is gone; the search row no longer
     // paints any focus indication of its own.
@@ -1004,7 +1010,12 @@ describe('CommandPalette — visual contract', () => {
   });
 
   test('rows are 36px targets and the search input keeps its own padding (row 03c)', async () => {
-    const paletteCss = await Bun.file(new URL('./command-palette.css', import.meta.url)).text();
+    const paletteCss = await Bun.file(
+      new URL(
+        '../../../../command-palette/src/components/command-palette/command-palette.css',
+        import.meta.url,
+      ),
+    ).text();
     const commandItemCss = await Bun.file(
       new URL(
         '../../../../command-menu/src/components/command-item/command-item.css',
@@ -1022,7 +1033,12 @@ describe('CommandPalette — visual contract', () => {
   });
 
   test('listbox has correct padding and command items span full width', async () => {
-    const paletteCss = await Bun.file(new URL('./command-palette.css', import.meta.url)).text();
+    const paletteCss = await Bun.file(
+      new URL(
+        '../../../../command-palette/src/components/command-palette/command-palette.css',
+        import.meta.url,
+      ),
+    ).text();
     // CommandItem rules were extracted to command-item/command-item.css so both
     // CommandPalette and CommandMenu can import them without duplication.
     const commandItemCss = await Bun.file(

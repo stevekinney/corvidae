@@ -236,7 +236,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/chip/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
   ],
-  'components/cinder/src/components/color-field/color-field.css': [
+  'components/color-field/src/components/color-field/color-field.css': [
     { declaration: 'var(--cinder-border) 45%,', category: 'area', audit: 'color-field' },
     { declaration: 'var(--cinder-border) 55%,', category: 'area', audit: 'color-field' },
   ],
@@ -248,7 +248,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },
     { declaration: 'background-color: var(--cinder-border-strong);', category: 'hairline' },
   ],
-  'components/cinder/src/components/command-palette/command-palette.css': [
+  'components/command-palette/src/components/command-palette/command-palette.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
@@ -323,7 +323,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'resizable-panels',
     },
   ],
-  'components/cinder/src/components/run-step-timeline/run-step-timeline.css': [
+  'components/run-step-timeline/src/components/run-step-timeline/run-step-timeline.css': [
     // The item's connector and the rail-through segment past a nested row: both 1px wide.
     {
       declaration: 'background: var(--cinder-border-muted);',
@@ -366,7 +366,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'slider',
     },
   ],
-  'components/cinder/src/components/statistic-group/statistic-group.css': [
+  'components/statistic/src/components/statistic-group/statistic-group.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'occlusion' },
   ],
   'components/status-dot/src/components/status-dot/status-dot.css': [
@@ -383,7 +383,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       category: 'hairline',
     },
   ],
-  'components/cinder/src/components/timeline/timeline.css': [
+  'components/timeline/src/components/timeline/timeline.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
   'components/foundation/src/styles/components/_row-item.css': [

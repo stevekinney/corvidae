@@ -14,7 +14,8 @@ const {
   render: renderIntoContainer,
   waitFor,
 } = await import('@testing-library/svelte');
-const { default: MultiSelect } = await import('./multi-select.svelte');
+const { default: MultiSelect } =
+  await import('@lostgradient/multi-select/components/multi-select/multi-select.svelte');
 const { default: FormFieldMultiSelectFixture } =
   await import('../../test/fixtures/form-field-multi-select-fixture.svelte');
 const { pushEscapeHandler, resetEscapeStack } =
@@ -60,7 +61,12 @@ async function openMenu(container: HTMLElement): Promise<void> {
 
 describe('MultiSelect', () => {
   test('owns indicator styles without importing private or Checkbox CSS', async () => {
-    const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../multi-select/src/components/multi-select/multi-select.css',
+        import.meta.url,
+      ),
+    ).text();
 
     expect(css).toContain('.cinder-checkbox-field__indicator');
     expect(css).not.toContain("@import '../_internal/checkbox-indicator-shell.css';");
@@ -68,7 +74,12 @@ describe('MultiSelect', () => {
   });
 
   test('sizes only its own indicator shell, never every Checkbox shell', async () => {
-    const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../multi-select/src/components/multi-select/multi-select.css',
+        import.meta.url,
+      ),
+    ).text();
 
     // An unscoped `.cinder-checkbox-field__control` rule pinned the task Checkbox's shell to 18px
     // whenever both stylesheets loaded, so its 20px box overflowed and its hit area shrank.
@@ -80,7 +91,12 @@ describe('MultiSelect', () => {
   });
 
   test('owns checkbox box styles so a standalone import stays visible', async () => {
-    const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL(
+        '../../../../multi-select/src/components/multi-select/multi-select.css',
+        import.meta.url,
+      ),
+    ).text();
 
     // A consumer importing only `@lostgradient/cinder` never loads
     // checkbox.css, so the box shape and checked/disabled backgrounds must live

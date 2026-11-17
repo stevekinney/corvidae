@@ -31,7 +31,7 @@ describe('run-step-timeline generated schema', () => {
   const schema = generateSchemaForComponent({
     typesFilePath: join(
       import.meta.dir,
-      '../../../components/cinder/src/components/run-step-timeline/run-step-timeline.types.ts',
+      '../../../components/run-step-timeline/src/components/run-step-timeline/run-step-timeline.types.ts',
     ),
     componentName: 'run-step-timeline',
   }).schema;
@@ -132,7 +132,7 @@ describe('run-step-timeline generated schema', () => {
       ...readFileSync(
         join(
           import.meta.dir,
-          '../../../components/cinder/src/components/run-step-timeline/run-step-timeline.types.ts',
+          '../../../components/run-step-timeline/src/components/run-step-timeline/run-step-timeline.types.ts',
         ),
         'utf8',
       ).matchAll(/^export type RunStep = \{([\s\S]*?)^\};/gm),
@@ -204,7 +204,7 @@ describe('schedule-builder generated schema', () => {
   const schema = generateSchemaForComponent({
     typesFilePath: join(
       import.meta.dir,
-      '../../../components/cinder/src/components/schedule-builder/schedule-builder.types.ts',
+      '../../../components/schedule-builder/src/components/schedule-builder/schedule-builder.types.ts',
     ),
     componentName: 'schedule-builder',
   }).schema;

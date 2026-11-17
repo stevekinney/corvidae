@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { MultiSelectItem } from '../../components/multi-select/multi-select.types.ts';
+  import type { MultiSelectItem } from '@lostgradient/multi-select/components/multi-select/multi-select.types.ts';
 
   export type FormFieldMultiSelectFixtureProps = {
     fieldId: string;
@@ -13,7 +13,7 @@
 
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import MultiSelect from '../../components/multi-select/multi-select.svelte';
+  import MultiSelect from '@lostgradient/multi-select/components/multi-select/multi-select.svelte';
 
   let {
     fieldId,

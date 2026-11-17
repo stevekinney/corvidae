@@ -97,7 +97,7 @@ describe('componentReadme', () => {
     expect(Buffer.byteLength(readme)).toBeLessThanOrEqual(README_CAP);
     expect(readme).not.toContain('�');
     expect(readme).toEndWith(
-      '\n\n_Reference truncated; the full README is in the repository at `components/cinder/src/components/tabs/README.md`._\n',
+      '\n\n_Reference truncated; the full README is in the repository at `components/tabs/src/components/tabs/README.md`._\n',
     );
   });
 

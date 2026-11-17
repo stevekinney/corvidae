@@ -1,6 +1,6 @@
 <script lang="ts">
   import CommandItem from '@lostgradient/command-menu/components/command-item/command-item.svelte';
-  import CommandPalette from '../command-palette/command-palette.svelte';
+  import CommandPalette from '@lostgradient/command-palette/components/command-palette/command-palette.svelte';
 
   let {
     tone,

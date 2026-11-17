@@ -5,26 +5,28 @@ import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020';
 
 import {
+  formatEditableArguments,
+  isApprovalActionable,
+  prepareArgumentsPreview,
+  resolveEffectiveApprovalState,
+} from '@lostgradient/approval-card/components/approval-card/approval-card-state.ts';
+import type { ApprovalCardProps } from '@lostgradient/approval-card/components/approval-card/approval-card.types.ts';
+import {
   expectNoLeakedTimers,
   requiredInstance,
   setupHappyDom,
   trackTimers,
 } from '@lostgradient/testing';
-import {
-  formatEditableArguments,
-  isApprovalActionable,
-  prepareArgumentsPreview,
-  resolveEffectiveApprovalState,
-} from './approval-card-state.ts';
-import type { ApprovalCardProps } from './approval-card.types.ts';
 
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
 const { tick } = await import('svelte');
-const { default: ApprovalCard } = await import('./approval-card.svelte');
-const { default: approvalCardSchema } = await import('./approval-card.schema.ts');
+const { default: ApprovalCard } =
+  await import('@lostgradient/approval-card/components/approval-card/approval-card.svelte');
+const { default: approvalCardSchema } =
+  await import('@lostgradient/approval-card/components/approval-card/approval-card.schema.ts');
 const { default: CodeHighlighterContextFixture } =
   await import('../../test/fixtures/code-highlighter-context-fixture.svelte');
 
@@ -52,7 +54,7 @@ function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): Approval
     operation: {
       kind: 'command',
       command: 'bun run --filter=@lostgradient/cinder test',
-      filesTouched: ['components/cinder/src/components/approval-card/approval-card.svelte'],
+      filesTouched: ['components/approval-card/src/components/approval-card/approval-card.svelte'],
       argsPreview: { dryRun: false, retries: 1 },
     },
     env: ['DATABASE_URL=postgres://fake-secret-value', 'OPENAI_API_KEY'],
@@ -68,7 +70,13 @@ function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): Approval
 
 describe('ApprovalCard', () => {
   test('draws its heading as the first row of the body, on the card fill with no band', () => {
-    const styles = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const styles = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
     const ownedHeaderRule = styles.match(/\.cinder-approval-card__header\s*\{[^}]*\}/)?.[0] ?? '';
     expect(ownedHeaderRule).not.toContain('background');
     expect(ownedHeaderRule).not.toContain('padding');
@@ -82,7 +90,10 @@ describe('ApprovalCard', () => {
 
   test('imports JsonEditor through its public component subpath', () => {
     const actionsSource = readFileSync(
-      new URL('./approval-card-actions.svelte', import.meta.url),
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card-actions.svelte',
+        import.meta.url,
+      ),
       'utf8',
     );
 
@@ -1349,7 +1360,13 @@ describe('ApprovalCard card layout anatomy', () => {
   });
 
   test('never fills the header with a warning or danger colour', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).not.toMatch(/\[data-cinder-risk='high'\] \.cinder-approval-card__header/);
     expect(css).not.toMatch(/readonly-summary\[data-cinder-state='denied'\]/);
@@ -1905,7 +1922,13 @@ describe('ApprovalCard row layout', () => {
 
 describe('ApprovalCard detail consequence and Done record', () => {
   test("sets Can't be undone. in semibold in the consequence line", () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
     expect(css).toMatch(
       /\.cinder-approval-card__detail-risk \.cinder-approval-card__undone \{[^}]*font-weight: var\(--cinder-font-semibold\)/s,
     );
@@ -2445,7 +2468,13 @@ describe('ApprovalCard outcome', () => {
   });
 
   test('colours only an approval green in the stylesheet', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).toMatch(
       /outcome\[data-cinder-tone='success'\] \.cinder-approval-card__outcome-dot \{[^}]*status-success/,
@@ -2456,7 +2485,13 @@ describe('ApprovalCard outcome', () => {
 
 describe('ApprovalCard line wrapping', () => {
   test('keeps the time and the tool facts from breaking in the stylesheet', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     // The facts line may wrap between its pieces, so a phone never clips "Can't be undone" at the
     // card's edge; each piece stays whole and keeps the comma that follows it.
@@ -2467,7 +2502,13 @@ describe('ApprovalCard line wrapping', () => {
   });
 
   test('puts the time on a line of its own, without the comma, where who asked and when cannot share one', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).toMatch(
       /@container \(inline-size < 17rem\) \{[^@]*__line \.cinder-approval-card__time-separator \{\s*display: none;[^@]*__line time \{\s*display: block;/,
@@ -2796,7 +2837,13 @@ describe('ApprovalCard on a phone', () => {
   });
 
   test('puts the status badges above the question in a narrow card', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).toMatch(
       /@container \(inline-size < 32rem\) \{[^@]*__header \{\s*display: grid;[^}]*'icon badges'\s*'icon title';[^}]*row-gap: 0;/,
@@ -2815,7 +2862,13 @@ describe('ApprovalCard on a phone', () => {
   });
 
   test('keeps Deny and the primary decision compact 44px targets at the trailing edge in a narrow card', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     // Intrinsic width, never equal or full width.
     expect(css).toMatch(
@@ -2827,7 +2880,13 @@ describe('ApprovalCard on a phone', () => {
   });
 
   test('every approval action row ends at the trailing edge with the primary last and the note toggle leading', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).toMatch(
       /\.cinder-approval-card__row-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?\}/,
@@ -2844,7 +2903,13 @@ describe('ApprovalCard on a phone', () => {
   });
 
   test('lets row actions wrap intrinsically while preserving the shared touch target minimum', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).toMatch(
       /\.cinder-approval-card__row-actions \{[\s\S]*?flex-wrap: wrap;[\s\S]*?inline-size: 100%;[\s\S]*?min-inline-size: 0;/,
@@ -2858,7 +2923,13 @@ describe('ApprovalCard on a phone', () => {
   });
 
   test('a receipt card has the padding and gap an expired card has, with room for the 44px Details area', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     // No rule gives a receipt its own padding: the three settled states share the decision card's.
     expect(css).not.toMatch(/\.cinder-approval-card--decision:has\(/);
@@ -2869,7 +2940,13 @@ describe('ApprovalCard on a phone', () => {
   });
 
   test('keeps grouped row cards compact without weakening action targets', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL(
+        '../../../../approval-card/src/components/approval-card/approval-card.css',
+        import.meta.url,
+      ),
+      'utf8',
+    );
 
     expect(css).toMatch(
       /\.cinder-approval-card--row \{[\s\S]*?gap: var\(--cinder-space-1\);[\s\S]*?padding: var\(--cinder-space-2\);/,
@@ -2885,10 +2962,13 @@ describe('ApprovalCard on a phone', () => {
 });
 
 describe('ApprovalCard receipt details', () => {
-  const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
-    /\s+/gu,
-    ' ',
-  );
+  const css = readFileSync(
+    new URL(
+      '../../../../approval-card/src/components/approval-card/approval-card.css',
+      import.meta.url,
+    ),
+    'utf8',
+  ).replace(/\s+/gu, ' ');
 
   test('the note and the result share one label style and one gap after it', () => {
     // One rule for both labels: the same ink and weight, and no margin of its own, so the single

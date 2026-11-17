@@ -31,14 +31,20 @@ Object.defineProperty(HTMLDialogElement.prototype, 'close', {
 
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/command-palette-fixture.svelte');
-const { default: Palette } = await import('./command-palette.svelte');
+const { default: Palette } =
+  await import('@lostgradient/command-palette/components/command-palette/command-palette.svelte');
 const { resetEscapeStack, resetScrollLock } =
   await import('@lostgradient/foundation/_internal/overlay.ts');
 const { KEYBOARD_INSET_PROPERTY } =
   await import('@lostgradient/foundation/_internal/keyboard-inset.ts');
 const { createRawSnippet } = await import('svelte');
 
-const cssText = await Bun.file(new URL('./command-palette.css', import.meta.url)).text();
+const cssText = await Bun.file(
+  new URL(
+    '../../../../command-palette/src/components/command-palette/command-palette.css',
+    import.meta.url,
+  ),
+).text();
 
 const emptySnippet = createRawSnippet(() => ({ render: () => '<span></span>', setup: () => {} }));
 

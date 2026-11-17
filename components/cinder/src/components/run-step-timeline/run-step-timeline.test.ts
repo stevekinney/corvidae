@@ -1,14 +1,14 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import Ajv2020 from 'ajv/dist/2020';
-import { createRawSnippet } from 'svelte';
 import type {
   RunStep,
   RunStepBranchGroup,
   RunStepTimelineEntry,
-} from './run-step-timeline.types.ts';
+} from '@lostgradient/run-step-timeline/components/run-step-timeline/run-step-timeline.types.ts';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import Ajv2020 from 'ajv/dist/2020';
+import { createRawSnippet } from 'svelte';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -16,8 +16,10 @@ import type {
 setupHappyDom();
 
 const { render, cleanup, fireEvent, waitFor } = await import('@testing-library/svelte');
-const { default: RunStepTimeline } = await import('./run-step-timeline.svelte');
-const { default: runStepTimelineSchema } = await import('./run-step-timeline.schema.ts');
+const { default: RunStepTimeline } =
+  await import('@lostgradient/run-step-timeline/components/run-step-timeline/run-step-timeline.svelte');
+const { default: runStepTimelineSchema } =
+  await import('@lostgradient/run-step-timeline/components/run-step-timeline/run-step-timeline.schema.ts');
 const { default: CodeHighlighterContextFixture } =
   await import('../../test/fixtures/code-highlighter-context-fixture.svelte');
 
@@ -2070,7 +2072,10 @@ describe('CSS snapshot', () => {
   test('CSS file exists and contains the root class and layer wrapper', () => {
     const { readFileSync } = require('node:fs');
     const css = readFileSync(
-      new URL('./run-step-timeline.css', import.meta.url).pathname,
+      new URL(
+        '../../../../run-step-timeline/src/components/run-step-timeline/run-step-timeline.css',
+        import.meta.url,
+      ).pathname,
       'utf8',
     ) as string;
     expect(css).toContain('cinder-run-step-timeline');
@@ -2083,7 +2088,10 @@ describe('CSS snapshot', () => {
   test('CSS uses only --cinder-* custom properties, not hardcoded colors', () => {
     const { readFileSync } = require('node:fs');
     const css = readFileSync(
-      new URL('./run-step-timeline.css', import.meta.url).pathname,
+      new URL(
+        '../../../../run-step-timeline/src/components/run-step-timeline/run-step-timeline.css',
+        import.meta.url,
+      ).pathname,
       'utf8',
     ) as string;
     // Should not contain color: #..., color: rgb(...), background: #... etc.
@@ -2094,7 +2102,10 @@ describe('CSS snapshot', () => {
   test('CSS sidecar imports composed primitive styles', () => {
     const { readFileSync } = require('node:fs');
     const css = readFileSync(
-      new URL('./run-step-timeline.css', import.meta.url).pathname,
+      new URL(
+        '../../../../run-step-timeline/src/components/run-step-timeline/run-step-timeline.css',
+        import.meta.url,
+      ).pathname,
       'utf8',
     ) as string;
 
@@ -2385,7 +2396,10 @@ describe('RunStepTimeline narrative variant', () => {
   test('the cursor stops blinking when reduced motion is on', () => {
     const { readFileSync } = require('node:fs');
     const css = readFileSync(
-      new URL('./run-step-timeline.css', import.meta.url).pathname,
+      new URL(
+        '../../../../run-step-timeline/src/components/run-step-timeline/run-step-timeline.css',
+        import.meta.url,
+      ).pathname,
       'utf8',
     ) as string;
 

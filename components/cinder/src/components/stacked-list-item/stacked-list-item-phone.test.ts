@@ -40,7 +40,13 @@ const { default: ExtrasFixture } =
 const { default: StatusListFixture } =
   await import('../../test/fixtures/status-list-fixture.svelte');
 
-const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(
+  new URL(
+    '../../../../data-list/src/components/stacked-list-item/stacked-list-item.css',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 function setPhone(next: boolean) {
   phone = next;

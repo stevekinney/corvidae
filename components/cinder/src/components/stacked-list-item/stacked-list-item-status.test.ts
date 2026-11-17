@@ -10,13 +10,20 @@ import type { StatusListRow } from '../../test/fixtures/status-list-fixture.svel
 setupHappyDom();
 
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
-const { default: StackedListItem } = await import('./stacked-list-item.svelte');
+const { default: StackedListItem } =
+  await import('@lostgradient/data-list/components/stacked-list-item/stacked-list-item.svelte');
 const { default: StatusListFixture } =
   await import('../../test/fixtures/status-list-fixture.svelte');
 const { default: ExtrasFixture } =
   await import('../../test/fixtures/stacked-list-item-extras-fixture.svelte');
 
-const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(
+  new URL(
+    '../../../../data-list/src/components/stacked-list-item/stacked-list-item.css',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 function textSnippet(text: string) {
   return createRawSnippet(() => ({ render: () => `<span>${text}</span>`, setup: () => {} }));

@@ -86,7 +86,7 @@ The expanded pass has its own final validation; the successful run recorded abov
 - [components/drawer/src/components/drawer/drawer.a11y.md](../components/drawer/src/components/drawer/drawer.a11y.md)
 - [components/form/src/components/form/README.md](../components/form/src/components/form/README.md)
 - [components/key-value-editor/src/components/key-value-editor/README.md](../components/key-value-editor/src/components/key-value-editor/README.md)
-- [components/cinder/src/components/modal-region/README.md](../components/cinder/src/components/modal-region/README.md)
+- [components/modal-region/src/components/modal-region/README.md](../components/modal-region/src/components/modal-region/README.md)
 - [components/parameter-field/src/components/parameter-field/README.md](../components/parameter-field/src/components/parameter-field/README.md)
 - [components/policy-lock/src/components/policy-lock/README.md](../components/policy-lock/src/components/policy-lock/README.md)
 - [components/preview-panel/src/components/preview-panel/README.md](../components/preview-panel/src/components/preview-panel/README.md)

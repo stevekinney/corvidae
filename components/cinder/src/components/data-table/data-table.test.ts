@@ -2,18 +2,20 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import type { DataTableRow } from '@lostgradient/data-table/components/data-table/data-table.types.ts';
+import type { DataTableSelectionMode } from '@lostgradient/data-table/components/data-table/index.ts';
 import { requiredInstance, setupHappyDom, trackTimers } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { DataTableSelectionMode as RootDataTableSelectionMode } from '../../index.ts';
-import type { DataTableRow } from './data-table.types.ts';
-import type { DataTableSelectionMode } from './index.ts';
 
 setupHappyDom();
 
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
-const { default: DataTable } = await import('./data-table.svelte');
-const { default: SnippetsFixture } = await import('./data-table-snippets.fixture.svelte');
+const { default: DataTable } =
+  await import('@lostgradient/data-table/components/data-table/data-table.svelte');
+const { default: SnippetsFixture } =
+  await import('@lostgradient/data-table/components/data-table/data-table-snippets.fixture.svelte');
 
 afterEach(() => cleanup());
 
@@ -104,7 +106,13 @@ describe('DataTable — table structure', () => {
 
 describe('DataTable — column resizing', () => {
   test('retains cleanup for active document resize listeners', () => {
-    const source = readFileSync(new URL('./data-table.svelte', import.meta.url), 'utf8');
+    const source = readFileSync(
+      new URL(
+        '../../../../data-table/src/components/data-table/data-table.svelte',
+        import.meta.url,
+      ),
+      'utf8',
+    );
     expect(source).toContain('let activeResizeCleanup');
     expect(source).toContain('onDestroy(() => activeResizeCleanup?.())');
   });
@@ -281,7 +289,13 @@ describe('DataTable — column resizing', () => {
   });
 
   test('clears cached resize values when a column disappears', () => {
-    const source = readFileSync(new URL('./data-table.svelte', import.meta.url), 'utf8');
+    const source = readFileSync(
+      new URL(
+        '../../../../data-table/src/components/data-table/data-table.svelte',
+        import.meta.url,
+      ),
+      'utf8',
+    );
     expect(source).toContain('const removedKeys = Array.from(previousExternalColumnWidths.keys())');
     expect(source).toContain('(key) => !externalColumnWidths.has(key)');
     expect(source).toContain('const resetKeys = [...changedKeys, ...removedKeys]');
@@ -289,7 +303,10 @@ describe('DataTable — column resizing', () => {
   });
 
   test('uses fixed table layout so resize values describe rendered widths', () => {
-    const css = readFileSync(new URL('./data-table.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL('../../../../data-table/src/components/data-table/data-table.css', import.meta.url),
+      'utf8',
+    );
     const { container } = render(DataTable, {
       columns: [{ key: 'name', label: 'Name', width: 100 }],
       rows,
@@ -1246,7 +1263,10 @@ describe('DataTable — cells, row messages, groups and footer', () => {
   });
 
   test('a monospace column is set in the regular weight, even as the row header the browser makes bold', () => {
-    const css = readFileSync(new URL('./data-table.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL('../../../../data-table/src/components/data-table/data-table.css', import.meta.url),
+      'utf8',
+    );
     expect(css).toMatch(
       /\[data-cinder-monospace\]\s*\{[^}]*font-family: var\(--cinder-font-mono\);[^}]*font-weight: var\(--cinder-font-normal\)/s,
     );

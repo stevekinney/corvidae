@@ -13,8 +13,10 @@ setupHappyDom();
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
 const { default: Popover } =
   await import('@lostgradient/popover/components/popover/popover.svelte');
-const { default: Combobox } = await import('../combobox/combobox.svelte');
-const { default: MultiSelect } = await import('../multi-select/multi-select.svelte');
+const { default: Combobox } =
+  await import('@lostgradient/combobox/components/combobox/combobox.svelte');
+const { default: MultiSelect } =
+  await import('@lostgradient/multi-select/components/multi-select/multi-select.svelte');
 const { default: Dropdown } =
   await import('@lostgradient/dropdown/components/dropdown/dropdown.svelte');
 const { default: DropdownCompoundFixture } =

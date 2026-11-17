@@ -296,9 +296,9 @@
     {
       "files": [
         "**/components/json-viewer/src/components/json-viewer/_json-viewer-node.svelte",
-        "**/components/cinder/src/components/payload-inspector/_payload-fields.svelte",
-        "**/components/cinder/src/components/json-schema-editor/property-editor.svelte",
-        "**/components/cinder/src/components/json-schema-editor/property-list.svelte"
+        "**/components/payload-inspector/src/components/payload-inspector/_payload-fields.svelte",
+        "**/components/json-schema-editor/src/components/json-schema-editor/property-editor.svelte",
+        "**/components/json-schema-editor/src/components/json-schema-editor/property-list.svelte"
       ],
       "rules": {
         "import/no-cycle": "off",

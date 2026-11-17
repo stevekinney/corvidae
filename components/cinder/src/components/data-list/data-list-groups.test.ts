@@ -12,9 +12,12 @@ const { render } = await import('@testing-library/svelte');
 const { default: StatusListFixture } =
   await import('../../test/fixtures/status-list-fixture.svelte');
 const { captureScrollAnchor, findScrollContainer } =
-  await import('../../_internal/scroll-anchor.ts');
+  await import('@lostgradient/data-list/_internal/scroll-anchor.ts');
 
-const stylesheet = readFileSync(new URL('./data-list.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(
+  new URL('../../../../data-list/src/components/data-list/data-list.css', import.meta.url),
+  'utf8',
+);
 
 const row = (id: string, day: string, title = id): StatusListRow => ({
   id,

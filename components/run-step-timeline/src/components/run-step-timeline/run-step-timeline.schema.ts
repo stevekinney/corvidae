@@ -1,0 +1,1834 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: 'Accessible label for the timeline list.',
+    },
+    selectedStepId: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description:
+        "Rendered step path key to visually mark as selected.\nAccepts `null` so consumers can clear linked selection without omitting\nthe prop. Use the value passed to `onStepSelect`, or a row's\n`data-cinder-path` attribute, for nested or branch-lane steps.",
+    },
+    variant: {
+      enum: ['detailed', 'narrative'],
+      description: 'How a step reads: `detailed` (default) or `narrative`.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional CSS classes applied to the root element.',
+    },
+    steps: {
+      type: 'array',
+      items: {
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: 'Stable identity; used as the keyed list identity.',
+              },
+              label: {
+                type: 'string',
+                description: 'Display label for this step.',
+              },
+              status: {
+                enum: [
+                  'pending',
+                  'running',
+                  'succeeded',
+                  'failed',
+                  'timed-out',
+                  'cancelled',
+                  'skipped',
+                  'retrying',
+                  'waiting_approval',
+                  'waiting',
+                  'recorded',
+                ],
+                description: 'Generic execution state.',
+              },
+              description: {
+                type: 'string',
+                description:
+                  'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+              },
+              time: {
+                type: 'string',
+                description:
+                  'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+              },
+              note: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: 'Bold first line of the block.',
+                  },
+                  lines: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                    },
+                    description: 'The lines of the block, one per line.',
+                  },
+                  tone: {
+                    enum: ['neutral', 'danger'],
+                    description: '`danger` tints the block for a failure. Default `neutral`.',
+                  },
+                  label: {
+                    type: 'string',
+                    description: 'A muted word before the first line, joined to it by a comma.',
+                  },
+                  streaming: {
+                    type: 'boolean',
+                    description:
+                      'Whether the lines are still arriving; a text cursor follows the last line.',
+                  },
+                },
+                additionalProperties: false,
+                required: ['lines'],
+                description: 'A block shown open under the description.',
+              },
+              startTime: {
+                type: 'string',
+                description: 'ISO datetime string for when this step started.',
+              },
+              endTime: {
+                type: 'string',
+                description: 'ISO datetime string for when this step ended.',
+              },
+              duration: {
+                type: 'string',
+                description: 'Human-readable duration string, e.g. "1m 23s".',
+              },
+              attemptCount: {
+                type: 'number',
+                description: 'Number of attempts made so far, including any retries.',
+              },
+              actionsCount: {
+                type: 'number',
+                description: 'Number of actions associated with this step.',
+              },
+              progress: {
+                type: 'number',
+                description: 'Optional determinate progress value between 0 and `progressMax`.',
+              },
+              progressMax: {
+                type: 'number',
+                description: 'Maximum value for the progress bar. Defaults to 100.',
+              },
+              details: {
+                type: 'array',
+                items: {
+                  anyOf: [
+                    {
+                      type: 'object',
+                      properties: {
+                        id: {
+                          type: 'string',
+                          description: 'Stable identity for this detail panel.',
+                        },
+                        label: {
+                          type: 'string',
+                          description: 'Trigger label rendered on the Collapsible header.',
+                        },
+                        open: {
+                          type: 'boolean',
+                          description: 'Initial expanded state for this detail panel.',
+                        },
+                        type: {
+                          const: 'text',
+                          description:
+                            'Text details preserve the existing preformatted rendering behavior.',
+                        },
+                        content: {
+                          type: 'string',
+                          description: 'Pre-formatted content shown inside the panel.',
+                        },
+                      },
+                      additionalProperties: false,
+                      required: ['content', 'id', 'label', 'type'],
+                    },
+                    {
+                      type: 'object',
+                      properties: {
+                        id: {
+                          type: 'string',
+                          description: 'Stable identity for this detail panel.',
+                        },
+                        label: {
+                          type: 'string',
+                          description: 'Trigger label rendered on the Collapsible header.',
+                        },
+                        open: {
+                          type: 'boolean',
+                          description: 'Initial expanded state for this detail panel.',
+                        },
+                        type: {
+                          const: 'code',
+                          description: 'Code details render with Cinder CodeBlock.',
+                        },
+                        code: {
+                          type: 'string',
+                          description: 'Code content shown inside the panel.',
+                        },
+                        language: {
+                          type: 'string',
+                          description: 'Optional CodeBlock language.',
+                        },
+                        languageLabelVisible: {
+                          type: 'boolean',
+                          description: 'Whether the CodeBlock language label is visible.',
+                        },
+                      },
+                      additionalProperties: false,
+                      required: ['code', 'id', 'label', 'type'],
+                    },
+                  ],
+                },
+                description: 'Expandable detail panels (logs, payloads, errors) shown inline.',
+              },
+              link: {
+                type: 'object',
+                properties: {
+                  href: {
+                    type: 'string',
+                    description: 'Destination URL for the step link.',
+                  },
+                  label: {
+                    type: 'string',
+                    description: 'Visible text for the step link.',
+                  },
+                },
+                additionalProperties: false,
+                required: ['href', 'label'],
+                description: 'Optional link to logs, traces, or a step detail route.',
+              },
+              rewound: {
+                type: 'boolean',
+                description:
+                  'Marks a step that was speculatively executed and then unwound (rolled back).',
+              },
+              compensates: {
+                type: 'string',
+                description: 'Id of the forward step that this step compensates (reverses).',
+              },
+              children: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      description: 'Stable identity; used as the keyed list identity.',
+                    },
+                    label: {
+                      type: 'string',
+                      description: 'Display label for this step.',
+                    },
+                    status: {
+                      enum: [
+                        'pending',
+                        'running',
+                        'succeeded',
+                        'failed',
+                        'timed-out',
+                        'cancelled',
+                        'skipped',
+                        'retrying',
+                        'waiting_approval',
+                        'waiting',
+                        'recorded',
+                      ],
+                      description: 'Generic execution state.',
+                    },
+                    description: {
+                      type: 'string',
+                      description:
+                        'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                    },
+                    time: {
+                      type: 'string',
+                      description:
+                        'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                    },
+                    note: {
+                      type: 'object',
+                      properties: {
+                        title: {
+                          type: 'string',
+                          description: 'Bold first line of the block.',
+                        },
+                        lines: {
+                          type: 'array',
+                          items: {
+                            type: 'string',
+                          },
+                          description: 'The lines of the block, one per line.',
+                        },
+                        tone: {
+                          enum: ['neutral', 'danger'],
+                          description: '`danger` tints the block for a failure. Default `neutral`.',
+                        },
+                        label: {
+                          type: 'string',
+                          description:
+                            'A muted word before the first line, joined to it by a comma.',
+                        },
+                        streaming: {
+                          type: 'boolean',
+                          description:
+                            'Whether the lines are still arriving; a text cursor follows the last line.',
+                        },
+                      },
+                      additionalProperties: false,
+                      required: ['lines'],
+                      description: 'A block shown open under the description.',
+                    },
+                    startTime: {
+                      type: 'string',
+                      description: 'ISO datetime string for when this step started.',
+                    },
+                    endTime: {
+                      type: 'string',
+                      description: 'ISO datetime string for when this step ended.',
+                    },
+                    duration: {
+                      type: 'string',
+                      description: 'Human-readable duration string, e.g. "1m 23s".',
+                    },
+                    attemptCount: {
+                      type: 'number',
+                      description: 'Number of attempts made so far, including any retries.',
+                    },
+                    actionsCount: {
+                      type: 'number',
+                      description: 'Number of actions associated with this step.',
+                    },
+                    progress: {
+                      type: 'number',
+                      description:
+                        'Optional determinate progress value between 0 and `progressMax`.',
+                    },
+                    progressMax: {
+                      type: 'number',
+                      description: 'Maximum value for the progress bar. Defaults to 100.',
+                    },
+                    details: {
+                      type: 'array',
+                      items: {
+                        anyOf: [
+                          {
+                            type: 'object',
+                            properties: {
+                              id: {
+                                type: 'string',
+                                description: 'Stable identity for this detail panel.',
+                              },
+                              label: {
+                                type: 'string',
+                                description: 'Trigger label rendered on the Collapsible header.',
+                              },
+                              open: {
+                                type: 'boolean',
+                                description: 'Initial expanded state for this detail panel.',
+                              },
+                              type: {
+                                const: 'text',
+                                description:
+                                  'Text details preserve the existing preformatted rendering behavior.',
+                              },
+                              content: {
+                                type: 'string',
+                                description: 'Pre-formatted content shown inside the panel.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['content', 'id', 'label', 'type'],
+                          },
+                          {
+                            type: 'object',
+                            properties: {
+                              id: {
+                                type: 'string',
+                                description: 'Stable identity for this detail panel.',
+                              },
+                              label: {
+                                type: 'string',
+                                description: 'Trigger label rendered on the Collapsible header.',
+                              },
+                              open: {
+                                type: 'boolean',
+                                description: 'Initial expanded state for this detail panel.',
+                              },
+                              type: {
+                                const: 'code',
+                                description: 'Code details render with Cinder CodeBlock.',
+                              },
+                              code: {
+                                type: 'string',
+                                description: 'Code content shown inside the panel.',
+                              },
+                              language: {
+                                type: 'string',
+                                description: 'Optional CodeBlock language.',
+                              },
+                              languageLabelVisible: {
+                                type: 'boolean',
+                                description: 'Whether the CodeBlock language label is visible.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['code', 'id', 'label', 'type'],
+                          },
+                        ],
+                      },
+                      description:
+                        'Expandable detail panels (logs, payloads, errors) shown inline.',
+                    },
+                    link: {
+                      type: 'object',
+                      properties: {
+                        href: {
+                          type: 'string',
+                          description: 'Destination URL for the step link.',
+                        },
+                        label: {
+                          type: 'string',
+                          description: 'Visible text for the step link.',
+                        },
+                      },
+                      additionalProperties: false,
+                      required: ['href', 'label'],
+                      description: 'Optional link to logs, traces, or a step detail route.',
+                    },
+                    rewound: {
+                      type: 'boolean',
+                      description:
+                        'Marks a step that was speculatively executed and then unwound (rolled back).',
+                    },
+                    compensates: {
+                      type: 'string',
+                      description: 'Id of the forward step that this step compensates (reverses).',
+                    },
+                    children: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: {
+                            type: 'string',
+                            description: 'Stable identity; used as the keyed list identity.',
+                          },
+                          label: {
+                            type: 'string',
+                            description: 'Display label for this step.',
+                          },
+                          status: {
+                            enum: [
+                              'pending',
+                              'running',
+                              'succeeded',
+                              'failed',
+                              'timed-out',
+                              'cancelled',
+                              'skipped',
+                              'retrying',
+                              'waiting_approval',
+                              'waiting',
+                              'recorded',
+                            ],
+                            description: 'Generic execution state.',
+                          },
+                          description: {
+                            type: 'string',
+                            description:
+                              'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                          },
+                          time: {
+                            type: 'string',
+                            description:
+                              'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                          },
+                          note: {
+                            type: 'object',
+                            properties: {
+                              title: {
+                                type: 'string',
+                                description: 'Bold first line of the block.',
+                              },
+                              lines: {
+                                type: 'array',
+                                items: {
+                                  type: 'string',
+                                },
+                                description: 'The lines of the block, one per line.',
+                              },
+                              tone: {
+                                enum: ['neutral', 'danger'],
+                                description:
+                                  '`danger` tints the block for a failure. Default `neutral`.',
+                              },
+                              label: {
+                                type: 'string',
+                                description:
+                                  'A muted word before the first line, joined to it by a comma.',
+                              },
+                              streaming: {
+                                type: 'boolean',
+                                description:
+                                  'Whether the lines are still arriving; a text cursor follows the last line.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['lines'],
+                            description: 'A block shown open under the description.',
+                          },
+                          startTime: {
+                            type: 'string',
+                            description: 'ISO datetime string for when this step started.',
+                          },
+                          endTime: {
+                            type: 'string',
+                            description: 'ISO datetime string for when this step ended.',
+                          },
+                          duration: {
+                            type: 'string',
+                            description: 'Human-readable duration string, e.g. "1m 23s".',
+                          },
+                          attemptCount: {
+                            type: 'number',
+                            description: 'Number of attempts made so far, including any retries.',
+                          },
+                          actionsCount: {
+                            type: 'number',
+                            description: 'Number of actions associated with this step.',
+                          },
+                          progress: {
+                            type: 'number',
+                            description:
+                              'Optional determinate progress value between 0 and `progressMax`.',
+                          },
+                          progressMax: {
+                            type: 'number',
+                            description: 'Maximum value for the progress bar. Defaults to 100.',
+                          },
+                          details: {
+                            type: 'array',
+                            items: {
+                              anyOf: [
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    id: {
+                                      type: 'string',
+                                      description: 'Stable identity for this detail panel.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'Trigger label rendered on the Collapsible header.',
+                                    },
+                                    open: {
+                                      type: 'boolean',
+                                      description: 'Initial expanded state for this detail panel.',
+                                    },
+                                    type: {
+                                      const: 'text',
+                                      description:
+                                        'Text details preserve the existing preformatted rendering behavior.',
+                                    },
+                                    content: {
+                                      type: 'string',
+                                      description: 'Pre-formatted content shown inside the panel.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['content', 'id', 'label', 'type'],
+                                },
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    id: {
+                                      type: 'string',
+                                      description: 'Stable identity for this detail panel.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'Trigger label rendered on the Collapsible header.',
+                                    },
+                                    open: {
+                                      type: 'boolean',
+                                      description: 'Initial expanded state for this detail panel.',
+                                    },
+                                    type: {
+                                      const: 'code',
+                                      description: 'Code details render with Cinder CodeBlock.',
+                                    },
+                                    code: {
+                                      type: 'string',
+                                      description: 'Code content shown inside the panel.',
+                                    },
+                                    language: {
+                                      type: 'string',
+                                      description: 'Optional CodeBlock language.',
+                                    },
+                                    languageLabelVisible: {
+                                      type: 'boolean',
+                                      description:
+                                        'Whether the CodeBlock language label is visible.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['code', 'id', 'label', 'type'],
+                                },
+                              ],
+                            },
+                            description:
+                              'Expandable detail panels (logs, payloads, errors) shown inline.',
+                          },
+                          link: {
+                            type: 'object',
+                            properties: {
+                              href: {
+                                type: 'string',
+                                description: 'Destination URL for the step link.',
+                              },
+                              label: {
+                                type: 'string',
+                                description: 'Visible text for the step link.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['href', 'label'],
+                            description: 'Optional link to logs, traces, or a step detail route.',
+                          },
+                          rewound: {
+                            type: 'boolean',
+                            description:
+                              'Marks a step that was speculatively executed and then unwound (rolled back).',
+                          },
+                          compensates: {
+                            type: 'string',
+                            description:
+                              'Id of the forward step that this step compensates (reverses).',
+                          },
+                          children: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                id: {
+                                  type: 'string',
+                                  description: 'Stable identity; used as the keyed list identity.',
+                                },
+                                label: {
+                                  type: 'string',
+                                  description: 'Display label for this step.',
+                                },
+                                status: {
+                                  enum: [
+                                    'pending',
+                                    'running',
+                                    'succeeded',
+                                    'failed',
+                                    'timed-out',
+                                    'cancelled',
+                                    'skipped',
+                                    'retrying',
+                                    'waiting_approval',
+                                    'waiting',
+                                    'recorded',
+                                  ],
+                                  description: 'Generic execution state.',
+                                },
+                                description: {
+                                  type: 'string',
+                                  description:
+                                    'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                },
+                                time: {
+                                  type: 'string',
+                                  description:
+                                    'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                },
+                                note: {
+                                  type: 'object',
+                                  properties: {
+                                    title: {
+                                      type: 'string',
+                                      description: 'Bold first line of the block.',
+                                    },
+                                    lines: {
+                                      type: 'array',
+                                      items: {
+                                        type: 'string',
+                                      },
+                                      description: 'The lines of the block, one per line.',
+                                    },
+                                    tone: {
+                                      enum: ['neutral', 'danger'],
+                                      description:
+                                        '`danger` tints the block for a failure. Default `neutral`.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'A muted word before the first line, joined to it by a comma.',
+                                    },
+                                    streaming: {
+                                      type: 'boolean',
+                                      description:
+                                        'Whether the lines are still arriving; a text cursor follows the last line.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['lines'],
+                                  description: 'A block shown open under the description.',
+                                },
+                                startTime: {
+                                  type: 'string',
+                                  description: 'ISO datetime string for when this step started.',
+                                },
+                                endTime: {
+                                  type: 'string',
+                                  description: 'ISO datetime string for when this step ended.',
+                                },
+                                duration: {
+                                  type: 'string',
+                                  description: 'Human-readable duration string, e.g. "1m 23s".',
+                                },
+                                attemptCount: {
+                                  type: 'number',
+                                  description:
+                                    'Number of attempts made so far, including any retries.',
+                                },
+                                actionsCount: {
+                                  type: 'number',
+                                  description: 'Number of actions associated with this step.',
+                                },
+                                progress: {
+                                  type: 'number',
+                                  description:
+                                    'Optional determinate progress value between 0 and `progressMax`.',
+                                },
+                                progressMax: {
+                                  type: 'number',
+                                  description:
+                                    'Maximum value for the progress bar. Defaults to 100.',
+                                },
+                                details: {
+                                  type: 'array',
+                                  items: {
+                                    anyOf: [
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          id: {
+                                            type: 'string',
+                                            description: 'Stable identity for this detail panel.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description:
+                                              'Trigger label rendered on the Collapsible header.',
+                                          },
+                                          open: {
+                                            type: 'boolean',
+                                            description:
+                                              'Initial expanded state for this detail panel.',
+                                          },
+                                          type: {
+                                            const: 'text',
+                                            description:
+                                              'Text details preserve the existing preformatted rendering behavior.',
+                                          },
+                                          content: {
+                                            type: 'string',
+                                            description:
+                                              'Pre-formatted content shown inside the panel.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['content', 'id', 'label', 'type'],
+                                      },
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          id: {
+                                            type: 'string',
+                                            description: 'Stable identity for this detail panel.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description:
+                                              'Trigger label rendered on the Collapsible header.',
+                                          },
+                                          open: {
+                                            type: 'boolean',
+                                            description:
+                                              'Initial expanded state for this detail panel.',
+                                          },
+                                          type: {
+                                            const: 'code',
+                                            description:
+                                              'Code details render with Cinder CodeBlock.',
+                                          },
+                                          code: {
+                                            type: 'string',
+                                            description: 'Code content shown inside the panel.',
+                                          },
+                                          language: {
+                                            type: 'string',
+                                            description: 'Optional CodeBlock language.',
+                                          },
+                                          languageLabelVisible: {
+                                            type: 'boolean',
+                                            description:
+                                              'Whether the CodeBlock language label is visible.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['code', 'id', 'label', 'type'],
+                                      },
+                                    ],
+                                  },
+                                  description:
+                                    'Expandable detail panels (logs, payloads, errors) shown inline.',
+                                },
+                                link: {
+                                  type: 'object',
+                                  properties: {
+                                    href: {
+                                      type: 'string',
+                                      description: 'Destination URL for the step link.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description: 'Visible text for the step link.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['href', 'label'],
+                                  description:
+                                    'Optional link to logs, traces, or a step detail route.',
+                                },
+                                rewound: {
+                                  type: 'boolean',
+                                  description:
+                                    'Marks a step that was speculatively executed and then unwound (rolled back).',
+                                },
+                                compensates: {
+                                  type: 'string',
+                                  description:
+                                    'Id of the forward step that this step compensates (reverses).',
+                                },
+                                children: {
+                                  type: 'array',
+                                  items: {
+                                    type: 'object',
+                                    additionalProperties: true,
+                                  },
+                                  description:
+                                    'Descendants beyond the rendered depth cap; summarized as a depth-limit row.',
+                                },
+                              },
+                              additionalProperties: false,
+                              required: ['id', 'label', 'status'],
+                            },
+                            description: 'Nested child-workflow steps rendered at depth 3.',
+                          },
+                        },
+                        additionalProperties: false,
+                        required: ['id', 'label', 'status'],
+                      },
+                      description: 'Nested child-workflow steps rendered at depth 2.',
+                    },
+                  },
+                  additionalProperties: false,
+                  required: ['id', 'label', 'status'],
+                },
+                description: 'Schema-bounded nested child-workflow steps.',
+              },
+            },
+            additionalProperties: false,
+            required: ['id', 'label', 'status'],
+          },
+          {
+            type: 'object',
+            properties: {
+              kind: {
+                const: 'branch',
+                description: 'Discriminator identifying a branch-group entry.',
+              },
+              id: {
+                type: 'string',
+                description: 'Stable identity; used as the keyed list identity.',
+              },
+              label: {
+                type: 'string',
+                description: 'Display label for the branch group.',
+              },
+              lanes: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      description:
+                        'Stable identity; used as the keyed list identity within the group.',
+                    },
+                    label: {
+                      type: 'string',
+                      description: 'Optional display label for the lane.',
+                    },
+                    outcome: {
+                      enum: ['won', 'lost', 'settled'],
+                      description:
+                        'Competitive outcome for the lane. Omit while the branch is still racing.',
+                    },
+                    steps: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: {
+                            type: 'string',
+                            description: 'Stable identity; used as the keyed list identity.',
+                          },
+                          label: {
+                            type: 'string',
+                            description: 'Display label for this step.',
+                          },
+                          status: {
+                            enum: [
+                              'pending',
+                              'running',
+                              'succeeded',
+                              'failed',
+                              'timed-out',
+                              'cancelled',
+                              'skipped',
+                              'retrying',
+                              'waiting_approval',
+                              'waiting',
+                              'recorded',
+                            ],
+                            description: 'Generic execution state.',
+                          },
+                          description: {
+                            type: 'string',
+                            description:
+                              'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                          },
+                          time: {
+                            type: 'string',
+                            description:
+                              'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                          },
+                          note: {
+                            type: 'object',
+                            properties: {
+                              title: {
+                                type: 'string',
+                                description: 'Bold first line of the block.',
+                              },
+                              lines: {
+                                type: 'array',
+                                items: {
+                                  type: 'string',
+                                },
+                                description: 'The lines of the block, one per line.',
+                              },
+                              tone: {
+                                enum: ['neutral', 'danger'],
+                                description:
+                                  '`danger` tints the block for a failure. Default `neutral`.',
+                              },
+                              label: {
+                                type: 'string',
+                                description:
+                                  'A muted word before the first line, joined to it by a comma.',
+                              },
+                              streaming: {
+                                type: 'boolean',
+                                description:
+                                  'Whether the lines are still arriving; a text cursor follows the last line.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['lines'],
+                            description: 'A block shown open under the description.',
+                          },
+                          startTime: {
+                            type: 'string',
+                            description: 'ISO datetime string for when this step started.',
+                          },
+                          endTime: {
+                            type: 'string',
+                            description: 'ISO datetime string for when this step ended.',
+                          },
+                          duration: {
+                            type: 'string',
+                            description: 'Human-readable duration string, e.g. "1m 23s".',
+                          },
+                          attemptCount: {
+                            type: 'number',
+                            description: 'Number of attempts made so far, including any retries.',
+                          },
+                          actionsCount: {
+                            type: 'number',
+                            description: 'Number of actions associated with this step.',
+                          },
+                          progress: {
+                            type: 'number',
+                            description:
+                              'Optional determinate progress value between 0 and `progressMax`.',
+                          },
+                          progressMax: {
+                            type: 'number',
+                            description: 'Maximum value for the progress bar. Defaults to 100.',
+                          },
+                          details: {
+                            type: 'array',
+                            items: {
+                              anyOf: [
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    id: {
+                                      type: 'string',
+                                      description: 'Stable identity for this detail panel.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'Trigger label rendered on the Collapsible header.',
+                                    },
+                                    open: {
+                                      type: 'boolean',
+                                      description: 'Initial expanded state for this detail panel.',
+                                    },
+                                    type: {
+                                      const: 'text',
+                                      description:
+                                        'Text details preserve the existing preformatted rendering behavior.',
+                                    },
+                                    content: {
+                                      type: 'string',
+                                      description: 'Pre-formatted content shown inside the panel.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['content', 'id', 'label', 'type'],
+                                },
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    id: {
+                                      type: 'string',
+                                      description: 'Stable identity for this detail panel.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'Trigger label rendered on the Collapsible header.',
+                                    },
+                                    open: {
+                                      type: 'boolean',
+                                      description: 'Initial expanded state for this detail panel.',
+                                    },
+                                    type: {
+                                      const: 'code',
+                                      description: 'Code details render with Cinder CodeBlock.',
+                                    },
+                                    code: {
+                                      type: 'string',
+                                      description: 'Code content shown inside the panel.',
+                                    },
+                                    language: {
+                                      type: 'string',
+                                      description: 'Optional CodeBlock language.',
+                                    },
+                                    languageLabelVisible: {
+                                      type: 'boolean',
+                                      description:
+                                        'Whether the CodeBlock language label is visible.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['code', 'id', 'label', 'type'],
+                                },
+                              ],
+                            },
+                            description:
+                              'Expandable detail panels (logs, payloads, errors) shown inline.',
+                          },
+                          link: {
+                            type: 'object',
+                            properties: {
+                              href: {
+                                type: 'string',
+                                description: 'Destination URL for the step link.',
+                              },
+                              label: {
+                                type: 'string',
+                                description: 'Visible text for the step link.',
+                              },
+                            },
+                            additionalProperties: false,
+                            required: ['href', 'label'],
+                            description: 'Optional link to logs, traces, or a step detail route.',
+                          },
+                          rewound: {
+                            type: 'boolean',
+                            description:
+                              'Marks a step that was speculatively executed and then unwound (rolled back).',
+                          },
+                          compensates: {
+                            type: 'string',
+                            description:
+                              'Id of the forward step that this step compensates (reverses).',
+                          },
+                          children: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                id: {
+                                  type: 'string',
+                                  description: 'Stable identity; used as the keyed list identity.',
+                                },
+                                label: {
+                                  type: 'string',
+                                  description: 'Display label for this step.',
+                                },
+                                status: {
+                                  enum: [
+                                    'pending',
+                                    'running',
+                                    'succeeded',
+                                    'failed',
+                                    'timed-out',
+                                    'cancelled',
+                                    'skipped',
+                                    'retrying',
+                                    'waiting_approval',
+                                    'waiting',
+                                    'recorded',
+                                  ],
+                                  description: 'Generic execution state.',
+                                },
+                                description: {
+                                  type: 'string',
+                                  description:
+                                    'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                },
+                                time: {
+                                  type: 'string',
+                                  description:
+                                    'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                },
+                                note: {
+                                  type: 'object',
+                                  properties: {
+                                    title: {
+                                      type: 'string',
+                                      description: 'Bold first line of the block.',
+                                    },
+                                    lines: {
+                                      type: 'array',
+                                      items: {
+                                        type: 'string',
+                                      },
+                                      description: 'The lines of the block, one per line.',
+                                    },
+                                    tone: {
+                                      enum: ['neutral', 'danger'],
+                                      description:
+                                        '`danger` tints the block for a failure. Default `neutral`.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description:
+                                        'A muted word before the first line, joined to it by a comma.',
+                                    },
+                                    streaming: {
+                                      type: 'boolean',
+                                      description:
+                                        'Whether the lines are still arriving; a text cursor follows the last line.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['lines'],
+                                  description: 'A block shown open under the description.',
+                                },
+                                startTime: {
+                                  type: 'string',
+                                  description: 'ISO datetime string for when this step started.',
+                                },
+                                endTime: {
+                                  type: 'string',
+                                  description: 'ISO datetime string for when this step ended.',
+                                },
+                                duration: {
+                                  type: 'string',
+                                  description: 'Human-readable duration string, e.g. "1m 23s".',
+                                },
+                                attemptCount: {
+                                  type: 'number',
+                                  description:
+                                    'Number of attempts made so far, including any retries.',
+                                },
+                                actionsCount: {
+                                  type: 'number',
+                                  description: 'Number of actions associated with this step.',
+                                },
+                                progress: {
+                                  type: 'number',
+                                  description:
+                                    'Optional determinate progress value between 0 and `progressMax`.',
+                                },
+                                progressMax: {
+                                  type: 'number',
+                                  description:
+                                    'Maximum value for the progress bar. Defaults to 100.',
+                                },
+                                details: {
+                                  type: 'array',
+                                  items: {
+                                    anyOf: [
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          id: {
+                                            type: 'string',
+                                            description: 'Stable identity for this detail panel.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description:
+                                              'Trigger label rendered on the Collapsible header.',
+                                          },
+                                          open: {
+                                            type: 'boolean',
+                                            description:
+                                              'Initial expanded state for this detail panel.',
+                                          },
+                                          type: {
+                                            const: 'text',
+                                            description:
+                                              'Text details preserve the existing preformatted rendering behavior.',
+                                          },
+                                          content: {
+                                            type: 'string',
+                                            description:
+                                              'Pre-formatted content shown inside the panel.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['content', 'id', 'label', 'type'],
+                                      },
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          id: {
+                                            type: 'string',
+                                            description: 'Stable identity for this detail panel.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description:
+                                              'Trigger label rendered on the Collapsible header.',
+                                          },
+                                          open: {
+                                            type: 'boolean',
+                                            description:
+                                              'Initial expanded state for this detail panel.',
+                                          },
+                                          type: {
+                                            const: 'code',
+                                            description:
+                                              'Code details render with Cinder CodeBlock.',
+                                          },
+                                          code: {
+                                            type: 'string',
+                                            description: 'Code content shown inside the panel.',
+                                          },
+                                          language: {
+                                            type: 'string',
+                                            description: 'Optional CodeBlock language.',
+                                          },
+                                          languageLabelVisible: {
+                                            type: 'boolean',
+                                            description:
+                                              'Whether the CodeBlock language label is visible.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['code', 'id', 'label', 'type'],
+                                      },
+                                    ],
+                                  },
+                                  description:
+                                    'Expandable detail panels (logs, payloads, errors) shown inline.',
+                                },
+                                link: {
+                                  type: 'object',
+                                  properties: {
+                                    href: {
+                                      type: 'string',
+                                      description: 'Destination URL for the step link.',
+                                    },
+                                    label: {
+                                      type: 'string',
+                                      description: 'Visible text for the step link.',
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                  required: ['href', 'label'],
+                                  description:
+                                    'Optional link to logs, traces, or a step detail route.',
+                                },
+                                rewound: {
+                                  type: 'boolean',
+                                  description:
+                                    'Marks a step that was speculatively executed and then unwound (rolled back).',
+                                },
+                                compensates: {
+                                  type: 'string',
+                                  description:
+                                    'Id of the forward step that this step compensates (reverses).',
+                                },
+                                children: {
+                                  type: 'array',
+                                  items: {
+                                    type: 'object',
+                                    properties: {
+                                      id: {
+                                        type: 'string',
+                                        description:
+                                          'Stable identity; used as the keyed list identity.',
+                                      },
+                                      label: {
+                                        type: 'string',
+                                        description: 'Display label for this step.',
+                                      },
+                                      status: {
+                                        enum: [
+                                          'pending',
+                                          'running',
+                                          'succeeded',
+                                          'failed',
+                                          'timed-out',
+                                          'cancelled',
+                                          'skipped',
+                                          'retrying',
+                                          'waiting_approval',
+                                          'waiting',
+                                          'recorded',
+                                        ],
+                                        description: 'Generic execution state.',
+                                      },
+                                      description: {
+                                        type: 'string',
+                                        description:
+                                          'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                      },
+                                      time: {
+                                        type: 'string',
+                                        description:
+                                          'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                      },
+                                      note: {
+                                        type: 'object',
+                                        properties: {
+                                          title: {
+                                            type: 'string',
+                                            description: 'Bold first line of the block.',
+                                          },
+                                          lines: {
+                                            type: 'array',
+                                            items: {
+                                              type: 'string',
+                                            },
+                                            description: 'The lines of the block, one per line.',
+                                          },
+                                          tone: {
+                                            enum: ['neutral', 'danger'],
+                                            description:
+                                              '`danger` tints the block for a failure. Default `neutral`.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description:
+                                              'A muted word before the first line, joined to it by a comma.',
+                                          },
+                                          streaming: {
+                                            type: 'boolean',
+                                            description:
+                                              'Whether the lines are still arriving; a text cursor follows the last line.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['lines'],
+                                        description: 'A block shown open under the description.',
+                                      },
+                                      startTime: {
+                                        type: 'string',
+                                        description:
+                                          'ISO datetime string for when this step started.',
+                                      },
+                                      endTime: {
+                                        type: 'string',
+                                        description:
+                                          'ISO datetime string for when this step ended.',
+                                      },
+                                      duration: {
+                                        type: 'string',
+                                        description:
+                                          'Human-readable duration string, e.g. "1m 23s".',
+                                      },
+                                      attemptCount: {
+                                        type: 'number',
+                                        description:
+                                          'Number of attempts made so far, including any retries.',
+                                      },
+                                      actionsCount: {
+                                        type: 'number',
+                                        description: 'Number of actions associated with this step.',
+                                      },
+                                      progress: {
+                                        type: 'number',
+                                        description:
+                                          'Optional determinate progress value between 0 and `progressMax`.',
+                                      },
+                                      progressMax: {
+                                        type: 'number',
+                                        description:
+                                          'Maximum value for the progress bar. Defaults to 100.',
+                                      },
+                                      details: {
+                                        type: 'array',
+                                        items: {
+                                          anyOf: [
+                                            {
+                                              type: 'object',
+                                              properties: {
+                                                id: {
+                                                  type: 'string',
+                                                  description:
+                                                    'Stable identity for this detail panel.',
+                                                },
+                                                label: {
+                                                  type: 'string',
+                                                  description:
+                                                    'Trigger label rendered on the Collapsible header.',
+                                                },
+                                                open: {
+                                                  type: 'boolean',
+                                                  description:
+                                                    'Initial expanded state for this detail panel.',
+                                                },
+                                                type: {
+                                                  const: 'text',
+                                                  description:
+                                                    'Text details preserve the existing preformatted rendering behavior.',
+                                                },
+                                                content: {
+                                                  type: 'string',
+                                                  description:
+                                                    'Pre-formatted content shown inside the panel.',
+                                                },
+                                              },
+                                              additionalProperties: false,
+                                              required: ['content', 'id', 'label', 'type'],
+                                            },
+                                            {
+                                              type: 'object',
+                                              properties: {
+                                                id: {
+                                                  type: 'string',
+                                                  description:
+                                                    'Stable identity for this detail panel.',
+                                                },
+                                                label: {
+                                                  type: 'string',
+                                                  description:
+                                                    'Trigger label rendered on the Collapsible header.',
+                                                },
+                                                open: {
+                                                  type: 'boolean',
+                                                  description:
+                                                    'Initial expanded state for this detail panel.',
+                                                },
+                                                type: {
+                                                  const: 'code',
+                                                  description:
+                                                    'Code details render with Cinder CodeBlock.',
+                                                },
+                                                code: {
+                                                  type: 'string',
+                                                  description:
+                                                    'Code content shown inside the panel.',
+                                                },
+                                                language: {
+                                                  type: 'string',
+                                                  description: 'Optional CodeBlock language.',
+                                                },
+                                                languageLabelVisible: {
+                                                  type: 'boolean',
+                                                  description:
+                                                    'Whether the CodeBlock language label is visible.',
+                                                },
+                                              },
+                                              additionalProperties: false,
+                                              required: ['code', 'id', 'label', 'type'],
+                                            },
+                                          ],
+                                        },
+                                        description:
+                                          'Expandable detail panels (logs, payloads, errors) shown inline.',
+                                      },
+                                      link: {
+                                        type: 'object',
+                                        properties: {
+                                          href: {
+                                            type: 'string',
+                                            description: 'Destination URL for the step link.',
+                                          },
+                                          label: {
+                                            type: 'string',
+                                            description: 'Visible text for the step link.',
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                        required: ['href', 'label'],
+                                        description:
+                                          'Optional link to logs, traces, or a step detail route.',
+                                      },
+                                      rewound: {
+                                        type: 'boolean',
+                                        description:
+                                          'Marks a step that was speculatively executed and then unwound (rolled back).',
+                                      },
+                                      compensates: {
+                                        type: 'string',
+                                        description:
+                                          'Id of the forward step that this step compensates (reverses).',
+                                      },
+                                      children: {
+                                        type: 'array',
+                                        items: {
+                                          type: 'object',
+                                          properties: {
+                                            id: {
+                                              type: 'string',
+                                              description:
+                                                'Stable identity; used as the keyed list identity.',
+                                            },
+                                            label: {
+                                              type: 'string',
+                                              description: 'Display label for this step.',
+                                            },
+                                            status: {
+                                              enum: [
+                                                'pending',
+                                                'running',
+                                                'succeeded',
+                                                'failed',
+                                                'timed-out',
+                                                'cancelled',
+                                                'skipped',
+                                                'retrying',
+                                                'waiting_approval',
+                                                'waiting',
+                                                'recorded',
+                                              ],
+                                              description: 'Generic execution state.',
+                                            },
+                                            description: {
+                                              type: 'string',
+                                              description:
+                                                'One muted line under the label saying what happened or what is waiting. Text between backticks renders as inline code.',
+                                            },
+                                            time: {
+                                              type: 'string',
+                                              description:
+                                                'Short time label at the end of the label line, formatted by the caller, such as "10:45:20 AM" or "+1.2 s".',
+                                            },
+                                            note: {
+                                              type: 'object',
+                                              properties: {
+                                                title: {
+                                                  type: 'string',
+                                                  description: 'Bold first line of the block.',
+                                                },
+                                                lines: {
+                                                  type: 'array',
+                                                  items: {
+                                                    type: 'string',
+                                                  },
+                                                  description:
+                                                    'The lines of the block, one per line.',
+                                                },
+                                                tone: {
+                                                  enum: ['neutral', 'danger'],
+                                                  description:
+                                                    '`danger` tints the block for a failure. Default `neutral`.',
+                                                },
+                                                label: {
+                                                  type: 'string',
+                                                  description:
+                                                    'A muted word before the first line, joined to it by a comma.',
+                                                },
+                                                streaming: {
+                                                  type: 'boolean',
+                                                  description:
+                                                    'Whether the lines are still arriving; a text cursor follows the last line.',
+                                                },
+                                              },
+                                              additionalProperties: false,
+                                              required: ['lines'],
+                                              description:
+                                                'A block shown open under the description.',
+                                            },
+                                            startTime: {
+                                              type: 'string',
+                                              description:
+                                                'ISO datetime string for when this step started.',
+                                            },
+                                            endTime: {
+                                              type: 'string',
+                                              description:
+                                                'ISO datetime string for when this step ended.',
+                                            },
+                                            duration: {
+                                              type: 'string',
+                                              description:
+                                                'Human-readable duration string, e.g. "1m 23s".',
+                                            },
+                                            attemptCount: {
+                                              type: 'number',
+                                              description:
+                                                'Number of attempts made so far, including any retries.',
+                                            },
+                                            actionsCount: {
+                                              type: 'number',
+                                              description:
+                                                'Number of actions associated with this step.',
+                                            },
+                                            progress: {
+                                              type: 'number',
+                                              description:
+                                                'Optional determinate progress value between 0 and `progressMax`.',
+                                            },
+                                            progressMax: {
+                                              type: 'number',
+                                              description:
+                                                'Maximum value for the progress bar. Defaults to 100.',
+                                            },
+                                            details: {
+                                              type: 'array',
+                                              items: {
+                                                anyOf: [
+                                                  {
+                                                    type: 'object',
+                                                    properties: {
+                                                      id: {
+                                                        type: 'string',
+                                                        description:
+                                                          'Stable identity for this detail panel.',
+                                                      },
+                                                      label: {
+                                                        type: 'string',
+                                                        description:
+                                                          'Trigger label rendered on the Collapsible header.',
+                                                      },
+                                                      open: {
+                                                        type: 'boolean',
+                                                        description:
+                                                          'Initial expanded state for this detail panel.',
+                                                      },
+                                                      type: {
+                                                        const: 'text',
+                                                        description:
+                                                          'Text details preserve the existing preformatted rendering behavior.',
+                                                      },
+                                                      content: {
+                                                        type: 'string',
+                                                        description:
+                                                          'Pre-formatted content shown inside the panel.',
+                                                      },
+                                                    },
+                                                    additionalProperties: false,
+                                                    required: ['content', 'id', 'label', 'type'],
+                                                  },
+                                                  {
+                                                    type: 'object',
+                                                    properties: {
+                                                      id: {
+                                                        type: 'string',
+                                                        description:
+                                                          'Stable identity for this detail panel.',
+                                                      },
+                                                      label: {
+                                                        type: 'string',
+                                                        description:
+                                                          'Trigger label rendered on the Collapsible header.',
+                                                      },
+                                                      open: {
+                                                        type: 'boolean',
+                                                        description:
+                                                          'Initial expanded state for this detail panel.',
+                                                      },
+                                                      type: {
+                                                        const: 'code',
+                                                        description:
+                                                          'Code details render with Cinder CodeBlock.',
+                                                      },
+                                                      code: {
+                                                        type: 'string',
+                                                        description:
+                                                          'Code content shown inside the panel.',
+                                                      },
+                                                      language: {
+                                                        type: 'string',
+                                                        description: 'Optional CodeBlock language.',
+                                                      },
+                                                      languageLabelVisible: {
+                                                        type: 'boolean',
+                                                        description:
+                                                          'Whether the CodeBlock language label is visible.',
+                                                      },
+                                                    },
+                                                    additionalProperties: false,
+                                                    required: ['code', 'id', 'label', 'type'],
+                                                  },
+                                                ],
+                                              },
+                                              description:
+                                                'Expandable detail panels (logs, payloads, errors) shown inline.',
+                                            },
+                                            link: {
+                                              type: 'object',
+                                              properties: {
+                                                href: {
+                                                  type: 'string',
+                                                  description: 'Destination URL for the step link.',
+                                                },
+                                                label: {
+                                                  type: 'string',
+                                                  description: 'Visible text for the step link.',
+                                                },
+                                              },
+                                              additionalProperties: false,
+                                              required: ['href', 'label'],
+                                              description:
+                                                'Optional link to logs, traces, or a step detail route.',
+                                            },
+                                            rewound: {
+                                              type: 'boolean',
+                                              description:
+                                                'Marks a step that was speculatively executed and then unwound (rolled back).',
+                                            },
+                                            compensates: {
+                                              type: 'string',
+                                              description:
+                                                'Id of the forward step that this step compensates (reverses).',
+                                            },
+                                            children: {
+                                              type: 'array',
+                                              items: {
+                                                type: 'object',
+                                                additionalProperties: true,
+                                              },
+                                              description:
+                                                'Descendants beyond the rendered depth cap; summarized as a depth-limit row.',
+                                            },
+                                          },
+                                          additionalProperties: false,
+                                          required: ['id', 'label', 'status'],
+                                        },
+                                        description:
+                                          'Nested child-workflow steps rendered at depth 3.',
+                                      },
+                                    },
+                                    additionalProperties: false,
+                                    required: ['id', 'label', 'status'],
+                                  },
+                                  description: 'Nested child-workflow steps rendered at depth 2.',
+                                },
+                              },
+                              additionalProperties: false,
+                              required: ['id', 'label', 'status'],
+                            },
+                            description: 'Schema-bounded nested child-workflow steps.',
+                          },
+                        },
+                        additionalProperties: false,
+                        required: ['id', 'label', 'status'],
+                      },
+                      description: 'Ordered steps that ran within this lane.',
+                    },
+                  },
+                  additionalProperties: false,
+                  required: ['id', 'steps'],
+                },
+                description: 'The parallel sub-lanes.',
+              },
+              collapseThreshold: {
+                type: 'integer',
+                minimum: 1,
+                description:
+                  'Collapse the group by default once the lane count reaches this threshold. Defaults to 3.',
+              },
+              collapsed: {
+                type: 'boolean',
+                description: 'Force the initial collapsed (`true`) or expanded (`false`) state.',
+              },
+            },
+            additionalProperties: false,
+            required: ['id', 'kind', 'label', 'lanes'],
+          },
+        ],
+      },
+      description:
+        'Ordered list of timeline entries to render — either steps or branch/coordination groups.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description: 'Optional per-step body content rendered after the step metadata.',
+      },
+      {
+        name: 'onStepSelect',
+        reason: 'function-or-snippet',
+        description:
+          "Fired when the user activates a rendered step row.\nReceives that row's rendered path key.",
+      },
+    ],
+  },
+  required: ['steps'],
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;
