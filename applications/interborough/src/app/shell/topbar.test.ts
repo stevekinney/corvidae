@@ -92,6 +92,33 @@ describe('the top bar', () => {
     }
   });
 
+  test('a drawer-navigation bar takes the translucent, rule-free ground; a bar beside a sidebar keeps its rule (COR-2445)', async () => {
+    for (const [matching, translucent] of [
+      [[DRAWER_QUERY], true],
+      [[EXPANDED_QUERY], false],
+    ] as const) {
+      viewport(matching);
+      landAt('/health');
+      const { container, unmount } = mount();
+      expect(
+        container.querySelector('header')?.classList.contains('cinder-translucent-surface'),
+      ).toBe(translucent);
+      unmount();
+    }
+    const css = await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.weft-shell-topbar:not\(\.cinder-translucent-surface\)\s*\{[^}]*border-bottom:[^}]*background:/,
+    );
+  });
+
+  test('the phone controls are 40px faces a step apart, with no 44px layout box (COR-2445)', async () => {
+    const css = await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text();
+    const phone = css.match(/@media \(max-width: 639\.98px\) \{[\s\S]*?\n\}\n/)?.[0] ?? '';
+    expect(phone).toMatch(/\.weft-shell-topbar \{\s*gap: var\(--cinder-space-1\);/);
+    expect(phone).toMatch(/\.weft-shell-topbar-control \{[^}]*block-size: 40px;/);
+    expect(phone).not.toMatch(/(block-size|min-inline-size|inline-size|min-width): 44px/);
+  });
+
   test('names the page in words in the breadcrumb, and Home at the root', () => {
     viewport([EXPANDED_QUERY]);
     for (const [path, name] of [

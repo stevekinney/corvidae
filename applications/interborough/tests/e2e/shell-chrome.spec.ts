@@ -333,10 +333,20 @@ test.describe('on a phone', () => {
     const controls = bar.locator('button:visible, a:visible');
     await expect(controls.first()).toHaveAccessibleName('Open navigation');
     await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Home');
+    // Each control is a 40px painted face and reaches 44px through the Button's hit area, which
+    // takes no layout, so the faces sit one step (4px) apart: a 44px pitch, and no two hit areas
+    // overlap (COR-2445).
+    const faces = [];
     for (const name of [/^Search everything/, /^Notifications/, 'Quick settings']) {
-      const control = bar.getByRole('button', { name });
-      expect(await widthOf(control)).toBeGreaterThanOrEqual(44);
-      expect(await heightOf(control)).toBeGreaterThanOrEqual(44);
+      const box = await boxOf(bar.getByRole('button', { name }));
+      expect(box.width).toBeGreaterThanOrEqual(40);
+      expect(box.height).toBeGreaterThanOrEqual(40);
+      faces.push(box);
+    }
+    for (let index = 1; index < faces.length; index += 1) {
+      const pitch = faces[index]!.x - faces[index - 1]!.x;
+      expect(pitch).toBeGreaterThanOrEqual(44);
+      expect(pitch).toBeLessThan(48);
     }
     await expect(bar.locator('.weft-shell-search-trigger__kbd')).toBeHidden();
     await expectNoSidewaysScroll(page, 'phone');
@@ -482,7 +492,7 @@ test.describe('at the limits', () => {
     await captureForDesignReview(page, { route: '/', state: 'drawer open at 320', source: SOURCE });
   });
 
-  test('at 200% text nothing clips: the bar grows, its controls stay 44px, the title keeps room (05i)', async ({
+  test('at 200% text nothing clips: the bar grows, its controls stay 40px faces, the title keeps room (05i)', async ({
     page,
   }) => {
     await open(page, '/runs', 375, 812, false);
@@ -492,8 +502,8 @@ test.describe('at the limits', () => {
     for (const name of [/^Search everything/, /^Notifications/, 'Quick settings']) {
       const control = bar.getByRole('button', { name });
       const box = await boxOf(control);
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(40);
+      expect(box.height).toBeGreaterThanOrEqual(40);
       boxes.push(box);
     }
     const barBox = await boxOf(bar);
