@@ -75,7 +75,7 @@
     > .cinder-skeleton-field-control {
     inline-size: 100%;
     block-size: var(--cinder-control-height-md);
-    margin-block-end: calc(var(--cinder-form-section-gap, 1rem) - var(--cinder-space-1-5));
+    margin-block-end: calc(var(--cinder-space-4) - var(--cinder-space-1-5));
   }
 
   .cinder-skeleton-group[data-cinder-variant='form']

@@ -22,6 +22,7 @@ const formSection = await sheet('../form-section/form-section.css');
 const input = await sheet('../input/input.css');
 const card = await sheet('../card/card.css');
 const feed = await sheet('../feed/feed.css');
+const tokens = await sheet('../../styles/tokens-base.css');
 
 /** The declarations of every rule that names `selector` on its own, later rules over earlier. */
 function rule(css: string, selector: string): Map<string, string> {
@@ -197,7 +198,9 @@ describe('the form placeholder is as tall as the fields it stands for', () => {
       rule(skeleton, `${lines} > .cinder-skeleton-field-control`)
         .get('margin-block-end')
         ?.replace(/\s+/g, ' '),
-    ).toBe('calc(var(--cinder-form-section-gap, 1rem) - var(--cinder-space-1-5))');
+    ).toBe('calc(var(--cinder-space-4) - var(--cinder-space-1-5))');
+    // The form's default gap is 1rem, which is --cinder-space-4.
+    expect(tokens).toMatch(/--cinder-space-4: 1rem;/);
     expect(
       rule(skeleton, `${lines} > .cinder-skeleton-field-control:last-child`).get(
         'margin-block-end',
