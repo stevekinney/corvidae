@@ -32,6 +32,7 @@ const manifest: ComponentManifest = {
 };
 const plan = {
   id: 'tabs',
+  directory: '/tabs/examples',
   examples: [
     { id: 'basic', title: 'Basic "tabs"' },
     { id: 'vertical', title: 'Vertical' },

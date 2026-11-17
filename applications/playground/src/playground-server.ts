@@ -54,6 +54,7 @@ import { selectOverviewExample } from './component-page-overview-stage.ts';
 import {
   documentationComponentStylesheetUrl,
   documentationExampleStylesheetUrls,
+  exampleFilePathIn,
 } from './component-sources.ts';
 import {
   COMPOSE_ONLY_COMPONENTS,
@@ -62,6 +63,7 @@ import {
   discoverComponents,
   discoverExamples,
   discoverSidebarComponents,
+  exampleFilePath,
   type DiscoveredComponent,
 } from './discover.ts';
 import { readEnvironmentConfiguration } from './environment-configuration.ts';
@@ -373,9 +375,9 @@ async function renderComponentPage(
     componentDefinition === undefined
       ? null
       : documentationComponentStylesheetUrl(componentDefinition.source, componentName);
-  // Every example lives in the shared playground tree, including extracted
-  // Chat and Editor pages, so its Cinder imports need opt-in sidecars too.
-  // The documented package's own stylesheet remains additive.
+  // An example can import Cinder components from any package, including the
+  // extracted Chat and Editor pages, so its Cinder imports need opt-in sidecars
+  // too. The documented package's own stylesheet remains additive.
   const componentStylesheetUrls = [
     ...(componentDefinition === undefined
       ? []
@@ -385,16 +387,10 @@ async function renderComponentPage(
   const componentStylesheetLinks = componentStylesheetUrls
     .map((stylesheetUrl) => `\n    <link rel="stylesheet" href="${escapeHtml(stylesheetUrl)}" />`)
     .join('');
+  // A component no package discovers has no scenarios, so this maps nothing.
   const examples = await Promise.all(
     scenarios.map(async (scenario) => {
-      const filePath = join(
-        PLAYGROUND_ROOT,
-        'src',
-        'examples',
-        componentName,
-        `${scenario}.example.svelte`,
-      );
-      const meta = await readExampleMetadata(filePath);
+      const meta = await readExampleMetadata(await exampleFilePath(componentName, scenario));
       return { scenario, ...meta };
     }),
   );
@@ -845,14 +841,13 @@ async function handlePageRoute(url: URL, componentName: string): Promise<Respons
 
 async function handleExampleSrcRoute(componentName: string, scenario: string): Promise<Response> {
   if (!isSafeSegment(componentName) || !isSafeSegment(scenario)) return notFound();
-  const examplePath = join(
-    PLAYGROUND_ROOT,
-    'src',
-    'examples',
-    componentName,
-    `${scenario}.example.svelte`,
+  const componentDefinition = await discoverComponentDefinition(componentName);
+  if (componentDefinition === undefined) {
+    return notFound(`Example "${componentName}/${scenario}" not found`);
+  }
+  const exampleFile = Bun.file(
+    exampleFilePathIn(componentDefinition.source, componentName, scenario),
   );
-  const exampleFile = Bun.file(examplePath);
   if (!(await exampleFile.exists()))
     return notFound(`Example "${componentName}/${scenario}" not found`);
   const source = await exampleFile.text();

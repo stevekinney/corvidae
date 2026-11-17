@@ -24,12 +24,11 @@ afterEach(() => {
 });
 
 describe('planPreview', () => {
-  test('reads the examples metadata from the component’s own workspace folder', () => {
+  test('reads the examples and their metadata from the component’s own workspace folder', () => {
     directory = createTemporaryDirectory('cinder-design-system-previews');
-    const examples = join(directory, 'examples/markdown-editor');
     const components = join(directory, 'editor/src/lib/components');
+    const examples = join(components, 'markdown-editor/examples');
     mkdirSync(examples, { recursive: true });
-    mkdirSync(join(components, 'markdown-editor'), { recursive: true });
     writeFileSync(join(examples, 'basic.example.svelte'), '');
     writeFileSync(join(examples, 'empty.example.svelte'), '');
     writeFileSync(
@@ -41,14 +40,15 @@ describe('planPreview', () => {
         ],
       }),
     );
-    expect(planPreview('markdown-editor', join(directory, 'examples'), components)).toEqual({
+    expect(planPreview('markdown-editor', components)).toEqual({
       id: 'markdown-editor',
+      directory: examples,
       examples: [
         { id: 'empty', title: 'Empty markdown editor' },
         { id: 'basic', title: 'Basic markdown editor' },
       ],
     });
-    expect(planPreview('diff-viewer', join(directory, 'examples'), components)).toBeUndefined();
+    expect(planPreview('diff-viewer', components)).toBeUndefined();
   });
 });
 
@@ -104,11 +104,12 @@ describe('escapePreviewScript', () => {
 
 describe('previewEntrySource', () => {
   test('imports each example and mounts it under its title', () => {
-    const source = previewEntrySource(
-      { id: 'button', examples: [{ id: 'basic', title: 'Say "hi"' }] },
-      '/examples',
-    );
-    expect(source).toContain('import E0 from "/examples/button/basic.example.svelte";');
+    const source = previewEntrySource({
+      id: 'button',
+      directory: '/button/examples',
+      examples: [{ id: 'basic', title: 'Say "hi"' }],
+    });
+    expect(source).toContain('import E0 from "/button/examples/basic.example.svelte";');
     expect(source).toContain('{ title: "Say \\"hi\\"", component: E0 }');
     expect(source).toContain("document.getElementById('cinder-preview')");
   });

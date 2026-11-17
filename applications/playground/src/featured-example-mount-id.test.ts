@@ -43,8 +43,9 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { join } from 'node:path';
+import { basename } from 'node:path';
 
+import { exampleFilePath } from './discover.ts';
 import {
   declaresMountIdPrefixProp,
   declaresPropsIdFallback,
@@ -52,11 +53,11 @@ import {
   FEATURED_EXAMPLES,
 } from './featured-examples.ts';
 
-const EXAMPLES_DIR = join(import.meta.dir);
-
-/** Read a featured example file relative to this test's directory. */
+/** Read a featured example by its `<component>/<file>` key, from that component's `examples/`. */
 async function readExample(relativePath: string): Promise<string> {
-  return Bun.file(join(EXAMPLES_DIR, relativePath)).text();
+  const [component = ''] = relativePath.split('/');
+  const scenario = basename(relativePath, '.example.svelte');
+  return Bun.file(await exampleFilePath(component, scenario)).text();
 }
 
 describe('featured example mounts — no duplicate element IDs (#399)', () => {

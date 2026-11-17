@@ -221,10 +221,11 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
  * analyze.ts, etc.) into a {@link ChangeScope}, or `null` when the change
  * should be ignored entirely.
  *
- * Excludes example files (handled by a separate, more precise watcher),
- * `.tmp-`-prefixed and dotfile paths (editor swap/lock files), `.test.ts`
- * files, and `*-mock.svelte`/`*-fixture.svelte` files (exist only to support
- * their sibling `.test.ts`, never reached by a real page render).
+ * Excludes `.tmp-`-prefixed and dotfile paths (editor swap/lock files),
+ * `.test.ts` files, and `*-mock.svelte`/`*-fixture.svelte` files (exist only
+ * to support their sibling `.test.ts`, never reached by a real page render).
+ * Examples live in their components' packages, which
+ * {@link classifyComponentSourceChange} classifies.
  *
  * Shell-source changes (paths under `shell-app/` or to `render-shell.ts`)
  * use the 'shell' scope so the SSE event is `shell-reload` instead of
@@ -238,10 +239,9 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
  * rebuild.
  */
 export function classifyPlaygroundSrcChange(rawFilename: string): ChangeScope | null {
-  // Normalized before any prefix check: a Windows watcher reports `examples\button\x.svelte`.
+  // Normalized before any prefix check: a Windows watcher reports `shell-app\shell.svelte`.
   const normalizedFilename = rawFilename.replaceAll('\\', '/');
   if (
-    normalizedFilename.startsWith('examples/') ||
     normalizedFilename.startsWith('.tmp-') ||
     normalizedFilename.endsWith('.test.ts') ||
     normalizedFilename.startsWith('.') ||
@@ -252,6 +252,34 @@ export function classifyPlaygroundSrcChange(rawFilename: string): ChangeScope | 
   const isShellChange =
     normalizedFilename.startsWith('shell-app/') || normalizedFilename === 'render-shell.ts';
   return isShellChange ? { kind: 'shell' } : { kind: 'components' };
+}
+
+/**
+ * Classify a raw `fs.watch` filename reported for a component package's `src`
+ * tree into a {@link ChangeScope}, or `null` when the change should be ignored.
+ *
+ * Each component keeps its examples in `examples/` beside its own source
+ * (`components/button/examples/basic.example.svelte` under Cinder's `src`). An
+ * example file belongs to exactly one component, the directory that holds its
+ * `examples/`, so its change invalidates only that component's page. The tests
+ * and dotfiles in an `examples/` directory reach no page and are ignored.
+ * Everything else in the tree uses the 'components' scope (see
+ * {@link ChangeScope}). So does an example a watcher reports as a bare
+ * basename, which recursive `fs.watch` does on some platforms (observed on
+ * Linux with certain Bun versions): its owner is unknown, and naming the file
+ * as a component would invalidate nothing real.
+ */
+export function classifyComponentSourceChange(rawFilename: string): ChangeScope | null {
+  // Normalized first: a Windows watcher reports `components\button\examples\x.example.svelte`.
+  const segments = rawFilename.replaceAll('\\', '/').split('/');
+  const fileName = segments.at(-1) ?? '';
+  if (segments.at(-2) !== 'examples') return { kind: 'components' };
+  if (fileName.endsWith('.test.ts') || fileName.startsWith('.')) return null;
+  const componentName = segments.at(-3);
+  if (fileName.endsWith('.example.svelte') && componentName !== undefined && componentName !== '') {
+    return { kind: 'examples', names: new Set([componentName]) };
+  }
+  return { kind: 'components' };
 }
 
 /**
@@ -315,15 +343,21 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
   try {
     // Components tree: source or shared-utility changes can affect any page
     // bundle (see the `ChangeScope` doc comment for the verified
-    // cross-component-import / shared-utility fan-out), so this always uses
-    // the 'components' scope — which ALSO marks the shell stale (shell-app
-    // UI imports the full component barrel; see `ChangeScope`'s doc comment).
+    // cross-component-import / shared-utility fan-out), so they use the
+    // 'components' scope — which ALSO marks the shell stale (shell-app UI
+    // imports the full component barrel; see `ChangeScope`'s doc comment).
+    // An edit to `<component>/examples/<scenario>.example.svelte` can only ever
+    // affect that one component's page bundle, so it uses the precise
+    // 'examples' scope instead (see `classifyComponentSourceChange`).
     for (const componentSource of COMPONENT_SOURCES) {
       const srcPath = join(componentSource.packageRoot, 'src');
       created.push(
-        // The tree alone decides the scope, so a missing filename changes nothing.
-        watchPath(srcPath, { recursive: true }, () => {
-          scheduleRebuild({ kind: 'components' });
+        watchPath(srcPath, { recursive: true }, (_event, filename) => {
+          // Without a filename the owning component is unknown, so widen to the components scope.
+          const scope: ChangeScope | null = filename
+            ? classifyComponentSourceChange(filename)
+            : { kind: 'components' };
+          if (scope) scheduleRebuild(scope);
         }),
       );
     }
@@ -357,45 +391,6 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
           scheduleRebuild({ kind: 'components' });
         },
       ),
-    );
-
-    // Examples directory: an edit to `<name>/<scenario>.example.svelte` can
-    // only ever affect that one component's page bundle, so the scope is
-    // precisely the touched component name (the first path segment). Other
-    // files can also live directly under `examples/` (e.g.
-    // `featured-examples.ts`, a shared test-data registry) — those aren't
-    // scoped to one component, so they fall back to 'components' scope
-    // rather than being silently treated as a bogus per-component name.
-    const examplesPath = join(PLAYGROUND_ROOT, 'src', 'examples');
-    created.push(
-      watchPath(examplesPath, { recursive: true }, (_event, filename) => {
-        // Without a filename the owning component is unknown, so widen to the components scope
-        // rather than dropping the change (the same fallback a bare basename gets below).
-        if (!filename) {
-          scheduleRebuild({ kind: 'components' });
-          return;
-        }
-        const normalizedFilename = filename.replaceAll('\\', '/');
-        if (normalizedFilename.endsWith('.test.ts') || normalizedFilename.startsWith('.')) return;
-        if (normalizedFilename.endsWith('.example.svelte')) {
-          const segments = normalizedFilename.split('/');
-          // Recursive `fs.watch` can report a nested edit as a bare basename
-          // with no directory segment on some platforms (observed on Linux
-          // with certain Bun versions) — in that case we can't tell which
-          // component owns it, so fall back to 'components' scope rather
-          // than treating the whole filename as a bogus per-component name
-          // (which would invalidate nothing real and leave the actual
-          // component's stale cache entry untouched).
-          if (segments.length < 2) {
-            scheduleRebuild({ kind: 'components' });
-            return;
-          }
-          const name = segments[0];
-          if (name) scheduleRebuild({ kind: 'examples', names: new Set([name]) });
-          return;
-        }
-        scheduleRebuild({ kind: 'components' });
-      }),
     );
 
     const playgroundSrcPath = join(PLAYGROUND_ROOT, 'src');

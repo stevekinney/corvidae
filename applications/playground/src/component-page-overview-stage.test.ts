@@ -6,11 +6,9 @@ import {
   selectOverviewExample,
   type OverviewExampleDescriptor,
 } from './component-page-overview-stage.ts';
-import { discoverComponents, discoverExamples } from './discover.ts';
+import { discoverComponents, discoverExamples, exampleFilePath } from './discover.ts';
 import { readExampleMetadata } from './example-metadata.ts';
 import { stripExampleHarness } from './strip-example-harness.ts';
-
-const EXAMPLES_ROOT = join(import.meta.dir, 'examples');
 
 describe('selectOverviewExample', () => {
   const plain = { scenario: 'a', title: 'A' };
@@ -59,9 +57,7 @@ describe('every generated example catalogue entry', () => {
       const examples: OverviewExampleDescriptor[] = await Promise.all(
         scenarios.map(async (scenario) => ({
           scenario,
-          ...(await readExampleMetadata(
-            join(EXAMPLES_ROOT, componentName, `${scenario}.example.svelte`),
-          )),
+          ...(await readExampleMetadata(await exampleFilePath(componentName, scenario))),
         })),
       );
       const selected = selectOverviewExample(examples, false);
@@ -114,15 +110,13 @@ describe('Overview stage matches the README usage it sits beside', () => {
       const examples: OverviewExampleDescriptor[] = await Promise.all(
         scenarios.map(async (scenario) => ({
           scenario,
-          ...(await readExampleMetadata(
-            join(EXAMPLES_ROOT, componentName, `${scenario}.example.svelte`),
-          )),
+          ...(await readExampleMetadata(await exampleFilePath(componentName, scenario))),
         })),
       );
       const selected = selectOverviewExample(examples, false);
       expect(selected).toBeDefined();
       const exampleSource = await Bun.file(
-        join(EXAMPLES_ROOT, componentName, `${selected?.scenario}.example.svelte`),
+        await exampleFilePath(componentName, selected?.scenario ?? ''),
       ).text();
       const displayed = stripExampleHarness(
         exampleSource,

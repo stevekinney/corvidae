@@ -16,18 +16,32 @@ export function exampleComponent(module: ExampleModule): Component<{ mountIdPref
 
 export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promise<ExampleModule>>> =
   {
-    'button/variants': () => import('../examples/button/variants.example.svelte'),
-    'link/basic': () => import('../examples/link/basic.example.svelte'),
-    'input/basic': () => import('../examples/input/basic.example.svelte'),
-    'input/with-error': () => import('../examples/input/with-error.example.svelte'),
-    'select/basic': () => import('../examples/select/basic.example.svelte'),
-    'select/with-error': () => import('../examples/select/with-error.example.svelte'),
-    'checkbox/basic': () => import('../examples/checkbox/basic.example.svelte'),
-    'checkbox/with-error': () => import('../examples/checkbox/with-error.example.svelte'),
-    'tabs/basic': () => import('../examples/tabs/basic.example.svelte'),
-    'callout/variants': () => import('../examples/callout/variants.example.svelte'),
-    'table/basic': () => import('../examples/table/basic.example.svelte'),
-    'line-chart/multi-series': () => import('../examples/line-chart/multi-series.example.svelte'),
-    'modal/with-form': () => import('../examples/modal/with-form.example.svelte'),
-    'popover/basic': () => import('../examples/popover/basic.example.svelte'),
+    'button/variants': () =>
+      import('../../../../components/cinder/src/components/button/examples/variants.example.svelte'),
+    'link/basic': () =>
+      import('../../../../components/cinder/src/components/link/examples/basic.example.svelte'),
+    'input/basic': () =>
+      import('../../../../components/cinder/src/components/input/examples/basic.example.svelte'),
+    'input/with-error': () =>
+      import('../../../../components/cinder/src/components/input/examples/with-error.example.svelte'),
+    'select/basic': () =>
+      import('../../../../components/cinder/src/components/select/examples/basic.example.svelte'),
+    'select/with-error': () =>
+      import('../../../../components/cinder/src/components/select/examples/with-error.example.svelte'),
+    'checkbox/basic': () =>
+      import('../../../../components/cinder/src/components/checkbox/examples/basic.example.svelte'),
+    'checkbox/with-error': () =>
+      import('../../../../components/cinder/src/components/checkbox/examples/with-error.example.svelte'),
+    'tabs/basic': () =>
+      import('../../../../components/cinder/src/components/tabs/examples/basic.example.svelte'),
+    'callout/variants': () =>
+      import('../../../../components/cinder/src/components/callout/examples/variants.example.svelte'),
+    'table/basic': () =>
+      import('../../../../components/cinder/src/components/table/examples/basic.example.svelte'),
+    'line-chart/multi-series': () =>
+      import('../../../../components/cinder/src/components/line-chart/examples/multi-series.example.svelte'),
+    'modal/with-form': () =>
+      import('../../../../components/cinder/src/components/modal/examples/with-form.example.svelte'),
+    'popover/basic': () =>
+      import('../../../../components/cinder/src/components/popover/examples/basic.example.svelte'),
   };

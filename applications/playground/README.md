@@ -32,7 +32,7 @@ bun applications/playground/scripts/run-linux-lifecycle.ts
 
 ## What lives here
 
-- `src/` holds the server, the documentation page, the shell app, and every example under `src/examples/`.
+- `src/` holds the server, the documentation page, and the shell app. Examples live with the components they show, in each component's own `examples/` directory (`components/cinder/src/components/button/examples/primary.example.svelte`), so an example edit reaches only its package and the packages that depend on it. Discovery finds them through the component sources in `src/component-sources.ts`, and `scripts/move-examples-into-packages.ts` is the re-runnable script that moved them out of the playground.
 - `scripts/` holds the static exporter, the test runner, and the example audits.
 - `src/landing.md` is a copy of the public Cinder repository's README, which the home page renders. It is owner-maintained content and can drift from the README in `stevekinney/cinder`; refresh it from there when the public README changes.
 

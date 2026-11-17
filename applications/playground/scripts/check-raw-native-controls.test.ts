@@ -2,8 +2,8 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
+import { discoverExampleFiles } from '../src/discover.ts';
 import {
   ALLOWLIST,
   allowlistKey,
@@ -21,10 +21,8 @@ import {
   type ScanResult,
 } from './check-raw-native-controls.ts';
 
-// Resolve via fileURLToPath (not `new URL(...).pathname`) so the path is a valid
-// filesystem path on every platform — `.pathname` yields a broken `/C:/...` on
-// Windows. Mirrors the script's own `fileURLToPath(import.meta.url)` usage.
-const examplesDirectory = fileURLToPath(new URL('../src/examples', import.meta.url));
+// Every real example, each in its component's `examples/` directory.
+const realExamples = await discoverExampleFiles();
 
 // ── stripCommentsAndStrings ───────────────────────────────────────────────────
 
@@ -502,10 +500,10 @@ describe('enforcement — real examples have no un-allowlisted raw controls', ()
   // per-test would duplicate that work.
   let resultPromise: Promise<ScanResult>;
   beforeAll(() => {
-    resultPromise = scan(examplesDirectory);
+    resultPromise = scan(realExamples);
   });
 
-  test('scan of src/examples reports zero flagged controls', async () => {
+  test('scan of every example reports zero flagged controls', async () => {
     const result = await resultPromise;
     expect(
       result.flagged.map((occurrence) => `${occurrence.relativePath}:${occurrence.lineNumber}`),
@@ -598,7 +596,7 @@ describe('renderReport — human-readable output', () => {
 describe('scan — live inventory against the real examples directory', () => {
   // scan() walks the real examples tree; give it generous headroom on slow CI.
   test('returns a ScanResult with allowlisted, flagged, and staleAllowlistEntries arrays', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
 
     expect(Array.isArray(result.allowlisted)).toBe(true);
     expect(Array.isArray(result.flagged)).toBe(true);
@@ -606,13 +604,13 @@ describe('scan — live inventory against the real examples directory', () => {
   });
 
   test('detects at least one raw control across all example files', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
     const total = result.allowlisted.length + result.flagged.length;
     expect(total).toBeGreaterThan(0);
   });
 
   test('does NOT flag the navigation-bar menuToggle button (it is allowlisted)', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
 
     const navigationBarFlagged = result.flagged.filter(
       (occurrence) => occurrence.relativePath === 'navigation-bar/basic.example.svelte',
@@ -626,7 +624,7 @@ describe('scan — live inventory against the real examples directory', () => {
   });
 
   test('does NOT flag the popover transformed-ancestor trigger button (it is allowlisted)', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
 
     const popoverFlagged = result.flagged.filter(
       (occurrence) => occurrence.relativePath === 'popover/transformed-ancestor.example.svelte',
@@ -635,7 +633,7 @@ describe('scan — live inventory against the real examples directory', () => {
   });
 
   test('every returned occurrence has a positive lineNumber and a non-empty relativePath', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
 
     for (const occurrence of [...result.allowlisted, ...result.flagged]) {
       expect(occurrence.lineNumber).toBeGreaterThan(0);
@@ -645,14 +643,14 @@ describe('scan — live inventory against the real examples directory', () => {
   });
 
   test('respects a custom empty allowlist (nothing is allowlisted)', async () => {
-    const result = await scan(examplesDirectory, []);
+    const result = await scan(realExamples, []);
     // With an empty allowlist all occurrences land in flagged.
     expect(result.allowlisted).toHaveLength(0);
     expect(result.flagged.length).toBeGreaterThan(0);
   });
 
   test('results are sorted by relativePath then lineNumber', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
     // Check each array is sorted independently.
     for (const list of [result.allowlisted, result.flagged]) {
       for (let index = 1; index < list.length; index++) {
@@ -669,7 +667,7 @@ describe('scan — live inventory against the real examples directory', () => {
   });
 
   test('does NOT flag raw controls inside HTML/Svelte comments in real files', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
     // command-palette/search-recent-actions.example.svelte has several <!-- ... -->
     // comment blocks in the template; those must not be counted as raw controls.
     // We verify this indirectly: the file has exactly 1 <button> (the trigger),
@@ -681,7 +679,7 @@ describe('scan — live inventory against the real examples directory', () => {
   });
 
   test('the canonical ALLOWLIST has no stale entries against the real files', async () => {
-    const result = await scan(examplesDirectory);
+    const result = await scan(realExamples);
     // If this fails, the file was refactored and the ALLOWLIST entry needs updating.
     expect(result.staleAllowlistEntries).toHaveLength(0);
   });
@@ -694,7 +692,7 @@ describe('scan — live inventory against the real examples directory', () => {
       occurrenceIndex: 99,
       reason: 'deliberate stale entry for test',
     };
-    const result = await scan(examplesDirectory, [staleEntry]);
+    const result = await scan(realExamples, [staleEntry]);
     expect(result.staleAllowlistEntries).toHaveLength(1);
     expect(result.staleAllowlistEntries[0]?.occurrenceIndex).toBe(99);
   });
@@ -711,7 +709,7 @@ describe('scan — live inventory against the real examples directory', () => {
       occurrenceIndex: 0,
       reason: 'wrong tag entry for test',
     };
-    const result = await scan(examplesDirectory, [wrongTagEntry]);
+    const result = await scan(realExamples, [wrongTagEntry]);
     // The <button> in nav-bar is NOT allowlisted (we gave the wrong tag), so it is flagged.
     const navigationBarFlagged = result.flagged.filter(
       (occurrence) =>

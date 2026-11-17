@@ -4,8 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
 
-const PLAYGROUND_ROOT = dirname(import.meta.dirname);
-
 /**
  * Resolve a workspace package's root directory from its package name. Each
  * component package's `exports` map is the single key `"."` pointing at
@@ -112,6 +110,25 @@ export const CINDER_COMPONENT_SOURCE: ComponentSource = {
   // Cinder's full component cascade is already loaded from /styles/all.css.
   componentStylesheetUrl: () => null,
 };
+
+/** The directory of one of `source`'s components: the one holding `<name>.svelte`. */
+export function componentDirectory(source: ComponentSource, componentName: string): string {
+  return join(source.componentsRoot, componentName);
+}
+
+/** Where a component keeps its `*.example.svelte` files: `examples/` in its own directory. */
+export function examplesDirectoryIn(source: ComponentSource, componentName: string): string {
+  return join(componentDirectory(source, componentName), 'examples');
+}
+
+/** The file of one example scenario of one of `source`'s components. */
+export function exampleFilePathIn(
+  source: ComponentSource,
+  componentName: string,
+  scenario: string,
+): string {
+  return join(examplesDirectoryIn(source, componentName), `${scenario}.example.svelte`);
+}
 
 const DOCUMENTATION_CINDER_COMPONENT_SET = new Set<string>(DOCUMENTATION_CINDER_COMPONENTS);
 const CINDER_ROOT_BARREL_IMPORT = /import\s*\{([^}]+)\}\s*from\s*['"]@lostgradient\/cinder['"]/gu;
@@ -385,14 +402,10 @@ export function documentationExampleStylesheetUrls(
   const cinderDependencyNames = new Set<string>();
   const packageDependencyNames = new Set<string>([componentName]);
   for (const scenario of scenarios) {
-    const examplePath = join(
-      PLAYGROUND_ROOT,
-      'src',
-      'examples',
-      componentName,
-      `${scenario}.example.svelte`,
+    const source = readFileSync(
+      exampleFilePathIn(componentSource, componentName, scenario),
+      'utf8',
     );
-    const source = readFileSync(examplePath, 'utf8');
     cinderComponentDependenciesFromSource(source, cinderDependencyNames);
     extractedPackageComponentDependenciesFromSource(
       componentSource,

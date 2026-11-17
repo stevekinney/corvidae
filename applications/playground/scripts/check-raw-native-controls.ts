@@ -6,8 +6,9 @@
  * <input>, <select>, <textarea>). Raw controls in examples imply a usability
  * inconsistency visible to every developer who views the docs.
  *
- * This script scans every `applications/playground/src/examples/**\/*.example.svelte`
- * file for raw interactive native control tags and reports them, partitioned into:
+ * This script scans every `*.example.svelte` file, in the `examples/` directory of
+ * each component the playground discovers, for raw interactive native control
+ * tags and reports them, partitioned into:
  *   - allowlisted: genuinely intentional raw controls (see ALLOWLIST below, or
  *     inline `<!-- examples-audit-allow: <reason> -->` markers)
  *   - flagged: raw controls that should be swapped for a Cinder primitive
@@ -46,18 +47,18 @@
  */
 
 import { Glob } from 'bun';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const playgroundRoot = resolve(scriptDirectory, '..');
-const examplesRoot = join(playgroundRoot, 'src', 'examples');
+import { discoverExampleFiles } from '../src/discover.ts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** One example to scan: its `<component>/<file>` key and where it is on disk. */
+export type ExampleToScan = { relativePath: string; filePath: string };
+
 /** A detected raw native-control occurrence. */
 export type RawControlOccurrence = {
-  /** Relative path from the examples root (e.g. `button/basic.example.svelte`). */
+  /** The example's `<component>/<file>` key (e.g. `button/basic.example.svelte`). */
   relativePath: string;
   /** 1-based line number where the tag opens. */
   lineNumber: number;
@@ -601,8 +602,9 @@ function sortOccurrences(items: RawControlOccurrence[]): RawControlOccurrence[] 
 }
 
 /**
- * Scan all `*.example.svelte` files under `examplesDirectory` for raw native
- * controls, partitioning them into allowlisted and flagged occurrences.
+ * Scan `examples` for raw native controls, partitioning them into allowlisted
+ * and flagged occurrences. `examples` is a list of example files, or a fixture
+ * directory laid out as `<component>/<file>.example.svelte`.
  *
  * Exemption hierarchy (checked in order):
  *  1. Inline allow-marker on the control's line, or on the line immediately above.
@@ -619,7 +621,7 @@ function sortOccurrences(items: RawControlOccurrence[]): RawControlOccurrence[] 
  * Exported so unit tests can call it with a fixture directory.
  */
 export async function scan(
-  examplesDirectory: string,
+  examples: string | readonly ExampleToScan[],
   allowlist: AllowlistEntry[] = ALLOWLIST,
 ): Promise<ScanResult> {
   const allowlistIndex = buildAllowlistIndex(allowlist);
@@ -627,10 +629,15 @@ export async function scan(
   const allowlisted: RawControlOccurrence[] = [];
   const flagged: RawControlOccurrence[] = [];
 
-  const glob = new Glob('**/*.example.svelte');
-  for await (const relativePath of glob.scan({ cwd: examplesDirectory })) {
+  const files: readonly ExampleToScan[] =
+    typeof examples === 'string'
+      ? Array.from(new Glob('**/*.example.svelte').scanSync({ cwd: examples }), (path) => ({
+          relativePath: path,
+          filePath: join(examples, path),
+        }))
+      : examples;
+  for (const { relativePath, filePath } of files) {
     const posixPath = toPosixPath(relativePath);
-    const filePath = join(examplesDirectory, relativePath);
     const rawSource = await Bun.file(filePath).text();
     const strippedSource = stripCommentsAndStrings(rawSource);
 
@@ -763,7 +770,7 @@ export function renderReport(result: ScanResult): string {
 
 async function main(): Promise<void> {
   const strict = process.argv.includes('--strict');
-  const result = await scan(examplesRoot);
+  const result = await scan(await discoverExampleFiles());
 
   process.stdout.write(renderReport(result));
 

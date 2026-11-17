@@ -13,14 +13,12 @@
  * Exit 0 on success, non-zero with a descriptive error on failure.
  */
 
-import { join } from 'node:path';
-
 import {
   isComponentDocumentationPayload,
   validateComponentDocumentationPayload,
   variablesList,
 } from '../src/component-documentation-reference.ts';
-import { discoverComponents } from '../src/discover.ts';
+import { discoverComponents, discoverExampleFiles, type ExampleFile } from '../src/discover.ts';
 // Shared with the runtime extractor in example-metadata.ts. That module has no
 // I/O and no import.meta.main guard, so importing it does not couple this
 // build-time gate to the runtime server's startup behavior — the concern a
@@ -76,18 +74,17 @@ export function validateRawArtifactSerialization(artifact: unknown): string | nu
 }
 
 /**
- * Scan every `.example.svelte` file and fail when any is missing a `title`
- * export or uses the `'Untitled'` sentinel. Reports the count of checked files.
+ * Scan every `.example.svelte` file, in the `examples/` directory of each
+ * discovered component, and fail when any is missing a `title` export or uses
+ * the `'Untitled'` sentinel. Reports the count of checked files.
  */
-async function validateExampleTitles(examplesRoot: string): Promise<void> {
+async function validateExampleTitles(examples: readonly ExampleFile[]): Promise<void> {
   process.stdout.write('[validate:playground] checking example titles…\n');
 
   const offenders: string[] = [];
   let checked = 0;
-  const glob = new Bun.Glob('**/*.example.svelte');
-  for await (const relativePath of glob.scan({ cwd: examplesRoot })) {
+  for (const { relativePath, filePath } of examples) {
     checked += 1;
-    const filePath = join(examplesRoot, relativePath);
     const source = await Bun.file(filePath).text();
     const verdict = classifyExampleTitle(source);
     if (verdict === 'missing') {
@@ -355,8 +352,8 @@ if (import.meta.main) {
       );
     }
 
-    // import.meta.dirname is applications/playground/scripts/; examples live under src/examples/.
-    await validateExampleTitles(join(import.meta.dirname, '..', 'src', 'examples'));
+    // Each example lives in its component's directory, under `examples/`.
+    await validateExampleTitles(await discoverExampleFiles());
     await validateComponentRoutes(baseUrl, components);
     await validateDocumentationRoutes(baseUrl, components);
     await validateSseReload(baseUrl);

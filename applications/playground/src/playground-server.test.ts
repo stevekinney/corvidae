@@ -5,7 +5,7 @@
  * The triggerReload / SSE integration path is covered by validate-playground.ts.
  *
  * Tests that hit /bundle/button/primary.js and /example-src/button/primary rely
- * on src/examples/button/primary.example.svelte existing. A
+ * on Button's examples/primary.example.svelte existing. A
  * beforeAll guard asserts this up front so failures are diagnosable.
  *
  * PRECONDITION: none beyond `bun install`. The /bundle/* and /page-bundle/*
@@ -17,7 +17,7 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
 import type { ComponentManifest } from './analyze.ts';
@@ -27,13 +27,13 @@ import {
   fixtureArtifactByPath,
 } from './build-artifacts-shared.ts';
 import { isComponentDocumentationPayload } from './component-documentation-reference.ts';
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import { CINDER_COMPONENT_SOURCE, exampleFilePathIn } from './component-sources.ts';
 import { COMPOSE_ONLY_COMPONENTS, discoverComponentDefinitions } from './discover.ts';
 import {
   setFeaturedExampleRenderer,
   type FeaturedExampleRenderer,
 } from './featured-example-server-renderer.ts';
-import { classifyPlaygroundSrcChange } from './file-watcher.ts';
+import { classifyComponentSourceChange, classifyPlaygroundSrcChange } from './file-watcher.ts';
 import {
   buildFixtureBundle,
   clearFixtureBundleCaches,
@@ -546,11 +546,10 @@ const FIXTURE_COMPONENT = 'button';
 const FIXTURE_SCENARIO = 'primary';
 const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
 const COMPOSE_ONLY_FIXTURE_COMPONENT = Array.from(COMPOSE_ONLY_COMPONENTS)[0]!;
-const FIXTURE_PATH = join(
-  import.meta.dirname,
-  'examples',
+const FIXTURE_PATH = exampleFilePathIn(
+  CINDER_COMPONENT_SOURCE,
   FIXTURE_COMPONENT,
-  `${FIXTURE_SCENARIO}.example.svelte`,
+  FIXTURE_SCENARIO,
 );
 
 beforeAll(async () => {
@@ -558,7 +557,7 @@ beforeAll(async () => {
   if (!exists) {
     throw new Error(
       `[server.test] Required fixture missing: ${FIXTURE_PATH}\n` +
-        `Create src/examples/${FIXTURE_COMPONENT}/${FIXTURE_SCENARIO}.example.svelte before running these tests.`,
+        `Create the ${FIXTURE_COMPONENT} component's examples/${FIXTURE_SCENARIO}.example.svelte before running these tests.`,
     );
   }
 });
@@ -1401,22 +1400,51 @@ describe('classifyPlaygroundSrcChange', () => {
     expect(classifyPlaygroundSrcChange('render-shell.ts')).toEqual({ kind: 'shell' });
   });
 
-  it('excludes example files, dotfiles, temp files, and test files', () => {
-    expect(classifyPlaygroundSrcChange('examples/button/primary.example.svelte')).toBeNull();
+  it('excludes dotfiles, temp files, and test files', () => {
     expect(classifyPlaygroundSrcChange('.DS_Store')).toBeNull();
     expect(classifyPlaygroundSrcChange('.tmp-abc123')).toBeNull();
     expect(classifyPlaygroundSrcChange('discover.test.ts')).toBeNull();
   });
 
-  // `fs.watch` reports nested paths with backslashes on Windows. The examples tree has its own
-  // watcher that schedules the precise example invalidation; if the whole-`src` watcher classified
-  // the same save as a components change, the debounce would give that broader scope precedence and
-  // every example edit would clear every page bundle and reload the shell.
+  // `fs.watch` reports nested paths with backslashes on Windows.
   it('applies every exclusion to a path a Windows watcher reports with backslashes', () => {
-    expect(classifyPlaygroundSrcChange('examples\\button\\primary.example.svelte')).toBeNull();
     expect(classifyPlaygroundSrcChange('.tmp-abc123\\entry.ts')).toBeNull();
     expect(classifyPlaygroundSrcChange('shell-app\\shell.svelte')).toEqual({ kind: 'shell' });
     expect(classifyPlaygroundSrcChange('component-page.svelte')).toEqual({ kind: 'components' });
+  });
+});
+
+describe('classifyComponentSourceChange', () => {
+  it('scopes an example edit to the component whose examples/ directory holds it', () => {
+    expect(
+      classifyComponentSourceChange('components/button/examples/primary.example.svelte'),
+    ).toEqual({ kind: 'examples', names: new Set(['button']) });
+    expect(
+      classifyComponentSourceChange('lib/components/chat/examples/basic.example.svelte'),
+    ).toEqual({ kind: 'examples', names: new Set(['chat']) });
+  });
+
+  // If an example save were classified as a components change, the debounce would give that
+  // broader scope precedence and every example edit would clear every page bundle and reload the
+  // shell.
+  it('applies the example scope to a path a Windows watcher reports with backslashes', () => {
+    expect(
+      classifyComponentSourceChange('components\\button\\examples\\primary.example.svelte'),
+    ).toEqual({ kind: 'examples', names: new Set(['button']) });
+  });
+
+  it('ignores the tests and dotfiles in an examples/ directory', () => {
+    expect(
+      classifyComponentSourceChange('components/image/examples/basic.example.test.ts'),
+    ).toBeNull();
+    expect(classifyComponentSourceChange('components/image/examples/.DS_Store')).toBeNull();
+  });
+
+  it('widens component source and an example without its directories to the components scope', () => {
+    expect(classifyComponentSourceChange('components/button/button.svelte')).toEqual({
+      kind: 'components',
+    });
+    expect(classifyComponentSourceChange('primary.example.svelte')).toEqual({ kind: 'components' });
   });
 });
 

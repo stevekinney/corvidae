@@ -1,7 +1,7 @@
 import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
 /**
  * Comprehensive browser coverage for the Chat interactive harness example
- * (`playground/src/examples/chat/interactive-harness.example.svelte`).
+ * (`components/chat/src/lib/components/chat/examples/interactive-harness.example.svelte`).
  *
  * The harness mounts <Chat> alongside a control panel that drives every lever:
  * reply as the other side (instant / typing / streaming, imperative +

@@ -16,12 +16,12 @@ describe('cleanPlayground', () => {
         'build-report',
         'production-gate-results',
         'src/.tmp-abc',
-        'src/examples',
+        'src/shell-app',
       ]) {
         await mkdir(join(root, directory), { recursive: true });
       }
       await writeFile(join(root, 'build-report', 'export-report.json'), '{}');
-      await writeFile(join(root, 'src', 'examples', 'kept.ts'), '');
+      await writeFile(join(root, 'src', 'shell-app', 'kept.ts'), '');
 
       await cleanPlayground(root);
 
@@ -34,7 +34,7 @@ describe('cleanPlayground', () => {
       ]) {
         expect(existsSync(join(root, removed))).toBe(false);
       }
-      expect(existsSync(join(root, 'src', 'examples', 'kept.ts'))).toBe(true);
+      expect(existsSync(join(root, 'src', 'shell-app', 'kept.ts'))).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -15,7 +15,6 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { bundleBrowserScript } from './bundle-build.ts';
-import { examplesRoot } from './paths.ts';
 import {
   escapePreviewScript,
   PREVIEW_SCRIPT_CAP,
@@ -40,7 +39,7 @@ const plans = new Map(
 /** Bundles one plan, returning the escaped script or the reason it failed. */
 async function bundle(plan: PreviewPlan, entryName: string): Promise<string | Error> {
   const entry = join(entries, `${entryName}.ts`);
-  writeFileSync(entry, previewEntrySource(plan, examplesRoot));
+  writeFileSync(entry, previewEntrySource(plan));
   const code = await bundleBrowserScript(entry);
   return code instanceof Error ? code : escapePreviewScript(code);
 }
@@ -61,7 +60,7 @@ for (const id of ids) {
   ) {
     // A live card with the first example beats a static one with all of them; when even that is
     // over the cap, the static rendition captures the whole plan, which costs nothing extra.
-    const first = { id, examples: plan.examples.slice(0, 1) };
+    const first = { ...plan, examples: plan.examples.slice(0, 1) };
     const single = await bundle(first, `${id}.first`);
     if (single instanceof Error || Buffer.byteLength(single) <= PREVIEW_SCRIPT_CAP) {
       used = first;

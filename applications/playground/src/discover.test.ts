@@ -1,9 +1,9 @@
 /**
  * Unit tests for `discover.ts`.
  *
- * The globs resolve against the playground's own `src/examples/` tree and each
- * component package's source tree, so the tests do not depend on the working
- * directory.
+ * The globs resolve against each component package's source tree, where every
+ * component keeps its examples in its own `examples/` directory, so the tests
+ * do not depend on the working directory.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -18,10 +18,12 @@ import {
   discoverComponentDefinitions,
   discoverComponentFilePaths,
   discoverComponents,
+  discoverExampleFiles,
   discoverExamples,
   discoverSidebarComponents,
   invalidateDiscoveryCache,
 } from './discover.ts';
+import { REPOSITORY_ROOT } from './playground-paths.ts';
 
 // The Cinder components root — the same root discoverComponents() scans.
 const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
@@ -134,6 +136,37 @@ describe('discoverExamples', () => {
     const examples = await discoverExamples('button');
     const sorted = [...examples].toSorted();
     expect(examples).toEqual(sorted);
+  });
+});
+
+describe('discoverExampleFiles', () => {
+  // Every example in a workspace's source belongs to a discovered component, so discovery finds
+  // each one exactly once, wherever its package keeps it. One left in a directory discovery does
+  // not read (the playground's own `src`, where examples lived before COR-2081) fails this.
+  it('finds every *.example.svelte file in the source of every workspace', async () => {
+    const onDisk = Array.from(
+      new Bun.Glob('{applications,components,packages}/*/src/**/*.example.svelte').scanSync({
+        cwd: REPOSITORY_ROOT,
+      }),
+      (path) => join(REPOSITORY_ROOT, path),
+    ).toSorted();
+    const examples = await discoverExampleFiles();
+    const discovered = examples.map((example) => example.filePath).toSorted();
+
+    expect(discovered.length).toBeGreaterThan(0);
+    expect(discovered).toEqual(onDisk);
+  });
+
+  it('keys each example as <component>/<file> and finds it in the component directory', async () => {
+    const examples = await discoverExampleFiles();
+    const button = examples.find(
+      (example) => example.relativePath === 'button/primary.example.svelte',
+    );
+    expect(button?.component).toBe('button');
+    expect(button?.scenario).toBe('primary');
+    expect(button?.filePath).toBe(
+      join(COMPONENTS_DIR, 'button', 'examples', 'primary.example.svelte'),
+    );
   });
 });
 

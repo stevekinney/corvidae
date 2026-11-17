@@ -15,7 +15,7 @@
   let drawerTriggerRef: HTMLElement | null = $state(null);
 
   // Inline SVG data URIs — no external network dependency for the browser
-  // suite. Same pattern as `playground/src/examples/image/basic.example.svelte`
+  // suite. Same pattern as Cinder's `image/examples/basic.example.svelte`
   // and `carousel/basic.example.svelte`: a self-contained `data:image/svg+xml,`
   // URL-encoded rect, one per image so the two are visually distinguishable.
   const images = [
