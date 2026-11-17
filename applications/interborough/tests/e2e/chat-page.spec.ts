@@ -763,7 +763,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(composer.getByRole('button', { name: 'Stop generating' })).toBeVisible();
     await expect(composer.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     await expect(conversationArea(page).locator('.chat-input-status')).toHaveText(
-      'A message now steers the run.',
+      'A message sent now waits until this run finishes.',
     );
     await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
     // The decision stays as it was, and is not told again.

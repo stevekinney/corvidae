@@ -503,7 +503,11 @@ export const CHAT_COPY = {
   composer: {
     /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
     placeholder: (agent: string): string => `Message ${agent}…`,
-    unreachable: 'Sending is off until Interborough is reachable',
+    /**
+     * The line under the composer while the chat works: a message sent now waits in Up next and
+     * goes when the run finishes (COR-2284), so it does not steer the run.
+     */
+    working: 'A message sent now waits until this run finishes.',
     restarting: 'Sending resumes when Interborough is back.',
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,
