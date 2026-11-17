@@ -36,8 +36,12 @@
  * @module hook-origin
  */
 
-/** The payload fields that name the run an event is about, in the order they are read. */
-export const EVENT_RUN_FIELDS: readonly string[] = ['runId', 'goalRunId', 'taskId'];
+/**
+ * The payload fields that name the run an event is about, in the order they are read. A child run's
+ * events (COR-2097) are about the run that dispatched it: they name no `runId`, and `parentRunId`
+ * is the run the event was recorded on, never the child.
+ */
+export const EVENT_RUN_FIELDS: readonly string[] = ['runId', 'goalRunId', 'taskId', 'parentRunId'];
 
 /** The run an event's payload names, or `undefined` when it names none. */
 export function runOfPayload(payload: Readonly<Record<string, unknown>>): string | undefined {

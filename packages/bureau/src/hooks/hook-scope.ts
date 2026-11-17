@@ -83,7 +83,11 @@ export async function subjectsOfPayload(
     }
   }
 
-  const runId = stringField(payload, 'runId') ?? stringField(payload, 'taskId');
+  // A child run's events (COR-2097) name the run that dispatched it, as `parentRunId`.
+  const runId =
+    stringField(payload, 'runId') ??
+    stringField(payload, 'taskId') ??
+    stringField(payload, 'parentRunId');
   if (runId !== undefined) {
     const run = await sources.run(runId);
     if (named === undefined && run.agent !== undefined) agents.add(run.agent);

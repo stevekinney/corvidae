@@ -208,6 +208,15 @@ function isRetentionKey(key: string): boolean {
   return key.startsWith('retention.');
 }
 
+/**
+ * The settings no section edits yet: how many finished runs are scored, and the most scoring may
+ * spend in a day (COR-2202, COR-2205). They are set through the Bureau's settings alone until a
+ * later change gives them a control, so General does not draw a row for them.
+ */
+function isScorerKey(key: string): boolean {
+  return key.startsWith('scorers.');
+}
+
 /** Whether the section `section` edits the key `key`. */
 export function inSection(key: string, section: SettingsSectionId): boolean {
   if (section === 'allowed-models') return key === MODEL_POLICY_KEY;
@@ -216,7 +225,13 @@ export function inSection(key: string, section: SettingsSectionId): boolean {
   if (section === 'retention') return isRetentionKey(key);
   // Plugins edits plugins, not settings: it holds none of the keys, and only reads them for the restart notice.
   if (section === 'plugins' || section === 'api-reference') return false;
-  return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key) && !isRetentionKey(key);
+  return (
+    key !== MODEL_POLICY_KEY &&
+    !isDecisionKey(key) &&
+    !isA2aKey(key) &&
+    !isRetentionKey(key) &&
+    !isScorerKey(key)
+  );
 }
 
 /**

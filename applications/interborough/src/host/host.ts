@@ -202,6 +202,7 @@ import {
 } from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
+import { createHostEvents } from './host-events.ts';
 import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
 import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
@@ -972,8 +973,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const isProviderPlugin = (plugin: string): boolean =>
       held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
+    // What the plugin manager reports of the writes it commits (COR-2098), and the port the Bureau
+    // hears it through: a secret stored or removed, a plugin's choices written, a status changed.
+    const hostEvents = createHostEvents();
     const pluginManager = await createPluginManager({
       workspaceSecrets,
+      events: hostEvents,
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
       },
@@ -1226,6 +1231,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       plugins: pluginManager.loadable().filter((entry) => entry.source !== 'built-in'),
       pluginConfiguration: pluginManager.settings(),
       pluginSecrets: pluginManager.secrets,
+      hostEvents: hostEvents.port,
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
@@ -1288,6 +1294,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.capabilities),
+      // Scorers plugins contribute (COR-2202): passing the option is what registers them, so they
+      // are listed at once. No run is scored by any of them until the `scorers.sampleRate` setting,
+      // which defaults to 0, is raised: at 0 every scorer is off, whatever rate it asks for itself.
+      // There is no Settings control for it yet.
+      scorers: { list: [], sampleRate: 0 },
       ...(options.hookFetch === undefined
         ? {}
         : { webhooks: { targets: [], fetch: options.hookFetch } }),

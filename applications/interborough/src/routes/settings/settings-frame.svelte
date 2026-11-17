@@ -225,6 +225,11 @@
   .weft-settings {
     /* One reading width for every section, so the column ends at the same edge on each of them. */
     --ib-settings-content-width: 46rem;
+    /* The measure the heading area and the content share. The Plugins page is a list beside a
+       detail, so it takes a wider one: below the cap the column is the room the shell leaves, and
+       the detail pane's content box reaches the 30rem at which a setting row sits side by side
+       (about 52rem at 1280px, less the 17.5rem list, the pane's own inset and the divider). */
+    --ib-settings-measure: var(--ib-settings-content-width);
     display: grid;
     grid-template-columns: 170px minmax(0, 1fr);
     grid-template-areas:
@@ -237,6 +242,10 @@
     align-items: start;
   }
 
+  .weft-settings[data-page='settings-plugins'] {
+    --ib-settings-measure: 64rem;
+  }
+
   .weft-settings__nav {
     grid-area: nav;
     min-inline-size: 0;
@@ -244,7 +253,7 @@
 
   .weft-settings__title-area {
     grid-area: header;
-    max-inline-size: var(--ib-settings-content-width);
+    max-inline-size: var(--ib-settings-measure);
     min-inline-size: 0;
     margin-block-end: var(--cinder-space-6);
   }
@@ -254,7 +263,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-    max-inline-size: var(--ib-settings-content-width);
+    max-inline-size: var(--ib-settings-measure);
     min-inline-size: 0;
   }
 

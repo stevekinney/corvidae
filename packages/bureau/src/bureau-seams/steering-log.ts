@@ -28,16 +28,19 @@ import {
   createSteeringGate,
   getSteeringLedgerEntry,
 } from '../steering';
+import { announceSteeringTransitions } from '../steering-transition-events';
 import { COMMITTED_ELSEWHERE, endedElsewhereAs } from '../durable-run-waits';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import {
   SteeringLogCorruptError,
+  SteeringLogSealedError,
   type SteeringLogEvent,
   appendSteeringLogEvent,
   deleteSteeringLog,
   listSteeringLogIncarnations,
   readSteeringLogEntries,
   readSteeringLogHead,
+  sealSteeringLog,
   steeringSessionRunTag,
 } from '../steering-log';
 import type { WorkflowState } from '@lostgradient/weft';
@@ -63,6 +66,7 @@ export function createSteeringLog<D extends AgentDefinitions>(
   const {
     runtimeServices,
     store,
+    emitter,
     runtime,
     diagnose,
     activeRuns,
@@ -398,6 +402,12 @@ export function createSteeringLog<D extends AgentDefinitions>(
       steeringCursors.set(sessionId, cursor);
     }
     const head = await readSteeringLogHead(kv, sessionId, incarnation);
+    // The session ended and the drainer of its `session.deleted` entry has read the log: nothing is
+    // admitted through it or appended to it any more, so a boundary, an end of a run or an
+    // admission that finds it sealed is refused here, and what it would have recorded is not.
+    if (head.sealed === true) {
+      throw new SteeringLogSealedError(sessionId);
+    }
     if (head.sequence < cursor.applied) {
       // Shorter than what this process already folded: the log was deleted
       // with its session by another process, or lost entries. Nothing may be
@@ -421,6 +431,10 @@ export function createSteeringLog<D extends AgentDefinitions>(
       applyToCursor(cursor, event);
       cursor.applied += 1;
     }
+    // COR-2097: what this fold moved was decided by another process, or by this one before it
+    // restarted, and was announced where it was decided. The gate's live changes drain it as
+    // they commit, with nothing awaited between, so it holds only what this loop just folded.
+    cursor.gate.drainTransitions();
     cursor.head = head;
     return cursor;
   }
@@ -449,6 +463,8 @@ export function createSteeringLog<D extends AgentDefinitions>(
           }
         }
         existing.gate.settleForDeletion(runtimeServices.clock.nowISO());
+        // That deletion was another process's, and announced there.
+        existing.gate.drainTransitions();
       }
     }
     const timer = runtimeServices.timers.setInterval(() => {
@@ -479,10 +495,16 @@ export function createSteeringLog<D extends AgentDefinitions>(
         // it any more. Both finish without recreating the session: their
         // terminal saves are fenced to its incarnation.
         if (steeringPollers.get(sessionId) === poller) stopSessionSteeringPoll(sessionId);
-        for (const runId of poller.runIds) {
-          if (!poller.gate.forRun(runId).getDesiredState().paused) peers.abortRun(runId);
-        }
-        poller.gate.settleForDeletion(runtimeServices.clock.nowISO());
+        // COR-2097: in the session's queue, after any append already under way (which commits and
+        // announces what it decided before this changes the gate), and with the view dropped
+        // first, so nothing here writes to that log again. The process that drains the session's
+        // `session.deleted` entry announces what the ending did, from the log.
+        await enqueueSteering(sessionId, async () => {
+          for (const runId of poller.runIds) {
+            if (!poller.gate.forRun(runId).getDesiredState().paused) peers.abortRun(runId);
+          }
+          releaseEndedGate(sessionId, poller.incarnation, poller.gate);
+        });
         return;
       }
       // Replaced while this poll read the session (deleted and recreated,
@@ -518,6 +540,156 @@ export function createSteeringLog<D extends AgentDefinitions>(
     if (poller === undefined) return;
     runtimeServices.timers.clearInterval(poller.timer);
     steeringPollers.delete(sessionId);
+  }
+
+  /**
+   * COR-2097 — releases `gate`, this process's gate for an incarnation it has seen end, and drops
+   * this process's folded view of that incarnation first, so no boundary of its runs writes to the
+   * log again (`logRunBoundarySteering` checks the view in the session's queue). Its runs are
+   * released and what it settled is dropped: a durable session's ending is announced by the drainer
+   * of its `session.deleted` entry ({@link announceEndedSessionSteering}), from the log, never from
+   * a gate this process may hold. Runs synchronously; a caller that can race an append of the same
+   * session calls it from the session's queue.
+   */
+  function releaseEndedGate(
+    sessionId: string,
+    incarnation: string,
+    gate: BureauSteeringGate | undefined,
+  ): void {
+    if (steeringCursors.get(sessionId)?.incarnation === incarnation) {
+      forgetSessionSteering(sessionId);
+    }
+    if (gate === undefined) return;
+    gate.settleForDeletion(runtimeServices.clock.nowISO());
+    gate.drainTransitions();
+  }
+
+  /**
+   * COR-2097 — what a process does with its own steering state when it deletes or expires a
+   * session: it releases the runs `localGate` holds and stops writing to the log
+   * ({@link releaseEndedGate}), in the session's queue so an append already under way commits, and
+   * announces, before the gate changes. It announces the ending itself only when it is the whole
+   * truth: a Bureau with no durable log has no second process and no log, and announces what
+   * `localGate` settled when `announce` says its write removed the session.
+   */
+  async function releaseEndedSessionSteering(ending: {
+    readonly sessionId: string;
+    readonly incarnation: string;
+    readonly localGate: BureauSteeringGate | undefined;
+    /** Whether this process's store write removed the session (a non-durable Bureau announces then). */
+    readonly announce: boolean;
+  }): Promise<void> {
+    const { sessionId, incarnation, localGate } = ending;
+    if (durableSteeringStore() === undefined) {
+      if (localGate === undefined) return;
+      localGate.settleForDeletion(runtimeServices.clock.nowISO());
+      if (ending.announce) {
+        announceSteeringTransitions(localGate, (event) => emitter.dispatch(event));
+      } else {
+        localGate.drainTransitions();
+      }
+      return;
+    }
+    await enqueueSteering(sessionId, async () => {
+      releaseEndedGate(sessionId, incarnation, localGate);
+    });
+  }
+
+  /**
+   * COR-2097 — announces what a durable session's ending (a deletion or an expiry) did to its
+   * commands still accepted. The drainer of the session's `session.deleted` outbox entry calls it,
+   * whichever process that is (any process drains any pending entry, COR-174), after the store
+   * removed the session and before the entry is acknowledged.
+   *
+   * It folds the log, up to the head it read, into a gate of its own (never this process's view,
+   * which may be stale or gone), and seals the log with one write conditioned on that head. An
+   * append that committed before the seal is in the fold and was announced by its writer; one after
+   * it finds a sealed log and is refused. The drainer that wins the seal settles the folded gate and
+   * announces each command it leaves accepted as failed (`run-terminal` for a pause or resume,
+   * `session-terminal` for a session-scoped command). A drainer that finds the log already sealed
+   * announces nothing: another drainer won, so two drainers of one entry announce once. A winner
+   * that stops between its seal and its announcement loses that announcement, and no later drainer
+   * makes it: at most once, as the README's delivery notes say.
+   *
+   * Throws when the log cannot be read or sealed; the caller leaves the entry pending, and a later
+   * drain tries again (nothing was announced, and the log is not sealed).
+   */
+  async function announceEndedSessionSteering(
+    sessionId: string,
+    incarnation: string,
+  ): Promise<void> {
+    const kv = durableSteeringStore();
+    if (kv === undefined) return;
+    await enqueueSteering(sessionId, async () => {
+      for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
+        const head = await readSteeringLogHead(kv, sessionId, incarnation);
+        if (head.sealed === true) return;
+        const gate = createSteeringGate(
+          sessionId,
+          createSteeringCommandLedger(),
+          runtimeServices.clock,
+        );
+        const refusals = new Map<string, Map<string, SteeringRefusal>>();
+        const submitted = new Map<string, Map<string, SteeringRequestedValue>>();
+        const history = createSteeringFoldHistory();
+        for (const event of await readSteeringLogEntries(
+          kv,
+          sessionId,
+          incarnation,
+          0,
+          head.sequence,
+        )) {
+          applySteeringEvent(gate, refusals, event, submitted, history);
+        }
+        // What the fold moved was decided, and announced, by the appends it read.
+        gate.drainTransitions();
+        if ((await sealSteeringLog(kv, sessionId, incarnation, head)) === undefined) continue;
+        gate.settleForDeletion(runtimeServices.clock.nowISO());
+        // Each dispatch isolated: the seal is spent, so a `toObservable()` subscriber that throws
+        // must not cost the failures after its own, which no later drain would announce.
+        announceSteeringTransitions(gate, (event) => {
+          try {
+            emitter.dispatch(event);
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'steering',
+              message: `[bureau] A bureau.toObservable() subscriber threw while the steering outcomes of ended session "${sessionId}" were announced; announcing the rest:`,
+              cause: error,
+            });
+          }
+        });
+        return;
+      }
+      throw steeringContention(sessionId);
+    });
+  }
+
+  /**
+   * COR-2097 — removes an ended session incarnation's log, once its `session.deleted` entry is
+   * acknowledged: until then a drainer may still need to fold and seal it. Best effort, like every
+   * removal after a commit: a log left behind is removed by the boot sweep.
+   */
+  async function removeEndedSessionSteeringLog(
+    sessionId: string,
+    incarnation: string,
+  ): Promise<void> {
+    const kv = durableSteeringStore();
+    if (kv === undefined) return;
+    try {
+      await enqueueSteering(sessionId, async () => {
+        if (steeringCursors.get(sessionId)?.incarnation === incarnation) {
+          forgetSessionSteering(sessionId);
+        }
+        await deleteSteeringLog(kv, sessionId, incarnation);
+      });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Session "${sessionId}" ended, but its steering log could not be removed; the next boot sweep removes it: ${serializeUnknownError(error)}`,
+      });
+    }
   }
 
   /** Drops this process's folded view of a session. */
@@ -577,6 +749,11 @@ export function createSteeringLog<D extends AgentDefinitions>(
         applyToCursor(cursor, event);
         cursor.applied += 1;
         cursor.head = appended.head;
+        // COR-2097: what this append committed: the commands a boundary applied (one
+        // `steering.applied`, and none for a boundary that applied nothing, such as a pause whose
+        // deadline had passed), a deadline that passed, a run that ended. It is this append's, not
+        // the run's: a boundary the log refused (a sealed log, an ended run) decided nothing.
+        announceSteeringTransitions(cursor.gate, (announced) => emitter.dispatch(announced));
         return;
       }
     }
@@ -603,16 +780,33 @@ export function createSteeringLog<D extends AgentDefinitions>(
     }
     const kv = durableSteeringStore();
     const cursor = steeringCursors.get(sessionId);
-    if (kv === undefined || cursor === undefined || cursor.gate !== gate) {
-      // Non-durable, or a gate no longer folded from the log (its session
-      // was deleted or recreated): apply directly, as an in-memory gate does.
+    if (kv === undefined) {
+      // Non-durable: the in-memory gate's change is the commit, so it is announced here.
       applySteeringEvent(gate, new Map(), event);
+      announceSteeringTransitions(gate, (announced) => emitter.dispatch(announced));
+      return;
+    }
+    if (cursor === undefined || cursor.gate !== gate) {
+      // COR-2097: a durable gate no longer folded from the log: this process saw its session
+      // deleted, expired or recreated and dropped its view. It writes nothing more to that log
+      // and announces nothing: what the ending did to the session's commands is announced by the
+      // process that drains the session's `session.deleted` entry, from the log.
       return;
     }
     const { incarnation } = cursor;
-    const appended = enqueueSteering(sessionId, () =>
-      appendThenApplySteering(kv, sessionId, incarnation, event),
-    );
+    const appended = enqueueSteering(sessionId, async () => {
+      // Checked again in the queue: an ending this process saw while the boundary waited dropped
+      // the view, and the boundary is then one the log never records.
+      if (steeringCursors.get(sessionId)?.gate !== gate) return;
+      try {
+        await appendThenApplySteering(kv, sessionId, incarnation, event);
+      } catch (error) {
+        // The process that drained the session's deletion sealed the log first: the boundary came
+        // after the session ended and decides nothing, which is the outcome, not a failure.
+        if (error instanceof SteeringLogSealedError) return;
+        throw error;
+      }
+    });
     appended.catch((error: unknown) => {
       // Not applied locally: the gate must never hold state the log lacks,
       // or later admissions here would decide differently from every other
@@ -705,6 +899,21 @@ export function createSteeringLog<D extends AgentDefinitions>(
     for (const { sessionId, incarnation } of await listSteeringLogIncarnations(kv)) {
       const session = await sessionStore.load(sessionId);
       if (session?.incarnation === incarnation) continue;
+      // COR-2097: an incarnation whose `session.deleted` entry is still pending is not orphaned:
+      // the entry's drainer folds and seals this log to announce what the ending did, and removes
+      // it once the entry is acknowledged. Read after the session, so an entry acknowledged in
+      // between reads as gone and its log is removed here or by its drainer.
+      const pending = await sessionStore.outbox.pending();
+      if (
+        pending.some(
+          (entry) =>
+            entry.kind === 'session.deleted' &&
+            entry.sessionId === sessionId &&
+            entry.incarnation === incarnation,
+        )
+      ) {
+        continue;
+      }
       await enqueueSteering(sessionId, () => deleteSteeringLog(kv, sessionId, incarnation));
     }
   }
@@ -729,6 +938,10 @@ export function createSteeringLog<D extends AgentDefinitions>(
     catchUpSteering,
     pollSessionSteering,
     forgetSessionSteering,
+    releaseEndedGate,
+    releaseEndedSessionSteering,
+    announceEndedSessionSteering,
+    removeEndedSessionSteeringLog,
     appendThenApplySteering,
     logRunBoundarySteering,
     recoverRunSteering,

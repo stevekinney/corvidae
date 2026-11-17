@@ -18847,9 +18847,16 @@ describe('AB-260: BureauOptions.runtime composition', () => {
     try {
       const summary = await bureau.tasks.start('default', 'Trigger every deferred label');
       await waitForRunCompletion(bureau, summary.id);
+      // A scorer's breach no longer goes through the webhook notifier (COR-2201), so the delivery
+      // that registers `webhook-delivery` is an out-of-band one the notifier is handed directly.
+      bureau.internals.webhookNotifier?.notify({
+        runId: summary.id,
+        subjectId: 'deferred-labels:human-wait',
+        trigger: 'human-wait.parked',
+      });
       await waitForCondition(
         () => deliveredCount > 0,
-        'webhook delivery for the eval threshold breach was never attempted',
+        'the out-of-band webhook delivery was never attempted',
       );
       await bureau.internals.webhookNotifier?.flush();
       await bureau.internals.scorerSampler?.flush();

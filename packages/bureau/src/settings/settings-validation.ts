@@ -105,7 +105,9 @@ export const OPTION_VALIDATORS: Readonly<Partial<Record<SettingKey, (value: unkn
 /**
  * The keys whose consumer runs no check of its own beyond what the schema already says: a boolean,
  * an enum, a string, `modelPolicy` (its strict schema mirrors operative's types, and the planner
- * reads it unchecked), and the two engine options Weft takes without checking.
+ * reads it unchecked), the two engine options Weft takes without checking, and the scorer sample
+ * rate, which the sampler reads as a fraction and the schema bounds from 0 to 1, and its daily
+ * budget, a non-negative integer.
  * `settings-validation.test.ts` requires every key to be here, in {@link OPTION_VALIDATORS}, or
  * checked by the engine.
  */
@@ -113,6 +115,8 @@ export const SCHEMA_CHECKED_KEYS = [
   'tools.wakeup',
   'tools.decide',
   'modelPolicy',
+  'scorers.sampleRate',
+  'scorers.dailyBudget',
   'durable',
   'maintenance',
   'workflowVersion',

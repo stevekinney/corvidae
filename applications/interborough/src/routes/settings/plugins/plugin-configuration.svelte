@@ -11,7 +11,12 @@
    * field the host refuses shows the host's words at that row; a failure that names no field (the
    * host did not answer) shows under the button, and Save is the retry.
    */
-  import { Alert, Button, SectionHeading, schemaFormInitialDraft } from '@lostgradient/cinder';
+  import {
+    Button,
+    FormActions,
+    SectionHeading,
+    schemaFormInitialDraft,
+  } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { RotateCw } from '@lucide/svelte';
   import { untrack } from 'svelte';
@@ -124,23 +129,19 @@
         onPending={() => (pending = true)}
         onChange={reported}
       />
-      <div class="ib-plugin-configuration__footer">
-        <Button type="submit" variant="primary" disabled={locked || saving || !changed}>
-          {saving ? copy.saving : copy.save}
-        </Button>
-        <span class="ib-plugin-configuration__note">
-          <RotateCw size={14} aria-hidden="true" />
-          {copy.note}
-        </span>
-      </div>
-      {#if failure !== ''}
-        <Alert variant="danger" data-testid="plugin-configuration-failed">
-          <p class="ib-plugin-configuration__failure">
-            <strong>{copy.failureLead}</strong>
-            {failure}
-          </p>
-        </Alert>
-      {/if}
+      <FormActions error={failure} errorTitle={copy.failureLead}>
+        {#snippet summary()}
+          <span class="ib-plugin-configuration__note">
+            <RotateCw size={14} aria-hidden="true" />
+            {copy.note}
+          </span>
+        {/snippet}
+        {#snippet end()}
+          <Button type="submit" variant="primary" disabled={locked || saving || !changed}>
+            {saving ? copy.saving : copy.save}
+          </Button>
+        {/snippet}
+      </FormActions>
     </form>
   </section>
 {/if}
@@ -160,22 +161,11 @@
     min-width: 0;
   }
 
-  .ib-plugin-configuration__footer {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-3);
-  }
-
   .ib-plugin-configuration__note {
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  .ib-plugin-configuration__failure {
-    margin: 0;
   }
 </style>

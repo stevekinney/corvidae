@@ -139,6 +139,7 @@ export function createLifecycleBaseline(options: BaselineOptions): MemoryBaselin
       id: envelope.embedder.name,
       embedder: createLexicalHashEmbedder(envelope.embedder.dimension),
       dimension: envelope.embedder.dimension,
+      model: envelope.embedder.name,
     },
   ]);
   const policy = createMemoryGovernancePolicy({ revision: 'memory-lifecycle-governance-1' });

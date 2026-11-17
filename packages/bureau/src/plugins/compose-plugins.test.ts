@@ -366,12 +366,51 @@ describe('composePlugins', () => {
     expect(received[0]?.self).toBe(scorer);
   });
 
+  it('registers a scorer in the contribution catalog under the plugin that gave it (COR-2200)', async () => {
+    const scorer = {
+      name: 'judge',
+      version: '2',
+      sampleRate: 0.25,
+      score: () => ({ outcome: 'pass' as const, message: '' }),
+    };
+    const bad = { name: 'odd', version: '1@x', score: scorer.score };
+    const given: ComposableOptions = {
+      plugins: [pluginEntry('kit', () => ({ scorers: [scorer, bad] }))],
+      scorers: { list: [], sampleRate: 1 },
+    };
+    const { options } = await composePlugins(given);
+
+    const found = options.contributionCatalog?.resolve('scorer', {
+      name: 'kit:judge',
+      version: '2',
+    });
+    expect(found?.ok).toBe(true);
+    expect(found?.ok === true ? found.entry.source : undefined).toEqual({
+      name: 'kit',
+      version: '1.0.0',
+    });
+    // An identity the catalog refuses is left out; the scorer still runs.
+    expect(options.contributionCatalog?.entries('scorer').map(({ name }) => name)).toEqual([
+      'kit:judge',
+    ]);
+    expect(options.scorers?.list.map(({ name }) => name)).toEqual(['kit:judge', 'kit:odd']);
+    // A scorer's own rate (COR-2203) reaches the sampler with the scorer.
+    expect(options.scorers?.list[0]?.sampleRate).toBe(0.25);
+  });
+
   it('lists only the contributions whose option the host gave', async () => {
     const contributing = () =>
       pluginEntry('kit', () => ({
         reactions: [actionKind('page')],
         scorers: [judge('judge')],
-        embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
+        embedders: [
+          {
+            name: 'small',
+            model: 'small-model',
+            dimensions: 4,
+            embed: async (texts) => texts.map(() => []),
+          },
+        ],
         guardrails: {
           memory: [
             { name: 'tags', description: 'A test guardrail.', detect: async () => ({}) as never },
@@ -1187,7 +1226,7 @@ describe('composePlugins', () => {
           ],
         })),
         pluginEntry('flat', () => ({
-          embedders: [{ name: 'zero', dimensions: 0, embed: async () => [] }],
+          embedders: [{ name: 'zero', model: 'zero-model', dimensions: 0, embed: async () => [] }],
         })),
         pluginEntry('fine', () => ({ interceptors: [{ name: 'audit' }] })),
       ],
@@ -1198,6 +1237,28 @@ describe('composePlugins', () => {
       ['skipped', 'setup-failed'],
       ['running', undefined],
       ['skipped', 'setup-failed'],
+    ]);
+  });
+
+  it('skips a plugin whose embedder names a blank model, and composes the others (COR-2184)', async () => {
+    const embed = async () => [];
+    const { records } = await composePlugins({
+      plugins: [
+        pluginEntry('blank', () => ({
+          embedders: [{ name: 'embed', model: '  ', dimensions: 4, embed }],
+        })),
+        pluginEntry('missing', () => ({
+          embedders: [{ name: 'embed', dimensions: 4, embed } as never],
+        })),
+        pluginEntry('named', () => ({
+          embedders: [{ name: 'embed', model: 'named-model', dimensions: 4, embed }],
+        })),
+      ],
+    });
+    expect(records.map(({ status, problems }) => [status, problems[0]?.code])).toEqual([
+      ['skipped', 'setup-failed'],
+      ['skipped', 'setup-failed'],
+      ['running', undefined],
     ]);
   });
 

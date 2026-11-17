@@ -5,6 +5,9 @@ import { createHashingEmbedder, HASHING_EMBEDDER_DIMENSION } from './hashing-emb
 /** The id of the built-in hashing embedder, the default when no embedder is selected. */
 export const HASHING_EMBEDDER_ID = 'hashing';
 
+/** The model the built-in hashing embedder records in the profiles it makes (COR-2184). */
+export const HASHING_EMBEDDER_MODEL = 'hashing';
+
 /**
  * Whether a registered embedder can embed now: `needs-setup` when its plugin is loaded but lacks
  * what it needs to run, such as a secret (COR-1879 reports it from the plugin's status).
@@ -20,6 +23,13 @@ export interface ContributedEmbedder {
   /** How many entries each vector it returns has; memory refuses a vector of any other length. */
   readonly dimension: number;
   /**
+   * The model behind the embedder, such as `nomic-embed-text` (COR-2184); never blank. Memory
+   * records it in the profile it embeds with, and treats an embedder registered under the same id
+   * and dimension with another model as a different embedding: its vectors are not comparable with
+   * the profile's, so the profile is unavailable until a switch re-embeds memory.
+   */
+  readonly model: string;
+  /**
    * Read each time memory asks, so an embedder whose plugin is set up later becomes available
    * without a restart. Omitted, the embedder is always `available`.
    */
@@ -32,6 +42,8 @@ export interface RegisteredEmbedder {
   readonly id: string;
   /** The dimension its vectors have. */
   readonly dimension: number;
+  /** The model behind it (see {@link ContributedEmbedder.model}). */
+  readonly model: string;
   /** Whether it can embed now. */
   readonly availability: EmbedderAvailability;
 }
@@ -61,8 +73,9 @@ export interface EmbedderRegistry {
 /**
  * Registers contributed embedders by id beside the built-in hashing embedder (COR-1875). Selecting
  * one and re-embedding what is already stored are not done here: this resolves an id to an
- * embedder, and describes its dimension and availability (COR-1898), and nothing more. A blank id, a repeated id, the hashing embedder's own id, and a dimension that is not a positive
- * integer throw
+ * embedder, and describes its dimension, model and availability (COR-1898, COR-2184), and nothing
+ * more. A blank id, a repeated id, the hashing embedder's own id, a blank model, and a dimension
+ * that is not a positive integer throw
  * {@link EmbedderRegistryError}, because a contribution may not shadow another or the default.
  */
 export function createEmbedderRegistry(
@@ -71,10 +84,14 @@ export function createEmbedderRegistry(
   const embedders = new Map<string, Omit<ContributedEmbedder, 'id'>>([
     [
       HASHING_EMBEDDER_ID,
-      { embedder: createHashingEmbedder(), dimension: HASHING_EMBEDDER_DIMENSION },
+      {
+        embedder: createHashingEmbedder(),
+        dimension: HASHING_EMBEDDER_DIMENSION,
+        model: HASHING_EMBEDDER_MODEL,
+      },
     ],
   ]);
-  for (const { id, embedder, dimension, availability } of contributed) {
+  for (const { id, embedder, dimension, model, availability } of contributed) {
     if (id.trim() === '') {
       throw new EmbedderRegistryError('A contributed embedder needs a non-blank id.');
     }
@@ -90,9 +107,13 @@ export function createEmbedderRegistry(
         `The embedder "${id}" needs a positive integer dimension, not ${dimension}.`,
       );
     }
+    if (typeof model !== 'string' || model.trim() === '') {
+      throw new EmbedderRegistryError(`The embedder "${id}" needs a non-blank model.`);
+    }
     embedders.set(id, {
       embedder,
       dimension,
+      model,
       ...(availability === undefined ? {} : { availability }),
     });
   }
@@ -114,6 +135,7 @@ export function createEmbedderRegistry(
       return {
         id,
         dimension: entry.dimension,
+        model: entry.model,
         availability: entry.availability?.() ?? 'available',
       };
     },

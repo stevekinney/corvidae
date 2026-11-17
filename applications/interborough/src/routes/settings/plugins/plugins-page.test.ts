@@ -535,7 +535,7 @@ describe('a plugin’s configuration', () => {
 
     const failure = await waitFor(() => {
       const found = container.querySelector<HTMLElement>(
-        '[data-testid="plugin-configuration-failed"]',
+        '[data-testid="plugin-configuration"] .cinder-form-actions__error',
       );
       expect(found).not.toBeNull();
       return found!;
@@ -576,7 +576,7 @@ describe('a plugin’s configuration', () => {
         'Team key must be capital letters.',
       ),
     );
-    expect(container.querySelector('[data-testid="plugin-configuration-failed"]')).toBeNull();
+    expect(container.querySelector('.cinder-form-actions__error')).toBeNull();
     expect(bannerText(container)).toBeNull();
   });
 

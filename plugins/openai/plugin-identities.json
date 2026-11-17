@@ -1,24 +1,24 @@
 {
   "plugin": "openai",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "entries": [
     {
       "kind": "configuration",
       "id": "openai",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "schema": "sha256:fa691d6b1f2bd1579a28236397df29f90155ec2fa9320d90c2999de84b7bdfde"
     },
     {
       "kind": "embedder",
       "id": "openai:text-embedding-3-small",
-      "version": "0.1.2",
-      "schema": "sha256:d66792028b767be869448f684e82f9311959ec517c34035b44f7970d3ca97f56"
+      "version": "0.2.0",
+      "schema": "sha256:91a019f7509a21c421c0df68b6497c7939a95da5290646ab3c50ea965502e822"
     },
     {
       "kind": "provider",
       "id": "openai:openai",
-      "version": "0.1.2",
-      "schema": "sha256:568970a1e6605bbc7146b840d2c2bb16fa1dd79559ab4f15dad942679272db86"
+      "version": "0.2.0",
+      "schema": "sha256:30b3caab3d348661397c4eacce216ee49d44582404d45e89b2883fd9653b4391"
     }
   ]
 }

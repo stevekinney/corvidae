@@ -40,6 +40,7 @@
     disabled,
     managed,
     controlWidth,
+    controlAlign = 'end',
     control,
     disclosure,
     class: className,
@@ -92,6 +93,7 @@
 
 <div
   class={classNames('cinder-setting-row', className)}
+  data-cinder-control-align={controlAlign === 'stretch' ? 'stretch' : undefined}
   style={controlWidth === undefined
     ? undefined
     : `--cinder-setting-row-control-width: ${controlWidth}`}

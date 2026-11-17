@@ -53,6 +53,11 @@ export type {
 export { isPluginName, pluginNamePattern } from './plugin-name.ts';
 export { PluginReactionError } from './plugin-reaction-error.ts';
 export { createPluginStorage, pluginStoragePrefix } from './plugin-storage.ts';
-export type { PluginScore, PluginScoreOutcome, PluginScorer } from './scorer.ts';
+export type {
+  PluginScore,
+  PluginScoreDecision,
+  PluginScoreOutcome,
+  PluginScorer,
+} from './scorer.ts';
 export { verifyHmacSignature } from './verify-hmac-signature.ts';
 export type { VerifyHmacSignatureOptions } from './verify-hmac-signature.ts';

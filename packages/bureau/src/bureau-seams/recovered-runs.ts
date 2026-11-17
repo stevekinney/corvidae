@@ -368,6 +368,8 @@ export function createRecoveredRuns<D extends AgentDefinitions>(
     runAttribution.set(runId, {
       ...runAttribution.get(runId),
       principal: recoveredOwner,
+      // A reattached run is a chat's: its session is what recovery found it through (COR-2203).
+      kind: 'chat',
       ...(recoveredAgentName === undefined ? {} : { agentName: recoveredAgentName }),
     });
     // COR-718 — the run keeps its owner; recovery is only the actor. One entry

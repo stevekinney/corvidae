@@ -32,7 +32,6 @@ import {
 import type { BureauSteeringGate } from '../steering';
 import type { ChatAsset } from '../chat-asset-purge';
 import { ChatRunsNotEndedError, type DeletedChat } from '../chat-content-purge';
-import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { ContextArchiveOutcome, ContextDeletionReport } from '../bureau-types/contexts';
 import type { RunSummary } from '../bureau-types/runs';
 import type { RunMemoryPlacement } from '../chat-memory-purge';
@@ -46,7 +45,6 @@ import {
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from '../assets/row-asset-claims';
-import { deleteSteeringLog } from '../steering-log';
 import { heldClaimsOf } from '../assets/internal-access';
 import {
   isPlainAuthorityRecord,
@@ -77,12 +75,13 @@ export interface SessionsPeers {
   ) => Promise<void>;
   /** Retires the inputs a session has queued. */
   readonly retireSessionInputs: (sessionId: string, incarnation: string) => Promise<void>;
-  /** `runtime.kv`, when this Bureau keeps durable steering. */
-  readonly durableSteeringStore: () => ConditionalTextValueStore | undefined;
-  /** Runs an operation after every earlier steering log operation for the session. */
-  readonly enqueueSteering: <T>(sessionId: string, operation: () => Promise<T>) => Promise<T>;
-  /** Drops the steering state of a session. */
-  readonly forgetSessionSteering: (sessionId: string) => void;
+  /** Releases this process's steering state for a session it deleted (COR-2097). */
+  readonly releaseEndedSessionSteering: (ending: {
+    readonly sessionId: string;
+    readonly incarnation: string;
+    readonly localGate: BureauSteeringGate | undefined;
+    readonly announce: boolean;
+  }) => Promise<void>;
   /** Discards the tried runs of a session. */
   readonly discardTriedRuns: (
     session: AgentSession,
@@ -112,7 +111,6 @@ export function createSessions<D extends AgentDefinitions>(
     terminalReviewSessions,
     invalidApprovalReviewIds,
     steeringGates,
-    steeringCursors,
     runRequestContexts,
     inFlightSessionDeletions,
     sessionDeletionOwners,
@@ -1207,7 +1205,19 @@ export function createSessions<D extends AgentDefinitions>(
       // before deleting their steering gate"). This is also the moment a
       // still-paused run above actually gets released, so `runTerminals`
       // must be awaited AFTER this call, not before it.
-      steeringGateForAbort?.settleForDeletion(runtimeServices.clock.nowISO());
+      //
+      // COR-2097: this releases this process's runs and stops it writing to the session's log,
+      // whether or not its delete removed the record (a delete that lost the race still holds
+      // runs of the session here). It announces nothing for a durable session: the drainer of the
+      // `session.deleted` entry does, from the log (`announceEndedSessionSteering`), whichever
+      // process that is. A Bureau with no durable log announces what its own gate settled, and
+      // only when its delete removed the record, since only then did its write end the session.
+      await peers.releaseEndedSessionSteering({
+        sessionId: id,
+        incarnation: session.incarnation,
+        localGate: steeringGateForAbort,
+        announce: removedLiveRecord,
+      });
       steeringGateForAbort?.purgeFromLedger();
       // Only the gate settled above: if the id was recreated during the
       // awaits since, the new incarnation's gate (and the runs holding it)
@@ -1216,30 +1226,11 @@ export function createSessions<D extends AgentDefinitions>(
       // The durable side gets the same treatment, for the same reason — a
       // reused session id must not inherit a deleted session's command
       // history — but scoped to the DELETED body's incarnation, captured
-      // before the store delete. A session recreated under this id in the
-      // meantime has a new incarnation and its own log, which this cleanup
-      // never touches; this process's folded view is dropped only if it was
-      // a view of the deleted incarnation.
-      if (steeringCursors.get(id)?.incarnation === session.incarnation) {
-        peers.forgetSessionSteering(id);
-      }
-      const steeringKv = peers.durableSteeringStore();
-      if (steeringKv !== undefined) {
-        // Best-effort, like the outbox drain above: the session is already
-        // gone, so a failure here must not make the deletion look failed. The
-        // log it leaves is removed by the boot sweep of orphaned logs.
-        try {
-          await peers.enqueueSteering(id, () =>
-            deleteSteeringLog(steeringKv, id, session.incarnation),
-          );
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'steering',
-            message: `[bureau] Session "${id}" was deleted, but its steering log could not be removed; the next boot sweep removes it: ${serializeUnknownError(error)}`,
-          });
-        }
-      }
+      // before the store delete. This process's folded view of it was dropped
+      // above. COR-2097: the log itself stays until the drainer of the
+      // `session.deleted` entry has folded and sealed it and acknowledged the
+      // entry, and is removed then (`removeEndedSessionSteeringLog`); a
+      // session recreated under this id has a new incarnation and its own log.
 
       await Promise.allSettled(runTerminals);
 

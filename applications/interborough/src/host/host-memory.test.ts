@@ -13,6 +13,7 @@ import {
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
   HASHING_EMBEDDER_DIMENSION,
   HASHING_EMBEDDER_ID,
+  HASHING_EMBEDDER_MODEL,
 } from '@lostgradient/memory';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -187,6 +188,7 @@ describe('the host’s governed memory', () => {
         embedderId: HASHING_EMBEDDER_ID,
         dimension: HASHING_EMBEDDER_DIMENSION,
         generation: 1,
+        model: HASHING_EMBEDDER_MODEL,
       };
       expect(await vectors.listProfiles()).toEqual([profile]);
       const stored = await vectors.getMany(profile, scope, [record?.id ?? '']);
@@ -213,6 +215,7 @@ describe('the host’s governed memory', () => {
       embedderId: HASHING_EMBEDDER_ID,
       dimension: HASHING_EMBEDDER_DIMENSION,
       generation: 1,
+      model: HASHING_EMBEDDER_MODEL,
     };
     // Back to the shape an installation had before COR-1898: the vector on the record, none in
     // the vector store, and no mark that inline vectors were copied.

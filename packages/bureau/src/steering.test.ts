@@ -1834,3 +1834,95 @@ describe('configuration-target supersession (AB-200)', () => {
     expect(replayEffort.command.state).toBe('accepted');
   });
 });
+
+describe('the transitions a gate keeps for the caller that committed them (COR-2097)', () => {
+  const context = { liveRunIds: ['run-1'], now: NOW };
+
+  it('keeps a superseded command until it is drained, once, in the order the commands moved', () => {
+    const gate = createSteeringGate('session-1');
+    gate.admit(configurationCommand('model', 'X', { id: 'm1' }), context);
+    gate.admit(configurationCommand('model', 'Y', { id: 'm2' }), context);
+    gate.admit(configurationCommand('model', 'Z', { id: 'm3' }), context);
+
+    expect(gate.drainTransitions()).toEqual([
+      { state: 'superseded', commandId: 'm1', failureReason: 'superseded-by' },
+      { state: 'superseded', commandId: 'm2', failureReason: 'superseded-by' },
+    ]);
+    expect(gate.drainTransitions()).toEqual([]);
+  });
+
+  it('keeps a pause a resume replaced, a resume a pause replaced, and a command a run’s end failed', () => {
+    const gate = createSteeringGate('session-1');
+    gate.promoteForNewRun('run-1', NOW);
+    gate.admit(pauseCommand({ id: 'p1', runId: 'run-1' }), context);
+    gate.admit(resumeCommand({ id: 'r1', runId: 'run-1' }), context);
+    expect(gate.drainTransitions()).toEqual([
+      { state: 'superseded', commandId: 'p1', failureReason: 'superseded-by' },
+    ]);
+
+    // A resume owns no pause, and its version is skipped by the pause that overtook it: a boundary
+    // never applies it, so it is replaced (COR-2097).
+    gate.admit(pauseCommand({ id: 'p2', runId: 'run-1' }), context);
+    gate.failAcceptedForRun('run-1', '2026-09-02T00:00:09.000Z');
+    expect(gate.drainTransitions()).toEqual([
+      { state: 'superseded', commandId: 'r1', failureReason: 'superseded-by' },
+      { state: 'failed', commandId: 'p2', failureReason: 'run-terminal' },
+    ]);
+  });
+
+  it('fails every command a deleted session leaves accepted: a pause or resume run-terminal, a session-scoped one session-terminal', () => {
+    const gate = createSteeringGate('session-1');
+    gate.promoteForNewRun('run-1', NOW);
+    gate.admit(pauseCommand({ id: 'p1', runId: 'run-1' }), context);
+    gate.admit(configurationCommand('model', 'X', { id: 'm1' }), context);
+    gate.admit(
+      pauseCommand({ id: 'i1', requestedValue: { target: 'agent-identity', override: 'other' } }),
+      context,
+    );
+    gate.drainTransitions();
+
+    gate.settleForDeletion('2026-09-02T00:00:09.000Z');
+
+    expect(gate.drainTransitions()).toEqual([
+      { state: 'failed', commandId: 'p1', failureReason: 'run-terminal' },
+      { state: 'failed', commandId: 'm1', failureReason: 'session-terminal' },
+      { state: 'failed', commandId: 'i1', failureReason: 'session-terminal' },
+    ]);
+  });
+
+  it('keeps a command whose deadline passed before the run’s boundary applied it', () => {
+    const gate = createSteeringGate('session-1');
+    gate.promoteForNewRun('run-1', NOW);
+    const admitted = gate.admit(
+      pauseCommand({ id: 'p1', runId: 'run-1', deadline: '2026-09-02T00:00:02.000Z' }),
+      context,
+    );
+    if (admitted.outcome !== 'accepted') throw new Error('expected accepted');
+
+    gate.recordApplied('run-1', admitted.command.configVersion, '2026-09-02T00:00:09.000Z');
+
+    expect(gate.drainTransitions()).toEqual([
+      { state: 'failed', commandId: 'p1', failureReason: 'deadline-passed' },
+    ]);
+  });
+
+  it('keeps a command a boundary applied, and nothing for one accepted again or refused at admission', () => {
+    const gate = createSteeringGate('session-1');
+    gate.promoteForNewRun('run-1', NOW);
+    const admitted = gate.admit(pauseCommand({ id: 'p1', runId: 'run-1' }), context);
+    if (admitted.outcome !== 'accepted') throw new Error('expected accepted');
+    gate.recordApplied('run-1', admitted.command.configVersion, NOW);
+    expect(gate.drainTransitions()).toEqual([
+      { state: 'applied', commandId: 'p1', runId: 'run-1', appliedAt: NOW },
+    ]);
+    expect(gate.admit(pauseCommand({ id: 'p1', runId: 'run-1' }), context).outcome).toBe(
+      'replayed',
+    );
+    expect(
+      gate.admit(pauseCommand({ id: 'late', deadline: '2000-01-01T00:00:00.000Z' }), context)
+        .outcome,
+    ).toBe('rejected');
+
+    expect(gate.drainTransitions()).toEqual([]);
+  });
+});
