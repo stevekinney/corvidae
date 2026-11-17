@@ -127,9 +127,9 @@ export type BannerProps = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'cla
   sticky?: boolean;
   /**
    * Below 640px, puts the actions on a row of their own under the words, one above the next, each
-   * a full-width 44px button. A phone's restart notice does this, so its buttons are targets
-   * wide enough to press; without it the actions sit at the inline end of the message's row, or
-   * in a row under the words when the banner is narrower than 560px, at 44px.
+   * a full-width 44px button, for a banner whose buttons are bars on a phone. Without it the
+   * actions sit at the inline end of the message's row, or in a row under the words when the
+   * banner is narrower than 560px, at 44px.
    * @default false
    */
   stackActions?: boolean;

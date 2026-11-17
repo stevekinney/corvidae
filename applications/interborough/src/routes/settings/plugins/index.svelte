@@ -25,7 +25,12 @@
   );
 </script>
 
-<SettingsFrame title={PLUGINS_COPY.title} intro={PLUGINS_COPY.intro} page="settings-plugins">
+<SettingsFrame
+  title={PLUGINS_COPY.title}
+  intro={PLUGINS_COPY.intro}
+  page="settings-plugins"
+  measure="wide"
+>
   {#snippet body({ schema, snapshot })}
     <PluginsBody {plugins} {schema} {snapshot} />
   {/snippet}

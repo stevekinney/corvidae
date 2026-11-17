@@ -206,6 +206,12 @@ const schema = {
           'Drawn at the end of the list pane, after the rows or after `listEmpty`, and outside `items`: it\nis not a row, so it never stops `listEmpty` from drawing, is not selectable, and J and K never\nland on it. Use it for a link to a related list that has no place among the rows, such as the\narchived or quarantined ones. It is not drawn while the list is loading.',
       },
       {
+        name: 'onLoadingCancel',
+        reason: 'function-or-snippet',
+        description:
+          'Adds a Cancel button to the loading placeholder\'s "still loading" line, for a read the person\ncan give up on. It is called when the button is pressed; the host decides what giving up\nmeans (stop the read, show a "canceled" state). Without it the line has no button.',
+      },
+      {
         name: 'onSelectedKeyChange',
         reason: 'function-or-snippet',
         description:
