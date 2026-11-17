@@ -158,7 +158,7 @@
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
-  import { ChatSessionState } from './chat-session.svelte.ts';
+  import { chatSessions, openChatSession } from './chat-session-registry.svelte.ts';
   import type { GrantNotLoosened } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import type { DecisionContext } from './approval-decision-words.ts';
@@ -228,34 +228,42 @@
   /** A phone: a new chat's composer is docked to the bottom of the screen (board PageNewChat, frame l). */
   const phone = new MediaQuery('(max-width: 639.98px)', false);
 
-  const session = new ChatSessionState({
-    sessionId: untrack(() => sessionId),
-    // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
-    unopened: untrack(() => isNew),
-    agentName: () => agent,
-    // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
-    closed: () => gone,
-    onNotFound: () => void context.refetch(),
-    // Another window archived the chat: reading it again turns the composer into the Archived bar.
-    onArchived: () => void context.refetch(),
-    onGrantNotLoosened: (notice) => grantNotLoosened(notice),
-    discardUnstarted: () => choosing,
-    onRunStarted: () => {
-      if (!choosing) return;
-      choosing = false;
-      // The box kept what was typed until the chat started (`clearComposerOnSubmit`). It is emptied
-      // only if it still holds what was sent: text typed after Send, while "Starting chat…" showed,
-      // is the person's next message and stays.
-      const submitted = submittedDraft;
-      submittedDraft = undefined;
-      if (submitted === undefined || chat?.getComposerValue() === submitted) chat?.clearInput();
-      // The session exists now. Its address replaces the new chat's, so Back returns to where the
-      // person came from, and this page stays mounted so the run carries on.
-      router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
-      void queryClient.invalidateQueries({ queryKey: ['contexts'] });
-      void applyDraft();
+  // The session is the registry's (COR-2293 B2): leaving the page releases it, and a route return
+  // gets the same session back while its run is still going, with no second attach.
+  const opened = openChatSession(
+    chatSessions,
+    {
+      sessionId: untrack(() => sessionId),
+      // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
+      unopened: untrack(() => isNew),
     },
-  });
+    {
+      agentName: () => agent,
+      // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
+      closed: () => gone,
+      onNotFound: () => void context.refetch(),
+      // Another window archived the chat: reading it again turns the composer into the Archived bar.
+      onArchived: () => void context.refetch(),
+      onGrantNotLoosened: (notice) => grantNotLoosened(notice),
+      discardUnstarted: () => choosing,
+      onRunStarted: () => {
+        if (!choosing) return;
+        choosing = false;
+        // The box kept what was typed until the chat started (`clearComposerOnSubmit`). It is emptied
+        // only if it still holds what was sent: text typed after Send, while "Starting chat…" showed,
+        // is the person's next message and stays.
+        const submitted = submittedDraft;
+        submittedDraft = undefined;
+        if (submitted === undefined || chat?.getComposerValue() === submitted) chat?.clearInput();
+        // The session exists now. Its address replaces the new chat's, so Back returns to where the
+        // person came from, and this page stays mounted so the run carries on.
+        router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
+        void queryClient.invalidateQueries({ queryKey: ['contexts'] });
+        void applyDraft();
+      },
+    },
+  );
+  const session = opened.session;
 
   // The draft store (`chat-drafts.ts`): what the person typed in this chat and has not sent, kept in
   // this browser. An open chat puts it back in the box, and Chat's draft-restored drawer says when it
@@ -1942,8 +1950,9 @@
         },
       }),
     );
-    // A new chat has no thread yet, so there is nothing to attach to or to read back.
-    if (!untrack(() => isNew)) void session.attach().then((joined) => (arriving = joined));
+    // A new chat has no thread yet, so there is nothing to attach to or to read back, and a session
+    // retained from an earlier visit is still reading its run: `openChatSession` attaches neither.
+    void opened.attached.then((joined) => (arriving = joined || arriving));
     // "New chat about <topic>" in the palette (`?about=`) opens with the topic in the box, for the
     // person to send or change. It sends nothing.
     const about = untrack(() => (isNew ? router.current.search.get('about') : null));
@@ -1955,7 +1964,8 @@
     return () => {
       for (const remove of removals) remove();
       restart.dispose();
-      session.dispose();
+      // Leaving is a release, not a stop: a session with a run going is kept for a route return.
+      opened.release();
     };
   });
 </script>
