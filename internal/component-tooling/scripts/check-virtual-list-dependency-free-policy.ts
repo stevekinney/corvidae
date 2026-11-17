@@ -86,7 +86,7 @@ export function classifySpecifier(
   if (declaredDependencyNames.has(packageName)) return undefined;
 
   return (
-    `bare import "${packageName}" is not declared in components/core/package.json ` +
+    `bare import "${packageName}" is not declared in components/cinder/package.json ` +
     '"dependencies" (and is not relative, "svelte"/"svelte/*", or a Node/Bun builtin)'
   );
 }

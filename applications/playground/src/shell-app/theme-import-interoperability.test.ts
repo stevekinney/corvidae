@@ -15,7 +15,7 @@ import { canApply } from './theme-import-types.ts';
 
 const DIRECTORY = join(
   import.meta.dir,
-  '../../../../components/core/scripts/tokens/fixtures/theme-builder/interoperability',
+  '../../../../components/cinder/scripts/tokens/fixtures/theme-builder/interoperability',
 );
 
 type Fixture = {

@@ -28,7 +28,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/core');
+const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
 const componentsSource = join(componentsRoot, 'src', 'components');
 const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
 

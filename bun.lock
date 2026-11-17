@@ -184,7 +184,7 @@
         "typescript": "catalog:",
       },
     },
-    "components/core": {
+    "components/cinder": {
       "name": "@lostgradient/cinder",
       "dependencies": {
         "@codemirror/autocomplete": "catalog:",
@@ -1347,7 +1347,7 @@
 
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 
-    "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/core"],
+    "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/cinder"],
 
     "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
 

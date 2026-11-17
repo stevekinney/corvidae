@@ -29,7 +29,7 @@ const root = join(import.meta.dir, '..');
 
 /** Directories scanned, relative to the repository root. */
 export const SCANNED_DIRECTORIES = [
-  'components/core',
+  'components/cinder',
   'components/chat',
   'applications/playground',
   'applications/interborough',

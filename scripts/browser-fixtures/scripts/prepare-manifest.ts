@@ -37,7 +37,7 @@ const repositoryRoot = resolve(browserFixturesRoot, '..', '..');
 const chatComponentsRoot = resolve(repositoryRoot, 'components/chat/src/lib/components');
 
 /** Core's manifest, which lists every Cinder component and where its source lives (COR-2085). */
-export const CORE_MANIFEST = 'components/core/components.json';
+export const CORE_MANIFEST = 'components/cinder/components.json';
 
 type CoreManifest = {
   components?: { source?: { packageRoot?: unknown; directory?: unknown } }[];

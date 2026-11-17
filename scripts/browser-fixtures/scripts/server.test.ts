@@ -63,7 +63,7 @@ test('the generated fixture map contains exactly the two owning component direct
   const { fixtureModules } = await import('../.playwright/fixture-modules.ts');
   const sourceRoot = resolve(import.meta.dirname, '../src');
   const expected = [
-    '../../../components/core/src/components/*/*-fixtures.ts',
+    '../../../components/cinder/src/components/*/*-fixtures.ts',
     '../../../components/chat/src/lib/components/*/*-fixtures.ts',
   ].flatMap((pattern) => Array.from(new Bun.Glob(pattern).scanSync({ cwd: sourceRoot })));
   const paths = Object.keys(fixtureModules);
@@ -144,7 +144,7 @@ const loadMissingHostDeclaration = async () => ({
 test('lazy fixture loading reports a missing selected host', async () => {
   const error = await loadFixture('example', 'assertion', {
     fixtureModules: {
-      '../../../components/core/src/components/example/example-fixtures.ts':
+      '../../../components/cinder/src/components/example/example-fixtures.ts':
         loadMissingHostDeclaration,
     },
     hostModules: {},
@@ -208,7 +208,7 @@ test('ambiguous source component owners fail rather than selecting a package', a
     await throwingRejectionOf(
       loadFixture('example', 'assertion', {
         fixtureModules: {
-          '../../../components/core/src/components/example/example-fixtures.ts':
+          '../../../components/cinder/src/components/example/example-fixtures.ts':
             loadMissingHostDeclaration,
           '../../../components/chat/src/lib/components/example/example-fixtures.ts':
             loadMissingHostDeclaration,

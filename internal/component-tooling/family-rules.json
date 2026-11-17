@@ -1,6 +1,6 @@
 {
   "$comment": "The Cinder family map's input (COR-2446). derive-families.ts combines it with the import graph and writes families.json. Paths are relative to packageRoot. Every component directory not named in a family is a single-component family named after its directory; a private (underscore) directory must be named. Moves match top to bottom and the first match wins. A test that sits beside a module a row places (the same directory, named after it) goes with that module.",
-  "packageRoot": "components/core",
+  "packageRoot": "components/cinder",
   "componentsDirectory": "src/components",
   "families": [
     { "name": "accordion", "components": ["accordion", "accordion-item"], "reason": "compound" },

@@ -159,9 +159,9 @@ it('generates root imports and distinct local artifact paths for every component
     expect(component.import).toBe('@lostgradient/cinder');
     for (const path of Object.values(component.artifacts)) {
       expect(path.startsWith('src/components/')).toBe(true);
-      expect(await Bun.file(join(import.meta.dir, '../../../components/core', path)).exists()).toBe(
-        true,
-      );
+      expect(
+        await Bun.file(join(import.meta.dir, '../../../components/cinder', path)).exists(),
+      ).toBe(true);
     }
   }
 });

@@ -1,7 +1,7 @@
 /**
  * Shared component discovery for the cinder code generation pipeline.
  *
- * Walks `components/core/src/components/` and returns every component
+ * Walks `components/cinder/src/components/` and returns every component
  * directory that has both a `<name>.svelte` and a `<name>.types.ts` file.
  * Skips underscore-prefixed directories (private/internal) and `icons`.
  *
@@ -16,7 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const COMPONENTS_ROOT = join(scriptDirectory, '../../../../components/core/src/components');
+const COMPONENTS_ROOT = join(scriptDirectory, '../../../../components/cinder/src/components');
 
 export type ComponentDiscovery = {
   /** Kebab-case directory name (e.g. `accordion-item`). */

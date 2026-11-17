@@ -4,7 +4,7 @@
  * ImageLightbox SSR contract (CIN-377 review — supersedes the round-17/18
  * SSR-visible-dialog approach).
  *
- * `components/core/src/_internal/OVERLAY-POLICY.md` § "SSR rule (hard
+ * `components/cinder/src/_internal/OVERLAY-POLICY.md` § "SSR rule (hard
  * constraint)" (the canonical contract authored for CIN-374) is authoritative
  * here: every Cinder overlay's SURFACE — the floating panel, listbox, or
  * dialog — renders NOTHING on the server, regardless of its initial `open`

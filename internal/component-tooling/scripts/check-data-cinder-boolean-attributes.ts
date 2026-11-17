@@ -3,7 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../components/core');
+const rootDirectory = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../components/cinder',
+);
 const sourceDirectory = join(rootDirectory, 'src');
 const glob = new Glob('components/**/*.svelte');
 

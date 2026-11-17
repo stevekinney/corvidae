@@ -1,5 +1,5 @@
 /**
- * Builds and writes `components/core/components.json`, the machine-readable
+ * Builds and writes `components/cinder/components.json`, the machine-readable
  * index of every public cinder component.
  *
  * Usage:
@@ -407,7 +407,7 @@ async function formatJson(content: string, filepath: string): Promise<string> {
 }
 
 /**
- * Build the manifest and write it to `components/core/components.json`.
+ * Build the manifest and write it to `components/cinder/components.json`.
  * Throws if extraction errors exist (never writes a partial manifest).
  */
 export async function writeManifest(): Promise<void> {

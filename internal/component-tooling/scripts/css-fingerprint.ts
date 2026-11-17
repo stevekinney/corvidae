@@ -7,7 +7,7 @@
  * and normalizes whitespace, so a comment or formatting edit leaves the value alone while a rule
  * edit, a reordered rule, or a different cascade layer changes it.
  *
- * Usage (from a component package, such as `components/core`):
+ * Usage (from a component package, such as `components/cinder`):
  *
  * ```sh
  * bun ../../internal/component-tooling/scripts/css-fingerprint.ts [entry.css …]          # a hash of the ordered flattened CSS

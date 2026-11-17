@@ -152,11 +152,11 @@ describe('renderReadme', () => {
     const checklistHeading = '### Component authoring checklist';
 
     expect(resolve(stable.directory, '../../../README.md')).toBe(
-      resolve(import.meta.dir, '../../../components/core/README.md'),
+      resolve(import.meta.dir, '../../../components/cinder/README.md'),
     );
     expect(existsSync(resolve(stable.directory, '../../../README.md'))).toBe(true);
     expect(
-      readFileSync(join(import.meta.dir, '../../../components/core/README.md'), 'utf8'),
+      readFileSync(join(import.meta.dir, '../../../components/cinder/README.md'), 'utf8'),
     ).toContain(checklistHeading);
   });
 });

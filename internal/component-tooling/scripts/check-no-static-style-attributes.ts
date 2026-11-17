@@ -15,7 +15,7 @@ import { parse } from 'svelte/compiler';
 import { isComponentExample } from './component-source-filter.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const sourceRoot = resolve(scriptDirectory, '../../../components/core/src');
+const sourceRoot = resolve(scriptDirectory, '../../../components/cinder/src');
 
 type SvelteNode = {
   type?: string;

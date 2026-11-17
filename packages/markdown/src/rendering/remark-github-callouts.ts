@@ -14,7 +14,7 @@
  * line is a stray `[!WARNING]`.
  *
  * The rewrite targets Cinder's `<Callout>` markup (see
- * `components/core/src/components/callout/callout.svelte`) so the result
+ * `components/cinder/src/components/callout/callout.svelte`) so the result
  * picks up `callout.css` and re-themes with the rest of the design system,
  * rather than needing a parallel set of styles.
  *

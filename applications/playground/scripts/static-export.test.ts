@@ -151,7 +151,7 @@ test('refuses a repository path behind a symlinked ancestor', async () => {
     const repositoryLink = join(temporaryDirectory, 'repository-link');
     await symlink(join(import.meta.dirname, '..', '..', '..'), repositoryLink);
 
-    expect(() => assertSafeOutputDirectory(join(repositoryLink, 'components', 'core'))).toThrow(
+    expect(() => assertSafeOutputDirectory(join(repositoryLink, 'components', 'cinder'))).toThrow(
       'protected repository path',
     );
   } finally {

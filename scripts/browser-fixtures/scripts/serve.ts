@@ -34,7 +34,7 @@ if (!preview) {
   const watchRoots = [
     resolve(root, 'src'),
     resolve(root, 'fixtures'),
-    ...['core', 'chat', 'editor'].map((name) => resolve(repository, 'components', name, 'src')),
+    ...['cinder', 'chat', 'editor'].map((name) => resolve(repository, 'components', name, 'src')),
     ...['markdown', 'conversationalist'].map((name) =>
       resolve(repository, 'packages', name, 'src'),
     ),

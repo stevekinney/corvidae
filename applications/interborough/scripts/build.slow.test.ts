@@ -151,7 +151,7 @@ describe('buildApplication stylesheets', () => {
   /** The first custom property Cinder's token stylesheet declares, which opens its root block. */
   function firstCinderToken(): string {
     const tokens = readFileSync(
-      join(REPOSITORY_ROOT, 'components', 'core', 'src', 'styles', 'tokens-base.css'),
+      join(REPOSITORY_ROOT, 'components', 'cinder', 'src', 'styles', 'tokens-base.css'),
       'utf8',
     );
     const property = /^\s*(--[\w-]+)\s*:/m.exec(tokens)?.[1];

@@ -97,7 +97,7 @@ describe('scan roots', () => {
   test('cover both component libraries and the applications that write copy', () => {
     expect(SCANNED_DIRECTORIES).toEqual(
       expect.arrayContaining([
-        'components/core',
+        'components/cinder',
         'components/chat',
         'applications/playground',
         'applications/interborough',

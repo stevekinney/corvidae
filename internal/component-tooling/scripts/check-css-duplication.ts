@@ -402,7 +402,7 @@ export function findDuplicatePairs(
 function baselinePath(): string {
   return resolve(
     dirname(fileURLToPath(import.meta.url)),
-    '../../../components/core/scripts/css-duplication-baseline.json',
+    '../../../components/cinder/scripts/css-duplication-baseline.json',
   );
 }
 

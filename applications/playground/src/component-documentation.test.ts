@@ -299,10 +299,10 @@ describe('buildComponentDocumentation', () => {
 
   describe('README links across component packages', () => {
     // READMEs are authored for this repository's layout, so a Chat README reaches a
-    // Cinder README as `components/core/...` from `components/chat/...`, not as a
+    // Cinder README as `components/cinder/...` from `components/chat/...`, not as a
     // sibling directory of its own package.
     const chatToCinderCommandMenu =
-      '<a href="../../../../../core/src/components/command-menu/README.md">CommandMenu</a>';
+      '<a href="../../../../../cinder/src/components/command-menu/README.md">CommandMenu</a>';
 
     it('routes a Chat README link to a Cinder component README to its playground page', () => {
       const html = rewriteComponentReadmeLinks(
@@ -330,7 +330,7 @@ describe('buildComponentDocumentation', () => {
 
     it('does not mistake a link to a non-README file in another package for a component page', () => {
       const html = rewriteComponentReadmeLinks(
-        '<a href="../../../../../core/src/components/command-menu/command-menu.a11y.md">Accessibility</a>',
+        '<a href="../../../../../cinder/src/components/command-menu/command-menu.a11y.md">Accessibility</a>',
         'chat-composer-popover',
         new Set(['chat-composer-popover', 'command-menu']),
         CHAT_COMPONENT_SOURCE,

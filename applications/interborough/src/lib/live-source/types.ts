@@ -10,7 +10,7 @@
  *
  * `LiveSourceStatus` extends plan §5's literal 5-state block to 6 states,
  * adding `'stale'`. Verified against Cinder v0.16.1's actual
- * `ConnectionIndicator` (`cinder/components/core/src/components/
+ * `ConnectionIndicator` (`cinder/components/cinder/src/components/
  * connection-indicator/connection-indicator.types.ts`), which ships exactly
  * `'connecting' | 'live' | 'reconnecting' | 'polling' | 'stale' | 'closed'`
  * — `stale` is real, shipped vocabulary (a distinct icon/color/`data-cinder-

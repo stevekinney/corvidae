@@ -42,7 +42,7 @@ const editorPackageManifest: { private?: boolean } = await Bun.file(
 ).json();
 const utilitiesCss = await Bun.file(
   new URL(
-    `../../../../../${editorPackageManifest.private === true ? 'core' : 'components'}/src/styles/utilities.css`,
+    `../../../../../${editorPackageManifest.private === true ? 'cinder' : 'components'}/src/styles/utilities.css`,
     import.meta.url,
   ),
 ).text();

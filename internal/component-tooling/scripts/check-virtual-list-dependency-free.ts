@@ -23,9 +23,9 @@ async function main(): Promise<void> {
 
   process.stderr.write(
     'check-virtual-list-dependency-free — forbidden imports detected.\n' +
-      'components/core/src/components/virtual-list/** and fixed-virtual-window.ts must never ' +
+      'components/cinder/src/components/virtual-list/** and fixed-virtual-window.ts must never ' +
       'import `@tanstack/virtual-core`, and every other bare import must already be declared in ' +
-      "components/core/package.json's `dependencies`. Use a relative import, or add the " +
+      "components/cinder/package.json's `dependencies`. Use a relative import, or add the " +
       'package to `dependencies` if this is a deliberate, reviewed addition.\n\n',
   );
   for (const violation of violations) {

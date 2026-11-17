@@ -445,7 +445,7 @@ describe('harness integrity, second review (PR #222)', () => {
       ...baseline.staticExport[0]!,
       source: {
         ...baseline.staticExport[0]!.source,
-        untrackedPaths: ['components/core/src/components/button/examples/new.example.svelte'],
+        untrackedPaths: ['components/cinder/src/components/button/examples/new.example.svelte'],
       },
     };
     expect(comparabilityProblems(baseline, complete({ label: 'candidate' }, true))).toContain(

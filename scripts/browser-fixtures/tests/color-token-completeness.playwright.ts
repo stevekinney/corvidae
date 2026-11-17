@@ -54,7 +54,7 @@ const PUBLIC_COLOR_PROPERTIES: string[] = (() => {
     '..',
     '..',
     'components',
-    'core',
+    'cinder',
     'src',
     'tokens',
     'registry.generated.json',

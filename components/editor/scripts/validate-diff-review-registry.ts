@@ -318,7 +318,7 @@ async function run(specifiers) {
     try {
       const resolved = import.meta.resolve(specifier);
       const inTarball = resolved.includes('/node_modules/@lostgradient/');
-      const isWorkspaceSource = resolved.includes('/components/core/src/') || resolved.includes('/components/editor/src/');
+      const isWorkspaceSource = resolved.includes('/components/cinder/src/') || resolved.includes('/components/editor/src/');
       const mod = await import(specifier);
       const ok = inTarball && !isWorkspaceSource && typeof mod === 'object' && mod !== null;
       console.log('PROBE ' + JSON.stringify({ id: specifier, status: ok ? 'pass' : 'fail', resolvedPaths: { [specifier]: resolved } }));

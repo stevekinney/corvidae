@@ -60,7 +60,7 @@ Run a critique on a proposed design before anyone builds it, so problems are cau
 
 ## Implementation review
 
-Any change to `applications/interborough/src/{app,routes,views,styles}` or `components/core/src` needs this review before its pull request is ready for review. The implementer, whether the primary agent or a worker, runs it on its own change; anyone can run it on someone else's pull request.
+Any change to `applications/interborough/src/{app,routes,views,styles}` or `components/cinder/src` needs this review before its pull request is ready for review. The implementer, whether the primary agent or a worker, runs it on its own change; anyone can run it on someone else's pull request.
 
 - For another author's pull request, check its head out in a fresh worktree (`git worktree add ~/.agent-worktrees/claude/<name> <head>`, then `bun install --frozen-lockfile`), and read its linked COR issue for the agreed design and acceptance criteria.
 - Capture the routes the change touches in the states it touches, at the default widths, in light and dark when color, tokens, or surfaces changed: `bun scripts/design-review-capture.ts --grep '<route or view>'`. A Cinder token or default change captures at least three consuming pages, because a default moves every screen that uses it. That holds for a Cinder change made in passing as much as for one a row asked for: Cinder's own gallery cannot show an agreed Interborough row breaking.

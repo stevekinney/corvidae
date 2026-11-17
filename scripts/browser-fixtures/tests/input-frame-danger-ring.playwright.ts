@@ -8,7 +8,7 @@
  * focused invalid Select lost its red error boundary entirely. No unit test
  * could catch this: happy-dom does not compute `box-shadow`/`border-color`, and
  * `select.test.ts` only asserts the `aria-invalid` attribute. The guarded rule
- * lives in `components/core/src/styles/components/_input-frame.css`.
+ * lives in `components/cinder/src/styles/components/_input-frame.css`.
  *
  * Select is the critical consumer: its danger ring comes ONLY from that shared
  * rule (`select.css` has no focused danger ring of its own), so it is the case

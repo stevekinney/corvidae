@@ -29,7 +29,7 @@ const root = join(import.meta.dir, '..');
 const WORKSPACE_PARENTS = ['applications', 'components', 'plugins'];
 
 /** Cinder defines the tokens and the hit-area rule, so its own styles are not scanned. */
-const TOKEN_OWNER = 'components/core';
+const TOKEN_OWNER = 'components/cinder';
 
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',

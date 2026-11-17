@@ -10,7 +10,7 @@ import type { Manifest } from './generate-manifest.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
 const TOOLING_ROOT = `${import.meta.dir}/..`;
-const PACKAGE_ROOT = `${TOOLING_ROOT}/../../components/core`;
+const PACKAGE_ROOT = `${TOOLING_ROOT}/../../components/cinder`;
 const COMPONENT_SCHEMA_PATH = `${TOOLING_ROOT}/src/schemas/examples.schema.json`;
 const MANIFEST_PATH = `${PACKAGE_ROOT}/components.json`;
 

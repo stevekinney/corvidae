@@ -16,7 +16,7 @@ import {
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
-const componentLibraries = ['core', 'chat', 'editor', 'terminal'];
+const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'bureau',
@@ -34,7 +34,7 @@ const libraries = [
   'lifecycle',
   'bungalow',
   'weft',
-  'core',
+  'cinder',
   'chat',
   'editor',
   'markdown',
@@ -647,9 +647,9 @@ describe('internal workspace architecture', () => {
         // publishes, and releases nothing.
         if (library === 'evaluation' && command === 'release-gate') continue;
         // Cinder's `design-system:build` and `design-system:url` generate and locate the Claude
-        // Design system artifact under `tmp/` (components/core/README.md "Design system"); they
+        // Design system artifact under `tmp/` (components/cinder/README.md "Design system"); they
         // build no package output and publish nothing from the workspace.
-        if (library === 'core' && command.startsWith('design-system:')) continue;
+        if (library === 'cinder' && command.startsWith('design-system:')) continue;
         // `release:check` is the pre-backport sweep of documentation and published-surface checks
         // (COR-2370); it packs, publishes, and releases nothing.
         if (command === 'release:check') continue;

@@ -33,8 +33,8 @@ describe('watchTargets', () => {
       [
         `${repository}/applications/interborough/src/main.ts`,
         `${repository}/applications/interborough/src/app/app.svelte`,
-        `${repository}/components/core/src/index.ts`,
-        `${repository}/components/core/src/_internal/portal.ts`,
+        `${repository}/components/cinder/src/index.ts`,
+        `${repository}/components/cinder/src/_internal/portal.ts`,
         `${repository}/components/chat/src/index.ts`,
         `${repository}/packages/markdown/src/index.ts`,
       ],
@@ -44,7 +44,7 @@ describe('watchTargets', () => {
     expect(targets).toEqual([
       { directory: `${repository}/applications/interborough/src`, recursive: true },
       { directory: `${repository}/components/chat/src`, recursive: true },
-      { directory: `${repository}/components/core/src`, recursive: true },
+      { directory: `${repository}/components/cinder/src`, recursive: true },
       { directory: `${repository}/packages/markdown/src`, recursive: true },
     ]);
   });

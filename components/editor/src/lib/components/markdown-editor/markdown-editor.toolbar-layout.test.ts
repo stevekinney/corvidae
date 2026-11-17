@@ -11,7 +11,7 @@ const editorPackageManifest: { private?: boolean } = await Bun.file(
   new URL('../../../../package.json', import.meta.url),
 ).json();
 const utilitiesCssPath = new URL(
-  `../../../../../${editorPackageManifest.private === true ? 'core' : 'components'}/src/styles/utilities.css`,
+  `../../../../../${editorPackageManifest.private === true ? 'cinder' : 'components'}/src/styles/utilities.css`,
   import.meta.url,
 );
 

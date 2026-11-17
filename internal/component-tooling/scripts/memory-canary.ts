@@ -27,7 +27,7 @@ import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import { environmentConfiguration } from './environment-configuration.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(scriptDirectory, '../../../components/core');
+const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
 
 /**
  * A fixed, diverse slice of component suites: a simple leaf (card), a

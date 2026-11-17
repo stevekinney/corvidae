@@ -16,7 +16,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const COMPONENTS = join(import.meta.dir, '../../../components/core/src/components');
+const COMPONENTS = join(import.meta.dir, '../../../components/cinder/src/components');
 
 function readCss(componentPath: string): string {
   return readFileSync(join(COMPONENTS, componentPath), 'utf-8');

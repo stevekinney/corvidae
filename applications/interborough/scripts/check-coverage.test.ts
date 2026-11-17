@@ -59,7 +59,7 @@ describe('uiCoverageRecords', () => {
       uiCoverageRecords([
         createCoverageRecord('../../packages/weft/src/index.ts'),
         createCoverageRecord('../../packages/weft/src/testing/promise-outcome.test-support.ts'),
-        createCoverageRecord('../../components/core/src/index.ts'),
+        createCoverageRecord('../../components/cinder/src/index.ts'),
         createCoverageRecord('/tmp/outside.ts'),
         createCoverageRecord('node_modules/pkg/index.ts'),
       ]),

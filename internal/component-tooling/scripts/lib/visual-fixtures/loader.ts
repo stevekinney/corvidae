@@ -14,7 +14,7 @@ import {
 
 const DEFAULT_COMPONENTS_ROOT = resolve(
   import.meta.dirname,
-  '../../../../../components/core/src/components',
+  '../../../../../components/cinder/src/components',
 );
 
 export type FixtureManifestEntry = {

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 /** The generated registry, the only artifact that knows every shipped token path. */
 const REGISTRY_PATH = join(
   import.meta.dir,
-  '../../../components/core/src/tokens/registry.generated.json',
+  '../../../components/cinder/src/tokens/registry.generated.json',
 );
 
 /** One field of an already-narrowed object, without asserting a shape over it. */
