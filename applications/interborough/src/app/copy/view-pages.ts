@@ -1,5 +1,6 @@
 import { HOOKS_COPY } from '../../routes/hooks/hook-copy.ts';
 import type { ViewName } from '../views.ts';
+import { CHECKS_COPY } from './checks.ts';
 import { GOALS_COPY } from './goals.ts';
 import { PLUGIN_PAGE_COPY } from './plugin-pages.ts';
 import { SCHEDULE_COPY } from './schedules.ts';
@@ -156,6 +157,25 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: FORBIDDEN_COPY.title('Runs'), requirement: 'bureau.tasks:read' },
+  },
+  checks: {
+    label: CHECKS_COPY.title,
+    loading: { title: CHECKS_COPY.loading, description: 'Reading what the checks decided.' },
+    // The page draws its own empty and failed states under its own header (`ownsStates` in
+    // `views.ts`) in the words `CHECKS_COPY` holds, so the frame and the page never say them two ways.
+    empty: {
+      title: CHECKS_COPY.empty.title,
+      description: CHECKS_COPY.empty.description,
+      action: { label: CHECKS_COPY.empty.action, href: CHECKS_COPY.empty.path },
+    },
+    error: {
+      title: CHECKS_COPY.loadFailed.title,
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: {
+      title: FORBIDDEN_COPY.title(CHECKS_COPY.title),
+      requirement: CHECKS_COPY.forbiddenRequirement,
+    },
   },
   schedules: {
     label: 'Schedules',

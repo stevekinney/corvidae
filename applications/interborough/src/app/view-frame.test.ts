@@ -9,7 +9,11 @@ import { type QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
+import {
+  checkFixture,
+  taskFixture,
+  toolApprovalFixture,
+} from '../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { router } from '../lib/router.svelte.ts';
@@ -162,6 +166,10 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   if (call !== undefined && call.method === 'bureau.goals.list') {
     const goals = empty ? [] : [GOAL];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
+  }
+  if (call !== undefined && call.method === 'bureau.checks.list') {
+    const checks = empty ? [] : [checkFixture('1')];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { checks, nextCursor: null } });
   }
   if (call !== undefined && call.method === 'bureau.hooks.list') {
     const hooks = empty ? [] : [HOOK];
@@ -478,8 +486,14 @@ describe('a view that finds something to show', () => {
 });
 
 describe('a view that owns its states', () => {
-  test('is a page that keeps its header: the schedules and hooks lists and the Health Workers and Audit log tabs', () => {
-    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules', 'workers', 'audit', 'hooks']);
+  test('is a page that keeps its header: the checks, schedules and hooks lists and the Health Workers and Audit log tabs', () => {
+    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual([
+      'checks',
+      'schedules',
+      'workers',
+      'audit',
+      'hooks',
+    ]);
   });
 
   for (const view of VIEWS_THAT_OWN_THEIR_STATES) {

@@ -90,6 +90,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/runs': '/runs',
     '/runs/new': '/runs/new',
     '/runs/:run': `/runs/${run}`,
+    '/checks': '/checks',
     '/schedules': '/schedules',
     '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${encodeURIComponent(seed.schedule)}`,

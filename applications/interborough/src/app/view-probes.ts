@@ -5,6 +5,7 @@ import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts
 import { agentsListQuery } from '../lib/agent-queries.ts';
 import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
+import { listChecks } from '../lib/bureau-checks.ts';
 import { listAgents } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
 import { getHook, listHooks } from '../lib/bureau-hooks.ts';
@@ -113,6 +114,12 @@ async function probeUnlistedAgent(queryClient: QueryClient, agent: string): Prom
 async function probeAudit(): Promise<ViewProbeResult> {
   const page = await queryAudit({ types: AUDIT_EVENT_TYPES }, undefined, { limit: 1 });
   return { empty: page.records.length === 0 };
+}
+
+/** The checks: empty when the caller sees no result. The Bureau answers any caller with the ones about what it owns. */
+async function probeChecks(): Promise<ViewProbeResult> {
+  const page = await listChecks({}, undefined, { limit: 1 });
+  return { empty: page.checks.length === 0 };
 }
 
 /** The goals: empty when the caller has none. The Bureau answers any caller with the goals it owns. */
@@ -369,6 +376,8 @@ export function probeFor(
           return { empty: hooks.length === 0 };
         });
     }
+    case 'checks':
+      return probeChecks;
     case 'capabilities':
       // The catalog is what the page cannot do without: asking for it settles whether the caller
       // may read it. The skills are read by the page, which says so itself when they are missing.

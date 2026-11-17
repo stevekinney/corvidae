@@ -26,6 +26,10 @@ Use `LoadMore` to fetch the next page of results as the reader reaches the end o
 <LoadMore onLoadMore={fetchNext} bind:loading bind:hasMore />
 ```
 
+## The button
+
+The button is Cinder's own [`Button`](../button/README.md) at `size="sm"` and `variant="secondary"`, so it is drawn at the compact size and reaches 44 px on a touch screen only through its invisible hit area, never through its paint. It keeps the `cinder-load-more__button` class, and while a load is in flight it is disabled and shows a spinner after its label.
+
 ## Footer with a count
 
 Pass `loadedCount` and `totalCount` and the footer reads "Showing 10 of 19" beside its button, in one centered row. When `onLoadMore` rejects, the footer keeps the count and says what went wrong in words, with a "Try again" button: "Couldn’t load more runs. Showing 10 of 19." Name what the list holds with `itemLabel` ("runs"), or replace the whole message with `errorMessage`.

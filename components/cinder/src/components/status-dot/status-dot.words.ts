@@ -9,15 +9,22 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  *   runs", "Disconnected", "Needs attention", "Needs sign-in" and "Waiting for a secret" (a
  *   workflow trigger that cannot start until its plugin has a secret).
  * - Red (`danger`) is only for "Failed", "Failed for good", "Gave up", "Can't load", "Not loaded"
- *   and "Can't find workflow" (a schedule whose workflow was deleted, which can't run at all).
+ *   and "Can't find workflow" (a schedule whose workflow was deleted, which can't run at all), and
+ *   for a check that could not do its job: "Couldn't check" (the check itself broke) and "Tripped"
+ *   (a tripwire guardrail halted the run).
  * - Everything else that finished or stopped is neutral, and "Waiting" and "Scheduled" are the
  *   hollow `pending` ring.
  *
  * Some words are scoped: "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
  * "Connected", "Draining" and "Disconnected" are workers only, "Listening", "Ready", "Standby" and
  * "Waiting for a secret" are a workflow trigger's states ("Failed" and "Stopped" serve it too),
- * "Failed for good" is a task that ran out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps. The table gives them a tone; the
- * page decides where they belong.
+ * "Failed for good" is a task that ran out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps.
+ * "Check met", "Couldn't check", "No verdict", "Blocked", "Warned", "Sanitized", "Redacted",
+ * "Tripped" and "Flagged" are the outcomes of a check on the Checks page ("Check not met",
+ * "Unavailable" and "Canceled" above serve it too): "Check met" is the one green outcome, a
+ * guardrail's actions and a flagged session are neutral because nothing on that page asks a person
+ * to act on them, and "Tripped" is red because a tripwire halted the run. The table gives them a
+ * tone; the page decides where they belong.
  */
 export const statusDotWordTones = {
   'Waiting on you': 'warning',
@@ -60,6 +67,15 @@ export const statusDotWordTones = {
   'Waiting for a secret': 'warning',
   Live: 'info',
   'Reconnecting…': 'pending',
+  'Check met': 'success',
+  "Couldn't check": 'danger',
+  'No verdict': 'neutral',
+  Blocked: 'neutral',
+  Warned: 'neutral',
+  Sanitized: 'neutral',
+  Redacted: 'neutral',
+  Tripped: 'danger',
+  Flagged: 'neutral',
 } as const satisfies Record<string, StatusDotStatus>;
 
 /** A status word the word-to-tone table knows, such as `'Waiting on you'` or `'Failed'`. */

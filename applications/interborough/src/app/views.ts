@@ -14,6 +14,7 @@ export const VIEW_NAMES = [
   'capabilities',
   'workflows',
   'runs',
+  'checks',
   'schedules',
   'reviews',
   'workers',
@@ -178,6 +179,12 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     creating: (_search, pathname) => pathname === '/runs/new',
     ownsStatesOnPatterns: ['/runs'],
   },
+  // The results of every check, newest first (COR-2114). It holds no console scope: the Bureau shows a
+  // caller the results about what it owns, and `bureau.audit:read` and `bureau.goals:read` widen that.
+  // The list keeps its header and its filter bar in every state, so the page draws its own loading,
+  // empty, failed and load-more states (`routes/checks/checks-list.svelte`), as Hooks does; the frame
+  // still refuses it (forbidden).
+  checks: { scopes: [], canBeEmpty: true, ownsStates: true },
   schedules: {
     scopes: ['schedules:read'],
     canBeEmpty: true,

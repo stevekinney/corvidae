@@ -202,6 +202,7 @@ const ROW_LABELS = [
   'Chat',
   'Reviews',
   'Runs',
+  'Checks',
   'Agents',
   'Workflows',
   'Schedules',
@@ -274,7 +275,7 @@ describe('the sidebar', () => {
     // Every section is a static label over its rows, not a control that folds.
     expect(navigation.querySelectorAll('.cinder-side-navigation-group__trigger').length).toBe(0);
     expect(groups.map((group) => Array.from(group.querySelectorAll('a')).map(labelOf))).toEqual([
-      ['Chat', 'Reviews', 'Runs'],
+      ['Chat', 'Reviews', 'Runs', 'Checks'],
       ['Agents', 'Workflows', 'Schedules', 'Goals', 'Capabilities', 'Hooks'],
       ['Health', 'Settings'],
     ]);
@@ -305,6 +306,7 @@ describe('the sidebar', () => {
       Chat: '/chats',
       Reviews: '/reviews',
       Runs: '/runs',
+      Checks: '/checks',
       Agents: '/agents',
       Workflows: '/workflows',
       Schedules: '/schedules',
@@ -632,7 +634,7 @@ describe('the sidebar’s plugin entries (COR-2213, rows PL8-01 to PL8-05)', () 
     const navigation = getByRole('navigation', { name: 'Views' });
     const groups = Array.from(navigation.querySelectorAll('.cinder-side-navigation-group'));
     expect(groups.map((group) => Array.from(group.querySelectorAll('a')).map(labelOf))).toEqual([
-      ['Chat', 'Reviews', 'Runs', 'Acme overview', 'Beta notes'],
+      ['Chat', 'Reviews', 'Runs', 'Checks', 'Acme overview', 'Beta notes'],
       ['Agents', 'Workflows', 'Schedules', 'Goals', 'Capabilities', 'Hooks', 'Review queue'],
       ['Health', 'Settings', 'Beta status'],
     ]);
@@ -708,6 +710,7 @@ describe('the sidebar’s plugin entries (COR-2213, rows PL8-01 to PL8-05)', () 
         'Chat',
         'Reviews',
         'Runs',
+        'Checks',
         'Acme overview',
         'Beta notes',
         'Agents',

@@ -326,6 +326,11 @@ export function createRecoveredRuns<D extends AgentDefinitions>(
         // end for it, so a rejection settles it as `error` instead of being inferred from the
         // engine's state as a failure before replay, which the engine's late read can misread.
         failedBeforeReplay: false,
+        // COR-2115: the recovered run keeps executing under the plan its rebuilt services hold, so
+        // the run inspector reads that plan as it reads a fresh run's.
+        ...(recoveredServices?.options.hooks === undefined
+          ? {}
+          : { describeHookPlan: () => recoveredServices.options.hooks?.describePlan() }),
         ...(eventSurface
           ? {
               emitter: eventSurface.emitter,

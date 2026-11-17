@@ -518,7 +518,7 @@ describe('a validator configuration (COR-2117)', () => {
     // The whole answer, as recorded: the Interborough tests and captures build their refusal from it
     // (`applications/interborough/src/lib/recorded-goal-refusal.test-support.ts`), so a change to
     // where `issues` sits, what each path is, or how `data` is wrapped fails here first.
-    expect(refused).toEqual({
+    expect<unknown>(refused).toEqual({
       jsonrpc: '2.0',
       error: {
         code: -32602,

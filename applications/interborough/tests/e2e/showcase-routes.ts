@@ -44,6 +44,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/runs': '/runs',
     '/runs/new': '/runs/new',
     '/runs/:run': `/runs/${encodeURIComponent(world.runs.done)}`,
+    '/checks': '/checks',
     '/schedules': '/schedules',
     '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${schedule}`,
