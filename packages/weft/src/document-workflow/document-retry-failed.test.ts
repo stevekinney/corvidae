@@ -138,6 +138,66 @@ describe('retrying a failed document run from its failed step', () => {
     expect(mapped?.result).toEqual(['done a', 'done b']);
   });
 
+  // Known: a map that runs items together replays its settled round, so a completed item runs again.
+  // Bureau refuses a retry of such a step (`isRetryableStep`); this pins what Weft does so the
+  // refusal is removed only when this holds.
+  it.failing(
+    'runs again only the item that failed in a map that runs items together, never a completed one (COR-2424)',
+    async () => {
+      const storage = new MemoryStorage();
+      await using engine = new Engine({ storage });
+      const calls = new Map<string, number>();
+      let failOnB = true;
+      const host: DocumentWorkflowHost = {
+        activities: {
+          first: () => ({ items: ['a', 'b', 'c'] }),
+          item: (argument: DocumentActivityArgument) => {
+            const item = String(argument.previous);
+            calls.set(item, (calls.get(item) ?? 0) + 1);
+            if (item === 'b' && failOnB) throw new Error('b failed');
+            return `done ${item}`;
+          },
+        },
+        triggerKinds: { manual: () => undefined },
+      };
+      await registerWorkflowDocuments(engine, host, {
+        active: [
+          {
+            name: 'mapped-together',
+            trigger: { kind: 'manual' },
+            steps: [
+              { kind: 'activity', handler: 'first' },
+              {
+                kind: 'map',
+                over: 'items',
+                concurrency: 2,
+                steps: [{ kind: 'activity', handler: 'item' }],
+              },
+            ],
+          },
+        ],
+      });
+      await engine.start('mapped-together', null, { id: 'run-map-together' });
+      await settled(engine, 'run-map-together', 'failed');
+      const before = new Map(calls);
+
+      failOnB = false;
+      expect((await engine.retryFailed('run-map-together')).status).toBe('retried');
+      await settled(engine, 'run-map-together', 'completed');
+
+      // An item that completed before the failure never ran again; the one that failed ran once more.
+      for (const [item, count] of before) {
+        if (item === 'b') expect(calls.get(item)).toBe(count + 1);
+        else expect(calls.get(item)).toBe(count);
+      }
+      expect((await stateOf(engine, 'run-map-together'))?.result).toEqual([
+        'done a',
+        'done b',
+        'done c',
+      ]);
+    },
+  );
+
   it('answers not-failed for a second retry of a run that is running again, and not-found for an unknown id', async () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });

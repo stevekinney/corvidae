@@ -111,9 +111,22 @@ export function failedStepIndexOf(timeline: readonly WorkflowTimelineEntry[]): n
  * would be found again and fail the step again; a `parallel`'s branches are not proved to replay.
  */
 export function isRetryableStep(steps: readonly WorkflowFileStep[], index: number): boolean {
-  const entry = workflowFileStepsInCanonicalOrder(steps)[index];
+  const ordered = workflowFileStepsInCanonicalOrder(steps);
+  const entry = ordered[index];
   if (entry === undefined) return false;
-  return entry.step['kind'] === 'activity' && !entry.path.includes('.branches.');
+  if (entry.step['kind'] !== 'activity' || entry.path.includes('.branches.')) return false;
+  // A map that runs items together settles them in one round, and a retry replays that round: an
+  // item that had completed would run again. Only a map that runs one item at a time resumes at the
+  // item that failed (checked by `document-retry-failed.test.ts` in Weft).
+  for (
+    let at = entry.path.indexOf('.steps');
+    at !== -1;
+    at = entry.path.indexOf('.steps', at + 1)
+  ) {
+    const map = ordered.find((candidate) => candidate.path === entry.path.slice(0, at));
+    if (map?.step['kind'] === 'map' && map.step['concurrency'] !== 1) return false;
+  }
+  return true;
 }
 
 /** How many steps `steps` has, counted as the engine counts them. */

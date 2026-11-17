@@ -42,15 +42,33 @@ describe('which steps can run again', () => {
     { kind: 'activity', handler: 'agent' },
     { kind: 'workflow', workflow: 'linear:sync' },
     { kind: 'parallel', branches: { a: [{ kind: 'activity', handler: 'agent' }] } },
+    {
+      kind: 'map',
+      over: 'items',
+      concurrency: 1,
+      steps: [{ kind: 'activity', handler: 'agent' }],
+    },
     { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'agent' }] },
+    {
+      kind: 'map',
+      over: 'items',
+      concurrency: 2,
+      steps: [{ kind: 'activity', handler: 'agent' }],
+    },
   ];
 
-  it('is an activity step outside a parallel step, a map’s included', () => {
-    expect(canonicalStepCount(steps)).toBe(6);
+  it('is an activity step outside a parallel step, in a map that runs one item at a time', () => {
+    expect(canonicalStepCount(steps)).toBe(10);
     expect(isRetryableStep(steps, 0)).toBe(true);
     expect(isRetryableStep(steps, 1)).toBe(false);
     expect(isRetryableStep(steps, 3)).toBe(false);
     expect(isRetryableStep(steps, 5)).toBe(true);
+    expect(isRetryableStep(steps, 99)).toBe(false);
+  });
+
+  it('is not a step in a map that runs items together, whose completed items a retry would run again', () => {
+    // The default concurrency is more than one, and so is 2.
+    expect(isRetryableStep(steps, 7)).toBe(false);
     expect(isRetryableStep(steps, 9)).toBe(false);
   });
 });
