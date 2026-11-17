@@ -404,6 +404,7 @@
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {

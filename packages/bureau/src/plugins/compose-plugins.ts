@@ -791,7 +791,9 @@ class Contributed {
       const contributed: NonNullable<PluginContributions['scorers']>[number] = {
         ...judge,
         name: id(judge.name),
-        score: (run, signal) => judge.score(run, signal),
+        // The run's id (COR-2204) is the third argument: a wrapper that drops it leaves a plugin
+        // scorer unable to file a decision under the run it scores.
+        score: (run, signal, context) => judge.score(run, signal, context),
       };
       this.scorers.push(contributed);
       // COR-2200: the scorer catalog names each scorer's plugin and its version.

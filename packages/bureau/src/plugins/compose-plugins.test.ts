@@ -337,14 +337,14 @@ describe('composePlugins', () => {
     }
   });
 
-  it('registers a scorer under its namespaced name and hands its score the run and the signal (COR-2199)', async () => {
-    const received: { run: unknown; signal: AbortSignal; self: unknown }[] = [];
+  it('registers a scorer under its namespaced name and hands its score the run, the signal and the run id (COR-2199, COR-2204)', async () => {
+    const received: { run: unknown; signal: AbortSignal; context: unknown; self: unknown }[] = [];
     const scorer = {
       name: 'judge',
       version: '1',
       determinism: 'stochastic' as const,
-      score(run: unknown, signal: AbortSignal) {
-        received.push({ run, signal, self: this });
+      score(run: unknown, signal: AbortSignal, context: unknown) {
+        received.push({ run, signal, context, self: this });
         return { outcome: 'pass' as const, message: 'ok' };
       },
     };
@@ -359,10 +359,12 @@ describe('composePlugins', () => {
 
     const run = { content: 'a run' } as never;
     const signal = new AbortController().signal;
-    await composed?.score(run, signal);
+    const context = { runId: 'run-1' };
+    await composed?.score(run, signal, context);
     expect(received).toHaveLength(1);
     expect(received[0]?.run).toBe(run);
     expect(received[0]?.signal).toBe(signal);
+    expect(received[0]?.context).toBe(context);
     expect(received[0]?.self).toBe(scorer);
   });
 

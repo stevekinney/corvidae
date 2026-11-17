@@ -72,6 +72,7 @@ import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
 import { createPluginEventPublisher } from './plugins/plugin-event-publish';
+import { createPluginDecide } from './plugins/plugin-host-decisions';
 import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { createGoalForPlugin } from './goals';
 import {
@@ -5573,6 +5574,17 @@ async function constructBureau<const D extends AgentDefinitions>(
         list: (filter) => host.schedules.list(filter),
       },
       goals: { create: (request) => createGoalForPlugin(goalsComposition.goals, request, plugin) },
+      // COR-2204: asked as `plugin:<name>`, whatever principal the plugin passes.
+      decisions: {
+        decide: createPluginDecide({
+          plugin,
+          decisions: host.decisions,
+          gate: record?.gate,
+          isDisposed: () => emitter.completed,
+          withShutdownSignal: withBackgroundShutdownSignal,
+          badRequest: toBadRequest,
+        }),
+      },
     };
   }
 }

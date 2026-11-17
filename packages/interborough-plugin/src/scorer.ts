@@ -49,6 +49,16 @@ export interface PluginScore {
 }
 
 /**
+ * What a scorer is told about the run beside its result. A `RunResult` has no run id, so the host
+ * passes it here: it is the id the run's audit records and events carry, which a scorer files its
+ * own records under (for example a decision it asks, `taskId: context.runId`).
+ */
+export interface PluginScoredRun {
+  /** The id of the run being scored. */
+  readonly runId: string;
+}
+
+/**
  * A single configured scorer run against a fraction of live runs. `score` receives the completed
  * run's {@link RunResult}, so an offline matcher or model judge that already scores a `RunResult`
  * can be adapted into this shape directly: wrap it, normalize its score to 0-1, and return a
@@ -68,7 +78,8 @@ export interface PluginScorer {
    */
   determinism?: 'deterministic' | 'stochastic';
   /**
-   * Scores a sampled run. May be async (for example a model call). `signal` aborts when the Bureau
+   * Scores a sampled run. May be async (for example a model call). `context` names the run.
+   * `signal` aborts when the Bureau
    * shuts down and when this scorer has run for 30 seconds; a scorer that honors it stops its own
    * work, and one that ignores it is abandoned at the deadline and its late result discarded.
    * Throwing records an `error`, and a malformed return (not an object, an unknown `outcome`, a
@@ -76,7 +87,11 @@ export interface PluginScorer {
    * an `error` too. The scorer's digest is computed by the host from its name and version, never
    * supplied.
    */
-  score: (run: RunResult, signal: AbortSignal) => PluginScore | Promise<PluginScore>;
+  score: (
+    run: RunResult,
+    signal: AbortSignal,
+    context: PluginScoredRun,
+  ) => PluginScore | Promise<PluginScore>;
   /**
    * Alert threshold: a score strictly below this fires a webhook, and so does a `fail` outcome
    * whatever its score. Without a threshold only `fail` alerts.

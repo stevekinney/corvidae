@@ -162,6 +162,8 @@ const unstartedHost: PluginHost = {
   },
   goals: { create: () => Promise.reject(new Error(unstartedMessage)) },
   publish: () => Promise.reject(new Error(unstartedMessage)),
+  // A plain object, so a helper built during `setup` reads `decisions` without throwing.
+  decisions: { decide: () => Promise.reject(new Error(unstartedMessage)) },
 };
 
 /**

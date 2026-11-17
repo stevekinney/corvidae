@@ -605,6 +605,8 @@ export function lateHostApi(plugin: string): {
       },
       goals: { create: async (request) => host().goals.create(request) },
       publish: async (name, payload) => host().publish(name, payload),
+      // A plain object, so a helper built during `setup` reads it before the host has started.
+      decisions: { decide: async (request, options) => host().decisions.decide(request, options) },
     },
     bind: (given) => {
       bound = given;
