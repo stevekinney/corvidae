@@ -7,7 +7,8 @@
   let {
     names = ['Overview', 'Workers', 'Settings'],
     collapseOnOverflow,
-  }: { names?: string[]; collapseOnOverflow?: boolean } = $props();
+    counts = [],
+  }: { names?: string[]; collapseOnOverflow?: boolean; counts?: number[] } = $props();
 
   let value = $state('tab-0');
 </script>
@@ -15,7 +16,9 @@
 <Tabs bind:value {...collapseOnOverflow === undefined ? {} : { collapseOnOverflow }}>
   <TabList label="Sections">
     {#each names as name, index (name)}
-      <Tab value={`tab-${index}`}>{name}</Tab>
+      <Tab value={`tab-${index}`} {...counts[index] === undefined ? {} : { count: counts[index] }}
+        >{name}</Tab
+      >
     {/each}
   </TabList>
   {#each names as name, index (name)}

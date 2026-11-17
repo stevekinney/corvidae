@@ -153,6 +153,35 @@ describe('Tabs collapse on overflow (COR-2448 AC2)', () => {
     expect(collapsed(container)).toBe(false);
   });
 
+  // COR-2448 review: a count that updates live while someone is in the select must not unmount it.
+  test('a collapsed bar waits for focus to leave before it measures a changed tab, so a new count does not remount the select in use', async () => {
+    geometry.rootWidth = 375;
+    geometry.barNeed = 620;
+    const { container, rerender } = render(Harness, { props: { counts: [1, 2, 3] } });
+    flushSync();
+    expect(collapsed(container)).toBe(true);
+
+    const select = container.querySelector<HTMLElement>('.cinder-tabs__collapse button');
+    if (select === null) throw new Error('The collapsed bar drew no select');
+    select.focus();
+    expect(document.activeElement).toBe(select);
+
+    await rerender({ counts: [4, 2, 3] } as never);
+    flushSync();
+    expect(collapsed(container)).toBe(true);
+    expect(container.querySelector('.cinder-tabs__collapse button')).toBe(select);
+    expect(document.activeElement).toBe(select);
+
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    flushSync();
+    // Focus has left, so the change is measured: the bar is drawn, found still too wide, and
+    // collapsed again.
+    expect(collapsed(container)).toBe(true);
+    outside.remove();
+  });
+
   test('collapseOnOverflow={false} keeps a bar that scrolls sideways', () => {
     geometry.rootWidth = 375;
     geometry.barNeed = 620;

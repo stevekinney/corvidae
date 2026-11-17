@@ -149,6 +149,9 @@
     get controlDisabled() {
       return disabled;
     },
+    get stacked() {
+      return stacked;
+    },
     register: (registration) => controller.register(registration),
     isSelected: (segmentValue) => controller.isSelected(segmentValue),
     isFocusable: (segmentValue) => controller.isFocusable(segmentValue),

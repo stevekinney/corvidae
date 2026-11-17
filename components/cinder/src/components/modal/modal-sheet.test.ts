@@ -199,19 +199,31 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     );
   });
 
-  test('stacks the footer at full width with the confirmation on top, its buttons at their painted height', () => {
-    const footer = modalCss.slice(
-      modalCss.indexOf(".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {"),
-    );
-    expect(footer).toContain('flex-direction: column-reverse;');
+  test('lays the footer in one row, the confirmation filling beside compact secondary actions, buttons at their painted height', () => {
+    const flat = modalCss.replace(/\s+/g, ' ');
+    const shared =
+      ".cinder-modal[data-cinder-sheet='docked'] :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)";
+    expect(flat).toContain(`${shared} { flex-wrap: wrap-reverse;`);
+    expect(flat).toContain(`${shared} > * { flex: 1 1 auto; }`);
+    expect(flat).toContain(`${shared} > :first-child:not(:only-child) { flex: 0 0 auto; }`);
+    expect(modalCss).not.toContain('column-reverse');
     // The body's fields are full 44px targets; the footer's buttons are drawn compact and reach
     // 44px through their hit area, so no sheet rule sets a height on them.
     expect(modalCss).toMatch(
       /\[data-cinder-sheet='docked'\] \.cinder-modal__body \.cinder-input\.cinder-input\s*\{\s*min-height:\s*var\(--cinder-touch-target-min\);/,
     );
     expect(modalCss).not.toMatch(/__footer \.cinder-button\[data-cinder-size\]/);
-    expect(modalCss).toMatch(/__footer > \*\s*\{\s*inline-size:\s*100%;/);
+    expect(modalCss).not.toMatch(/__footer > \*\s*\{\s*inline-size:\s*100%;/);
     expect(modalCss).toMatch(/env\(safe-area-inset-bottom\)/);
+  });
+
+  // COR-2448 review A: Restart, Disable and "Connect Anthropic" are one sheet with one footer.
+  test('ConfirmDialog carries no footer layout of its own; it inherits the one shared rule', () => {
+    expect(confirmCss).not.toContain('wrap-reverse');
+    expect(confirmCss).not.toMatch(
+      /data-cinder-sheet='docked'\]\s+\.cinder-confirm-dialog__actions/,
+    );
+    expect(modalCss.match(/wrap-reverse/g)).toHaveLength(1);
   });
 
   test('cross-fades instead of sliding under reduced motion', () => {

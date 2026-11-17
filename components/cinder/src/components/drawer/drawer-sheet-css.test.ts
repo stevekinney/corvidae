@@ -58,7 +58,7 @@ describe('drawer.css footer bar (COR-2322 AC2)', () => {
     ".cinder-drawer__panel[data-cinder-placement='bottom'] .cinder-drawer__footer";
 
   test('a bottom sheet footer is a bar on the sheet surface with no hard rule above it', () => {
-    expect(declared('.cinder-drawer__footer', 'background')).toBe('var(--cinder-surface)');
+    expect(declared('.cinder-drawer__footer', 'background')).toBe('var(--cinder-surface-raised)');
     expect(declared(bottomFooter, 'border-block-start')).toBe('none');
     expect(declared(bottomFooter, 'position')).toBe('relative');
     // It restates no background, so the non-modal rule's transparent surface still wins.
@@ -86,7 +86,9 @@ describe('drawer.css footer bar (COR-2322 AC2)', () => {
     expect(declared(fade, 'pointer-events')).toBe('none');
     const background = declared(fade, 'background') ?? '';
     expect(background).toContain('linear-gradient');
-    expect(background).toContain('var(--_cinder-drawer-footer-fade-color, var(--cinder-surface))');
+    expect(background).toContain(
+      'var(--_cinder-drawer-footer-fade-color, var(--cinder-surface-raised))',
+    );
   });
 
   test('a non-modal drawer fades into its inset surface', () => {

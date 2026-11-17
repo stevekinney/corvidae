@@ -1,4 +1,9 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* The stacked form draws Radio's own indicator. radio-group.css overrides form-field.css's column
+ * direction at equal specificity, so it must come after it wherever it is first pulled in. */
+@import '../form-field/form-field.css';
+@import '../radio-group/radio-group.css';
+
 @layer cinder.components {
   /* ========================================
  * SEGMENTED CONTROL
@@ -105,6 +110,44 @@
   .cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control-option {
     justify-content: flex-start;
     text-align: start;
+  }
+
+  /* No separator in a column: the attached rule is 60% of a row's width and starts at its edge,
+     which reads as a stray line between the rows. */
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control
+    .cinder-segmented-control-option:not(:first-child)::before {
+    content: none;
+  }
+
+  /* A radio list, not a field with suggestions under it. Each row is a leading radio (the one
+     Radio draws, in the markup) and its label: no track, no raised face, border or ring on the
+     chosen row. The filled radio and the default text colour mark the choice. A row keeps the
+     control height (a 44px target on a coarse pointer) and the keyboard ring. */
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control[role='radiogroup']:not([data-cinder-detached]) {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control
+    .cinder-segmented-control-option[role='radio']:not(:focus-visible) {
+    gap: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-1);
+    border: 0;
+    border-radius: var(--cinder-radius-md);
+    background: transparent;
+    box-shadow: none;
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control
+    .cinder-segmented-control-option[role='radio']:not(:disabled):not([aria-disabled='true']) {
+    color: var(--cinder-text-default);
   }
 
   /* ── Vertical orientation ───────────────────────────────────────────────── */

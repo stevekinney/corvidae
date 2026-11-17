@@ -156,7 +156,11 @@
     gap: var(--cinder-space-4);
     /* Reserve trailing inline space so the title doesn't run under the
      absolute-positioned close button. */
-    padding-block: var(--cinder-space-4);
+    /* The title sits close to what it introduces: 8px under it plus the body's 16px above, so the
+       gap to the first line reads at about the body's own paragraph rhythm whether or not the rule
+       is drawn. Unconditional: the rule's presence follows the body's overflow, and padding that
+       followed it could change whether the body scrolls. */
+    padding-block: var(--cinder-space-4) var(--cinder-space-2);
     padding-inline-start: var(--cinder-space-5);
     padding-inline-end: calc(var(--cinder-space-5) + 2.25rem);
     /* The rule is drawn only while the body scrolls (below); a short confirmation has nothing to
@@ -286,7 +290,7 @@
        and the footer actions start on one edge (s4#8). No gutter is reserved: a reserved gutter
        made the body's inline-end inset wider than its start whenever the scrollbar is classic,
        even when nothing scrolls. */
-    padding: var(--cinder-space-6) var(--cinder-space-5);
+    padding: var(--cinder-space-4) var(--cinder-space-5);
     background: var(--cinder-surface-raised);
     overscroll-behavior: contain;
     scrollbar-gutter: auto;
@@ -379,8 +383,8 @@
  * full width, rounded top corners, a grabber, a height capped so the body scrolls inside the sheet
  * instead of the sheet outgrowing the screen, and a lift above the on-screen keyboard
  * (`--_cinder-keyboard-inset`, published while it is open). The footer's actions stack at full
- * width at the button's painted height (the hit area reaches 44px) with the last one, the
- * confirmation, on top; DOM order is unchanged, so the
+ * actions share one row at the button's painted height (the hit area reaches 44px), the last one,
+ * the confirmation, filling the rest; DOM order is unchanged, so the
  * first action keeps initial focus. Physical properties, as in drawer.css, because the sheet is
  * physically bottom anchored in every writing mode.
  * ---------------------------------------- */
@@ -417,13 +421,28 @@
     background: var(--cinder-border-contrast);
   }
 
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
-    flex-direction: column-reverse;
-    align-items: stretch;
+  /* One footer rule for every docked dialog (COR-2448 AC5): the actions share one row, the
+   * secondary actions at their own width and the last, the confirmation, filling the rest. When
+   * they do not fit one line the confirmation wraps above the others. ConfirmDialog's row of
+   * actions (inside its footer, under the failure region) takes the same rule. A lone action
+   * fills the row. */
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions) {
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    justify-content: stretch;
   }
 
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer > * {
-    inline-size: 100%;
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
+    > * {
+    flex: 1 1 auto;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
+    > :first-child:not(:only-child) {
+    flex: 0 0 auto;
   }
 
   /* The body's fields are full 44px targets in the sheet. The selector repeats the input's own class
