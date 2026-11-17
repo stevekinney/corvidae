@@ -529,7 +529,10 @@
   let thenOpen = $state(false);
   // A default hook has nothing to open: its steps are text, with no Edit button (COR-2181).
   const compactWhen = $derived(phoneViewport.current && !isNew && !isDefault && !whenOpen);
-  const compactThen = $derived(phoneViewport.current && !isNew && !isDefault && !thenOpen);
+  // A plugin hook's Then is its configuration, the page's reason for being, so it is never folded.
+  const compactThen = $derived(
+    phoneViewport.current && !isNew && !isDefault && hook?.action.type !== 'plugin' && !thenOpen,
+  );
 
   /** Moves focus to the control of a problem, opening the step it is in first when the phone folded it. */
   async function focusProblem(problem: HookProblem): Promise<void> {

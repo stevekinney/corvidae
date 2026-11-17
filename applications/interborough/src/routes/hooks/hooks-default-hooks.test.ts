@@ -470,6 +470,31 @@ describe('a hook the owner made that runs a plugin’s action (rows R10-10 to R1
     ).toEqual(['Slack']);
   });
 
+  test('on a phone its configuration is still shown as fields, not folded into a summary', async () => {
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        media: query,
+        matches: query.includes('640'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      }),
+    });
+    try {
+      const view = open('/hooks/owned', [OWNED], {}, KEYS);
+
+      const action = await view.findByTestId('contributed-action');
+      expect((within(action).getByLabelText('Channel') as HTMLInputElement).value).toBe('ops');
+      expect(view.queryByTestId('hook-step-summary-then')).toBeNull();
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(window, 'matchMedia');
+      else Object.defineProperty(window, 'matchMedia', original);
+    }
+  });
+
   test('saves a changed configuration through update, the secret as its reference alone', async () => {
     const view = open(
       '/hooks/owned',

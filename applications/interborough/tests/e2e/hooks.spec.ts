@@ -15,7 +15,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { HOOKS_COPY } from '../../src/routes/hooks/hook-copy.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
@@ -643,7 +643,12 @@ test('[default-hooks] a default hook’s switch turns it on and off through upda
 
 test('[default-hook-toggle-failed] a switch the Bureau refuses says so in a toast and returns to its saved state', async ({
   page,
+  pageErrors,
 }) => {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+    reason: 'the test answers the update with the failure the Bureau gives when it cannot save',
+  });
   await openHooks(page, '/hooks', [DEFAULT_ON], {
     'bureau.hooks.update': { status: 500, message: 'The server broke.' },
   });
@@ -678,7 +683,11 @@ for (const width of WIDTHS) {
     await expect(head.getByRole('switch')).toBeVisible();
     const duplicate = head.getByRole('button', { name: defaults.duplicate, exact: true });
     await expect(duplicate).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(duplicate).toHaveAttribute('data-cinder-size', 'sm');
+    // R10-05: drawn no taller than 36 px, with the 44 pixel hit area Cinder gives a compact button
+    // (the page asks for size sm; Cinder draws it as its compact size).
+    await expect(duplicate).toHaveAttribute('data-cinder-hit-target', '44');
+    const drawn = await duplicate.boundingBox();
+    expect(drawn?.height ?? Infinity).toBeLessThanOrEqual(36);
     await expect(page.getByRole('button', { name: header.menuLabel })).toHaveCount(0);
     await expect(page.getByText(HOOKS_COPY.editor.check.delete, { exact: true })).toHaveCount(0);
 
@@ -825,7 +834,12 @@ test('[default-hook-duplicated] Duplicate makes an off copy named “<name> copy
 
 test('[default-hook-duplicate-failed] a Duplicate the Bureau refuses says so in a toast and stays on the default hook', async ({
   page,
+  pageErrors,
 }) => {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+    reason: 'the test answers the duplicate with the failure the Bureau gives when it cannot save',
+  });
   await openHooks(page, '/hooks/default-on', [DEFAULT_ON], {
     'bureau.hooks.duplicate': { status: 500, message: 'The server broke.' },
   });
@@ -941,7 +955,18 @@ test('[plugin-hook-secret-missing] a chosen key that is Missing is warned about,
 test('[plugin-hook-no-secrets] with no secret a plugin names, the Select is disabled and says where one is saved', async ({
   page,
 }) => {
-  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {}, () => [
+  // No key is chosen: a chosen key the host does not list would be a row of its own, drawn Missing.
+  const unchosen = hookRecord('owner-unchosen', {
+    name: 'My Slack post',
+    declaredBy: null,
+    action: {
+      type: 'plugin',
+      plugin: 'slack',
+      kind: 'post-message',
+      configuration: { channel: 'ops' },
+    },
+  });
+  await openHooks(page, '/hooks/owner-unchosen', [unchosen], {}, () => [
     pluginStanding('slack', 'Slack', 'running'),
   ]);
   const action = page.getByTestId('contributed-action');
@@ -964,7 +989,12 @@ test('[plugin-hook-no-secrets] with no secret a plugin names, the Select is disa
 
 test('[plugin-hook-secrets-failed] when the keys cannot be read the field says so with Try again, and the other fields stay usable', async ({
   page,
+  pageErrors,
 }) => {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(500, /\/host\/plugins/),
+    reason: 'the test answers every read of the host’s plugins with a failure until Try again',
+  });
   let failing = true;
   await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {}, () =>
     failing ? { status: 500, message: 'The host broke.' } : PLUGINS(),
@@ -1040,7 +1070,13 @@ test('[plugin-hook-testing] while a test runs, Send a test event shows its loadi
 
 test('[plugin-hook-save-failed] a refused save keeps every value and shows the refusal on the field', async ({
   page,
+  pageErrors,
 }) => {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(400, /\/bureau\/jsonrpc/),
+    reason:
+      'the test answers the update with the refusal the Bureau gives a configuration it rejects',
+  });
   await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
     'bureau.hooks.update': {
       status: 400,
