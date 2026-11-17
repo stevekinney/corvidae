@@ -106,12 +106,10 @@ describe('signing in before the source is saved', () => {
 
     // The provider window closes after the host settled the sign-in: the page reads it.
     opened[0]!.closed = true;
-    await waitFor(
-      () =>
-        expect(document.body.querySelector('[data-testid="connect-signed-in"]')?.textContent).toBe(
-          signInCopy.signedIn,
-        ),
-      { timeout: 3000 },
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="connect-signed-in"]')?.textContent).toBe(
+        signInCopy.signedIn,
+      ),
     );
 
     await fireEvent.submit(document.body.querySelector('[data-testid="connect-form"]')!);
@@ -134,7 +132,7 @@ describe('signing in before the source is saved', () => {
     await findByTestId('connect-sign-in-waiting');
 
     opened[0]!.closed = true;
-    const canceled = await findByTestId('connect-sign-in-canceled', {}, { timeout: 3000 });
+    const canceled = await findByTestId('connect-sign-in-canceled');
     expect(canceled.textContent?.trim()).toBe(signInCopy.canceled('GitHub'));
     expect(getByRole('button', { name: signInCopy.tryAgain })).not.toBeNull();
     expect(document.body.querySelector('[data-testid="connect-sign-in-refused"]')).toBeNull();
@@ -150,7 +148,7 @@ describe('signing in before the source is saved', () => {
     await findByTestId('connect-sign-in-waiting');
 
     await fireEvent.click(getByRole('link', { name: signInCopy.cancel }));
-    const refused = await findByTestId('connect-sign-in-refused', {}, { timeout: 3000 });
+    const refused = await findByTestId('connect-sign-in-refused');
     expect(refused.textContent?.trim()).toBe(
       signInCopy.refused('GitHub', signInCopy.reasons['invalid_request'] ?? ''),
     );
