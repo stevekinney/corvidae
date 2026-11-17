@@ -5,6 +5,7 @@ export const appFixtureDeclarations = {
   'a2ui-surface': ['assertion'],
   chat: ['assertion'],
   'chat-mcp-app': ['assertion'],
+  'chat-mcp-app-fill': ['assertion'],
   'chat-navigation-rail': ['assertion'],
   'chat-stress': ['assertion'],
   'chat-sub-session': ['assertion'],

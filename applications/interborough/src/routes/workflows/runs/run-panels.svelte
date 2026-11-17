@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
-   * The plugin panels on a run's page (COR-1894): each MCP app a running plugin contributes that
-   * opens from `bureau.tasks.inspect`, which is the run inspector. A panel renders through Chat's
-   * `McpApp`, sandboxed to `allow-scripts` and nothing else, labelled with the plugin it comes
-   * from. It owns no client and no credential: the host serves its page and runs the tools it
-   * declared, as the person looking at the page. A host that lists no panel, or cannot list them,
-   * leaves the page as it was.
+   * The plugin panels on a run's page (COR-1894, COR-2214): each MCP app a running plugin
+   * contributes with a `run` placement, the run inspector among them, ordered by plugin name and
+   * then in the order the host lists a plugin's panels. A panel renders through Chat's `McpApp`,
+   * sandboxed to `allow-scripts` and nothing else, labelled with the plugin it comes from. It owns
+   * no client and no credential: the host serves its page and runs the tools it declared, as the
+   * person looking at the page. A host that lists no panel, or cannot list them, leaves the page as
+   * it was.
    */
   import { McpApp } from '@lostgradient/chat';
   import { Badge } from '@lostgradient/cinder';
@@ -14,9 +15,6 @@
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../../lib/host-panels.ts';
   import { queryKeys } from '../../../lib/query.ts';
-
-  /** The Bureau tool that opens the run inspector, and so the panels that belong to a run. */
-  const RUN_PANEL_TOOL = 'bureau.tasks.inspect';
 
   interface RunPanelsProps {
     /** The Bureau task the panels show. */
@@ -33,9 +31,15 @@
     }),
     undefined,
   );
-  // Bureau composition keeps every app's `ui://` URI unique across plugins, so the URI keys the list.
+  // The host lists a plugin's panels in the order it declared them. The sort is stable, so that
+  // order holds within a plugin; plugin names compare by code unit, never by locale. Bureau
+  // composition keeps every app's `ui://` URI unique across plugins, so the URI keys the list.
   const panels = $derived(
-    (apps.data ?? []).filter((candidate) => candidate.opensFromTool === RUN_PANEL_TOOL),
+    (apps.data ?? [])
+      .filter((candidate) => candidate.placements.some((placement) => placement.kind === 'run'))
+      .toSorted((left, right) =>
+        left.plugin < right.plugin ? -1 : left.plugin > right.plugin ? 1 : 0,
+      ),
   );
 </script>
 

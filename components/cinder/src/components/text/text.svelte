@@ -36,6 +36,7 @@
     h5: 'h5',
     caption: 'p',
     body: 'p',
+    code: 'code',
   } as const satisfies Record<TextVariant, TextElement>;
 
   const element = $derived(as ?? defaultElements[variant]);

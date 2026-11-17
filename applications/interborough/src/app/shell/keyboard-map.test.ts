@@ -97,9 +97,9 @@ describe('the registry holds row 25f', () => {
     ]) {
       expect(held.has(key), key).toBe(true);
     }
-    // Twelve places in the sidebar, and Workers, Storage and the audit log under Health.
-    expect(KEYBOARD_ROW.goTo).toHaveLength(15);
-    expect(new Set(KEYBOARD_ROW.goTo).size).toBe(15);
+    // Thirteen places in the sidebar, and Workers, Storage and the audit log under Health.
+    expect(KEYBOARD_ROW.goTo).toHaveLength(16);
+    expect(new Set(KEYBOARD_ROW.goTo).size).toBe(16);
   });
 
   test('Reviews registers A and D and the digits 1 to 9, only while it is on screen', async () => {

@@ -11,9 +11,10 @@ import { endToEndPort } from '../../scripts/environment-configuration.ts';
 
 /**
  * Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the
- * interactive host's default of 7234. The suite holds seven consecutive ports (this one, the
- * barrier's, the second host's, the journey's, the first-run host's, the connect host's, and the
- * showcase host's), so two runs on one machine set `INTERBOROUGH_E2E_PORT` at least seven apart.
+ * interactive host's default of 7234. The suite holds eight consecutive ports (this one, the
+ * barrier's, the second host's, the journey's, the first-run host's, the connect host's, the
+ * showcase host's, and the plugin-page host's), so two runs on one machine set
+ * `INTERBOROUGH_E2E_PORT` at least eight apart.
  */
 export const E2E_PORT = endToEndPort();
 
@@ -83,6 +84,15 @@ export const E2E_CONNECT_URL = `http://127.0.0.1:${E2E_CONNECT_PORT}`;
  */
 export const E2E_SHOWCASE_PORT = E2E_PORT + 6;
 export const E2E_SHOWCASE_URL = `http://127.0.0.1:${E2E_SHOWCASE_PORT}`;
+
+/**
+ * The eighth host, on the port after the showcase host's, which only the plugin-page specification
+ * (`plugin-page.spec.ts`) opens. It loads the workspace's own plugins beside fixture plugins that
+ * place pages in the sidebar (`page-panel-plugins.ts`), so the main host's sidebar, which other
+ * specifications count, stays what it is.
+ */
+export const E2E_PLUGIN_PAGES_PORT = E2E_PORT + 7;
+export const E2E_PLUGIN_PAGES_URL = `http://127.0.0.1:${E2E_PLUGIN_PAGES_PORT}`;
 
 /**
  * An agent file the server writes into the showcase host, so the showcase has one agent the editor

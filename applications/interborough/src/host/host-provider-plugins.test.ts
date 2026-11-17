@@ -586,8 +586,10 @@ describe('a keyless provider (COR-2144)', () => {
 });
 
 describe('the providers the workspace ships', () => {
-  test('declare exactly the four keys the host has always used, and the demo plugin one of its own', () => {
-    // The inspectors plugin ships panels, not a provider, and declares no secret.
+  test('declare exactly the four keys the host has always used, the demo plugin one of its own, and the GitHub plugin its webhook secret', () => {
+    // The inspectors plugin ships panels, not a provider, and declares no secret. The GitHub
+    // plugin's `github-webhook-secret` is a deliberate addition (COR-2170): it signs the deliveries
+    // its receive trigger accepts, and is no provider key.
     expect(
       workspacePlugins()
         .filter(({ descriptor }) => descriptor.secrets !== undefined)
@@ -598,6 +600,7 @@ describe('the providers the workspace ships', () => {
       ['gemini', ['gemini-api-key']],
       ['typesafe', ['typesafe-api-key']],
       ['demo', [{ key: 'demo-approval-secret', generated: true }]],
+      ['github', ['github-webhook-secret']],
     ]);
   });
 
