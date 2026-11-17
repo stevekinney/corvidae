@@ -9,11 +9,13 @@
  * Every directory under the components directory is a component; one a family names belongs to
  * that family, and any other is a single-component family named after itself (a private,
  * underscore-prefixed directory must be named). Every other file is a module, placed by the first
- * move row that matches it. Package dependencies come from source imports only: a test or a
- * fixture never adds one. The derivation fails, naming every problem, when the rules and the tree
- * disagree: a private directory no family names, a package cycle, a module listed for one family
- * but imported by another, a test helper that imports a component, or a family test that would
- * need a package depending on its own family.
+ * move row that matches it. Package dependencies come from source imports (TypeScript, Svelte and
+ * CSS `@import`) only: a test or a fixture never adds one. A family may import another family's
+ * module while the graph stays acyclic; `subpathExports` lists each such module. A family test or
+ * fixture that would need a package depending on its own family moves to core, with every test
+ * that imports or builds it, and `testMoves` says why. The derivation fails, naming every problem,
+ * when the rules and the tree disagree: a private directory no family names, a file no move row
+ * places, a package cycle, or a test helper that imports a component.
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -72,7 +74,8 @@ export interface DerivedFamilies {
   layers: string[][];
   packages: Record<string, DerivedPackage>;
   testMoves: TestMove[];
-  unplaced: string[];
+  /** Each family module another package imports, which its package exports by subpath, with its importers. */
+  subpathExports: Record<string, string[]>;
 }
 
 /** The rules or the tree disagree; `problems` names each disagreement. */
@@ -418,10 +421,14 @@ function buildImports(files: ReadonlyMap<string, string>): Map<string, string[]>
 /** Test files that import `file` or name it by path (a test that builds it). */
 function importersOf(context: Context, file: string): string[] {
   const name = posix.basename(file);
+  // A test builds a fixture by naming its file in a path string; a test file is never built.
+  const named = /\.test\./.test(name)
+    ? undefined
+    : new RegExp(`[/'"\`]${name.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`);
   const importers: string[] = [];
   for (const [path, content] of context.files) {
     if (path === file || !isTestFile(path) || !CODE_FILE.test(path)) continue;
-    if ((context.imports.get(path) ?? []).includes(file) || content.includes(name)) {
+    if ((context.imports.get(path) ?? []).includes(file) || named?.test(content) === true) {
       importers.push(path);
     }
   }
@@ -431,6 +438,8 @@ function importersOf(context: Context, file: string): string[] {
 interface Graph {
   edges: Map<string, Set<string>>;
   reach: Map<string, Set<string>>;
+  /** Family modules another package imports, each with the packages that import it. */
+  subpathExports: Map<string, Set<string>>;
 }
 
 function sourceGraph(
@@ -440,13 +449,8 @@ function sourceGraph(
   packages: ReadonlySet<string>,
 ): Graph | undefined {
   const edges = new Map<string, Set<string>>([...packages].map((name) => [name, new Set()]));
-  const familyMoves = new Set(
-    context.rules.moves
-      .map((row, index) => ({ row, index }))
-      .filter(({ row }) => !SHARED_PACKAGES.includes(row.target as PackageKind))
-      .map(({ index }) => index),
-  );
   const witness = new Map<string, string>();
+  const subpathExports = new Map<string, Set<string>>();
   for (const [file, targets] of context.imports) {
     const from = owners.get(file);
     if (from === undefined || from === '' || from === BY_IMPORTS || isTestFile(file)) continue;
@@ -455,16 +459,14 @@ function sourceGraph(
       if (to === undefined || to === '' || to === from || isTestFile(target)) continue;
       edges.get(from)?.add(to);
       if (!witness.has(`${from} ${to}`)) witness.set(`${from} ${to}`, `${file} imports ${target}`);
-      const placement = placements.get(target);
+      // A family module another package imports is one its package must export by subpath.
       if (
-        placement !== undefined &&
-        typeof placement.rule === 'number' &&
-        familyMoves.has(placement.rule) &&
-        !SHARED_PACKAGES.includes(from as PackageKind)
+        typeof placements.get(target)?.rule === 'number' &&
+        !SHARED_PACKAGES.includes(to as PackageKind)
       ) {
-        context.problems.push(
-          `${target} is listed for family "${to}" but imported by family "${from}" (${file}).`,
-        );
+        const importers = subpathExports.get(target) ?? new Set<string>();
+        importers.add(from);
+        subpathExports.set(target, importers);
       }
     }
   }
@@ -480,9 +482,48 @@ function sourceGraph(
     context.problems.push(`The packages ${cycle.join(', ')} form a cycle: ${steps.join('; ')}.`);
   }
   if (cycles.length > 0) return undefined;
-  return { edges, reach: closures(edges) };
+  return { edges, reach: closures(edges), subpathExports };
 }
 
+/**
+ * Moves `file` to core with every test that imports or builds it, and theirs in turn, recording
+ * each move. Core depends on every package, so a test there may need any of them.
+ */
+function moveToCore(
+  context: Context,
+  owners: Map<string, string>,
+  testMoves: TestMove[],
+  file: string,
+  because: string,
+): void {
+  const queue: { file: string; because: string }[] = [{ file, because }];
+  while (queue.length > 0) {
+    const next = queue.shift() as { file: string; because: string };
+    const owner = owners.get(next.file);
+    if (owner === undefined || owner === '' || owner === 'core') continue;
+    if (owner !== BY_IMPORTS && SHARED_PACKAGES.includes(owner as PackageKind)) continue;
+    owners.set(next.file, 'core');
+    testMoves.push({ file: next.file, from: owner, to: 'core', because: next.because });
+    for (const importer of importersOf(context, next.file)) {
+      queue.push({ file: importer, because: `it imports or builds ${next.file}, which core owns` });
+    }
+  }
+}
+
+function familyOf(owner: string | undefined): owner is string {
+  return (
+    owner !== undefined &&
+    owner !== '' &&
+    owner !== BY_IMPORTS &&
+    !SHARED_PACKAGES.includes(owner as PackageKind)
+  );
+}
+
+/**
+ * Places each fixture and test the by-imports row names: the one family whose tests import it, or
+ * that it mounts, when every package it needs is that family or one the family depends on.
+ * Otherwise, and whenever two families' tests import it, core takes it.
+ */
 function decideByImports(
   context: Context,
   owners: Map<string, string>,
@@ -490,63 +531,58 @@ function decideByImports(
   testMoves: TestMove[],
 ): void {
   const pending = [...owners].filter(([, owner]) => owner === BY_IMPORTS).map(([file]) => file);
-  const decidedHere = new Set(pending);
-  // A file core takes brings every test that imports or builds it, and theirs in turn.
-  const moveToCore = (file: string) => {
-    const queue = [file];
-    owners.set(file, 'core');
-    while (queue.length > 0) {
-      const moved = queue.shift() as string;
-      for (const importer of importersOf(context, moved)) {
-        const owner = owners.get(importer);
-        if (owner === undefined || owner === '' || owner === 'core') continue;
-        if (owner !== BY_IMPORTS && SHARED_PACKAGES.includes(owner as PackageKind)) continue;
-        owners.set(importer, 'core');
-        queue.push(importer);
-        if (!decidedHere.has(importer)) {
-          testMoves.push({
-            file: importer,
-            from: owner,
-            to: 'core',
-            because: `it imports or builds ${moved}, which core owns`,
-          });
-        }
-      }
-    }
-  };
   for (const file of pending.toSorted()) {
     if (owners.get(file) !== BY_IMPORTS) continue;
-    const importers = importersOf(context, file);
     const importerFamilies = new Set(
-      importers
+      importersOf(context, file)
         .map((importer) => owners.get(importer))
-        .filter((owner): owner is string => owner !== undefined && owner !== BY_IMPORTS)
-        .filter((owner) => owner !== '' && !SHARED_PACKAGES.includes(owner as PackageKind)),
+        .filter(familyOf),
     );
     const needed = [...packagesNeeded(context, owners, file, BY_IMPORTS).keys()];
-    const fits = (family: string) =>
-      [...needed, ...importerFamilies].every(
-        (name) => name === family || (graph.reach.get(family)?.has(name) ?? false),
-      );
     const candidates =
-      importerFamilies.size > 0
-        ? [...importerFamilies]
-        : needed.filter((name) => !SHARED_PACKAGES.includes(name as PackageKind));
+      importerFamilies.size > 0 ? [...importerFamilies] : needed.filter((name) => familyOf(name));
+    const fits = (family: string) =>
+      needed.every((name) => name === family || (graph.reach.get(family)?.has(name) ?? false));
     const family = candidates.toSorted().find(fits);
-    if (family === undefined) moveToCore(file);
-    else owners.set(file, family);
+    if (importerFamilies.size > 1) {
+      moveToCore(
+        context,
+        owners,
+        testMoves,
+        file,
+        `tests of ${[...importerFamilies].toSorted().join(', ')} import it`,
+      );
+    } else if (family === undefined) {
+      moveToCore(context, owners, testMoves, file, 'no one family can mount everything it needs');
+    } else {
+      owners.set(file, family);
+    }
   }
 }
 
-function checkFamilyTests(context: Context, owners: ReadonlyMap<string, string>, graph: Graph) {
-  for (const [file, owner] of owners) {
-    if (!isTestFile(file) || !CODE_FILE.test(file)) continue;
-    if (owner === '' || SHARED_PACKAGES.includes(owner as PackageKind)) continue;
-    for (const [needed, chain] of packagesNeeded(context, owners, file, owner)) {
-      if (graph.reach.get(needed)?.has(owner) ?? needed === 'core') {
-        context.problems.push(
-          `The ${owner} test ${file} needs "${needed}", which depends on "${owner}" (${chain}).`,
+/** A family test that needs a package depending on its family goes to core; repeats to a fixpoint. */
+function moveUnmountableTests(
+  context: Context,
+  owners: Map<string, string>,
+  graph: Graph,
+  testMoves: TestMove[],
+): void {
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const [file, owner] of [...owners].toSorted(([a], [b]) => a.localeCompare(b))) {
+      if (!isTestFile(file) || !CODE_FILE.test(file) || !familyOf(owner)) continue;
+      for (const [needed, chain] of packagesNeeded(context, owners, file, owner)) {
+        if (needed !== 'core' && !(graph.reach.get(needed)?.has(owner) ?? false)) continue;
+        moveToCore(
+          context,
+          owners,
+          testMoves,
+          file,
+          `it needs "${needed}", which depends on "${owner}" (${chain})`,
         );
+        moved = true;
+        break;
       }
     }
   }
@@ -598,6 +634,11 @@ export function deriveFamilies(
     owners.set(path, placement.owner);
   }
   checkHelpers(context, placements);
+  for (const [path, placement] of placements) {
+    if (placement.rule === 'unplaced') {
+      context.problems.push(`No move row places ${path}: add it to a row in family-rules.json.`);
+    }
+  }
 
   const packages = new Set<string>(
     [...owners.values()].filter((owner) => owner !== '' && owner !== BY_IMPORTS),
@@ -607,8 +648,8 @@ export function deriveFamilies(
   const testMoves: TestMove[] = [];
   if (graph !== undefined) {
     decideByImports(context, owners, graph, testMoves);
+    moveUnmountableTests(context, owners, graph, testMoves);
     for (const owner of owners.values()) if (owner !== '') packages.add(owner);
-    checkFamilyTests(context, owners, graph);
   }
   if (graph === undefined) throw new FamilyDerivationError([...new Set(context.problems)]);
   const derived = assemble(context, packages, placements, owners, graph, testMoves);
@@ -658,9 +699,11 @@ function assemble(
     layers,
     packages: derived,
     testMoves: testMoves.toSorted((a, b) => a.file.localeCompare(b.file)),
-    unplaced: [...placements]
-      .filter(([, placement]) => placement.rule === 'unplaced')
-      .map(([path]) => path),
+    subpathExports: Object.fromEntries(
+      [...graph.subpathExports]
+        .toSorted(([a], [b]) => a.localeCompare(b))
+        .map(([module, importers]) => [module, [...importers].toSorted()]),
+    ),
   };
 }
 

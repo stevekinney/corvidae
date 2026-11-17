@@ -171,6 +171,16 @@
     { "patterns": ["src/_internal/time-parts.ts"], "target": "time-field" },
     { "patterns": ["src/components/textarea-count.ts"], "target": "textarea" },
     {
+      "patterns": ["src/components/_sortable-item.svelte"],
+      "target": "sortable-list",
+      "note": "It imports Button and SortableList, so foundation cannot hold it (coordinator, 2026-11-17)."
+    },
+    {
+      "patterns": ["src/components/toast-region.md"],
+      "target": "toast-region",
+      "note": "coordinator, 2026-11-17"
+    },
+    {
       "patterns": [
         "src/components/icons/**",
         "src/_internal/date-value.ts",
@@ -179,10 +189,11 @@
         "src/components/_internal/group-options.ts",
         "src/components/_internal/checkbox-indicator-shell.*",
         "src/components/_internal/create-sliding-dialog-state.svelte.ts",
-        "src/components/_sortable-item.svelte",
-        "src/components/_visually-hidden-live-region.svelte"
+        "src/components/_visually-hidden-live-region.svelte",
+        "src/components/_visually-hidden-live-region.same-message-fixture.svelte"
       ],
-      "target": "foundation"
+      "target": "foundation",
+      "note": "The same-message fixture sits beside its component (coordinator, 2026-11-17)."
     },
     {
       "patterns": [
@@ -193,10 +204,11 @@
         "src/styles/tokens/**",
         "scripts/tokens/**",
         "src/styles/check-token-contrast-*",
-        "src/utilities/theme-transition-guard.ts"
+        "src/utilities/theme-transition-guard.ts",
+        "src/_internal/own-entry.ts"
       ],
       "target": "tokens",
-      "note": "theme-transition-guard: coordinator decision, 2026-11-17"
+      "note": "theme-transition-guard and own-entry (tokens never depends on foundation): coordinator, 2026-11-17"
     },
     {
       "patterns": [
@@ -211,9 +223,15 @@
         "src/convention*.ts",
         "src/components.test.ts",
         "src/root-*.test.ts",
-        "src/index.test.ts"
+        "src/index.test.ts",
+        "src/styles/shell.css",
+        "src/ambient.d.ts",
+        "src/inherited-key-reads.test.ts",
+        "src/token-root-exports.test.ts",
+        "src/components/svg-data-uri-color-literals.test.ts"
       ],
-      "target": "core"
+      "target": "core",
+      "note": "shell.css aggregates component stylesheets like components.css; it and the four files after it: coordinator, 2026-11-17"
     },
     {
       "patterns": [

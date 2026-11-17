@@ -109,22 +109,47 @@ describe('deriveFamilies', () => {
     ]);
   });
 
-  test('a family test that would need a package depending on its family fails', () => {
+  test('a family test that would need a package depending on its family moves to core, with its importers', () => {
     const tree = baseTree();
+    tree.set('src/components/button/button-in-card.fixture.svelte', svelte('../card/card.svelte'));
     tree.set(
       'src/components/button/button-in-card.test.ts',
-      "import Card from '../card/card.svelte';\n",
+      "import Fixture from './button-in-card.fixture.svelte';\n",
     );
-    expect(problemsOf(tree)).toEqual([
-      'The button test src/components/button/button-in-card.test.ts needs "card", which depends on "button" (src/components/button/button-in-card.test.ts -> src/components/card/card.svelte).',
+    const derived = derive(tree);
+    expect(derived.testMoves).toEqual([
+      {
+        file: 'src/components/button/button-in-card.fixture.svelte',
+        from: 'button',
+        to: 'core',
+        because:
+          'it needs "card", which depends on "button" (src/components/button/button-in-card.fixture.svelte -> src/components/card/card.svelte)',
+      },
+      {
+        file: 'src/components/button/button-in-card.test.ts',
+        from: 'button',
+        to: 'core',
+        because:
+          'it imports or builds src/components/button/button-in-card.fixture.svelte, which core owns',
+      },
     ]);
+    expect(derived.packages['button']?.dependencies).toEqual(['foundation']);
+    expectNoPackageCycle(derived);
   });
 
-  test('a module listed for one family but imported by another fails', () => {
+  test('a family may import another family module while the graph stays acyclic', () => {
     const tree = baseTree();
     tree.set('src/components/card/card.svelte', svelte('../../_internal/pair-context.ts'));
+    const derived = derive(tree);
+    expect(derived.packages['card']?.dependencies).toEqual(['pair']);
+    expect(derived.subpathExports).toEqual({ 'src/_internal/pair-context.ts': ['card'] });
+  });
+
+  test('a file no move row places fails', () => {
+    const tree = baseTree();
+    tree.set('src/loose.ts', 'export const loose = true;\n');
     expect(problemsOf(tree)).toEqual([
-      'src/_internal/pair-context.ts is listed for family "pair" but imported by family "card" (src/components/card/card.svelte).',
+      'No move row places src/loose.ts: add it to a row in family-rules.json.',
     ]);
   });
 
@@ -154,7 +179,7 @@ describe('deriveFamilies', () => {
     expect(derived.testMoves).toEqual([]);
   });
 
-  test('a fixture no single family can own goes to core with every test that imports it', () => {
+  test('a fixture two families import goes to core with every test that imports it', () => {
     const tree = baseTree();
     tree.set('src/test/fixtures/card-fixture.svelte', svelte('../../components/card/card.svelte'));
     tree.set(
@@ -170,6 +195,7 @@ describe('deriveFamilies', () => {
     expect(derived.testMoves.map(({ file, from, to }) => ({ file, from, to }))).toEqual([
       { file: 'src/components/card/card.test.ts', from: 'card', to: 'core' },
       { file: 'src/components/pair/pair.test.ts', from: 'pair', to: 'core' },
+      { file: 'src/test/fixtures/card-fixture.svelte', from: 'by-imports', to: 'core' },
     ]);
     expectNoPackageCycle(derived);
   });
@@ -181,6 +207,13 @@ describe('family-rules.json', () => {
     readFileSync(join(TOOLING_ROOT, 'family-rules.fixture.json'), 'utf8'),
   ) as FamilyRules;
   const tree = readPackageTree(join(REPOSITORY_ROOT, rules.packageRoot));
+
+  test('derives a map of Cinder with no package cycle, tokens and tooling at the bottom', () => {
+    const derived = deriveFamilies(tree, rules);
+    expectNoPackageCycle(derived);
+    expect(derived.packages['tokens']?.dependencies).toEqual([]);
+    expect(derived.packages['tooling']?.dependencies).toEqual([]);
+  });
 
   test('holds the reviewed appendix in family-rules.fixture.json', () => {
     expect(rules).toEqual(fixture);
