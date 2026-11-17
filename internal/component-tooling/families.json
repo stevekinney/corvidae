@@ -4,7 +4,7 @@
     "packages": 189,
     "multiComponentFamilies": 23,
     "singleComponentFamilies": 162,
-    "layerSizes": [3, 82, 25, 15, 35, 18, 8, 1, 1, 1]
+    "layerSizes": [3, 81, 25, 15, 36, 18, 8, 1, 1, 1]
   },
   "layers": [
     ["foundation", "tokens", "tooling"],
@@ -42,7 +42,6 @@
       "kbd",
       "label",
       "link",
-      "load-more",
       "locale-provider",
       "map-marker",
       "marquee",
@@ -166,6 +165,7 @@
       "inspector",
       "json-editor",
       "key-value-editor",
+      "load-more",
       "pricing-card",
       "select",
       "setting-row",
@@ -267,6 +267,7 @@
         "checkbox",
         "code-block",
         "copy-button",
+        "description-list",
         "foundation",
         "inline-confirm",
         "json-editor",
@@ -1001,6 +1002,7 @@
       "modules": [
         "src/test/fixtures/dropdown-item-polymorphic-fixture.svelte",
         "src/test/fixtures/dropdown-item-radio-fixture.svelte",
+        "src/test/fixtures/dropdown-item-reason-fixture.svelte",
         "src/test/fixtures/dropdown-roving-fixture.svelte",
         "src/test/fixtures/dropdown-trigger-no-caret-fixture.svelte",
         "src/test/fixtures/dropdown-trigger-onclick-fixture.svelte",
@@ -1145,6 +1147,7 @@
         "src/_internal/constraints.ts",
         "src/_internal/date-value.test.ts",
         "src/_internal/date-value.ts",
+        "src/_internal/docked-bar-height.test.ts",
         "src/_internal/docked-bar-height.ts",
         "src/_internal/error-scope.test.svelte",
         "src/_internal/field-control.test.ts",
@@ -1306,6 +1309,7 @@
         "src/utilities/dev-warn.test.ts",
         "src/utilities/dev-warn.ts",
         "src/utilities/dialog-props.ts",
+        "src/utilities/docked-to-bottom-attachment.test.ts",
         "src/utilities/document-order.test.ts",
         "src/utilities/document-order.ts",
         "src/utilities/drag-scroll-physics.test.ts",
@@ -1584,9 +1588,9 @@
     },
     "load-more": {
       "kind": "family",
-      "layer": 1,
+      "layer": 4,
       "components": ["load-more"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["button", "foundation", "tooling"],
       "modules": []
     },
     "locale-provider": {
@@ -2037,6 +2041,7 @@
       "layer": 3,
       "components": ["side-navigation", "side-navigation-group", "side-navigation-item", "sidebar"],
       "dependencies": [
+        "badge",
         "drawer",
         "foundation",
         "navigation-item",

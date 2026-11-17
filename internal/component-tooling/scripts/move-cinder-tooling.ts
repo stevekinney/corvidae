@@ -397,6 +397,51 @@ function addDevelopmentDependency(root: string, manifestPath: string): boolean {
   return true;
 }
 
+/** The tooling file a `@lostgradient/component-tooling/<subpath>` specifier names. */
+function toolingPathOf(subpath: string): string | undefined {
+  for (const [prefix, exported] of EXPORTS) {
+    if (subpath === exported) return `./${prefix}`;
+    if (exported.endsWith('/') && subpath.startsWith(exported)) {
+      return `./${prefix}${subpath.slice(exported.length)}`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Declares, as an exact entry in the tooling's `exports`, every tooling subpath a file outside the
+ * tooling imports: `scripts/workspace-imports.test.ts` accepts only declared entry points.
+ */
+function declareUsedEntryPoints(root: string, files: readonly string[]): boolean {
+  const used = new Map<string, string>();
+  const specifier = new RegExp(String.raw`['"]${escape(TOOLING_PACKAGE)}/([\w./-]+)['"]`, 'g');
+  for (const file of files) {
+    if (!CODE.test(file) || insideTooling(file) || !existsSync(join(root, file))) continue;
+    for (const match of readFileSync(join(root, file), 'utf8').matchAll(specifier)) {
+      const subpath = match[1] ?? '';
+      const target = toolingPathOf(subpath);
+      if (target !== undefined && existsSync(join(root, TOOLING, target))) {
+        used.set(`./${subpath}`, target);
+      }
+    }
+  }
+  const path = join(root, TOOLING, 'package.json');
+  const manifest = JSON.parse(readFileSync(path, 'utf8')) as { exports?: Record<string, string> };
+  const exports = { ...manifest.exports };
+  let changed = false;
+  for (const [key, target] of used) {
+    if (exports[key] === target) continue;
+    exports[key] = target;
+    changed = true;
+  }
+  if (!changed) return false;
+  manifest.exports = Object.fromEntries(
+    Object.entries(exports).toSorted(([a], [b]) => a.localeCompare(b)),
+  );
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+  return true;
+}
+
 const TEXT = /\.(?:ts|svelte|js|mjs|json|md|toml|ya?ml|css)$|(?:^|\/)\.prettierignore$/;
 const SKIP_MENTIONS = [
   `${TOOLING}/families.json`,
@@ -452,6 +497,7 @@ export function run(root: string, dryRun: boolean): string[] {
     if (addDevelopmentDependency(root, manifest))
       log.push(`depend ${manifest} -> ${TOOLING_PACKAGE}`);
   }
+  if (declareUsedEntryPoints(root, current)) log.push(`rewrite ${TOOLING}/package.json`);
   // A rewritten specifier or path changes line lengths; leave every touched file as Prettier would.
   const touched = log
     .filter((line) => line.startsWith('rewrite ') || line.startsWith('depend '))
