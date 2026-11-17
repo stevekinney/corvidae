@@ -14,7 +14,12 @@
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import { failureHeading, type InstanceEntry, type InstanceProgress } from './run-instance.ts';
+  import {
+    failureHeading,
+    triesTookWords,
+    type InstanceEntry,
+    type InstanceProgress,
+  } from './run-instance.ts';
   import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { durationWords } from './run-rows.ts';
 
@@ -31,6 +36,13 @@
     /** What kind of failure the engine says it was, and its stack, for an operator. */
     category?: WorkflowState['failureCategory'];
     errorStack?: string | undefined;
+    /** How long the failing step's tries took, in milliseconds, when the history says (row 55b). */
+    triesTook?: number | undefined;
+    /**
+     * The version a retry runs on, when Retry from this step is offered: the block then says what
+     * the retry keeps and runs again (row 55b).
+     */
+    retryVersion?: string | undefined;
   }
 
   let {
@@ -41,9 +53,27 @@
     failure = undefined,
     category = undefined,
     errorStack = undefined,
+    triesTook = undefined,
+    retryVersion = undefined,
   }: RunInstanceHappenedProps = $props();
 
   const copy = RUN_DETAIL_COPY.instance;
+
+  // "Interborough tried 3 times in 3.4 s.", said after why it failed when the step was tried again.
+  const tried = $derived(
+    progress === undefined || progress.tries < 2
+      ? undefined
+      : copy.triedIn(
+          progress.tries,
+          triesTook === undefined ? undefined : triesTookWords(triesTook),
+        ),
+  );
+  const retryKeeps = $derived(
+    retryVersion === undefined || progress?.at === null || progress?.at === undefined
+      ? undefined
+      : copy.retryKeeps(progress.at, retryVersion),
+  );
+
   const heading = $derived(progress === undefined ? undefined : failureHeading(progress));
   const healthPath = TASK_COPY.list.loadFailed.healthPath;
 
@@ -91,12 +121,15 @@
       {#if failure !== undefined && failure !== ''}
         <p class="weft-overview-tab__failure-explanation">
           <strong>{copy.whyItFailed}.</strong>
-          {failure}
+          {failure}{#if tried !== undefined}{` ${tried}`}{/if}
         </p>
+      {:else if tried !== undefined}
+        <p class="weft-overview-tab__failure-explanation">{tried}</p>
       {/if}
-      <p class="weft-overview-tab__failure-explanation">
-        {copy.checkHealth.before}<a href={router.href(healthPath)} onclick={openHealth}
-          >{copy.checkHealth.link}</a
+      <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>
+        {#if retryKeeps !== undefined}{`${retryKeeps} `}{/if}{copy.checkHealth.before}<a
+          href={router.href(healthPath)}
+          onclick={openHealth}>{copy.checkHealth.link}</a
         >{copy.checkHealth.after}
       </p>
       {#if errorStack !== undefined && errorStack.length > 0}

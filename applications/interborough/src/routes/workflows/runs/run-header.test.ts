@@ -159,6 +159,47 @@ describe('the run page header', () => {
     expect(router.pathname).toContain('session-1');
   });
 
+  test('a failed run of a workflow file offers Retry from this step first, with the words beside the buttons (COR-2424, row 54z)', async () => {
+    let retried = 0;
+    const view = renderHeader({
+      status: 'Failed',
+      retry: { onRetry: () => (retried += 1) },
+      runAgain: { href: '/workflows/release-notes/start' },
+      besideButtons:
+        'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    });
+
+    const buttons = view.getAllByRole('button').map((button) => button.textContent?.trim());
+    expect(buttons.indexOf('Retry from this step')).toBeLessThan(
+      buttons.findIndex((text) => text?.includes('Run again') ?? false),
+    );
+    expect(view.container.querySelector('[data-run-beside]')?.textContent).toBe(
+      'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    );
+    await fireEvent.click(view.getByRole('button', { name: 'Retry from this step' }));
+    expect(retried).toBe(1);
+  });
+
+  test('holds Retry from this step for a caller the scope gate refuses', () => {
+    const view = renderHeader({
+      status: 'Failed',
+      retry: { onRetry: () => {}, gate: { disabled: true, title: 'Requires workflows:write' } },
+    });
+    const retry = view.getByRole('button', { name: 'Retry from this step' });
+    expect(retry.hasAttribute('disabled') || retry.getAttribute('aria-disabled') === 'true').toBe(
+      true,
+    );
+  });
+
+  test('leaves Cancel run out of the header while the docked message bar holds it (rows 06b, 54l)', () => {
+    const view = renderHeader({
+      task: taskFixture({ id: 'run-1', status: 'working' }),
+      cancelInHeader: false,
+    });
+    expect(view.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+    expect(view.getByRole('button', { name: 'More actions' })).not.toBeNull();
+  });
+
   test('a task offers Cancel run beside More, and the engine’s own cancel is not offered twice', async () => {
     const view = renderHeader({
       task: taskFixture({ id: 'run-1', status: 'working' }),

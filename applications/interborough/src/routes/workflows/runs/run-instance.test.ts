@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import type { WorkflowRunHistoryEvent } from '../../../lib/workflow-files.ts';
 import {
   canonicalSteps,
@@ -15,6 +16,8 @@ import {
   progressPhrase,
   stepReached,
   triesAtStep,
+  triesOfStep,
+  triesTookWords,
   versionStanding,
 } from './run-instance.ts';
 
@@ -229,5 +232,60 @@ describe('the version a run ran', () => {
   test('is not told apart from the current one when the workflow has none', () => {
     expect(versionStanding('1.2.0', null).state).toBe('unknown');
     expect(versionStanding('1.2.0', '').state).toBe('unknown');
+  });
+
+  test('is named by the saved version a person reads, the newest save of each revision (COR-2424)', () => {
+    const labels = [
+      { version: '1.3.0', workflowVersion: 'sha256:b' },
+      { version: '1.2.1', workflowVersion: 'sha256:a' },
+      { version: '1.2.0', workflowVersion: 'sha256:a' },
+    ];
+    expect(versionStanding('sha256:a', 'sha256:b', labels)).toEqual({
+      state: 'older',
+      ran: '1.2.1',
+      current: '1.3.0',
+    });
+    // A revision no saved version names keeps its own name.
+    expect(versionStanding('sha256:c', 'sha256:b', labels).ran).toBe('sha256:c');
+  });
+});
+
+describe('the tries of a failed step (COR-2424, row 55b)', () => {
+  const entry = (documentStep: number, timestamp: number, duration: number) => ({
+    documentStep,
+    operationType: 'activity',
+    timestamp,
+    duration,
+  });
+
+  test('counts each try the timeline kept of the step, and how long they took together', () => {
+    const entries = [
+      entry(0, 0, 100),
+      entry(1, 1_000, 500),
+      entry(1, 2_000, 600),
+      entry(1, 3_800, 600),
+      { documentStep: 1, operationType: 'sleep', timestamp: 1_500, duration: 500 },
+    ];
+    expect(triesOfStep(entries, 2)).toEqual({ tries: 3, took: 3_400 });
+    expect(triesOfStep(entries, 3)).toBeUndefined();
+  });
+
+  test('says the time in tenths of a second under ten seconds', () => {
+    expect(triesTookWords(3_400)).toBe('3.4 s');
+    expect(triesTookWords(12_000)).toBe('12 s');
+  });
+
+  test('says how often it was tried, and what a retry keeps and runs again', () => {
+    const copy = RUN_DETAIL_COPY.instance;
+    expect(copy.triedIn(3, '3.4 s')).toBe('Interborough tried 3 times in 3.4 s.');
+    expect(copy.retryKeeps(2, '1.2.0')).toBe(
+      'Retry from this step keeps step 1’s result and runs step 2 again on version 1.2.0, the version this run used.',
+    );
+    expect(copy.retryKeeps(1, '1.2.0')).toBe(
+      'Retry from this step runs step 1 again on version 1.2.0, the version this run used.',
+    );
+    expect(copy.besideButtons('1.2.0', '1.3.0')).toBe(
+      'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    );
   });
 });

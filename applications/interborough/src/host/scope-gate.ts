@@ -42,6 +42,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.tasks.get', 'runs:read'],
   ['bureau.tasks.inspect', 'runs:read'],
   ['bureau.workflows.start', 'runs:write'],
+  // COR-2424: running a failed run again from its failed step changes the run, as a start does.
+  ['bureau.workflows.runs.retry', 'runs:write'],
   ['bureau.workflows.signal', 'runs:write'],
   ['bureau.tasks.cancel', 'runs:write'],
   ['bureau.contexts.input', 'chats:write'],

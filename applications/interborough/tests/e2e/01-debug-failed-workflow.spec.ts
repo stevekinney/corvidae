@@ -31,11 +31,11 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(failedRow).toBeVisible();
   await failedRow.getByRole('link').click();
 
-  // A run only the engine knows has the workflow's type as its page's one level-1 heading, and
-  // its sections are on the page: there are no tabs to open.
+  // A run only the engine knows has the workflow's type as its page's one level-1 heading. Only
+  // How it ran holds tabs, and it opens on Steps (COR-2424, row 54i).
   await expect(page.getByRole('heading', { level: 1, name: 'payment-failing' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
   await expect(
     page.getByText(
       'The workflow or an activity threw an error that did not match a timeout, cancellation, resource, or system failure.',
@@ -54,6 +54,8 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(page.locator('article[data-step]')).toBeVisible();
   await checkA11y('workflow detail — timeline (step selected)');
 
+  // The engine's events are in How it ran's Events and logs tab (COR-2424).
+  await page.getByRole('tab', { name: 'Events and logs' }).click();
   await page.getByRole('button', { name: 'Events' }).click();
   await expect(page.getByText('step: ')).toBeVisible();
   await page.getByRole('button', { name: 'Download' }).click();

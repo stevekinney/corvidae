@@ -109,6 +109,11 @@ function routeRun(id: string, overrides: Record<string, unknown> = {}): void {
  * header of its own with a More menu that holds only Copy run ID, and the loaded page replaces it,
  * so the menu is opened only after the run's status is there.
  */
+/** Opens one of How it ran's tabs (COR-2424, row 54i). */
+async function openTab(view: ReturnType<typeof mount>, name: string): Promise<void> {
+  await fireEvent.click(await view.findByRole('tab', { name }));
+}
+
 async function openMoreActions(view: ReturnType<typeof mount>): Promise<void> {
   await waitFor(() =>
     expect(
@@ -252,7 +257,7 @@ describe('a run the engine holds', () => {
     expect(lineage.textContent).not.toContain('agent-run:');
   });
 
-  test('is one header with one status and no tabs, whatever sections it has', async () => {
+  test('is one header with one status, and only How it ran holds tabs, Steps first (row 54i)', async () => {
     const id = 'wf-detail-loaded-1';
     fetchScript.routeUrl(`/workflows/${id}/events`, { events: [] });
     routeRun(id, { id });
@@ -264,11 +269,18 @@ describe('a run the engine holds', () => {
     ).not.toBeNull();
     expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
-    expect(view.queryAllByRole('tab').length).toBe(0);
-    for (const name of ['Input and output', 'Change or ask this run', 'Details', 'Related runs']) {
+    const found = await view.findAllByRole('tab');
+    const tabs = found.map((tab) => tab.textContent?.trim());
+    expect(tabs.slice(0, 1)).toEqual(['Steps']);
+    expect(tabs).toContain('Events and logs');
+    for (const name of ['Input and output', 'Details', 'Related runs']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     expect(view.getByRole('heading', { level: 3, name: 'Activity' })).not.toBeNull();
+    await openTab(view, 'Inspector');
+    expect(
+      await view.findByRole('heading', { level: 2, name: 'Change or ask this run' }),
+    ).not.toBeNull();
   });
 
   test('opens its events from the Events disclosure, with no address change', async () => {
@@ -277,6 +289,7 @@ describe('a run the engine holds', () => {
     routeRun(id, { id });
 
     const view = mount(id);
+    await openTab(view, 'Events and logs');
     const trigger = await view.findByRole('button', { name: 'Events' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     await fireEvent.click(trigger);
@@ -452,6 +465,7 @@ describe('a run the Bureau describes', () => {
     const view = mount('task-1');
 
     expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
+    await openTab(view, 'Inspector');
     expect(
       await view.findByRole('heading', { level: 2, name: 'Change or ask this run' }),
     ).not.toBeNull();
@@ -526,6 +540,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('events:read'));
+    await openTab(view, 'Events and logs');
     await fireEvent.click(await view.findByRole('button', { name: 'Events' }));
 
     expect(await view.findByText(/Requires events:read/)).not.toBeNull();
@@ -540,6 +555,7 @@ describe('the sections a caller sees', () => {
     fetchScript.routeUrl(`/workflows/${id}/timeline`, []);
 
     const view = mount(id, ALL_BUT('queries:read', 'signals:write'));
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Ask a question' }));
     await fireEvent.click(await view.findByRole('button', { name: 'Send a signal' }));
 
@@ -555,6 +571,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT());
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Ask a question' }));
     await fireEvent.input(await view.findByLabelText('Query name'), {
       target: { value: 'getTotal' },
@@ -623,6 +640,7 @@ describe('the sections a caller sees', () => {
     routeUpdates(id);
 
     const view = mount(id, ALL_BUT());
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Send an update' }));
 
     expect(await view.findByText('insufficient balance')).not.toBeNull();
@@ -634,6 +652,7 @@ describe('the sections a caller sees', () => {
     routeUpdates(id);
 
     const view = mount(id, ALL_BUT('updates:write'));
+    await openTab(view, 'Inspector');
     await fireEvent.click(await view.findByRole('button', { name: 'Send an update' }));
 
     expect(await view.findByText('insufficient balance')).not.toBeNull();

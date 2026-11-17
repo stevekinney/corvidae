@@ -61,6 +61,10 @@
     schedule?: BureauSchedule | undefined;
     /** How many occurrences that schedule missed and has not fired since. */
     missedSince?: number | undefined;
+    /** The origin the Bureau recorded for a workflow file's run, which has no task (COR-2424). */
+    recordOrigin?: object | null | undefined;
+    /** Who is viewing the page: their own run reads "You" in Started by. */
+    viewer?: string | null | undefined;
   }
 
   let {
@@ -78,6 +82,8 @@
     versionStanding,
     schedule,
     missedSince,
+    recordOrigin = undefined,
+    viewer = undefined,
   }: RunDetailsProps = $props();
 
   const principal = getPrincipalStore();
@@ -249,7 +255,7 @@
     </span>
   {:else}
     <ol class="ib-run-lineage" data-testid="run-lineage">
-      <RunLineage {runId} {task} {goal} {chat} {schedule} />
+      <RunLineage {runId} {task} {goal} {chat} {schedule} {recordOrigin} {viewer} />
     </ol>
   {/if}
 {/snippet}

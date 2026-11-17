@@ -269,6 +269,28 @@ export async function getLatestSavedSteps(
   return revisions[0]?.steps;
 }
 
+const versionLabelsSchema = z.object({
+  revisions: z.array(
+    z.object({ version: z.string(), current: z.boolean(), workflowVersion: z.string() }),
+  ),
+});
+
+/** One saved version of a workflow: its number (`1.2.0`) and the engine revision it registered as. */
+export type WorkflowVersionLabel = z.infer<typeof versionLabelsSchema>['revisions'][number];
+
+/**
+ * The saved versions of a workflow, newest first, as `bureau.workflows.history` numbers them
+ * (`1.0.0`, `1.1.0`, …), each with the engine revision it registered as, so the run page can say
+ * "1.2.0" for the revision a run ran (COR-2424).
+ */
+export async function listWorkflowVersionLabels(
+  id: string,
+  options?: Options,
+): Promise<readonly WorkflowVersionLabel[]> {
+  return versionLabelsSchema.parse(await callBureau('bureau.workflows.history', { id }, options))
+    .revisions;
+}
+
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */
 export async function getCodeWorkflow(id: string, options?: Options): Promise<CodeWorkflow> {
   return codeWorkflowSchema.parse(
@@ -378,6 +400,8 @@ const runDetailSchema = runSummarySchema.extend({
   result: z.unknown().optional(),
   error: z.string().nullable().optional(),
   finishReason: z.string().nullable().optional(),
+  // COR-2424: the name the version the run ran gives what it produces; a Bureau before it says none.
+  outputName: z.string().nullable().optional(),
 });
 
 /** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
@@ -398,6 +422,33 @@ export async function getWorkflowFileRun(
   options?: Options,
 ): Promise<WorkflowFileRunDetail> {
   return runDetailSchema.parse(await callBureau('bureau.workflows.runs.get', { runId }, options));
+}
+
+const retryResultSchema = z.object({
+  runId: z.string(),
+  step: z.number(),
+  workflowVersion: z.string(),
+  retryId: z.string().nullable(),
+});
+
+/** What `bureau.workflows.runs.retry` answers: the instance is running again from `step`. */
+export type WorkflowRunRetry = z.infer<typeof retryResultSchema>;
+
+/**
+ * Runs a failed instance of a workflow file again from the step it failed at, in place and on the
+ * version it ran (COR-2424, `bureau.workflows.runs.retry`). `step` is counted from one and must be
+ * the step it failed at; `retryId` makes a repeat of this request answer what the first did. A
+ * refusal is an `Unprocessable` fault whose `data.reason` says why.
+ */
+export async function retryWorkflowRun(
+  runId: string,
+  step: number,
+  retryId: string,
+  options?: Options,
+): Promise<WorkflowRunRetry> {
+  return retryResultSchema.parse(
+    await callBureau('bureau.workflows.runs.retry', { runId, step, retryId }, options),
+  );
 }
 
 const runHistorySchema = z.object({

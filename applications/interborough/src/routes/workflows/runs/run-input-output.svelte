@@ -59,6 +59,8 @@
      * workflow file, row 14t), so this section does not tell it a second time.
      */
     failureOnStep?: boolean;
+    /** The step a failed instance failed at, counted from one, which its Output card names (row 55c). */
+    failedAt?: number | undefined;
   }
 
   /** The reply is held to this many characters of text before Show all. */
@@ -76,6 +78,7 @@
     onShowRaw,
     showRaw = true,
     failureOnStep = false,
+    failedAt = undefined,
   }: RunInputOutputProps = $props();
 
   const copy = RUN_DETAIL_COPY.io;
@@ -206,7 +209,7 @@
     {/if}
 
     {#if task === undefined || showRaw}
-      <RunPayloadCards {workflow} {record} />
+      <RunPayloadCards {workflow} {record} {failedAt} />
     {/if}
 
     {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}

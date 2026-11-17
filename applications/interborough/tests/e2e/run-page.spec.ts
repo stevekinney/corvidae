@@ -32,7 +32,7 @@ async function scrollsSideways(page: Page): Promise<boolean> {
   });
 }
 
-test('a run is one header with one status and no tabs, and its sections are on the page', async ({
+test('a run is one header with one status, and only How it ran holds tabs', async ({
   page,
   checkA11y,
 }) => {
@@ -41,12 +41,24 @@ test('a run is one header with one status and no tabs, and its sections are on t
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.locator('[data-run-header] [data-status-word]')).toHaveCount(1);
   await expect(page.locator('[data-status-word]')).toHaveCount(1);
-  await expect(page.getByRole('tab')).toHaveCount(0);
-  for (const name of ['Input and output', 'Change or ask this run', 'Details']) {
+  // COR-2424, row 54i: How it ran's tabs open on Steps; the run has search attributes, so it has
+  // that tab too.
+  const howItRan = page.locator('[data-section="how-it-ran"]');
+  await expect(page.getByRole('tab')).toHaveCount(await howItRan.getByRole('tab').count());
+  await expect(howItRan.getByRole('tab', { name: 'Steps' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(howItRan.getByRole('tab', { name: 'Search attributes' })).toBeVisible();
+  for (const name of ['Input and output', 'Details']) {
     await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
   }
-  // Inside How it ran, Activity is level 3 beside Raw payloads (COR-2329).
+  // Inside How it ran, Activity is level 3 (COR-2329), on the Steps tab.
   await expect(page.getByRole('heading', { level: 3, name: 'Activity' })).toBeVisible();
+  await howItRan.getByRole('tab', { name: 'Inspector' }).click();
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'Change or ask this run' }),
+  ).toBeVisible();
   await checkA11y('a run’s page');
 });
 
@@ -97,6 +109,8 @@ test('a signal, an update and a query are sent from the section on the page, wit
   page,
 }) => {
   await page.goto(`/runs/${UPDATE_DESK_RUN_ID}`);
+  // The section is in How it ran's Inspector tab (COR-2424, row 54i).
+  await page.getByRole('tab', { name: 'Inspector' }).click();
   const section = page.locator('[data-section="change"]');
   await expect(section).toBeVisible();
 

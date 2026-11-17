@@ -408,7 +408,11 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       title: 'Refund order 1234',
       href: '/chats/chat-1',
     });
-    expect(rowOf(ORIGINS.person)).toEqual({ kind: 'person', surface: 'palette' });
+    expect(rowOf(ORIGINS.person)).toEqual({
+      kind: 'person',
+      surface: 'palette',
+      principal: 'me',
+    });
     expect(rowOf(ORIGINS.schedule)).toMatchObject({
       kind: 'schedule',
       scheduleId: 'nightly',
@@ -453,7 +457,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       goals: [],
       chats: [chat],
     });
-    expect(row?.origin).toEqual({ kind: 'person', surface: 'api' });
+    expect(row?.origin).toEqual({ kind: 'person', surface: 'api', principal: 'me' });
   });
 
   test('keeps a goal’s session from the goal list when the task’s origin names the goal', () => {

@@ -62,6 +62,8 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   ).toBeVisible();
   await checkA11y('run — Details rail (revision + active comparison)');
 
+  // Checkpoints are in How it ran's Events and logs tab (COR-2424).
+  await page.getByRole('tab', { name: 'Events and logs' }).click();
   await page.getByRole('button', { name: 'Checkpoints' }).click();
   const checkpointList = page.locator('.weft-checkpoints-tab__list');
   await expect(checkpointList).toBeVisible();

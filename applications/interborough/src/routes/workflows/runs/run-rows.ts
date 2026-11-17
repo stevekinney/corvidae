@@ -41,7 +41,12 @@ export type RunPersonSurface = 'web' | 'palette' | 'api';
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
   /** A person started it outside a chat, from the surface the origin names. */
-  | { readonly kind: 'person'; readonly surface: RunPersonSurface | null }
+  | {
+      readonly kind: 'person';
+      readonly surface: RunPersonSurface | null;
+      /** Who started it, as the Bureau recorded them, when it did: "You" when it is the viewer. */
+      readonly principal?: string | null | undefined;
+    }
   /**
    * A schedule's fire. The origin names the schedule (`scheduleId`, and `schedulePath` is its page)
    * and whether a person fired it by hand. A task recorded before origins were kept says it only
@@ -256,6 +261,19 @@ function recordedText(origin: object, key: string): string | undefined {
 const PERSON_SURFACES: readonly RunPersonSurface[] = ['web', 'palette', 'api'];
 
 /**
+ * A run a person started by hand, from the `person` origin the Bureau recorded: the surface they
+ * started it from and who they are, so the page can say "You" for the viewer's own (COR-2424).
+ */
+export function personOrigin(recorded: object): Extract<RunOrigin, { kind: 'person' }> {
+  const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
+  return {
+    kind: 'person',
+    surface: surface ?? null,
+    principal: recordedText(recorded, 'principal') ?? null,
+  };
+}
+
+/**
  * What started the task, read from the origin the Bureau recorded with it. An origin of a kind
  * this page does not know, or one missing a field its kind needs, is read as a task with none.
  */
@@ -276,10 +294,8 @@ function recordedOrigin(
         href: chatSessionPath(contextId),
       };
     }
-    case 'person': {
-      const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
-      return { kind: 'person', surface: surface ?? null };
-    }
+    case 'person':
+      return personOrigin(recorded);
     case 'schedule': {
       const scheduleId = recordedText(recorded, 'scheduleId');
       return {

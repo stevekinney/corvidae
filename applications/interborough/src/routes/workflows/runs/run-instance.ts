@@ -10,6 +10,7 @@
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import type { WorkflowRunHistoryEvent } from '../../../lib/workflow-files.ts';
 import { stepLabel } from '../../workflow-definitions/workflow-presentation.ts';
+import { durationWords } from './run-rows.ts';
 
 /** One step as a workflow file writes it. */
 export type InstanceStep = Readonly<Record<string, unknown>>;
@@ -184,8 +185,52 @@ export type VersionStanding = {
   readonly current: string | null;
 };
 
-/** Whether `ran` is the workflow's `current` version, an older one, or cannot be told. */
-export function versionStanding(ran: string, current: string | null): VersionStanding {
-  if (current === null || current === '') return { state: 'unknown', ran, current: null };
-  return { state: ran === current ? 'current' : 'older', ran, current };
+/**
+ * Whether `ran` is the workflow's `current` version, an older one, or cannot be told. `labels`,
+ * the saved versions newest first, name each engine revision by the number a person reads
+ * (`1.2.0`): the newest save of that revision, because a title or an output name changes the
+ * number and not the revision. A revision no saved version names keeps its own name.
+ */
+export function versionStanding(
+  ran: string,
+  current: string | null,
+  labels: readonly { readonly version: string; readonly workflowVersion: string }[] = [],
+): VersionStanding {
+  const label = (revision: string): string =>
+    labels.find((entry) => entry.workflowVersion === revision)?.version ?? revision;
+  if (current === null || current === '')
+    return { state: 'unknown', ran: label(ran), current: null };
+  return { state: ran === current ? 'current' : 'older', ran: label(ran), current: label(current) };
+}
+
+/** How long tries took, in words: tenths of a second under ten seconds ("3.4 s"), else whole units. */
+export function triesTookWords(milliseconds: number): string {
+  if (milliseconds < 10_000) return `${(Math.max(0, milliseconds) / 1000).toFixed(1)} s`;
+  return durationWords(milliseconds);
+}
+
+/** One entry of the engine's timeline of a run, as far as the tries of a step need it. */
+export type TriedEntry = {
+  readonly documentStep?: number | undefined;
+  readonly operationType: string;
+  readonly timestamp: number;
+  readonly duration?: number | undefined;
+};
+
+/**
+ * How many times the activity of step `at` (from one) was tried, and how long the tries took, from
+ * the engine's timeline, which keeps one entry for each try (the run's history keeps one start per
+ * step). `undefined` when the timeline has no try of that step.
+ */
+export function triesOfStep(
+  entries: readonly TriedEntry[],
+  at: number,
+): { readonly tries: number; readonly took: number } | undefined {
+  const tries = entries.filter(
+    (entry) => entry.documentStep === at - 1 && entry.operationType === 'activity',
+  );
+  if (tries.length === 0) return undefined;
+  const start = Math.min(...tries.map((entry) => entry.timestamp));
+  const end = Math.max(...tries.map((entry) => entry.timestamp + (entry.duration ?? 0)));
+  return { tries: tries.length, took: Math.max(0, end - start) };
 }

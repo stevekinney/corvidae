@@ -9,7 +9,7 @@
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { goalTitle, type RunAttempt, type RunOrigin } from './run-rows.ts';
-  import { STARTED_BY_LABELS } from './started-by.ts';
+  import { STARTED_BY_FILTER_LABELS, STARTED_BY_LABELS } from './started-by.ts';
 
   interface RunOriginProps {
     origin: RunOrigin;
@@ -20,9 +20,23 @@
      * identifier: "Schedule Daily summary, every day at 3:00 AM (9:00 AM UTC)" (COR-2424).
      */
     scheduleLine?: { readonly name: string; readonly cadence: string } | undefined;
+    /** Who is viewing the page: a run this principal started by hand reads "You" (COR-2424). */
+    viewer?: string | null | undefined;
   }
 
-  let { origin, attempt = null, scheduleLine = undefined }: RunOriginProps = $props();
+  let {
+    origin,
+    attempt = null,
+    scheduleLine = undefined,
+    viewer = undefined,
+  }: RunOriginProps = $props();
+
+  /** Whether `who`, the principal a person origin records, is the one viewing the page. */
+  function isViewer(who: string | null | undefined): boolean {
+    return (
+      who !== null && who !== undefined && viewer !== null && viewer !== undefined && who === viewer
+    );
+  }
 
   /** Opens a link in place, and leaves a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
@@ -54,6 +68,9 @@
   {#if origin.kind === 'chat'}
     <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.chat}</span>
     {@render link(origin.href)}
+  {:else if origin.kind === 'person' && isViewer(origin.principal)}
+    <!-- The viewer's own run reads "You" (COR-2424, row 54l). -->
+    {STARTED_BY_FILTER_LABELS.person}
   {:else if origin.kind === 'person'}
     {origin.surface === null
       ? STARTED_BY_LABELS.person

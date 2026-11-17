@@ -22,7 +22,12 @@
   import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
   import { cadenceClauseOf } from './run-schedule-cadence.ts';
   import RunOrigin from './run-origin.svelte';
-  import { buildRunRows, type RunAttempt, type RunOrigin as Origin } from './run-rows.ts';
+  import {
+    buildRunRows,
+    personOrigin,
+    type RunAttempt,
+    type RunOrigin as Origin,
+  } from './run-rows.ts';
 
   interface RunLineageProps {
     runId: string;
@@ -34,6 +39,13 @@
     chat?: ChatContext | undefined;
     /** The schedule that started the run, when the page has read it. */
     schedule?: BureauSchedule | undefined;
+    /**
+     * The origin the Bureau recorded for an instance of a workflow file, which has no task: a person
+     * who started it by hand is said as "You" when they are the viewer (COR-2424, row 54l).
+     */
+    recordOrigin?: object | null | undefined;
+    /** Who is viewing the page, the principal's subject. */
+    viewer?: string | null | undefined;
   }
 
   /** How many origins the list follows, this run's included. */
@@ -45,7 +57,15 @@
     readonly origin: Origin;
   }
 
-  let { runId, task, goal, chat, schedule }: RunLineageProps = $props();
+  let {
+    runId,
+    task,
+    goal,
+    chat,
+    schedule,
+    recordOrigin = undefined,
+    viewer = undefined,
+  }: RunLineageProps = $props();
 
   function rowOf(
     id: string,
@@ -88,7 +108,12 @@
           schedulePath: scheduleDetailPath(schedule.id),
           manual: false,
         }
-      : recordedOriginOfRun,
+      : recordedOriginOfRun.kind === 'none' &&
+          recordOrigin !== null &&
+          recordOrigin !== undefined &&
+          Reflect.get(recordOrigin, 'kind') === 'person'
+        ? personOrigin(recordOrigin)
+        : recordedOriginOfRun,
   );
   // The schedule as the chain says it: its name and when it runs, in the viewer's time (row 55i).
   const scheduleLine = $derived(
@@ -126,15 +151,15 @@
 </script>
 
 <li class="ib-run-lineage__item" data-depth="1">
-  <RunOrigin {origin} {attempt} {scheduleLine} />
+  <RunOrigin {origin} {attempt} {scheduleLine} {viewer} />
 </li>
 {#each ancestors.data ?? [] as ancestor, index (ancestor.runId)}
   <li class="ib-run-lineage__item" data-depth={index + 2}>
-    <RunOrigin origin={ancestor.origin} />
+    <RunOrigin origin={ancestor.origin} {viewer} />
   </li>
 {/each}
-<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal or a schedule, which are what the chain names (rows 55f, 55i, 54y). -->
-{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule'}
+<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal, a schedule or a person, which are what the chain names (rows 55f, 55i, 54y, 54l). -->
+{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule' || (origin.kind === 'person' && task === undefined)}
   <li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
     <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
     {RUN_DETAIL_COPY.lineage.thisRun}
