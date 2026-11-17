@@ -73,9 +73,7 @@
     context: Snippet | undefined;
     /** Identity of the request; the note and the checkbox reset when it changes. */
     requestKey: string;
-    /** The pairs of the one-line summary of the input, written once the approval is decided or unavailable. */
-    inputPairs: InputSummaryPair[];
-    /** The rows of the input, shown in the open while the approval waits. */
+    /** The rows of the input, in the open at the content edge whether it waits, is decided or is unavailable. */
     inputRows: InputRow[];
     /** The patch and the touched files, shown in the open, or `undefined` when the operation carries neither. */
     operationBody: Snippet | undefined;
@@ -104,7 +102,7 @@
   import ApprovalCardOutcome from './approval-card-outcome.svelte';
   import { RISK_LABELS, RISK_WORDS, STATE_LABELS } from './approval-card-state.ts';
   import ApprovalCardInputRows from './approval-card-input-rows.svelte';
-  import type { InputRow, InputSummaryPair } from './approval-card-state.ts';
+  import type { InputRow } from './approval-card-state.ts';
 
   let {
     rootId,
@@ -137,7 +135,6 @@
     inputLabel,
     context,
     requestKey,
-    inputPairs,
     inputRows,
     operationBody,
     resolve,
@@ -249,7 +246,8 @@
         <p class="cinder-approval-card__line">
           <span class="cinder-approval-card__line-tool">
             <span class="cinder-approval-card__line-facts"
-              >{#if tool.label !== undefined}<span class="cinder-approval-card__keep"
+              >{#if tool.label !== undefined}<span
+                  class="cinder-approval-card__keep cinder-approval-card__line-tool-name"
                   ><span class="cinder-approval-card__tool-label">{tool.label}</span
                   >{#if !tool.irreversible}<span
                       class="cinder-approval-card__separator"
@@ -295,17 +293,9 @@
     {notice}
   </p>
 {:else if isDecided}
-  {#if inputPairs.length > 0 && !collapsed}
-    <p class="cinder-approval-card__input-summary cinder-approval-card__decided-input">
-      <span class="cinder-approval-card__input-word">{inputLabel}</span>
-      {#each inputPairs as pair, index (pair.key)}
-        {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">,</span
-          >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span>{' '}<span
-          class="cinder-approval-card__pair-value"
-          data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-        >
-      {/each}
-    </p>
+  {#if inputRows.length > 0 && !collapsed}
+    <!-- What was decided on, in the waiting card's own grid at the content edge (COR-2327). -->
+    <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
   {/if}
   {#if outcomeText !== undefined}
     <ApprovalCardOutcome
@@ -331,17 +321,8 @@
 {:else}
   <div class="cinder-approval-card__row-body">
     {#if isUnavailable}
-      {#if inputPairs.length > 0}
-        <p class="cinder-approval-card__input-summary" data-cinder-static>
-          {#each inputPairs as pair, index (pair.key)}
-            {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">,</span
-              >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
-            >{' '}<span
-              class="cinder-approval-card__pair-value"
-              data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-            >
-          {/each}
-        </p>
+      {#if inputRows.length > 0}
+        <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
       {/if}
       {#if unavailableReason !== undefined}
         <p class="cinder-approval-card__reason" dir="auto">{unavailableReason}</p>

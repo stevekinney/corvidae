@@ -603,7 +603,10 @@
     padding-inline-start: 0;
   }
 
-  .cinder-approval-card--row > .cinder-approval-card__outcome {
+  /* Only a row collapsed to its outcome draws a glyph before the question; the outcome under it
+   * lines up past that glyph. Otherwise the outcome starts at the content edge, as the input does. */
+  .cinder-approval-card--row:has(> .cinder-approval-card__row[data-cinder-collapsed])
+    > .cinder-approval-card__outcome {
     padding-inline-start: calc(16px + var(--cinder-space-2));
   }
 
@@ -667,16 +670,6 @@
   .cinder-approval-card__decision-note-caption {
     margin-inline-start: var(--cinder-space-1);
     color: var(--cinder-text-subtle);
-  }
-
-  /* Under a decided row, the note and the input summary line up with the question. */
-  .cinder-approval-card--row > .cinder-approval-card__decision-note,
-  .cinder-approval-card--row > .cinder-approval-card__decided-input {
-    padding-inline-start: calc(16px + var(--cinder-space-2));
-  }
-
-  .cinder-approval-card__decided-input .cinder-approval-card__input-word {
-    margin-inline-end: var(--cinder-space-2);
   }
 
   .cinder-approval-card__input {
@@ -755,11 +748,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .cinder-approval-card__input-summary {
-    margin: 0;
-    color: var(--cinder-text-subtle);
   }
 
   .cinder-approval-card__pair-value {
@@ -1575,10 +1563,19 @@
     }
   }
 
+  /* A narrow row says things once, so the whole card fits a phone's transcript: the tool's name
+   * goes, because the step row above it and the question already say it, and who asked and when
+   * stay on one line (COR-2327). The risk word stays: nothing else says it. */
+  @container (inline-size < 24rem) {
+    .cinder-approval-card--row .cinder-approval-card__line-tool-name {
+      display: none;
+    }
+  }
+
   /* Where even "who asked, when" cannot fit on a line, the time takes a line of its own and the
    * comma that led to it goes, instead of stranding at the end of the line above. The row's line
-   * is short and sits beside the glyph; the card's eyebrow and the detail's ask line are longer. */
-  @container (inline-size < 17rem) {
+   * is short; the card's eyebrow and the detail's ask line are longer. */
+  @container (inline-size < 14rem) {
     .cinder-approval-card__line .cinder-approval-card__time-separator {
       display: none;
     }

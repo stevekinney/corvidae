@@ -113,6 +113,32 @@ test.describe('Approval input grid', () => {
     });
   }
 
+  test('a narrow card drops the tool’s name from its line and keeps who asked; a wide card keeps both', async ({
+    componentPage,
+  }) => {
+    for (const [viewport, dropped] of [
+      [narrowPhone, true],
+      [desktop, false],
+    ] as const) {
+      const page = await componentPage.open({ entry: approvalEntry, theme: 'light', viewport });
+      await expect(page.locator('#approval-card-row-chat')).toBeVisible();
+      // One read: whether the name is drawn, and what the line reads as it is drawn.
+      const read = await page.evaluate(() => {
+        const card = document.querySelector('#approval-card-row-chat')!;
+        const name = card.querySelector<HTMLElement>('.cinder-approval-card__line-tool-name')!;
+        const line = card.querySelector<HTMLElement>('.cinder-approval-card__line')!;
+        return {
+          nameDrawn: name.getClientRects().length > 0,
+          lineText: line.innerText.replace(/\s+/g, ' ').trim(),
+        };
+      });
+      expect(read.nameDrawn, viewport.name).toBe(!dropped);
+      expect(read.lineText, viewport.name).toContain('Approval from Tool runner');
+      if (dropped) expect(read.lineText).not.toContain('Issue refund');
+      else expect(read.lineText).toContain('Issue refund');
+    }
+  });
+
   test('a long value takes the whole row, and Show all 9 opens the rest in place', async ({
     componentPage,
   }) => {

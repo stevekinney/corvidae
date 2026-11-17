@@ -840,6 +840,29 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
+  test('a narrow row says the tool once, keeps who asked on one line, and indents nothing it decided', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // The card's own width, not the viewport, drops the tool's name from the row's line.
+    expect(css).toContain(
+      '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; } }',
+    );
+    // "Approval from Tool runner, 3 min ago" breaks only on a card narrower than 14rem.
+    expect(css).toMatch(
+      /@container \(inline-size < 14rem\) \{ \.cinder-approval-card__line \.cinder-approval-card__time-separator \{ display: none; \}/,
+    );
+    expect(css).not.toContain('@container (inline-size < 17rem)');
+    // The decided input is the waiting grid: no summary line and no indent of its own; only a
+    // collapsed row's outcome lines up past its glyph.
+    expect(css).not.toContain('__decided-input');
+    expect(css).not.toContain('.cinder-approval-card__input-summary');
+    expect(css).toContain(
+      '.cinder-approval-card--row:has(> .cinder-approval-card__row[data-cinder-collapsed]) > .cinder-approval-card__outcome { padding-inline-start:',
+    );
+  });
+
   test('every line keeps the body line height, never a tighter one', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
     for (const text of [

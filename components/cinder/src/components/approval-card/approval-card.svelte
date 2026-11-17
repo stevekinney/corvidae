@@ -639,7 +639,6 @@
       inputLabel={payloadLabel}
       {context}
       requestKey={idempotencyKey}
-      inputPairs={rowInputPairs}
       inputRows={rowInputRows}
       operationBody={hasOpenOperation ? openOperationBody : undefined}
       {onAskAgain}

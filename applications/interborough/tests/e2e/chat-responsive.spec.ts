@@ -73,9 +73,22 @@ async function readApprovalPlacement(page: Page) {
     const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
       ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
     );
+    const question = decision?.querySelector('.cinder-approval-card__row-question') ?? null;
+    const questionBox = question?.getBoundingClientRect();
+    const questionHit =
+      questionBox === undefined
+        ? null
+        : document.elementFromPoint(
+            questionBox.x + questionBox.width / 2,
+            questionBox.y + questionBox.height / 2,
+          );
     return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
       transcript: rectOf(document.querySelector('.chat-timeline')),
       card: rectOf(decision),
+      question: rectOf(question),
+      questionHitsItself:
+        questionHit !== null && question !== null && question.contains(questionHit),
       reminder: document.querySelector('[data-chat-approval-drawer]') !== null,
       blocked: rectOf(document.querySelector('[data-chat-composer-status="blocked"]')),
       buttons: buttons.map((button) => {
@@ -101,6 +114,26 @@ function expectDecisionInView(read: ApprovalPlacement): void {
   }
   // The reminder is for Deny and Approve out of view, so with both in view it is not drawn.
   expect(read.reminder).toBe(false);
+}
+
+/**
+ * The narrow card says things once, so at 320 by 640 the whole of it fits: its question and Approve
+ * are both inside the viewport and the transcript's visible box, and a tap reaches each (COR-2327).
+ */
+function expectQuestionAndApproveInView(read: ApprovalPlacement): void {
+  const transcript = read.transcript!;
+  const question = read.question!;
+  const approve = read.buttons.at(-1)!.box!;
+  for (const [name, box] of [
+    ['question', question],
+    ['Approve', approve],
+  ] as const) {
+    expect(box.y, `${name} top`).toBeGreaterThanOrEqual(Math.max(0, transcript.y - 1));
+    expect(box.y + box.height, `${name} bottom`).toBeLessThanOrEqual(
+      Math.min(read.viewport.height, transcript.y + transcript.height + 1),
+    );
+  }
+  expect(read.questionHitsItself).toBe(true);
 }
 
 /** The box of `locator`, which must be on the page. */
@@ -286,12 +319,13 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
-    // The card is taller than the transcript here, so the page aligns its bottom, Deny and Approve,
-    // to the transcript's bottom and its top may scroll off. Each attempt reads the whole layout in
-    // one pass and judges that pass, so a frame mid-settle is never acted on.
+    // The narrow card says things once, so the whole of it, question to Approve, fits above the
+    // blocked row. Each attempt reads the whole layout in one pass and judges that pass, so a frame
+    // mid-settle is never acted on.
     await expect(async () => {
       const read = await readApprovalPlacement(page);
       expectDecisionInView(read);
+      expectQuestionAndApproveInView(read);
       // The blocked row stands under the transcript; its action has a line of its own (06m).
       expect(read.blocked).not.toBeNull();
     }).toPass();
@@ -363,9 +397,11 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
     // Deny and Approve in the transcript's view, a tap at each centre reaching it past the live
-    // composer, and no reminder; each attempt judges one whole-layout read.
+    // composer, the question in view too, and no reminder; each attempt judges one whole-layout read.
     await expect(async () => {
-      expectDecisionInView(await readApprovalPlacement(page));
+      const read = await readApprovalPlacement(page);
+      expectDecisionInView(read);
+      expectQuestionAndApproveInView(read);
     }).toPass();
   });
 

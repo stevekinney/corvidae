@@ -1936,9 +1936,12 @@ describe('ApprovalCard row layout', () => {
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
       'Publish notes, Changes things, Approval from Release helper, 12 min ago',
     );
+    // The input is the waiting card's grid, at the content edge, with no "Input" word.
     expect(
-      squash(container.querySelector('.cinder-approval-card__input-summary')?.textContent),
-    ).toBe('Version 2.4, Changes 12');
+      [...container.querySelectorAll('.cinder-description-list__row')].map((row) =>
+        squash(row.textContent),
+      ),
+    ).toEqual(['Version 2.4', 'Changes 12']);
     expect(
       getByText(
         "Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.",
@@ -2077,7 +2080,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         ),
       ).toBe('Refund order 4471 for $42.00? Approved by you in Reviews, 10:46 AM');
       expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
-      expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__input-list')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__outcome-dot')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
       const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
@@ -2105,8 +2108,8 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       expect(glyph?.querySelector('svg')?.classList.contains('lucide-ban')).toBe(true);
     });
 
-    test('a row decided here keeps its tool line, its Input summary and the dot', () => {
-      const { container } = render(ApprovalCard, {
+    test('a row decided here keeps its tool line, its input in the waiting card’s grid and the dot', () => {
+      const { container, getByRole } = render(ApprovalCard, {
         props: refundRow({
           state: 'approved',
           decidedBy: 'you',
@@ -2114,7 +2117,11 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         }),
       });
       expect(container.querySelector('.cinder-approval-card__line')).not.toBeNull();
-      expect(container.querySelector('.cinder-approval-card__decided-input')).not.toBeNull();
+      // One pattern for the input: the same grid as a waiting card, no "Input" word, no indent.
+      const input = getByRole('group', { name: 'Input' });
+      expect(input.querySelector('dl')?.getAttribute('data-cinder-variant')).toBe('grid');
+      expect(container.querySelector('.cinder-approval-card__input-word')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__outcome-dot')).not.toBeNull();
       expect(container.querySelector('.cinder-approval-card__decided-glyph')).toBeNull();
     });
@@ -2528,14 +2535,16 @@ describe('ApprovalCard outcome', () => {
     ).toBe('Your note: Check the carrier’s claim first. Sent to the agent as the reason.');
   });
 
-  test('keeps the input line on a decided row', () => {
-    const { container } = render(ApprovalCard, {
+  test('keeps the input on a decided row, in the waiting card’s grid', () => {
+    const { getByRole } = render(ApprovalCard, {
       props: refundRow({ state: 'approved', decidedBy: 'you', inputLabel: 'Input' }),
     });
 
     expect(
-      squash(container.querySelector('.cinder-approval-card__decided-input')?.textContent),
-    ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
+      [
+        ...getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
+      ].map((row) => squash(row.textContent)),
+    ).toEqual(['Order ID 4471', 'Amount $42.00', 'Reason Arrived damaged']);
   });
 
   test('says nothing more than the outcome when no notice or reason was given', () => {
@@ -2888,7 +2897,7 @@ describe('ApprovalCard decided row order', () => {
     const order = [
       '.cinder-approval-card__row-question',
       '.cinder-approval-card__line',
-      '.cinder-approval-card__decided-input',
+      '.cinder-approval-card__input-list',
       '.cinder-approval-card__outcome',
     ].map((selector) => container.querySelector(selector));
     for (const [index, element] of order.entries()) {
