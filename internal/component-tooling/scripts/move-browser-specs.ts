@@ -450,8 +450,8 @@ export async function moveBrowserSpecs(options: Options): Promise<number> {
     tsconfig.exclude = tsconfig.exclude.filter((entry) => entry !== ROOT_SUITE);
     writeFileSync(rootTsconfig, `${JSON.stringify(tsconfig, null, 2)}\n`);
   }
-  git(root, ['add', '-A', 'components', 'internal/component-tooling', ROOT_SUITE]);
-  // Path rewrites outside those directories.
+  // The new files, and every change and deletion besides.
+  git(root, ['add', '-A', '--', 'components', 'internal/component-tooling']);
   git(root, ['add', '-u']);
 
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
