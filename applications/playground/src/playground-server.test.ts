@@ -16,8 +16,9 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
 import type { ComponentManifest } from './analyze.ts';
@@ -29,6 +30,7 @@ import {
 import { isComponentDocumentationPayload } from './component-documentation-reference.ts';
 import {
   CINDER_COMPONENT_SOURCE,
+  cinderComponentStylesheetUrlFor,
   componentDirectory,
   exampleFilePathIn,
 } from './component-sources.ts';
@@ -48,6 +50,7 @@ import {
   retainFixtureEntry,
 } from './fixture-bundle.ts';
 import { loadFixtureFile, resolveFixtureFilePath } from './fixture-loader.ts';
+import { stylePackages, stylesheetUrlFor } from './package-stylesheets.ts';
 import {
   PORT,
   analyzeComponentDefinitions,
@@ -80,6 +83,13 @@ import {
   type PageServerRendererLoadResult,
   type PageServerRenderers,
 } from './ssr-renderer.ts';
+
+/** The URL the server gives a Cinder component's stylesheet, in whichever package holds it. */
+function cinderStylesheetUrl(name: string): string {
+  const location = CINDER_COMPONENT_SOURCE.components().get(name);
+  if (location === undefined) throw new Error(`No Cinder component ${name}.`);
+  return cinderComponentStylesheetUrlFor(location, join(location.directory, `${name}.css`));
+}
 
 describe('eagerPrebuildComponents', () => {
   const components = ['avatar', 'button', 'image'];
@@ -1209,8 +1219,15 @@ describe('/styles/* (path traversal guard)', () => {
     expect(response.headers.get('Content-Type')).toBe('text/css');
   });
 
-  it('returns 200 text/css for /styles/foundation.css', async () => {
-    const response = await handleRequest(req('/styles/foundation.css'));
+  it('returns 200 text/css for the foundation stylesheet at its URL', async () => {
+    // `/styles/foundation.css` while core holds it; the foundation package's URL after the split.
+    const packages = stylePackages();
+    const foundation = [packages.core, ...packages.dependencies]
+      .map(({ root }) => join(root, 'src', 'styles', 'foundation.css'))
+      .find((path) => existsSync(path));
+    const url = foundation === undefined ? null : stylesheetUrlFor(foundation, packages);
+    expect(url).not.toBeNull();
+    const response = await handleRequest(req(url ?? ''));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('text/css');
   });
@@ -1589,8 +1606,8 @@ describe('/page/:name', () => {
     const response = await handleRequest(req('/page/checkbox-group'));
     const html = await response.text();
 
-    expect(html).toContain('href="/components/checkbox/checkbox.css"');
-    expect(html).toContain('href="/components/checkbox-group/checkbox-group.css"');
+    expect(html).toContain(`href="${cinderStylesheetUrl('checkbox')}"`);
+    expect(html).toContain(`href="${cinderStylesheetUrl('checkbox-group')}"`);
   });
 
   it('serves bundled documentation CSS as one stylesheet with no import waterfall', async () => {
@@ -1619,7 +1636,7 @@ describe('/page/:name', () => {
     'links extracted Chat peer styles alongside their own CSS routes for %s',
     async (chatComponent, cinderComponent) => {
       const chatStylesheetUrl = `/package-components/chat/${chatComponent}/${chatComponent}.css`;
-      const peerStylesheetUrl = `/components/${cinderComponent}/${cinderComponent}.css`;
+      const peerStylesheetUrl = cinderStylesheetUrl(cinderComponent);
       const page = await handleRequest(req(`/page/${chatComponent}`));
       expect(page.status).toBe(200);
       const html = await page.text();

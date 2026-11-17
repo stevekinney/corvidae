@@ -1,8 +1,14 @@
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// Cinder's token sheet, by its path in the repository, which the package split moves with the
+// file into the package that holds it (P-COR-101).
+const TOKEN_SHEET = fileURLToPath(
+  new URL('../../../components/cinder/src/styles/tokens-base.css', import.meta.url),
+);
 
 const expectedImportedSelectors = [
   '.weft-shell',
@@ -43,8 +49,7 @@ test('source styles compile without discarded imports or other CSS warnings', as
  * browser canvas, and axe measures dark-theme text against white (COR-124).
  */
 test('the page canvas and shell paint with tokens Cinder defines', async () => {
-  const cinderSource = dirname(Bun.resolveSync('@lostgradient/cinder', import.meta.dir));
-  const tokens = await Bun.file(join(cinderSource, 'styles/tokens-base.css')).text();
+  const tokens = await Bun.file(TOKEN_SHEET).text();
   const defined = new Set(
     Array.from(tokens.matchAll(/(--cinder-[a-z0-9-]+)\s*:/g), (match) => match[1]),
   );
@@ -77,8 +82,7 @@ test('the page canvas and shell paint with tokens Cinder defines', async () => {
  * may name an undefined token on purpose.
  */
 test('every --cinder-* token in Weft UI source is one Cinder defines', async () => {
-  const cinderSource = dirname(Bun.resolveSync('@lostgradient/cinder', import.meta.dir));
-  const tokens = await Bun.file(join(cinderSource, 'styles/tokens-base.css')).text();
+  const tokens = await Bun.file(TOKEN_SHEET).text();
   const defined = new Set(
     Array.from(tokens.matchAll(/(--cinder-[a-z0-9-]+)\s*:/g), (match) => match[1]),
   );

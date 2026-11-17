@@ -5,7 +5,7 @@
 
 import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { createFamilyFixture } from '@lostgradient/component-tooling/scripts/family-fixture.test-support.ts';
 
@@ -77,8 +77,13 @@ describe('readStylePackages', () => {
     expect(exportsStylesheets(undefined)).toBe(false);
   });
 
-  test('finds no style dependency in the real core, which has extracted none yet', () => {
-    expect(stylePackages().dependencies).toEqual([]);
+  test("finds each of the real core's style dependencies beside it, by its own name", () => {
+    // None before the split extracts a package; tokens, foundation and each family after it.
+    const packages = stylePackages();
+    for (const dependency of packages.dependencies) {
+      expect(dependency.name).toBe(`@lostgradient/${dependency.urlSegment}`);
+      expect(dependency.root).toBe(join(dirname(packages.core.root), dependency.urlSegment));
+    }
   });
 });
 
