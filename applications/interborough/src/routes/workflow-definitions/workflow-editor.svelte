@@ -41,7 +41,7 @@
     Tabs,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -65,10 +65,12 @@
     isApplyFailure,
     updateDefinitionFromText,
     updateWorkflowFile,
+    validateWorkflowDefinition,
     type WorkflowFileDetail,
   } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import FileProblem from './file-problem.svelte';
+  import { documentProblemFor, type DocumentProblem } from './workflow-issue-line.ts';
   import WorkflowBuilder from './workflow-builder.svelte';
   import { impactNotice } from './workflow-impact.ts';
   import { locateJsonProblem } from './workflow-source.ts';
@@ -124,6 +126,10 @@
   let unapplied = $state(false);
   /** The builder, which takes the person to the line the JSON stops being JSON on. */
   let builder = $state<{ focusProblem: () => Promise<void> }>();
+  /** The line the Bureau refused the document at, until the text changes (row 65z). */
+  let documentProblem = $state<DocumentProblem | null>(null);
+  /** The Bureau's checks are being asked before Save, so a second press waits for them. */
+  let checking = $state(false);
   /** The tab the loading form shows, before the builder takes over. */
   let loadingTab = $state<'builder' | 'json'>('builder');
 
@@ -139,6 +145,7 @@
     loaded = file;
     text = file.text ?? '';
     base = file.hash;
+    documentProblem = null;
   }
 
   // Fills the form once, when the file has arrived. Reload fills it again.
@@ -278,15 +285,32 @@
     },
   }));
 
-  function submit(): void {
-    if (base === null || save.isPending || changedOnDisk) return;
+  async function submit(): Promise<void> {
+    if (base === null || save.isPending || changedOnDisk || checking) return;
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
       // The JSON tab marks the line to fix, and the footer says it; Save takes the person there.
       void builder?.focusProblem();
       return;
     }
-    save.mutate({ expectedHash: base, definition: parsed.definition });
+    // The Bureau's own checks first, so a document it refuses is marked at its line on the JSON
+    // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Save.
+    const asked = text;
+    const expectedHash = base;
+    checking = true;
+    const problem = await documentProblemFor(asked, () =>
+      validateWorkflowDefinition({ id: type, expectedHash, definition: parsed.definition }),
+    ).finally(() => {
+      checking = false;
+    });
+    if (text !== asked || base !== expectedHash) return;
+    if (problem !== undefined) {
+      documentProblem = problem;
+      await tick();
+      void builder?.focusProblem();
+      return;
+    }
+    save.mutate({ expectedHash, definition: parsed.definition });
   }
 
   /**
@@ -331,7 +355,7 @@
       scope: { route: '/workflows/:workflow/edit' },
       // Below 640 pixels the builder is read-only, so the shortcut saves nothing there either.
       handler: () => {
-        if (editable && !phoneViewport.current) submit();
+        if (editable && !phoneViewport.current) void submit();
       },
     }),
   );
@@ -504,8 +528,10 @@
           {...footerStatus === undefined ? {} : { status: footerStatus }}
           {...changedOnDisk ? { notice: changedNotice } : {}}
           {...saveImpact === undefined ? {} : { aboveFooter: impactSnippet }}
+          {documentProblem}
           onTextChange={(next) => {
             text = next;
+            documentProblem = null;
           }}
         >
           {#snippet actions()}
@@ -515,7 +541,7 @@
             <Button
               data-changes
               type="button"
-              onclick={() => submit()}
+              onclick={() => void submit()}
               variant="primary"
               size="sm"
               disabled={save.isPending}

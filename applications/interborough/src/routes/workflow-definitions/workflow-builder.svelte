@@ -80,6 +80,7 @@
     type BuilderSchema,
     type SchemaKey,
   } from './workflow-builder-model.ts';
+  import type { DocumentProblem } from './workflow-issue-line.ts';
   import { scheduleFieldsOf, scheduleValueOf } from './workflow-schedule-value.ts';
   import {
     problemSummary,
@@ -138,6 +139,13 @@
     notice?: Snippet;
     /** Drawn above the footer, before a failure: a notice about what saving does. */
     aboveFooter?: Snippet;
+    /**
+     * A line of JSON that parses but that the Bureau refused as a workflow, which the page found
+     * when the person pressed Create or Save (row 65z): the JSON tab marks it, the Builder tab is off
+     * with the footer's "Fix line 21 to return to the builder." as its reason. The page clears it
+     * when the text changes.
+     */
+    documentProblem?: DocumentProblem | null;
   }
 
   let {
@@ -158,6 +166,7 @@
     status,
     notice,
     aboveFooter,
+    documentProblem = null,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.builder;
@@ -281,11 +290,28 @@
    * the JSON tab holds the fix. `jsonProblem` is where the text stops being JSON, or `null` when it
    * parses but is not an object.
    */
-  const blocked = $derived(view === undefined);
-  const jsonProblem = $derived(blocked ? locateJsonProblem(text) : null);
-  const fixLine = $derived(copy.json.fixLine(jsonProblem?.line ?? 1));
+  const unreadable = $derived(view === undefined);
+  // A document the Bureau refused at a line is the JSON tab's to fix as well (row 65z).
+  const blocked = $derived(unreadable || documentProblem !== null);
+  const jsonProblem = $derived(unreadable ? locateJsonProblem(text) : null);
+  const fixLine = $derived(
+    copy.json.fixLine(unreadable ? (jsonProblem?.line ?? 1) : (documentProblem?.line ?? 1)),
+  );
   /** Valid JSON that is not an object: the editor marks its first line and says so in its status. */
-  const notWorkflow = $derived(blocked && jsonProblem === null && text.trim() !== '');
+  const notWorkflow = $derived(unreadable && jsonProblem === null && text.trim() !== '');
+  /** What the JSON editor marks for valid JSON that is not a workflow, and the status it says. */
+  const notWorkflowMarks = $derived.by(() => {
+    if (notWorkflow) {
+      return {
+        statusLabel: copy.json.notWorkflow,
+        diagnostics: [{ line: 1, message: copy.json.notObject }],
+      };
+    }
+    if (!unreadable && documentProblem !== null) {
+      return { statusLabel: copy.json.notWorkflow, diagnostics: [documentProblem] };
+    }
+    return {};
+  });
 
   $effect(() => {
     if (blocked && tab === 'builder') tab = 'json';
@@ -322,10 +348,17 @@
    * JSON tab, the editor that holds it), or the first field of the builder that is wrong.
    */
   export async function focusProblem(): Promise<void> {
-    if (blocked) {
+    if (unreadable) {
       tab = 'json';
       await tick();
       jsonEditor?.focusProblem();
+      return;
+    }
+    if (documentProblem !== null) {
+      // The line the Bureau refused, which the JSON tab marks (row 65z).
+      tab = 'json';
+      await tick();
+      jsonEditor?.focusLine(documentProblem.line);
       return;
     }
     const first = problems[0];
@@ -855,12 +888,7 @@
           error={jsonError}
           invalidStatusLabel={copy.json.invalid}
           parserStopVisible={mode === 'edit'}
-          {...notWorkflow
-            ? {
-                statusLabel: copy.json.notWorkflow,
-                diagnostics: [{ line: 1, message: copy.json.notObject }],
-              }
-            : {}}
+          {...notWorkflowMarks}
           onValueChange={onTextChange}
         />
       </div>

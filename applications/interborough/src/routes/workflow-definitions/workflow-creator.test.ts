@@ -960,6 +960,42 @@ describe('the builder', () => {
     expect(router.pathname).toBe('/workflows/new');
   });
 
+  test('COR-2432: a document the Bureau refuses is marked at its line, the Builder tab is off, and Create goes there (row 65z)', async () => {
+    const { container } = open();
+    await ready(container);
+    stub?.on('bureau.workflows.validate', () => ({
+      status: 'invalid',
+      code: 'invalid-document',
+      issues: [{ path: 'steps[0].duration', message: '"duration" must be a duration such as 15m' }],
+    }));
+    await openJson(container);
+    const text = JSON.stringify(
+      {
+        name: 'nap',
+        trigger: { kind: 'manual' },
+        steps: [{ kind: 'sleep', duration: '15m' }],
+      },
+      null,
+      2,
+    );
+    await typeInto(container, text);
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+
+    // `"duration"` is on line 9 of the text as written.
+    await waitFor(() => expect(summary(container)).toBe(BUILDER.json.fixLine(9)));
+    expect(builderTab(container).hasAttribute('disabled')).toBe(true);
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-json-editor__problem')?.textContent).toBe(
+        '"duration" must be a duration such as 15m.',
+      ),
+    );
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+
+    // Any change to the text lets the person back into the builder.
+    await typeInto(container, text.replace('15m', '20m'));
+    await waitFor(() => expect(builderTab(container).hasAttribute('disabled')).toBe(false));
+  });
+
   test('turns the Builder tab off with the reason while the JSON is not valid, and says nothing is dropped', async () => {
     const { container } = open();
     await ready(container);

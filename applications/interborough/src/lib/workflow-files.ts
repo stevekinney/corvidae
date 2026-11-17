@@ -420,6 +420,50 @@ export async function createWorkflowFile(
   );
 }
 
+const validationSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok'), id: z.string(), hash: z.string() }),
+  z.object({
+    status: z.literal('invalid'),
+    code: z.string(),
+    issues: z.array(z.object({ path: z.string(), message: z.string() })),
+  }),
+  z.object({
+    status: z.literal('conflict'),
+    id: z.string(),
+    reason: z.string(),
+    currentHash: z.string().optional(),
+  }),
+]);
+
+/** What `bureau.workflows.validate` answers: the draft would be written, is refused with issues, or conflicts. */
+export type WorkflowValidation = z.infer<typeof validationSchema>;
+
+/**
+ * Asks the Bureau whether a draft would be written, with the same checks as a write and without
+ * writing (`bureau.workflows.validate`): `id` alone for a new workflow, with `expectedHash` for an
+ * edit of the file that hashes to it. A refusal names the issues by their paths (COR-2432).
+ */
+export async function validateWorkflowDefinition(
+  draft: {
+    readonly id?: string;
+    readonly expectedHash?: string;
+    readonly definition: WorkflowDefinitionInput;
+  },
+  options?: Options,
+): Promise<WorkflowValidation> {
+  return validationSchema.parse(
+    await callBureau(
+      'bureau.workflows.validate',
+      {
+        ...(draft.id === undefined ? {} : { id: draft.id }),
+        ...(draft.expectedHash === undefined ? {} : { expectedHash: draft.expectedHash }),
+        definition: draft.definition,
+      },
+      options,
+    ),
+  );
+}
+
 const runSummarySchema = z.object({
   id: z.string(),
   workflow: z.string(),
