@@ -139,12 +139,25 @@ export function cinderComponentRoots(coreRoot: string = CORE_ROOT): string[] {
  * when no root holds it.
  */
 export function cinderComponentFile(relativePath: string, coreRoot: string = CORE_ROOT): string {
-  // Once every family has left, core keeps the files the map gives it from under the components
-  // path (a test that needs several packages) in its tests directory, under the same names.
   return (
-    [...cinderComponentRoots(coreRoot), join(coreRoot, 'src', 'component-tests')]
-      .map((root) => join(root, relativePath))
-      .find((path) => existsSync(path)) ?? join(coreRoot, 'src', 'components', relativePath)
+    cinderComponentFileCandidates(relativePath, coreRoot).find((path) => existsSync(path)) ??
+    join(coreRoot, 'src', 'components', relativePath)
+  );
+}
+
+/**
+ * Every place a file under Cinder's components path may be: each components root, then core's
+ * tests directory, where, once every family has left, core keeps the files the map gives it from
+ * under the components path (a test that needs several packages), under the same names. A
+ * component's files can sit in more than one of them (its own tests in its package, the tests that
+ * need core in core's tests directory).
+ */
+export function cinderComponentFileCandidates(
+  relativePath: string,
+  coreRoot: string = CORE_ROOT,
+): string[] {
+  return [...cinderComponentRoots(coreRoot), join(coreRoot, 'src', 'component-tests')].map((root) =>
+    join(root, relativePath),
   );
 }
 

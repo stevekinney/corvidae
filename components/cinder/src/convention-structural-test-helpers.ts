@@ -3,6 +3,7 @@
 import { hasSubstantiveTest } from '@lostgradient/component-tooling/scripts/component-conventions-tests.ts';
 import {
   cinderComponentFile,
+  cinderComponentFileCandidates,
   cinderComponentRoots,
 } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { requiredValue } from '@lostgradient/testing';
@@ -173,9 +174,12 @@ function validateComponent(file: string): string[] {
 function checkSubstantiveTest(file: string, name: string): string[] {
   if (NO_TEST_REQUIRED_ALLOW_LIST.has(name)) return [];
   // A component's test may live in the fast lane or, when it starts a process (server rendering,
-  // hydration), in the isolated lane under the `*.integration.test.ts` or `*.slow.test.ts` name.
-  const passes = ['.test.ts', '.integration.test.ts', '.slow.test.ts'].some(
-    (suffix) => hasSubstantiveTest(componentFile(file.replace(/\.svelte$/, suffix))).pass,
+  // hydration), in the isolated lane under the `*.integration.test.ts` or `*.slow.test.ts` name,
+  // and in the component's package or, a test that needs several packages, in core's.
+  const passes = ['.test.ts', '.integration.test.ts', '.slow.test.ts'].some((suffix) =>
+    cinderComponentFileCandidates(file.replace(/\.svelte$/, suffix)).some(
+      (candidate) => hasSubstantiveTest(candidate).pass,
+    ),
   );
   return passes
     ? []
