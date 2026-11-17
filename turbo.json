@@ -57,7 +57,7 @@
     },
     "test": {
       "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit", "metadata"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -79,7 +79,7 @@
     },
     "test:slow": {
       "outputs": [],
-      "dependsOn": ["transit", "metadata"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
