@@ -209,10 +209,10 @@ describe('resolveHostPanelPackage', () => {
 
   test('resolves the Cinder panel kit to its source under the svelte condition', () => {
     expect(resolveHostPanelPackage(HOST_DEPENDENCIES, '@lostgradient/cinder/panel')).toMatch(
-      /cinder\/src\/panel\/index\.ts$/,
+      /core\/src\/panel\/index\.ts$/,
     );
     expect(resolveHostPanelPackage(HOST_DEPENDENCIES, '@lostgradient/cinder')).toMatch(
-      /cinder\/src\/index\.ts$/,
+      /core\/src\/index\.ts$/,
     );
   });
 

@@ -74,7 +74,7 @@ describe('workspaceScanRoots — scan roots from the workspace list (COR-2079)',
           },
           {
             dir: 'components/core/browser-fixtures',
-            reportPrefix: 'cinder/browser-fixtures',
+            reportPrefix: 'core/browser-fixtures',
             componentsPrefix: null,
           },
           {

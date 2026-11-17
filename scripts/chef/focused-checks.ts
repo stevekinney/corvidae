@@ -374,7 +374,7 @@ export const FIXTURE_SPECS_COMMAND =
 export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
 
 const cinderSource = 'components/core/src/';
-const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
+const cinderComponent = /^components\/core\/src\/components\/([^/]+)\//;
 const editorComponent = /^components\/editor\/src\/lib\/components\/([^/]+)\//;
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
