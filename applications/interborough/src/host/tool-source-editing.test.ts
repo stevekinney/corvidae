@@ -249,6 +249,63 @@ describe('testing an edit with a stored credential left blank', () => {
   });
 });
 
+describe('a probe with the key left blank, while another administrator re-points the source', () => {
+  // The re-point commits after the probe's Nth read of the configuration. Whichever read it is, the
+  // key stored for the new address must never be sent to the address the probe was asked about.
+  for (const after of [1, 2, 3, 4]) {
+    test(`never sends the new address's key to the old one (re-point after read ${String(after)})`, async () => {
+      const sent: string[] = [];
+      const home = memoryHome();
+      let armed = false;
+      let reads = 0;
+      let manager: ToolSourceManager | undefined;
+      const bungalow = {
+        ...home.bungalow,
+        readConfiguration: async () => {
+          const read = await home.bungalow.readConfiguration();
+          if (armed) {
+            reads += 1;
+            if (reads === after) {
+              armed = false;
+              await manager?.connect({
+                id: 'github',
+                source: github('http://127.0.0.1:8/elsewhere'),
+                credentials: { token: 'KEY-FOR-THE-NEW-ADDRESS' },
+                principal: owner,
+                name: 'GitHub',
+              });
+            }
+          }
+          return read;
+        },
+      };
+      manager = createToolSourceManager({
+        bungalow,
+        keys: await keysOf(),
+        audit: async () => {},
+        origin: () => 'http://127.0.0.1:1',
+        fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+          sent.push(
+            `${String(input instanceof Request ? input.url : input)} ${new Headers(init?.headers).get('authorization') ?? ''}`,
+          );
+          return new Response('down', { status: 503 });
+        }) as unknown as typeof fetch,
+      });
+      closers.push(manager);
+      await saved(manager);
+
+      armed = true;
+      await failureOf(
+        manager.probe({ id: 'github', source: github(), principal: owner }, await mutationAt(null)),
+      );
+
+      expect(
+        sent.filter((line) => line.includes('127.0.0.1:9') && line.includes('KEY-FOR')),
+      ).toEqual([]);
+    });
+  }
+});
+
 describe('saving an edit', () => {
   test('keeps the stored credential left blank and the per-tool settings, under the same id', async () => {
     const home = memoryHome();

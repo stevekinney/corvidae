@@ -689,7 +689,7 @@ export const CAPABILITIES_COPY = {
     menu: {
       label: 'More about this source',
       edit: 'Edit connection',
-      /** Editing a saved connection happens on the Connect tools page, which does not read a saved source yet. */
+      /** Editing a saved connection happens on the Connect tools page; a local command is not edited there. */
       editUnavailable:
         'This source runs a command on this machine, which is changed in configuration.json.',
       test: 'Test connection',

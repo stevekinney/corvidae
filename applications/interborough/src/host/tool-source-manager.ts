@@ -2205,11 +2205,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       // the stored value, as the save would, but only while the source still goes to the same
       // place, so a stored credential is never sent to an address a request just typed.
       if (missing.length > 0) {
-        const { sources: savedSources } = await readDocument();
-        const saved = savedSources.find((entry) => entry.source.id === id);
+        const observed = await readDocument();
+        const saved = observed.sources.find((entry) => entry.source.id === id);
+        // Read at the snapshot the recipient was checked against: a re-point another administrator
+        // commits between the two reads must not hand its key to the address checked here.
         const stored =
           saved !== undefined && recipientOf(saved.source) === recipientOf(source)
-            ? await vault.read(id).catch(() => NO_SECRETS)
+            ? await vault
+                .read(id, { text: observed.text, revision: observed.revision })
+                .catch(() => NO_SECRETS)
             : NO_SECRETS;
         for (const name of missing) {
           const value = stored.credentials.get(name);
