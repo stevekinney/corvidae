@@ -187,7 +187,12 @@ describe('Text clamp', () => {
 
     expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show more Show raw payloads');
     expect(footer?.querySelector('.cinder-text__toggle + .cinder-text__actions')).not.toBeNull();
-    expect(textCss).toMatch(/\.cinder-text__actions\s*\{[^}]*color:\s*var\(--cinder-text-muted\)/);
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle \+ \.cinder-text__actions\s*\{[^}]*font-weight:\s*var\(--cinder-font-normal\)/,
+    );
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle\s*\{[^}]*font-weight:\s*var\(--cinder-font-medium\)/,
+    );
     expect(textCss).not.toContain('.cinder-text__actions::before');
     expect(footer?.textContent).not.toContain(',');
     expect(footer?.textContent).not.toContain(String.fromCodePoint(0xb7));

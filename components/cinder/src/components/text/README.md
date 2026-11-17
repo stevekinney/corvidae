@@ -59,7 +59,7 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, and `bo
 | `text` | `string` | no | — | The plain text to cut with `truncate`. |
 | `truncate` | `"middle"` \| `"end"` | no | — | Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`. |
 | `variant` | `"display"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"body"` | no | `"body"` | Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. |
-| `actions` | `(opaque)` | no | — | Content that sits beside the "Show more" button on the line under a clamped run, set apart from it by a space and a colour step, such as a "Show raw payloads" link. Ignored without `clamp`. Not expressible in JSON Schema; see the component types for the signature. |
+| `actions` | `(opaque)` | no | — | Content that sits beside the "Show more" button on the line under a clamped run, separated from it by a space and a colour step, such as a "Show raw payloads" link. Ignored without `clamp`. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Required text content. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

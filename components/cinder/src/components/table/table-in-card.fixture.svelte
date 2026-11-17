@@ -4,6 +4,7 @@
     framed?: boolean;
     frameless?: boolean;
     inCard?: boolean;
+    cardVariant?: 'card' | 'well' | 'plain';
   };
 </script>
 
@@ -16,7 +17,12 @@
   import TableRow from '../table-row/table-row.svelte';
   import Table from './table.svelte';
 
-  let { framed, frameless, inCard = true }: TableInCardFixtureProps = $props();
+  let {
+    framed,
+    frameless,
+    inCard = true,
+    cardVariant = 'card',
+  }: TableInCardFixtureProps = $props();
 </script>
 
 {#snippet table()}
@@ -39,7 +45,7 @@
 {/snippet}
 
 {#if inCard}
-  <Card title="Models">
+  <Card title="Models" variant={cardVariant}>
     {@render table()}
   </Card>
 {:else}

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import {
   collectScannedFiles,
+  FAILURE_ADVICE,
   findMiddleDotSeparators,
   SCANNED_DIRECTORIES,
 } from './check-middle-dot-separators';

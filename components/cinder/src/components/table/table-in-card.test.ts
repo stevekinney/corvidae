@@ -33,6 +33,23 @@ describe('Table inside a Card', () => {
     expect(container.querySelector('[data-cinder-frameless]')).toBeNull();
   });
 
+  test('a plain card has no frame to share, so its table keeps its own', () => {
+    const { container } = render(Fixture, { cardVariant: 'plain' });
+
+    expect(container.querySelector('[data-cinder-frameless]')).toBeNull();
+  });
+
+  test('a pinned header and the scroll fade take the card fill, not the page canvas', async () => {
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+
+    expect(css).toMatch(
+      /\.cinder-card\[data-cinder-variant='card'\]\s+\.cinder-table-scroll\[data-cinder-frameless\]\s*\{[^}]*--_cinder-scroll-fade-color:\s*var\(--cinder-surface-raised\)/,
+    );
+    expect(css).toMatch(
+      /\.cinder-card\[data-cinder-variant='card'\]\s+\.cinder-table\[data-cinder-frameless\]\[data-cinder-sticky-header\]\s*>\s*\.cinder-table__header\s*\{[^}]*background:\s*var\(--cinder-surface-raised\)/,
+    );
+  });
+
   test('frameless still wins when framed is also set', () => {
     const { container } = render(Fixture, { frameless: true, framed: true });
 

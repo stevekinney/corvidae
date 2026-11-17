@@ -100,6 +100,7 @@
     background: none;
     color: var(--cinder-accent-text);
     font: inherit;
+    font-weight: var(--cinder-font-medium);
     cursor: pointer;
   }
 
@@ -114,10 +115,12 @@
     }
   }
 
-  /* The page's own action sits after "Show more" with a space and a colour step (muted), and no
-     glyph between them: no comma and no dot. */
-  .cinder-text__actions {
-    color: var(--cinder-text-muted);
+  /* The page's own action sits after "Show more" with a space and a weight and colour step ("Show
+     more" is medium weight in the accent colour, the action is regular weight in the text's own
+     colour, unless it brings its own, as a link does), and no glyph between them: no comma and no
+     dot. */
+  .cinder-text__toggle + .cinder-text__actions {
+    font-weight: var(--cinder-font-normal);
   }
 
   /* The tooltip's wrapper fills the line and may shrink, so the head can give way inside it. */
