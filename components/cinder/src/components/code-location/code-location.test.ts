@@ -26,7 +26,7 @@ function textSnippet(text: string) {
 describe('CodeLocation', () => {
   test('renders the cinder-code-location wrapper with its children', () => {
     const { container } = render(CodeLocation, {
-      file: 'src/index.ts',
+      file: 'src/app.ts',
       children: textSnippet('content'),
     });
     const element = container.querySelector('.cinder-code-location');
@@ -37,7 +37,7 @@ describe('CodeLocation', () => {
   test('merges a custom class alongside cinder-code-location', () => {
     const { container } = render(CodeLocation, {
       children: textSnippet('content'),
-      file: 'src/index.ts',
+      file: 'src/app.ts',
       class: 'my-custom-class',
     });
     const element = container.querySelector('.cinder-code-location');
@@ -47,15 +47,15 @@ describe('CodeLocation', () => {
 
   test('formats file, line, and column as a code location', () => {
     const { container } = render(CodeLocation, {
-      file: 'src/index.ts',
+      file: 'src/app.ts',
       line: 42,
       column: 7,
     });
-    expect(container.querySelector('code')?.textContent).toBe('src/index.ts:42:7');
+    expect(container.querySelector('code')?.textContent).toBe('src/app.ts:42:7');
   });
 
   test('does not render an ambiguous column without a line', () => {
-    const { container } = render(CodeLocation, { file: 'src/index.ts', column: 7 });
-    expect(container.querySelector('code')?.textContent).toBe('src/index.ts');
+    const { container } = render(CodeLocation, { file: 'src/app.ts', column: 7 });
+    expect(container.querySelector('code')?.textContent).toBe('src/app.ts');
   });
 });

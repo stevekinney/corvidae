@@ -326,14 +326,18 @@ describe('virtual-list dependency-free guard — loadDeclaredDependencyNames', (
     });
   });
 
-  test('reads the real package.json dependencies and includes @tanstack/virtual-core', async () => {
-    // Sanity check on the fixture itself: @tanstack/virtual-core IS a real
-    // dependency of this package (tree/data-grid use it) — CIN-204 forbids it
-    // for the virtual-list subtree specifically, not package-wide, so this
-    // guard's ban comes from FORBIDDEN_SPECIFIER, not from an absent
-    // dependencies entry.
+  test('reads the real package.json dependencies as declared', async () => {
+    // Sanity check on the fixture itself: the guard reads the manifest of the package that holds
+    // virtual-list, whose dependencies may include @tanstack/virtual-core (core declares it while
+    // it holds tree and data-grid) or not (virtual-list's own package after the split). CIN-204
+    // forbids it for the virtual-list subtree either way, so the ban comes from
+    // FORBIDDEN_SPECIFIER, not from an absent dependencies entry.
+    const manifest = (await Bun.file(packageJsonPath).json()) as {
+      dependencies?: Record<string, string>;
+    };
     const names = await loadDeclaredDependencyNames(packageJsonPath);
-    expect(names.has('@tanstack/virtual-core')).toBe(true);
+    expect(names).toEqual(new Set(Object.keys(manifest.dependencies ?? {})));
+    expect(names.size).toBeGreaterThan(0);
   });
 
   test('rejects a subpath import of the forbidden package', () => {

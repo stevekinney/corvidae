@@ -10,11 +10,15 @@
 import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 
-const source = new URL('../', import.meta.url).pathname;
+import { cinderSourceRoots } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
+// Every Cinder `src`: core's, and each package's the split extracts.
 const sources = new Map<string, string>();
-for await (const path of new Glob('**/*.svelte').scan({ cwd: source, absolute: true })) {
-  const text = await Bun.file(path).text();
-  if (text.includes('cinder-_required-marker')) sources.set(path, text);
+for (const source of cinderSourceRoots()) {
+  for await (const path of new Glob('**/*.svelte').scan({ cwd: source, absolute: true })) {
+    const text = await Bun.file(path).text();
+    if (text.includes('cinder-_required-marker')) sources.set(path, text);
+  }
 }
 
 const MARKER =

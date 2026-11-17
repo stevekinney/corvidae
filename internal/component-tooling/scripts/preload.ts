@@ -9,17 +9,31 @@ import {
   sveltePlugin,
 } from '@lostgradient/testing';
 
+import { cinderSourceRoots } from './discover-component-directories.ts';
+
 // The shared preload serves the package whose tests are running: `bun test` runs in its directory.
-const sourceDirectory = resolve(process.cwd(), 'src').replaceAll('\\', '/');
+// Its tests may mount the fixtures of any Cinder package (core's tests mount every family's once
+// the split extracts them), so each Cinder `src` is a fixture source too.
+const sourceDirectories = [
+  ...new Set([resolve(process.cwd(), 'src'), ...cinderSourceRoots()].map(normalize)),
+];
+
+function normalize(path: string): string {
+  return path.replaceAll('\\', '/');
+}
 
 export function allowCinderTestStyleBlock(path: string): boolean {
-  const normalizedPath = path.replaceAll('\\', '/');
-  if (!normalizedPath.startsWith(`${sourceDirectory}/`)) return false;
+  const normalizedPath = normalize(path);
+  const sourceDirectory = sourceDirectories.find((directory) =>
+    normalizedPath.startsWith(`${directory}/`),
+  );
+  if (sourceDirectory === undefined) return false;
 
   const relativePath = normalizedPath.slice(sourceDirectory.length + 1);
   return (
     relativePath.startsWith('test/fixtures/') ||
-    /^components\/[^/]+\/[^/]+\.fixture\.svelte$/.test(relativePath)
+    // Core's tests directory keeps the fixtures that mount several packages' components (COR-2091).
+    /^(?:components|component-tests)\/[^/]+\/[^/]+\.fixture\.svelte$/.test(relativePath)
   );
 }
 

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import {
   CORPUS_ALIASES,
@@ -9,8 +8,8 @@ import {
   allUseSites,
   classify,
 } from '../../../../internal/component-tooling/src/styles/border-tier-non-border-uses.test.ts';
-
-const PACKAGE_ROOT = join(import.meta.dirname, '..', '..');
+// The corpus and the seam audit, in whichever Cinder package holds each once the split moves it.
+import { cinderPackageFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -50,7 +49,7 @@ describe('CIN-245: structural border tier corpus audit', () => {
   test('every corpus alias into a tier is classified', () => {
     const unclassified: string[] = [];
     for (const document of CORPUS_DOCUMENTS) {
-      const parsed: unknown = JSON.parse(readFileSync(join(PACKAGE_ROOT, document), 'utf8'));
+      const parsed: unknown = JSON.parse(readFileSync(cinderPackageFile(document), 'utf8'));
       collectAliases(parsed, [], document, unclassified);
     }
     expect(
@@ -62,7 +61,7 @@ describe('CIN-245: structural border tier corpus audit', () => {
   });
   test('every area fill is named in the seam audit', () => {
     const audit = readFileSync(
-      join(PACKAGE_ROOT, 'documentation/css-audit/translucent-border-seams.md'),
+      cinderPackageFile('documentation/css-audit/translucent-border-seams.md'),
       'utf8',
     );
     const missing = new Set<string>();

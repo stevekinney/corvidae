@@ -11,12 +11,11 @@
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'bun:test';
 import { parse } from 'postcss';
 
-const sourceDirectory = fileURLToPath(new URL('..', import.meta.url));
+import { cinderSourceRoots } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 type Allowed = { file: string; selector: string; reason: string };
 
@@ -51,11 +50,20 @@ function cssFiles(directory: string): string[] {
   });
 }
 
+/**
+ * Every stylesheet of every Cinder `src` (core's, and each package's the split extracts), each
+ * named relative to its `src`, as the allowlist names it.
+ */
+function sourceCssFiles(): { file: string; path: string }[] {
+  return cinderSourceRoots().flatMap((root) =>
+    cssFiles(root).map((path) => ({ file: relative(root, path), path })),
+  );
+}
+
 /** Every `file | selector` whose rule sets `text-transform: uppercase`. */
 function uppercaseRules(): string[] {
   const found: string[] = [];
-  for (const path of cssFiles(sourceDirectory)) {
-    const file = relative(sourceDirectory, path);
+  for (const { file, path } of sourceCssFiles()) {
     parse(readFileSync(path, 'utf8')).walkRules((rule) => {
       rule.walkDecls('text-transform', (declaration) => {
         if (declaration.value.trim() === 'uppercase') {
@@ -99,12 +107,12 @@ describe('section labels are sentence case', () => {
       '.cinder-pricing-card__name',
     ];
     const spaced: string[] = [];
-    for (const path of cssFiles(sourceDirectory)) {
+    for (const { file, path } of sourceCssFiles()) {
       parse(readFileSync(path, 'utf8')).walkRules((rule) => {
         if (!rule.selectors.some((selector) => labelSelectors.includes(selector.trim()))) return;
         rule.walkDecls('letter-spacing', (declaration) => {
           if (declaration.value.trim() !== '0') {
-            spaced.push(`${relative(sourceDirectory, path)} | ${rule.selector}`);
+            spaced.push(`${file} | ${rule.selector}`);
           }
         });
       });

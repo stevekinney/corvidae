@@ -1,14 +1,22 @@
 import { describe, expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { relative } from 'node:path';
 import ts from 'typescript';
 
-const sourceRoot = join(import.meta.dir, '..');
+import { cinderSourceRoots } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 describe('stable component context keys', () => {
   test('each provider family has a distinct global key', async () => {
     const uses: Array<{ key: string; path: string }> = [];
-    for await (const path of new Bun.Glob('**/*.ts').scan({ cwd: sourceRoot, absolute: true })) {
+    // Every Cinder `src`: core's, and each package's the split extracts, so a key is unique
+    // across all of them.
+    const paths: { sourceRoot: string; path: string }[] = [];
+    for (const sourceRoot of cinderSourceRoots()) {
+      for await (const path of new Bun.Glob('**/*.ts').scan({ cwd: sourceRoot, absolute: true })) {
+        paths.push({ sourceRoot, path });
+      }
+    }
+    for (const { sourceRoot, path } of paths) {
       const text = await readFile(path, 'utf8');
       // The AST walk below can only match an identifier spelled `strictStableContext`, so a file
       // whose text lacks that substring cannot contain a call it would match. Parsing the rest of

@@ -13,10 +13,11 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 
-const COMPONENTS = join(import.meta.dir, '..');
-const read = (path: string): string => readFileSync(join(COMPONENTS, path), 'utf8');
+// A component's stylesheet, in whichever Cinder package holds the component.
+const read = (path: string): string => readFileSync(cinderComponentFile(path), 'utf8');
 
 const badge = read('badge/badge.css');
 const stackedListItem = read('stacked-list-item/stacked-list-item.css');

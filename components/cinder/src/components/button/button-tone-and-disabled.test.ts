@@ -13,12 +13,16 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 import { parse, type AtRule, type Container, type Document, type Rule } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
 
+import {
+  cinderSourceFile,
+  cinderSourceRoots,
+} from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 import type { ButtonVariant } from './button.types.ts';
@@ -28,10 +32,9 @@ setupHappyDom();
 const { render } = await import('@testing-library/svelte');
 const { default: InDangerCard } = await import('./button-in-danger-card.fixture.svelte');
 
-const sourceDirectory = fileURLToPath(new URL('../..', import.meta.url));
-
+/** A stylesheet of Cinder's `src`, in whichever package holds it once the split moves it. */
 function loadCss(path: string): string {
-  return readFileSync(`${sourceDirectory}/${path}`, 'utf8');
+  return readFileSync(cinderSourceFile(path), 'utf8');
 }
 
 const buttonCss = loadCss('components/button/button.css');
@@ -184,10 +187,12 @@ describe('a primary Button never takes a container tone', () => {
 
   test('no Cinder stylesheet re-tones a Button from a tone, variant or status ancestor', () => {
     const offenders: string[] = [];
-    const files = new Bun.Glob('**/*.css').scanSync({ cwd: sourceDirectory });
-    for (const file of files) {
-      if (file === 'components/button/button.css') continue;
-      offenders.push(...retoningSelectors(file, loadCss(file)));
+    // Every Cinder `src`: core's, and each package's the split extracts.
+    for (const root of cinderSourceRoots()) {
+      for (const file of new Bun.Glob('**/*.css').scanSync({ cwd: root })) {
+        if (file === 'components/button/button.css') continue;
+        offenders.push(...retoningSelectors(file, readFileSync(join(root, file), 'utf8')));
+      }
     }
     expect(offenders).toEqual([]);
   });
