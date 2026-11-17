@@ -25,6 +25,7 @@ import {
   documentationExampleStylesheetUrls,
   resetComponentExportNames,
   resolveEditorStylesheetUrl,
+  scannedComponentLocations,
   type ComponentSource,
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
@@ -220,7 +221,8 @@ describe('stylesheets an implementation imports beyond its own sidecar', () => {
       }
       const source = {
         ...EDITOR_COMPONENT_SOURCE,
-        componentsRoot,
+        components: () =>
+          scannedComponentLocations(componentsRoot, '@lostgradient/editor', componentsRoot),
         componentNames: null,
         componentStylesheetUrl: (name: string) => resolveEditorStylesheetUrl(componentsRoot, name),
       };
@@ -250,7 +252,12 @@ describe('stylesheets an implementation imports beyond its own sidecar', () => {
       for (const path of ['widget/widget.css', 'engine/base.css']) {
         writeFileSync(join(componentsRoot, path), '');
       }
-      const source = { ...EDITOR_COMPONENT_SOURCE, componentsRoot, componentNames: null };
+      const source = {
+        ...EDITOR_COMPONENT_SOURCE,
+        components: () =>
+          scannedComponentLocations(componentsRoot, '@lostgradient/editor', componentsRoot),
+        componentNames: null,
+      };
 
       // The widget's own sidecar is the sidecar lookup's job; a bare package specifier is not a
       // file the route can serve. Only the imported sibling stylesheet is added here.

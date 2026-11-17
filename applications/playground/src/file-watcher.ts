@@ -333,6 +333,20 @@ export function watchMetadataFiles(
 }
 
 /**
+ * The root of every package that owns a component the playground documents: each configured
+ * package's own, and for Cinder each family package core's manifest names (COR-2085). Read when
+ * the watcher starts, so a family extracted while the server runs needs a restart to be watched.
+ */
+export function componentPackageRoots(): string[] {
+  const roots = new Set<string>();
+  for (const componentSource of COMPONENT_SOURCES) {
+    roots.add(componentSource.packageRoot);
+    for (const location of componentSource.components().values()) roots.add(location.packageRoot);
+  }
+  return [...roots];
+}
+
+/**
  * Start watching the components, examples, and playground source trees and
  * route every change through `scheduleRebuild`. The scheduler debounces
  * bursts and the generation-token state machine guarantees publish atomicity.
@@ -349,8 +363,8 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
     // An edit to `<component>/examples/<scenario>.example.svelte` can only ever
     // affect that one component's page bundle, so it uses the precise
     // 'examples' scope instead (see `classifyComponentSourceChange`).
-    for (const componentSource of COMPONENT_SOURCES) {
-      const srcPath = join(componentSource.packageRoot, 'src');
+    for (const packageRoot of componentPackageRoots()) {
+      const srcPath = join(packageRoot, 'src');
       created.push(
         watchPath(srcPath, { recursive: true }, (_event, filename) => {
           // Without a filename the owning component is unknown, so widen to the components scope.
@@ -383,10 +397,10 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
     created.push(
       ...watchMetadataFiles(
         watchPath,
-        COMPONENT_SOURCES.flatMap((componentSource) => [
-          join(componentSource.packageRoot, 'package.json'),
-          componentSource.manifestPath,
-        ]),
+        [
+          ...componentPackageRoots().map((packageRoot) => join(packageRoot, 'package.json')),
+          ...COMPONENT_SOURCES.map((componentSource) => componentSource.manifestPath),
+        ],
         () => {
           scheduleRebuild({ kind: 'components' });
         },

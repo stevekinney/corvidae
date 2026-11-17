@@ -1,6 +1,10 @@
 import { join } from 'node:path';
 
-import { CINDER_COMPONENT_SOURCE, componentSourceById } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  componentRoots,
+  componentSourceById,
+} from './component-sources.ts';
 import {
   buildPlaygroundStylesheet,
   type PlaygroundStylesheetName,
@@ -104,11 +108,15 @@ export async function handlePackageComponentStyleRoute(
   const componentSource = componentSourceById(sourceId);
   if (componentSource === undefined) return notFound();
 
-  const cssPath = resolveSafePath(componentSource.componentsRoot, relative);
-  if (cssPath === null) return notFound();
-  const cssFile = Bun.file(cssPath);
-  if (!(await cssFile.exists())) return notFound(`${relative} not found`);
-  return new Response(rewritePackageComponentStyleImports(await cssFile.text()), {
-    headers: { 'Content-Type': 'text/css' },
-  });
+  // A package's components share one components root (chat's and editor's `src/lib/components`).
+  for (const componentRoot of componentRoots(componentSource)) {
+    const cssPath = resolveSafePath(componentRoot, relative);
+    if (cssPath === null) return notFound();
+    const cssFile = Bun.file(cssPath);
+    if (!(await cssFile.exists())) continue;
+    return new Response(rewritePackageComponentStyleImports(await cssFile.text()), {
+      headers: { 'Content-Type': 'text/css' },
+    });
+  }
+  return notFound(`${relative} not found`);
 }

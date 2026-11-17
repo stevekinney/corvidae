@@ -237,6 +237,29 @@
             "type": "boolean",
             "description": "True when this component ships an examples sidecar (cinder/{id}/examples) with canonical code samples."
           },
+          "source": {
+            "type": "object",
+            "description": "Where the component's source lives: the package that owns it (core, or a family package core depends on), that package's directory relative to this manifest's package, and the component's directory relative to the owning package.",
+            "required": ["package", "packageRoot", "directory"],
+            "additionalProperties": false,
+            "properties": {
+              "package": {
+                "type": "string",
+                "description": "The name of the package that owns the component's source.",
+                "examples": ["@lostgradient/cinder", "@lostgradient/button"]
+              },
+              "packageRoot": {
+                "type": "string",
+                "description": "The owning package's directory, relative to this manifest's package. '.' when the manifest's own package owns the component.",
+                "examples": [".", "../button"]
+              },
+              "directory": {
+                "type": "string",
+                "description": "The component's directory, relative to the owning package. Its artifacts and its examples/ directory are inside it.",
+                "examples": ["src/components/button"]
+              }
+            }
+          },
           "artifacts": {
             "type": "object",
             "description": "Package-relative paths for local component tooling.",

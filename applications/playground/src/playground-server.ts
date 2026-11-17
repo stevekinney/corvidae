@@ -38,7 +38,7 @@
  */
 
 import { type FSWatcher } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 import { fixtureRenderMode } from '@lostgradient/testing';
@@ -306,9 +306,7 @@ async function analyzeComponentDefinition(
     importPath: definition.importPath,
   });
   const schema = await readGeneratedComponentSchema(
-    Bun.file(
-      join(definition.source.componentsRoot, definition.name, `${definition.name}.schema.json`),
-    ),
+    Bun.file(join(dirname(definition.filePath), `${definition.name}.schema.json`)),
   );
   return schema === null
     ? analyzedManifest
@@ -632,7 +630,8 @@ async function renderFixturePageResponse(
   if (componentDefinition === undefined) {
     return notFound(`Component "${componentName}" not found`);
   }
-  const fixturesRoot = componentDefinition.source.componentsRoot;
+  // `<slug>/<slug>-fixtures.ts` under the directory that holds the component's own directory.
+  const fixturesRoot = dirname(dirname(componentDefinition.filePath));
   const fixtureFilePath = resolveFixtureFilePath(componentName, fixturesRoot);
   let fixtureFile;
   try {

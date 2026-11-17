@@ -54,7 +54,7 @@ import {
 } from './component-page-live-preview.ts';
 import type { PlaygroundControl } from './component-page-playground.ts';
 import { previewRecipeFor } from './component-page-preview-recipes.ts';
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import { CINDER_COMPONENT_SOURCE, componentDirectory } from './component-sources.ts';
 
 setupHappyDom();
 
@@ -621,7 +621,7 @@ describe('live preview accessible names', () => {
   ] as const)('labels the %s control the Playground mounts', async (kebabName, name) => {
     // The component file rather than the package root, so the test compiles one component graph.
     const module: { default: unknown } = await import(
-      join(CINDER_COMPONENT_SOURCE.componentsRoot, kebabName, `${kebabName}.svelte`)
+      join(componentDirectory(CINDER_COMPONENT_SOURCE, kebabName), `${kebabName}.svelte`)
     );
     const mountErrors: MountErrorRecord = {};
     const element = document.createElement('div');

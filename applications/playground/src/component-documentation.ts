@@ -1,4 +1,4 @@
-import { join, relative, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 
@@ -14,6 +14,8 @@ import type {
 import {
   CINDER_COMPONENT_SOURCE,
   COMPONENT_SOURCES,
+  componentDirectory,
+  componentLocation,
   type ComponentSource,
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
@@ -249,14 +251,13 @@ function artifactPath(
   artifactName: DocumentationArtifactName,
 ): string {
   return join(
-    componentSource.componentsRoot,
-    componentName,
+    componentDirectory(componentSource, componentName),
     `${componentName}.${artifactName}.json`,
   );
 }
 
 function readmePath(componentSource: ComponentSource, componentName: string): string {
-  return join(componentSource.componentsRoot, componentName, 'README.md');
+  return join(componentDirectory(componentSource, componentName), 'README.md');
 }
 
 const generatedRegionPattern =
@@ -323,16 +324,21 @@ function componentReadmeSourceHref(
   componentName: string,
   href: string,
 ): string {
-  return repositorySourceHref(`${componentSource.repositoryComponentsRoot}/${componentName}`, href);
+  // The component's own directory in the public mirror, from where its package lists it.
+  return repositorySourceHref(
+    componentLocation(componentSource, componentName).repositoryDirectory,
+    href,
+  );
 }
 
 /**
  * The slug of the documented component whose README `path` points at, or
  * `undefined` when it points anywhere else. READMEs are authored for this
  * repository's layout, so a link is resolved against the directory that holds
- * the linking README and then matched against every configured component root:
- * a Chat README reaches a Cinder README as a sibling package, not as a sibling
- * component directory.
+ * the linking README and then matched against the directory of every
+ * component every configured package lists: a Chat README reaches a Cinder
+ * README as a sibling package, not as a sibling component directory, and a
+ * component in a Cinder family package is found where core's manifest says.
  */
 function linkedComponentReadmeSlug(
   componentSource: ComponentSource,
@@ -340,11 +346,11 @@ function linkedComponentReadmeSlug(
   path: string,
   componentIds: ReadonlySet<string>,
 ): string | undefined {
-  const target = resolve(componentSource.componentsRoot, componentName, path);
+  const target = resolve(componentDirectory(componentSource, componentName), path);
   for (const source of COMPONENT_SOURCES) {
-    const withinRoot = relative(source.componentsRoot, target).replaceAll(sep, '/');
-    const match = withinRoot.match(/^([a-z0-9][a-z0-9-]*)\/README\.md$/);
-    if (match?.[1] !== undefined && componentIds.has(match[1])) return match[1];
+    for (const [slug, location] of source.components()) {
+      if (componentIds.has(slug) && target === join(location.directory, 'README.md')) return slug;
+    }
   }
   return undefined;
 }

@@ -16,7 +16,7 @@ import { join } from 'node:path';
 
 import type { CategoryId, StatusLevel } from '../src/manifest.meta.ts';
 import { categories, statusLevels } from '../src/manifest.meta.ts';
-import { discoverComponents } from './lib/discover-components.ts';
+import { discoverComponentDirectories } from './discover-component-directories.ts';
 
 export type { CategoryId, StatusLevel };
 
@@ -555,20 +555,19 @@ export async function extractComponentMetadata(
 }
 
 /**
- * Extract metadata for every directory component discovered by
- * `discoverComponents()`. Returns successes and errors separately.
+ * Extract metadata for every component core lists, in core or in one of its
+ * family packages (`discoverComponentDirectories()`). Returns successes and
+ * errors separately.
  */
 export async function extractAllComponentMetadata(): Promise<{
   metadata: ComponentMetadata[];
   errors: ExtractError[];
 }> {
-  const components = await discoverComponents();
-  const componentsRoot = new URL('../../../components/cinder/src/components', import.meta.url)
-    .pathname;
+  const components = await discoverComponentDirectories();
 
   const allResults = await Promise.all(
-    components.map(async ({ name }) => {
-      return extractComponentMetadata(name, `${componentsRoot}/${name}`);
+    components.map(async ({ name, directory }) => {
+      return extractComponentMetadata(name, directory);
     }),
   );
 

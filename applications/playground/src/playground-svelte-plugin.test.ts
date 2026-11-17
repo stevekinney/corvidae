@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import { compileSvelteComponentForBun } from '@lostgradient/testing';
 import type { BunPlugin, OnLoadResult } from 'bun';
 
-import { CINDER_COMPONENT_SOURCE, EDITOR_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  componentDirectory,
+  EDITOR_COMPONENT_SOURCE,
+} from './component-sources.ts';
 import { PLAYGROUND_ROOT } from './playground-paths.ts';
 import {
   isPlaygroundPath,
@@ -19,7 +23,7 @@ import { createSvelteCompileCache } from './svelte-compile-cache.ts';
 // Authored with a scoped `<style>` block, so compiling it with CSS injection leaves the
 // `$$css` record Svelte attaches to the module (and adds to the SSR head on render).
 const PLAYGROUND_STYLED_COMPONENT = `${PLAYGROUND_ROOT}/src/component-page.svelte`;
-const LIBRARY_STYLED_COMPONENT = `${EDITOR_COMPONENT_SOURCE.componentsRoot}/diff-viewer/diff-viewer.svelte`;
+const LIBRARY_STYLED_COMPONENT = `${componentDirectory(EDITOR_COMPONENT_SOURCE, 'diff-viewer')}/diff-viewer.svelte`;
 const INJECTED_CSS_MARKER = 'const $$css = {';
 
 type LoadHandler = (arguments_: { path: string }) => Promise<OnLoadResult>;

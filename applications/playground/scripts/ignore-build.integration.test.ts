@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createFamilyFixture } from '@lostgradient/component-tooling/scripts/family-fixture.test-support.ts';
+
 import {
   PREVIEW_OPT_IN,
   decide,
@@ -244,6 +246,7 @@ describe('dependencyClosure', () => {
       'components/chat',
       'components/cinder',
       'components/editor',
+      'internal/component-tooling',
       'internal/typescript',
       'packages/armorer',
       'packages/conversationalist',
@@ -322,6 +325,49 @@ describe('decideFromChanges', () => {
       closure,
     });
     expect(decision.build).toBe(false);
+  });
+
+  // COR-2085: a Cinder family package reaches the playground through core's dependencies, with no
+  // edit to the playground's manifest, which keeps depending on core alone.
+  test('builds for a change in a family package core depends on', async () => {
+    const family = createFamilyFixture();
+    try {
+      const rootManifestPath = join(family.root, 'package.json');
+      const rootManifest = JSON.parse(await readFile(rootManifestPath, 'utf8')) as {
+        workspaces: string[];
+      };
+      await writeFile(
+        rootManifestPath,
+        json({ ...rootManifest, workspaces: [...rootManifest.workspaces, 'applications/*'] }),
+      );
+      await mkdir(join(family.root, 'applications', 'playground'), { recursive: true });
+      await writeFile(
+        join(family.root, 'applications', 'playground', 'package.json'),
+        json({
+          name: '@lostgradient/playground',
+          dependencies: { '@lostgradient/cinder': 'workspace:*' },
+        }),
+      );
+
+      const familyClosure = dependencyClosure(
+        readWorkspaces(family.root),
+        '@lostgradient/playground',
+      );
+      expect(familyClosure.map((workspace) => workspace.directory)).toEqual([
+        'applications/playground',
+        'components/core',
+        'components/fixture-family',
+      ]);
+      const decision = decideFromChanges({
+        changedFiles: [
+          `components/fixture-family/src/components/${family.familyComponent}/${family.familyComponent}.css`,
+        ],
+        closure: familyClosure,
+      });
+      expect(decision.build).toBe(true);
+    } finally {
+      await rm(family.root, { recursive: true, force: true });
+    }
   });
 });
 

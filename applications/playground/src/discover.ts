@@ -7,13 +7,14 @@
  */
 
 import { stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 
 import {
   COMPONENT_SOURCES,
   type ComponentSource,
   exampleFilePathIn,
   examplesDirectoryIn,
+  resetComponentLocations,
 } from './component-sources.ts';
 export { COMPOUND_COMPONENT_FAMILIES } from './shell-app/compound-families.ts';
 
@@ -151,6 +152,7 @@ let discoverAllCache: Promise<Array<{ name: string; exampleCount: number }>> | n
  */
 export function invalidateDiscoveryCache(): void {
   discoveryGeneration += 1;
+  resetComponentLocations();
   componentsCache = null;
   componentDefinitionsCache = null;
   discoverAllCache = null;
@@ -174,22 +176,20 @@ export function assertUniqueComponentSlugs(components: readonly DiscoveredCompon
   }
 }
 
+/**
+ * Every component each configured package lists. Cinder's come from core's manifest, which names
+ * the directory of each component wherever it lives, in core or in a family package (COR-2085);
+ * chat's and editor's come from their components roots.
+ */
 async function scanComponentDefinitions(): Promise<DiscoveredComponent[]> {
-  const definitionsBySource = await Promise.all(
-    COMPONENT_SOURCES.map(async (source) => {
-      const filePaths = await discoverComponentFilePaths(source.componentsRoot);
-      return filePaths.map((filePath): DiscoveredComponent => {
-        const name = basename(filePath, '.svelte');
-        return {
-          name,
-          filePath,
-          importPath: source.importPath(name),
-          source,
-        };
-      });
-    }),
+  const definitions = COMPONENT_SOURCES.flatMap((source) =>
+    [...source.components()].map(([name, location]): DiscoveredComponent => ({
+      name,
+      filePath: join(location.directory, `${name}.svelte`),
+      importPath: source.importPath(name),
+      source,
+    })),
   );
-  const definitions = definitionsBySource.flat();
 
   assertUniqueComponentSlugs(definitions);
   return definitions.toSorted((left, right) => left.name.localeCompare(right.name));
@@ -215,10 +215,10 @@ export async function discoverComponentDefinition(
 
 /**
  * Perform the actual scan for public component kebab names. Pure and uncached —
- * {@link discoverComponents} owns the memoization. Delegates the filesystem
- * walk to {@link discoverComponentFilePaths} (the single source of truth shared
- * with the analyzer), then derives sorted, deduplicated kebab names. Kept
- * separate so the cache layer and the scan logic stay independently testable.
+ * {@link discoverComponents} owns the memoization. Reads every package's
+ * component list through {@link discoverComponentDefinitions}, then derives
+ * sorted, deduplicated kebab names. Kept separate so the cache layer and the
+ * scan logic stay independently testable.
  */
 async function scanComponents(): Promise<string[]> {
   const definitions = await discoverComponentDefinitions();

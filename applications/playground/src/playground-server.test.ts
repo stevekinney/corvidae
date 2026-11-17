@@ -27,7 +27,11 @@ import {
   fixtureArtifactByPath,
 } from './build-artifacts-shared.ts';
 import { isComponentDocumentationPayload } from './component-documentation-reference.ts';
-import { CINDER_COMPONENT_SOURCE, exampleFilePathIn } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  componentDirectory,
+  exampleFilePathIn,
+} from './component-sources.ts';
 import { COMPOSE_ONLY_COMPONENTS, discoverComponentDefinitions } from './discover.ts';
 import {
   setFeaturedExampleRenderer,
@@ -544,7 +548,12 @@ describe('runConcurrentStartupWarmup', () => {
 
 const FIXTURE_COMPONENT = 'button';
 const FIXTURE_SCENARIO = 'primary';
-const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
+/** The directory that holds a Cinder component's own directory, where its fixtures resolve. */
+function fixturesRootFor(componentName: string): string {
+  return resolve(componentDirectory(CINDER_COMPONENT_SOURCE, componentName), '..');
+}
+// Input's components root: the fixture tests below all use Input or Avatar.
+const COMPONENTS_ROOT = fixturesRootFor('input');
 const COMPOSE_ONLY_FIXTURE_COMPONENT = Array.from(COMPOSE_ONLY_COMPONENTS)[0]!;
 const FIXTURE_PATH = exampleFilePathIn(
   CINDER_COMPONENT_SOURCE,
@@ -738,7 +747,9 @@ describe('request idle timeout configuration', () => {
 });
 
 async function fixtureContentHash(componentName: string): Promise<string> {
-  const fixtureFile = await loadFixtureFile(resolveFixtureFilePath(componentName, COMPONENTS_ROOT));
+  const fixtureFile = await loadFixtureFile(
+    resolveFixtureFilePath(componentName, fixturesRootFor(componentName)),
+  );
   if (fixtureFile === null) throw new Error(`Fixture file for ${componentName} is missing`);
   return fixtureFile.contentHash;
 }
@@ -1750,7 +1761,7 @@ describe('/page/:name', () => {
   });
 
   it('returns 500 for a malformed fixture file', async () => {
-    const malformedFixturePath = resolve(COMPONENTS_ROOT, 'avatar', 'avatar-fixtures.ts');
+    const malformedFixturePath = resolve(fixturesRootFor('avatar'), 'avatar', 'avatar-fixtures.ts');
     await writeFile(
       malformedFixturePath,
       "export default [{ name: 'bad', props: { onclick: () => undefined } }];\n",

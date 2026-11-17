@@ -1,21 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { analyzeAll, analyzeComponent, resetProject } from './analyze.ts';
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  componentDirectory,
+  componentRoots,
+} from './component-sources.ts';
 
-const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
+// Cinder's components roots: core's own, and each family package's.
+const COMPONENTS_DIR = componentRoots(CINDER_COMPONENT_SOURCE);
 
 function componentPath(name: string): string {
-  // Migrated components live in `<name>/<name>.svelte`; legacy flat components
-  // live in `<name>.svelte`. Prefer the directory shape so the analyzer's
-  // component-side fallback to `<name>.types.ts` (next to the .svelte) finds
-  // the types file.
-  const directoryPath = join(COMPONENTS_DIR, name, `${name}.svelte`);
-  if (existsSync(directoryPath)) return directoryPath;
-  return join(COMPONENTS_DIR, `${name}.svelte`);
+  // Components live in `<name>/<name>.svelte`, where core's manifest says, so
+  // the analyzer's component-side fallback to `<name>.types.ts` (next to the
+  // .svelte) finds the types file.
+  return join(componentDirectory(CINDER_COMPONENT_SOURCE, name), `${name}.svelte`);
 }
 
 // ---------------------------------------------------------------------------

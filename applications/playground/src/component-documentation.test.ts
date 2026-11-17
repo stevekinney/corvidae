@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,15 +12,23 @@ import {
   renderReadmeDocumentation,
   rewriteComponentReadmeLinks,
 } from './component-documentation.ts';
-import { CHAT_COMPONENT_SOURCE, CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CHAT_COMPONENT_SOURCE,
+  CINDER_COMPONENT_SOURCE,
+  componentDirectory,
+  componentRoots,
+} from './component-sources.ts';
 import { discoverComponentDefinitions } from './discover.ts';
 import type { ComponentManifest } from './types.ts';
 
-const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
+// Cinder's components roots: core's own, and each family package's.
+const COMPONENTS_ROOT = componentRoots(CINDER_COMPONENT_SOURCE);
 const BULK_VALIDATION_CHUNK_SIZE = 20;
 
 function componentManifest(componentName: string): Promise<ComponentManifest> {
-  return analyzeComponent(join(COMPONENTS_ROOT, componentName, `${componentName}.svelte`));
+  return analyzeComponent(
+    join(componentDirectory(CINDER_COMPONENT_SOURCE, componentName), `${componentName}.svelte`),
+  );
 }
 
 function chunkManifests(
@@ -181,14 +190,16 @@ describe('buildComponentDocumentation', () => {
   // keeps its fragment but whose heading has no id is no better than the dropped fragment was.
   it('links every README section reference to a heading that exists on the target page', async () => {
     const packageManifest = await loadPackageManifestForDocumentation();
-    const readmePaths = Array.from(
-      new Bun.Glob('*/README.md').scanSync({ cwd: COMPONENTS_ROOT, absolute: false }),
-    );
+    const readmes = [...CINDER_COMPONENT_SOURCE.components()]
+      .map(([componentName, location]) => ({
+        componentName,
+        path: join(location.directory, 'README.md'),
+      }))
+      .filter(({ path }) => existsSync(path));
     const linkTargets = new Map<string, Set<string>>();
     const referencedFrom = new Map<string, string>();
-    for (const readmePath of readmePaths) {
-      const componentName = readmePath.split('/')[0] ?? '';
-      const markdown = await Bun.file(join(COMPONENTS_ROOT, readmePath)).text();
+    for (const { componentName, path } of readmes) {
+      const markdown = await Bun.file(path).text();
       if (!/\]\(\.\.\/[a-z0-9-]+\/README\.md#/.test(markdown)) continue;
       const payload = await buildComponentDocumentation(
         componentName,

@@ -50,7 +50,8 @@ describe('allowsPlainTextChildren', () => {
 describe('NO_TEXT_CHILDREN drift guards', () => {
   test('every entry names a real component', () => {
     for (const slug of NO_TEXT_CHILDREN) {
-      const path = join(CINDER_COMPONENT_SOURCE.componentsRoot, slug, `${slug}.svelte`);
+      const directory = CINDER_COMPONENT_SOURCE.components().get(slug)?.directory ?? slug;
+      const path = join(directory, `${slug}.svelte`);
       expect({ slug, exists: existsSync(path) }).toEqual({ slug, exists: true });
     }
   });

@@ -10,7 +10,13 @@ import { describe, expect, it } from 'bun:test';
 import { basename, join } from 'node:path';
 
 import { analyzeComponent } from './analyze.ts';
-import { CHAT_COMPONENT_SOURCE, CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CHAT_COMPONENT_SOURCE,
+  CINDER_COMPONENT_SOURCE,
+  COMPONENT_SOURCES,
+  componentDirectory,
+  componentRoots,
+} from './component-sources.ts';
 import {
   COMPOSE_ONLY_COMPONENTS,
   assertUniqueComponentSlugs,
@@ -25,8 +31,17 @@ import {
 } from './discover.ts';
 import { REPOSITORY_ROOT } from './playground-paths.ts';
 
-// The Cinder components root — the same root discoverComponents() scans.
-const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
+// Cinder's components roots: core's own and each family package's, which hold
+// every component core's manifest lists.
+const COMPONENTS_DIRS = componentRoots(CINDER_COMPONENT_SOURCE);
+
+/** `discoverComponentFilePaths` over every Cinder components root. */
+async function cinderComponentFilePaths(): Promise<string[]> {
+  const filePathsByRoot = await Promise.all(
+    COMPONENTS_DIRS.map((root) => discoverComponentFilePaths(root)),
+  );
+  return filePathsByRoot.flat();
+}
 
 describe('discoverComponents', () => {
   it('returns an array of component kebab names', async () => {
@@ -165,7 +180,11 @@ describe('discoverExampleFiles', () => {
     expect(button?.component).toBe('button');
     expect(button?.scenario).toBe('primary');
     expect(button?.filePath).toBe(
-      join(COMPONENTS_DIR, 'button', 'examples', 'primary.example.svelte'),
+      join(
+        componentDirectory(CINDER_COMPONENT_SOURCE, 'button'),
+        'examples',
+        'primary.example.svelte',
+      ),
     );
   });
 });
@@ -683,7 +702,7 @@ describe('discoverSidebarComponents', () => {
 
 describe('discoverComponentFilePaths', () => {
   it('returns absolute .svelte file paths', async () => {
-    const filePaths = await discoverComponentFilePaths(COMPONENTS_DIR);
+    const filePaths = await cinderComponentFilePaths();
     expect(filePaths.length).toBeGreaterThan(0);
     for (const filePath of filePaths) {
       expect(filePath.startsWith('/')).toBe(true);
@@ -692,7 +711,7 @@ describe('discoverComponentFilePaths', () => {
   });
 
   it('yields the exact same Cinder name set as package-aware discovery', async () => {
-    const filePaths = await discoverComponentFilePaths(COMPONENTS_DIR);
+    const filePaths = await cinderComponentFilePaths();
     const namesFromPaths = [...new Set(filePaths.map((p) => basename(p, '.svelte')))].toSorted();
     const definitions = await discoverComponentDefinitions();
     const components = definitions
@@ -702,7 +721,7 @@ describe('discoverComponentFilePaths', () => {
   });
 
   it('excludes underscore-prefixed and icons entries', async () => {
-    const filePaths = await discoverComponentFilePaths(COMPONENTS_DIR);
+    const filePaths = await cinderComponentFilePaths();
     for (const filePath of filePaths) {
       expect(basename(filePath).startsWith('_')).toBe(false);
       expect(filePath).not.toContain('/icons/');
@@ -751,33 +770,37 @@ describe('discoverComponentFilePaths', () => {
 // Discovery cache
 //
 // `discoverComponents` / `discoverAll` run on every `/`, `/c/:name`, and
-// `/page/:name` request, so their full `Bun.Glob` scans are memoized at module
-// scope and invalidated on each watcher rebuild via `invalidateDiscoveryCache`.
-// These tests pin that a warm call does NOT re-scan and that invalidation
-// forces a fresh scan — measured by spying on `Bun.Glob`'s `scan`.
+// `/page/:name` request, so their scans are memoized at module scope and
+// invalidated on each watcher rebuild via `invalidateDiscoveryCache`. These
+// tests pin that a warm call does NOT re-scan and that invalidation forces a
+// fresh scan — measured by spying on each package's component list.
 // ---------------------------------------------------------------------------
 
 describe('discovery cache', () => {
-  // Count Bun.Glob().scan() calls so we can assert when a real filesystem
-  // scan happens vs. when a cached result is returned. scanComponents()
-  // constructs two globs (flat + directory) per cold scan, and discoverAll
-  // additionally scans one example glob per component, so a warm call adds
-  // zero scans. We only assert direction (more vs. equal), never exact counts,
-  // so the test is robust to component-count growth.
+  // Count reads of each package's component list so we can assert when a real
+  // scan happens vs. when a cached result is returned. A cold scan reads every
+  // configured package's list (core's manifest for Cinder), and a warm call
+  // reads none. We only assert direction (more vs. equal), never exact counts,
+  // so the test is robust to package-count growth.
   let scanCallCount = 0;
-  const realScan = Bun.Glob.prototype.scan;
+  const realComponents = COMPONENT_SOURCES.map((source) => source.components);
 
   const installSpy = () => {
     scanCallCount = 0;
-    Bun.Glob.prototype.scan = function spiedScan(this: Bun.Glob, ...args: unknown[]) {
-      scanCallCount += 1;
-      // @ts-expect-error — forwarding the original variadic scan signature.
-      return realScan.apply(this, args);
-    };
+    for (const [index, source] of COMPONENT_SOURCES.entries()) {
+      const real = realComponents[index]!;
+      (source as { components: typeof real }).components = () => {
+        scanCallCount += 1;
+        return real();
+      };
+    }
   };
 
   const restoreSpy = () => {
-    Bun.Glob.prototype.scan = realScan;
+    for (const [index, source] of COMPONENT_SOURCES.entries()) {
+      (source as { components: (typeof realComponents)[number] }).components =
+        realComponents[index]!;
+    }
   };
 
   it('does not re-scan the filesystem on a warm discoverComponents() call', async () => {
@@ -882,7 +905,8 @@ describe('COMPOSE_ONLY_COMPONENTS — drift guard', () => {
 
   it('every entry is a real component directory with a <slug>.svelte file', async () => {
     for (const slug of COMPOSE_ONLY_COMPONENTS) {
-      const svelte = join(COMPONENTS_DIR, slug, `${slug}.svelte`);
+      const directory = CINDER_COMPONENT_SOURCE.components().get(slug)?.directory ?? slug;
+      const svelte = join(directory, `${slug}.svelte`);
       const exists = await Bun.file(svelte).exists();
       expect(
         exists,

@@ -148,6 +148,11 @@
       "related": ["capability-gate", "button", "callout", "empty-state"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/access-gate"
+      },
       "artifacts": {
         "schema": "src/components/access-gate/access-gate.schema.json",
         "variables": "src/components/access-gate/access-gate.variables.json",
@@ -185,6 +190,11 @@
       "related": ["accordion-item", "tabs", "tree"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/accordion"
+      },
       "artifacts": {
         "schema": "src/components/accordion/accordion.schema.json",
         "variables": "src/components/accordion/accordion.variables.json",
@@ -234,6 +244,11 @@
       "related": ["accordion"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/accordion-item"
+      },
       "artifacts": {
         "schema": "src/components/accordion-item/accordion-item.schema.json",
         "variables": "src/components/accordion-item/accordion-item.variables.json"
@@ -263,6 +278,11 @@
       "related": ["stacked-list-item", "data-list", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/action-row"
+      },
       "artifacts": {
         "schema": "src/components/action-row/action-row.schema.json",
         "variables": "src/components/action-row/action-row.variables.json",
@@ -296,6 +316,11 @@
       "related": ["banner", "callout", "toast-region"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/alert"
+      },
       "artifacts": {
         "schema": "src/components/alert/alert.schema.json",
         "variables": "src/components/alert/alert.variables.json",
@@ -326,6 +351,11 @@
       "related": ["modal", "confirm-dialog", "drawer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/alert-dialog"
+      },
       "artifacts": {
         "schema": "src/components/alert-dialog/alert-dialog.schema.json",
         "variables": "src/components/alert-dialog/alert-dialog.variables.json",
@@ -356,6 +386,11 @@
       "related": ["page-header", "toolbar", "navigation-bar"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/app-bar"
+      },
       "artifacts": {
         "schema": "src/components/app-bar/app-bar.schema.json",
         "variables": "src/components/app-bar/app-bar.variables.json",
@@ -386,6 +421,11 @@
       "related": ["card", "badge", "status-dot", "payload-inspector", "code-block", "collapsible"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/approval-card"
+      },
       "artifacts": {
         "schema": "src/components/approval-card/approval-card.schema.json",
         "variables": "src/components/approval-card/approval-card.variables.json",
@@ -422,6 +462,11 @@
       "related": ["line-chart", "bar-chart", "table", "statistic"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/area-chart"
+      },
       "artifacts": {
         "schema": "src/components/area-chart/area-chart.schema.json",
         "variables": "src/components/area-chart/area-chart.variables.json",
@@ -452,6 +497,11 @@
       "related": ["image", "card"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/aspect-ratio"
+      },
       "artifacts": {
         "schema": "src/components/aspect-ratio/aspect-ratio.schema.json",
         "variables": "src/components/aspect-ratio/aspect-ratio.variables.json",
@@ -482,6 +532,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/attempts-indicator"
+      },
       "artifacts": {
         "schema": "src/components/attempts-indicator/attempts-indicator.schema.json",
         "variables": "src/components/attempts-indicator/attempts-indicator.variables.json",
@@ -508,6 +563,11 @@
       "related": ["video-player"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/audio-player"
+      },
       "artifacts": {
         "schema": "src/components/audio-player/audio-player.schema.json",
         "variables": "src/components/audio-player/audio-player.variables.json",
@@ -535,6 +595,11 @@
       "related": ["combobox", "search-field", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/autocomplete"
+      },
       "artifacts": {
         "schema": "src/components/autocomplete/autocomplete.schema.json",
         "variables": "src/components/autocomplete/autocomplete.variables.json",
@@ -562,6 +627,11 @@
       "related": ["badge", "status-dot", "image"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/avatar"
+      },
       "artifacts": {
         "schema": "src/components/avatar/avatar.schema.json",
         "variables": "src/components/avatar/avatar.variables.json",
@@ -592,6 +662,11 @@
       "related": ["avatar", "badge", "tooltip", "status-dot"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/avatar-group"
+      },
       "artifacts": {
         "schema": "src/components/avatar-group/avatar-group.schema.json",
         "variables": "src/components/avatar-group/avatar-group.variables.json",
@@ -625,6 +700,11 @@
       "related": ["modal", "drawer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/backdrop"
+      },
       "artifacts": {
         "schema": "src/components/backdrop/backdrop.schema.json",
         "variables": "src/components/backdrop/backdrop.variables.json",
@@ -660,6 +740,11 @@
       "related": ["chip", "status-dot"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/badge"
+      },
       "artifacts": {
         "schema": "src/components/badge/badge.schema.json",
         "variables": "src/components/badge/badge.variables.json",
@@ -692,6 +777,11 @@
       "related": ["alert", "callout", "toast-region"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/banner"
+      },
       "artifacts": {
         "schema": "src/components/banner/banner.schema.json",
         "variables": "src/components/banner/banner.variables.json",
@@ -722,6 +812,11 @@
       "related": ["line-chart", "area-chart", "table", "statistic"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/bar-chart"
+      },
       "artifacts": {
         "schema": "src/components/bar-chart/bar-chart.schema.json",
         "variables": "src/components/bar-chart/bar-chart.variables.json",
@@ -752,6 +847,11 @@
       "related": ["navigation-bar", "side-navigation", "steps"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/breadcrumbs"
+      },
       "artifacts": {
         "schema": "src/components/breadcrumbs/breadcrumbs.schema.json",
         "variables": "src/components/breadcrumbs/breadcrumbs.variables.json",
@@ -782,6 +882,11 @@
       "related": ["button-group", "copy-button"],
       "hasConstraints": true,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/button"
+      },
       "artifacts": {
         "schema": "src/components/button/button.schema.json",
         "variables": "src/components/button/button.variables.json",
@@ -814,6 +919,11 @@
       "related": ["button", "segmented-control"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/button-group"
+      },
       "artifacts": {
         "schema": "src/components/button-group/button-group.schema.json",
         "variables": "src/components/button-group/button-group.variables.json",
@@ -841,6 +951,11 @@
       "related": ["date-picker", "date-range-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/calendar"
+      },
       "artifacts": {
         "schema": "src/components/calendar/calendar.schema.json",
         "variables": "src/components/calendar/calendar.variables.json",
@@ -875,6 +990,11 @@
       "related": ["alert", "banner"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/callout"
+      },
       "artifacts": {
         "schema": "src/components/callout/callout.schema.json",
         "variables": "src/components/callout/callout.variables.json",
@@ -905,6 +1025,11 @@
       "related": ["alert", "banner", "callout", "modal"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/capability-gate"
+      },
       "artifacts": {
         "schema": "src/components/capability-gate/capability-gate.schema.json",
         "variables": "src/components/capability-gate/capability-gate.variables.json",
@@ -935,6 +1060,11 @@
       "related": ["surface", "statistic", "stacked-list-item", "section-heading"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/card"
+      },
       "artifacts": {
         "schema": "src/components/card/card.schema.json",
         "variables": "src/components/card/card.variables.json",
@@ -966,6 +1096,11 @@
       "related": ["image", "aspect-ratio", "masonry"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/carousel"
+      },
       "artifacts": {
         "schema": "src/components/carousel/carousel.schema.json",
         "variables": "src/components/carousel/carousel.variables.json",
@@ -1006,6 +1141,11 @@
       "related": ["checkbox-group", "radio-group", "toggle", "segmented-control"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/checkbox"
+      },
       "artifacts": {
         "schema": "src/components/checkbox/checkbox.schema.json",
         "variables": "src/components/checkbox/checkbox.variables.json",
@@ -1033,6 +1173,11 @@
       "related": ["checkbox", "radio-group", "form-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/checkbox-group"
+      },
       "artifacts": {
         "schema": "src/components/checkbox-group/checkbox-group.schema.json",
         "variables": "src/components/checkbox-group/checkbox-group.variables.json",
@@ -1066,6 +1211,11 @@
       "related": ["badge", "status-dot"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/chip"
+      },
       "artifacts": {
         "schema": "src/components/chip/chip.schema.json",
         "variables": "src/components/chip/chip.variables.json",
@@ -1096,6 +1246,11 @@
       "related": ["choice-grid-item", "segmented-control", "radio-group", "checkbox-group"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/choice-grid"
+      },
       "artifacts": {
         "schema": "src/components/choice-grid/choice-grid.schema.json",
         "variables": "src/components/choice-grid/choice-grid.variables.json",
@@ -1120,6 +1275,11 @@
       "related": ["choice-grid"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/choice-grid-item"
+      },
       "artifacts": {
         "schema": "src/components/choice-grid-item/choice-grid-item.schema.json",
         "variables": "src/components/choice-grid-item/choice-grid-item.variables.json"
@@ -1143,6 +1303,11 @@
       "related": ["popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/citation"
+      },
       "artifacts": {
         "schema": "src/components/citation/citation.schema.json",
         "variables": "src/components/citation/citation.variables.json",
@@ -1169,6 +1334,11 @@
       "related": ["focus-trap", "popover", "portal"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/click-away-listener"
+      },
       "artifacts": {
         "schema": "src/components/click-away-listener/click-away-listener.schema.json",
         "variables": "src/components/click-away-listener/click-away-listener.variables.json",
@@ -1199,6 +1369,11 @@
       "related": ["kbd", "copy-button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/code-block"
+      },
       "artifacts": {
         "schema": "src/components/code-block/code-block.schema.json",
         "variables": "src/components/code-block/code-block.variables.json",
@@ -1223,6 +1398,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/code-location"
+      },
       "artifacts": {
         "schema": "src/components/code-location/code-location.schema.json",
         "variables": "src/components/code-location/code-location.variables.json",
@@ -1250,6 +1430,11 @@
       "related": ["accordion", "accordion-item"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/collapsible"
+      },
       "artifacts": {
         "schema": "src/components/collapsible/collapsible.schema.json",
         "variables": "src/components/collapsible/collapsible.variables.json",
@@ -1280,6 +1465,11 @@
       "related": ["color-picker", "color-swatch-picker", "input", "form-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/color-field"
+      },
       "artifacts": {
         "schema": "src/components/color-field/color-field.schema.json",
         "variables": "src/components/color-field/color-field.variables.json",
@@ -1307,6 +1497,11 @@
       "related": ["color-swatch-picker", "input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/color-picker"
+      },
       "artifacts": {
         "schema": "src/components/color-picker/color-picker.schema.json",
         "variables": "src/components/color-picker/color-picker.variables.json",
@@ -1334,6 +1529,11 @@
       "related": ["color-picker"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/color-swatch-picker"
+      },
       "artifacts": {
         "schema": "src/components/color-swatch-picker/color-swatch-picker.schema.json",
         "variables": "src/components/color-swatch-picker/color-swatch-picker.variables.json",
@@ -1364,6 +1564,11 @@
       "related": ["select", "search-field", "dropdown"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/combobox"
+      },
       "artifacts": {
         "schema": "src/components/combobox/combobox.schema.json",
         "variables": "src/components/combobox/combobox.variables.json",
@@ -1394,6 +1599,11 @@
       "related": ["command-palette", "command-menu", "dropdown-item"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/command-item"
+      },
       "artifacts": {
         "schema": "src/components/command-item/command-item.schema.json",
         "variables": "src/components/command-item/command-item.variables.json"
@@ -1423,6 +1633,11 @@
       "related": ["command-palette", "command-item", "popover", "combobox"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/command-menu"
+      },
       "artifacts": {
         "schema": "src/components/command-menu/command-menu.schema.json",
         "variables": "src/components/command-menu/command-menu.variables.json",
@@ -1453,6 +1668,11 @@
       "related": ["combobox", "dropdown", "command-item"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/command-palette"
+      },
       "artifacts": {
         "schema": "src/components/command-palette/command-palette.schema.json",
         "variables": "src/components/command-palette/command-palette.variables.json",
@@ -1483,6 +1703,11 @@
       "related": ["modal", "alert-dialog", "drawer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/confirm-dialog"
+      },
       "artifacts": {
         "schema": "src/components/confirm-dialog/confirm-dialog.schema.json",
         "variables": "src/components/confirm-dialog/confirm-dialog.variables.json",
@@ -1515,6 +1740,11 @@
       "related": ["status-dot", "feed", "badge"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/connection-indicator"
+      },
       "artifacts": {
         "schema": "src/components/connection-indicator/connection-indicator.schema.json",
         "variables": "src/components/connection-indicator/connection-indicator.variables.json",
@@ -1548,6 +1778,11 @@
       "related": ["aspect-ratio"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/container"
+      },
       "artifacts": {
         "schema": "src/components/container/container.schema.json",
         "variables": "src/components/container/container.variables.json",
@@ -1578,6 +1813,11 @@
       "related": ["dropdown", "dropdown-menu", "dropdown-item"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/context-menu"
+      },
       "artifacts": {
         "schema": "src/components/context-menu/context-menu.schema.json",
         "variables": "src/components/context-menu/context-menu.variables.json",
@@ -1608,6 +1848,11 @@
       "related": ["context-menu", "dropdown-trigger"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/context-menu-trigger"
+      },
       "artifacts": {
         "schema": "src/components/context-menu-trigger/context-menu-trigger.schema.json",
         "variables": "src/components/context-menu-trigger/context-menu-trigger.variables.json"
@@ -1637,6 +1882,11 @@
       "related": ["button", "code-block"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/copy-button"
+      },
       "artifacts": {
         "schema": "src/components/copy-button/copy-button.schema.json",
         "variables": "src/components/copy-button/copy-button.variables.json",
@@ -1666,6 +1916,11 @@
       "related": ["copy-button", "code-block"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/copyable-value"
+      },
       "artifacts": {
         "schema": "src/components/copyable-value/copyable-value.schema.json",
         "variables": "src/components/copyable-value/copyable-value.variables.json",
@@ -1696,6 +1951,11 @@
       "related": ["data-table", "table"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/data-grid"
+      },
       "artifacts": {
         "schema": "src/components/data-grid/data-grid.schema.json",
         "variables": "src/components/data-grid/data-grid.variables.json",
@@ -1728,6 +1988,11 @@
       "related": ["stacked-list-item", "description-list", "table"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/data-list"
+      },
       "artifacts": {
         "schema": "src/components/data-list/data-list.schema.json",
         "variables": "src/components/data-list/data-list.variables.json",
@@ -1766,6 +2031,11 @@
       ],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/data-table"
+      },
       "artifacts": {
         "schema": "src/components/data-table/data-table.schema.json",
         "variables": "src/components/data-table/data-table.variables.json",
@@ -1793,6 +2063,11 @@
       "related": ["calendar", "date-range-field", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/date-picker"
+      },
       "artifacts": {
         "schema": "src/components/date-picker/date-picker.schema.json",
         "variables": "src/components/date-picker/date-picker.variables.json",
@@ -1823,6 +2098,11 @@
       "related": ["input", "form-field", "chip", "segmented-control"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/date-range-field"
+      },
       "artifacts": {
         "schema": "src/components/date-range-field/date-range-field.schema.json",
         "variables": "src/components/date-range-field/date-range-field.variables.json",
@@ -1855,6 +2135,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/decision-deck"
+      },
       "artifacts": {
         "schema": "src/components/decision-deck/decision-deck.schema.json",
         "variables": "src/components/decision-deck/decision-deck.variables.json",
@@ -1901,6 +2186,11 @@
       "related": ["data-list", "table"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/description-list"
+      },
       "artifacts": {
         "schema": "src/components/description-list/description-list.schema.json",
         "variables": "src/components/description-list/description-list.variables.json",
@@ -1931,6 +2221,11 @@
       "related": ["source-diff-viewer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/diff-statistics"
+      },
       "artifacts": {
         "schema": "src/components/diff-statistics/diff-statistics.schema.json",
         "variables": "src/components/diff-statistics/diff-statistics.variables.json",
@@ -1961,6 +2256,11 @@
       "related": ["surface", "section-heading"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/divider"
+      },
       "artifacts": {
         "schema": "src/components/divider/divider.schema.json",
         "variables": "src/components/divider/divider.variables.json",
@@ -1991,6 +2291,11 @@
       "related": ["stale-region", "toast-region", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/docked-action-bar"
+      },
       "artifacts": {
         "schema": "src/components/docked-action-bar/docked-action-bar.schema.json",
         "variables": "src/components/docked-action-bar/docked-action-bar.variables.json",
@@ -2015,6 +2320,11 @@
       "related": ["bar-chart"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/donut-chart"
+      },
       "artifacts": {
         "schema": "src/components/donut-chart/donut-chart.schema.json",
         "variables": "src/components/donut-chart/donut-chart.variables.json",
@@ -2046,6 +2356,11 @@
       "related": ["modal", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/drawer"
+      },
       "artifacts": {
         "schema": "src/components/drawer/drawer.schema.json",
         "variables": "src/components/drawer/drawer.variables.json",
@@ -2082,6 +2397,11 @@
       ],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown"
+      },
       "artifacts": {
         "schema": "src/components/dropdown/dropdown.schema.json",
         "variables": "src/components/dropdown/dropdown.variables.json",
@@ -2118,6 +2438,11 @@
       ],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown-group"
+      },
       "artifacts": {
         "schema": "src/components/dropdown-group/dropdown-group.schema.json",
         "variables": "src/components/dropdown-group/dropdown-group.variables.json"
@@ -2147,6 +2472,11 @@
       "related": ["dropdown", "dropdown-menu", "dropdown-label", "dropdown-separator"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown-item"
+      },
       "artifacts": {
         "schema": "src/components/dropdown-item/dropdown-item.schema.json",
         "variables": "src/components/dropdown-item/dropdown-item.variables.json"
@@ -2176,6 +2506,11 @@
       "related": ["dropdown", "dropdown-menu", "dropdown-item", "dropdown-separator"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown-label"
+      },
       "artifacts": {
         "schema": "src/components/dropdown-label/dropdown-label.schema.json",
         "variables": "src/components/dropdown-label/dropdown-label.variables.json"
@@ -2211,6 +2546,11 @@
       ],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown-menu"
+      },
       "artifacts": {
         "schema": "src/components/dropdown-menu/dropdown-menu.schema.json",
         "variables": "src/components/dropdown-menu/dropdown-menu.variables.json"
@@ -2240,6 +2580,11 @@
       "related": ["dropdown", "dropdown-menu", "dropdown-label", "dropdown-item"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown-separator"
+      },
       "artifacts": {
         "schema": "src/components/dropdown-separator/dropdown-separator.schema.json",
         "variables": "src/components/dropdown-separator/dropdown-separator.variables.json"
@@ -2266,6 +2611,11 @@
       "related": ["dropdown", "dropdown-menu"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/dropdown-trigger"
+      },
       "artifacts": {
         "schema": "src/components/dropdown-trigger/dropdown-trigger.schema.json",
         "variables": "src/components/dropdown-trigger/dropdown-trigger.variables.json"
@@ -2295,6 +2645,11 @@
       "related": ["number-input", "select", "time-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/duration-field"
+      },
       "artifacts": {
         "schema": "src/components/duration-field/duration-field.schema.json",
         "variables": "src/components/duration-field/duration-field.variables.json",
@@ -2328,6 +2683,11 @@
       "related": ["skeleton", "spinner"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/empty-state"
+      },
       "artifacts": {
         "schema": "src/components/empty-state/empty-state.schema.json",
         "variables": "src/components/empty-state/empty-state.variables.json",
@@ -2359,6 +2719,11 @@
       "related": ["alert", "empty-state", "banner"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/error-state"
+      },
       "artifacts": {
         "schema": "src/components/error-state/error-state.schema.json",
         "variables": "src/components/error-state/error-state.variables.json",
@@ -2390,6 +2755,11 @@
       "related": ["timeline", "run-step-timeline", "feed-event", "feed-boundary"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/feed"
+      },
       "artifacts": {
         "schema": "src/components/feed/feed.schema.json",
         "variables": "src/components/feed/feed.variables.json",
@@ -2419,6 +2789,11 @@
       "related": ["feed", "feed-event", "divider"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/feed-boundary"
+      },
       "artifacts": {
         "schema": "src/components/feed-boundary/feed-boundary.schema.json",
         "variables": "src/components/feed-boundary/feed-boundary.variables.json",
@@ -2446,6 +2821,11 @@
       "related": ["feed"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/feed-event"
+      },
       "artifacts": {
         "schema": "src/components/feed-event/feed-event.schema.json",
         "variables": "src/components/feed-event/feed-event.variables.json"
@@ -2472,6 +2852,11 @@
       "related": ["form-field", "progress", "input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/file-upload"
+      },
       "artifacts": {
         "schema": "src/components/file-upload/file-upload.schema.json",
         "variables": "src/components/file-upload/file-upload.variables.json",
@@ -2502,6 +2887,11 @@
       "related": ["search-field", "segmented-control", "select", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/filter-bar"
+      },
       "artifacts": {
         "schema": "src/components/filter-bar/filter-bar.schema.json",
         "variables": "src/components/filter-bar/filter-bar.variables.json",
@@ -2526,6 +2916,11 @@
       "related": ["input", "form-field", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/find-bar"
+      },
       "artifacts": {
         "schema": "src/components/find-bar/find-bar.schema.json",
         "variables": "src/components/find-bar/find-bar.variables.json",
@@ -2553,6 +2948,11 @@
       "related": ["button", "toolbar"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/floating-action"
+      },
       "artifacts": {
         "schema": "src/components/floating-action/floating-action.schema.json",
         "variables": "src/components/floating-action/floating-action.variables.json",
@@ -2580,6 +2980,11 @@
       "related": ["modal", "drawer", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/focus-trap"
+      },
       "artifacts": {
         "schema": "src/components/focus-trap/focus-trap.schema.json",
         "variables": "src/components/focus-trap/focus-trap.variables.json",
@@ -2611,6 +3016,11 @@
       "related": ["navigation-bar", "side-navigation", "container", "grid"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/footer"
+      },
       "artifacts": {
         "schema": "src/components/footer/footer.schema.json",
         "variables": "src/components/footer/footer.variables.json",
@@ -2635,6 +3045,11 @@
       "related": ["form-field", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/form"
+      },
       "artifacts": {
         "schema": "src/components/form/form.schema.json",
         "variables": "src/components/form/form.variables.json",
@@ -2665,6 +3080,11 @@
       "related": ["form", "button", "docked-action-bar", "alert"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/form-actions"
+      },
       "artifacts": {
         "schema": "src/components/form-actions/form-actions.schema.json",
         "variables": "src/components/form-actions/form-actions.variables.json",
@@ -2692,6 +3112,11 @@
       "related": ["form-section", "label", "input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/form-field"
+      },
       "artifacts": {
         "schema": "src/components/form-field/form-field.schema.json",
         "variables": "src/components/form-field/form-field.variables.json",
@@ -2719,6 +3144,11 @@
       "related": ["form-field", "section-heading"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/form-section"
+      },
       "artifacts": {
         "schema": "src/components/form-section/form-section.schema.json",
         "variables": "src/components/form-section/form-section.variables.json",
@@ -2751,6 +3181,11 @@
       "related": ["grid-item", "grid-list", "masonry"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/grid"
+      },
       "artifacts": {
         "schema": "src/components/grid/grid.schema.json",
         "variables": "src/components/grid/grid.variables.json",
@@ -2776,6 +3211,11 @@
       "related": ["grid"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/grid-item"
+      },
       "artifacts": {
         "schema": "src/components/grid-item/grid-item.schema.json",
         "variables": "src/components/grid-item/grid-item.variables.json"
@@ -2805,6 +3245,11 @@
       "related": ["grid-list-item", "table"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/grid-list"
+      },
       "artifacts": {
         "schema": "src/components/grid-list/grid-list.schema.json",
         "variables": "src/components/grid-list/grid-list.variables.json",
@@ -2832,6 +3277,11 @@
       "related": ["grid-list"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/grid-list-item"
+      },
       "artifacts": {
         "schema": "src/components/grid-list-item/grid-list-item.schema.json",
         "variables": "src/components/grid-list-item/grid-list-item.variables.json"
@@ -2861,6 +3311,11 @@
       "related": ["grouped-list-item", "section", "data-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/grouped-list"
+      },
       "artifacts": {
         "schema": "src/components/grouped-list/grouped-list.schema.json",
         "variables": "src/components/grouped-list/grouped-list.variables.json",
@@ -2892,6 +3347,11 @@
       "related": ["grouped-list", "stacked-list-item", "avatar"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/grouped-list-item"
+      },
       "artifacts": {
         "schema": "src/components/grouped-list-item/grouped-list-item.schema.json",
         "variables": "src/components/grouped-list-item/grouped-list-item.variables.json",
@@ -2918,6 +3378,11 @@
       "related": ["popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/guidance-region"
+      },
       "artifacts": {
         "schema": "src/components/guidance-region/guidance-region.schema.json",
         "variables": "src/components/guidance-region/guidance-region.variables.json",
@@ -2948,6 +3413,11 @@
       "related": ["tooltip", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/hover-card"
+      },
       "artifacts": {
         "schema": "src/components/hover-card/hover-card.schema.json",
         "variables": "src/components/hover-card/hover-card.variables.json",
@@ -2978,6 +3448,11 @@
       "related": ["avatar"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/image"
+      },
       "artifacts": {
         "schema": "src/components/image/image.schema.json",
         "variables": "src/components/image/image.variables.json",
@@ -3002,6 +3477,11 @@
       "related": ["confirm-dialog"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/inline-confirm"
+      },
       "artifacts": {
         "schema": "src/components/inline-confirm/inline-confirm.schema.json",
         "variables": "src/components/inline-confirm/inline-confirm.variables.json",
@@ -3032,6 +3512,11 @@
       "related": ["spinner", "status-dot"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/inline-loading"
+      },
       "artifacts": {
         "schema": "src/components/inline-loading/inline-loading.schema.json",
         "variables": "src/components/inline-loading/inline-loading.variables.json",
@@ -3062,6 +3547,11 @@
       "related": ["textarea", "number-input", "search-field", "form-field"],
       "hasConstraints": true,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/input"
+      },
       "artifacts": {
         "schema": "src/components/input/input.schema.json",
         "variables": "src/components/input/input.variables.json",
@@ -3093,6 +3583,11 @@
       "related": ["inspector-row", "description-list", "grouped-list", "setting-row"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/inspector"
+      },
       "artifacts": {
         "schema": "src/components/inspector/inspector.schema.json",
         "variables": "src/components/inspector/inspector.variables.json",
@@ -3123,6 +3618,11 @@
       "related": ["inspector", "description-list", "setting-row", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/inspector-row"
+      },
       "artifacts": {
         "schema": "src/components/inspector-row/inspector-row.schema.json",
         "variables": "src/components/inspector-row/inspector-row.variables.json",
@@ -3151,6 +3651,11 @@
       "related": ["capability-gate", "steps"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/invocation-rule-builder"
+      },
       "artifacts": {
         "schema": "src/components/invocation-rule-builder/invocation-rule-builder.schema.json",
         "variables": "src/components/invocation-rule-builder/invocation-rule-builder.variables.json",
@@ -3187,6 +3692,11 @@
       "related": ["textarea", "json-schema-editor", "json-viewer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/json-editor"
+      },
       "artifacts": {
         "schema": "src/components/json-editor/json-editor.schema.json",
         "variables": "src/components/json-editor/json-editor.variables.json",
@@ -3234,6 +3744,11 @@
       "related": ["json-editor", "schema-form", "code-block"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/json-schema-editor"
+      },
       "artifacts": {
         "schema": "src/components/json-schema-editor/json-schema-editor.schema.json",
         "variables": "src/components/json-schema-editor/json-schema-editor.variables.json",
@@ -3264,6 +3779,11 @@
       "related": ["code-block", "tree"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/json-viewer"
+      },
       "artifacts": {
         "schema": "src/components/json-viewer/json-viewer.schema.json",
         "variables": "src/components/json-viewer/json-viewer.variables.json",
@@ -3294,6 +3814,11 @@
       "related": ["sortable-list", "grid-list", "data-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/kanban-board"
+      },
       "artifacts": {
         "schema": "src/components/kanban-board/kanban-board.schema.json",
         "variables": "src/components/kanban-board/kanban-board.variables.json",
@@ -3321,6 +3846,11 @@
       "related": ["code-block"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/kbd"
+      },
       "artifacts": {
         "schema": "src/components/kbd/kbd.schema.json",
         "variables": "src/components/kbd/kbd.variables.json",
@@ -3351,6 +3881,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/key-facts"
+      },
       "artifacts": {
         "schema": "src/components/key-facts/key-facts.schema.json",
         "variables": "src/components/key-facts/key-facts.variables.json",
@@ -3375,6 +3910,11 @@
       "related": ["secret-value-field", "table"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/key-value-editor"
+      },
       "artifacts": {
         "schema": "src/components/key-value-editor/key-value-editor.schema.json",
         "variables": "src/components/key-value-editor/key-value-editor.variables.json",
@@ -3402,6 +3942,11 @@
       "related": ["kbd", "shortcut-hint", "modal", "drawer", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/keyboard-shortcuts"
+      },
       "artifacts": {
         "schema": "src/components/keyboard-shortcuts/keyboard-shortcuts.schema.json",
         "variables": "src/components/keyboard-shortcuts/keyboard-shortcuts.variables.json",
@@ -3429,6 +3974,11 @@
       "related": ["form-field", "input", "checkbox", "radio-group"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/label"
+      },
       "artifacts": {
         "schema": "src/components/label/label.schema.json",
         "variables": "src/components/label/label.variables.json"
@@ -3458,6 +4008,11 @@
       "related": ["area-chart", "bar-chart", "table", "statistic"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/line-chart"
+      },
       "artifacts": {
         "schema": "src/components/line-chart/line-chart.schema.json",
         "variables": "src/components/line-chart/line-chart.variables.json",
@@ -3482,6 +4037,11 @@
       "related": ["navigation-item", "button", "breadcrumbs"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/link"
+      },
       "artifacts": {
         "schema": "src/components/link/link.schema.json",
         "variables": "src/components/link/link.variables.json",
@@ -3514,6 +4074,11 @@
       "related": ["resizable-panels", "data-list", "selectable-row", "empty-state"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/list-detail"
+      },
       "artifacts": {
         "schema": "src/components/list-detail/list-detail.schema.json",
         "variables": "src/components/list-detail/list-detail.variables.json",
@@ -3560,6 +4125,11 @@
       "related": ["pagination", "virtual-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/load-more"
+      },
       "artifacts": {
         "schema": "src/components/load-more/load-more.schema.json",
         "variables": "src/components/load-more/load-more.variables.json",
@@ -3587,6 +4157,11 @@
       "related": ["number-input", "phone-input", "statistic"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/locale-provider"
+      },
       "artifacts": {
         "schema": "src/components/locale-provider/locale-provider.schema.json",
         "variables": "src/components/locale-provider/locale-provider.variables.json"
@@ -3613,6 +4188,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/map-legend"
+      },
       "artifacts": {
         "schema": "src/components/map-legend/map-legend.schema.json",
         "variables": "src/components/map-legend/map-legend.variables.json",
@@ -3643,6 +4223,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/map-marker"
+      },
       "artifacts": {
         "schema": "src/components/map-marker/map-marker.schema.json",
         "variables": "src/components/map-marker/map-marker.variables.json",
@@ -3674,6 +4259,11 @@
       "related": ["scroll-area", "banner"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/marquee"
+      },
       "artifacts": {
         "schema": "src/components/marquee/marquee.schema.json",
         "variables": "src/components/marquee/marquee.variables.json",
@@ -3705,6 +4295,11 @@
       "related": ["grid", "grid-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/masonry"
+      },
       "artifacts": {
         "schema": "src/components/masonry/masonry.schema.json",
         "variables": "src/components/masonry/masonry.variables.json",
@@ -3735,6 +4330,11 @@
       "related": ["bar-chart", "line-chart", "area-chart"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/matrix-chart"
+      },
       "artifacts": {
         "schema": "src/components/matrix-chart/matrix-chart.schema.json",
         "variables": "src/components/matrix-chart/matrix-chart.variables.json",
@@ -3767,6 +4367,11 @@
       "related": ["navigation-bar", "menu-bar", "dropdown"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/mega-menu"
+      },
       "artifacts": {
         "schema": "src/components/mega-menu/mega-menu.schema.json",
         "variables": "src/components/mega-menu/mega-menu.variables.json",
@@ -3809,6 +4414,11 @@
       "related": ["navigation-bar", "dropdown", "dropdown-menu", "dropdown-item"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/menu-bar"
+      },
       "artifacts": {
         "schema": "src/components/menu-bar/menu-bar.schema.json",
         "variables": "src/components/menu-bar/menu-bar.variables.json",
@@ -3839,6 +4449,11 @@
       "related": ["callout"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/message"
+      },
       "artifacts": {
         "schema": "src/components/message/message.schema.json",
         "variables": "src/components/message/message.variables.json",
@@ -3867,6 +4482,11 @@
       "related": ["progress", "statistic", "slider"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/meter"
+      },
       "artifacts": {
         "schema": "src/components/meter/meter.schema.json",
         "variables": "src/components/meter/meter.variables.json",
@@ -3906,6 +4526,11 @@
       "related": ["confirm-dialog", "alert-dialog", "drawer", "popover"],
       "hasConstraints": true,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/modal"
+      },
       "artifacts": {
         "schema": "src/components/modal/modal.schema.json",
         "variables": "src/components/modal/modal.variables.json",
@@ -3933,6 +4558,11 @@
       "related": ["modal", "confirm-dialog"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/modal-region"
+      },
       "artifacts": {
         "schema": "src/components/modal-region/modal-region.schema.json",
         "variables": "src/components/modal-region/modal-region.variables.json",
@@ -3963,6 +4593,11 @@
       "related": ["select", "combobox", "checkbox-group", "transfer-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/multi-select"
+      },
       "artifacts": {
         "schema": "src/components/multi-select/multi-select.schema.json",
         "variables": "src/components/multi-select/multi-select.variables.json",
@@ -3993,6 +4628,11 @@
       "related": ["navigation-item", "breadcrumbs", "side-navigation"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/navigation-bar"
+      },
       "artifacts": {
         "schema": "src/components/navigation-bar/navigation-bar.schema.json",
         "variables": "src/components/navigation-bar/navigation-bar.variables.json",
@@ -4023,6 +4663,11 @@
       "related": ["navigation-bar", "side-navigation-item", "breadcrumbs", "tab"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/navigation-item"
+      },
       "artifacts": {
         "schema": "src/components/navigation-item/navigation-item.schema.json",
         "variables": "src/components/navigation-item/navigation-item.variables.json"
@@ -4052,6 +4697,11 @@
       "related": ["input", "slider"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/number-input"
+      },
       "artifacts": {
         "schema": "src/components/number-input/number-input.schema.json",
         "variables": "src/components/number-input/number-input.variables.json",
@@ -4083,6 +4733,11 @@
       "related": ["section-heading", "container", "app-bar"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/page-header"
+      },
       "artifacts": {
         "schema": "src/components/page-header/page-header.schema.json",
         "variables": "src/components/page-header/page-header.variables.json",
@@ -4113,6 +4768,11 @@
       "related": ["tabs"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/pagination"
+      },
       "artifacts": {
         "schema": "src/components/pagination/pagination.schema.json",
         "variables": "src/components/pagination/pagination.variables.json",
@@ -4139,6 +4799,11 @@
       "related": ["number-input", "slider", "badge"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/parameter-field"
+      },
       "artifacts": {
         "schema": "src/components/parameter-field/parameter-field.schema.json",
         "variables": "src/components/parameter-field/parameter-field.variables.json",
@@ -4170,6 +4835,11 @@
       "related": ["json-viewer", "code-block", "copy-button", "schema-view"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/payload-inspector"
+      },
       "artifacts": {
         "schema": "src/components/payload-inspector/payload-inspector.schema.json",
         "variables": "src/components/payload-inspector/payload-inspector.variables.json",
@@ -4200,6 +4870,11 @@
       "related": ["matrix-chart", "data-grid", "table"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/permission-matrix"
+      },
       "artifacts": {
         "schema": "src/components/permission-matrix/permission-matrix.schema.json",
         "variables": "src/components/permission-matrix/permission-matrix.variables.json",
@@ -4230,6 +4905,11 @@
       "related": ["input", "pin-input", "form-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/phone-input"
+      },
       "artifacts": {
         "schema": "src/components/phone-input/phone-input.schema.json",
         "variables": "src/components/phone-input/phone-input.variables.json",
@@ -4260,6 +4940,11 @@
       "related": ["input", "number-input", "form-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/pin-input"
+      },
       "artifacts": {
         "schema": "src/components/pin-input/pin-input.schema.json",
         "variables": "src/components/pin-input/pin-input.variables.json",
@@ -4286,6 +4971,11 @@
       "related": ["setting-row", "badge", "tooltip"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/policy-lock"
+      },
       "artifacts": {
         "schema": "src/components/policy-lock/policy-lock.schema.json",
         "variables": "src/components/policy-lock/policy-lock.variables.json",
@@ -4316,6 +5006,11 @@
       "related": ["modal", "drawer", "tooltip"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/popover"
+      },
       "artifacts": {
         "schema": "src/components/popover/popover.schema.json",
         "variables": "src/components/popover/popover.variables.json",
@@ -4343,6 +5038,11 @@
       "related": ["popover", "modal", "drawer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/portal"
+      },
       "artifacts": {
         "schema": "src/components/portal/portal.schema.json",
         "variables": "src/components/portal/portal.variables.json",
@@ -4373,6 +5073,11 @@
       "related": ["stack", "card", "tabs", "alert"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/preview-panel"
+      },
       "artifacts": {
         "schema": "src/components/preview-panel/preview-panel.schema.json",
         "variables": "src/components/preview-panel/preview-panel.variables.json",
@@ -4403,6 +5108,11 @@
       "related": ["card", "button", "statistic", "statistic-group"],
       "hasConstraints": true,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/pricing-card"
+      },
       "artifacts": {
         "schema": "src/components/pricing-card/pricing-card.schema.json",
         "variables": "src/components/pricing-card/pricing-card.variables.json",
@@ -4438,6 +5148,11 @@
       "related": ["meter", "spinner", "skeleton"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/progress"
+      },
       "artifacts": {
         "schema": "src/components/progress/progress.schema.json",
         "variables": "src/components/progress/progress.variables.json",
@@ -4469,6 +5184,11 @@
       "related": ["copy-button", "share-card"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/qr-code"
+      },
       "artifacts": {
         "schema": "src/components/qr-code/qr-code.schema.json",
         "variables": "src/components/qr-code/qr-code.variables.json",
@@ -4493,6 +5213,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/quota-meter"
+      },
       "artifacts": {
         "schema": "src/components/quota-meter/quota-meter.schema.json",
         "variables": "src/components/quota-meter/quota-meter.variables.json",
@@ -4520,6 +5245,11 @@
       "related": ["checkbox-group"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/radio-group"
+      },
       "artifacts": {
         "schema": "src/components/radio-group/radio-group.schema.json",
         "variables": "src/components/radio-group/radio-group.variables.json",
@@ -4550,6 +5280,11 @@
       "related": ["slider", "segmented-control", "radio-group", "form-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/rating"
+      },
       "artifacts": {
         "schema": "src/components/rating/rating.schema.json",
         "variables": "src/components/rating/rating.variables.json",
@@ -4574,6 +5309,11 @@
       "related": ["date-picker"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/relative-time"
+      },
       "artifacts": {
         "schema": "src/components/relative-time/relative-time.schema.json",
         "variables": "src/components/relative-time/relative-time.variables.json",
@@ -4604,6 +5344,11 @@
       "related": ["divider", "scroll-area"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/resizable-panels"
+      },
       "artifacts": {
         "schema": "src/components/resizable-panels/resizable-panels.schema.json",
         "variables": "src/components/resizable-panels/resizable-panels.variables.json",
@@ -4634,6 +5379,11 @@
       "related": ["confirm-dialog", "banner", "steps", "modal"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/restart-state"
+      },
       "artifacts": {
         "schema": "src/components/restart-state/restart-state.schema.json",
         "variables": "src/components/restart-state/restart-state.variables.json",
@@ -4670,6 +5420,11 @@
       "related": ["timeline", "feed", "steps"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/run-step-timeline"
+      },
       "artifacts": {
         "schema": "src/components/run-step-timeline/run-step-timeline.schema.json",
         "variables": "src/components/run-step-timeline/run-step-timeline.variables.json",
@@ -4702,6 +5457,11 @@
       "related": ["date-picker", "combobox", "input", "time-field"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/schedule-builder"
+      },
       "artifacts": {
         "schema": "src/components/schedule-builder/schedule-builder.schema.json",
         "variables": "src/components/schedule-builder/schedule-builder.variables.json",
@@ -4738,6 +5498,11 @@
       "related": ["json-schema-editor", "form-field", "input", "select", "toggle"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/schema-form"
+      },
       "artifacts": {
         "schema": "src/components/schema-form/schema-form.schema.json",
         "variables": "src/components/schema-form/schema-form.variables.json",
@@ -4784,6 +5549,11 @@
       "related": ["json-schema-editor", "payload-inspector", "json-viewer", "description-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/schema-view"
+      },
       "artifacts": {
         "schema": "src/components/schema-view/schema-view.schema.json",
         "variables": "src/components/schema-view/schema-view.variables.json",
@@ -4814,6 +5584,11 @@
       "related": ["surface"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/scroll-area"
+      },
       "artifacts": {
         "schema": "src/components/scroll-area/scroll-area.schema.json",
         "variables": "src/components/scroll-area/scroll-area.variables.json",
@@ -4841,6 +5616,11 @@
       "related": ["input", "combobox"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/search-field"
+      },
       "artifacts": {
         "schema": "src/components/search-field/search-field.schema.json",
         "variables": "src/components/search-field/search-field.variables.json",
@@ -4871,6 +5651,11 @@
       "related": ["copy-button", "input", "badge"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/secret-value-field"
+      },
       "artifacts": {
         "schema": "src/components/secret-value-field/secret-value-field.schema.json",
         "variables": "src/components/secret-value-field/secret-value-field.variables.json",
@@ -4901,6 +5686,11 @@
       "related": ["grouped-list", "section-heading", "card"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/section"
+      },
       "artifacts": {
         "schema": "src/components/section/section.schema.json",
         "variables": "src/components/section/section.variables.json",
@@ -4931,6 +5721,11 @@
       "related": ["card", "tab-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/section-heading"
+      },
       "artifacts": {
         "schema": "src/components/section-heading/section-heading.schema.json",
         "variables": "src/components/section-heading/section-heading.variables.json",
@@ -4962,6 +5757,11 @@
       "related": ["segmented-control", "button", "toggle"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/segment"
+      },
       "artifacts": {
         "schema": "src/components/segment/segment.schema.json",
         "variables": "src/components/segment/segment.variables.json"
@@ -4992,6 +5792,11 @@
       "related": ["toggle", "checkbox", "tabs", "button-group"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/segmented-control"
+      },
       "artifacts": {
         "schema": "src/components/segmented-control/segmented-control.schema.json",
         "variables": "src/components/segmented-control/segmented-control.variables.json",
@@ -5022,6 +5827,11 @@
       "related": ["combobox", "dropdown", "radio-group"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/select"
+      },
       "artifacts": {
         "schema": "src/components/select/select.schema.json",
         "variables": "src/components/select/select.variables.json",
@@ -5054,6 +5864,11 @@
       "related": ["action-row", "stacked-list-item", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/selectable-row"
+      },
       "artifacts": {
         "schema": "src/components/selectable-row/selectable-row.schema.json",
         "variables": "src/components/selectable-row/selectable-row.variables.json",
@@ -5100,6 +5915,11 @@
       "related": ["popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/selection-popover"
+      },
       "artifacts": {
         "schema": "src/components/selection-popover/selection-popover.schema.json",
         "variables": "src/components/selection-popover/selection-popover.variables.json",
@@ -5127,6 +5947,11 @@
       "related": ["form-field", "policy-lock"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/setting-row"
+      },
       "artifacts": {
         "schema": "src/components/setting-row/setting-row.schema.json",
         "variables": "src/components/setting-row/setting-row.variables.json",
@@ -5157,6 +5982,11 @@
       "related": ["copy-button", "card", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/share-card"
+      },
       "artifacts": {
         "schema": "src/components/share-card/share-card.schema.json",
         "variables": "src/components/share-card/share-card.variables.json",
@@ -5181,6 +6011,11 @@
       "related": ["kbd", "shortcut-hint"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/shortcut-field"
+      },
       "artifacts": {
         "schema": "src/components/shortcut-field/shortcut-field.schema.json",
         "variables": "src/components/shortcut-field/shortcut-field.variables.json",
@@ -5208,6 +6043,11 @@
       "related": ["kbd", "keyboard-shortcuts", "tooltip"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/shortcut-hint"
+      },
       "artifacts": {
         "schema": "src/components/shortcut-hint/shortcut-hint.schema.json",
         "variables": "src/components/shortcut-hint/shortcut-hint.variables.json",
@@ -5259,6 +6099,11 @@
       ],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/side-navigation"
+      },
       "artifacts": {
         "schema": "src/components/side-navigation/side-navigation.schema.json",
         "variables": "src/components/side-navigation/side-navigation.variables.json",
@@ -5289,6 +6134,11 @@
       "related": ["side-navigation", "side-navigation-item"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/side-navigation-group"
+      },
       "artifacts": {
         "schema": "src/components/side-navigation-group/side-navigation-group.schema.json",
         "variables": "src/components/side-navigation-group/side-navigation-group.variables.json"
@@ -5318,6 +6168,11 @@
       "related": ["side-navigation", "side-navigation-group", "navigation-item"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/side-navigation-item"
+      },
       "artifacts": {
         "schema": "src/components/side-navigation-item/side-navigation-item.schema.json",
         "variables": "src/components/side-navigation-item/side-navigation-item.variables.json"
@@ -5351,6 +6206,11 @@
       "related": ["side-navigation", "drawer"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/sidebar"
+      },
       "artifacts": {
         "schema": "src/components/sidebar/sidebar.schema.json",
         "variables": "src/components/sidebar/sidebar.variables.json",
@@ -5381,6 +6241,11 @@
       "related": ["spinner", "empty-state", "progress"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/skeleton"
+      },
       "artifacts": {
         "schema": "src/components/skeleton/skeleton.schema.json",
         "variables": "src/components/skeleton/skeleton.variables.json",
@@ -5411,6 +6276,11 @@
       "related": ["visually-hidden"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/skip-link"
+      },
       "artifacts": {
         "schema": "src/components/skip-link/skip-link.schema.json",
         "variables": "src/components/skip-link/skip-link.variables.json",
@@ -5441,6 +6311,11 @@
       "related": ["number-input", "progress"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/slider"
+      },
       "artifacts": {
         "schema": "src/components/slider/slider.schema.json",
         "variables": "src/components/slider/slider.variables.json",
@@ -5471,6 +6346,11 @@
       "related": ["grid-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/sortable-list"
+      },
       "artifacts": {
         "schema": "src/components/sortable-list/sortable-list.schema.json",
         "variables": "src/components/sortable-list/sortable-list.variables.json",
@@ -5502,6 +6382,11 @@
       "related": ["diff-statistics", "code-block"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/source-diff-viewer"
+      },
       "artifacts": {
         "schema": "src/components/source-diff-viewer/source-diff-viewer.schema.json",
         "variables": "src/components/source-diff-viewer/source-diff-viewer.variables.json",
@@ -5534,6 +6419,11 @@
       "related": ["meter", "progress", "bar-chart"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/sparkbar"
+      },
       "artifacts": {
         "schema": "src/components/sparkbar/sparkbar.schema.json",
         "variables": "src/components/sparkbar/sparkbar.variables.json",
@@ -5567,6 +6457,11 @@
       "related": ["spectrum-chart", "waveform", "matrix-chart"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/spectrogram"
+      },
       "artifacts": {
         "schema": "src/components/spectrogram/spectrogram.schema.json",
         "variables": "src/components/spectrogram/spectrogram.variables.json",
@@ -5600,6 +6495,11 @@
       "related": ["waveform", "spectrogram", "bar-chart"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/spectrum-chart"
+      },
       "artifacts": {
         "schema": "src/components/spectrum-chart/spectrum-chart.schema.json",
         "variables": "src/components/spectrum-chart/spectrum-chart.variables.json",
@@ -5631,6 +6531,11 @@
       "related": ["floating-action", "toolbar", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/speed-dial"
+      },
       "artifacts": {
         "schema": "src/components/speed-dial/speed-dial.schema.json",
         "variables": "src/components/speed-dial/speed-dial.variables.json",
@@ -5656,6 +6561,11 @@
       "related": ["speed-dial", "floating-action"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/speed-dial-action"
+      },
       "artifacts": {
         "schema": "src/components/speed-dial-action/speed-dial-action.schema.json",
         "variables": "src/components/speed-dial-action/speed-dial-action.variables.json"
@@ -5685,6 +6595,11 @@
       "related": ["skeleton", "progress"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/spinner"
+      },
       "artifacts": {
         "schema": "src/components/spinner/spinner.schema.json",
         "variables": "src/components/spinner/spinner.variables.json",
@@ -5715,6 +6630,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/spotlight"
+      },
       "artifacts": {
         "schema": "src/components/spotlight/spotlight.schema.json",
         "variables": "src/components/spotlight/spotlight.variables.json",
@@ -5742,6 +6662,11 @@
       "related": ["grid"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/stack"
+      },
       "artifacts": {
         "schema": "src/components/stack/stack.schema.json",
         "variables": "src/components/stack/stack.variables.json",
@@ -5773,6 +6698,11 @@
       "related": ["grid-list-item", "table-row", "avatar"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/stacked-list-item"
+      },
       "artifacts": {
         "schema": "src/components/stacked-list-item/stacked-list-item.schema.json",
         "variables": "src/components/stacked-list-item/stacked-list-item.variables.json",
@@ -5803,6 +6733,11 @@
       "related": ["banner", "button", "toggle", "checkbox", "select"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/stale-region"
+      },
       "artifacts": {
         "schema": "src/components/stale-region/stale-region.schema.json",
         "variables": "src/components/stale-region/stale-region.variables.json",
@@ -5833,6 +6768,11 @@
       "related": ["statistic-group", "badge"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/statistic"
+      },
       "artifacts": {
         "schema": "src/components/statistic/statistic.schema.json",
         "variables": "src/components/statistic/statistic.variables.json"
@@ -5863,6 +6803,11 @@
       "related": ["statistic"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/statistic-group"
+      },
       "artifacts": {
         "schema": "src/components/statistic-group/statistic-group.schema.json",
         "variables": "src/components/statistic-group/statistic-group.variables.json",
@@ -5895,6 +6840,11 @@
       "related": ["badge"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/status-dot"
+      },
       "artifacts": {
         "schema": "src/components/status-dot/status-dot.schema.json",
         "variables": "src/components/status-dot/status-dot.variables.json",
@@ -5927,6 +6877,11 @@
       "related": ["tabs", "breadcrumbs", "pagination"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/steps"
+      },
       "artifacts": {
         "schema": "src/components/steps/steps.schema.json",
         "variables": "src/components/steps/steps.variables.json",
@@ -5957,6 +6912,11 @@
       "related": ["card"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/surface"
+      },
       "artifacts": {
         "schema": "src/components/surface/surface.schema.json",
         "variables": "src/components/surface/surface.variables.json",
@@ -5988,6 +6948,11 @@
       "related": ["tabs", "tab-list", "tab-panel"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tab"
+      },
       "artifacts": {
         "schema": "src/components/tab/tab.schema.json",
         "variables": "src/components/tab/tab.variables.json"
@@ -6017,6 +6982,11 @@
       "related": ["tabs", "tab", "tab-panel"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tab-list"
+      },
       "artifacts": {
         "schema": "src/components/tab-list/tab-list.schema.json",
         "variables": "src/components/tab-list/tab-list.variables.json"
@@ -6046,6 +7016,11 @@
       "related": ["tabs", "tab", "tab-list"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tab-panel"
+      },
       "artifacts": {
         "schema": "src/components/tab-panel/tab-panel.schema.json",
         "variables": "src/components/tab-panel/tab-panel.variables.json"
@@ -6083,6 +7058,11 @@
       ],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table"
+      },
       "artifacts": {
         "schema": "src/components/table/table.schema.json",
         "variables": "src/components/table/table.variables.json",
@@ -6107,6 +7087,11 @@
       "related": ["table", "table-row"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table-body"
+      },
       "artifacts": {
         "schema": "src/components/table-body/table-body.schema.json",
         "variables": "src/components/table-body/table-body.variables.json"
@@ -6133,6 +7118,11 @@
       "related": ["table-row", "table-header-cell"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table-cell"
+      },
       "artifacts": {
         "schema": "src/components/table-cell/table-cell.schema.json",
         "variables": "src/components/table-cell/table-cell.variables.json"
@@ -6156,6 +7146,11 @@
       "related": ["table", "table-header-cell"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table-header"
+      },
       "artifacts": {
         "schema": "src/components/table-header/table-header.schema.json",
         "variables": "src/components/table-header/table-header.variables.json"
@@ -6182,6 +7177,11 @@
       "related": ["table-header", "table-cell"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table-header-cell"
+      },
       "artifacts": {
         "schema": "src/components/table-header-cell/table-header-cell.schema.json",
         "variables": "src/components/table-header-cell/table-header-cell.variables.json"
@@ -6215,6 +7215,11 @@
       "related": ["side-navigation", "tree", "breadcrumbs", "section-heading"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table-of-contents"
+      },
       "artifacts": {
         "schema": "src/components/table-of-contents/table-of-contents.schema.json",
         "variables": "src/components/table-of-contents/table-of-contents.variables.json",
@@ -6245,6 +7250,11 @@
       "related": ["table-body", "table-cell"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/table-row"
+      },
       "artifacts": {
         "schema": "src/components/table-row/table-row.schema.json",
         "variables": "src/components/table-row/table-row.variables.json"
@@ -6274,6 +7284,11 @@
       "related": ["tab", "tab-list", "tab-panel", "segmented-control"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tabs"
+      },
       "artifacts": {
         "schema": "src/components/tabs/tabs.schema.json",
         "variables": "src/components/tabs/tabs.variables.json",
@@ -6304,6 +7319,11 @@
       "related": ["combobox", "chip", "form-field", "input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tag-input"
+      },
       "artifacts": {
         "schema": "src/components/tag-input/tag-input.schema.json",
         "variables": "src/components/tag-input/tag-input.variables.json",
@@ -6330,6 +7350,11 @@
       "related": ["terminal-output", "preview-panel"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/terminal-frame"
+      },
       "artifacts": {
         "schema": "src/components/terminal-frame/terminal-frame.schema.json",
         "variables": "src/components/terminal-frame/terminal-frame.variables.json",
@@ -6356,6 +7381,11 @@
       "related": ["terminal-frame", "code-block"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/terminal-output"
+      },
       "artifacts": {
         "schema": "src/components/terminal-output/terminal-output.schema.json",
         "variables": "src/components/terminal-output/terminal-output.variables.json",
@@ -6386,6 +7416,11 @@
       "related": ["section-heading", "label"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/text"
+      },
       "artifacts": {
         "schema": "src/components/text/text.schema.json",
         "variables": "src/components/text/text.variables.json",
@@ -6413,6 +7448,11 @@
       "related": ["input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/textarea"
+      },
       "artifacts": {
         "schema": "src/components/textarea/textarea.schema.json",
         "variables": "src/components/textarea/textarea.variables.json",
@@ -6443,6 +7483,11 @@
       "related": ["toggle", "segmented-control"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/theme-switch"
+      },
       "artifacts": {
         "schema": "src/components/theme-switch/theme-switch.schema.json",
         "variables": "src/components/theme-switch/theme-switch.variables.json",
@@ -6470,6 +7515,11 @@
       "related": ["date-range-field", "number-input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/time-field"
+      },
       "artifacts": {
         "schema": "src/components/time-field/time-field.schema.json",
         "variables": "src/components/time-field/time-field.variables.json",
@@ -6508,6 +7558,11 @@
       "related": ["feed", "run-step-timeline"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/timeline"
+      },
       "artifacts": {
         "schema": "src/components/timeline/timeline.schema.json",
         "variables": "src/components/timeline/timeline.variables.json",
@@ -6538,6 +7593,11 @@
       "related": ["alert", "banner"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/toast-region"
+      },
       "artifacts": {
         "schema": "src/components/toast-region/toast-region.schema.json",
         "variables": "src/components/toast-region/toast-region.variables.json",
@@ -6567,6 +7627,11 @@
       "related": ["checkbox", "segmented-control"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/toggle"
+      },
       "artifacts": {
         "schema": "src/components/toggle/toggle.schema.json",
         "variables": "src/components/toggle/toggle.variables.json",
@@ -6597,6 +7662,11 @@
       "related": ["tool-call-rail", "drawer", "approval-card", "payload-inspector"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tool-call-panel"
+      },
       "artifacts": {
         "schema": "src/components/tool-call-panel/tool-call-panel.schema.json",
         "variables": "src/components/tool-call-panel/tool-call-panel.variables.json",
@@ -6627,6 +7697,11 @@
       "related": ["timeline", "run-step-timeline", "approval-card", "status-dot"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tool-call-rail"
+      },
       "artifacts": {
         "schema": "src/components/tool-call-rail/tool-call-rail.schema.json",
         "variables": "src/components/tool-call-rail/tool-call-rail.variables.json",
@@ -6657,6 +7732,11 @@
       "related": ["modal", "checkbox", "transfer-list", "combobox", "skeleton"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tool-picker"
+      },
       "artifacts": {
         "schema": "src/components/tool-picker/tool-picker.schema.json",
         "variables": "src/components/tool-picker/tool-picker.variables.json",
@@ -6684,6 +7764,11 @@
       "related": ["button-group", "segmented-control", "number-input"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/toolbar"
+      },
       "artifacts": {
         "schema": "src/components/toolbar/toolbar.schema.json",
         "variables": "src/components/toolbar/toolbar.variables.json",
@@ -6714,6 +7799,11 @@
       "related": ["popover"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tooltip"
+      },
       "artifacts": {
         "schema": "src/components/tooltip/tooltip.schema.json",
         "variables": "src/components/tooltip/tooltip.variables.json",
@@ -6742,6 +7832,11 @@
       "related": ["checkbox-group", "selection-popover", "sortable-list"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/transfer-list"
+      },
       "artifacts": {
         "schema": "src/components/transfer-list/transfer-list.schema.json",
         "variables": "src/components/transfer-list/transfer-list.variables.json",
@@ -6780,6 +7875,11 @@
       "related": ["tree-item", "table-of-contents", "side-navigation", "accordion"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tree"
+      },
       "artifacts": {
         "schema": "src/components/tree/tree.schema.json",
         "variables": "src/components/tree/tree.variables.json",
@@ -6807,6 +7907,11 @@
       "related": ["tree"],
       "hasConstraints": false,
       "hasExamples": false,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/tree-item"
+      },
       "artifacts": {
         "schema": "src/components/tree-item/tree-item.schema.json",
         "variables": "src/components/tree-item/tree-item.variables.json"
@@ -6833,6 +7938,11 @@
       "related": ["audio-player", "image"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/video-player"
+      },
       "artifacts": {
         "schema": "src/components/video-player/video-player.schema.json",
         "variables": "src/components/video-player/video-player.variables.json",
@@ -6869,6 +7979,11 @@
       "related": ["data-list", "data-table", "data-grid", "load-more"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/virtual-list"
+      },
       "artifacts": {
         "schema": "src/components/virtual-list/virtual-list.schema.json",
         "variables": "src/components/virtual-list/virtual-list.variables.json",
@@ -6899,6 +8014,11 @@
       "related": ["label"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/visually-hidden"
+      },
       "artifacts": {
         "schema": "src/components/visually-hidden/visually-hidden.schema.json",
         "variables": "src/components/visually-hidden/visually-hidden.variables.json",
@@ -6929,6 +8049,11 @@
       "related": ["spectrum-chart", "spectrogram", "bar-chart", "line-chart"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/waveform"
+      },
       "artifacts": {
         "schema": "src/components/waveform/waveform.schema.json",
         "variables": "src/components/waveform/waveform.variables.json",
@@ -6959,6 +8084,11 @@
       "related": [],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/week-schedule"
+      },
       "artifacts": {
         "schema": "src/components/week-schedule/week-schedule.schema.json",
         "variables": "src/components/week-schedule/week-schedule.variables.json",
@@ -6985,6 +8115,11 @@
       "related": ["image", "button"],
       "hasConstraints": false,
       "hasExamples": true,
+      "source": {
+        "package": "@lostgradient/cinder",
+        "packageRoot": ".",
+        "directory": "src/components/zoom-pan-viewer"
+      },
       "artifacts": {
         "schema": "src/components/zoom-pan-viewer/zoom-pan-viewer.schema.json",
         "variables": "src/components/zoom-pan-viewer/zoom-pan-viewer.variables.json",

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -83,37 +83,200 @@ export type ComponentSource = {
   id: string;
   packageName: string;
   packageRoot: string;
-  componentsRoot: string;
   manifestPath: string;
-  repositoryComponentsRoot: string;
   componentNames: readonly string[] | null;
+  /**
+   * Every component the package lists, by name, with where its source lives. Read once and kept
+   * until {@link resetComponentExportNames}.
+   */
+  components(): ReadonlyMap<string, ComponentLocation>;
   importPath(componentName: string): string;
   componentStylesheetUrl(componentName: string): string | null;
 };
+
+/** Where one component's source lives. */
+export type ComponentLocation = {
+  /** The component's directory, the one holding `<name>.svelte`. */
+  directory: string;
+  /** The root of the package that owns the directory: Cinder's core, a family, chat, editor. */
+  packageRoot: string;
+  /** The package that owns the directory. */
+  packageName: string;
+  /** The directory's path in the public mirror (`stevekinney/cinder`), for source links. */
+  repositoryDirectory: string;
+};
+
+/**
+ * Where the public mirror keeps each package. The documentation links into the mirror, whose layout
+ * the mirror tooling owns: core is `packages/components`, and every other package is assumed to be
+ * `packages/<name without its scope>`, as chat and editor are.
+ */
+const MIRROR_PACKAGE_DIRECTORIES: Readonly<Record<string, string>> = {
+  '@lostgradient/cinder': 'packages/components',
+};
+
+function mirrorPackageDirectory(packageName: string): string {
+  return Object.hasOwn(MIRROR_PACKAGE_DIRECTORIES, packageName)
+    ? MIRROR_PACKAGE_DIRECTORIES[packageName]!
+    : `packages/${packageName.replace(/^@[^/]+\//u, '')}`;
+}
+
+function toPosix(path: string): string {
+  return path.split(sep).join('/');
+}
+
+type ManifestSource = { package?: unknown; packageRoot?: unknown; directory?: unknown };
+
+/**
+ * Every component a package manifest lists, with where its source lives (COR-2085): core's
+ * `components.json` names, for each component, the package that owns it, that package's directory
+ * relative to core, and the component's directory relative to that package. A component in a
+ * family package is listed exactly as one still in core, so discovery needs no other edit when a
+ * family is extracted.
+ */
+export function manifestComponentLocations(
+  manifestPath: string,
+): ReadonlyMap<string, ComponentLocation> {
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    components?: { id?: unknown; source?: ManifestSource }[];
+  };
+  const manifestRoot = dirname(manifestPath);
+  const locations = new Map<string, ComponentLocation>();
+  for (const component of manifest.components ?? []) {
+    const source = component.source;
+    if (
+      typeof component.id !== 'string' ||
+      typeof source?.package !== 'string' ||
+      typeof source.packageRoot !== 'string' ||
+      typeof source.directory !== 'string'
+    ) {
+      throw new Error(
+        `[playground] ${manifestPath} lists ${String(component.id)} without its source directory`,
+      );
+    }
+    if (locations.has(component.id)) {
+      throw new Error(`[playground] ${manifestPath} lists ${component.id} twice`);
+    }
+    const packageRoot = resolve(manifestRoot, source.packageRoot);
+    locations.set(component.id, {
+      directory: resolve(packageRoot, source.directory),
+      packageRoot,
+      packageName: source.package,
+      repositoryDirectory: `${mirrorPackageDirectory(source.package)}/${source.directory}`,
+    });
+  }
+  return locations;
+}
+
+/**
+ * Every component directory under one package's components root: `<name>/<name>.svelte`, skipping
+ * underscore-prefixed names (internal-only) and `icons/`. For the packages with no manifest that
+ * records where their components live.
+ */
+export function scannedComponentLocations(
+  componentsRoot: string,
+  packageName: string,
+  packageRoot: string,
+): ReadonlyMap<string, ComponentLocation> {
+  const locations = new Map<string, ComponentLocation>();
+  for (const entry of readdirSync(componentsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('_') || entry.name === 'icons') continue;
+    const directory = join(componentsRoot, entry.name);
+    if (!existsSync(join(directory, `${entry.name}.svelte`))) continue;
+    locations.set(entry.name, {
+      directory,
+      packageRoot,
+      packageName,
+      repositoryDirectory: `${mirrorPackageDirectory(packageName)}/${toPosix(relative(packageRoot, directory))}`,
+    });
+  }
+  return new Map([...locations].toSorted(([left], [right]) => left.localeCompare(right)));
+}
+
+const componentLocationsBySourceId = new Map<string, ReadonlyMap<string, ComponentLocation>>();
+
+/** Memoize `read` per source id until {@link resetComponentExportNames}. */
+function cachedLocations(
+  sourceId: string,
+  read: () => ReadonlyMap<string, ComponentLocation>,
+): () => ReadonlyMap<string, ComponentLocation> {
+  return () => {
+    let locations = componentLocationsBySourceId.get(sourceId);
+    if (locations === undefined) {
+      locations = read();
+      componentLocationsBySourceId.set(sourceId, locations);
+    }
+    return locations;
+  };
+}
+
+/**
+ * Cinder's component source, rooted at core's directory. Its components come from core's
+ * manifest, so the ones in family packages are found exactly as the ones still in core are.
+ * Exported for the tests that build a fixture core.
+ */
+export function createCinderComponentSource(packageRoot: string, id = 'cinder'): ComponentSource {
+  const manifestPath = join(packageRoot, 'components.json');
+  return {
+    id,
+    packageName: '@lostgradient/cinder',
+    packageRoot,
+    manifestPath,
+    // The Cinder set is discovered from its large, evolving manifest.
+    componentNames: null,
+    components: cachedLocations(id, () => manifestComponentLocations(manifestPath)),
+    // Every component imports from the package root, the one entry point the
+    // package's `exports` map declares.
+    importPath: () => '@lostgradient/cinder',
+    // Cinder's full component cascade is already loaded from /styles/all.css.
+    componentStylesheetUrl: () => null,
+  };
+}
 
 const cinderPackageRoot = workspacePackageRoot('@lostgradient/cinder');
 const chatPackageRoot = workspacePackageRoot('@lostgradient/chat');
 const editorPackageRoot = workspacePackageRoot('@lostgradient/editor');
 
-export const CINDER_COMPONENT_SOURCE: ComponentSource = {
-  id: 'cinder',
-  packageName: '@lostgradient/cinder',
-  packageRoot: cinderPackageRoot,
-  componentsRoot: join(cinderPackageRoot, 'src', 'components'),
-  manifestPath: join(cinderPackageRoot, 'components.json'),
-  repositoryComponentsRoot: 'packages/components/src/components',
-  // The Cinder set is discovered from its large, evolving source tree.
-  componentNames: null,
-  // Every component imports from the package root, the one entry point the
-  // package's `exports` map declares.
-  importPath: () => '@lostgradient/cinder',
-  // Cinder's full component cascade is already loaded from /styles/all.css.
-  componentStylesheetUrl: () => null,
-};
+export const CINDER_COMPONENT_SOURCE: ComponentSource =
+  createCinderComponentSource(cinderPackageRoot);
+
+/** Where one of `source`'s components lives. Throws for a name the package does not list. */
+export function componentLocation(
+  source: ComponentSource,
+  componentName: string,
+): ComponentLocation {
+  const location = source.components().get(componentName);
+  if (location === undefined) {
+    throw new Error(`[playground] ${source.packageName} lists no component named ${componentName}`);
+  }
+  return location;
+}
 
 /** The directory of one of `source`'s components: the one holding `<name>.svelte`. */
 export function componentDirectory(source: ComponentSource, componentName: string): string {
-  return join(source.componentsRoot, componentName);
+  return componentLocation(source, componentName).directory;
+}
+
+/**
+ * The directories that hold `source`'s component directories: one per package that owns a
+ * component (core's own components root and each family's for Cinder), sorted.
+ */
+export function componentRoots(source: ComponentSource): readonly string[] {
+  return [
+    ...new Set([...source.components().values()].map((location) => dirname(location.directory))),
+  ].toSorted();
+}
+
+/** The component root of `source` that holds `path`, or undefined outside every one. */
+function componentRootHolding(source: ComponentSource, path: string): string | undefined {
+  return componentRoots(source).find((root) => isWithin(root, path));
+}
+
+function isWithin(root: string, path: string): boolean {
+  const pathWithinRoot = relative(resolve(root), resolve(path));
+  return (
+    pathWithinRoot !== '..' && !pathWithinRoot.startsWith(`..${sep}`) && !isAbsolute(pathWithinRoot)
+  );
 }
 
 /** Where a component keeps its `*.example.svelte` files: `examples/` in its own directory. */
@@ -171,7 +334,16 @@ function exportNamesByComponentId(source: ComponentSource): ReadonlyMap<string, 
  */
 export function resetComponentExportNames(): void {
   exportNamesBySourceId.clear();
+  resetComponentLocations();
   cinderComponentNameByExport = undefined;
+}
+
+/**
+ * Forget every package's component list, so the next lookup reads core's manifest and the other
+ * packages' components roots again: a component added, removed, or extracted into a family.
+ */
+export function resetComponentLocations(): void {
+  componentLocationsBySourceId.clear();
 }
 
 /** Cinder's component ids keyed by the name its package root exports them under. */
@@ -201,11 +373,27 @@ function stylesheetOwner(componentName: string): string {
   return COMPOUND_COMPONENT_PARENTS[componentName] ?? componentName;
 }
 
+/**
+ * The URL the playground serves one of Cinder's component stylesheets at: `/components/<path>`
+ * for a stylesheet in core's own components root, where the aggregator's relative imports land,
+ * and `/package-styles/<package>/<path>` for one in a family package, `<package>` being its name
+ * without the scope and `<path>` the file's path in that package.
+ */
+export function cinderComponentStylesheetUrlFor(location: ComponentLocation, file: string): string {
+  if (location.packageRoot === CINDER_COMPONENT_SOURCE.packageRoot) {
+    return `/components/${toPosix(relative(dirname(location.directory), file))}`;
+  }
+  const packageDirectory = location.packageName.replace(/^@[^/]+\//u, '');
+  return `/package-styles/${packageDirectory}/${toPosix(relative(location.packageRoot, file))}`;
+}
+
 function cinderComponentStylesheetUrl(componentName: string): string | null {
   const owner = stylesheetOwner(componentName);
   if (DOCUMENTATION_CINDER_COMPONENT_SET.has(owner)) return null;
-  const stylesheet = join(cinderPackageRoot, 'src', 'components', owner, `${owner}.css`);
-  return existsSync(stylesheet) ? `/components/${owner}/${owner}.css` : null;
+  const location = CINDER_COMPONENT_SOURCE.components().get(owner);
+  if (location === undefined) return null;
+  const stylesheet = join(location.directory, `${owner}.css`);
+  return existsSync(stylesheet) ? cinderComponentStylesheetUrlFor(location, stylesheet) : null;
 }
 
 function cinderComponentDependenciesFromSource(source: string, dependencies: Set<string>): void {
@@ -263,23 +451,24 @@ function extractedPackageComponentDependenciesFromSource(
   }
 }
 
+/**
+ * Walk `implementationPath` and its relative imports inside `componentSource`'s component roots,
+ * collecting the Cinder components the files import from the package root. For Cinder itself,
+ * every component directory the walk enters counts as a dependency too (its first segment below
+ * the component root that holds it).
+ */
 function implementationDependencies(
-  componentsRoot: string,
+  componentSource: ComponentSource,
   implementationPath: string,
   dependencies: Set<string>,
   visitedPaths = new Set<string>(),
 ): void {
   const resolvedPath = resolve(implementationPath);
-  const resolvedComponentsRoot = resolve(componentsRoot);
-  const pathWithinComponentsRoot = relative(resolvedComponentsRoot, resolvedPath);
-  const isOutsideComponentsRoot =
-    pathWithinComponentsRoot === '..' ||
-    pathWithinComponentsRoot.startsWith(`..${sep}`) ||
-    isAbsolute(pathWithinComponentsRoot);
-  if (isOutsideComponentsRoot || visitedPaths.has(resolvedPath)) return;
+  const componentRoot = componentRootHolding(componentSource, resolvedPath);
+  if (componentRoot === undefined || visitedPaths.has(resolvedPath)) return;
   visitedPaths.add(resolvedPath);
-  if (resolvedComponentsRoot === resolve(cinderPackageRoot, 'src', 'components')) {
-    const componentName = pathWithinComponentsRoot.split(sep)[0];
+  if (componentSource.id === CINDER_COMPONENT_SOURCE.id) {
+    const componentName = relative(resolve(componentRoot), resolvedPath).split(sep)[0];
     if (componentName !== undefined && componentName !== '') dependencies.add(componentName);
   }
   if (!existsSync(resolvedPath)) return;
@@ -288,12 +477,18 @@ function implementationDependencies(
   cinderComponentDependenciesFromSource(source, dependencies);
   for (const match of source.matchAll(RELATIVE_IMPLEMENTATION_IMPORT)) {
     implementationDependencies(
-      resolvedComponentsRoot,
+      componentSource,
       resolve(dirname(resolvedPath), match[1]!),
       dependencies,
       visitedPaths,
     );
   }
+}
+
+/** A listed component's implementation file, `<directory>/<name>.svelte`, or undefined. */
+function implementationFile(source: ComponentSource, componentName: string): string | undefined {
+  const location = source.components().get(componentName);
+  return location === undefined ? undefined : join(location.directory, `${componentName}.svelte`);
 }
 
 /** What a package component's implementation graph brings onto its documentation page. */
@@ -323,17 +518,9 @@ function walkImplementationGraphStyles(
   graph: ImplementationGraphStyles,
   visitedPaths = new Set<string>(),
 ): void {
-  const resolvedComponentsRoot = resolve(componentSource.componentsRoot);
   const resolvedPath = resolve(implementationPath);
-  const isWithinComponentsRoot = (path: string): boolean => {
-    const pathWithinRoot = relative(resolvedComponentsRoot, path);
-    return (
-      pathWithinRoot !== '..' &&
-      !pathWithinRoot.startsWith(`..${sep}`) &&
-      !isAbsolute(pathWithinRoot)
-    );
-  };
-  if (!isWithinComponentsRoot(resolvedPath) || visitedPaths.has(resolvedPath)) return;
+  const componentRoot = componentRootHolding(componentSource, resolvedPath);
+  if (componentRoot === undefined || visitedPaths.has(resolvedPath)) return;
   visitedPaths.add(resolvedPath);
   if (!existsSync(resolvedPath)) return;
 
@@ -341,7 +528,7 @@ function walkImplementationGraphStyles(
   // module in its directory is: an example that imports only Chat's helpers does not render
   // Chat, so it must not pick up `chat.css`.
   const [componentName, implementationFileName, ...deeperSegments] = relative(
-    resolvedComponentsRoot,
+    resolve(componentRoot),
     resolvedPath,
   ).split(sep);
   if (
@@ -355,8 +542,9 @@ function walkImplementationGraphStyles(
   const source = readFileSync(resolvedPath, 'utf8');
   for (const match of source.matchAll(SIDE_EFFECT_STYLESHEET_IMPORT)) {
     const stylesheetPath = resolve(dirname(resolvedPath), match[1]!);
-    if (!isWithinComponentsRoot(stylesheetPath) || !existsSync(stylesheetPath)) continue;
-    const segments = relative(resolvedComponentsRoot, stylesheetPath).split(sep);
+    const stylesheetRoot = componentRootHolding(componentSource, stylesheetPath);
+    if (stylesheetRoot === undefined || !existsSync(stylesheetPath)) continue;
+    const segments = relative(resolve(stylesheetRoot), stylesheetPath).split(sep);
     const fileName = segments.at(-1);
     const directoryName = segments.at(-2);
     if (fileName === `${directoryName}.css`) continue;
@@ -417,11 +605,10 @@ export function documentationExampleStylesheetUrls(
   if (componentSource.id === CINDER_COMPONENT_SOURCE.id) {
     cinderDependencyNames.add(componentName);
   }
-  implementationDependencies(
-    componentSource.componentsRoot,
-    join(componentSource.componentsRoot, componentName, `${componentName}.svelte`),
-    cinderDependencyNames,
-  );
+  const documentedImplementation = implementationFile(componentSource, componentName);
+  if (documentedImplementation !== undefined) {
+    implementationDependencies(componentSource, documentedImplementation, cinderDependencyNames);
+  }
 
   // Examples can import a Cinder component whose implementation composes more
   // primitives. Iterating the growing Set follows that complete graph instead
@@ -429,9 +616,11 @@ export function documentationExampleStylesheetUrls(
   // Modal on Card's danger-zone examples).
   const visitedImplementationPaths = new Set<string>();
   for (const dependencyName of cinderDependencyNames) {
+    const dependencyImplementation = implementationFile(CINDER_COMPONENT_SOURCE, dependencyName);
+    if (dependencyImplementation === undefined) continue;
     implementationDependencies(
-      CINDER_COMPONENT_SOURCE.componentsRoot,
-      join(CINDER_COMPONENT_SOURCE.componentsRoot, dependencyName, `${dependencyName}.svelte`),
+      CINDER_COMPONENT_SOURCE,
+      dependencyImplementation,
       cinderDependencyNames,
       visitedImplementationPaths,
     );
@@ -453,12 +642,8 @@ export function documentationExampleStylesheetUrls(
     stylesheetUrls: new Set<string>(),
     componentNames: new Set<string>(),
   };
-  if (componentSource.id !== CINDER_COMPONENT_SOURCE.id) {
-    walkImplementationGraphStyles(
-      componentSource,
-      join(componentSource.componentsRoot, componentName, `${componentName}.svelte`),
-      implementationGraph,
-    );
+  if (componentSource.id !== CINDER_COMPONENT_SOURCE.id && documentedImplementation !== undefined) {
+    walkImplementationGraphStyles(componentSource, documentedImplementation, implementationGraph);
   }
   const composedSidecarUrls = [...implementationGraph.componentNames]
     .toSorted()
@@ -473,14 +658,17 @@ export function documentationExampleStylesheetUrls(
   ].filter((stylesheetUrl, index, urls) => urls.indexOf(stylesheetUrl) === index);
 }
 
+const chatComponentsRoot = join(chatPackageRoot, 'src', 'lib', 'components');
+
 export const CHAT_COMPONENT_SOURCE: ComponentSource = {
   id: 'chat',
   packageName: '@lostgradient/chat',
   packageRoot: chatPackageRoot,
-  componentsRoot: join(chatPackageRoot, 'src', 'lib', 'components'),
   manifestPath: join(chatPackageRoot, 'components.json'),
-  repositoryComponentsRoot: 'packages/chat/src/lib/components',
   componentNames: CHAT_COMPONENT_NAMES,
+  components: cachedLocations('chat', () =>
+    scannedComponentLocations(chatComponentsRoot, '@lostgradient/chat', chatPackageRoot),
+  ),
   importPath(componentName) {
     if (!CHAT_COMPONENT_NAME_SET.has(componentName)) {
       throw new Error(
@@ -514,10 +702,11 @@ export const EDITOR_COMPONENT_SOURCE: ComponentSource = {
   id: 'editor',
   packageName: '@lostgradient/editor',
   packageRoot: editorPackageRoot,
-  componentsRoot: editorComponentsRoot,
   manifestPath: join(editorPackageRoot, 'components.json'),
-  repositoryComponentsRoot: 'packages/editor/src/lib/components',
   componentNames: EDITOR_COMPONENT_NAMES,
+  components: cachedLocations('editor', () =>
+    scannedComponentLocations(editorComponentsRoot, '@lostgradient/editor', editorPackageRoot),
+  ),
   importPath(componentName) {
     if (!EDITOR_COMPONENT_NAME_SET.has(componentName)) {
       throw new Error(

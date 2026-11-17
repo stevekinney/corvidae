@@ -6,6 +6,7 @@ import {
   selectOverviewExample,
   type OverviewExampleDescriptor,
 } from './component-page-overview-stage.ts';
+import { CINDER_COMPONENT_SOURCE, componentDirectory } from './component-sources.ts';
 import { discoverComponents, discoverExamples, exampleFilePath } from './discover.ts';
 import { readExampleMetadata } from './example-metadata.ts';
 import { stripExampleHarness } from './strip-example-harness.ts';
@@ -81,17 +82,6 @@ describe('every generated example catalogue entry', () => {
 });
 
 describe('Overview stage matches the README usage it sits beside', () => {
-  const README_ROOT = join(
-    import.meta.dir,
-    '..',
-    '..',
-    '..',
-    'components',
-    'cinder',
-    'src',
-    'components',
-  );
-
   /** The component call (everything after the last `</script>`) of a Svelte snippet. */
   function markupOf(source: string): string {
     return source
@@ -102,7 +92,9 @@ describe('Overview stage matches the README usage it sits beside', () => {
 
   for (const componentName of ['combobox', 'message']) {
     test(`${componentName}: the featured example's displayed code contains the README usage markup`, async () => {
-      const readme = await Bun.file(join(README_ROOT, componentName, 'README.md')).text();
+      const readme = await Bun.file(
+        join(componentDirectory(CINDER_COMPONENT_SOURCE, componentName), 'README.md'),
+      ).text();
       const usage = readme.match(/```svelte\n([\s\S]*?)```/)?.[1];
       expect(usage).toBeDefined();
 

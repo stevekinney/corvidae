@@ -12,7 +12,11 @@ import { join } from 'node:path';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { analyzeComponent } from './analyze.ts';
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  componentDirectory,
+  componentRoots,
+} from './component-sources.ts';
 import {
   describeControlType,
   describeDefaultValue,
@@ -25,7 +29,8 @@ import {
 } from './manifest-reference.ts';
 import type { ComponentManifest, PropManifest } from './types.ts';
 
-const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
+// Cinder's components roots: core's own, and each family package's.
+const COMPONENTS_ROOT = componentRoots(CINDER_COMPONENT_SOURCE);
 
 function buttonManifest(): Promise<ComponentManifest> {
   return manifestFor('button');
@@ -33,7 +38,9 @@ function buttonManifest(): Promise<ComponentManifest> {
 
 /** Analyze any component by its kebab id, from the real component source. */
 function manifestFor(kebabName: string): Promise<ComponentManifest> {
-  return analyzeComponent(join(COMPONENTS_ROOT, kebabName, `${kebabName}.svelte`));
+  return analyzeComponent(
+    join(componentDirectory(CINDER_COMPONENT_SOURCE, kebabName), `${kebabName}.svelte`),
+  );
 }
 
 // Module-scope fetch fixtures for the unhappy-path fetch tests. They capture
