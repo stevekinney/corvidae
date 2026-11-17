@@ -4,9 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./browser/*": "./src/browser/*.ts",
     "./browser-smoke-gate": "./src/browser-smoke-gate.ts",
     "./design-review-geometry": "./src/design-review-geometry.ts",
     "./design-review-geometry-probe": "./src/design-review-geometry-probe.ts",
+    "./environment-configuration": "./src/environment-configuration.ts",
     "./exit-when-orphaned": "./src/exit-when-orphaned.ts",
     "./fake-timers": "./src/fake-timers.ts",
     "./hang-guard": "./src/hang-guard.ts",
