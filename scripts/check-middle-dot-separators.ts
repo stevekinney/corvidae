@@ -3,9 +3,10 @@
  *
  * Owner standing order (2026-11-10): `Waiting on you, then a dot, then Chat` is never acceptable. A
  * middle dot between pieces of copy reads as noise to a screen reader, wraps badly, and teaches
- * every prototype built from Cinder's design system to do the same (COR-2335). Separate the pieces
- * with a comma, give each its own element, break the line, or lay label and value metadata out as
- * a description list.
+ * every prototype built from Cinder's design system to do the same (COR-2335). A comma between
+ * metadata pieces is no better (COR-2449). Give each piece its own element, separate the pieces
+ * with a space and a weight or colour step (a muted piece beside a stronger one), break the line,
+ * or lay label and value metadata out as a description list.
  *
  * The scan is textual and has no notion of a "separator": any U+00B7 in a scanned file is
  * reported, whether it sits in a string, a template, markup, a stylesheet `content` value, a
@@ -87,6 +88,15 @@ const MIDDLE_DOT_PATTERN = new RegExp(
 );
 const ALLOW_MARKER = /middle-dot-allowed:\s*(\S.{18,}\S)/;
 
+/** The failure message's advice: no glyph and no comma, a space plus a weight or colour step. */
+export const FAILURE_ADVICE =
+  'check-middle-dot-separators - a middle dot (U+00B7) appears in interface copy.\n' +
+  'Never use it as a separator, and never a comma either. Give each piece its own element and\n' +
+  'separate the pieces with a space and a weight or colour step (a muted piece beside a stronger\n' +
+  'one), a line break, or a description list for label and value metadata. Code that must name\n' +
+  'the character builds it with String.fromCodePoint(0xb7). A line with a real non-separator use\n' +
+  'carries a `middle-dot-allowed: <reason of twenty characters or more>` marker.';
+
 export type MiddleDotViolation = { line: number; text: string };
 
 /** Every line of `source` that holds a middle dot, except one carrying an allow marker with a reason. */
@@ -141,13 +151,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  process.stderr.write(
-    'check-middle-dot-separators - a middle dot (U+00B7) appears in interface copy.\n' +
-      'Never use it as a separator. Use a comma, separate elements, a line break, or a\n' +
-      'description list for label and value metadata. Code that must name the character\n' +
-      'builds it with String.fromCodePoint(0xb7). A line with a real non-separator use carries a\n' +
-      '`middle-dot-allowed: <reason of twenty characters or more>` marker.\n\n',
-  );
+  process.stderr.write(`${FAILURE_ADVICE}\n\n`);
   for (const finding of findings) {
     process.stderr.write(`  ${finding}\n`);
   }

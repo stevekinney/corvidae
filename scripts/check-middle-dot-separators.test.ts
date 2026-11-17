@@ -15,6 +15,12 @@ function plant(source: string): string {
 }
 
 describe('middle-dot separators', () => {
+  test('the advice names the space and weight or colour step, not a comma', () => {
+    expect(FAILURE_ADVICE).toContain('a space and a weight or colour step');
+    expect(FAILURE_ADVICE).not.toContain('Use a comma');
+    expect(FAILURE_ADVICE).toContain('never a comma');
+  });
+
   test.each([
     ['a string literal', "const label = 'Waiting on you DOT Chat';"],
     ['a template literal', 'const label = `${agent} DOT ${time}`;'],
