@@ -40,6 +40,8 @@ import { dirname, join } from 'node:path';
 const OLD = ['components', 'cinder'].join('/');
 const NEW = ['components', 'core'].join('/');
 const SCRIPT = 'internal/component-tooling/scripts/rename-cinder-to-core.ts';
+/** This script and its test, which spell the old directory on purpose. */
+const OWN_FILES = new Set([SCRIPT, SCRIPT.replace(/\.ts$/u, '.test.ts')]);
 
 /** COR-2082's exemptions: history documents, synthetic test strings and recorded samples. */
 const EXEMPT = [
@@ -160,7 +162,7 @@ export function rewritePaths(source: string): string {
 }
 
 function isExempt(file: string): boolean {
-  return file === SCRIPT || EXEMPT.some((pattern) => pattern.test(file));
+  return OWN_FILES.has(file) || EXEMPT.some((pattern) => pattern.test(file));
 }
 
 /** Remove every empty directory at or below `directory`, deepest first. */
