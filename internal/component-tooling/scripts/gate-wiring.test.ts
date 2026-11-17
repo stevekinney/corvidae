@@ -100,8 +100,11 @@ describe("Cinder's own gates", () => {
       `${TOOLING}/check-token-naming.ts`,
       `${TOOLING}/check-token-registry-privacy.ts`,
       `${TOOLING}/check-virtual-list-dependency-free.ts`,
-      'scripts/tokens/validate-corpus.ts',
-      'scripts/tokens/generate-artifacts.ts --check',
+      // The token pipeline's checks run where the pipeline lives: here until COR-2083 extracts
+      // the tokens package, then in its lint.
+      ...(existsSync(join(PACKAGE_ROOT, 'scripts', 'tokens'))
+        ? ['scripts/tokens/validate-corpus.ts', 'scripts/tokens/generate-artifacts.ts --check']
+        : []),
       '../../scripts/check-inherited-key-reads.ts',
     ]);
   });
