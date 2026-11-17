@@ -995,6 +995,143 @@ describe('a skill’s page', () => {
     );
   });
 
+  test('lists a disconnected source’s tool from its last listing, with the warning, Reconnect and Used by keeping the asks level (rows 30n, 30o)', async () => {
+    const createIssue = {
+      name: 'github__create_issue',
+      tool: 'create_issue',
+      acceptsSecrets: false,
+      savedAcceptsSecrets: false,
+      enabled: true,
+      savedEnabled: true,
+      tier: 'mutating',
+      approval: 'on-changes',
+      approvalSaved: false,
+      title: 'Create issue',
+      description: 'Opens an issue in a GitHub repository.',
+      shortDescription: null,
+      inputSchema: null,
+    };
+    const github = {
+      id: 'github',
+      kind: 'mcp',
+      name: 'GitHub',
+      localCommand: false,
+      state: 'failed',
+      message: 'The source could not be reached.',
+      tools: [],
+      skipped: [],
+      unmatchedSettings: [],
+      credentials: [],
+      lastListing: { listedAt: '2026-11-16T08:00:00.000Z', truncated: false, tools: [createIssue] },
+    };
+    restore = bureau(
+      {
+        'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+        'bureau.skills.list': () => ({ revision: 1, skills: [], sources: [], trustLocked: null }),
+      },
+      (url) =>
+        new URL(url, 'http://localhost').pathname === '/host/tool-sources'
+          ? Response.json({ configurationRevision: null, sources: [github] })
+          : undefined,
+    ).restore;
+    landAt('/capabilities?tool=github__create_issue');
+    const { container } = mount();
+
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    expect(detail.querySelector('h3')?.textContent?.trim()).toBe('Create issue');
+    // Every chip stays, the asks level among them.
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: On changes',
+    );
+    expect(detail.querySelector('[data-testid="tool-lost-text"]')?.textContent).toBe(
+      'GitHub is disconnected. Agents can’t use this tool until it is reconnected.',
+    );
+    const reconnect = detail.querySelector('[data-testid="tool-lost-reconnect"]');
+    expect(reconnect?.textContent?.trim()).toBe('Reconnect');
+    expect(
+      detail.querySelector('[data-testid="capability-users-empty"]')?.textContent?.trim(),
+    ).toBe(copy.tool.lost.noUsers);
+    await fireEvent.click(reconnect!);
+    expect(router.search.get('tab')).toBe('sources');
+    expect(router.search.get('source')).toBe('github');
+  });
+
+  test('lists a disabled plugin’s tool from its last listing, with Enable and restart behind the shared restart question (row 30p)', async () => {
+    const demo = {
+      descriptor: {
+        name: 'demo',
+        title: 'Demo',
+        version: '1.0.0',
+        description: 'Drafts release notes.',
+        required: false,
+        enabledByDefault: true,
+      },
+      source: 'package',
+      location: '@fixture/demo',
+      status: 'disabled',
+      problems: [],
+      contributions: [],
+      enabled: false,
+      configuration: {},
+      configurationSchema: null,
+      running: { enabled: false, configuration: {} },
+      secrets: [],
+      restartRequired: false,
+      lastListing: {
+        listedAt: '2026-11-16T08:00:00.000Z',
+        truncated: false,
+        tools: [
+          {
+            name: 'draft-release-notes',
+            tool: 'draft-release-notes',
+            title: 'Draft release notes',
+            description: 'Writes release notes from merged changes.',
+            shortDescription: null,
+            tier: 'mutating',
+            inputSchema: null,
+          },
+        ],
+      },
+    };
+    restore = bureau(
+      {
+        'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+        'bureau.skills.list': () => ({ revision: 1, skills: [], sources: [], trustLocked: null }),
+      },
+      (url) =>
+        new URL(url, 'http://localhost').pathname === '/host/plugins'
+          ? Response.json({
+              configurationRevision: null,
+              plugins: [demo],
+              unloaded: [],
+            })
+          : undefined,
+    ).restore;
+    landAt('/capabilities?tool=draft-release-notes');
+    const { container, getByRole } = mount();
+
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+      'From the demo plugin',
+    );
+    expect(detail.querySelector('[data-testid="tool-lost-text"]')?.textContent).toBe(
+      'The Demo plugin is disabled. Enabling it restarts the server.',
+    );
+    await fireEvent.click(detail.querySelector('[data-testid="tool-lost-enable"]')!);
+    // The shared restart question names the effect on running work before anything is written.
+    await waitFor(() => expect(getByRole('dialog')).not.toBeNull());
+    // The tab count holds the tools that cannot run too.
+    expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent).toBe('4');
+  });
+
   test('shows a tool a skill brings on the Tools tab with the skill as its source', async () => {
     restore = serve([...TOOLS, ...CUSTOMER_TOOLS], [...SKILLS, CUSTOMER_LOOKUP]).restore;
     landAt('/capabilities');

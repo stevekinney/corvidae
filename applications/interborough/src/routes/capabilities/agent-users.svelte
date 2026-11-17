@@ -29,7 +29,7 @@
           readonly description: string;
           readonly action: EmptyAction;
         }
-      | { readonly line: string; readonly action: EmptyAction };
+      | { readonly line: string; readonly action?: EmptyAction | undefined };
   }
 
   let { heading, users, note, empty }: Props = $props();
@@ -49,12 +49,15 @@
     {#if 'line' in empty}
       <p class="ib-capability__line" data-testid="capability-users-empty">
         {empty.line}
-        <!-- In a line of text, so underlined: colour alone does not mark it (axe link-in-text-block). -->
-        <Link
-          underline="always"
-          href={router.href(empty.action.href)}
-          onclick={(event) => go(event, empty.action.href)}>{empty.action.label}</Link
-        >
+        {#if empty.action !== undefined}
+          {@const action = empty.action}
+          <!-- In a line of text, so underlined: colour alone does not mark it (axe link-in-text-block). -->
+          <Link
+            underline="always"
+            href={router.href(action.href)}
+            onclick={(event) => go(event, action.href)}>{action.label}</Link
+          >
+        {/if}
       </p>
     {:else}
       <EmptyState

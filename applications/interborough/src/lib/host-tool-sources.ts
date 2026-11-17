@@ -56,6 +56,18 @@ const toolSchema = z.object({
   approvalSaved: z.boolean().optional(),
 });
 
+/**
+ * What a remembered listing keeps of each tool besides its standing (COR-2435): what a person reads
+ * of it, as the host kept it when it last listed the tool.
+ */
+export const REMEMBERED_TOOL_FIELDS = {
+  title: z.string().nullable(),
+  description: z.string(),
+  shortDescription: z.string().nullable(),
+  tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
+  inputSchema: z.record(z.string(), z.unknown()).nullable(),
+};
+
 const sourceSchema = z.object({
   id: z.string(),
   kind: z.enum(TOOL_SOURCE_KINDS),
@@ -77,6 +89,17 @@ const sourceSchema = z.object({
   credentials: z.array(z.string()),
   authorized: z.boolean().optional(),
   tokensRejected: z.literal(true).optional(),
+  /**
+   * For a source that is not loaded: the tools it listed the last time it loaded as it is saved
+   * now, kept across restarts (COR-2435). None of them runs; absent when none is known.
+   */
+  lastListing: z
+    .object({
+      listedAt: z.string(),
+      truncated: z.boolean(),
+      tools: z.array(toolSchema.extend(REMEMBERED_TOOL_FIELDS)),
+    })
+    .optional(),
 });
 
 const snapshotSchema = z.object({

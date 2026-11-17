@@ -50,6 +50,11 @@ import { parsePluginSettings, readPluginSettings } from './plugins.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseDocument, parseProviderConfiguration } from './providers.ts';
 import {
+  pluginListingOwner,
+  type RememberedTool,
+  type ToolListingMemory,
+} from './tool-listing-memory.ts';
+import {
   createWorkspaceSecrets,
   SecretPublicationError,
   type WorkspaceSecrets,
@@ -137,6 +142,19 @@ export type PluginStanding = PluginListing & {
   readonly secrets: readonly PluginSecretStanding[];
   /** Whether the persisted choices differ from the ones this process loaded, so a restart applies them. */
   readonly restartRequired: boolean;
+  /**
+   * For a plugin that is not running (disabled, or skipped): the tools it contributed the last time
+   * it ran, kept across restarts (`tool-listing-memory.ts`, COR-2435). None of them is offered to an
+   * agent. Absent for a running plugin, or when no listing of it is known.
+   */
+  readonly lastListing?: {
+    /** When the listing was made, as an ISO 8601 time. */
+    readonly listedAt: string;
+    /** The tools, as `bureau.agents.catalog` listed them while the plugin ran. */
+    readonly tools: readonly RememberedTool[];
+    /** True when the listing held more than the host keeps. */
+    readonly truncated: boolean;
+  };
 };
 
 /** A plugin folder whose code could not be loaded, so it has no descriptor and no name. */
@@ -290,6 +308,11 @@ export type PluginManagerOptions = {
   readonly reservedSecretKeys: readonly string[];
   /** Prefixes of secret keys the host keeps for itself, such as the tool sources' credentials. */
   readonly reservedSecretPrefixes: readonly string[];
+  /**
+   * Where each plugin's last tool listing is kept across restarts (COR-2435): read for a plugin
+   * that is not running. Omitted, none is reported.
+   */
+  readonly listings?: ToolListingMemory;
 };
 
 /** Metadata emitted after a plugin configuration write commits. */
@@ -616,11 +639,29 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       const configuration = await bungalow.readConfiguration();
       const listing = await options.listing();
       const reason = lockReason();
+      // A plugin that is not running shows the tools it contributed when it last ran (COR-2435).
+      const lastListingOf = async (
+        plugin: PluginListing,
+      ): Promise<Pick<PluginStanding, 'lastListing'>> => {
+        if (options.listings === undefined) return {};
+        if (plugin.status === 'running' || plugin.status === 'needs-setup') return {};
+        const record = await options.listings.read(pluginListingOwner(plugin));
+        return record === undefined
+          ? {}
+          : {
+              lastListing: {
+                listedAt: record.listedAt,
+                tools: record.tools,
+                truncated: record.truncated,
+              },
+            };
+      };
       const standingOf = async (
         plugin: PluginListing,
         entry: BureauPluginEntry,
       ): Promise<PluginStanding> => ({
         ...plugin,
+        ...(await lastListingOf(plugin)),
         enabled: enabledIn(persisted, entry),
         configuration: configurationIn(persisted, entry.descriptor.name),
         configurationSchema: configurationSchemaOf(entry),

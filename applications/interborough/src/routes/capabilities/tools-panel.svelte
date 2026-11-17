@@ -20,11 +20,14 @@
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
+  import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
     GROUP_TOOLS_FROM,
     groupToolsBySource,
+    lostTools,
     matchesToolFilter,
     riskLabel,
     tierOf,
@@ -32,6 +35,7 @@
     toolHeading,
     toolRowSource,
     toolSummary,
+    type ShownTool,
   } from './capability-presentation.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import CapabilitiesLoading from './capabilities-loading.svelte';
@@ -51,8 +55,30 @@
     undefined,
   );
 
+  // The tools that cannot run now (COR-2435): the last listings of the sources that are not
+  // connected and the plugins that are off. Neither read is required: one that fails lists none.
+  const sources = createQuery(
+    () => ({
+      queryKey: queryKeys.toolSources.list(),
+      queryFn: ({ signal }) => getToolSources({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+
   let filter = $state('');
-  const tools = $derived(catalog.data?.tools ?? []);
+  const tools = $derived<readonly ShownTool[]>([
+    ...(catalog.data?.tools ?? []),
+    ...lostTools(catalog.data?.tools ?? [], sources.data?.sources, plugins.data?.plugins),
+  ]);
   /** From 40 tools the rows are grouped by the source that brings them, so the list stays easy to scan. */
   const grouped = $derived(tools.length >= GROUP_TOOLS_FROM);
   const shown = $derived.by(() => {

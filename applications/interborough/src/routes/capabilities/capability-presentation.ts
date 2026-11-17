@@ -8,10 +8,12 @@ import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import type { AgentCatalog, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import { waitedFor } from '../../lib/format/clock.ts';
-import type {
-  SourceToolApproval,
-  ToolSourceStanding,
-  ToolSourceTool,
+import type { PluginStanding } from '../../lib/host-plugins.ts';
+import {
+  isToolOn,
+  type SourceToolApproval,
+  type ToolSourceStanding,
+  type ToolSourceTool,
 } from '../../lib/host-tool-sources.ts';
 import { API_KEY_CREDENTIAL, BEARER_CREDENTIAL } from '../../lib/tool-source-form.ts';
 import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
@@ -137,6 +139,122 @@ export function hasBlockedUser(tool: Pick<CatalogTool, 'userApprovals'>): boolea
   return Object.values(tool.userApprovals ?? {}).includes('blocked');
 }
 
+/**
+ * Why a tool the Tools tab lists cannot run (rows 30n to 30p, COR-2435): its source is not
+ * connected (it failed, or waits for a sign-in), or its plugin is off. The tool comes from the last
+ * listing the host kept, so its chips and asks level are still the ones it had.
+ */
+export type LostCause =
+  | {
+      readonly kind: 'source';
+      readonly id: string;
+      readonly name: string;
+      readonly state: ToolSourceStanding['state'];
+    }
+  | { readonly kind: 'plugin'; readonly name: string; readonly title: string };
+
+/** A tool the Tools tab lists: one the catalog holds, or one of a last listing that cannot run now. */
+export type ShownTool = CatalogTool & { readonly lost?: LostCause };
+
+/** The plugin fields {@link lostTools} reads. */
+type LostPlugin = Pick<PluginStanding, 'status' | 'lastListing'> & {
+  readonly descriptor: Pick<PluginStanding['descriptor'], 'name' | 'title'>;
+};
+
+/**
+ * The tools that cannot run now, from the last listings the host kept (COR-2435): each tool of a
+ * source that is not loaded and of a plugin that is off, which the catalog does not hold. A tool
+ * the owner turned off is left out, as the catalog leaves it out. None has a user: an agent file
+ * that names it cannot run it.
+ */
+export function lostTools(
+  catalog: readonly Pick<CatalogTool, 'name'>[],
+  sources: readonly ToolSourceStanding[] | undefined,
+  plugins: readonly LostPlugin[] | undefined,
+): ShownTool[] {
+  const held = new Set(catalog.map((tool) => tool.name));
+  const lost: ShownTool[] = [];
+  const add = (tool: ShownTool): void => {
+    if (held.has(tool.name)) return;
+    held.add(tool.name);
+    lost.push(tool);
+  };
+  for (const source of sources ?? []) {
+    if (source.state === 'loaded' || source.lastListing === undefined) continue;
+    const cause: LostCause = {
+      kind: 'source',
+      id: source.id,
+      name: sourceHeading(source),
+      state: source.state,
+    };
+    for (const tool of source.lastListing.tools) {
+      if (!isToolOn(tool)) continue;
+      add({
+        name: tool.name,
+        description: tool.description,
+        shortDescription: tool.shortDescription,
+        title: tool.title,
+        inputSchema: tool.inputSchema,
+        tier: tool.tier,
+        defaultApproval: tool.tier === 'read-only' ? 'allow' : 'ask',
+        source: 'host',
+        plugin: null,
+        skill: null,
+        users: [],
+        userApprovals: {},
+        lost: cause,
+      });
+    }
+  }
+  for (const plugin of plugins ?? []) {
+    if (plugin.status !== 'disabled' || plugin.lastListing === undefined) continue;
+    const cause: LostCause = {
+      kind: 'plugin',
+      name: plugin.descriptor.name,
+      title: plugin.descriptor.title,
+    };
+    for (const tool of plugin.lastListing.tools) {
+      add({
+        name: tool.name,
+        description: tool.description,
+        shortDescription: tool.shortDescription,
+        title: tool.title,
+        inputSchema: tool.inputSchema,
+        tier: tool.tier,
+        defaultApproval: tool.tier === 'read-only' ? 'allow' : 'ask',
+        source: 'plugin',
+        plugin: plugin.descriptor.name,
+        skill: null,
+        users: [],
+        userApprovals: {},
+        lost: cause,
+      });
+    }
+  }
+  return lost;
+}
+
+/** The sentence of a lost tool's warning row (rows 30n, 30p). */
+export function lostToolWarning(cause: LostCause): string {
+  const copy = TOOL.lost;
+  if (cause.kind === 'plugin') return copy.plugin(cause.title);
+  return cause.state === 'needs-authorization' ? copy.signIn(cause.name) : copy.source(cause.name);
+}
+
+/**
+ * The tools of a source's table (row 31u): the ones it offers when it loaded, else the ones it
+ * listed last, which show paused. `remembered` is whether they are the last listing.
+ */
+export function sourceTableTools(source: ToolSourceStanding): {
+  readonly tools: ToolSourceTool[];
+  readonly remembered: boolean;
+} {
+  if (source.tools.length > 0 || source.lastListing === undefined) {
+    return { tools: source.tools, remembered: false };
+  }
+  return { tools: source.lastListing.tools, remembered: true };
+}
+
 /** The tools from which Capabilities groups its rows by source (row 32e, the "40 or more" frame). */
 export const GROUP_TOOLS_FROM = 40;
 
@@ -173,8 +291,8 @@ export function toolGroup(tool: CatalogTool): { readonly key: string; readonly l
  * The tools put in the order a grouped list needs: the rows of one source together, Built in
  * first and the other sources by name, each source's tools in the order the catalog gave them.
  */
-export function groupToolsBySource(tools: readonly CatalogTool[]): CatalogTool[] {
-  const groups = new Map<string, { label: string; tools: CatalogTool[] }>();
+export function groupToolsBySource<Tool extends CatalogTool>(tools: readonly Tool[]): Tool[] {
+  const groups = new Map<string, { label: string; tools: Tool[] }>();
   for (const tool of tools) {
     const { key, label } = toolGroup(tool);
     const group = groups.get(key) ?? { label, tools: [] };

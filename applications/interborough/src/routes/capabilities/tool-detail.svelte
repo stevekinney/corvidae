@@ -25,11 +25,13 @@
     toolSourceTooltip,
     toolSummary,
     userAsks,
-    type CatalogTool,
+    type ShownTool,
   } from './capability-presentation.ts';
+  import LostToolWarning from './lost-tool-warning.svelte';
 
   interface Props {
-    tool: CatalogTool;
+    /** The tool: one the catalog holds, or one of a last listing that cannot run now (COR-2435). */
+    tool: ShownTool;
   }
 
   let { tool }: Props = $props();
@@ -76,11 +78,15 @@
     </li>
   </ul>
 
+  {#if tool.lost !== undefined}
+    <LostToolWarning cause={tool.lost} />
+  {/if}
+
   <AgentUsers
     heading={copy.users}
     users={tool.users}
     note={(user) => userAsks(tool, user).text}
-    empty={copy.noUsers}
+    empty={tool.lost === undefined ? copy.noUsers : { line: copy.lost.noUsers }}
   />
 
   <section class="ib-capability__section">

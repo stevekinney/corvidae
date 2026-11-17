@@ -237,6 +237,74 @@ describe('a source that needs a sign-in', () => {
     expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.paused);
   });
 
+  test('keeps the rows the host remembers when the source lists nothing now, paused (row 31u, COR-2435)', async () => {
+    // The host as it answers after a restart: the source loaded nothing, and its last listing stays.
+    const remembered = {
+      ...sourceTool('ledger', 'post_entry', { tier: 'mutating' }),
+      title: 'Post entry',
+      description: 'Posts an entry to the ledger.',
+      shortDescription: null,
+      tier: 'mutating' as const,
+      inputSchema: null,
+    };
+    serve({
+      sources: [
+        source('ledger', {
+          state: 'needs-authorization',
+          authorized: false,
+          tools: [],
+          lastListing: {
+            listedAt: '2026-11-16T08:00:00.000Z',
+            truncated: false,
+            tools: [remembered],
+          },
+        }),
+      ],
+    });
+    landAt('/capabilities?tab=sources&source=ledger');
+    const { findByTestId } = mount();
+    const detail = await findByTestId('source-detail');
+
+    const table = await findByTestId('source-tool-table');
+    expect(table.hasAttribute('data-paused')).toBe(true);
+    expect(rowOf(detail, 'ledger__post_entry').querySelector('select')?.value).toBe('on-changes');
+    expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.paused);
+  });
+
+  test('a source that failed shows its last listing, paused, and says the tools wait for it', async () => {
+    const remembered = {
+      ...sourceTool('github', 'create_issue', { tier: 'mutating' }),
+      title: 'Create issue',
+      description: 'Opens an issue in a GitHub repository.',
+      shortDescription: null,
+      tier: 'mutating' as const,
+      inputSchema: null,
+    };
+    serve({
+      sources: [
+        source('github', {
+          name: 'GitHub',
+          state: 'failed',
+          message: 'The source could not be reached.',
+          tools: [],
+          lastListing: {
+            listedAt: '2026-11-16T08:00:00.000Z',
+            truncated: false,
+            tools: [remembered],
+          },
+        }),
+      ],
+    });
+    landAt('/capabilities?tab=sources&source=github');
+    const { findByTestId } = mount();
+    const detail = await findByTestId('source-detail');
+
+    const table = await findByTestId('source-tool-table');
+    expect(table.hasAttribute('data-paused')).toBe(true);
+    expect(rowOf(detail, 'github__create_issue')).not.toBeNull();
+    expect(textIn(detail, '[data-testid="tools-paused"]')).toBe(copy.source.tools.pausedFailed);
+  });
+
   test('draws no paused line while the source is signed in', async () => {
     serve({ sources: [GITHUB] });
     landAt('/capabilities?tab=sources&source=github');

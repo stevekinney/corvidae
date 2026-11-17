@@ -29,6 +29,10 @@ import { SecretPublicationError } from './workspace-secrets.ts';
  *   {@link ToolSourceManagerOptions.loadTimeoutMilliseconds} is reported on its own entry and the
  *   rest load. An OAuth source with no tokens is not contacted at boot: it reports
  *   `needs-authorization` until a person signs in ({@link ToolSourceManager.authorize}).
+ * - **The last listing is kept (COR-2435).** Each load or test that lists a source's tools keeps
+ *   the listing in the host's storage ({@link ToolSourceManagerOptions.listings}), bound to the
+ *   source's description; a failure never replaces it. A source that is not loaded reports it as
+ *   `lastListing`, so its tools still show, none of them offered to an agent. A removal forgets it.
  * - **Credentials are never plaintext.** A value arrives in a request, goes straight into the
  *   encrypted vault (`tool-source-vault.ts`, Bungalow secret `tool-source-<id>`), and is read back
  *   only to hand to Armorer's loader through `resolveCredential` and the OAuth token storage.
@@ -107,6 +111,7 @@ import {
   type WorkspaceMembershipOptions,
 } from '@lostgradient/bureau';
 import {
+  readToolShortDescription,
   readToolTitle,
   resolveCapabilityTier,
   type McpOAuthTokenStorage,
@@ -130,6 +135,11 @@ import { createConfigurationQueue, type ConfigurationQueue } from './configurati
 import { hostWriteLocks } from './locations.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseProviderConfiguration } from './providers.ts';
+import {
+  sourceListingOwner,
+  type RememberedToolInput,
+  type ToolListingMemory,
+} from './tool-listing-memory.ts';
 import { affectedAgents, type AffectedAgent, type AgentToolUse } from './tool-source-agents.ts';
 import {
   refusingWhen,
@@ -380,6 +390,32 @@ export type ToolSourceStanding = {
    * a person must sign in again. A restart does not help until they do; a completed sign-in clears it.
    */
   readonly tokensRejected?: true;
+  /**
+   * For a source that is not loaded (it failed, waits for a sign-in, or waits for a restart): the
+   * tools it listed the last time the host loaded it as it is saved now, kept across restarts
+   * (`tool-listing-memory.ts`, COR-2435), with the saved settings as they are now. None of them is
+   * offered to an agent. Absent when the source is loaded, or no listing of it is known.
+   */
+  readonly lastListing?: {
+    /** When the listing was made, as an ISO 8601 time. */
+    readonly listedAt: string;
+    /** The tools it listed, as {@link ToolSourceStanding.tools} reports them, with what a person reads of each. */
+    readonly tools: readonly ToolSourceRememberedTool[];
+    /** True when the listing held more than the host keeps, so some tools or schemas were left out. */
+    readonly truncated: boolean;
+  };
+};
+
+/** One tool of a source's last listing: its standing, with its name for a person and what it does. */
+export type ToolSourceRememberedTool = ToolSourceToolStanding & {
+  /** Its name for a person ("Create issue"), or `null` when it has none. */
+  readonly title: string | null;
+  /** What the model was told about it, cut to a bound. */
+  readonly description: string;
+  /** Its one line for a person, or `null` when it declares none. */
+  readonly shortDescription: string | null;
+  /** What it takes, as a JSON Schema, or `null` when that is not known. */
+  readonly inputSchema: Readonly<Record<string, unknown>> | null;
 };
 
 /** The saved tool sources as the host holds them, with no credential. */
@@ -659,6 +695,11 @@ export type ToolSourceManagerOptions = {
    * at a moment it chooses.
    */
   readonly schedule?: (expire: () => void, milliseconds: number) => () => void;
+  /**
+   * Where each source's last tool listing is kept across restarts (COR-2435). Omitted, none is
+   * kept, and a source that does not load reports no `lastListing`.
+   */
+  readonly listings?: ToolListingMemory;
 };
 
 /** A source that did not answer in time. */
@@ -1412,6 +1453,89 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     }
   }
 
+  /**
+   * Keep what `source` just listed as its last listing (COR-2435): called only after a listing
+   * succeeded, so a failure never replaces it. Best effort: a write that fails is a warning, and
+   * never fails the load or test it follows.
+   */
+  async function rememberListing(
+    source: ToolSourceDescription,
+    loaded: readonly Tool[],
+  ): Promise<void> {
+    const memory = options.listings;
+    if (memory === undefined) return;
+    const names = qualifyToolNames(
+      source.id,
+      loaded.map((tool) => tool.name),
+    );
+    const byName = new Map(names.named.map(({ tool, name }) => [tool, name]));
+    const tools: RememberedToolInput[] = [];
+    for (const tool of loaded) {
+      const name = byName.get(tool.name);
+      if (name === undefined) continue;
+      let inputSchema: Readonly<Record<string, unknown>> | null;
+      try {
+        inputSchema = { ...tool.toJSON().input };
+      } catch {
+        inputSchema = null;
+      }
+      tools.push({
+        name,
+        tool: tool.name,
+        title: readToolTitle(tool.metadata) ?? null,
+        description: tool.description,
+        shortDescription: readToolShortDescription(tool.metadata) ?? null,
+        tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
+        inputSchema,
+      });
+    }
+    try {
+      await memory.remember(sourceListingOwner(source.id), revisionOf(source), tools);
+    } catch {
+      warn(`Tool source "${source.id}" listed its tools, but the listing could not be kept.`);
+    }
+  }
+
+  /**
+   * The last listing of `entry` as {@link ToolSourceStanding.lastListing} reports it, with the saved
+   * settings as they are now, or `undefined` when none is known for the source as it is saved.
+   */
+  async function lastListingOf(
+    entry: ConfiguredToolSource,
+  ): Promise<ToolSourceStanding['lastListing']> {
+    const memory = options.listings;
+    if (memory === undefined) return undefined;
+    const listing = await memory.read(
+      sourceListingOwner(entry.source.id),
+      revisionOf(entry.source),
+    );
+    if (listing === undefined) return undefined;
+    return {
+      listedAt: listing.listedAt,
+      truncated: listing.truncated,
+      tools: listing.tools.map((tool) => {
+        const settings = entry.tools.get(tool.tool);
+        // Nothing of it runs: what it shows is what the saved settings would load.
+        const acceptsSecrets = settings?.acceptsSecrets === true;
+        const enabled = settings?.enabled !== false;
+        return {
+          name: tool.name,
+          tool: tool.tool,
+          acceptsSecrets,
+          savedAcceptsSecrets: acceptsSecrets,
+          enabled,
+          savedEnabled: enabled,
+          tier: tool.tier,
+          ...approvalStanding(settings, tool.tier),
+          title: tool.title,
+          description: tool.description,
+          shortDescription: tool.shortDescription,
+          inputSchema: tool.inputSchema,
+        };
+      }),
+    };
+  }
+
   /** Load one source at boot. Never throws: a failure is the source's own standing. */
   async function loadOne(entry: ConfiguredToolSource): Promise<void> {
     const { source } = entry;
@@ -1506,6 +1630,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       }
       reached.set(source.id, { description, at: now() });
       remember(standingOf(entry, 'loaded', { tools, skipped, unmatchedSettings }));
+      await rememberListing(source, loaded.tools);
     } catch (error) {
       if (error instanceof ToolSourceAuthorizationRequiredError) {
         remember(
@@ -1750,10 +1875,19 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           });
         }),
       );
+      // A source that is not loaded shows the tools it listed last (COR-2435); none of them runs.
+      const withListings = await Promise.all(
+        standings.map(async (standing, index) => {
+          const entry = sources[index];
+          if (standing.state === 'loaded' || entry === undefined) return standing;
+          const lastListing = await lastListingOf(entry);
+          return lastListing === undefined ? standing : { ...standing, lastListing };
+        }),
+      );
       const reason = lockReason();
       return {
         configurationRevision: revision,
-        sources: standings,
+        sources: withListings,
         ...(reason === undefined ? {} : { lockReason: reason }),
         ...(hostWriteLocks(bungalow).providerKeys === undefined
           ? {}
@@ -1870,6 +2004,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         const listed = await listedProbe(id, source, loaded.tools);
         // Stamped with the description reached: `snapshot` reports it only while that is the one saved.
         reached.set(id, { description, at: now() });
+        await rememberListing(source, loaded.tools);
         return listed;
       } finally {
         await loaded.close().catch(() => undefined);
@@ -2150,6 +2285,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             return { id, changed: false, restartRequired: true, affectedAgents: affected };
           retired.add(id);
           booted.delete(id);
+          // A source added later under this id starts with no listing: its revision would not
+          // match anyway, so a failure to forget only leaves an unreadable record behind.
+          await options.listings?.forget(sourceListingOwner(id)).catch(() => undefined);
           // Its connection was opened with credentials a removal cannot take back (a local command
           // got them in its environment), so it is closed: the tools fail until the next start.
           const connection = loadedById.get(id);

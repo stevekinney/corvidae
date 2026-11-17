@@ -60,6 +60,22 @@ export const CAPABILITIES_COPY = {
       line: 'No agent has this tool yet.',
       action: { label: 'Add to an agent', href: '/agents' },
     },
+    /**
+     * A tool whose source is not connected or whose plugin is off (rows 30n to 30p, COR-2435): the
+     * warning row under the chips, its one action, and Used by, which keeps the asks level.
+     */
+    lost: {
+      source: (source: string): string =>
+        `${source} is disconnected. Agents can’t use this tool until it is reconnected.`,
+      signIn: (source: string): string =>
+        `${source} needs a sign-in. Agents can’t use this tool until you sign in again.`,
+      reconnect: 'Reconnect',
+      plugin: (plugin: string): string =>
+        `The ${plugin} plugin is disabled. Enabling it restarts the server.`,
+      enable: 'Enable and restart',
+      enableFailed: 'The plugin could not be enabled',
+      noUsers: 'No agent yet. The asks level is kept; the tool simply can’t run.',
+    },
     tier: {
       'read-only': 'Reads only',
       mutating: 'Changes things',
@@ -278,6 +294,9 @@ export const CAPABILITIES_COPY = {
         `${String(on)} of ${String(total)} ${total === 1 ? 'tool is' : 'tools are'} on. A source offers On or Off and a default Asks level; Blocked is a per-agent override. Agents get tools on each agent’s Access tab.`,
       /** Under the table of a source that needs a sign-in (row 31u): its rows stay, muted. */
       paused: 'Tools are paused until you sign in again.',
+      /** Under the last listing of a source that failed to load (COR-2435): its rows stay, muted. */
+      pausedFailed:
+        'Tools are paused until the source answers again. These are the ones it listed last.',
       acceptsSecrets: 'Accepts secrets',
       acceptsSecretsLabel: (tool: string): string => `Accepts secrets: ${tool}`,
       acceptsSecretsHelp:
