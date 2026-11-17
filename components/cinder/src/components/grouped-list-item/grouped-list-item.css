@@ -157,55 +157,69 @@
   }
 
   /* ----------------------------------------
- * Time-led row: a number and a unit lead, then the name and one line of content
+ * Time-led row: a time window leads, with a small caption under it, then the name and its content
  * ---------------------------------------- */
 
-  /* The lead is a fixed 72px column, right-aligned, so the numbers of every row line up on their
-     last digit. It aligns to the first line of a wrapping name. The row's title and subtitle are
-     the basic row's own: the lead is the only thing a time-led row adds. */
+  /* The lead is a fixed 96px column, right-aligned, wide enough for "11 pm–2 am" at the comfortable
+     density, so the windows of every row line up on their last character. It aligns to the first
+     line of a wrapping name. The row's title and subtitle are the basic row's own: the lead is the
+     only thing a time-led row adds. */
   .cinder-grouped-list-item__lead.cinder-grouped-list-item__lead--timed {
     display: flex;
+    flex: none;
     flex-direction: column;
     align-items: flex-end;
     align-self: flex-start;
-    inline-size: 4.5rem;
+    inline-size: 6rem;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     text-align: end;
   }
 
-  /* The lead and the text both start at the top, so the number shares the title's first line even
-     when the lead, a number and a unit, is taller than a title with no subtitle. */
+  /* The lead and the text both start at the top, so the window shares the title's first line even
+     when the lead, a window and a caption, is taller than a title with no subtitle. The row wraps,
+     so a trailing value moves to a line of its own before the name is squeezed. */
   .cinder-grouped-list-item--timed > .cinder-grouped-list-item__content {
+    flex-wrap: wrap;
     align-items: flex-start;
+    row-gap: var(--cinder-space-0-5);
   }
 
-  /* One step above the title, in semibold, in a line one title line tall, so it sits on the title's
-     first line as a trailing value does. */
-  .cinder-grouped-list-item__lead-value {
+  /* The name keeps 10rem: a trailing value that would leave it less wraps under, at the end. */
+  .cinder-grouped-list-item--timed .cinder-grouped-list-item__text {
+    flex: 1 1 10rem;
+  }
+
+  .cinder-grouped-list-item--timed .cinder-grouped-list-item__trailing {
+    margin-inline-start: auto;
+  }
+
+  /* One step above the title, bold, on one line a title line tall, so it sits on the title's first
+     line as a trailing value does. */
+  .cinder-grouped-list-item__lead-window {
+    color: var(--cinder-text-default);
     font-size: var(--cinder-text-md);
-    font-weight: var(--cinder-font-semibold);
+    font-weight: var(--cinder-font-bold);
     line-height: var(--_cinder-grouped-list-item-title-line);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
-  .cinder-grouped-list-item__lead-unit {
+  .cinder-grouped-list-item__lead-caption {
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-snug, 1.35);
     color: var(--cinder-text-muted);
   }
 
-  /* Urgent reads loudest, in the warning text colour; soon is quiet, so urgent always stands out. */
-  .cinder-grouped-list-item__lead[data-cinder-urgency='urgent'] {
+  /* Urgent colours only the caption, the time left, in the warning text colour; the window stays
+     the default text colour. Soon mutes the window. */
+  .cinder-grouped-list-item__lead[data-cinder-urgency='urgent']
+    > .cinder-grouped-list-item__lead-caption {
     color: var(--cinder-status-warning-text);
   }
 
-  .cinder-grouped-list-item__lead[data-cinder-urgency='urgent']
-    > .cinder-grouped-list-item__lead-unit {
-    color: inherit;
-  }
-
-  .cinder-grouped-list-item__lead[data-cinder-urgency='soon'] {
+  .cinder-grouped-list-item__lead[data-cinder-urgency='soon']
+    > .cinder-grouped-list-item__lead-window {
     color: var(--cinder-text-muted);
   }
 
@@ -328,20 +342,60 @@
       order: 1;
     }
 
-    /* A time-led row keeps its text column, so the subtitle sits under the title, beside the lead,
-       rather than taking a line of its own under the number. */
+    /* A time-led row with a trailing value is a grid here: the window leads, the name and the
+       trailing value share the first line, and the subtitle takes the width under both, starting
+       at the name rather than under the window. The columns after the name are one per trailing
+       part, so the gap is each part's own margin. */
     .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      .cinder-grouped-list-item__text {
-      display: flex;
+      > .cinder-grouped-list-item__content {
+      display: grid;
+      grid-auto-flow: column;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 0;
+      align-items: start;
+    }
+
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      .cinder-grouped-list-item__lead {
+      grid-row: 1 / span 2;
+      margin-inline-end: var(--cinder-space-3);
+    }
+
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      .cinder-grouped-list-item__title {
+      grid-row: 1;
+    }
+
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      .cinder-grouped-list-item__subtitle {
+      grid-row: 2;
+      grid-column: 2 / span 6;
     }
 
     .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
       :is(
-        .cinder-grouped-list-item__suggested,
-        .cinder-grouped-list-item__title,
-        .cinder-grouped-list-item__subtitle
+        .cinder-grouped-list-item__stale,
+        .cinder-grouped-list-item__trailing,
+        .cinder-grouped-list-item__photo,
+        .cinder-grouped-list-item__chevron,
+        .cinder-grouped-list-item__action
       ) {
-      flex: none;
+      grid-row: 1;
+      margin-inline-start: var(--cinder-space-3);
+    }
+
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      .cinder-grouped-list-item__trailing {
+      max-inline-size: 7rem;
+      overflow: visible;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      .cinder-grouped-list-item__actions {
+      grid-row: 3;
+      grid-column: 2 / span 6;
     }
 
     .cinder-grouped-list-item--trailing .cinder-grouped-list-item__actions {

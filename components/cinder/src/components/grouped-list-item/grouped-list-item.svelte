@@ -17,7 +17,6 @@
   export type {
     GroupedListItemAction,
     GroupedListItemLeadingKind,
-    GroupedListItemLeadUnit,
     GroupedListItemProps,
     GroupedListItemUrgency,
   } from './grouped-list-item.types.ts';
@@ -36,8 +35,8 @@
     leading,
     leadingKind = 'icon',
     lead,
-    leadValue,
-    leadUnit,
+    timeWindow,
+    timeCaption,
     urgency,
     staleAge,
     photo,
@@ -57,8 +56,8 @@
 
   const showChevron = $derived(chevron ?? href !== undefined);
 
-  // A `lead` snippet wins; otherwise a lead value makes the row time-led.
-  const timed = $derived(!lead && leadValue !== undefined);
+  // A `lead` snippet wins; otherwise a time window makes the row time-led.
+  const timed = $derived(!lead && timeWindow !== undefined);
 
   const generatedId = $props.id();
   const hasActions = $derived(actions !== undefined && actions.length > 0);
@@ -112,9 +111,9 @@
         class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
         data-cinder-urgency={urgency}
       >
-        <span class="cinder-grouped-list-item__lead-value">{leadValue}</span>
-        {#if leadUnit}
-          <span class="cinder-grouped-list-item__lead-unit">{leadUnit}</span>
+        <span class="cinder-grouped-list-item__lead-window">{timeWindow}</span>
+        {#if timeCaption}
+          <span class="cinder-grouped-list-item__lead-caption">{timeCaption}</span>
         {/if}
       </div>
     {/if}

@@ -37,24 +37,62 @@
       {#snippet subtitle()}Half-price wells until 8:00 pm{/snippet}
       {#snippet trailing()}0.4 mi{/snippet}
     </GroupedListItem>
-    <GroupedListItem href="/places/rooftop" leadValue={45} leadUnit="min left" urgency="urgent">
+    <GroupedListItem
+      href="/places/rooftop"
+      timeWindow="3–6 pm"
+      timeCaption="45 min left"
+      urgency="urgent"
+    >
       {#snippet title()}The Rooftop{/snippet}
       {#snippet subtitle()}Half-price wells until 8:00 pm{/snippet}
       {#snippet trailing()}0.4 mi{/snippet}
     </GroupedListItem>
-    <GroupedListItem href="/places/lantern" leadValue="4:30" leadUnit="starts" urgency="soon">
+    <GroupedListItem
+      href="/places/lantern"
+      timeWindow="10 pm–1 am"
+      timeCaption="starts in 1 h"
+      urgency="soon"
+    >
       {#snippet title()}Lantern Room, which has a much longer name that wraps onto a second line{/snippet}
       {#snippet subtitle()}Two-dollar drafts{/snippet}
       {#snippet trailing()}1.2 mi{/snippet}
     </GroupedListItem>
-    <GroupedListItem href="/places/pier" leadValue="Fri" staleAge="3d">
+    <GroupedListItem href="/places/pier" timeWindow="All day" staleAge="3d">
       {#snippet title()}The Pier{/snippet}
       {#snippet subtitle()}Oysters and rosé{/snippet}
     </GroupedListItem>
-    <GroupedListItem href="/places/corner" leadValue={20} leadUnit="min to go">
+    <GroupedListItem href="/places/corner" timeWindow="11 pm–2 am" timeCaption="Sun to Tue">
       {#snippet title()}Corner Bar{/snippet}
     </GroupedListItem>
   </GroupedList>
+
+  <!-- COR-2443 AC4, COR-2503 AC5 and AC6: time-led rows in a 390px phone and a 360px pane, with a
+       long meta value. The name leads; the meta shares its line, or takes one of its own, before
+       the name is squeezed. -->
+  <div style="inline-size: 390px;" data-testid="grouped-list-timed-phone">
+    <GroupedList header="Open now">
+      <GroupedListItem
+        href="/places/widest"
+        timeWindow="11 pm–2 am"
+        timeCaption="1 h 45 min left"
+        data-testid="timed-widest"
+      >
+        {#snippet title()}Union Station Bar and Grill{/snippet}
+        {#snippet subtitle()}Half-price wells, two-dollar drafts and a long second line of copy{/snippet}
+        {#snippet trailing()}0.4 mi{/snippet}
+      </GroupedListItem>
+      <GroupedListItem
+        href="/places/longmeta"
+        timeWindow="4–6:30 pm"
+        timeCaption="starts in 1 h"
+        data-testid="timed-long-meta"
+      >
+        {#snippet title()}Lantern Room{/snippet}
+        {#snippet subtitle()}Two-dollar drafts{/snippet}
+        {#snippet trailing()}Closed Mondays and Tuesdays{/snippet}
+      </GroupedListItem>
+    </GroupedList>
+  </div>
 
   <!-- Text actions (COR-2329): trailing buttons, full width under the text on a phone. -->
   <GroupedList aria-label="Waiting on you" data-testid="grouped-list-actions">

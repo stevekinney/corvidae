@@ -39,7 +39,9 @@ Pass `actions` for a row whose button is its point, such as Review on an approva
 
 ## Time-led rows
 
-Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by time, such as a happy hour or a run that is about to start. The lead is a fixed 72px column, right-aligned, with a 15px semibold tabular number on the title's first line and a 12px muted unit under it. The unit comes from a closed vocabulary: `min left`, `left`, `min to go`, `starts`, or a weekday (`Mon` to `Sun`). A range of times never goes in the lead; put it in the subtitle. `urgency="urgent"` draws the lead in the warning text colour and `urgency="soon"` mutes it. The title and subtitle are the basic row's: the title wraps, and the subtitle is muted, one line per item. A trailing value carries a distance or other meta. `staleAge` draws a gray clock and a short age, and only when the row is stale. A trailing `photo` is a 56px column at the end of the row and reserves no space when absent.
+Pass `timeWindow` instead of a `lead` snippet for a row led by time, such as a happy hour or a run that is about to start. The lead is the window itself, such as `3–6 pm`, `10 pm–1 am` or `All day`: one line, right-aligned, bold and tabular, in a fixed 96px column that holds `11 pm–2 am` without wrapping. `timeCaption` is a small muted line under it and free text: `45 min left`, `1 h 45 min left`, `starts in 1 h`, `Sun to Tue`, or nothing, when the page heading already names the day, and then the lead draws no empty line. `urgency="urgent"` colours only the caption in the warning text colour, and the window stays the default text colour; `urgency="soon"` draws the window muted. The title and subtitle are the basic row's: the title wraps, and the subtitle is muted, one line per item. A trailing value carries a distance or other meta. `staleAge` draws a gray clock and a short age, and only when the row is stale. A trailing `photo` is a 56px column at the end of the row and reserves no space when absent.
+
+The name leads. In a row at least 26rem wide the name keeps at least 10rem, and a trailing value that would leave it less moves to a line of its own under it, at the end. In a row narrower than 26rem, as on a phone, the trailing value sits at the end of the title's line instead of in a column of its own, and the subtitle takes the width under both, so a long subtitle uses the whole text column; the value is capped at 7rem and wraps inside it.
 
 ```svelte
 <script lang="ts">
@@ -47,7 +49,12 @@ Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by tim
 </script>
 
 <GroupedList header="Open now">
-  <GroupedListItem href="/places/rooftop" leadValue={45} leadUnit="min left" urgency="urgent">
+  <GroupedListItem
+    href="/places/rooftop"
+    timeWindow="3–6 pm"
+    timeCaption="45 min left"
+    urgency="urgent"
+  >
     {#snippet title()}The Rooftop{/snippet}
     {#snippet subtitle()}Half-price wells{/snippet}
     {#snippet trailing()}0.4 mi{/snippet}
@@ -82,15 +89,15 @@ Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by tim
 | `class` | `string` | no | — | Custom class merged with `.cinder-grouped-list-item`. |
 | `href` | `string` | no | — | Makes the whole row a link to this address. |
 | `leadingKind` | `"icon"` \| `"avatar"` \| `"media"` \| `"control"` | no | `"icon"` | What the leading slot holds. |
-| `leadUnit` | `"min left"` \| `"left"` \| `"min to go"` \| `"starts"` \| `"Mon"` \| `"Tue"` \| `"Wed"` \| `"Thu"` \| `"Fri"` \| `"Sat"` \| `"Sun"` | no | — | The small unit under the lead number, from a closed vocabulary. Used with `leadValue`. |
-| `leadValue` | `string` \| `number` | no | — | The number or word of a time-led row's lead, such as `45` or `9:30`, drawn in semibold on the title's first line. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. |
 | `rel` | `string` | no | — | The link's relationship; `noopener noreferrer` is added for `_blank`. |
 | `selected` | `boolean` | no | `false` | Marks the row as the current one with a tint. |
 | `staleAge` | `string` | no | — | A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. |
 | `suggested` | `boolean` | no | `false` | Marks the row as a suggestion that is not saved until the person confirms it: a quiet accent text label on a line above the title, with no tint, border or pill. |
 | `suggestedLabel` | `string` | no | `"Suggested"` | The words of the suggested label, such as "Suggested wording". Used with `suggested`. |
 | `target` | `string` | no | — | Where to open the link. |
-| `urgency` | `"urgent"` \| `"soon"` | no | — | How pressing the lead is. `urgent` uses the warning text colour and `soon` is muted; left unset, the lead uses the default text colour. Used with `leadValue`. |
+| `timeCaption` | `string` | no | — | Free text in a small line under the time window, such as `45 min left`, `starts in 1 h` or `Sun to Tue`. Leave it out and the lead draws no empty line. Used with `timeWindow`. |
+| `timeWindow` | `string` | no | — | The time window a time-led row leads with, such as `3–6 pm`, `10 pm–1 am` or `All day`, drawn right-aligned, bold and tabular on one line on the title's first line. Ignored when a `lead` snippet is given. |
+| `urgency` | `"urgent"` \| `"soon"` | no | — | How pressing the row is. `urgent` draws only the caption in the warning text colour and `soon` mutes the window; left unset, both use their default colours. Used with `timeWindow`. |
 | `action` | `(opaque)` | no | — | A trailing action such as a menu button. It sits in a fixed-width column, so a changing value never moves its click target. Not expressible in JSON Schema; see the component types for the signature. |
 | `actions` | `(opaque)` | no | — | Text actions at the end of the row, each a secondary small button (a link drawn as one when it has `href`), for a row whose action is the point of the row, such as a review waiting on you. They sit above the row's own link. In a row narrower than 26rem, as on a phone, they leave the end of the row for a line of their own under its text, each at its own width from the text's leading edge, never collapsing into a menu, each a 44px target under a coarse pointer. Not expressible in JSON Schema; see the component types for the signature. |
 | `lead` | `(opaque)` | no | — | A fixed-width column for a time or number, such as "45 min left", drawn before the title. Rows in one list line up. Not expressible in JSON Schema; see the component types for the signature. |
