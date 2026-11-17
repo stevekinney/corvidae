@@ -267,7 +267,9 @@ for (const theme of ['light', 'dark'] as const) {
                 actionsRight: actions.right,
                 guttersRight: gutters.right,
                 firstLineBottom: firstLine.bottom,
-                actionsBorder: actionsElement ? getComputedStyle(actionsElement).borderTopWidth : '',
+                actionsBorder: actionsElement
+                  ? getComputedStyle(actionsElement).borderTopWidth
+                  : '',
               };
             });
             const problems: string[] = [];
@@ -277,7 +279,8 @@ for (const theme of ['light', 'dark'] as const) {
             }
             // The actions float in the top inline-end corner, over the first line only.
             if (corner.actionsTop - corner.frameTop > 8) problems.push('actions sit too low');
-            if (corner.frameRight - corner.actionsRight > 24) problems.push('actions sit too far in');
+            if (corner.frameRight - corner.actionsRight > 24)
+              problems.push('actions sit too far in');
             if (corner.actionsBottom > corner.firstLineBottom + TOLERANCE) {
               problems.push('actions reach past the first line');
             }
