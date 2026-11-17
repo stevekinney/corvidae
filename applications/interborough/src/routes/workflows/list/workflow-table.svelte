@@ -24,10 +24,12 @@
    * it, so the ID is never cut a second time; Revision holds a shortened
    * revision (the repeated `sha256:` prefix dropped) on one line, and its
    * comparison badge ends with an ellipsis beside its own tooltip. One Updated
-   * column carries the run's age and, in its title and for assistive
-   * technology, when it was created, which leaves Type a share of the width
-   * (17%) that tells runs apart at 768px; Tags takes what is left, and each
-   * ends a long value with an ellipsis.
+   * column carries the run's age and, in its time's title and for assistive
+   * technology, when it was created. Type takes all the width the fixed
+   * columns leave, with the run's tags as its second line (small badges that
+   * wrap, each cut at the cell's width), so Type and its tags are never
+   * crushed to a few characters at 768px; each ends a long value with an
+   * ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -142,9 +144,8 @@
     {#if selectionEnabled}<col style="width: 36px" />{/if}
     <col style="width: 7rem" />
     <col style="width: 10.25rem" />
-    <col style="width: 17%" />
-    <col style="width: 6.5rem" />
     <col />
+    <col style="width: 6.5rem" />
     <col style="width: 4.75rem" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
@@ -153,11 +154,7 @@
       <Table.HeaderCell>Workflow ID</Table.HeaderCell>
       <Table.HeaderCell>Type</Table.HeaderCell>
       <Table.HeaderCell>Revision</Table.HeaderCell>
-      <Table.HeaderCell>Tags</Table.HeaderCell>
-      <Table.HeaderCell
-        align="right"
-        title="Updated: hover a time to see when the run was created too">Updated</Table.HeaderCell
-      >
+      <Table.HeaderCell align="right">Updated</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -177,7 +174,7 @@
         <Table.Cell>
           <StatusLabel word={workflowRunStatusWord(row.status)} />
         </Table.Cell>
-        <Table.Cell as="th">
+        <Table.Cell as="th" clamp={false}>
           <span class="weft-workflows-table__id-cell">
             <span class="weft-workflows-table__id-line">
               <Tooltip text={row.id} placement="top">
@@ -203,7 +200,19 @@
             {/if}
           </span>
         </Table.Cell>
-        <Table.Cell truncate>{row.type}</Table.Cell>
+        <Table.Cell truncate>
+          {row.type}
+          {#snippet detail()}
+            {@const tags = (row.tags ?? []).filter((tag) => tag !== 'origin:agent-run')}
+            {#if tags.length > 0}
+              <span class="weft-workflows-table__tags">
+                {#each tags as tag (tag)}
+                  <Badge variant="neutral" size="xs" truncate>{tag}</Badge>
+                {/each}
+              </span>
+            {/if}
+          {/snippet}
+        </Table.Cell>
         <Table.Cell>
           {#if row.revision !== undefined}
             <span class="weft-workflows-table__revision-cell">
@@ -216,15 +225,6 @@
             </span>
           {:else}
             <Badge variant="neutral" size="xs">Unpinned</Badge>
-          {/if}
-        </Table.Cell>
-        <Table.Cell>
-          {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
-            <span class="weft-workflows-table__tags">
-              {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}
-                <Badge variant="neutral" size="xs" truncate>{tag}</Badge>
-              {/each}
-            </span>
           {/if}
         </Table.Cell>
         <Table.Cell align="right">

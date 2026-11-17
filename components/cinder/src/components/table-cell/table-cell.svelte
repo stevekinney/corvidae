@@ -27,6 +27,7 @@
     align = 'left',
     as = 'td',
     truncate = false,
+    clamp = true,
     controls = false,
     stack,
     detail,
@@ -46,7 +47,7 @@
   // In a `fit` table the row header is the row's title, stacked or not: it holds to two lines, and
   // while the clamp cuts it the whole of it opens in a tooltip from the title's link, or from the
   // title itself when it has none. A title that fits has no tab stop and no tooltip.
-  const clampTitle = $derived(as === 'th' && !truncate && tableContext?.fit === true);
+  const clampTitle = $derived(as === 'th' && !truncate && clamp && tableContext?.fit === true);
   const titleCut = createCutText('block');
   let titleText = $state<string | undefined>();
   const readTitleText: Attachment<HTMLElement> = (element) => {

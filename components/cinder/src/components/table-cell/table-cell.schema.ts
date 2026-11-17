@@ -21,6 +21,12 @@ const schema = {
       description:
         "The part this cell plays on a `fit` table's stacked row, below `stackBelow`:\n\n- `'end'`: a short value at the inline end of the title line (a time, a count).\n- `'status'`: a status that starts the second line, never cut.\n- `'plain'`: prose under the title, with no label.\n\nA cell with no `stack` is a line of its column's header text and its value. The title is the\n`as=\"th\"` cell. It has no effect at other widths or on a table that is not `fit`.",
     },
+    clamp: {
+      type: 'boolean',
+      description:
+        'In a `fit` table the `as="th"` row header holds to two lines and ends with an ellipsis, with\nits whole text in a tooltip while it is cut. Set `false` for a row header that holds controls\nor lines of its own (a copy button, a second line of metadata), which a clamp would clip.',
+      default: true,
+    },
     align: {
       enum: ['left', 'center', 'right'],
       description: 'Visual alignment for numeric columns.',

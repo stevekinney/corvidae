@@ -100,12 +100,13 @@
   gap: var(--cinder-space-2);
 }
 
-/* The table fits its container (Cinder's `fit`), so a long value never widens it. Seven columns need
+/* The table fits its container (Cinder's `fit`), so a long value never widens it. Six columns need
  * room to be read: below this floor the table scrolls inside its frame, by its column count and
- * never by a value, within two screens at a phone's width. At 768px the container is about this
- * wide, so the floor is also the width Type and Tags share what the fixed columns leave. */
+ * never by a value, within two screens at a phone's width. The floor is no wider than the
+ * container at 768px (about 642px), so there the table fills it with no sideways scroll, and Type,
+ * which carries the tags as its second line, takes what the fixed columns leave. */
 .weft-workflows-table {
-  min-inline-size: 41rem;
+  min-inline-size: 40rem;
 }
 
 .weft-workflows-table__id-cell {
@@ -157,10 +158,13 @@
   color: var(--cinder-text-subtle);
 }
 
+/* The tags are the Type cell's second line: small badges that wrap, each cut at the cell's width. */
 .weft-workflows-table__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  min-inline-size: 0;
+  margin-block-start: var(--cinder-space-1);
 }
 
 .weft-workflows-table__time {

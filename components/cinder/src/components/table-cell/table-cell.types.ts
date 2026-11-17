@@ -48,6 +48,13 @@ export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'>
    * `as="th"` cell. It has no effect at other widths or on a table that is not `fit`.
    */
   stack?: 'end' | 'status' | 'plain';
+  /**
+   * In a `fit` table the `as="th"` row header holds to two lines and ends with an ellipsis, with
+   * its whole text in a tooltip while it is cut. Set `false` for a row header that holds controls
+   * or lines of its own (a copy button, a second line of metadata), which a clamp would clip.
+   * @default true
+   */
+  clamp?: boolean;
   /** Visual alignment for numeric columns. @default "left" */
   align?: 'left' | 'center' | 'right';
   /**

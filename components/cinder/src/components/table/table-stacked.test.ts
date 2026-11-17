@@ -474,6 +474,18 @@ describe('Table fit stacks into cards', () => {
     expect(container.querySelector('[data-cinder-stack-title]')).toBeNull();
   });
 
+  test('a row header that opts out of the clamp is drawn bare', async () => {
+    const { default: RowHeader } = await import('./table-row-header.fixture.svelte');
+    const clamped = render(RowHeader, {});
+    flushSync();
+    expect(clamped.container.querySelector('th .cinder-table__cell-title')).not.toBeNull();
+    clamped.unmount();
+    const bare = render(RowHeader, { clamp: false });
+    flushSync();
+    expect(bare.container.querySelector('th')?.textContent?.trim()).toBe('Run 4471');
+    expect(bare.container.querySelector('.cinder-table__cell-title')).toBeNull();
+  });
+
   test('the two-line clamp belongs to every fit table, not only the stacked one', async () => {
     const css = stripCinderComponentsLayer(
       await Bun.file(new URL('./table.css', import.meta.url)).text(),
