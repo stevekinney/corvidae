@@ -21,6 +21,56 @@ test('renders a custom adornment before the steppers', () => {
   expect(container.querySelector('.cinder-number-input__adornment')?.textContent).toBe('USD');
 });
 
+describe('NumberInput unit and stepper order', () => {
+  test('orders the steppers minus then plus', () => {
+    const { container } = render(NumberInput, { props: { id: 'n', value: 2 } });
+    const steppers = [...container.querySelectorAll('.cinder-number-input__stepper')];
+
+    expect(steppers).toEqual([getDecrement(container), getIncrement(container)]);
+  });
+
+  test('places the unit right after the number, before the steppers, with the number set against it', async () => {
+    const css = await Bun.file(new URL('./number-input.css', import.meta.url)).text();
+    const { container } = render(NumberInput, {
+      props: { id: 'n', value: 90, adornment: 'minutes' },
+    });
+    const adornment = container.querySelector('.cinder-number-input__adornment');
+
+    expect(adornment?.nextElementSibling).toBe(getDecrement(container));
+    expect(adornment?.parentElement?.previousElementSibling).toBe(getInput(container));
+    // One alignment for every NumberInput: no end-aligned number remains, and a unit's text area
+    // is sized to its value so the unit follows the digits.
+    expect(css).not.toMatch(/text-align:\s*end/);
+    expect(css).toMatch(
+      /@supports \(field-sizing: content\)\s*\{[^@]*\.cinder-number-input__input\s*\{[^}]*field-sizing:\s*content;[^}]*inline-size:\s*auto;[^}]*flex:\s*0 1 auto;/,
+    );
+  });
+
+  // The text area is only as wide as its digits, so the unit and the slack after it take the press.
+  test('a press on the unit focuses the field, and does nothing while disabled', () => {
+    const { container, unmount } = render(NumberInput, {
+      props: { id: 'n', value: 90, adornment: 'days' },
+    });
+    const adornment = container.querySelector('.cinder-number-input__adornment');
+    expect(document.activeElement).not.toBe(getInput(container));
+    const press = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+    adornment?.dispatchEvent(press);
+    expect(document.activeElement).toBe(getInput(container));
+    expect(press.defaultPrevented).toBe(true);
+    unmount();
+
+    const disabled = render(NumberInput, {
+      props: { id: 'n', value: 90, adornment: 'days', disabled: true },
+    });
+    disabled.container
+      .querySelector('.cinder-number-input__adornment')
+      ?.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    expect(document.activeElement).not.toBe(getInput(disabled.container));
+  });
+});
+
 describe('NumberInput basics', () => {
   test('sidecar includes Input styles and preserves the full stepper width', async () => {
     const [css, componentSource] = await Promise.all([

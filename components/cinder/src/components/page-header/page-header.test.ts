@@ -134,7 +134,7 @@ describe('PageHeader', () => {
     expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
-  test('draws no rule by default; divider opts in, and a flush header never draws one', () => {
+  test('draws no rule by default; divider opts in', () => {
     const plain = render(PageHeader, { props: { title: 'Runs' } });
     const header = () => plain.container.querySelector('.cinder-page-header');
     expect(header()?.hasAttribute('data-cinder-divider')).toBe(false);
@@ -143,23 +143,24 @@ describe('PageHeader', () => {
     expect(
       ruled.container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-divider'),
     ).toBe('true');
-    cleanup();
-    const flush = render(PageHeader, { props: { title: 'Runs', divider: true, flush: true } });
-    expect(
-      flush.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-divider'),
-    ).toBe(false);
   });
 
-  test('flush marks the header so it draws no padding', () => {
-    const { container } = render(PageHeader, { props: { title: 'Allowed models', flush: true } });
-    expect(container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-flush')).toBe(
-      'true',
-    );
+  test('is flush with the content below by default, and insets only when asked (COR-2448)', () => {
+    const { container } = render(PageHeader, { props: { title: 'Allowed models' } });
+    const root = () => container.querySelector('.cinder-page-header');
+    expect(root()?.hasAttribute('data-cinder-inset')).toBe(false);
     cleanup();
-    const plain = render(PageHeader, { props: { title: 'Allowed models' } });
+    const inset = render(PageHeader, { props: { title: 'Allowed models', inset: true } });
     expect(
-      plain.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-flush'),
-    ).toBe(false);
+      inset.container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-inset'),
+    ).toBe('true');
+
+    // The base rules draw no padding; only the `inset` mark brings it back.
+    expect(stylesheet).toMatch(/\.cinder-page-header__row \{[^}]*padding: 0;/u);
+    expect(stylesheet).toMatch(
+      /\[data-cinder-inset='true'\] \.cinder-page-header__row \{[^}]*padding: var\(--cinder-space-3\) var\(--cinder-space-4\);/u,
+    );
+    expect(stylesheet).not.toContain('data-cinder-flush');
   });
 
   test('actions and the create button render at xs, the create button in a slot of its own', () => {

@@ -152,11 +152,10 @@
       />
     {/if}
   {:else}
-    <!-- Flush: the page lays out its own column (the panel is edge to edge under it), so the header
-         adds no padding of its own. At 320 pixels a two-line title and the "From" line are 79 pixels
+    <!-- The header is flush (Cinder's default): the page lays out its own column (the panel is edge
+         to edge under it). At 320 pixels a two-line title and the "From" line are 79 pixels
          tall, and with the page's gap the panel starts within 96 pixels of the header's top (PL8-15). -->
     <PageHeader
-      flush
       title={page.title}
       headingLevel={1}
       {...pluginTitle === undefined ? {} : { description: fromPlugin }}

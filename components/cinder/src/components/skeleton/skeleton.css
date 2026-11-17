@@ -1,4 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* A list placeholder's rows are a StackedListItem's own layout and status dot, in their classes. */
+@import '../stacked-list-item/stacked-list-item.css';
+@import '../status-dot/status-dot.css';
 @layer cinder.components {
   /* ========================================
  * SKELETON
@@ -31,61 +34,80 @@
     inline-size: 100%;
   }
 
+  /* A stack of bars stands for lines of text, so each bar is one line box of the surrounding text:
+   * the bar is 1em tall and the margin makes up the rest of the line's own height (1lh), with no gap
+   * between lines, as a paragraph of the same lines has none (COR-2449). */
   .cinder-skeleton-lines {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: 0;
+  }
+
+  .cinder-skeleton-lines > .cinder-skeleton {
+    margin-block: calc((1lh - 1em) / 2);
   }
 
   .cinder-skeleton-group > .cinder-skeleton-lines > .cinder-skeleton[data-cinder-last] {
     width: 60%;
   }
 
-  /* Form variant: a short label bar over a control bar, once per field, in the control height. */
+  /* Form variant: a short label bar over a control bar, once per field, as FormField draws them: the
+   * label's own line (the label's size and leading), the field's gap, the control's height, and the
+   * form's gap between fields (the last field has none after it). The label bar sits in the
+   * label's line box. */
   .cinder-skeleton-group[data-cinder-variant='form'] > .cinder-skeleton-lines {
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1-5);
   }
 
-  .cinder-skeleton-field-label {
+  .cinder-skeleton-group[data-cinder-variant='form'] > .cinder-skeleton-lines > .cinder-skeleton {
+    margin-block: 0;
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='form']
+    > .cinder-skeleton-lines
+    > .cinder-skeleton-field-label {
     inline-size: 20%;
     block-size: var(--cinder-space-2-5);
+    margin-block: calc(
+      (var(--cinder-text-xs) * var(--cinder-leading-snug) - var(--cinder-space-2-5)) / 2
+    );
   }
 
-  .cinder-skeleton-field-control {
+  .cinder-skeleton-group[data-cinder-variant='form']
+    > .cinder-skeleton-lines
+    > .cinder-skeleton-field-control {
     inline-size: 100%;
     block-size: var(--cinder-control-height-md);
-    margin-block-end: var(--cinder-space-2);
+    margin-block-end: calc(var(--cinder-space-4) - var(--cinder-space-1-5));
   }
 
+  .cinder-skeleton-group[data-cinder-variant='form']
+    > .cinder-skeleton-lines
+    > .cinder-skeleton-field-control:last-child {
+    margin-block-end: 0;
+  }
+
+  /* Card variant: a Card's surface and body padding (the density's), a heading bar in the title's
+   * line, then lines of text. */
   .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines {
-    padding: var(--cinder-space-4);
-    gap: var(--cinder-space-3);
+    padding: var(--cinder-density-pad-card);
     border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
+    border-radius: var(--cinder-radius-surface);
     background: var(--cinder-surface);
   }
 
-  /* List variant: the placeholder for a status-first list. A bordered surface holds an optional
-   * day band and rows of a fixed 8rem status column (the stacked-list-item column), two text
-   * bars and a time bar. No leading circle or avatar is drawn, so nothing shifts when the real
-   * rows arrive. The group is a size container so a phone drops the status under the text. */
-  .cinder-skeleton-group[data-cinder-variant='list'] {
-    container-type: inline-size;
-    container-name: cinder-skeleton;
-  }
-
-  .cinder-skeleton-list {
+  /* List variant: the placeholder for a status-first list. Each row is a two-line StackedListItem's
+   * own layout, in its own classes (the row, its status column, title, time and line two), with a
+   * bar where each piece of text goes, so the placeholder is as tall as the row it stands for, and
+   * takes its phone form at the row's own width, by construction. Nothing but the bars is the
+   * placeholder's own: no frame, no divider, no margin of its own beyond the one the loaded row
+   * gets from the page's list reset. A placeholder draws a frame only when the list it stands for
+   * does, so the frame is the opt-in (`framed`). */
+  .cinder-skeleton-list[data-cinder-framed] {
     overflow: hidden;
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
-  }
-
-  /* Inside a card that already frames its rows. */
-  .cinder-skeleton-list[data-cinder-framed='false'] {
-    border: 0;
-    border-radius: 0;
-    background: transparent;
   }
 
   .cinder-skeleton-day-band {
@@ -117,49 +139,25 @@
     white-space: nowrap;
   }
 
+  /* The row is a StackedListItem's, and a StackedListItem is a list item: the page's list reset
+   * gives a loaded row this margin (foundation.css, `li`), so the placeholder row, a div, takes the
+   * same one and the list is as tall. */
   .cinder-skeleton-row {
-    display: grid;
-    grid-template-columns: 8rem minmax(0, 1fr) auto;
-    grid-template-areas: 'status text time';
-    align-items: start;
-    column-gap: var(--cinder-space-3);
-    padding-block: var(--cinder-space-2-5);
-    padding-inline: var(--cinder-space-3-5);
+    margin-block-end: var(--cinder-space-1);
   }
 
-  /* Rows that do not lead with a status word: the marker's own width, then the text. */
-  .cinder-skeleton-row[data-cinder-status-column='none'] {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+  /* A bar stands in the line of the text it replaces, centred on its lowercase letters. */
+  .cinder-skeleton-row .cinder-skeleton {
+    display: inline-block;
+    vertical-align: middle;
   }
 
-  .cinder-skeleton-row + .cinder-skeleton-row {
-    border-block-start: 1px solid var(--cinder-border-muted);
-  }
-
-  .cinder-skeleton-row-status {
-    grid-area: status;
-  }
-
-  .cinder-skeleton-row-text {
-    grid-area: text;
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-  }
-
-  .cinder-skeleton-row-time {
-    grid-area: time;
-  }
-
-  .cinder-skeleton-row-status,
-  .cinder-skeleton-row-text,
-  .cinder-skeleton-row-time {
-    padding-block-start: var(--cinder-space-1);
-  }
-
+  /* The bar sits in one line of the real band's text (DataList's group header: extra small, normal
+   * leading), so the band is as tall as the real one. */
   .cinder-skeleton-day-bar {
     height: 0.625rem;
     width: 8.75rem;
+    margin-block: calc((var(--cinder-text-xs) * var(--cinder-leading-normal) - 0.625rem) / 2);
   }
 
   .cinder-skeleton-status-bar {
@@ -168,11 +166,10 @@
   }
 
   /* A list whose rows lead with a status dot: a dot in the same column, so the text lines up with
-   * the real rows. The 1px nudge centres it on the first line of the title. */
+   * the real rows. The cell centres it on the first line of the title. */
   .cinder-skeleton-status-bar[data-cinder-marker='dot'] {
     height: 0.5rem;
     width: 0.5rem;
-    margin-block-start: 1px;
     border-radius: var(--cinder-radius-full);
   }
 
@@ -189,23 +186,6 @@
   .cinder-skeleton-time-bar {
     height: 0.625rem;
     width: 2.75rem;
-  }
-
-  @container cinder-skeleton (max-width: 448px) {
-    .cinder-skeleton-row {
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas:
-        'text time'
-        'status .';
-      row-gap: var(--cinder-space-2);
-    }
-
-    /* A row with no status word keeps its marker beside the text, as the real row does: the
-     * status drops under the text only for the status-first rows that lead with a word. */
-    .cinder-skeleton-row[data-cinder-status-column='none'] {
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      grid-template-areas: 'status text time';
-    }
   }
 
   /* Grouped variant: the placeholder for a grouped list. The same rounded raised surface the
@@ -292,10 +272,12 @@
     }
   }
 
-  .cinder-skeleton-heading {
+  /* The card's heading stands for its title: the bar sits in one line of the title's size. */
+  .cinder-skeleton-lines > .cinder-skeleton-heading {
     height: 1.25em;
     width: 40%;
-    margin-block-end: var(--cinder-space-1);
+    font-size: var(--cinder-text-sm);
+    margin-block: calc((1lh - 1.25em) / 2);
   }
 
   /* The status line leads its group, at the inline start: after a long wait it is the first thing

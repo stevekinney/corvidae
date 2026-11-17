@@ -20,6 +20,7 @@ The layout is chosen in script, because the controls that disappear move into a 
 | Layout | When | What it draws |
 | --- | --- | --- |
 | `wide` | Viewport 1024px and wider, and the bar's row holds every control | The segments, the facet controls, and the search field at the end of the row. |
+| `search-folded` | The bar's own row cannot hold the wide form (the viewport never asks for it) | The segments and the facet controls as in `wide`, and the search as an icon button that opens a popover. Search folds away before the segments do. |
 | `medium` | Viewport 640px to 1023px | The segments folded into a "Status: All 19" select, the facet chips unchanged, and the search as an icon button that opens a popover. |
 | `narrow` | Viewport under 640px | Only the Status select and a Filter button. The Filter menu lists every facet and Search, and a row opens its options in place. |
 
@@ -135,7 +136,7 @@ Use `type: 'custom'` with a `control` snippet for any facet that cannot be expre
 | `aria-label` | `string` | no | — | Defines a string value that labels the current element. |
 | `class` | `string` | no | — | Additional CSS classes applied to the root element. |
 | `disabled` | `boolean` | no | — | When true, all filter controls and chips are disabled. |
-| `layout` | `"auto"` \| `"wide"` \| `"medium"` \| `"narrow"` | no | — | Force a layout. By default the bar follows the viewport (phone under 640px, tablet under 1024px) and narrows further when its own width cannot hold the wider form. |
+| `layout` | `"auto"` \| `"wide"` \| `"search-folded"` \| `"medium"` \| `"narrow"` | no | — | Force a layout. By default the bar follows the viewport (phone under 640px, tablet under 1024px) and narrows further when its own width cannot hold the wider form. |
 | `searchAriaLabel` | `string` | no | — | Accessible label for the search input. Defaults to 'Search'. |
 | `searchPlaceholder` | `string` | no | — | Placeholder text shown in the search field. |
 | `searchPosition` | `"start"` \| `"end"` | no | — | Which end of the row the search field sits at. A bar with segments or chips puts it at the `end`; a bar of selects alone puts it at the `start`. |

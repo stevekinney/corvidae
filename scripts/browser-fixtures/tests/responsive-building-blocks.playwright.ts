@@ -119,10 +119,13 @@ test.describe('at a 375px phone viewport', () => {
     expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
     expect(await widthOf(table)).toBeLessThanOrEqual(PHONE.width);
 
-    // The key is cut with an ellipsis on one line, and the whole key is its title.
+    // The key is cut with an ellipsis on one line, and focusing it opens the whole key in its
+    // tooltip (COR-2365: a cut value is reachable by keyboard and touch, not by a mouse-only title).
     const key = table.locator('.cinder-table__cell-text').first();
     const longKey = `storage-key-${'k'.repeat(1988)}`;
-    await expect(key).toHaveAttribute('title', longKey);
+    await expect(key).not.toHaveAttribute('title');
+    await key.focus();
+    await expect(page.getByRole('tooltip').filter({ hasText: longKey })).toBeVisible();
     const cut = await key.evaluate((element) => ({
       textOverflow: getComputedStyle(element).textOverflow,
       whiteSpace: getComputedStyle(element).whiteSpace,

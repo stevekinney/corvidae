@@ -50,16 +50,16 @@ const schema = {
       description:
         'The id of the `actionsNote` element, for a button that points its `aria-describedby` at it.',
     },
-    flush: {
+    inset: {
       type: 'boolean',
       description:
-        'Draws the header with no padding around it, so its title lines up with the content beneath\nit. A page that lays out its own column, such as a page of settings with a section navigation\nbeside it, uses this.',
+        'Insets the header with padding around it. Off by default: the header is flush with the content\nbeneath it, so its title lines up with that content. Pass it where the header should sit in\nfrom the edge of its container.',
       default: false,
     },
     divider: {
       type: 'boolean',
       description:
-        'Draws a rule under the header. Off by default: space separates the header from the page, and\nthe rule is opt-in. A flush header never draws one.',
+        'Draws a rule under the header. Off by default: space separates the header from the page, and\nthe rule is opt-in.',
       default: false,
     },
     error: {

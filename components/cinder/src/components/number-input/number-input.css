@@ -31,6 +31,37 @@
     padding-inline: 0;
   }
 
+  /* Every number starts at the leading edge, with a unit or without one, so a column of fields
+   * reads down one edge. With a unit, the text area is sized to its value so the unit follows the
+   * digits ("90 minutes") and the slack falls after the unit, before the steppers. Where
+   * field-sizing is unsupported the input keeps filling the row, start-aligned, with the unit
+   * after it. */
+  .cinder-input-group:has(.cinder-number-input__adornment) > .cinder-number-input__input {
+    padding-inline-end: var(--cinder-space-1);
+  }
+
+  @supports (field-sizing: content) {
+    .cinder-input-group:has(.cinder-number-input__adornment) > .cinder-number-input__input {
+      field-sizing: content;
+      /* Content sizing applies only to an automatic width, and Input declares a full one: without
+       * this a field in a fixed-width box kept its share of the row, and the unit sat a field's
+       * width from the number. */
+      inline-size: auto;
+      flex: 0 1 auto;
+      min-inline-size: 4ch;
+    }
+
+    .cinder-input-group:has(.cinder-number-input__adornment) > .cinder-input-group__trailing {
+      flex: 1 1 auto;
+    }
+
+    .cinder-input-group:has(.cinder-number-input__adornment)
+      .cinder-input-group__trailing
+      > .cinder-number-input__adornment {
+      flex: 1 1 auto;
+    }
+  }
+
   .cinder-number-input[data-invalid] .cinder-number-input__stepper {
     border-inline-start-color: var(--cinder-control-border-invalid);
   }
@@ -57,7 +88,7 @@
   .cinder-number-input__adornment {
     display: inline-flex;
     align-items: center;
-    padding-inline: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-1) var(--cinder-space-2);
     color: var(--cinder-text-muted);
     white-space: nowrap;
   }

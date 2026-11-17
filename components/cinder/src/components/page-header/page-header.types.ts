@@ -174,15 +174,15 @@ export type PageHeaderProps = Omit<
    */
   createAction?: PageHeaderCreateAction;
   /**
-   * Draws the header with no padding around it, so its title lines up with the content beneath
-   * it. A page that lays out its own column, such as a page of settings with a section navigation
-   * beside it, uses this.
+   * Insets the header with padding around it. Off by default: the header is flush with the content
+   * beneath it, so its title lines up with that content. Pass it where the header should sit in
+   * from the edge of its container.
    * @default false
    */
-  flush?: boolean;
+  inset?: boolean;
   /**
    * Draws a rule under the header. Off by default: space separates the header from the page, and
-   * the rule is opt-in. A flush header never draws one.
+   * the rule is opt-in.
    * @default false
    */
   divider?: boolean;
@@ -258,15 +258,15 @@ export interface PageHeaderSchemaProps {
   /** The id of the `actionsNote` element, for a button that points its `aria-describedby` at it. */
   actionsNoteId?: string;
   /**
-   * Draws the header with no padding around it, so its title lines up with the content beneath
-   * it. A page that lays out its own column, such as a page of settings with a section navigation
-   * beside it, uses this.
+   * Insets the header with padding around it. Off by default: the header is flush with the content
+   * beneath it, so its title lines up with that content. Pass it where the header should sit in
+   * from the edge of its container.
    * @default false
    */
-  flush?: boolean;
+  inset?: boolean;
   /**
    * Draws a rule under the header. Off by default: space separates the header from the page, and
-   * the rule is opt-in. A flush header never draws one.
+   * the rule is opt-in.
    * @default false
    */
   divider?: boolean;

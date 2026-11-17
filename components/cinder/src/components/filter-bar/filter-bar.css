@@ -6,7 +6,8 @@
    * ======================================== */
 
   /* One row. Width is handled by the layout, not by flowing: `wide` draws the
-   * segments, the facet chips and the search field; `medium` folds the segments into a select and
+   * segments, the facet chips and the search field; `search-folded` folds the search field into an icon
+   * button first and keeps the segments; `medium` folds the segments into a select and
    * the search field into an icon button; `narrow` keeps the select and a Filter menu. The layout
    * is chosen in script (data-cinder-layout), because the controls that disappear move into a
    * menu, which CSS alone cannot do. Only the narrow form, the last step, wraps its Filter button

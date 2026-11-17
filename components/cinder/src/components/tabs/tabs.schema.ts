@@ -19,6 +19,12 @@ const schema = {
         'Fill the available space when Tabs is placed inside a bounded flex parent,\nletting the active TabPanel occupy the remaining height.',
       default: false,
     },
+    collapseOnOverflow: {
+      type: 'boolean',
+      description:
+        'Collapses a horizontal tab bar into a select reading "Tab: Access" when the bar does not fit\nits container, measured as FilterBar measures its row: the bar\'s content width against the\nwidth it has. Tabs that fit stay a bar at every width, so a phone with three short tabs keeps\nthem. The tabs stay in the page, hidden, and the panels keep their names. Set `false` to keep\na bar that scrolls sideways instead. Vertical tabs never collapse.',
+      default: true,
+    },
     collapseBelow: {
       anyOf: [
         {
@@ -29,7 +35,7 @@ const schema = {
         },
       ],
       description:
-        "Viewport width below which a horizontal tab bar collapses to a select reading \"Tab: Access\",\nso a phone shows one full-width control instead of a bar that scrolls sideways. The tabs stay\nin the page, hidden, and the panels keep their names. A simple CSS length such as `'640px'`,\nor `false` to always show the tab bar. Vertical tabs never collapse. Default `'640px'`.",
+        "Viewport width below which a horizontal tab bar always collapses to the select, whether or not\nit fits. A simple CSS length such as `'640px'`, or `false` for no viewport rule. Vertical tabs\nnever collapse. Default `false`.",
     },
     collapseLabel: {
       type: 'string',
