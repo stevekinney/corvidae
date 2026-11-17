@@ -565,6 +565,12 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts, options: GoalWorkfl
         attemptId: attempt.attemptId,
         attemptIndex: attempt.attemptIndex,
         validator: view.validator,
+        ...(view.validatorConfiguration === undefined
+          ? {}
+          : { validatorConfiguration: view.validatorConfiguration }),
+        ...(view.validatorDefinition === undefined
+          ? {}
+          : { validatorDefinition: view.validatorDefinition }),
         ...(timeoutMs === undefined ? {} : { validatorTimeoutMs: timeoutMs }),
       }),
     );

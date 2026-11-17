@@ -42,6 +42,32 @@ export function validateDefinitionSource(
 }
 
 /**
+ * Refuse, through `badRequest`, a `validatorSource` (COR-2119) or `guardrailSource` (COR-2120) that
+ * is not a definition source of the named kind. These files are the owner's alone, so there is no
+ * layering of several.
+ */
+export function validateOwnerFileSource(
+  option: 'validatorSource' | 'guardrailSource',
+  kind: 'validator' | 'guardrail',
+  value: unknown,
+  badRequest: (message: string) => never,
+): void {
+  if (typeof value !== 'object' || value === null) {
+    badRequest(`"options.${option}" must be a definition source`);
+  }
+  const record = value as Record<string, unknown>;
+  const missing = SOURCE_METHODS.find((method) => typeof record[method] !== 'function');
+  if (missing !== undefined) {
+    badRequest(`"options.${option}" must be a definition source: it has no "${missing}" method`);
+  }
+  if (record['kind'] !== kind) {
+    badRequest(
+      `"options.${option}" must be a ${kind} source (kind "${kind}"), not kind ${JSON.stringify(record['kind'])}`,
+    );
+  }
+}
+
+/**
  * The one source Bureau reads `agentSource` or `workflowSource` through (COR-1873): the value
  * itself, or several sources layered with `layeredAgentSource` or `layeredWorkflowSource`. Each
  * source is checked as {@link validateDefinitionSource} checks one, and a list that cannot be

@@ -955,10 +955,10 @@ export class TriggerLifecycleEvent extends Event {
 }
 
 /** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
-export type DefinitionCatalogKind = 'agents' | 'workflows';
+export type DefinitionCatalogKind = 'agents' | 'workflows' | 'validators' | 'guardrails';
 
 /**
- * Fired on the bureau emitter after a rescan of the agent or workflow files changed what the
+ * Fired on the bureau emitter after a rescan of the agent, workflow, validator or guardrail files changed what the
  * catalog holds (COR-1721), with the same identifiers its `onChange` listeners receive. `rejected`
  * names those of `added` and `changed` whose definition is invalid now and cannot run.
  */
