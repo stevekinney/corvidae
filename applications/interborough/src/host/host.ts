@@ -236,10 +236,15 @@ import {
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
 import {
+  hostPanelMountOptions,
+  panelCacheDirectoryOf,
+  reportPanelFallbacks,
+} from './panel-mount-options.ts';
+import {
   commitPanelDigests,
-  PANEL_PREBUILT_DIRECTORY_VARIABLE,
   panelMounts,
   reportPanelChanges,
+  type PanelMountOptions,
 } from './panel-mounts.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
@@ -428,6 +433,12 @@ export type HostOptions = {
   readonly createConsoleEngine?: (
     storage: Storage,
   ) => RegistryAgnosticEngine | Promise<RegistryAgnosticEngine>;
+  /**
+   * Replaces how the host builds a panel's page and how long it waits (COR-2219), for a test that
+   * counts, stalls or times a build without a real one. The defaults are `buildPanelPage` and the
+   * platform's timers, with the deadline `PANEL_BUILD_DEADLINE_MILLISECONDS`.
+   */
+  readonly panelBuild?: Pick<PanelMountOptions, 'build' | 'clock'>;
   /** The few Weft server settings a host may tune for the engine API it relays. */
   readonly engineServer?: Pick<
     ServeOptions,
@@ -970,6 +981,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
     // A folder that cannot load is reported and skipped, never a reason to stop the host.
     const content = bungalow.content(PLUGIN_FOLDER_NAME);
+    // Where built panel pages are kept between starts: the home's own directory, or none for a remote one.
+    const panelCacheDirectory = panelCacheDirectoryOf(bungalow, contentKinds, log);
     // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
     const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
@@ -1409,8 +1422,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const mcpMounts = await panelMounts(
       bureau.plugins.panels(),
       storage,
-      environment[PANEL_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
+      hostPanelMountOptions({
+        environment,
+        cacheDirectory: panelCacheDirectory,
+        log,
+        ...(options.panelBuild === undefined ? {} : { overrides: options.panelBuild }),
+      }),
     );
+    // A prebuilt page the host could not use is built at start instead, and a person sees why.
+    reportPanelFallbacks(mcpMounts.fallbacks, log);
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {

@@ -416,6 +416,8 @@ export default definePlugin({
 });
 ```
 
+A panel that renders Cinder components imports `mountPanel` from `@lostgradient/cinder/panel` and mounts its Svelte component with it. The kit carries Cinder's stylesheet and reads the host's theme: each `--cinder-*` token the MCP Apps spec maps is `var(--color-…, <Cinder default>)`, so the panel follows the owner's light or dark theme inside Interborough, adapts to another host that sends a different palette, and looks like Cinder where the host sends none. The panel build resolves `svelte` and `@lostgradient/cinder` from the host's own install, never from the plugin's, so list Cinder as a `devDependency` only and the version always matches the application. A panel is a document in a sandboxed frame, and three limits follow from that. Dialogs, popovers and toasts render inside the frame and never above the host's own interface. Keyboard focus does not flow between the host and the panel: a person tabs out of the frame as they would out of any embedded document. Navigation, links, resizing and notifications go through the MCP Apps bridge, and Interborough's bridge refuses `ui/open-link` and `ui/message`, so a panel cannot open a link or post a message into the conversation.
+
 A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
 
 - `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.

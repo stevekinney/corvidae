@@ -97,6 +97,10 @@ describe('the chat list and archived chats', () => {
     const entry = archivedEntry(region)!;
     expect(entry.textContent?.trim()).toBe(LIST.archivedTitle);
     expect(entry.getAttribute('href')).toBe('/chats?view=archived');
+    // The chevron is a glyph, so in a narrow pane it stays beside the title (COR-2195).
+    expect(
+      entry.closest('li')?.classList.contains('cinder-stacked-list-item--trailing-glyph'),
+    ).toBe(true);
     // It is the last thing in the list: after the last chat's row.
     const lastChat = region.querySelector('[data-chat="current-2"]')!;
     expect(lastChat.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
