@@ -78,7 +78,10 @@ export function sourceExportViolations(
   return violations;
 }
 
-/** Whether `specifier` names `packageName` itself or a subpath its `exports` declares. */
+/**
+ * Whether `specifier` names `packageName` itself or a subpath its `exports` declares, exactly or
+ * through a subpath pattern with one `*` (`./scripts/*`), as Node resolves `exports`.
+ */
 export function declaresImportSpecifier(
   specifier: string,
   packageName: string,
@@ -87,5 +90,17 @@ export function declaresImportSpecifier(
   if (specifier === packageName) return true;
   if (!specifier.startsWith(`${packageName}/`)) return false;
   if (typeof exports !== 'object' || exports === null) return false;
-  return Object.hasOwn(exports, `.${specifier.slice(packageName.length)}`);
+  const subpath = `.${specifier.slice(packageName.length)}`;
+  if (Object.hasOwn(exports, subpath)) return true;
+  return Object.keys(exports).some((key) => {
+    const star = key.indexOf('*');
+    if (star === -1 || key.includes('*', star + 1)) return false;
+    const prefix = key.slice(0, star);
+    const suffix = key.slice(star + 1);
+    return (
+      subpath.length > prefix.length + suffix.length &&
+      subpath.startsWith(prefix) &&
+      subpath.endsWith(suffix)
+    );
+  });
 }
