@@ -281,6 +281,10 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
     expect(within(note).getByRole('link', { name: 'Slack' }).getAttribute('href')).toBe(
       '/settings/plugins?plugin=slack',
     );
+    // A link in running text is underlined, so it is told apart without its color.
+    expect(within(note).getByRole('link', { name: 'Slack' }).getAttribute('data-underline')).toBe(
+      'always',
+    );
 
     // No Edit button, no Name field, no Save hook; the configuration is pairs, never inputs.
     expect(view.queryByRole('button', { name: copy.steps.edit })).toBeNull();
@@ -334,7 +338,14 @@ describe('a default hook’s page (rows R10-04 to R10-09 and R10-17)', () => {
     ).toBe('/settings/plugins?plugin=pager');
     const reason = await view.findByTestId('hook-test-reason');
     expect(reason.textContent?.trim()).toBe('Turn on Pager in Settings to test this action.');
-    expect(within(reason).getByRole('link', { name: 'Settings' })).toBeTruthy();
+    expect(
+      within(reason).getByRole('link', { name: 'Settings' }).getAttribute('data-underline'),
+    ).toBe('always');
+    expect(
+      within(header)
+        .getByRole('link', { name: 'Open Pager in Settings' })
+        .getAttribute('data-underline'),
+    ).toBe('always');
     expect(view.getByRole('button', { name: copy.check.test }).getAttribute('aria-disabled')).toBe(
       'true',
     );

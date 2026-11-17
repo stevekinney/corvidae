@@ -187,9 +187,10 @@ describe('a secret field', () => {
     expect(help.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
       'Plugins name the secrets they use. Save one in Settings › Plugins.',
     );
-    expect(requiredInstance(help.querySelector('a'), HTMLAnchorElement).getAttribute('href')).toBe(
-      '/settings/plugins',
-    );
+    const manage = requiredInstance(help.querySelector('a'), HTMLAnchorElement);
+    expect(manage.getAttribute('href')).toBe('/settings/plugins');
+    // The link sits in a sentence, so it is underlined: it is told apart without its color.
+    expect(manage.getAttribute('data-underline')).toBe('always');
   });
 
   test('when the keys cannot be read says so, offers Try again, and leaves the other fields usable', async () => {

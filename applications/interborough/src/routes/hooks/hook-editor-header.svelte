@@ -184,6 +184,7 @@
       {:else if standing.action?.kind === 'settings'}
         {@const plugin = standing.action.plugin}
         <Link
+          underline="always"
           href={router.href(`/settings/plugins?plugin=${encodeURIComponent(plugin)}`)}
           onclick={(event) => openSettings(event, plugin)}>{standing.action.label}</Link
         >

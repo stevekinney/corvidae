@@ -915,6 +915,7 @@
             <!-- Said once: the plugin that added the hook, and what the owner can do with it. -->
             <Callout semantic="note" data-testid="hook-provenance">
               <Link
+                underline="always"
                 href={router.href(
                   `/settings/plugins?plugin=${encodeURIComponent(declared.plugin)}`,
                 )}
@@ -1222,6 +1223,7 @@
               <p class="ib-hook-editor__hint" id={TEST_REASON_ID} data-testid="hook-test-reason">
                 {#if testReasonParts !== undefined}
                   {testReasonParts?.before}<Link
+                    underline="always"
                     href={router.href(testReasonParts?.path ?? '')}
                     onclick={(event) => leave(event, testReasonParts?.path ?? '')}
                     >{testReasonParts?.link}</Link

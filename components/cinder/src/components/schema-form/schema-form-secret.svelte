@@ -109,7 +109,7 @@
       <p class="cinder-schema-form__secret-help">
         {copy.emptyHelp}
         {#if secrets?.manage !== undefined}
-          <Link href={secrets.manage.href} onclick={secrets.manage.onclick}
+          <Link underline="always" href={secrets.manage.href} onclick={secrets.manage.onclick}
             >{secrets.manage.label}</Link
           >{copy.emptyHelpEnd}
         {/if}
