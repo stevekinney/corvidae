@@ -8,6 +8,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import { router } from '../../lib/router.svelte.ts';
 import QueryPage from '../chat/chat-toasts.test-harness.svelte';
@@ -105,6 +106,51 @@ describe('Edit connection', () => {
     expect(probe?.body).toMatchObject({ credentials: {} });
     await waitFor(() => expect(router.search.get('source')).toBe('github'));
     expect(router.pathname).toBe('/capabilities');
+  });
+
+  test('the breadcrumb reads Capabilities › Edit connection while editing, and Connect tools otherwise', async () => {
+    serve(Response.json(EDITING));
+    landAt('/capabilities/connect?source=github');
+    mount();
+    await waitFor(() => expect(field('connect-url').value).toBe('https://mcp.github.example/mcp'));
+
+    expect(breadcrumbTrail('/capabilities/connect').map((item) => item.label)).toEqual([
+      'Capabilities',
+      copy.edit.title,
+    ]);
+    cleanup();
+    expect(breadcrumbTrail('/capabilities/connect').map((item) => item.label)).toEqual([
+      'Capabilities',
+      copy.title,
+    ]);
+  });
+
+  test('a save refused because the source changed says so in plain words and reloads what is saved', async () => {
+    const host = serve(Response.json(EDITING));
+    host.refuseNext = Response.json(
+      {
+        error: 'failed',
+        reason: 'conflict',
+        message: 'The secret provider could not complete the operation.',
+      },
+      { status: 409 },
+    );
+    landAt('/capabilities/connect?source=github');
+    const { getByRole, findByTestId, container } = mount();
+    await waitFor(() => expect(field('connect-url').value).toBe('https://mcp.github.example/mcp'));
+    await fireEvent.input(field('connect-name'), { target: { value: 'Mine' } });
+
+    await fireEvent.click(getByRole('button', { name: copy.edit.save }));
+
+    const stale = await findByTestId('connect-edit-stale');
+    expect(stale.textContent).toContain(copy.edit.stale);
+    expect(container.textContent).not.toContain('secret provider');
+    expect(container.querySelector('[data-testid="connect-failed"]')).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: copy.edit.reload }));
+
+    await waitFor(() => expect(field('connect-name').value).toBe('GitHub'));
+    expect(container.querySelector('[data-testid="connect-edit-stale"]')).toBeNull();
   });
 
   test('says why a source cannot be edited here, with the way back', async () => {

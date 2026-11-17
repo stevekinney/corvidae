@@ -62,6 +62,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
@@ -177,6 +178,20 @@
   let submitted = $state(false);
   /** A field the host refused, with its words. Cleared by the next change to the form. */
   let hostError = $state<{ readonly field: ToolSourceFormField; readonly message: string }>();
+  /** Whether the host refused a save because the source changed after it was read (an edit). */
+  let stale = $state(false);
+  // The breadcrumb names the page as the person came to it: "Edit connection" for a saved source.
+  usePageLabel(() => ({
+    path: '/capabilities/connect',
+    label: editId === undefined ? undefined : copy.edit.title,
+  }));
+  /** Reads the saved source again and fills the form from it, dropping the edit that was refused. */
+  async function reloadSaved(): Promise<void> {
+    const reread = await editing.refetch();
+    if (reread.isError) return;
+    stale = false;
+    filledFromSaved = false;
+  }
   /** Whether the "Give to an agent" picker is open (row 35c). */
   let giving = $state(false);
 
@@ -463,6 +478,10 @@
     if (error instanceof HostToolSourceError && error.kind === 'exists') {
       hostError = { field: 'id', message: copy.exists(form.id) };
       void queryClient.invalidateQueries({ queryKey: queryKeys.toolSources.list() });
+      return '';
+    }
+    if (error instanceof HostToolSourceError && error.kind === 'stale') {
+      stale = true;
       return '';
     }
     const treatment = toolSourceFaultTreatment(error);
@@ -993,21 +1012,23 @@
               {/each}
             </RadioGroup>
           {:else}
-            <RadioGroup
-              name="connect-authentication"
+            <!-- A segmented control, with OAuth's note beside its label (rows 33g, 34q). -->
+            <SegmentedControl
+              id="connect-authentication"
               label={copy.authentication.label}
-              bind:value={authentication}
+              value={authentication}
               disabled={connecting}
+              onValueChange={(next: string) => (authentication = next)}
             >
               {#each choices as choice (choice)}
-                <RadioGroup.Option
-                  id={`connect-authentication-${choice}`}
-                  value={choice}
-                  label={copy.authentication[choice]}
-                  {...choice === 'oauth' ? { description: copy.authentication.oauthNote } : {}}
-                />
+                <Segment value={choice}>
+                  {copy.authentication[choice]}
+                  {#if choice === 'oauth'}
+                    <span class="ib-connect__segment-note">{copy.authentication.oauthNote}</span>
+                  {/if}
+                </Segment>
               {/each}
-            </RadioGroup>
+            </SegmentedControl>
           {/if}
           {#if activeAuthentication === 'oauth' && editId === undefined}
             <!-- Signed in before it is saved (COR-2436): the page holds the host's reference only. -->
@@ -1127,6 +1148,17 @@
         />
       </FormSection>
 
+      {#if stale}
+        <Callout variant="warning" semantic="note" data-testid="connect-edit-stale">
+          {copy.edit.stale}
+          {#snippet action()}
+            <Button variant="secondary" size="sm" onclick={() => void reloadSaved()}
+              >{copy.edit.reload}</Button
+            >
+          {/snippet}
+        </Callout>
+      {/if}
+
       {#if phase.kind === 'failed-connect'}
         <div class="ib-connect__connect-failed" role="alert" data-testid="connect-failed">
           <CircleAlert size={16} aria-hidden="true" class="ib-connect__glyph" />
@@ -1213,6 +1245,12 @@
   }
 
   .ib-connect__help {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .ib-connect__segment-note {
+    margin-inline-start: var(--cinder-space-1);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }

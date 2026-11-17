@@ -78,6 +78,15 @@ async function choose(id: string): Promise<void> {
   await fireEvent.click(field(id));
 }
 
+/** Picks how an MCP server signs in, in Sign in's segmented control (rows 33g, 34q). */
+async function signInBy(choice: 'oauth' | 'bearer' | 'none'): Promise<void> {
+  const segment = document.body.querySelector<HTMLElement>(
+    `#connect-authentication [data-cinder-segment-value="${choice}"]`,
+  );
+  if (segment === null) throw new Error(`no sign-in segment ${choice}`);
+  await fireEvent.click(segment);
+}
+
 /** Picks URL or Command in Address's segmented control. */
 async function reachBy(transport: 'http' | 'stdio'): Promise<void> {
   await fireEvent.click(
@@ -116,7 +125,7 @@ async function openPage(
 async function fillBearerMcp(): Promise<void> {
   await type('connect-name', 'notes');
   await type('connect-url', ADDRESS);
-  await choose('connect-authentication-bearer');
+  await signInBy('bearer');
   await type('connect-secret', TOKEN);
 }
 
@@ -216,17 +225,23 @@ describe('the Connect tools page', () => {
   test('offers OAuth, Bearer token and None to sign in, OAuth with its note (row 33g)', async () => {
     const { container } = await openPage();
 
-    const options = [
-      ...container.querySelectorAll<HTMLInputElement>('input[name="connect-authentication"]'),
-    ].map((radio) => radio.id);
-    expect(options).toEqual([
-      'connect-authentication-oauth',
-      'connect-authentication-bearer',
-      'connect-authentication-none',
+    // A segmented control, not radios (row 34q), with OAuth's note beside its label.
+    expect(container.querySelector('input[name="connect-authentication"]')).toBeNull();
+    const segments = [
+      ...container.querySelectorAll<HTMLElement>(
+        '#connect-authentication [data-cinder-segment-value]',
+      ),
+    ];
+    expect(segments.map((segment) => segment.dataset['cinderSegmentValue'])).toEqual([
+      'oauth',
+      'bearer',
+      'none',
     ]);
-    expect(container.textContent).toContain(copy.connect.authentication.oauthNote);
+    expect(segments[2]?.getAttribute('aria-checked')).toBe('true');
+    expect(segments[0]?.textContent).toContain(copy.connect.authentication.oauthNote);
+    expect(segments[1]?.textContent?.trim()).toBe(copy.connect.authentication.bearer);
 
-    await choose('connect-authentication-oauth');
+    await signInBy('oauth');
     // OAuth signs in before the source is saved (COR-2436): "Sign in to …", with a key icon.
     const signIn = container.querySelector('[data-testid="connect-sign-in-start"]');
     expect(signIn?.textContent?.trim()).toBe(
@@ -325,7 +340,7 @@ describe('the Connect tools page', () => {
     host.probe = { outcome: 'needs-authorization' };
     await type('connect-name', 'ledger');
     await type('connect-url', ADDRESS);
-    await choose('connect-authentication-oauth');
+    await signInBy('oauth');
 
     await fireEvent.click(buttonLabelled(copy.connect.probe.action));
 
@@ -375,7 +390,7 @@ describe('the Connect tools page', () => {
     await findByText(copy.connect.errors.urlRequired);
     await type('connect-name', '42');
     await findByText(copy.connect.errors.nameInvalid);
-    await choose('connect-authentication-bearer');
+    await signInBy('bearer');
     await findByText(copy.connect.errors.secretRequired.bearer);
     expect(host.requests.filter((request) => request.method !== 'GET')).toEqual([]);
   });

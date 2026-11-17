@@ -341,6 +341,7 @@ export const CAPABILITIES_COPY = {
       invalid: 'The host did not accept the value.',
       partial: 'The host made only part of the change.',
       'not-editable': 'This source can’t be edited here. Change it in configuration.json.',
+      stale: 'This source was changed somewhere else while you were editing it. Nothing was saved.',
       failed: 'The host could not make the change.',
     },
     skipped: {
@@ -367,6 +368,9 @@ export const CAPABILITIES_COPY = {
         save: 'Save',
         loading: 'Reading the saved source',
         back: 'Back to sources',
+        stale:
+          'This source was changed somewhere else while you were editing it. Nothing was saved. Reload to see what is saved now, then make your change again.',
+        reload: 'Reload the source',
         secretKept: 'Leave it blank to keep the one stored.',
       },
       /** The page's sections, in order (row 33d). */

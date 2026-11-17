@@ -327,6 +327,8 @@ export type HostToolSourceFaultKind =
   | 'partial'
   /** The page cannot edit the saved source (COR-2436); `message` says why and where to change it. */
   | 'not-editable'
+  /** The source changed after the page read it, so the save was refused (a 409 on its revision). */
+  | 'stale'
   /** The host could not make the change, or did not answer in a form this page reads. */
   | 'failed';
 
@@ -379,6 +381,14 @@ async function faultOf(response: Response): Promise<HostToolSourceError> {
   const rawMessage: unknown = Reflect.get(record, 'message');
   const field: unknown = Reflect.get(record, 'field');
   const message = typeof rawMessage === 'string' ? rawMessage : '';
+  // A save fenced on the revision the page read is refused as a conflict, by the host's own
+  // `conflict` or by the stored configuration's (`failed` with the reason `conflict`).
+  if (
+    response.status === 409 &&
+    (error === 'conflict' || (error === 'failed' && Reflect.get(record, 'reason') === 'conflict'))
+  ) {
+    return new HostToolSourceError('stale', message);
+  }
   switch (error) {
     case 'locked':
     case 'exists':
@@ -769,6 +779,7 @@ export function toolSourceFaultTreatment(error: unknown): FaultTreatment {
     case 'exists':
     case 'invalid':
     case 'not-editable':
+    case 'stale':
       return { kind: 'invalid', message, fieldErrors: [] };
     case 'partial':
     case 'failed':

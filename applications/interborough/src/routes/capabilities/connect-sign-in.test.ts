@@ -81,7 +81,12 @@ async function signIn(getByRole: (role: string, options: { name: string }) => HT
   await fireEvent.input(field('connect-url'), {
     target: { value: 'https://mcp.github.example/mcp' },
   });
-  await fireEvent.click(field('connect-authentication-oauth'));
+  // OAuth is the segmented control's first choice and is already selected: press it all the same.
+  await fireEvent.click(
+    document.body.querySelector<HTMLElement>(
+      '#connect-authentication [data-cinder-segment-value="oauth"]',
+    )!,
+  );
   await fireEvent.click(getByRole('button', { name: signInCopy.action('GitHub') }));
 }
 
