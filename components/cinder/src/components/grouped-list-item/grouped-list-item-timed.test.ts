@@ -30,7 +30,10 @@ describe('GroupedListItem time-led row', () => {
   test('the window never wraps, and the lead column is wide enough for the longest window', () => {
     const css = stylesheet();
     expect(css).toMatch(/__lead-window \{[^}]*white-space: nowrap/);
-    expect(css).toMatch(/__lead--timed \{[^}]*inline-size: 6rem/);
+    // 104px on a wide row and 96px on a narrow one, each wide enough for "11 pm–2 am" at the
+    // window's size there (measured in `grouped-list-time-led-fit.playwright.ts`).
+    expect(css).toMatch(/__lead--timed \{[^}]*inline-size: 6\.5rem/);
+    expect(css).toMatch(/--timed \.cinder-grouped-list-item__lead \{[^}]*inline-size: 6rem[^}]*\}/);
     expect(css).toMatch(/__lead--timed \{[^}]*flex: none/);
   });
 
@@ -119,13 +122,24 @@ describe('GroupedListItem time-led row', () => {
     const css = stylesheet();
     expect(css).toMatch(/__lead--timed \{[^}]*align-items: flex-end/);
     expect(css).toMatch(/__lead--timed \{[^}]*text-align: end/);
-    expect(css).toMatch(/__lead-window \{[^}]*font-size: var\(--cinder-text-md\)/);
+    // The window is the row's entry point: two steps over the name on a wide row, one on a narrow.
+    expect(css).toMatch(
+      /\n {2}\.cinder-grouped-list-item__lead-window \{[^}]*font-size: var\(--cinder-text-xl\)/,
+    );
+    expect(css).toMatch(
+      /--timed\s+\.cinder-grouped-list-item__lead-window \{\s*font-size: var\(--cinder-text-lg\)/,
+    );
     expect(css).toMatch(/__lead-window \{[^}]*font-weight: var\(--cinder-font-bold/);
     expect(css).toMatch(
       /__lead-window \{[^}]*line-height: var\(--_cinder-grouped-list-item-title-line\)/,
     );
     expect(css).toMatch(/__lead-window \{[^}]*font-variant-numeric: tabular-nums/);
-    expect(css).toMatch(/__lead-caption \{[^}]*font-size: var\(--cinder-text-xs\)/);
+    expect(css).toMatch(
+      /\n {2}\.cinder-grouped-list-item__lead-caption \{[^}]*font-size: var\(--cinder-text-sm\)/,
+    );
+    expect(css).toMatch(
+      /--timed\s+\.cinder-grouped-list-item__lead-caption \{\s*font-size: var\(--cinder-text-xs\)/,
+    );
     expect(css).toMatch(/__lead-caption \{[^}]*color: var\(--cinder-text-muted\)/);
     expect(css).toMatch(/__photo \{[^}]*inline-size: 3\.5rem/);
   });

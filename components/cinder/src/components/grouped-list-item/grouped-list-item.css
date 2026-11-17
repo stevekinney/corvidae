@@ -160,17 +160,18 @@
  * Time-led row: a time window leads, with a small caption under it, then the name and its content
  * ---------------------------------------- */
 
-  /* The lead is a fixed 96px column, right-aligned, wide enough for "11 pm–2 am" at the comfortable
-     density, so the windows of every row line up on their last character. It aligns to the first
-     line of a wrapping name. The row's title and subtitle are the basic row's own: the lead is the
-     only thing a time-led row adds. */
+  /* The lead is a fixed column, right-aligned, wide enough for "11 pm–2 am" at the comfortable
+     density, so the windows of every row line up on their last character: 104px on a wide row,
+     where the window is two steps over the name, and 96px on a narrow one (below), where it is one
+     step over. It aligns to the first line of a wrapping name. The row's title and subtitle are
+     the basic row's own: the lead is the only thing a time-led row adds. */
   .cinder-grouped-list-item__lead.cinder-grouped-list-item__lead--timed {
     display: flex;
     flex: none;
     flex-direction: column;
     align-items: flex-end;
     align-self: flex-start;
-    inline-size: 6rem;
+    inline-size: 6.5rem;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     text-align: end;
@@ -195,11 +196,12 @@
     margin-inline-start: auto;
   }
 
-  /* One step above the title, bold, on one line a title line tall, so it sits on the title's first
-     line as a trailing value does. */
+  /* The window is the row's entry point: bold and over the name's size (two steps on a wide row,
+     one on a narrow one), on one line a title line tall, so it sits on the title's first line as
+     a trailing value does. */
   .cinder-grouped-list-item__lead-window {
     color: var(--cinder-text-default);
-    font-size: var(--cinder-text-md);
+    font-size: var(--cinder-text-xl);
     font-weight: var(--cinder-font-bold);
     line-height: var(--_cinder-grouped-list-item-title-line);
     font-variant-numeric: tabular-nums;
@@ -207,7 +209,7 @@
   }
 
   .cinder-grouped-list-item__lead-caption {
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-snug, 1.35);
     color: var(--cinder-text-muted);
   }
@@ -358,7 +360,58 @@
 
     .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__lead {
       grid-row: 1 / span 2;
+      inline-size: 6rem;
       margin-inline-end: var(--cinder-space-3);
+    }
+
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      .cinder-grouped-list-item__lead-window {
+      font-size: var(--cinder-text-lg);
+    }
+
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      .cinder-grouped-list-item__lead-caption {
+      font-size: var(--cinder-text-xs);
+    }
+
+    /* A photo is the last thing before the chevron and spans both lines, so the name, the
+       trailing value and the subtitle sit where they sit in a row without one: the subtitle ends
+       where the photo's column starts (after the name, and after the stale marker and the
+       trailing value when the row has them). */
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content
+      > .cinder-grouped-list-item__photo {
+      /* The child combinators outrank the shared row-one rule for the trailing parts below. */
+      grid-row: 1 / span 2;
+    }
+
+    /* The photo is taller than the name's line: the room it needs goes to the subtitle's row, so
+       the subtitle still follows the name directly. */
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content:has(> .cinder-grouped-list-item__photo) {
+      grid-template-rows: auto 1fr;
+    }
+
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content:has(> .cinder-grouped-list-item__photo)
+      .cinder-grouped-list-item__subtitle {
+      grid-column: 2 / span 1;
+    }
+
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content:has(> .cinder-grouped-list-item__photo):has(
+        > :is(.cinder-grouped-list-item__stale, .cinder-grouped-list-item__trailing)
+      )
+      .cinder-grouped-list-item__subtitle {
+      grid-column: 2 / span 2;
+    }
+
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content:has(> .cinder-grouped-list-item__photo):has(
+        > .cinder-grouped-list-item__stale
+      ):has(> .cinder-grouped-list-item__trailing)
+      .cinder-grouped-list-item__subtitle {
+      grid-column: 2 / span 3;
     }
 
     .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__title {

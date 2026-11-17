@@ -39,7 +39,7 @@ Pass `actions` for a row whose button is its point, such as Review on an approva
 
 ## Time-led rows
 
-Pass `timeWindow` instead of a `lead` snippet for a row led by time, such as a happy hour or a run that is about to start. The lead is the window itself, such as `3–6 pm`, `10 pm–1 am` or `All day`: one line, right-aligned, bold and tabular, in a fixed 96px column that holds `11 pm–2 am` without wrapping. `timeCaption` is a small muted line under it and free text: `45 min left`, `1 h 45 min left`, `starts in 1 h`, `Sun to Tue`, or nothing, when the page heading already names the day, and then the lead draws no empty line. `urgency="urgent"` colours only the caption in the warning text colour, and the window stays the default text colour; `urgency="soon"` draws the window muted. The title and subtitle are the basic row's: the title wraps, and the subtitle is muted, one line per item. A trailing value carries a distance or other meta. `staleAge` draws a gray clock and a short age, and only when the row is stale. A trailing `photo` is a 56px column at the end of the row and reserves no space when absent.
+Pass `timeWindow` instead of a `lead` snippet for a row led by time, such as a happy hour or a run that is about to start. The lead is the window itself, such as `3–6 pm`, `10 pm–1 am` or `All day`: one line, right-aligned, bold and tabular, in a fixed column that holds `11 pm–2 am` without wrapping. The window is the row's entry point, so it is set over the name's size: two steps over in a 104px column on a row at least 26rem wide, and one step over in a 96px column on a narrower row. `timeCaption` is a small muted line under it and free text: `45 min left`, `1 h 45 min left`, `starts in 1 h`, `Sun to Tue`, or nothing, when the page heading already names the day, and then the lead draws no empty line. `urgency="urgent"` colours only the caption in the warning text colour, and the window stays the default text colour; `urgency="soon"` draws the window muted. Use `urgent` only for a window that ends within 15 minutes; a row with 45 minutes left is plain. The title and subtitle are the basic row's: the title wraps, and the subtitle is muted, one line per item. A trailing value carries a distance or other meta. `staleAge` draws a gray clock and a short age, and only when the row is stale. A trailing `photo` is a 56px column at the end of the row, after the trailing value, and reserves no space when absent: nothing else in the row moves when a photo is there.
 
 The name leads. In a row at least 26rem wide the name keeps at least 10rem, and a trailing value that would leave it less moves to a line of its own under it, at the end. In a row narrower than 26rem, as on a phone, the trailing value sits at the end of the title's line instead of in a column of its own, and the subtitle takes the width under both, so a long subtitle uses the whole text column; the value is capped at 6rem and wraps inside it. A time-led row with no trailing value takes the same narrow form, so its stale marker and chevron stay on the title's line.
 
@@ -52,7 +52,7 @@ The name leads. In a row at least 26rem wide the name keeps at least 10rem, and 
   <GroupedListItem
     href="/places/rooftop"
     timeWindow="3–6 pm"
-    timeCaption="45 min left"
+    timeCaption="12 min left"
     urgency="urgent"
   >
     {#snippet title()}The Rooftop{/snippet}
