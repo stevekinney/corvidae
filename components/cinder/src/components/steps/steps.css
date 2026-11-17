@@ -359,37 +359,31 @@
 
   /* ----------------------------------------
  * Checklist variant
- * A bordered card: a header row (heading at the start, "N of M done" at the end), then one row
- * per step with a 24px marker, the label and description, and the action at the row's end. Steps
- * complete in any order, so the marker says which are done and which is next: a green check, an
- * accent number, or a neutral number.
+ * Drawn as a grouped list is drawn (COR-2489): the heading and "N of M done" sit above the rows
+ * as a Section's heading and action do, with no band and no rule, and the rows are one rounded
+ * surface that carries tone, not a border, with separators that start at the text. Each row has a
+ * 24px marker, the label and description, and the action at the row's end. Steps complete in any
+ * order, so the marker says which are done and which is next: a green check, an accent number, or
+ * a neutral number.
  * ---------------------------------------- */
 
   .cinder-steps[data-cinder-variant='checklist'] {
-    border: 1px solid var(--cinder-border-faint);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface);
-    overflow: hidden;
+    min-inline-size: 0;
   }
 
   .cinder-steps__header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
-    gap: var(--cinder-space-2);
-    min-block-size: var(--cinder-space-10);
-    box-sizing: border-box;
-    padding-block: var(--cinder-space-1-5);
-    padding-inline: var(--cinder-space-3-5);
-    background: var(--cinder-surface-inset);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    gap: var(--cinder-space-4);
+    margin-block-end: var(--cinder-space-3);
   }
 
   .cinder-steps__heading {
     margin: 0;
-    font-size: var(--cinder-text-base);
+    font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-normal);
+    line-height: var(--cinder-leading-tight);
     color: var(--cinder-text-default);
   }
 
@@ -400,22 +394,32 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* The rows are a grouped list's group: one rounded surface in the raised tone, no border. */
   .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__list {
     flex-direction: column;
     align-items: stretch;
+    overflow: hidden;
+    border-radius: var(--cinder-radius-surface);
+    background: var(--cinder-surface-raised);
   }
 
+  /* A row is not filled; its separator is a line under the text that starts where the label does,
+   * inset past the marker, as a grouped list row's separator is inset past its leading slot. */
   .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--cinder-space-3);
     padding-block: var(--cinder-space-3);
-    padding-inline: var(--cinder-space-3-5);
-    border-block-end: 1px solid var(--cinder-border-faint);
+    padding-inline: var(--cinder-space-4) var(--cinder-space-3);
   }
 
-  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item:last-child {
-    border-block-end: 0;
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline: calc(var(--cinder-space-4) + var(--_marker-size) + var(--cinder-space-3)) 0;
+    border-block-end: 1px solid var(--cinder-border-faint);
   }
 
   .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__body {
@@ -491,6 +495,38 @@
       justify-content: flex-start;
       padding-inline-start: calc(var(--_marker-size) + var(--cinder-space-3));
     }
+
+    /* A quiet action that leads the wrapped row draws no face at rest, so its words are what the
+       eye lines up: it is pulled back by its own inline padding and its 1px transparent border, so
+       its text starts on the text edge above it rather than 13px inside it (COR-2489). An outlined
+       or filled action keeps its face on the edge. */
+    .cinder-steps[data-cinder-variant='checklist']
+      .cinder-steps__action
+      > .cinder-button:first-child:is(
+        [data-cinder-variant='ghost'],
+        [data-cinder-variant='ghost-accent'],
+        [data-cinder-variant='ghost-danger']
+      ):not([data-cinder-icon-only]) {
+      margin-inline-start: calc(-1 * (var(--_cinder-steps-action-padding) + 1px));
+    }
+  }
+
+  /* The inline padding of the Button that leads a checklist action row, by its size, for the
+     pull-back above. */
+  .cinder-steps__action > .cinder-button {
+    --_cinder-steps-action-padding: var(--cinder-button-padding-x-sm);
+  }
+
+  .cinder-steps__action > .cinder-button[data-cinder-size='xs'] {
+    --_cinder-steps-action-padding: var(--cinder-button-padding-x-xs);
+  }
+
+  .cinder-steps__action > .cinder-button[data-cinder-size='md'] {
+    --_cinder-steps-action-padding: var(--cinder-button-padding-x-md);
+  }
+
+  .cinder-steps__action > .cinder-button[data-cinder-size='lg'] {
+    --_cinder-steps-action-padding: var(--cinder-button-padding-x-lg);
   }
 
   /* ----------------------------------------
@@ -574,8 +610,8 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-steps[data-cinder-variant='checklist'] {
-      border-color: CanvasText;
+    .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__list {
+      border: 1px solid CanvasText;
     }
 
     .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__marker {

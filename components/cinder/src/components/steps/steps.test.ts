@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -592,6 +593,50 @@ describe('Steps — horizontal layout geometry (CSS contract)', () => {
 
     expect(stepsCss).toMatch(
       /@media \(forced-colors: active\)[\s\S]*?\[data-cinder-state='skipped'\]\s*\.cinder-steps__marker\s*\{[\s\S]*?outline:\s*1px solid ButtonText;[\s\S]*?box-shadow:\s*none;/,
+    );
+  });
+});
+
+// COR-2489: at 320 the checklist's wrapped action row started its quiet "Use Assistant" 13px inside
+// the text edge above it (12px of Button padding and a 1px transparent border).
+describe('Steps checklist — a quiet action leading a wrapped row (CSS contract)', () => {
+  const narrow = stepsCss.slice(stepsCss.indexOf('@container cinder-steps (max-width: 28rem)'));
+
+  test('is pulled back by its inline padding and its border, so its text sits on the text edge', () => {
+    const rule =
+      /\.cinder-steps__action\s*>\s*\.cinder-button:first-child:is\(([^)]*)\):not\(\[data-cinder-icon-only\]\)\s*\{([^}]*)\}/.exec(
+        narrow,
+      );
+    expect(rule, 'the quiet-leading pull-back rule').not.toBeNull();
+    for (const variant of ['ghost', 'ghost-accent', 'ghost-danger']) {
+      expect(rule?.[1]).toContain(`[data-cinder-variant='${variant}']`);
+    }
+    // An outlined or filled action is not pulled back: its face is what lines up.
+    expect(rule?.[1]).not.toContain("'secondary'");
+    expect(rule?.[1]).not.toContain("'primary'");
+    expect(rule?.[2]).toContain(
+      'margin-inline-start: calc(-1 * (var(--_cinder-steps-action-padding) + 1px));',
+    );
+  });
+
+  test('the pull-back is the leading Button’s own padding at each size', () => {
+    const paddingFor = (selector: string): string | undefined =>
+      new RegExp(
+        `${selector.replaceAll(/[.[\]'>=-]/g, (character) => `\\${character}`)}\\s*\\{\\s*--_cinder-steps-action-padding:\\s*([^;]+);`,
+      ).exec(stepsCss)?.[1];
+    expect(paddingFor('.cinder-steps__action > .cinder-button')).toBe(
+      'var(--cinder-button-padding-x-sm)',
+    );
+    for (const size of ['xs', 'md', 'lg']) {
+      expect(paddingFor(`.cinder-steps__action > .cinder-button[data-cinder-size='${size}']`)).toBe(
+        `var(--cinder-button-padding-x-${size})`,
+      );
+    }
+    // The Button's own face: a 1px border, transparent on the quiet variants.
+    const buttonCss = readFileSync(new URL('../button/button.css', import.meta.url), 'utf8');
+    expect(buttonCss).toContain('border: 1px solid var(--cinder-button-border);');
+    expect(buttonCss).toMatch(
+      /\.cinder-button\[data-cinder-size='sm'\] \{[^}]*padding: var\(--cinder-button-padding-y-sm\) var\(--cinder-button-padding-x-sm\);/,
     );
   });
 });

@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
@@ -222,10 +223,51 @@ describe('Steps checklist variant', () => {
     expect(container.querySelector('nav.cinder-steps')).not.toBeNull();
   });
 
-  test('the stylesheet makes it a bordered card with a 24px marker row and a stacking action', () => {
-    const card = declarationsFor(stepsCss, ".cinder-steps[data-cinder-variant='checklist']");
-    expect(card.get('border')).toBe('1px solid var(--cinder-border-faint)');
-    expect(card.get('border-radius')).toBe('var(--cinder-radius-lg)');
+  // COR-2489: the checklist was a bordered card with a filled header band, a box among Home's
+  // boxless sections. It is drawn as GroupedList is drawn.
+  test('is drawn as a grouped list: no outer border, no header band, no filled rows', () => {
+    const root = declarationsFor(stepsCss, ".cinder-steps[data-cinder-variant='checklist']");
+    expect(root.has('border')).toBe(false);
+    expect(root.has('background')).toBe(false);
+    expect(root.has('border-radius')).toBe(false);
+
+    const header = declarationsFor(stepsCss, '.cinder-steps__header');
+    expect(header.has('background')).toBe(false);
+    expect(header.has('border-block-end')).toBe(false);
+    expect(header.has('padding-inline')).toBe(false);
+
+    // The rows are one rounded surface in the raised tone, as GroupedList's group is.
+    const groupedListCss = readFileSync(
+      new URL('../grouped-list/grouped-list.css', import.meta.url),
+      'utf8',
+    );
+    const group = declarationsFor(groupedListCss, '.cinder-grouped-list__group');
+    const list = declarationsFor(
+      stepsCss,
+      ".cinder-steps[data-cinder-variant='checklist'] .cinder-steps__list",
+    );
+    expect(list.get('background')).toBe(group.get('background'));
+    expect(list.get('border-radius')).toBe(group.get('border-radius'));
+    expect(list.has('border')).toBe(false);
+
+    // A row draws no fill and no border of its own; its separator starts at the text.
+    const row = declarationsFor(
+      stepsCss,
+      ".cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item",
+    );
+    expect(row.has('background')).toBe(false);
+    expect(row.has('border-block-end')).toBe(false);
+    const separator = declarationsFor(
+      stepsCss,
+      ".cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item:not(:last-child)::after",
+    );
+    expect(separator.get('border-block-end')).toBe('1px solid var(--cinder-border-faint)');
+    expect(separator.get('inset-inline')).toBe(
+      'calc(var(--cinder-space-4) + var(--_marker-size) + var(--cinder-space-3)) 0',
+    );
+  });
+
+  test('the stylesheet gives it a 24px marker row and a stacking action', () => {
     const base = declarationsFor(stepsCss, '.cinder-steps');
     expect(base.get('--_marker-size')).toBe('1.5rem');
     const done = declarationsFor(
