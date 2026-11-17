@@ -13,7 +13,10 @@
  *   default export as `<PascalName>` and every other name the component's barrel exports. A name
  *   the hand-authored rest of `src/index.ts` exports is left to it; a name several barrels export
  *   goes to the component it names (`TabList` to `tab-list`, not `tabs`). {@link ROOT_EXPORT_ALIASES}
- *   and {@link ROOT_EXPORT_WITHHELD} hold the few exceptions.
+ *   and {@link ROOT_EXPORT_WITHHELD} hold the few exceptions. The barrels keep the evaluation
+ *   order `root-export-order.json` records, since each one imports its component's CSS (see
+ *   {@link barrelDirectories}); `scripts/css-import-order.ts` prints the order a root importer
+ *   evaluates the stylesheets in.
  * - `src/styles/components.css`: the region between the `<generated:component-imports>` markers
  *   imports every stylesheet directly inside a component directory that no other component
  *   stylesheet imports, in path order, with the cascade-order pins of {@link CSS_IMPORT_ORDER_PINS}.
@@ -144,9 +147,25 @@ function compareCodeUnits(left: string, right: string): number {
   return left > right ? 1 : 0;
 }
 
-/** The component directories whose barrels the root re-exports, in specifier order. */
-function barrelDirectories(componentsRoot: string): string[] {
-  return readdirSync(componentsRoot, { withFileTypes: true })
+/**
+ * The recorded evaluation order of the barrels (`scripts/root-export-order.json`, taken from the
+ * hand-written `src/index.ts` before COR-2393). A barrel imports its component's CSS, so the root's
+ * export order is the order of component rules inside `@layer cinder.components` for every
+ * application that imports the root; the generator must not change it.
+ */
+export const ROOT_EXPORT_ORDER_PATH = join(import.meta.dir, 'root-export-order.json');
+
+/**
+ * The component directories whose barrels the root re-exports, in evaluation order: the recorded
+ * order for every component it lists, and each component it does not list (one added since)
+ * straight after its alphabetical predecessor. The list is never written back, so two branches
+ * that each add a component change no shared file: the position is derived, not stored.
+ */
+export function barrelDirectories(
+  componentsRoot: string,
+  recorded: readonly string[] = JSON.parse(readFileSync(ROOT_EXPORT_ORDER_PATH, 'utf8')),
+): string[] {
+  const present = readdirSync(componentsRoot, { withFileTypes: true })
     .filter(
       (entry) =>
         entry.isDirectory() &&
@@ -154,8 +173,21 @@ function barrelDirectories(componentsRoot: string): string[] {
         entry.name !== 'icons' &&
         existsSync(join(componentsRoot, entry.name, 'index.ts')),
     )
-    .map((entry) => entry.name)
-    .toSorted((left, right) => compareCodeUnits(`${left}/index.ts`, `${right}/index.ts`));
+    .map((entry) => entry.name);
+  const alphabetical = present.toSorted((left, right) =>
+    compareCodeUnits(`${left}/index.ts`, `${right}/index.ts`),
+  );
+  const presentSet = new Set(present);
+  const order = recorded.filter((name) => presentSet.has(name));
+  const placed = new Set(order);
+  for (const name of alphabetical) {
+    if (placed.has(name)) continue;
+    const predecessor = alphabetical[alphabetical.indexOf(name) - 1];
+    const at = predecessor === undefined ? 0 : order.indexOf(predecessor) + 1;
+    order.splice(at, 0, name);
+    placed.add(name);
+  }
+  return order;
 }
 
 function splitRegion(text: string, start: string, end: string, file: string) {
