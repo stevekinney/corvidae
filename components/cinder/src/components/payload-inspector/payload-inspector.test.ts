@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import Ajv2020 from 'ajv/dist/2020';
+import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -12,7 +13,7 @@ setupHappyDom();
 
 const { render, cleanup, fireEvent } = await import('@testing-library/svelte');
 const { default: PayloadInspector } = await import('./payload-inspector.svelte');
-const { default: payloadInspectorSchema } = await import('./payload-inspector.schema.ts');
+const payloadInspectorSchema = readComponentSchema('payload-inspector');
 
 beforeEach(() => document.body.replaceChildren());
 afterEach(() => cleanup());

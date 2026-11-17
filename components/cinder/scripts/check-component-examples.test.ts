@@ -11,7 +11,7 @@ import { readJsonFile } from './lib/read-json-file.ts';
 
 const PACKAGE_ROOT = `${import.meta.dir}/..`;
 const COMPONENT_SCHEMA_PATH = `${PACKAGE_ROOT}/src/schemas/examples.schema.json`;
-const MANIFEST_PATH = `${PACKAGE_ROOT}/components.json`;
+const MANIFEST_PATH = `${PACKAGE_ROOT}/.metadata/components.json`;
 
 const validArtifact = {
   $schema: '../../schemas/examples.schema.json',

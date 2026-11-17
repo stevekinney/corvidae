@@ -4,6 +4,7 @@ import type { Snippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 import type { CardEdge, CardProps } from './card.types.ts';
 
 setupHappyDom();
@@ -11,7 +12,7 @@ setupHappyDom();
 const { render } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
 const { default: Card } = await import('./card.svelte');
-const { default: cardSchema } = await import('./card.schema.ts');
+const cardSchema = readComponentSchema('card');
 
 const body = createRawSnippet(() => ({
   render: () => '<span>Body</span>',

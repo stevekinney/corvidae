@@ -179,7 +179,7 @@ function publicExports(): Set<string> {
 }
 
 export async function proseSourcePaths(): Promise<string[]> {
-  const files = ['components.json'];
+  const files = ['.metadata/components.json'];
   for (const pattern of ['src/components/**/*.meta.json', 'src/components/**/*.md']) {
     const sources = new Glob(pattern);
     for await (const filePath of sources.scan({ cwd: packageRoot })) files.push(filePath);
@@ -222,7 +222,7 @@ function authoredMetadataProse(value: unknown, key = ''): string {
 }
 
 export function componentDocumentationProse(filePath: string, source: string): string {
-  if (filePath === 'components.json') return metadataProse(source);
+  if (filePath.endsWith('components.json')) return metadataProse(source);
   if (filePath.endsWith('.meta.json')) return authoredMetadataProse(JSON.parse(source));
 
   const introduction = source

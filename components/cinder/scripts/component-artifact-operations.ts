@@ -19,8 +19,9 @@ import {
   discoverComponentDirectories,
   type DiscoveredComponent,
 } from './discover-component-directories.ts';
-import { generateSchemaForComponent } from './generate-component-schema.ts';
+import { generateSchemaForComponent, type GenerateResult } from './generate-component-schema.ts';
 import { generateVariablesForComponent } from './generate-component-variables.ts';
+import { readComponentMetadata } from './lib/metadata-files.ts';
 import { renderComponentReadme } from './render-component-readme.ts';
 
 const COMPOSE_ONLY_ACCESSIBILITY_DOCUMENTATION_EXEMPTIONS = new Set([
@@ -81,12 +82,14 @@ export async function formatGenerated(content: string, filepath: string): Promis
   }
 }
 
+/** What the generators derive for one component: its schema, its variables, and its README. */
 export interface ComponentArtifacts {
   component: DiscoveredComponent;
-  schemaJson: string;
-  schemaModule: string;
-  variablesJson: string;
-  variablesModule: string;
+  /** The JSON Schema of its props, as the `metadata` task writes it. */
+  schema: GenerateResult['schema'];
+  /** The custom properties it declares, as the `metadata` task writes them. */
+  variables: readonly string[];
+  /** The committed README with its generated regions rewritten, formatted; null without one. */
   readme: string | null;
 }
 
@@ -102,47 +105,34 @@ export async function generateArtifactsForComponent(
     componentName: name,
   });
 
-  const readmePath = join(directory, 'README.md');
-  let readme: string | null = null;
-  if (existsSync(readmePath)) {
-    const existing = await Bun.file(readmePath).text();
-    readme = renderComponentReadme({
-      existingReadme: existing,
-      schema: schema.schema,
-      variables: variables.variables,
-    });
-  }
-
-  const schemaJsonPath = join(directory, `${name}.schema.json`);
-  const schemaModulePath = join(directory, `${name}.schema.ts`);
-  const variablesJsonPath = join(directory, `${name}.variables.json`);
-  const variablesModulePath = join(directory, `${name}.variables.ts`);
-
   return {
     component,
-    schemaJson: await formatGenerated(schema.schemaJson, schemaJsonPath),
-    schemaModule: await formatGenerated(schema.schemaModule, schemaModulePath),
-    variablesJson: await formatGenerated(variables.variablesJson, variablesJsonPath),
-    variablesModule: await formatGenerated(variables.variablesModule, variablesModulePath),
-    readme: readme === null ? null : await formatGenerated(readme, readmePath),
+    schema: schema.schema,
+    variables: variables.variables,
+    readme: await renderReadme(component, schema.schema, variables.variables),
   };
 }
 
-export async function writeArtifacts(artifacts: ComponentArtifacts): Promise<void> {
-  const { component } = artifacts;
-  await Bun.write(join(component.directory, `${component.name}.schema.json`), artifacts.schemaJson);
-  await Bun.write(join(component.directory, `${component.name}.schema.ts`), artifacts.schemaModule);
-  await Bun.write(
-    join(component.directory, `${component.name}.variables.json`),
-    artifacts.variablesJson,
-  );
-  await Bun.write(
-    join(component.directory, `${component.name}.variables.ts`),
-    artifacts.variablesModule,
-  );
-  if (artifacts.readme !== null) {
-    await Bun.write(join(component.directory, 'README.md'), artifacts.readme);
-  }
+/** The component's README with its generated regions rendered from `schema` and `variables`. */
+export async function renderReadme(
+  component: DiscoveredComponent,
+  schema: GenerateResult['schema'],
+  variables: readonly string[],
+): Promise<string | null> {
+  const readmePath = join(component.directory, 'README.md');
+  if (!existsSync(readmePath)) return null;
+  const existing = await Bun.file(readmePath).text();
+  const readme = renderComponentReadme({ existingReadme: existing, schema, variables });
+  return formatGenerated(readme, readmePath);
+}
+
+/** Write a component's README regions; the schema and variables go to `.metadata/` instead. */
+export async function writeReadme(artifacts: ComponentArtifacts): Promise<boolean> {
+  if (artifacts.readme === null) return false;
+  const path = join(artifacts.component.directory, 'README.md');
+  if ((await Bun.file(path).text()) === artifacts.readme) return false;
+  await Bun.write(path, artifacts.readme);
+  return true;
 }
 
 export interface DriftIssue {
@@ -151,40 +141,17 @@ export interface DriftIssue {
   reason: 'missing' | 'stale';
 }
 
+/**
+ * The committed files a component package must hold, checked against what the `metadata` task
+ * derived: each README's generated regions (rendered from `.metadata/<id>/schema.json` and
+ * `variables.json`), and the README and accessibility review every component ships.
+ */
 export async function checkComponentArtifacts(
   packageRoot: string = CINDER_PACKAGE_ROOT,
 ): Promise<DriftIssue[]> {
   const components = await discoverComponentDirectories(packageRoot);
-
-  // Sequential on purpose: `generateSchemaForComponent` (called via
-  // `generateArtifactsForComponent`) type-checks each component's props
-  // against a shared, module-cached `ts-morph` `Project` (see
-  // `generate-component-schema.ts`'s `getProject()`) so repeated calls in
-  // the same process avoid reparsing common dependencies. Running these
-  // calls concurrently interleaves their synchronous `Project` mutations —
-  // TypeScript's checker enumerates an intersection type's members in an
-  // order that depends on the Program's incidental accumulated state, so
-  // concurrent access made property order for at least one component
-  // (`input`) non-deterministic across otherwise-identical runs, producing
-  // a `stale` verdict for a tree that had zero real drift. `generate` mode
-  // has always been sequential, which is exactly why regenerating locally
-  // could never reproduce a `check` failure. A full sequential run over
-  // every component (measured against `bun run components:check` on the
-  // full ~230-component tree) costs no measurable wall-clock time versus a
-  // 12-way concurrent one — the work is CPU-bound type-checking, not I/O
-  // that benefits from overlap — so there is no performance trade-off here.
-  const issueGroups: DriftIssue[][] = [];
+  const issues: DriftIssue[] = [];
   for (const component of components) {
-    const issues: DriftIssue[] = [];
-    const artifacts = await generateArtifactsForComponent(component);
-    const files: Array<{ filename: string; expected: string | null }> = [
-      { filename: `${component.name}.schema.json`, expected: artifacts.schemaJson },
-      { filename: `${component.name}.schema.ts`, expected: artifacts.schemaModule },
-      { filename: `${component.name}.variables.json`, expected: artifacts.variablesJson },
-      { filename: `${component.name}.variables.ts`, expected: artifacts.variablesModule },
-      { filename: 'README.md', expected: artifacts.readme },
-    ];
-
     if (!existsSync(join(component.directory, 'README.md'))) {
       issues.push({ component: component.name, file: 'README.md', reason: 'missing' });
     }
@@ -198,22 +165,18 @@ export async function checkComponentArtifacts(
         reason: 'missing',
       });
     }
-
-    for (const { filename, expected } of files) {
-      if (expected === null) continue;
-      const path = join(component.directory, filename);
-      if (!existsSync(path)) {
-        issues.push({ component: component.name, file: filename, reason: 'missing' });
-        continue;
-      }
-      const actual = await Bun.file(path).text();
-      if (actual !== expected) {
-        issues.push({ component: component.name, file: filename, reason: 'stale' });
-      }
+    const schema = readComponentMetadata<GenerateResult['schema']>(
+      packageRoot,
+      component.name,
+      'schema',
+    );
+    const variables = readComponentMetadata<string[]>(packageRoot, component.name, 'variables');
+    const expected = await renderReadme(component, schema, variables);
+    if (expected === null) continue;
+    const actual = await Bun.file(join(component.directory, 'README.md')).text();
+    if (actual !== expected) {
+      issues.push({ component: component.name, file: 'README.md', reason: 'stale' });
     }
-
-    issueGroups.push(issues);
   }
-
-  return issueGroups.flat();
+  return issues;
 }

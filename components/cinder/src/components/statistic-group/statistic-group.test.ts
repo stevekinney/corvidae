@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { readComponentVariables } from '../../../scripts/lib/metadata-files.ts';
 
 setupHappyDom();
 
@@ -10,7 +11,7 @@ const { cleanup, render } = await import('@testing-library/svelte');
 
 afterEach(() => cleanup());
 const { default: StatisticGroup } = await import('./statistic-group.svelte');
-const { default: statGroupVariables } = await import('./statistic-group.variables.ts');
+const statGroupVariables = readComponentVariables('statistic-group');
 const { createRawSnippet } = await import('svelte');
 
 function textSnippet(text: string) {

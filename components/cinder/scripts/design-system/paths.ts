@@ -29,6 +29,9 @@ export const sourcePaths = {
     'components/cinder/src/tokens/resolved/dark.json',
   ],
   styles: ['components/cinder/src/styles/all.css'],
-  components: ['components/cinder/components.json', 'components/editor/components.json'],
+  components: [
+    'components/cinder/.metadata/components.json',
+    'components/editor/.metadata/components.json',
+  ],
   examples: ['applications/playground/src/examples'],
 };

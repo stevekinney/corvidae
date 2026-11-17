@@ -21,19 +21,6 @@ function generateSchema(fileBaseName: string, componentName: string) {
   return generate(fileBaseName, componentName).schema;
 }
 
-function parseSchemaModuleJson(schemaModule: string) {
-  const startMarker = 'JSON.parse(';
-  const endMarker = ') as ComponentSchema;';
-  const start = schemaModule.indexOf(startMarker);
-  const end = schemaModule.indexOf(endMarker);
-
-  expect(start).not.toBe(-1);
-  expect(end).not.toBe(-1);
-
-  const jsonText = JSON.parse(schemaModule.slice(start + startMarker.length, end));
-  return JSON.parse(jsonText);
-}
-
 beforeEach(() => {
   resetSchemaProjectCache();
 });
@@ -264,13 +251,11 @@ describe('generate-component-schema — <Name>Props fallback HTML-attribute filt
     expect(properties['columns']?.anyOf).toContainEqual({ type: 'integer', minimum: 1 });
   });
 
-  test('allOf schema modules preserve special characters through JSON string rendering', () => {
-    const { schema, schemaModule } = generate('modal', 'modal');
-    const parsedSchemaModule = parseSchemaModuleJson(schemaModule);
+  test('allOf schemas preserve special characters through their JSON text', () => {
+    const { schema, schemaJson } = generate('modal', 'modal');
+    const parsed = JSON.parse(schemaJson) as typeof schema;
 
-    expect(parsedSchemaModule.properties.title.description).toBe(
-      schema.properties['title']?.description,
-    );
+    expect(parsed.properties['title']?.description).toBe(schema.properties['title']?.description);
   });
 
   test('untagged object props stay unsupported instead of widening to opaque object schemas', () => {

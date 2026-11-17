@@ -26,7 +26,7 @@
  *
  * The placeholder values are intentionally generic — the contributor edits them
  * in place. They are chosen so that, immediately after creation, running
- * `bun run components:generate` produces drift-free artifacts and the metadata
+ * the `metadata` task produces drift-free artifacts and the metadata
  * validates cleanly through `scripts/lib/component-meta.ts`.
  *
  * This script does NOT regenerate schemas, the manifest, the package root
@@ -441,9 +441,9 @@ async function main(): Promise<void> {
     `  3. Complete ${context.name}.a11y.md with the required human review outcomes.\n`,
   );
   process.stdout.write(
-    '  4. Run: bun run --filter=@lostgradient/cinder components:generate (it also writes the src/index.ts exports and the src/styles/components.css import)\n',
+    '  4. Run: bun scripts/generate-component-artifacts.ts --fix (it writes the README regions, the src/index.ts exports and the src/styles/components.css import)\n',
   );
-  process.stdout.write('  5. Verify: bun run --filter=@lostgradient/cinder components:check\n');
+  process.stdout.write('  5. Verify: bunx turbo run lint --filter=@lostgradient/cinder\n');
 }
 
 if (import.meta.main) {

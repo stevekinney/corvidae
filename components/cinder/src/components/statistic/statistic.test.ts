@@ -3,12 +3,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { readComponentVariables } from '../../../scripts/lib/metadata-files.ts';
 
 setupHappyDom();
 
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Statistic } = await import('./statistic.svelte');
-const { default: statVariables } = await import('./statistic.variables.ts');
+const statVariables = readComponentVariables('statistic');
 const { createRawSnippet } = await import('svelte');
 
 afterEach(() => cleanup());

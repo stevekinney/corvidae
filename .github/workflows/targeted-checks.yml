@@ -80,6 +80,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
+      # committed: the steps below run tests and servers outside Turborepo, so make it first.
+      - run: bunx turbo run metadata
       - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
       # Named components with no spec run the screenshot suite for those components alone.
       - run: |
@@ -120,6 +123,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
+      # committed: the steps below run tests and servers outside Turborepo, so make it first.
+      - run: bunx turbo run metadata
       - run: |
           PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
           PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
@@ -155,6 +161,9 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
+      # committed: the steps below run tests and servers outside Turborepo, so make it first.
+      - run: bunx turbo run metadata
       - run: |
           cd "$UNIT_WORKSPACE"
           config=""

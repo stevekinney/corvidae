@@ -1,26 +1,17 @@
 /**
- * Builds and writes `components/cinder/components.json`, the machine-readable
- * index of every public cinder component.
- *
- * Usage:
- *   bun run scripts/generate-manifest.ts           # write components.json
- *   bun run scripts/generate-manifest.ts --check   # diff against committed file; non-zero on drift
+ * Builds a component package's `components.json`, the machine-readable index of its public
+ * components, which the `metadata` task writes to `.metadata/components.json` and the package
+ * exports as `./manifest`.
  *
  * The generator fails loudly when any component's `<name>.meta.json` is missing or invalid — a
- * partial manifest is never written to disk.
- *
- * `hasExamples` and `hasConstraints` are derived from the committed JSON
- * artifacts on disk. Use the orchestrator (`bun run components:generate`)
- * after changing component metadata or constraints so the manifest observes
- * the current artifact set.
+ * partial manifest is never written to disk. `hasExamples` and `hasConstraints` follow the
+ * authored `<name>.examples.json` and `<name>.constraints.json` on disk.
  */
 
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 import Ajv from 'ajv/dist/2020.js';
-import * as prettier from 'prettier';
-import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
 
 import type { CategoryId, StatusLevel } from '../src/manifest.meta.ts';
 import { categories, overlapFamilies, statusLevels } from '../src/manifest.meta.ts';
@@ -32,6 +23,7 @@ import {
   packageRelative,
   type ComponentPackage,
 } from './lib/component-package.ts';
+import { componentMetadataPath, manifestMetadataPath } from './lib/metadata-files.ts';
 import { parseJsonFile, readJsonFile } from './lib/read-json-file.ts';
 import { readTokenNamespaces } from './token-namespaces.ts';
 
@@ -117,20 +109,25 @@ const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
 /** Every package's manifest validates against Cinder's manifest schema. */
 const SCHEMA_PATH = join(PACKAGE_ROOT, 'src', 'schemas', 'manifest.schema.json');
 
-/** Where a package's `components.json` is written. */
+/** Where the `metadata` task writes a package's `components.json`. */
 export function manifestPathOf(pkg: ComponentPackage): string {
-  return join(pkg.root, 'components.json');
+  return manifestMetadataPath(pkg.root);
 }
 
-/** The `$schema` a package's manifest names: its own copy of the manifest schema, or Cinder's. */
+/**
+ * The `$schema` a package's manifest names, relative to the manifest in `.metadata/`: the
+ * package's own copy of the manifest schema, or Cinder's.
+ */
 function manifestSchemaReference(pkg: ComponentPackage): string {
+  const from = dirname(manifestPathOf(pkg));
   for (const candidate of [
     join(pkg.root, 'src', 'schemas', 'manifest.schema.json'),
     join(pkg.root, 'src', 'lib', 'schemas', 'manifest.schema.json'),
+    SCHEMA_PATH,
   ]) {
-    if (existsSync(candidate)) return `./${packageRelative(pkg, candidate)}`;
+    if (existsSync(candidate)) return relative(from, candidate).split('\\').join('/');
   }
-  return packageRelative(pkg, SCHEMA_PATH);
+  return relative(from, SCHEMA_PATH);
 }
 
 // ---------------------------------------------------------------------------
@@ -166,12 +163,19 @@ function hasConstraintsArtifact(pkg: ComponentPackage, id: string): boolean {
   return existsSync(join(pkg.componentsRoot, id, `${id}.constraints.json`));
 }
 
-/** Paths are local tooling artifacts, independent of the public package entry. */
+/**
+ * Package-relative paths of a component's machine-readable files: the derived schema, variables
+ * and examples copy in `.metadata/<id>/`, the authored constraints and enhancement beside the
+ * component.
+ */
 function artifactPath(
   id: string,
   suffix: string,
   pkg: ComponentPackage = componentPackage(),
 ): string {
+  if (suffix === 'schema' || suffix === 'variables' || suffix === 'examples') {
+    return packageRelative(pkg, componentMetadataPath(pkg.root, id, suffix));
+  }
   const filename = suffix === 'enhancement' ? `${id}-enhancement.ts` : `${id}.${suffix}.json`;
   return packageRelative(pkg, join(pkg.componentsRoot, id, filename));
 }
@@ -367,27 +371,16 @@ export async function buildManifest(packageRoot: string = PACKAGE_ROOT): Promise
 }
 
 /**
- * Format JSON output through prettier so the on-disk form matches what
- * lint-staged's prettier pass would produce. Without this, prettier reformats
- * the file on commit and `manifest:check` then reports drift on the next run.
+ * The `components.json` of a package (cinder by default), as the `metadata` task writes it into
+ * `.metadata/`: plain `JSON.stringify` output, with no Prettier pass, since nothing commits it.
  */
-async function formatJson(content: string, filepath: string): Promise<string> {
-  assertPrettierResolvesToRoot();
-  const options = await prettier.resolveConfig(filepath);
-  return prettier.format(content, { ...options, filepath, parser: 'json' });
-}
-
-/** The formatted `components.json` of a package (cinder by default). */
 export async function renderManifest(packageRoot: string = PACKAGE_ROOT): Promise<string> {
   const manifest = await buildManifest(packageRoot);
-  return formatJson(
-    JSON.stringify(manifest, null, 2) + '\n',
-    manifestPathOf(componentPackage(packageRoot)),
-  );
+  return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
 /**
- * Build the manifest and write it to the package's `components.json`.
+ * Build the manifest and write it to the package's `.metadata/components.json`.
  * Throws if extraction errors exist (never writes a partial manifest).
  */
 export async function writeManifest(packageRoot: string = PACKAGE_ROOT): Promise<void> {
@@ -395,81 +388,13 @@ export async function writeManifest(packageRoot: string = PACKAGE_ROOT): Promise
   await Bun.write(manifestPathOf(componentPackage(packageRoot)), content);
 }
 
-// ---------------------------------------------------------------------------
-// CLI entry point
-// ---------------------------------------------------------------------------
-
-function reportManifestDiff(committed: string, generated: string): void {
-  const committedLines = committed.split('\n');
-  const generatedLines = generated.split('\n');
-  const maxLines = Math.max(committedLines.length, generatedLines.length);
-
-  let diffLines = 0;
-  for (let i = 0; i < maxLines && diffLines < 40; i++) {
-    const committed_line = committedLines[i] ?? '';
-    const generated_line = generatedLines[i] ?? '';
-    if (committed_line !== generated_line) {
-      process.stderr.write(`- ${committed_line}\n`);
-      process.stderr.write(`+ ${generated_line}\n`);
-      diffLines++;
-    }
-  }
-
-  if (diffLines >= 40) {
-    process.stderr.write('... (diff truncated — run manifest:generate to see full changes)\n');
-  }
-}
-
-async function main(): Promise<void> {
-  const checkMode = process.argv.includes('--check');
-
-  const MANIFEST_PATH = manifestPathOf(componentPackage());
-  if (checkMode) {
-    // Regenerate into memory, compare against committed file.
-    let generated: string;
-    try {
-      generated = await renderManifest();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`manifest:check — build failed:\n${message}\n`);
-      process.exit(1);
-    }
-
-    if (!existsSync(MANIFEST_PATH)) {
-      process.stderr.write(
-        'manifest:check — components.json does not exist. Run `bun run manifest:generate` to create it.\n',
-      );
-      process.exit(1);
-    }
-
-    const committed = await Bun.file(MANIFEST_PATH).text();
-
-    if (generated === committed) {
-      process.stdout.write('manifest:check — OK\n');
-      return;
-    }
-
-    // Produce a readable unified diff.
-    process.stderr.write(
-      'manifest:check — drift detected. Run `bun run manifest:generate` to fix:\n\n',
-    );
-
-    reportManifestDiff(committed, generated);
-
-    process.exit(1);
-  }
-
-  // Generate mode: write the manifest to disk.
+if (import.meta.main) {
   try {
     await writeManifest();
-    process.stdout.write(`manifest:generate — wrote components.json\n`);
+    process.stdout.write('manifest:generate — wrote .metadata/components.json\n');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`manifest:generate — failed:\n${message}\n`);
     process.exit(1);
   }
-}
-
-if (import.meta.main) {
-  await main();
 }

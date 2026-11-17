@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { installDrawerDialogStubs, installDrawerStyleProbe } from './drawer-test-helpers.ts';
 
@@ -18,9 +19,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 async function schemaPlacements(): Promise<string[]> {
-  const schema: unknown = JSON.parse(
-    await Bun.file(new URL('./drawer.schema.json', import.meta.url)).text(),
-  );
+  const schema: unknown = readComponentSchema('drawer');
   const placement =
     isRecord(schema) && isRecord(schema['properties']) ? schema['properties']['placement'] : null;
   const enumValues = isRecord(placement) ? placement['enum'] : null;
@@ -28,7 +27,7 @@ async function schemaPlacements(): Promise<string[]> {
     !Array.isArray(enumValues) ||
     !enumValues.every((value): value is string => typeof value === 'string')
   )
-    throw new Error('drawer.schema.json placement enum is malformed');
+    throw new Error("drawer's generated schema has a malformed placement enum");
   return enumValues;
 }
 

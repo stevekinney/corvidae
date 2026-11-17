@@ -90,9 +90,7 @@ export interface ComponentSchemaOutput {
 export interface GenerateResult {
   /** The schema object suitable for JSON serialization. */
   schema: ComponentSchemaOutput;
-  /** Rendered TypeScript module text (the `.schema.ts` file content). */
-  schemaModule: string;
-  /** Rendered JSON text (the `.schema.json` file content). */
+  /** Rendered JSON text (`.metadata/<id>/schema.json`). */
   schemaJson: string;
 }
 
@@ -291,9 +289,8 @@ export function generateSchemaForComponent(options: GenerateOptions): GenerateRe
   applyComponentSchemaRules(componentName, schema);
 
   const schemaJson = JSON.stringify(schema, null, 2) + '\n';
-  const schemaModule = renderSchemaModule(schema);
 
-  return { schema, schemaJson, schemaModule };
+  return { schema, schemaJson };
 }
 
 /**
@@ -1424,57 +1421,7 @@ function toPascalCase(kebab: string): string {
     .join('');
 }
 
-/** Documents the generated default export, which every package export of a schema resolves to. */
-const SCHEMA_DOCUMENTATION = '/** JSON Schema describing the props of this component. */';
-
-function renderSchemaModule(schema: ComponentSchemaOutput): string {
-  const relativePath = '../../schema-types';
-  const literal = JSON.stringify(schema, null, 2);
-  if (schema.allOf) {
-    // `allOf` schemas carry a JSON Schema `then` keyword. Emitting them as an
-    // object literal would (a) make the `then` key trip `unicorn/no-thenable`
-    // and (b) force `tsc` to deep-check a large literal. Parsing a JSON string
-    // sidesteps both; the value is a build-time-generated schema, so the single
-    // assertion on `JSON.parse`'s `any` result is safe and documented.
-    return [
-      `import type { ComponentSchema } from '${relativePath}';`,
-      ``,
-      `// eslint-disable-next-line no-unsafe-type-assertion -- generated schema parsed from a build-validated JSON string; see generate-component-schema.ts.`,
-      `const schema = JSON.parse(${JSON.stringify(literal)}) as ComponentSchema;`,
-      ``,
-      SCHEMA_DOCUMENTATION,
-      `export default schema;`,
-      ``,
-    ].join('\n');
-  }
-
-  return [
-    `import type { ComponentSchema } from '${relativePath}';`,
-    ``,
-    `const schema = ${literal} satisfies ComponentSchema;`,
-    ``,
-    SCHEMA_DOCUMENTATION,
-    `export default schema as ComponentSchema;`,
-    ``,
-  ].join('\n');
-}
-
 export function resetSchemaProjectCache(): void {
   activeProject = null;
   cachedHtmlAttributeDeclarationSites = null;
-}
-
-if (import.meta.main) {
-  // CLI entry: `bun scripts/generate-component-schema.ts <component-dir>`
-  const dir = process.argv[2];
-  if (!dir) {
-    console.error('Usage: generate-component-schema.ts <component-dir>');
-    process.exit(1);
-  }
-  const componentName = basename(dir);
-  const typesFilePath = join(dir, `${componentName}.types.ts`);
-  const result = generateSchemaForComponent({ typesFilePath, componentName });
-  await Bun.write(join(dir, `${componentName}.schema.json`), result.schemaJson);
-  await Bun.write(join(dir, `${componentName}.schema.ts`), result.schemaModule);
-  console.log(`wrote ${componentName}.schema.{json,ts}`);
 }

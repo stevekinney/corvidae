@@ -152,14 +152,17 @@ describe('findDanglingAlternatives — avoidWhen referential integrity', () => {
   });
 });
 
-it('generates root imports and distinct local artifact paths for every component', async () => {
+it('generates root imports and package-relative artifact paths for every component', async () => {
   const manifest = await buildManifest();
   expect(manifest.package).not.toHaveProperty('version');
   for (const component of manifest.components) {
     expect(component.import).toBe('@lostgradient/cinder');
     for (const path of Object.values(component.artifacts)) {
-      expect(path.startsWith('src/components/')).toBe(true);
-      expect(await Bun.file(join(import.meta.dir, '..', path)).exists()).toBe(true);
+      // Derived files live in the metadata task's `.metadata/`; authored ones beside the component.
+      expect(path.startsWith('.metadata/') || path.startsWith('src/components/')).toBe(true);
+      if (path.startsWith('src/components/')) {
+        expect(await Bun.file(join(import.meta.dir, '..', path)).exists()).toBe(true);
+      }
     }
   }
 });

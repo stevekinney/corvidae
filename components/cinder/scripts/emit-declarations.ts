@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
  * It type-checks production source with `tsconfig.browser.json`, which excludes tests.
  *
  * A declaration that imports a JSON module keeps that import, and `emitDts` writes no JSON, so the
- * JSON files under `src` and the package's `components.json` are copied next to the declarations;
+ * JSON files under `src` are copied next to the declarations;
  * otherwise the import resolves to nothing and a consumer reads the module as `any`.
  */
 export async function emitDeclarations(packageRoot: string): Promise<void> {
@@ -25,10 +25,7 @@ export async function emitDeclarations(packageRoot: string): Promise<void> {
     svelteShimsPath: require.resolve('svelte2tsx/svelte-shims-v4.d.ts'),
     tsconfig: resolve(packageRoot, 'tsconfig.browser.json'),
   });
-  const jsonFiles = [
-    ...new Bun.Glob('src/**/*.json').scanSync({ cwd: packageRoot }),
-    ...new Bun.Glob('components.json').scanSync({ cwd: packageRoot }),
-  ];
+  const jsonFiles = [...new Bun.Glob('src/**/*.json').scanSync({ cwd: packageRoot })];
   for (const file of jsonFiles) {
     const target = join(typesDirectory, file);
     await mkdir(dirname(target), { recursive: true });

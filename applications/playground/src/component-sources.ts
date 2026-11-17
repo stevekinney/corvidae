@@ -102,7 +102,7 @@ export const CINDER_COMPONENT_SOURCE: ComponentSource = {
   packageName: '@lostgradient/cinder',
   packageRoot: cinderPackageRoot,
   componentsRoot: join(cinderPackageRoot, 'src', 'components'),
-  manifestPath: join(cinderPackageRoot, 'components.json'),
+  manifestPath: join(cinderPackageRoot, '.metadata', 'components.json'),
   repositoryComponentsRoot: 'packages/components/src/components',
   // The Cinder set is discovered from its large, evolving source tree.
   componentNames: null,
@@ -124,6 +124,13 @@ type ComponentManifestFile = { components?: unknown };
 
 /** Read a package manifest's `id` to `exportName` table, skipping malformed entries. */
 function readManifestExportNamesById(manifestPath: string): ReadonlyMap<string, string> {
+  if (!existsSync(manifestPath)) {
+    // The package's `metadata` task writes its manifest; a task that runs the playground through
+    // Turborepo depends on it, and a direct `bun` run has to make it first.
+    throw new Error(
+      `${manifestPath} does not exist: run \`bunx turbo run metadata\` from the repository root first.`,
+    );
+  }
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ComponentManifestFile;
   const exportNames = new Map<string, string>();
   if (!Array.isArray(manifest.components)) return exportNames;
@@ -465,7 +472,7 @@ export const CHAT_COMPONENT_SOURCE: ComponentSource = {
   packageName: '@lostgradient/chat',
   packageRoot: chatPackageRoot,
   componentsRoot: join(chatPackageRoot, 'src', 'lib', 'components'),
-  manifestPath: join(chatPackageRoot, 'components.json'),
+  manifestPath: join(chatPackageRoot, '.metadata', 'components.json'),
   repositoryComponentsRoot: 'packages/chat/src/lib/components',
   componentNames: CHAT_COMPONENT_NAMES,
   importPath(componentName) {
@@ -502,7 +509,7 @@ export const EDITOR_COMPONENT_SOURCE: ComponentSource = {
   packageName: '@lostgradient/editor',
   packageRoot: editorPackageRoot,
   componentsRoot: editorComponentsRoot,
-  manifestPath: join(editorPackageRoot, 'components.json'),
+  manifestPath: join(editorPackageRoot, '.metadata', 'components.json'),
   repositoryComponentsRoot: 'packages/editor/src/lib/components',
   componentNames: EDITOR_COMPONENT_NAMES,
   importPath(componentName) {

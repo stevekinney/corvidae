@@ -105,7 +105,7 @@ export type ComponentId = string;
 
 /**
  * Component ids that MUST ship a constraints sidecar (`{name}.constraints.json`).
- * `components:check` fails if any id listed here has `hasConstraints === false`
+ * `manifest.test.ts` fails if any id listed here has `hasConstraints === false`
  * in the generated manifest (acceptance criterion 7).
  *
  * To expand this list: add the kebab-case component id here, author

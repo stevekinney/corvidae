@@ -328,7 +328,9 @@ export function hasRequiredAccessibilityRecord(content: string): boolean {
 
 async function main(): Promise<void> {
   const violations: Violation[] = [];
-  const inventory = await Bun.file(resolve(scriptDirectory, '..', 'components.json')).json();
+  const inventory = await Bun.file(
+    resolve(scriptDirectory, '..', '.metadata', 'components.json'),
+  ).json();
   const inventoryComponents = Array.isArray(inventory?.components)
     ? inventory.components.filter(
         (component: unknown): component is { id: string; a11y?: unknown } =>

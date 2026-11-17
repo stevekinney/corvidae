@@ -11,6 +11,7 @@ import {
   packageRelative,
   type ComponentPackage,
 } from './lib/component-package.ts';
+import { componentMetadataPath, manifestMetadataPath } from './lib/metadata-files.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
 /** Every package's examples validate against Cinder's examples schema. */
@@ -23,14 +24,14 @@ const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'examples.sche
 let active: ComponentPackage = componentPackage();
 let PACKAGE_ROOT = active.root;
 let COMPONENTS_ROOT = active.componentsRoot;
-let MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+let MANIFEST_PATH = manifestMetadataPath(PACKAGE_ROOT);
 let PUBLIC_ROOT_IMPORT = active.name;
 
 function activate(pkg: ComponentPackage): void {
   active = pkg;
   PACKAGE_ROOT = pkg.root;
   COMPONENTS_ROOT = pkg.componentsRoot;
-  MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+  MANIFEST_PATH = manifestMetadataPath(PACKAGE_ROOT);
   PUBLIC_ROOT_IMPORT = pkg.name;
 }
 
@@ -67,11 +68,9 @@ async function componentLocations(): Promise<ComponentLocation[]> {
   return locations.toSorted((a, b) => a.directory.localeCompare(b.directory));
 }
 
+/** Where the manifest says the examples are: the `metadata` task's copy in `.metadata/`. */
 function artifactPath(location: ComponentLocation): string {
-  return packageRelative(
-    active,
-    join(COMPONENTS_ROOT, location.id, `${location.id}.examples.json`),
-  );
+  return packageRelative(active, componentMetadataPath(PACKAGE_ROOT, location.id, 'examples'));
 }
 
 function readManifest(): Promise<Manifest> {
@@ -193,7 +192,7 @@ async function validateLocation(
   const paths: string[] = [];
   for (const entry of await readdir(location.directory, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith('.examples.json')) continue;
-    paths.push(relative(PACKAGE_ROOT, join(location.directory, entry.name)));
+    if (entry.name === `${location.id}.examples.json`) paths.push(artifactPath(location));
     issues.push(...(await validateArtifact(location, entry.name, validator, manifestById)));
   }
   return { issues, paths };

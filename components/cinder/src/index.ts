@@ -1451,12 +1451,6 @@ export type {
   PlacedPoint,
 } from './components/chart.types.ts';
 export * from './exports/icons.ts';
-export * from './exports/metadata-constraints.ts';
-export * from './exports/metadata-examples-a-m.ts';
-export * from './exports/metadata-examples-n-z.ts';
-export * from './exports/metadata-manifest.ts';
-export * from './exports/metadata-schemas.ts';
-export * from './exports/metadata-variables.ts';
 export * from './exports/utilities.ts';
 export * from './highlighters/shiki/index.ts';
 export { copyToClipboard } from './utilities/clipboard.ts';

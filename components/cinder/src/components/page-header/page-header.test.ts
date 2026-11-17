@@ -4,6 +4,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import Ajv2020 from 'ajv/dist/2020';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 setupHappyDom();
@@ -21,7 +22,7 @@ const { default: Harness } = await import('./page-header-harness.test.svelte');
 const { fireEvent } = await import('@testing-library/svelte');
 const { readFileSync } = await import('node:fs');
 const stylesheet = readFileSync(new URL('./page-header.css', import.meta.url), 'utf8');
-const { default: pageHeaderSchema } = await import('./page-header.schema.ts');
+const pageHeaderSchema = readComponentSchema('page-header');
 
 describe('PageHeader actions row height', () => {
   test('adds no block padding beyond the title line box', () => {

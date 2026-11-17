@@ -1,17 +1,27 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
 import ts from 'typescript';
 
 import { THEME_TOKENS } from './terminal-theme.ts';
-import schema from './terminal.schema.ts';
-import variables from './terminal.variables.ts';
 
 const directory = import.meta.dir;
 const packageRoot = join(directory, '../../../..');
 const read = (name: string) => Bun.file(join(directory, name)).text();
 const readJson = async (name: string) => JSON.parse(await read(name)) as unknown;
+
+/** A file the `metadata` task generated, read through the package's own export of it. */
+const readMetadata = (subpath: string): unknown =>
+  JSON.parse(readFileSync(Bun.resolveSync(`@lostgradient/terminal/${subpath}`, directory), 'utf8'));
+
+type Schema = {
+  properties: Record<string, unknown>;
+  required?: string[];
+  metadata?: { unsupportedProps?: Array<{ name: string; required?: boolean }> };
+};
+const schema = readMetadata('terminal/schema') as Schema;
+const variables = readMetadata('terminal/variables') as string[];
 
 /** The members of the exported `TerminalProps` object type and `TerminalState` union, from source. */
 async function readTypesSource() {
@@ -54,10 +64,6 @@ async function readTypesSource() {
 }
 
 describe('terminal.schema', () => {
-  test('the committed JSON schema matches the typed schema', async () => {
-    expect(await readJson('terminal.schema.json')).toEqual(schema);
-  });
-
   test('describes exactly the props declared in terminal.types.ts', async () => {
     const { props } = await readTypesSource();
     const byName = (left: string, right: string) => left.localeCompare(right);
@@ -96,10 +102,6 @@ describe('terminal.schema', () => {
 });
 
 describe('terminal.variables', () => {
-  test('the committed JSON matches the typed list', async () => {
-    expect(await readJson('terminal.variables.json')).toEqual(variables);
-  });
-
   // The component generator lists the custom properties a component declares for a consumer to
   // override, as it does for every Cinder component. The terminal declares none of its own: the
   // stylesheet and the theme bridge only read Cinder's tokens.
@@ -173,9 +175,7 @@ type Manifest = {
 
 describe('components.json', () => {
   test('describes the one Terminal component the package exports', async () => {
-    const manifest = JSON.parse(
-      await Bun.file(join(packageRoot, 'components.json')).text(),
-    ) as Manifest;
+    const manifest = readMetadata('manifest') as Manifest;
     const packageJson = JSON.parse(await Bun.file(join(packageRoot, 'package.json')).text()) as {
       name: string;
     };
@@ -190,16 +190,14 @@ describe('components.json', () => {
       hasExamples: true,
     });
     expect(component!.artifacts).toEqual({
-      schema: 'src/lib/components/terminal/terminal.schema.json',
-      variables: 'src/lib/components/terminal/terminal.variables.json',
-      examples: 'src/lib/components/terminal/terminal.examples.json',
+      schema: '.metadata/terminal/schema.json',
+      variables: '.metadata/terminal/variables.json',
+      examples: '.metadata/terminal/examples.json',
     });
   });
 
   test('repeats the authored metadata of terminal.meta.json, so the two cannot drift', async () => {
-    const manifest = JSON.parse(
-      await Bun.file(join(packageRoot, 'components.json')).text(),
-    ) as Manifest;
+    const manifest = readMetadata('manifest') as Manifest;
     const [component] = manifest.components;
     const meta = (await readJson('terminal.meta.json')) as Pick<
       Manifest['components'][number],
@@ -284,17 +282,13 @@ describe('component files', () => {
     'terminal.css',
     'README.md',
     'terminal.a11y.md',
-    'terminal.schema.ts',
-    'terminal.schema.json',
-    'terminal.variables.ts',
-    'terminal.variables.json',
     'terminal.examples.json',
   ])('%s exists', (name) => {
     expect(existsSync(join(directory, name))).toBe(true);
   });
 
-  test('the workspace root has its manifest', () => {
-    expect(existsSync(join(packageRoot, 'components.json'))).toBe(true);
+  test('the metadata task wrote the package manifest', () => {
+    expect(existsSync(join(packageRoot, '.metadata', 'components.json'))).toBe(true);
   });
 
   test('the README documents every public prop', async () => {

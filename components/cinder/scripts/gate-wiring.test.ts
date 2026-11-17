@@ -53,6 +53,7 @@ describe("Cinder's own gates", () => {
       'scripts/check-component-css-raw-colors.ts --strict',
       'scripts/check-component-constraints.ts',
       'scripts/check-component-examples.ts',
+      'scripts/generate-component-artifacts.ts --check',
       'scripts/check-component-inventory.ts',
       'scripts/convert-component-metadata.ts --check',
       'scripts/check-component-variable-registry.ts',

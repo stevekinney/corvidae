@@ -27,9 +27,10 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { metadataCommand, metadataRoot, readMetadataFile } from './lib/metadata-files.ts';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '..');
-const componentsSource = join(componentsRoot, 'src', 'components');
 const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
 
 /** One field of an already-narrowed object, without asserting a shape over it. */
@@ -105,18 +106,28 @@ function readRegistryView(): RegistryView {
   return { propertiesByComponent };
 }
 
+/** Each component's variables, as the `metadata` task wrote them to `.metadata/<id>/variables.json`. */
 async function readManifests(): Promise<ComponentManifest[]> {
   const manifests: ComponentManifest[] = [];
-  for await (const relativePath of new Glob('**/*.variables.json').scan(componentsSource)) {
-    const absolutePath = join(componentsSource, relativePath);
-    const parsed: unknown = JSON.parse(readFileSync(absolutePath, 'utf8'));
+  for await (const relativePath of new Glob('*/variables.json').scan(
+    metadataRoot(componentsRoot),
+  )) {
+    const parsed: unknown = readMetadataFile(
+      join(metadataRoot(componentsRoot), relativePath),
+      componentsRoot,
+    );
     if (!Array.isArray(parsed)) {
       throw new Error(`${relativePath} is not a JSON array of variable names.`);
     }
     manifests.push({
-      component: basename(relativePath, '.variables.json'),
+      component: basename(dirname(relativePath)),
       variables: parsed.filter((value): value is string => typeof value === 'string'),
     });
+  }
+  if (manifests.length === 0) {
+    throw new Error(
+      `no .metadata/*/variables.json: run \`${metadataCommand(componentsRoot)}\` first.`,
+    );
   }
   return manifests.toSorted((a, b) => a.component.localeCompare(b.component));
 }

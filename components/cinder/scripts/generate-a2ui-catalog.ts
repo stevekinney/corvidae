@@ -1,11 +1,12 @@
 /**
- * Builds and writes `components/cinder/a2ui-catalog.json`, Cinder's opt-in A2UI
- * catalog: a projection of an explicit allowlist of Cinder components, taken
- * from their generated `*.schema.json` files and `components.json`.
+ * Builds Cinder's opt-in A2UI catalog, a projection of an explicit allowlist of Cinder
+ * components taken from their generated schemas and manifest in `.metadata/`. The `metadata` task
+ * writes it to `.metadata/a2ui-catalog.json`; Bureau vendors a formatted copy, which Cinder's lint
+ * holds to the generated catalog byte for byte.
  *
  * Usage:
- *   bun run scripts/generate-a2ui-catalog.ts           # write a2ui-catalog.json
- *   bun run scripts/generate-a2ui-catalog.ts --check   # diff against the committed file; non-zero on drift
+ *   bun scripts/generate-a2ui-catalog.ts                  # write .metadata/a2ui-catalog.json
+ *   bun scripts/generate-a2ui-catalog.ts --write-bureau   # rewrite Bureau's copy and its digest
  *
  * The catalog has the form A2UI v0.9.1 requires of every catalog: a JSON Schema
  * document whose `$id` and `catalogId` are the same URI, with its components
@@ -23,9 +24,10 @@ import { join } from 'node:path';
 
 import addFormats from 'ajv-formats';
 import Ajv, { type ValidateFunction } from 'ajv/dist/2020.js';
-import * as prettier from 'prettier';
 
 import type { Manifest } from './generate-manifest.ts';
+import { manifestMetadataPath, metadataRoot } from './lib/metadata-files.ts';
+import { prettier } from './lib/node-prettier.ts';
 import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
@@ -184,14 +186,39 @@ export type VendoredSchemas = {
 
 const PACKAGE_ROOT = join(import.meta.dir, '..');
 
-/** Absolute path of the checked-in catalog. */
-export const CATALOG_PATH = join(PACKAGE_ROOT, 'a2ui-catalog.json');
+/** Absolute path of the catalog the `metadata` task writes. */
+export const CATALOG_PATH = join(metadataRoot(PACKAGE_ROOT), 'a2ui-catalog.json');
+/** Bureau's committed, formatted copy of the catalog, and the provenance recording its digest. */
+export const BUREAU_CATALOG_NAME = 'cinder-catalog.schema.json';
+export const BUREAU_CATALOG_PATH = join(
+  PACKAGE_ROOT,
+  '..',
+  '..',
+  'packages',
+  'bureau',
+  'src',
+  'a2ui',
+  BUREAU_CATALOG_NAME,
+);
+const BUREAU_PROVENANCE_PATH = join(
+  PACKAGE_ROOT,
+  '..',
+  '..',
+  'packages',
+  'bureau',
+  'src',
+  'a2ui',
+  'PROVENANCE.json',
+);
+/** The command that brings Bureau's copy back in step. */
+export const WRITE_BUREAU_COMMAND =
+  'cd components/cinder && bun scripts/generate-a2ui-catalog.ts --write-bureau';
 /** Absolute path of the checked-in allowlist. */
 export const ALLOWLIST_PATH = join(import.meta.dir, 'a2ui-catalog-allowlist.json');
 /** Absolute path of the directory holding the vendored A2UI schemas. */
 export const VENDORED_DIRECTORY = join(import.meta.dir, 'a2ui');
 
-const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+const MANIFEST_PATH = manifestMetadataPath(PACKAGE_ROOT);
 
 // ---------------------------------------------------------------------------
 // Property mapping
@@ -576,70 +603,85 @@ export async function readCatalogInputs(): Promise<CatalogInputs> {
   return { allowlist, schemas, components };
 }
 
-/** Format JSON through Prettier so the file on disk matches the repository's formatting. */
+/** Format JSON through Prettier so Bureau's committed copy matches the repository's formatting. */
 async function formatJson(content: string, filepath: string): Promise<string> {
   assertPrettierResolvesToRoot();
   const options = await prettier.resolveConfig(filepath);
   return prettier.format(content, { ...options, filepath, parser: 'json' });
 }
 
-/** Build, validate, and format the catalog from the files on disk. */
-export async function renderA2uiCatalog(): Promise<string> {
+/** Build and validate the catalog from `.metadata/components.json` and the schemas it lists. */
+export async function buildValidA2uiCatalog(): Promise<A2uiCatalog> {
   const catalog = buildA2uiCatalog(await readCatalogInputs());
   assertValidA2uiCatalog(catalog, await readVendoredSchemas());
-  return formatJson(`${JSON.stringify(catalog, null, 2)}\n`, CATALOG_PATH);
+  return catalog;
 }
 
-function reportDiff(committed: string, generated: string): void {
-  const committedLines = committed.split('\n');
-  const generatedLines = generated.split('\n');
-  const maxLines = Math.max(committedLines.length, generatedLines.length);
-  let shown = 0;
-  for (let index = 0; index < maxLines && shown < 40; index++) {
-    if ((committedLines[index] ?? '') !== (generatedLines[index] ?? '')) {
-      process.stderr.write(`- ${committedLines[index] ?? ''}\n+ ${generatedLines[index] ?? ''}\n`);
-      shown++;
-    }
-  }
-  if (shown >= 40) process.stderr.write('... (diff truncated; run a2ui-catalog:generate)\n');
-}
-
-async function main(): Promise<void> {
-  const checkMode = process.argv.includes('--check');
-  let generated: string;
-  try {
-    generated = await renderA2uiCatalog();
-  } catch (error: unknown) {
-    process.stderr.write(
-      `a2ui-catalog:${checkMode ? 'check' : 'generate'} - failed:\n${describeError(error)}\n`,
-    );
-    process.exit(1);
-  }
-
-  if (!checkMode) {
-    await Bun.write(CATALOG_PATH, generated);
-    process.stdout.write('a2ui-catalog:generate - wrote a2ui-catalog.json\n');
-    return;
-  }
-
-  if (!existsSync(CATALOG_PATH)) {
-    process.stderr.write(
-      'a2ui-catalog:check - a2ui-catalog.json does not exist. Run `bun run a2ui-catalog:generate`.\n',
-    );
-    process.exit(1);
-  }
-  const committed = await Bun.file(CATALOG_PATH).text();
-  if (committed === generated) {
-    process.stdout.write('a2ui-catalog:check - OK\n');
-    return;
-  }
-  process.stderr.write(
-    'a2ui-catalog:check - drift detected. Run `bun run a2ui-catalog:generate` to fix:\n\n',
+/** The catalog formatted as Bureau's committed copy holds it. */
+export async function renderA2uiCatalog(): Promise<string> {
+  return formatJson(
+    `${JSON.stringify(await buildValidA2uiCatalog(), null, 2)}\n`,
+    BUREAU_CATALOG_PATH,
   );
-  reportDiff(committed, generated);
-  process.exit(1);
+}
+
+/** Write `.metadata/a2ui-catalog.json`, unformatted, as the `metadata` task's other outputs are. */
+export async function writeA2uiCatalogMetadata(): Promise<void> {
+  await Bun.write(CATALOG_PATH, `${JSON.stringify(await buildValidA2uiCatalog(), null, 2)}\n`);
+}
+
+type Provenance = { files: Record<string, { sha256: string; sourcePath?: string }> };
+
+function sha256(bytes: string): string {
+  return new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+}
+
+/**
+ * Bureau vendors the catalog byte for byte as `packages/bureau/src/a2ui/cinder-catalog.schema.json`
+ * and records its digest in `PROVENANCE.json`. Both must match the catalog generated from the
+ * current Cinder schemas; an empty list means they do.
+ */
+export async function checkBureauCatalogCopy(): Promise<string[]> {
+  const generated = await renderA2uiCatalog();
+  const issues: string[] = [];
+  const copy = existsSync(BUREAU_CATALOG_PATH) ? await Bun.file(BUREAU_CATALOG_PATH).text() : '';
+  if (copy !== generated) {
+    issues.push(
+      `${BUREAU_CATALOG_NAME} differs from the catalog the Cinder schemas generate: run \`${WRITE_BUREAU_COMMAND}\``,
+    );
+  }
+  const provenance = await readJsonFile<Provenance>(BUREAU_PROVENANCE_PATH);
+  if (provenance.files[BUREAU_CATALOG_NAME]?.sha256 !== sha256(copy)) {
+    issues.push(
+      `PROVENANCE.json does not record the digest of ${BUREAU_CATALOG_NAME}: run \`${WRITE_BUREAU_COMMAND}\``,
+    );
+  }
+  return issues;
+}
+
+/** Rewrite Bureau's copy and the digest `PROVENANCE.json` records for it. */
+export async function writeBureauCatalogCopy(): Promise<void> {
+  const generated = await renderA2uiCatalog();
+  await Bun.write(BUREAU_CATALOG_PATH, generated);
+  const provenanceText = await Bun.file(BUREAU_PROVENANCE_PATH).text();
+  const provenance = await readJsonFile<Provenance>(BUREAU_PROVENANCE_PATH);
+  const previous = provenance.files[BUREAU_CATALOG_NAME]?.sha256;
+  if (previous !== undefined) {
+    await Bun.write(BUREAU_PROVENANCE_PATH, provenanceText.replace(previous, sha256(generated)));
+  }
 }
 
 if (import.meta.main) {
-  await main();
+  try {
+    if (process.argv.includes('--write-bureau')) {
+      await writeBureauCatalogCopy();
+      process.stdout.write(`a2ui-catalog - wrote Bureau's ${BUREAU_CATALOG_NAME}\n`);
+    } else {
+      await writeA2uiCatalogMetadata();
+      process.stdout.write('a2ui-catalog - wrote .metadata/a2ui-catalog.json\n');
+    }
+  } catch (error: unknown) {
+    process.stderr.write(`a2ui-catalog - failed:\n${describeError(error)}\n`);
+    process.exit(1);
+  }
 }

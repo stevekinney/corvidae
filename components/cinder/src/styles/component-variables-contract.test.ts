@@ -17,12 +17,14 @@
  * Test files may use `any` per project conventions.
  */
 
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-const COMPONENTS_DIR = join(import.meta.dir, '..', 'components');
+import { discoverComponentDirectories } from '../../scripts/discover-component-directories.ts';
+import { readComponentVariables } from '../../scripts/lib/metadata-files.ts';
+
 const TOKEN_REGISTRY = join(import.meta.dir, '..', 'tokens', 'registry.generated.json');
 
 const FILE_UPLOAD_PROGRESS_COLOR_VARIABLES = [
@@ -35,31 +37,13 @@ interface ComponentVariables {
   variables: string[];
 }
 
+/** Every component's variables, as the `metadata` task wrote them to `.metadata/<id>/variables.json`. */
 async function loadAllComponentVariables(): Promise<ComponentVariables[]> {
-  const entries = await readdir(COMPONENTS_DIR, { withFileTypes: true });
-  const componentDirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-
-  const results: ComponentVariables[] = [];
-
-  for (const dirName of componentDirs) {
-    // Discover the actual `*.variables.json` inside the directory rather than
-    // assuming the stem equals the directory name. Some directories are
-    // underscore-prefixed (e.g. `_radio/`) but ship `radio.variables.json`, so a
-    // `${dirName}.variables.json` assumption would silently skip them — leaving
-    // their contract unenforced. The component name is the FILE stem (`radio`),
-    // which is also what the `--cinder-<name>-*` ownership prefix must match.
-    const dirEntries = await readdir(join(COMPONENTS_DIR, dirName));
-    const variablesFile = dirEntries.find((name) => name.endsWith('.variables.json'));
-    if (variablesFile === undefined) continue;
-
-    const componentName = variablesFile.slice(0, -'.variables.json'.length);
-    const variables = (await Bun.file(
-      join(COMPONENTS_DIR, dirName, variablesFile),
-    ).json()) as string[];
-    results.push({ componentName, variables });
-  }
-
-  return results;
+  const components = await discoverComponentDirectories();
+  return components.map(({ name }) => ({
+    componentName: name,
+    variables: [...readComponentVariables(name)],
+  }));
 }
 
 describe('component *.variables.json contract', () => {

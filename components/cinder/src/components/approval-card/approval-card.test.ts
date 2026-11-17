@@ -10,6 +10,7 @@ import {
   setupHappyDom,
   trackTimers,
 } from '@lostgradient/testing';
+import { readComponentSchema } from '../../../scripts/lib/metadata-files.ts';
 import {
   formatEditableArguments,
   isApprovalActionable,
@@ -24,7 +25,7 @@ const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/s
 const { createRawSnippet } = await import('svelte');
 const { tick } = await import('svelte');
 const { default: ApprovalCard } = await import('./approval-card.svelte');
-const { default: approvalCardSchema } = await import('./approval-card.schema.ts');
+const approvalCardSchema = readComponentSchema('approval-card');
 const { default: CodeHighlighterContextFixture } =
   await import('../../test/fixtures/code-highlighter-context-fixture.svelte');
 

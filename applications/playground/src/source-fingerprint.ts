@@ -32,11 +32,11 @@ export const FINGERPRINT_SOURCE_DIRECTORIES = [
 export const FINGERPRINT_SOURCE_FILES = [
   'applications/playground/package.json',
   'components/cinder/package.json',
-  'components/cinder/components.json',
+  'components/cinder/.metadata/components.json',
   'components/chat/package.json',
-  'components/chat/components.json',
+  'components/chat/.metadata/components.json',
   'components/editor/package.json',
-  'components/editor/components.json',
+  'components/editor/.metadata/components.json',
   // The documentation's displayed package versions.
 ] as const;
 

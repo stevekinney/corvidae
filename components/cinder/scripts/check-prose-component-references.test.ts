@@ -285,7 +285,7 @@ describe('check-prose-component-references', () => {
 
   test('enumerates component prose files and the generated manifest', async () => {
     const files = await proseSourcePaths();
-    expect(files).toContain('components.json');
+    expect(files).toContain('.metadata/components.json');
     expect(files.some((filePath) => filePath.endsWith('/button.meta.json'))).toBe(true);
     expect(files.some((filePath) => filePath.endsWith('/button/README.md'))).toBe(true);
   });

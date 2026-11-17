@@ -14,6 +14,8 @@ node_modules/
 *.tsbuildinfo
 # Declarations a library emits for its consumers' type-checks (`types` task).
 .types/
+# Component metadata a component package derives (`metadata` task): schemas, variables, manifest.
+.metadata/
 .dccache
 
 # Application and test output
