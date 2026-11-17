@@ -112,6 +112,15 @@
   // What the root's width exceeded the bar's own by when the bar overflowed.
   let overflowSlack = 0;
   let measuredVersion = -1;
+  // A change of the tabs is waiting for focus to leave the collapsed select before it is measured.
+  let waitingToMeasure = false;
+
+  /** Whether focus, or an open list, is inside the root: drawing the bar would remount the select. */
+  function busy(root: HTMLElement): boolean {
+    return (
+      root.contains(document.activeElement) || root.querySelector('[aria-expanded="true"]') !== null
+    );
+  }
 
   const collapsed = $derived(
     orientation === 'horizontal' && (viewport.current || (collapseOnOverflow && overflowing)),
@@ -129,7 +138,13 @@
     untrack(() => {
       if (version !== measuredVersion) {
         // A tab came, went, or changed its text: what the bar needs is unknown until it is drawn
-        // again, so draw it and measure it.
+        // again, so draw it and measure it. Drawing it unmounts the select, so while someone is in
+        // the select (focus, or its list open) the bar stays collapsed and the measurement waits
+        // for focus to leave: a count that updates live must not close the list under them.
+        if (stillOverflowing && busy(root)) {
+          waitingToMeasure = true;
+          return;
+        }
         measuredVersion = version;
         overflowNeed = 0;
         if (stillOverflowing) {
@@ -137,6 +152,7 @@
           return;
         }
       }
+      waitingToMeasure = false;
       const available = root.clientWidth;
       // A hidden tabs root, or a DOM with no layout, measures nothing and keeps what is drawn.
       if (available <= 0) return;
@@ -173,10 +189,21 @@
     mutationObserver?.observe(node, { childList: true, subtree: true, characterData: true });
     const fonts = typeof document === 'undefined' ? undefined : document.fonts;
     fonts?.addEventListener('loadingdone', request);
+    // Focus that leaves the collapsed select ends the wait. A move between two controls inside the
+    // root also fires a focusout, with the next control as its related target, which is skipped.
+    const focusMoved = (event: FocusEvent): void => {
+      if (!waitingToMeasure) return;
+      if (event.type === 'focusout' && event.relatedTarget !== null) return;
+      request();
+    };
+    document.addEventListener('focusin', focusMoved);
+    document.addEventListener('focusout', focusMoved);
     return () => {
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       fonts?.removeEventListener('loadingdone', request);
+      document.removeEventListener('focusin', focusMoved);
+      document.removeEventListener('focusout', focusMoved);
       rootElement = undefined;
     };
   };
