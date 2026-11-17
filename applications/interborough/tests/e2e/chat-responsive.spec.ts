@@ -613,6 +613,32 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     });
     await connected.close();
   });
+
+  // COR-2288 (COR-2439 AC20): the composer area's bottom padding adds the safe-area inset. A
+  // browser with no device has no inset to report, and Chromium reports it as 0: that is all this
+  // can check; a real inset needs a device.
+  test('the composer area adds the safe-area inset, which Chromium reports as 0 (COR-2288)', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== 'chromium', 'Chromium is the browser that reports the inset as 0.');
+    await connectProvider(page);
+    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const area = page.locator('.chat-input-area').first();
+    await expect(area).toBeVisible();
+    const read = await area.evaluate((element) => {
+      const probe = document.createElement('div');
+      probe.style.paddingBottom = 'env(safe-area-inset-bottom, 13px)';
+      document.body.append(probe);
+      const inset = getComputedStyle(probe).paddingBottom;
+      probe.remove();
+      const style = getComputedStyle(element);
+      return { inset, start: style.paddingBlockStart, end: style.paddingBlockEnd };
+    });
+    expect(read.inset).toBe('0px');
+    // The inset is 0, so the area's bottom padding is its top padding and nothing more.
+    expect(read.end).toBe(read.start);
+  });
 });
 
 test.describe('The composer at desktop width', () => {

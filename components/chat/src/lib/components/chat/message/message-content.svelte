@@ -23,7 +23,12 @@
 <script lang="ts">
   import { CodeBlock } from '@lostgradient/cinder';
   import { classNames } from '../../../utilities/class-names.ts';
+  import { useChatLabels } from '../chat-labels-context.ts';
   import MarkdownPreview from './markdown-preview.svelte';
+
+  // The message's words, such as the open fence's Writing… status (COR-2276).
+  const readLabels = useChatLabels();
+  const labels = $derived(readLabels());
 
   let {
     content,
@@ -137,6 +142,7 @@
         languageLabelVisible={false}
         scrollFadeVisible
         streaming
+        streamingLabel={labels.codeWriting}
       />
     </div>
   {:else if streaming && streamingTail}

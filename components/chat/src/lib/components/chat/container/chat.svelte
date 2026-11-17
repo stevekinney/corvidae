@@ -99,6 +99,7 @@
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
+  import { setChatLabelsContext } from '../chat-labels-context.ts';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
     ApprovalGroup,
@@ -252,6 +253,8 @@
   // One `labels` object holds every word Chat draws (owner decision, 2026-11-13); each part of
   // Chat reads the words it draws from it, a turn's and a step group's included.
   const chatLabels = $derived(resolveChatLabels(labels));
+  // Content Chat draws outside a message row, such as a step group's narration, reads them too.
+  setChatLabelsContext(() => chatLabels);
   // The dock's words where the composer has its own for the same thing: the host's dock word when
   // it set one, else the composer's, so one override reads the same in both.
   const questionDockLabels = $derived({

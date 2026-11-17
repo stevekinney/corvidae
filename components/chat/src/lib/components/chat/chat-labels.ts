@@ -19,6 +19,18 @@ export type ChatComposerLabels = {
   sourcesCount: (count: number) => string;
   internalDocument: string;
   unsafeLink: string;
+  /** What follows an image's name when it did not load: "screenshot.png didn't load". */
+  imageDidNotLoad: string;
+  /** The accessible name of the Retry beside an image that did not load. Default `Retry loading <name>`. */
+  retryImage: (name: string) => string;
+  /** The status a code block shows where Copy will be while its fence is still arriving. Default `Writing…`. */
+  codeWriting: string;
+  /** The accessible name of a table wider than the message, which scrolls. Default `Scrollable table`. */
+  scrollableTable: string;
+  /** The cue over such a table that counts the columns out of view. Default `+2 columns`. */
+  hiddenColumns: (count: number) => string;
+  /** What that cue says to assistive technology. Default `Scroll to see all columns`. */
+  scrollToSeeAllColumns: string;
   composerUnavailable: string;
   chatArchived: string;
   chatReadOnly: string;
@@ -175,6 +187,12 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   sourcesCount: (count) => (count === 1 ? '1 source' : `${count} sources`),
   internalDocument: 'Internal document, no public link',
   unsafeLink: "Link hidden: the address isn't a safe web link",
+  imageDidNotLoad: "didn't load",
+  retryImage: (name) => `Retry loading ${name}`,
+  codeWriting: 'Writing…',
+  scrollableTable: 'Scrollable table',
+  hiddenColumns: (count) => `+${count} ${count === 1 ? 'column' : 'columns'}`,
+  scrollToSeeAllColumns: 'Scroll to see all columns',
   composerUnavailable: 'Composer unavailable',
   chatArchived: 'Chat archived',
   chatReadOnly: 'Chat read only',

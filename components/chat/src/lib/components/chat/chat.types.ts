@@ -384,7 +384,9 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   /**
    * Every word Chat draws itself, any of which the host can replace: the composer's, the approval
    * drawer's, a turn's outcome and the steps under it (such as `steps` for `3 steps`, or
-   * `stepsDone` to read `Checked 2 of 3 sources`), the docked question's, and the sources', which
+   * `stepsDone` to read `Checked 2 of 3 sources`), the docked question's, a message's content
+   * (a code block's `codeWriting`, a wide table's `scrollableTable`, `hiddenColumns` and
+   * `scrollToSeeAllColumns`, an image's `imageDidNotLoad` and `retryImage`), and the sources', which
    * Chat forwards to Citation's own labels. Each word left out keeps its English default.
    */
   labels?: Partial<ChatLabels> | undefined;

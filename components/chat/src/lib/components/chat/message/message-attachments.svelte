@@ -23,6 +23,11 @@
   import RetryButton from './retry-button.svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import ImageLightbox from './image-lightbox.svelte';
+  import { useChatLabels } from '../chat-labels-context.ts';
+
+  // The message's words for an image that did not load (COR-2279).
+  const readLabels = useChatLabels();
+  const labels = $derived(readLabels());
 
   let {
     images,
@@ -137,12 +142,12 @@
         <ImageOff class="message-attachment-unavailable-icon cinder-icon-sm" aria-hidden="true" />
         <p class="message-attachment-unavailable-text" dir="auto">
           <span class="message-attachment-unavailable-name">{alt}</span>
-          didn't load
+          {labels.imageDidNotLoad}
         </p>
         <RetryButton
           class="message-attachment-retry"
           iconOnly
-          ariaLabel={`Retry loading ${alt}`}
+          ariaLabel={labels.retryImage(alt)}
           onclick={() => retryImage(url)}
         />
       </div>

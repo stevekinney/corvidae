@@ -24,7 +24,13 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import { useChatLabels } from '../chat-labels-context.ts';
+
   let { html }: MarkdownTableScrollerProps = $props();
+
+  // The message's words for the cue and the region's name (COR-2261), English outside a message.
+  const readLabels = useChatLabels();
+  const labels = $derived(readLabels());
 
   const cueId = $props.id();
 
@@ -74,8 +80,8 @@
 <div class="message-markdown-table" data-overflowing={overflowing || undefined}>
   {#if overflowing}
     <p class="message-markdown-table-cue" id={cueId} dir="auto">
-      <span aria-hidden="true">+{hiddenColumns} {hiddenColumns === 1 ? 'column' : 'columns'}</span>
-      <span class="cinder-sr-only">Scroll to see all columns</span>
+      <span aria-hidden="true">{labels.hiddenColumns(hiddenColumns)}</span>
+      <span class="cinder-sr-only">{labels.scrollToSeeAllColumns}</span>
     </p>
   {/if}
   <div class="message-markdown-table-frame" data-fade-end={overflowing && !atEnd ? '' : undefined}>
@@ -85,7 +91,7 @@
     <div
       class="message-markdown-table-scroller"
       role={overflowing ? 'region' : undefined}
-      aria-label={overflowing ? 'Scrollable table' : undefined}
+      aria-label={overflowing ? labels.scrollableTable : undefined}
       aria-describedby={overflowing ? cueId : undefined}
       tabindex={overflowing ? 0 : undefined}
       {@attach trackOverflow}

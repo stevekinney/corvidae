@@ -258,6 +258,7 @@
   import { sourceKeys } from './source-keys.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
+  import { setChatLabelsContext } from '../chat-labels-context.ts';
   import { effectiveTurnState, presentTurnState } from './turn-state.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
@@ -356,6 +357,8 @@
   );
   const turnWords = $derived(resolveTurnLabels(turnLabels));
   const messageLabels = $derived(resolveChatLabels(labels));
+  // The message's content (code, tables, images) reads the same words, handed down (COR-2439).
+  setChatLabelsContext(() => messageLabels);
   // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
   // stops where it is, muted, until the stream comes back.
   const contentStreaming = $derived(streaming && turnPresentation.caret);

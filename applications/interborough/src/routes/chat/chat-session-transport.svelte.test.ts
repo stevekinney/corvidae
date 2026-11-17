@@ -57,6 +57,34 @@ test('an opener’s transport is active from its request until its turn ends', a
   expect(session.transportActive).toBe(false);
 });
 
+test('a return to the page while an opener’s transport is open reads no history over it (COR-2293)', async () => {
+  // The page comes back (a visibility change, a route return) and refreshes: it reads
+  // `transportActive`, so it leaves the turn its own request opened alone instead of restoring
+  // the thread under it and attaching a second time.
+  const response = Promise.withResolvers<Response>();
+  const requests: string[] = [];
+  const session = open(async (input, init) => {
+    const url = urlOf(input);
+    requests.push(url);
+    if (init?.method === 'POST') return response.promise;
+    if (isHistoryRead(url)) return Response.json({ threadId: 'thread', messages: [] });
+    return new Response('', { status: 404 });
+  });
+
+  const sending = session.send('Hello');
+  await waitUntil(() => requests.some((url) => url.endsWith('/run')), {
+    message: 'the opener was posted',
+  });
+  expect(session.transportActive).toBe(true);
+
+  expect(await session.refresh()).toBe(false);
+  expect(requests.some(isHistoryRead)).toBe(false);
+
+  response.resolve(sse([started, ...reply, finished]));
+  await sending;
+  expect(session.transportActive).toBe(false);
+});
+
 test('a new chat reads no history before its first run begins, and reads it once it has', async () => {
   const requests: string[] = [];
   const session = open(

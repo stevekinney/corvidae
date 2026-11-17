@@ -638,7 +638,10 @@ export class ChatSessionState {
   async refresh(): Promise<boolean> {
     // A new chat's thread is not kept until its first run begins: there is nothing to read yet.
     if (!this.#opened) return false;
-    if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
+    // A page that comes back to the session (a visibility change, a route return) reads whether a
+    // transport of its own is open, such as a hidden turn not streaming yet, and leaves it alone
+    // rather than restoring the thread under it and attaching a second time (COR-2293).
+    if (this.streaming || this.transportActive || this.#abort.signal.aborted) return false;
     // A turn that began during the read, even one that has ended since (a follow-up promoted from
     // Up next that stopped on an approval), wrote rows the read cannot hold: restoring it would
     // drop the person's message from the transcript.
