@@ -46,31 +46,9 @@
     }
   }
 
-  /* The same ground for any header that content scrolls under (a conversation's title and status):
-   * `--cinder-surface-translucent` (the canvas at 90%) under the bar's 16px backdrop blur, opaque
-   * where the platform cannot blur and under `prefers-reduced-transparency`. It is 90%, not the
-   * bar's 82%: at 82% the light status text fell to 4.2:1 over a black backdrop. A contrast test
-   * reads the token and holds the title and the status text to 4.5:1 over the worst backdrop it
-   * lets through. AppBar keeps its own 82% mix, which its tests pin and which carries only
-   * default-ink titles and icons. */
-  .cinder-translucent-surface {
-    --_cinder-translucent-surface-blur: 16px;
-    background: var(--cinder-surface-canvas);
-  }
-
-  @supports (backdrop-filter: blur(1px)) {
-    .cinder-translucent-surface {
-      background: var(--cinder-surface-translucent);
-      backdrop-filter: blur(var(--_cinder-translucent-surface-blur));
-    }
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    .cinder-translucent-surface {
-      background: var(--cinder-surface-canvas);
-      backdrop-filter: none;
-    }
-  }
+  /* A header a page lays over scrolling content takes `.cinder-translucent-surface`
+   * (`styles/components/_translucent-surface.css`): the canvas at 90%, where this bar keeps its own
+   * 82% mix, which its tests pin and which carries only default-ink titles and icons. */
 
   .cinder-app-bar__leading,
   .cinder-app-bar__trailing {
