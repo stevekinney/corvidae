@@ -55,6 +55,20 @@ describe('DescriptionList', () => {
     expect(secondRow?.querySelector('dd')?.textContent).toContain('Steve');
   });
 
+  test('a definition’s text ends where its value or note does, with no whitespace after it', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        { term: 'Lease window', definition: '10:38 → still held' },
+        { term: 'Check', definition: 'Passed', note: 'tone-check v2' },
+      ],
+    });
+    const definitions = Array.from(
+      container.querySelectorAll('.cinder-description-list__definition'),
+      (definition) => definition.textContent,
+    );
+    expect(definitions).toEqual(['10:38 → still held', 'Passed tone-check v2']);
+  });
+
   test('striped variant sets data-cinder-variant="striped"', () => {
     const { container } = render(DescriptionList, { items: sampleItems, variant: 'striped' });
     const dl = container.querySelector('.cinder-description-list');
