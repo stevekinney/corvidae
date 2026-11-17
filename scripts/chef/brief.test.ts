@@ -273,7 +273,10 @@ describe('renderBrief', () => {
   test('cuts a very long description and says so', () => {
     const text = renderBrief(issue('x'.repeat(40_000)), options);
     expect(text).toContain('description cut at 16000');
-    expect(text.length).toBeLessThan(22_000);
+    // The description adds at most its 16000 kept characters and the cut note; the charter
+    // rules and the other sections are the same in both briefs, so their length is not bounded here.
+    const withShortDescription = renderBrief(issue('x'), options);
+    expect(text.length - withShortDescription.length).toBeLessThan(16_000 + 100);
   });
 });
 
