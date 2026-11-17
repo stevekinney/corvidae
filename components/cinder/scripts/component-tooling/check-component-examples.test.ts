@@ -31,6 +31,11 @@ const COMPONENT_SCHEMA_PATH = join(
   'examples.schema.json',
 );
 const MANIFEST_PATH = `${PACKAGE_ROOT}/.metadata/components.json`;
+/**
+ * The sidecar path the checks name in their messages: a label, written once, so the family
+ * extraction's rewrite of a path that names a moved file keeps every use the same.
+ */
+const SIDECAR = 'src/components/button/button.examples.json';
 
 const validArtifact = {
   $schema: '../../schemas/examples.schema.json',
@@ -71,7 +76,7 @@ describe('committed component examples', () => {
       malformed,
       location,
       'button',
-      'src/components/button/button.examples.json',
+      SIDECAR,
       validator,
       component,
     );
@@ -84,12 +89,12 @@ describe('committed component examples', () => {
       { ...validArtifact, component: 'card' },
       location,
       'button',
-      'src/components/button/button.examples.json',
+      SIDECAR,
       validator,
       component,
     );
     expect(issues).toContain(
-      'src/components/button/button.examples.json: component "card" does not match owning directory "button"',
+      `${SIDECAR}: component "card" does not match owning directory "button"`,
     );
   });
 
@@ -99,7 +104,7 @@ describe('committed component examples', () => {
       validArtifact,
       location,
       'button',
-      'src/components/button/button.examples.json',
+      SIDECAR,
       validator,
       {
         ...component,
@@ -108,11 +113,9 @@ describe('committed component examples', () => {
       },
     );
     expect(issues).toContain(
-      'src/components/button/button.examples.json: components.json does not advertise this examples artifact',
+      `${SIDECAR}: components.json does not advertise this examples artifact`,
     );
-    expect(issues).toContain(
-      'src/components/button/button.examples.json: manifest artifact path is "wrong.json"',
-    );
+    expect(issues).toContain(`${SIDECAR}: manifest artifact path is "wrong.json"`);
   });
 
   it('rejects metadata and code imports outside the public root', async () => {
@@ -130,15 +133,13 @@ describe('committed component examples', () => {
       },
       location,
       'button',
-      'src/components/button/button.examples.json',
+      SIDECAR,
       validator,
       component,
     );
+    expect(issues).toContain(`${SIDECAR}: import must use public root "@lostgradient/cinder"`);
     expect(issues).toContain(
-      'src/components/button/button.examples.json: import must use public root "@lostgradient/cinder"',
-    );
-    expect(issues).toContain(
-      'src/components/button/button.examples.json: example code must use the public root import "@lostgradient/cinder"',
+      `${SIDECAR}: example code must use the public root import "@lostgradient/cinder"`,
     );
   });
 });
