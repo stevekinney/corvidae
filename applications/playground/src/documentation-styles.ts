@@ -3,10 +3,10 @@ import { join, relative } from 'node:path';
 import { coordinatedBuild } from './build-artifacts-shared.ts';
 import {
   CINDER_COMPONENT_SOURCE,
+  componentDirectory,
   DOCUMENTATION_CINDER_COMPONENTS,
   LANDING_CINDER_COMPONENTS,
 } from './component-sources.ts';
-import { PLAYGROUND_ROOT } from './playground-paths.ts';
 
 export { DOCUMENTATION_CINDER_COMPONENTS, LANDING_CINDER_COMPONENTS } from './component-sources.ts';
 
@@ -32,22 +32,28 @@ export function resetPlaygroundStylesheetBuilds(): void {
   stylesheetPromiseByName.clear();
 }
 
+/**
+ * The virtual entrypoint lives in core's directory (COR-2083): every stylesheet it names resolves
+ * from there, a component's own from wherever core's manifest says the component lives (core or a
+ * family package), and a package specifier any of them imports through the package that names it.
+ */
 function stylesheetImportPath(path: string): string {
-  return relative(join(PLAYGROUND_ROOT, 'src'), path).replaceAll('\\', '/');
+  const importPath = relative(CINDER_COMPONENT_SOURCE.packageRoot, path).replaceAll('\\', '/');
+  return importPath.startsWith('.') ? importPath : `./${importPath}`;
 }
 
 function stylesheetEntry(components: readonly string[]): string {
-  const cinderSourceRoot = join(CINDER_COMPONENT_SOURCE.packageRoot, 'src');
+  const cinderStylesRoot = join(CINDER_COMPONENT_SOURCE.packageRoot, 'src', 'styles');
   const imports = components
     .map(
       (componentName) =>
         `@import '${stylesheetImportPath(
-          join(cinderSourceRoot, 'components', componentName, `${componentName}.css`),
+          join(componentDirectory(CINDER_COMPONENT_SOURCE, componentName), `${componentName}.css`),
         )}';`,
     )
     .join('\n');
-  return `@import '${stylesheetImportPath(join(cinderSourceRoot, 'styles', 'index.css'))}';
-@import '${stylesheetImportPath(join(cinderSourceRoot, 'styles', 'json-highlight.css'))}';
+  return `@import '${stylesheetImportPath(join(cinderStylesRoot, 'index.css'))}';
+@import '${stylesheetImportPath(join(cinderStylesRoot, 'json-highlight.css'))}';
 ${imports}
 `;
 }
@@ -60,7 +66,11 @@ export function buildPlaygroundStylesheet(name: PlaygroundStylesheetName): Promi
   const stylesheetPromise = (async () => {
     // Bun caches a virtual build by its entrypoint path. Keep that path unique
     // per stylesheet or a landing request can receive the documentation graph.
-    const virtualEntrypoint = join(PLAYGROUND_ROOT, 'src', `.${name}-styles.css`);
+    // It sits in core's directory; nothing is written there.
+    const virtualEntrypoint = join(
+      CINDER_COMPONENT_SOURCE.packageRoot,
+      `.playground-${name}-styles.css`,
+    );
     const result = await coordinatedBuild(() =>
       Bun.build({
         entrypoints: [virtualEntrypoint],

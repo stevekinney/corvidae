@@ -15,6 +15,7 @@ import { invalidateDiscoveryCache } from './discover.ts';
 import { resetPlaygroundStylesheetBuilds } from './documentation-styles.ts';
 import { clearFixtureBundleCaches } from './fixture-bundle.ts';
 import { clearManifestCaches } from './manifest-cache.ts';
+import { resetStylePackages } from './package-stylesheets.ts';
 import { pageEntryByName } from './page-bundle.ts';
 import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
 import {
@@ -148,6 +149,8 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // `components.json` may have added a component or renamed an export.
   resetComponentExportNames();
   resetPlaygroundStylesheetBuilds();
+  // A `package.json` change can add or drop a style package core depends on.
+  resetStylePackages();
   // Dispose the shared ts-morph project so the next analyzeAll() rebuilds
   // from fresh compiler state rather than reusing sources from before this
   // change.

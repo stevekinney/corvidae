@@ -47,19 +47,16 @@ describe('a family package core depends on', () => {
   test('finds the component, and its examples, in the family package', () => {
     const location = source.components().get(fixture.familyComponent);
     expect(location).toEqual({
-      directory: join(fixture.familyRoot, 'src', 'components', fixture.familyComponent),
+      directory: join(fixture.familyComponentsRoot, fixture.familyComponent),
       packageRoot: fixture.familyRoot,
       packageName: fixture.familyPackage,
       repositoryDirectory: `packages/fixture-family/src/components/${fixture.familyComponent}`,
     });
     expect(examplesDirectoryIn(source, fixture.familyComponent)).toBe(
-      join(fixture.familyRoot, 'src', 'components', fixture.familyComponent, 'examples'),
+      join(fixture.familyComponentsRoot, fixture.familyComponent, 'examples'),
     );
     expect(componentRoots(source)).toEqual(
-      [
-        join(fixture.coreRoot, 'src', 'components'),
-        join(fixture.familyRoot, 'src', 'components'),
-      ].toSorted(),
+      [fixture.coreComponentsRoot, fixture.familyComponentsRoot].toSorted(),
     );
   });
 

@@ -18,6 +18,8 @@
  *                         preview iframe AND by the outer shell, whose README prose
  *                         renders callouts and code blocks that shell.css omits)
  *   GET /package-components/:source/*.css → CSS owned by extracted component packages
+ *   GET /package-styles/:package/*.css → CSS of a style package core depends on (tokens,
+ *                         foundation, a family), the URL a package-specifier @import is rewritten to
  *   GET /example-src/:name/:scenario → raw .example.svelte source
  *   GET /theme-builder → the theme builder workbench (canonical, in the sitemap)
  *   GET /theme-builder/preview → the trusted preview frame the workbench embeds (noindex)
@@ -140,6 +142,7 @@ import {
 import {
   handleComponentsStyleRoute,
   handlePackageComponentStyleRoute,
+  handlePackageStylesRoute,
   handlePlaygroundStylesRoute,
   handleStylesEntryRoute,
   handleStylesRoute,
@@ -1000,6 +1003,11 @@ export const ROUTES: RouteDefinition[] = [
     method: 'GET',
     pattern: /^\/package-components\/([a-z0-9][a-z0-9-]*)\/(.+\.css)$/,
     handler: ({ match }) => handlePackageComponentStyleRoute(match[1]!, match[2]!),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/package-styles\/([a-z0-9][a-z0-9-]*)\/(.+\.css)$/,
+    handler: ({ match }) => handlePackageStylesRoute(match[1]!, match[2]!),
   },
   {
     method: 'GET',

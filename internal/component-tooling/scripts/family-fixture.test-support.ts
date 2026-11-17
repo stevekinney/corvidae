@@ -24,6 +24,10 @@ export type FamilyFixture = {
   familyPackage: string;
   /** The family's one component. */
   familyComponent: string;
+  /** Core's components root, `components/core/src/components`. */
+  coreComponentsRoot: string;
+  /** The family's components root, `components/fixture-family/src/components`. */
+  familyComponentsRoot: string;
 };
 
 function write(path: string, content: string): void {
@@ -71,5 +75,7 @@ export function createFamilyFixture(): FamilyFixture {
     familyRoot,
     familyPackage: '@lostgradient/fixture-family',
     familyComponent: 'fixture-family',
+    coreComponentsRoot: join(coreRoot, 'src', 'components'),
+    familyComponentsRoot: join(familyRoot, 'src', 'components'),
   };
 }
