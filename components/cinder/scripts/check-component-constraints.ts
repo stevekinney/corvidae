@@ -6,8 +6,8 @@
  *  1. have the document shape (id is the kebab-case directory name, rule ids are unique, severity
  *     and combinator values are in their closed sets, every predicate is exactly one shape);
  *  2. name `../../schemas/constraints.schema.json` as its `$schema`;
- *  3. name only props and snippets the component has (the prop cross-check): its generated
- *     `{name}.schema.json` lists them, in `properties` or `metadata.unsupportedProps`.
+ *  3. name only props and snippets the component has (the prop cross-check): the properties of
+ *     the `<Pascal>Props` type its `{name}.types.ts` exports.
  *
  * Usage:
  *   bun scripts/check-component-constraints.ts

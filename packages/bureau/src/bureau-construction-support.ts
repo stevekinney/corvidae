@@ -450,6 +450,8 @@ export function composeHooks(input: {
   readonly startedByHook: (runId: string) => Promise<string | undefined>;
   /** The records a hook's scope is matched against (COR-1978). */
   readonly subjects: HookSubjectSources;
+  /** Publishes a delivery's `hook.delivery.failed` and `hook.delivery.gave-up` on the Bureau's emitter (COR-2099). */
+  readonly publish: NonNullable<HooksDependencies['publish']>;
 }): CreatedHooks | undefined {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
@@ -477,6 +479,7 @@ export function composeHooks(input: {
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'hooks', message: `[bureau] ${message}`, cause }),
     notice: (message) => diagnose({ level: 'warn', scope: 'hooks', message }),
+    publish: input.publish,
   });
   return created;
 }

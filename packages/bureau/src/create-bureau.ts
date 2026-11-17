@@ -117,6 +117,7 @@ import {
   createDiagnosticDispatcher,
   forwardAssetEvents,
   forwardDefinitionChanges,
+  forwardSkillChanges,
   forwardMemoryGovernance,
   forwardHostEvents,
   forwardMissedFires,
@@ -2720,6 +2721,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     stopForwarding.push(
       forwardHostEvents(options.hostEvents, (event) => emitter.dispatch(event), diagnose),
     );
+    // COR-2100 — the skill changes the host reports, each after it replaced the catalog it serves.
+    stopForwarding.push(
+      forwardSkillChanges(options.skillChanges, (event) => emitter.dispatch(event)),
+    );
     // COR-1723 — the supplied governed memory's notifications, so its writes, forgets, and
     // corrections reach the emitter whoever constructed it.
     if (runtime.memory !== undefined) {
@@ -5114,6 +5119,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
     // through the parent its task records.
     startedByHook,
+    // COR-2099: a delivery's failures, on the emitter like any other event this process raises.
+    publish: (event) => emitter.dispatch(event),
     subjects: {
       run: subjectsOfRun,
       agentOfSchedule: (scheduleId) => schedules.agentName(scheduleId),

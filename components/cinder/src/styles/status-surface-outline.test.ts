@@ -38,7 +38,8 @@ describe('the shared soft-surface recipe draws no outline', () => {
 
   test('the border is still a status-hued light-dark expression', () => {
     expect(declaration(border, 'border-color')).toMatch(
-      /^light-dark\(oklch\(from var\(--_cinder-status-base\) [\d.]+% [\d.]+ h\), oklch\(from var\(--_cinder-status-base\) [\d.]+% [\d.]+ h\)\)$/,
+      // COR-2450: the light arm reads a composer's own ground first, then the synthesized tint.
+      /^light-dark\(var\(--_cinder-status-ground-light, oklch\(from var\(--_cinder-status-base\) [\d.]+% [\d.]+ h\)\), oklch\(from var\(--_cinder-status-base\) [\d.]+% [\d.]+ h\)\)$/,
     );
   });
 

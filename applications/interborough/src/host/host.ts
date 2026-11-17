@@ -142,6 +142,7 @@ import {
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
+import type { SkillCatalogChange } from '@lostgradient/bureau/skills';
 import {
   type GenerateFunction,
   type PeerCallJournal,
@@ -261,7 +262,12 @@ import { allowedHosts, createRequestGuard, rawPathOf } from './request-guard.ts'
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
-import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
+import {
+  createSkillManager,
+  discoverFirstSkills,
+  type SkillManager,
+  type SkillManagerOptions,
+} from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
 import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
@@ -862,6 +868,20 @@ function applicationRoutes(
  * one is in flight changes nothing. A failure is reported and clears the request, so the person
  * can ask again; the entry's callback exits the process itself.
  */
+/**
+ * How the skill manager watches its directories (COR-2100): the host's own choice for the agent and
+ * workflow files, its warning sink and its runtime, each only when the host was given one.
+ */
+function skillWatchOptions(
+  options: Pick<HostOptions, 'directoryWatch' | 'warn' | 'runtime'>,
+): Pick<SkillManagerOptions, 'watch' | 'warn' | 'runtime'> {
+  return {
+    ...(options.directoryWatch === undefined ? {} : { watch: options.directoryWatch }),
+    ...(options.warn === undefined ? {} : { warn: options.warn }),
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+  };
+}
+
 function restartHandler(restart: () => void | Promise<void>): () => Response {
   let requested = false;
   return () => {
@@ -1199,6 +1219,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return source === undefined ? [] : [source];
         }),
     });
+    // Who hears a skill change: the Bureau subscribes at construction, and the manager, created after
+    // the Bureau, reports into the set (the `agentSkillCatalog` arrangement, in the other direction).
+    const skillChangeListeners = new Set<(change: SkillCatalogChange) => void>();
     const peerToolNames = new Set(Object.keys(peerTools));
     const sourceTools = toolSources.tools();
     const directoryOptions: LocalDirectoryOptions =
@@ -1312,6 +1335,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         contentKinds,
       ),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
+      // The skill changes the manager reports once it is created (COR-2100): the Bureau publishes
+      // each as `definitions.changed` with `catalog: 'skills'`.
+      skillChanges: {
+        onChange(listener) {
+          skillChangeListeners.add(listener);
+          return () => {
+            skillChangeListeners.delete(listener);
+          };
+        },
+      },
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: (plugin, shipped) =>
         createPluginAgentSource(plugin, shipped, directoryOptions),
@@ -1403,6 +1436,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const skills = await createSkillManager({
       bungalow,
       configurationQueue,
+      // The skill directories are watched like the agent files are, and a change is reported to the Bureau.
+      ...skillWatchOptions(options),
+      onChange: (change) => {
+        for (const listener of skillChangeListeners) listener(change);
+      },
       // The skills a running plugin ships (COR-1977): its `content/skills`, read each time the catalog is discovered.
       pluginSources: async () => {
         const listed = await bureau.plugins.list();

@@ -31,6 +31,7 @@ import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.t
 import {
   publishableErrorCode,
   publishableErrorKind,
+  publishableDeliveryOutcome,
   publishableFinishReason,
   publishablePluginStatus,
   publishableProblemCodes,
@@ -51,6 +52,8 @@ import {
   ChildWorkflowStartedRecordedEvent,
   DecisionMadeEvent,
   HandoffOccurredRecordedEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   HookPlanFailedRecordedEvent,
   SteeringAppliedRecordedEvent,
   SteeringCommandFailedEvent,
@@ -360,6 +363,8 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'schedule.missed': 'published',
   'task.cleanup-acknowledged': 'published',
   'notification.created': 'published',
+  'hook.delivery.failed': 'published',
+  'hook.delivery.gave-up': 'published',
   diagnostic: 'published',
   'memory.governance': 'published',
   'decision.made': 'published',
@@ -746,6 +751,20 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(NotificationCreatedEvent.type, isInstance(NotificationCreatedEvent), (event) => ({
     notificationId: event.notificationId,
     kind: event.notificationKind,
+  })),
+  // Identifiers, the attempt's number, how it failed (a closed list) and an HTTP status: never the
+  // attempt's error text, which can hold a URL's token, and never the owner or the URL (COR-2099).
+  projection(HookDeliveryFailedEvent.type, isInstance(HookDeliveryFailedEvent), (event) => ({
+    hookId: event.hookId,
+    deliveryId: event.deliveryId,
+    attempt: event.attempt,
+    outcome: publishableDeliveryOutcome(event.outcome, 'error'),
+    ...(event.status === undefined ? {} : { status: event.status }),
+  })),
+  projection(HookDeliveryGaveUpEvent.type, isInstance(HookDeliveryGaveUpEvent), (event) => ({
+    hookId: event.hookId,
+    deliveryId: event.deliveryId,
+    attempts: event.attempts,
   })),
   // Level and scope only: a diagnostic's message and cause can carry error text and stacks.
   projection(DiagnosticEvent.type, isInstance(DiagnosticEvent), (event) => ({
