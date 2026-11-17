@@ -238,9 +238,13 @@ export async function readOwner(lockDirectory: string): Promise<OwnerRecord | un
   }
 }
 
-/** A missing file, or one caught half written: the only reads a record reader treats as absent. */
+/**
+ * A missing file (or a path through a file where a directory belongs, which garbage in a pool
+ * leaves), or one caught half written: the only reads a record reader treats as absent.
+ */
 export function isAbsentOrPartial(error: unknown): boolean {
-  return errorCode(error) === 'ENOENT' || error instanceof SyntaxError;
+  const code = errorCode(error);
+  return code === 'ENOENT' || code === 'ENOTDIR' || error instanceof SyntaxError;
 }
 
 /**
