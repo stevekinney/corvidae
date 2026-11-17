@@ -99,8 +99,8 @@
   }
 
   /* On the rail the count is a small dot on the icon's corner: the figure is hidden (`font-size: 0`,
-   * and it stays in the row's name), and the dot is the warning colour so a row that wants
-   * attention reads at a glance. */
+   * and it stays in the row's name), and the dot is the accent colour, a count and not a
+   * warning, so a row that wants attention reads at a glance. */
   .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
     .cinder-side-navigation-item__count {
     position: absolute;
@@ -111,7 +111,7 @@
     block-size: 0.5rem;
     overflow: hidden;
     border-radius: 9999px;
-    background: var(--cinder-status-warning-indicator);
+    background: var(--cinder-accent-solid);
     font-size: 0;
     line-height: 0;
     /* A ring in the sidebar's own surface separates the dot from the icon beneath it. */

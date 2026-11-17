@@ -6,7 +6,8 @@
  * measure where the box sits against the first line of the title, which happy-dom cannot.
  * `narrow-trailing` draws a row whose trailing region is a chevron and one whose trailing region is
  * a button, both under the 448px container width, so the layout tests can measure that only the
- * button drops under the body.
+ * button drops under the body; under them, a row with a status in a 360px pane, so the layout
+ * tests can measure the row's own width driving the phone form.
  */
 export default [
   {

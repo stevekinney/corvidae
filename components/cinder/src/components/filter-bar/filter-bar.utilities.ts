@@ -83,17 +83,30 @@ export function isCollapsible(contents: FilterBarContents): boolean {
   );
 }
 
-const ORDER: Record<FilterBarLayout, number> = { wide: 2, medium: 1, narrow: 0 };
+const ORDER: Record<FilterBarLayout, number> = {
+  wide: 3,
+  'search-folded': 2,
+  medium: 1,
+  narrow: 0,
+};
+// The search folds to an icon button before the segments fold to a select.
 const NARROWER: Record<FilterBarLayout, FilterBarLayout> = {
-  wide: 'medium',
+  wide: 'search-folded',
+  'search-folded': 'medium',
   medium: 'narrow',
   narrow: 'narrow',
 };
 const WIDER: Record<FilterBarLayout, FilterBarLayout> = {
   wide: 'wide',
-  medium: 'wide',
+  'search-folded': 'wide',
+  medium: 'search-folded',
   narrow: 'medium',
 };
+
+/** The next wider form than `layout`, which is `layout` itself when it is the widest. */
+export function widerLayout(layout: FilterBarLayout): FilterBarLayout {
+  return WIDER[layout];
+}
 
 /** The narrower of two layouts. */
 export function narrowerLayout(first: FilterBarLayout, second: FilterBarLayout): FilterBarLayout {

@@ -312,7 +312,11 @@ describe('status and time sit on the title baseline (rows 09d, 09f, 15r)', () =>
 
   test('a status on line two has no strut', () => {
     expect(stylesheet).toMatch(
-      /status-line-two\s+\.cinder-stacked-list-item__status::before,[^{]*\{\s*display: none;/,
+      /status-line-two\s+\.cinder-stacked-list-item__status::before\s*\{\s*display: none;/,
+    );
+    // A leading status takes line two on a phone (the row's own width) and loses its strut there.
+    expect(stylesheet).toMatch(
+      /--status-leading\s+\.cinder-stacked-list-item__status::before\s*\{\s*display: none;/,
     );
   });
 });

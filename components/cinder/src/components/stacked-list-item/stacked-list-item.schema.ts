@@ -168,7 +168,7 @@ const schema = {
         name: 'meta',
         reason: 'function-or-snippet',
         description:
-          'Line two: muted metadata, kind first, then agent, then detail, joined by commas. It starts\nunder the title (not under the status) and ends in an ellipsis rather than wrapping. A line\nthat must carry a control (an error with its own "Try again") may put one in.',
+          'Line two: muted metadata, kind first, then agent, then detail. Pieces are told apart by a space\nand a step, never by a comma or a dot, and never as a bare run of words in one weight and one\ncolour: each piece is its own element, and a piece that stands apart takes a step in face,\nweight or colour (the status word is semibold beside the muted line; inside the line, an\nidentifier in a `Text` of `variant="code"`, or a reason in a tone). It starts under the title\n(not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a\ncontrol (an error with its own "Try again") may put one in.',
       },
       {
         name: 'onRetryClick',
@@ -180,7 +180,7 @@ const schema = {
         name: 'status',
         reason: 'function-or-snippet',
         description:
-          "The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that\nevery list on every page shares, so titles start at one x position down the list; on a phone\nit moves to line two, before the meta, followed by a comma unless the snippet drew nothing.\nThe dot and word sit on the first line of the title.\nThe column is optional: a row with no `status` (and no `statusColumn`) reserves none. A dot\nwith its word is the documented row status; a tinted Badge or pill is not.",
+          "The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that\nevery list on every page shares, so titles start at one x position down the list; on a phone\nit moves to line two, before the meta, followed by a space unless the snippet drew nothing.\nThe dot and word sit on the first line of the title.\nThe column is optional: a row with no `status` (and no `statusColumn`) reserves none. A dot\nwith its word is the documented row status; a tinted Badge or pill is not.",
       },
       {
         name: 'target',

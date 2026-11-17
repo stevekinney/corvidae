@@ -108,7 +108,7 @@ describe('Drawer', () => {
   test('body uses the panel surface beneath header and footer', async () => {
     const cssText = drawerCss;
     expect(cssText).toMatch(
-      /\.cinder-drawer__body\s*\{[^}]*background:\s*var\(--cinder-surface\)/s,
+      /\.cinder-drawer__body\s*\{[^}]*background:\s*var\(--cinder-surface-raised\)/s,
     );
   });
 
@@ -157,13 +157,13 @@ describe('Drawer surfaces by mode (COR-1552)', () => {
     );
   });
 
-  test('a modal drawer is unchanged: raised panel, surface header, body and footer', () => {
+  test('a modal drawer paints the raised surface throughout, as the Modal does (COR-2448 AC6)', () => {
     expect(declared('.cinder-drawer__panel', 'background')).toBe('var(--cinder-surface-raised)');
-    expect(declared('.cinder-drawer__header', 'background')).toBe('var(--cinder-surface)');
-    expect(declared('.cinder-drawer__body', 'background')).toBe('var(--cinder-surface)');
+    expect(declared('.cinder-drawer__header', 'background')).toBe('var(--cinder-surface-raised)');
+    expect(declared('.cinder-drawer__body', 'background')).toBe('var(--cinder-surface-raised)');
     expect(declared('.cinder-drawer__body', '--_cinder-scroll-fade-color')).toBe(
-      'var(--cinder-surface)',
+      'var(--cinder-surface-raised)',
     );
-    expect(declared('.cinder-drawer__footer', 'background')).toBe('var(--cinder-surface)');
+    expect(declared('.cinder-drawer__footer', 'background')).toBe('var(--cinder-surface-raised)');
   });
 });

@@ -118,6 +118,12 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   frameless?: boolean;
   /**
+   * Keeps the table's own frame inside a Card. Inside a Card a table is frameless by default (the
+   * card is the frame; a box inside a box reads as clutter); set this to draw the frame anyway. It
+   * changes nothing for a table outside a Card. @default false
+   */
+  framed?: boolean;
+  /**
    * Fits the table to its container's width so a long value never makes it scroll sideways. The
    * columns share the width (a fixed table layout: set a column's width on its header cell or a
    * `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full
