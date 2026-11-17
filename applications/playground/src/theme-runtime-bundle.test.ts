@@ -92,7 +92,7 @@ describe('the token runtime browser bundle', () => {
     expect(bundleText.length).toBeGreaterThan(200_000);
     expect(graph.length).toBeGreaterThan(30);
     expect(
-      graph.some((file) => file.path.endsWith('components/core/src/tokens/runtime/index.ts')),
+      graph.some((file) => file.path.endsWith('components/tokens/src/tokens/runtime/index.ts')),
     ).toBe(true);
   });
 
@@ -155,13 +155,13 @@ describe('the token runtime browser bundle', () => {
   it('only pulls the runtime tree and its pure dependencies into the graph', () => {
     const outside = graph.filter(
       (file) =>
-        !/\/components\/core\/src\/tokens\//.test(file.path) &&
+        !/\/components\/tokens\/src\/tokens\//.test(file.path) &&
         !/\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:postcss-value-parser|culori)\//.test(
           file.path,
         ) &&
         !file.path.endsWith('/entry.ts') &&
         // A pure, import-free helper (one `Object.hasOwn` read) the token runtime shares.
-        !file.path.endsWith('/components/core/src/_internal/own-entry.ts'),
+        !file.path.endsWith('/components/tokens/src/_internal/own-entry.ts'),
     );
     expect(outside.map((file) => file.path)).toEqual([]);
   });

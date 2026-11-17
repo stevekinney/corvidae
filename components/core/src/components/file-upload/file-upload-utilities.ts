@@ -3,7 +3,7 @@ import FileTextIcon from '@lucide/svelte/icons/file-text';
 import ImageIcon from '@lucide/svelte/icons/image';
 import TableIcon from '@lucide/svelte/icons/table';
 
-import { ownEntry } from '../../_internal/own-entry.ts';
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 import type { FileUploadEntry } from './file-upload.types.ts';
 
 const INTERACTIVE_ARIA_ROLES = [

@@ -9,7 +9,7 @@ import {
   evaluateThemeProperties,
   measurePairing,
   requiredContrast,
-} from '../tokens/runtime/index.ts';
+} from '@lostgradient/tokens/tokens/runtime/index.ts';
 
 const evaluation = evaluateThemeProperties({
   revision: 1,

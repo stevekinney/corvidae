@@ -1,5 +1,5 @@
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 import type { Snippet } from 'svelte';
-import { ownEntry } from '../../../_internal/own-entry.ts';
 import type {
   DataGridCellContext,
   DataGridColumnDef,

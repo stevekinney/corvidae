@@ -6,7 +6,7 @@ Decide the target by asking, in order, which is the lowest layer whose change fi
 
 | The problem is… | Target | Name in the finding |
 | --- | --- | --- |
-| a color, spacing step, radius, type size, shadow, motion or contrast value that is wrong wherever it appears | Cinder token | the token and its file under `components/core/src/tokens/` or `components/core/src/styles/tokens*.css` |
+| a color, spacing step, radius, type size, shadow, motion or contrast value that is wrong wherever it appears | Cinder token | the token and its file under `components/tokens/src/tokens/` or `components/tokens/src/styles/tokens*.css` |
 | a component's default look, density, state (hover, focus, disabled, loading, empty, error), or behavior | Cinder component | the component directory under `components/core/src/components/` |
 | a missing variant, prop or slot that pages work around | Cinder component | the component, and the variant it needs |
 | the chat transcript's own rendering: message roles, notes, date separators, the composer's layout (`@lostgradient/chat`, built on Cinder) | Chat component | the file under `components/chat/src/lib/components/chat/`, and the Cinder component it should compose instead when one exists |

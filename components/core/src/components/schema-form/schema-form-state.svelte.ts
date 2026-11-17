@@ -1,4 +1,4 @@
-import { ownEntry } from '../../_internal/own-entry.ts';
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 import type { KeyValueEntry } from '../key-value-editor/key-value-editor.types.ts';
 import {
   arrayValueAtPath,

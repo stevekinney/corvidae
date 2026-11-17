@@ -31,7 +31,14 @@ import { metadataCommand, metadataRoot, readMetadataFile } from './lib/metadata-
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/core');
-const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
+const registryPath = join(
+  componentsRoot,
+  '..',
+  'tokens',
+  'src',
+  'tokens',
+  'registry.generated.json',
+);
 
 /** One field of an already-narrowed object, without asserting a shape over it. */
 function readField(source: object, field: string): unknown {

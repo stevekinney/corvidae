@@ -92,7 +92,7 @@ type TokenDocument = Record<string, { $extensions?: Record<string, { cssProperty
 /** Every `--cinder-*` property the resolved light tokens declare. */
 function tokenProperties(): Set<string> {
   const document = JSON.parse(
-    read(join(cinderRoot, 'src/tokens/resolved/light.json')),
+    read(join(cinderRoot, '../tokens/src/tokens/resolved/light.json')),
   ) as TokenDocument;
   return new Set(
     Object.values(document).flatMap((token) => {

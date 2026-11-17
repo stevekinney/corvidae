@@ -132,7 +132,7 @@ For Markdown, use [`ReviewEditor`](../../editor/src/lib/components/review-editor
 
 ## Tokens, themes, and motion
 
-The generated [`token reference`](./tokens.md) documents the public `--cinder-*` surface. Cinder generates its CSS and registry artifacts from the validated token corpus; consumers should override public tokens in the same `[data-theme]` scope that establishes the theme and should never redefine internal `--_cinder-*` variables.
+The generated [`token reference`](../../tokens/documentation/tokens.md) documents the public `--cinder-*` surface. Cinder generates its CSS and registry artifacts from the validated token corpus; consumers should override public tokens in the same `[data-theme]` scope that establishes the theme and should never redefine internal `--_cinder-*` variables.
 
 ```css
 [data-theme='dark'] {

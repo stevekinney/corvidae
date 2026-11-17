@@ -49,7 +49,7 @@ function githubDarkForegrounds(): ReadonlyMap<string, string> {
  */
 function liftedDarkColors(): ReadonlyMap<string, string> {
   const css = readFileSync(
-    new URL('../components/code-block/code-block.css', import.meta.url),
+    new URL('../../../core/src/components/code-block/code-block.css', import.meta.url),
     'utf8',
   );
   const lifted = new Map<string, string>();
@@ -68,7 +68,7 @@ function liftedDarkColors(): ReadonlyMap<string, string> {
  */
 function liftedLightColors(): ReadonlyMap<string, string> {
   const css = readFileSync(
-    new URL('../components/code-block/code-block.css', import.meta.url),
+    new URL('../../../core/src/components/code-block/code-block.css', import.meta.url),
     'utf8',
   );
   const lifted = new Map<string, string>();
@@ -251,7 +251,10 @@ describe('dark json-highlight and line notes on the code block (row 07s, COR-201
   });
 
   it('json-highlight.css colors its tokens only with those roles', () => {
-    const css = readFileSync(new URL('./components/json-highlight.css', import.meta.url), 'utf8');
+    const css = readFileSync(
+      new URL('../../../core/src/styles/components/json-highlight.css', import.meta.url),
+      'utf8',
+    );
     const roles = new Set(
       [...css.matchAll(/color:\s*var\((--cinder-[a-z-]+)\)/g)].map((m) => m[1]),
     );

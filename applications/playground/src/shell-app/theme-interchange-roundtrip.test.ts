@@ -19,7 +19,7 @@ import { envelopeText, evaluator } from './theme-interchange-test-support.ts';
 
 const FIXTURES = join(
   import.meta.dir,
-  '../../../../components/core/scripts/tokens/fixtures/theme-builder',
+  '../../../../components/tokens/scripts/tokens/fixtures/theme-builder',
 );
 const allTypes = JSON.parse(
   readFileSync(join(FIXTURES, 'all-types.tokens.json'), 'utf8'),

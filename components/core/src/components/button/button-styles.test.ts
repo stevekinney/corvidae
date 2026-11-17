@@ -8,7 +8,10 @@ const { default: Button } = await import('./button.svelte');
 afterEach(cleanup);
 
 function readTokenSource(): string {
-  return readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+  return readFileSync(
+    new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+    'utf8',
+  );
 }
 
 function readButtonSource(): string {

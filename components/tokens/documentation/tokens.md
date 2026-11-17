@@ -2,7 +2,7 @@
 
 cinder ships its design tokens as plain CSS custom properties on `:root`. Every token has a `--cinder-*` prefix; that prefix is the public surface, and you can override any of them at `:root` (globally) or on any ancestor selector (scoped) to reskin the system. Internal-only custom properties use `--_cinder-*`; those are not part of the contract and may change without notice.
 
-The token tables below are generated from the DTCG token corpus at [`src/tokens/`](../src/tokens/) — everything between a `<!-- BEGIN GENERATED TOKEN TABLE: <slug> -->` / `<!-- END GENERATED TOKEN TABLE -->` marker pair is rewritten by `bun run --filter=@lostgradient/cinder tokens:generate`; edit the corpus, not the tables. The rest of this file — this intro, the callouts, and the explanatory prose between sections — is hand-maintained. A drift test in [`tokens-doc-drift.test.ts`](../src/styles/tokens-doc-drift.test.ts) keeps the generated tables in sync with the corpus, and `tokens:generate -- --check` fails if they have drifted; add a new token by adding it to the corpus and to the matching section in [`generate-artifacts.ts`](../scripts/tokens/generate-artifacts.ts), or the local drift check will fail.
+The token tables below are generated from the DTCG token corpus at [`src/tokens/`](../src/tokens/) — everything between a `<!-- BEGIN GENERATED TOKEN TABLE: <slug> -->` / `<!-- END GENERATED TOKEN TABLE -->` marker pair is rewritten by `bun run --filter=@lostgradient/tokens tokens:generate`; edit the corpus, not the tables. The rest of this file — this intro, the callouts, and the explanatory prose between sections — is hand-maintained. A drift test in [`tokens-doc-drift.test.ts`](../../core/src/styles/tokens-doc-drift.test.ts) keeps the generated tables in sync with the corpus, and `tokens:generate -- --check` fails if they have drifted; add a new token by adding it to the corpus and to the matching section in [`generate-artifacts.ts`](../scripts/tokens/generate-artifacts.ts), or the local drift check will fail.
 
 Root-declared tokens are emitted in [`tokens-base.css`](../src/styles/tokens-base.css). A small set of component-owned aliases is intentionally consume-only: it is deferred to the component's consumption site so scoped ancestor overrides continue to flow through the referenced token instead of being masked by a root declaration. The aggregator [`tokens.css`](../src/styles/tokens.css) imports the base file and is the entry point components consume.
 
@@ -10,7 +10,7 @@ Root-declared tokens are emitted in [`tokens-base.css`](../src/styles/tokens-bas
 
 ## Editing the full registry in the theme builder
 
-The tables below are a reference: they show what Cinder ships. The [theme builder](./theming.md#the-theme-builder) is where you change it. It is the `/theme-builder` route of the playground application, and it exposes the whole public token registry for editing, not a curated subset. Every public `--cinder-*` token in the registry has a row in the builder's catalogue, and the catalogue is built from the same generated data as the registry, so a token added to the corpus appears in the builder when `tokens:generate` runs. Nothing in the builder or in this section carries a hand-written count. Derive the current number from the data:
+The tables below are a reference: they show what Cinder ships. The [theme builder](../../core/documentation/theming.md#the-theme-builder) is where you change it. It is the `/theme-builder` route of the playground application, and it exposes the whole public token registry for editing, not a curated subset. Every public `--cinder-*` token in the registry has a row in the builder's catalogue, and the catalogue is built from the same generated data as the registry, so a token added to the corpus appears in the builder when `tokens:generate` runs. Nothing in the builder or in this section carries a hand-written count. Derive the current number from the data:
 
 ```ts
 import { AUTHORING_CATALOGUE } from '@lostgradient/cinder/tokens/runtime';
@@ -37,7 +37,7 @@ The catalogue groups every token as Foundations (spacing, radii, typography, mot
 
 Every public token is emitted into the deployment CSS. DTCG export is `complete`, `subset` (the DTCG value without the CSS recipe), or `none`. A theme's source can also hold tokens that are not in the registry, for example in an imported Cinder Theme v1 file. The builder lists them in a Source group. They have no CSS binding, so they appear in the portable DTCG documents and emit no CSS.
 
-The row-by-row rules, with the clause of the DTCG 2025.10 specification that defines each one and the fixtures that pin it, are in [Theme builder token capabilities](./theme-builder-token-capabilities.md). The runtime that evaluates and validates an edited theme is documented in [`src/tokens/runtime/README.md`](../src/tokens/runtime/README.md).
+The row-by-row rules, with the clause of the DTCG 2025.10 specification that defines each one and the fixtures that pin it, are in [Theme builder token capabilities](../../core/documentation/theme-builder-token-capabilities.md). The runtime that evaluates and validates an edited theme is documented in [`src/tokens/runtime/README.md`](../src/tokens/runtime/README.md).
 
 ## Spacing
 
@@ -189,11 +189,11 @@ Use `--cinder-text-muted` for readable secondary text that remains part of the c
 
 <!-- END GENERATED TOKEN TABLE -->
 
-`--cinder-content-width` caps the inline size of primary page content. It is the default width for [`Container`](../src/components/container/container.svelte); consumers can override it globally or per scope.
+`--cinder-content-width` caps the inline size of primary page content. It is the default width for [`Container`](../../core/src/components/container/container.svelte); consumers can override it globally or per scope.
 
 Chat scopes its own measure to its root rather than reading the page-level tokens above. `--cinder-chat-message-max-width` defaults to `48rem` and caps every transcript row — message bubbles and grouped tool-call cards alike — so the two can never drift to different widths. Override it on an individual Chat container, on a wrapping element, or on `:root` to widen or tighten the transcript independently of surrounding page content: the token is registered with `@property` (`syntax: '*'`, `inherits: true`, `initial-value: 48rem`; a typed syntax cannot carry a `rem` initial value) rather than declared on the Chat root, so an ancestor's value inherits into Chat instead of being reset by the component's own declaration. Every rule that consumes it carries the same `48rem` fallback, so the measure holds even for a consumer before the Chat source entry loads its styles.
 
-`--cinder-content-width-prose`, `--cinder-content-width-narrow`, and `--cinder-content-width-wide` form the named width scale selected by [`Container`](../src/components/container/container.svelte)'s `maxWidth` prop; omitting `maxWidth` falls back to `--cinder-content-width`. The `maxWidth="full"` keyword removes the cap entirely (`max-inline-size: none`) and maps to no token.
+`--cinder-content-width-prose`, `--cinder-content-width-narrow`, and `--cinder-content-width-wide` form the named width scale selected by [`Container`](../../core/src/components/container/container.svelte)'s `maxWidth` prop; omitting `maxWidth` falls back to `--cinder-content-width`. The `maxWidth="full"` keyword removes the cap entirely (`max-inline-size: none`) and maps to no token.
 
 ## Motion
 
@@ -308,7 +308,7 @@ Foreground colors keyed to readability against the surface tokens. `--cinder-tex
 
 `--cinder-border-faint` is for decorative internal hairlines only. It is intentionally below the 3:1 non-text contrast floor and must not be used to define a control boundary.
 
-A neutral border does one of two jobs. A **structural** edge separates regions or outlines a container, and is identified by the content and surface it bounds, so it can be quiet: `--cinder-border-muted` (interior dividers), `--cinder-border` (container outer edges), and `--cinder-border-strong` (emphasized structure). A **control** boundary is the only visible outline of something you type into, check, drag, or press, so it must clear WCAG 1.4.11's 3:1: `--cinder-border-control` and `--cinder-border-control-hover`, which text-entry controls reach through the control frame, and which the secondary Button (`--cinder-button-border`) and every other bordered button and toggle chip read at rest. [`documentation/css-audit/translucent-border-seams.md`](./css-audit/translucent-border-seams.md) has the full rubric for choosing a tier.
+A neutral border does one of two jobs. A **structural** edge separates regions or outlines a container, and is identified by the content and surface it bounds, so it can be quiet: `--cinder-border-muted` (interior dividers), `--cinder-border` (container outer edges), and `--cinder-border-strong` (emphasized structure). A **control** boundary is the only visible outline of something you type into, check, drag, or press, so it must clear WCAG 1.4.11's 3:1: `--cinder-border-control` and `--cinder-border-control-hover`, which text-entry controls reach through the control frame, and which the secondary Button (`--cinder-button-border`) and every other bordered button and toggle chip read at rest. [`documentation/css-audit/translucent-border-seams.md`](../../core/documentation/css-audit/translucent-border-seams.md) has the full rubric for choosing a tier.
 
 None of the five is authored separately. Each is one alpha step over `--cinder-border-ink`: 5%, 9%, 15%, 48%, and 58%, with the ink carrying the light/dark polarity so the same percentages serve both arms. The generator materializes every theme's copy from the one recipe, so a retune is a single edit to the base token. Retinting all five at once means overriding one token:
 
@@ -335,7 +335,7 @@ This is not new behavior — every derived token in the corpus works this way, `
 
 An alpha border tracks the surface underneath it, and that uniformity is the point. The dark surface ramp spans L 0.11 to 0.28, so a single opaque border used to read 4.80:1 against `surface-inset` and 3.42:1 against `surface-raised` — a 29% spread that two consecutive retunes had to re-chase by eye. The composed tiers hold every tier under a 15% spread in both arms, and `check-token-contrast-borders.test.ts` gates that number along with the per-surface floors: both control tiers at 3:1 on all four surfaces, and every structural tier below `--cinder-border-control` so the hierarchy cannot invert.
 
-Two consequences worth knowing before you use them. A structural border mixed into another color inherits its transparency, so `color-mix(in oklch, var(--cinder-surface), var(--cinder-border-muted) 10%)` yields a slightly translucent result rather than an opaque one. And two of these borders painted on the same pixel stack their alpha — draw interior dividers as a single edge on one of the two adjacent elements. [`documentation/css-audit/translucent-border-seams.md`](./css-audit/translucent-border-seams.md) audits every seam in the repository against that rule.
+Two consequences worth knowing before you use them. A structural border mixed into another color inherits its transparency, so `color-mix(in oklch, var(--cinder-surface), var(--cinder-border-muted) 10%)` yields a slightly translucent result rather than an opaque one. And two of these borders painted on the same pixel stack their alpha — draw interior dividers as a single edge on one of the two adjacent elements. [`documentation/css-audit/translucent-border-seams.md`](../../core/documentation/css-audit/translucent-border-seams.md) audits every seam in the repository against that rule.
 
 `--cinder-border-faint` stays opaque, and so do the four hued status borders — `--cinder-status-info-border`, `--cinder-status-success-border`, `--cinder-status-warning-border`, and `--cinder-status-danger-border`. Faint answers to a different, deliberately-below-3:1 floor; a translucent status border would take its hue from whatever surface it happened to sit on, which is the opposite of what a status color is for.
 
@@ -552,7 +552,7 @@ Density is one axis with three steps, and a page says which once: compact, defau
 
 ## Focus ring
 
-The ring tokens drive the focus-visible outline used across interactive primitives. See [`focus-ring-policy.md`](./focus-ring-policy.md) for when components are expected to render the ring vs. when they delegate to the user agent.
+The ring tokens drive the focus-visible outline used across interactive primitives. See [`focus-ring-policy.md`](../../core/documentation/focus-ring-policy.md) for when components are expected to render the ring vs. when they delegate to the user agent.
 
 <!-- BEGIN GENERATED TOKEN TABLE: focus-ring -->
 
@@ -621,7 +621,7 @@ Themed native scrollbars for components that opt in via `scrollbar-width` and `:
 
 ## Button
 
-Component-specific tokens for [`Button`](../src/components/button/button.svelte). The base trio (`bg`, `fg`, `border`) defines the secondary-variant defaults; size tokens scale padding, height, font, and radius across `xs`/`sm`/`md`/`lg`/`xl`. `md` is the AAA touch-target size (44px); `xs` and `sm` are intentionally below AAA — see [`button.a11y.md`](../src/components/button/button.a11y.md) for the rationale.
+Component-specific tokens for [`Button`](../../core/src/components/button/button.svelte). The base trio (`bg`, `fg`, `border`) defines the secondary-variant defaults; size tokens scale padding, height, font, and radius across `xs`/`sm`/`md`/`lg`/`xl`. `md` is the AAA touch-target size (44px); `xs` and `sm` are intentionally below AAA — see [`button.a11y.md`](../../core/src/components/button/button.a11y.md) for the rationale.
 
 ### Base
 

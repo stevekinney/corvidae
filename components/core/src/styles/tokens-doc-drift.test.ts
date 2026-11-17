@@ -1,7 +1,7 @@
 /**
  * Drift test for components/core/documentation/tokens.md.
  *
- * Since CIN-30, components/core/documentation/tokens.md's token tables are GENERATED (see
+ * Since CIN-30, components/tokens/documentation/tokens.md's token tables are GENERATED (see
  * `generate-artifacts.ts`) from the DTCG corpus at `src/tokens/`, between
  * `<!-- BEGIN/END GENERATED TOKEN TABLE -->` markers -- `tokens:generate
  * -- --check` already fails on any drift between the committed doc and a
@@ -21,19 +21,19 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import { readRootTokenValues } from '@lostgradient/component-tooling/test/token-introspection.ts';
-import { loadCorpus } from '../../scripts/tokens/generate.ts';
+import { loadCorpus } from '@lostgradient/tokens/scripts/tokens/generate.ts';
 import {
   buildBaseDocuments,
   buildBaseIndex,
   buildTokenRegistryFromIndexes,
   themeAwarePaths,
-} from '../tokens/runtime/registry.ts';
-import { createValueResolver } from '../tokens/runtime/resolve.ts';
-import { serializeEntryValue } from '../tokens/runtime/value-entry.ts';
+} from '@lostgradient/tokens/tokens/runtime/registry.ts';
+import { createValueResolver } from '@lostgradient/tokens/tokens/runtime/resolve.ts';
+import { serializeEntryValue } from '@lostgradient/tokens/tokens/runtime/value-entry.ts';
 
 const PACKAGE_ROOT = join(import.meta.dir, '..', '..');
-const TOKENS_CSS = join(PACKAGE_ROOT, 'src', 'styles', 'tokens-base.css');
-const TOKENS_DOC = join(PACKAGE_ROOT, 'documentation', 'tokens.md');
+const TOKENS_CSS = join(PACKAGE_ROOT, '..', 'tokens', 'src', 'styles', 'tokens-base.css');
+const TOKENS_DOC = join(PACKAGE_ROOT, '..', 'tokens', 'documentation', 'tokens.md');
 const FOCUS_RING_POLICY_DOC = join(PACKAGE_ROOT, 'documentation', 'focus-ring-policy.md');
 const THEMING_DOC = join(PACKAGE_ROOT, 'documentation', 'theming.md');
 

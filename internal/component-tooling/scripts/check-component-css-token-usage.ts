@@ -90,7 +90,7 @@ const componentsSource = join(componentsRoot, 'src');
  */
 export const tokenRegistryPath =
   [componentsRoot, join(componentsRoot, '..', 'tokens')]
-    .map((root) => join(root, 'src', 'tokens', 'registry.generated.json'))
+    .map((root) => join(root, '..', 'tokens', 'src', 'tokens', 'registry.generated.json'))
     .find((path) => existsSync(path)) ??
   join(componentsSource, 'tokens', 'registry.generated.json');
 const defaultBaselinePath = join(

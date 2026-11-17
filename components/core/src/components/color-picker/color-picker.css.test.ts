@@ -57,7 +57,7 @@ function lightDarkArms(value: string): [string, string] {
   throw new Error(`light-dark() missing comma separator: ${value}`);
 }
 
-const tokensCss = loadCss('../../styles/tokens-base.css');
+const tokensCss = loadCss('../../../../tokens/src/styles/tokens-base.css');
 const colorPickerCss = loadCss('./color-picker.css');
 const colorFieldCss = loadCss('../color-field/color-field.css');
 const inputCss = loadCss('../input/input.css');
