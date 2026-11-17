@@ -147,6 +147,11 @@ export interface ExtractResult {
   written: string[];
   rewrites: Rewrite[];
   warnings: string[];
+  /**
+   * Each path a file still writes to where a moved file or directory was, which no rewrite could
+   * follow: the run fails on any (see {@link deadPaths}).
+   */
+  dead: string[];
 }
 
 /** Every file under `directory`, skipping installs and build output. */
@@ -732,17 +737,76 @@ function movedWithinCore(
 }
 
 /**
- * The relative paths a file writes, each with where it starts: a code file's quoted path strings
- * (not the specifiers {@link rewriteFile} handles first), a Markdown file's link targets.
+ * A path a file writes: where its written form starts and how long it is, the path it stands for
+ * from the file's directory (`./…` or `../…`), and how a path that replaces it is written back.
  */
-function relativePaths(path: string, text: string): { start: number; text: string }[] {
+interface WrittenPath {
+  start: number;
+  length: number;
+  text: string;
+  render: (path: string) => string;
+}
+
+/** The file's own directory: `import.meta.dir`, `import.meta.dirname`, `dirname(fileURLToPath(import.meta.url))`. */
+const DIRECTORY_ANCHOR = String.raw`(?:import\.meta\.dirname|import\.meta\.dir|dirname\(\s*fileURLToPath\(\s*import\.meta\.url\s*\)\s*\))`;
+const SEGMENT_LITERAL = String.raw`(?:'[^'\n$]*'|"[^"\n$]*")`;
+/** `join(import.meta.dir, '..', 'tokens', file)`: the run of literal segments after the anchor. */
+const ANCHORED_JOIN = new RegExp(
+  String.raw`\b(?:join|resolve)\(\s*${DIRECTORY_ANCHOR}\s*,\s*(${SEGMENT_LITERAL}(?:\s*,\s*${SEGMENT_LITERAL})*)`,
+  'g',
+);
+/** `` `${import.meta.dir}/components/_scroll-fade.css` ``: the literal text after the anchor. */
+const ANCHORED_TEMPLATE = /`\$\{import\.meta\.dir(?:name)?\}\/([^`$\n]+)/g;
+
+/** A relative path written as segments, `./`-prefixed unless it climbs. */
+function segmentsPath(segments: readonly string[]): string | undefined {
+  const joined = posix.join(...segments);
+  if (joined === '.' || joined === '') return undefined;
+  return joined === '..' || joined.startsWith('../') ? joined : `./${joined}`;
+}
+
+/** The literal segments of a run of quoted strings separated by commas. */
+function literalSegments(run: string): string[] {
+  return [...run.matchAll(/'([^'\n]*)'|"([^"\n]*)"/g)].map((match) => match[1] ?? match[2] ?? '');
+}
+
+/**
+ * The paths a file writes from its own directory, each with where it starts: a code file's quoted
+ * relative strings (not the specifiers {@link rewriteFile} handles first), the literal segments it
+ * joins to its directory (`join(import.meta.dir, 'tokens', file)`) and the literal tail of a
+ * template on it (`` `${import.meta.dir}/components/x.css` ``); a Markdown file's link targets.
+ */
+function relativePaths(path: string, text: string): WrittenPath[] {
+  const identity = (replacement: string) => replacement;
   if (MARKDOWN_FILE.test(path)) {
     return [...text.matchAll(MARKDOWN_LINK)].map((match) => ({
       start: (match.index ?? 0) + 2,
+      length: (match[1] ?? '').length,
       text: match[1] ?? '',
+      render: identity,
     }));
   }
-  const paths: { start: number; text: string }[] = [];
+  const paths: WrittenPath[] = [];
+  for (const match of text.matchAll(ANCHORED_JOIN)) {
+    const run = match[1] ?? '';
+    const joined = segmentsPath(literalSegments(run));
+    if (joined === undefined) continue;
+    // The run's text between its first and last quote becomes the one literal that replaces it.
+    const start = (match.index ?? 0) + match[0].length - run.length + 1;
+    paths.push({ start, length: run.length - 2, text: joined, render: identity });
+  }
+  for (const match of text.matchAll(ANCHORED_TEMPLATE)) {
+    const tail = match[1] ?? '';
+    const written = segmentsPath([tail]);
+    if (written === undefined) continue;
+    paths.push({
+      start: (match.index ?? 0) + match[0].length - tail.length,
+      length: tail.length,
+      text: tail.endsWith('/') && !written.endsWith('/') ? `${written}/` : written,
+      render: (replacement) => (replacement.startsWith('./') ? replacement.slice(2) : replacement),
+    });
+  }
+  const claimed = paths.map(({ start, length }) => [start, start + length] as const);
   for (const match of text.matchAll(PATH_STRING)) {
     // A specifier is handled apart; skip any string the specifier pattern matched.
     const before = text.slice(Math.max(0, (match.index ?? 0) - 24), match.index);
@@ -753,7 +817,10 @@ function relativePaths(path: string, text: string): { start: number; text: strin
     ) {
       continue;
     }
-    paths.push({ start: (match.index ?? 0) + 1, text: match[2] ?? '' });
+    const start = (match.index ?? 0) + 1;
+    if (claimed.some(([from, to]) => start >= from && start < to)) continue;
+    const written = match[2] ?? '';
+    paths.push({ start, length: written.length, text: written, render: identity });
   }
   return paths;
 }
@@ -919,11 +986,11 @@ function rewriteFile(plan: Plan, path: string): void {
       rewritten.set(mock.start, { length: CORE_PACKAGE_NAME.length, text: replacement });
     }
   }
-  for (const { start, text } of relativePaths(path, original)) {
+  for (const { start, length, text, render } of relativePaths(path, original)) {
     if (rewritten.has(start)) continue;
     const logical = posix.join(directory, physicalPath(plan, home.name, home.virtual));
     const replacement = retargetPath(plan, path, logical, text);
-    if (replacement !== undefined) rewritten.set(start, { length: text.length, text: replacement });
+    if (replacement !== undefined) rewritten.set(start, { length, text: render(replacement) });
   }
   if (rewritten.size === 0) return;
   let next = original;
@@ -945,9 +1012,9 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
   // A file no package holds (chat, an application, a document) reaching into core by a relative
   // path follows the file it names to the package that holds it now.
   if (packageOf(plan, path) === undefined) {
-    const replacements = relativePaths(path, next).flatMap(({ start, text }) => {
+    const replacements = relativePaths(path, next).flatMap(({ start, length, text, render }) => {
       const replacement = retargetPath(plan, path, path, text);
-      return replacement === undefined ? [] : [{ start, length: text.length, replacement }];
+      return replacement === undefined ? [] : [{ start, length, replacement: render(replacement) }];
     });
     for (const { start, length, replacement } of replacements.toSorted(
       (a, b) => b.start - a.start,
@@ -1047,10 +1114,10 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
   const home = packageOf(plan, path)?.name;
   const coreName = posix.basename(plan.options.core);
   const scripts = path.startsWith('internal/component-tooling/scripts/');
-  // Outside the packages a test often builds a tree of its own, which these paths would mistake.
-  if (home === undefined && (isTestFile(path) || (!scripts && !text.includes(coreName)))) {
-    return text;
-  }
+  if (home === undefined && !scripts && !text.includes(coreName)) return text;
+  // Outside the packages a test often builds a tree of its own, which these paths would mistake:
+  // there, only a path that names core (`'components', '<core>', 'src', …`) is core's.
+  const ownTree = home === undefined && isTestFile(path);
   const target = (virtual: string): string | undefined => {
     const owner = ownerOfPath(plan, virtual);
     if (owner === undefined || owner === 'tooling') return undefined;
@@ -1068,6 +1135,7 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
       start: string,
       rest: string,
     ) => {
+      if (ownTree && previous !== coreName) return whole;
       const segments = [...rest.matchAll(/(['"])([\w.@-]+)\1/g)].map((match) => match[2] ?? '');
       const name = target([start, ...segments].join('/'));
       if (name === undefined || previous === name) return whole;
@@ -1080,6 +1148,7 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
     },
   );
   next = next.replace(SINGLE, (whole, quote: string, virtual: string) => {
+    if (ownTree) return whole;
     const name = target(virtual.replace(/\/$/, ''));
     return name === undefined ? whole : `${quote}../${name}/${virtual}${quote}`;
   });
@@ -1095,6 +1164,78 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
 }
 
 const SIBLING_SINGLE = /(['"])\.\.\/([\w-]+)\/((?:src|scripts|documentation)\/[\w.@/-]+)\1/g;
+
+const SEGMENT_RUN = new RegExp(`${SEGMENT_LITERAL}(?:\\s*,\\s*${SEGMENT_LITERAL})+`, 'g');
+
+/**
+ * Each path a file still writes into core's directory where a file or directory that left core
+ * was, once every rewrite has run: the guard behind them. It reads every code and Markdown file in
+ * the repository: the relative paths and the paths on a file's own directory {@link relativePaths}
+ * finds, from where the file is and, when that reaches nothing, from where it was before it moved;
+ * and each `<core>/…` path from the repository root, written whole or as segments (`'components',
+ * '<core>', 'src', …`). A path counts when the map places what it names in one package that holds
+ * it elsewhere now; a directory several packages share (core's components directory) is no one
+ * package's, so a reader that walks it is left to its own tests.
+ */
+function deadPaths(plan: Plan): string[] {
+  const { root, core } = plan.options;
+  const directoryOwners = new Map<string, Set<string>>();
+  for (const [path, name] of plan.owner) {
+    for (let at = posix.dirname(path); at !== '.'; at = posix.dirname(at)) {
+      const owners = directoryOwners.get(at) ?? new Set<string>();
+      owners.add(name);
+      directoryOwners.set(at, owners);
+    }
+  }
+  /** Where the package that holds a path into core keeps it now, when that is not there. */
+  const movedTo = (reached: string): string | undefined => {
+    if (!reached.startsWith(`${core}/`)) return undefined;
+    const written = reached.slice(core.length + 1).replace(/\/$/, '');
+    const virtual = coreVirtualPath(plan, written);
+    let owner = plan.owner.get(virtual);
+    if (owner === undefined) {
+      const owners = directoryOwners.get(virtual);
+      if (owners?.size === 1) owner = [...owners][0];
+    }
+    if (owner === undefined || owner === 'tooling') return undefined;
+    const now = posix.join(packageDirectory(plan, owner), physicalPath(plan, owner, virtual));
+    return now === posix.join(core, written) ? undefined : now;
+  };
+  const dead: string[] = [];
+  for (const path of plan.options.listFiles('.')) {
+    if (UNREWRITTEN.includes(path) || !TEXT_FILE.test(path)) continue;
+    const absolute = join(root, path);
+    if (!existsSync(absolute)) continue;
+    const text = readFileSync(absolute, 'utf8');
+    if (isGenerated(text)) continue;
+    const home = packageOf(plan, path);
+    const before = home === undefined ? path : posix.join(core, home.virtual);
+    const check = (written: string, reached: string): boolean => {
+      const now = movedTo(reached);
+      if (now !== undefined) dead.push(`${path}: ${written} reaches ${reached}, now ${now}.`);
+      return now !== undefined;
+    };
+    for (const { text: written } of relativePaths(path, text)) {
+      const clean = written.replace(/[?#].*$/, '');
+      const reached = posix.normalize(posix.join(posix.dirname(path), clean));
+      if (check(written, reached) || existsSync(join(root, reached))) continue;
+      const earlier = posix.normalize(posix.join(posix.dirname(before), clean));
+      if (earlier !== reached) check(written, earlier);
+    }
+    const whole = new RegExp(`(?<![\\w/.-])${escapeRegExp(core)}/[\\w.@/-]*[\\w@-]`, 'g');
+    for (const match of text.matchAll(whole)) check(match[0], match[0]);
+    const coreSegments = core.split('/');
+    for (const match of text.matchAll(SEGMENT_RUN)) {
+      const segments = literalSegments(match[0]);
+      const at = segments.findIndex((_, index) =>
+        coreSegments.every((segment, offset) => segments[index + offset] === segment),
+      );
+      if (at === -1 || segments.length <= at + coreSegments.length) continue;
+      check(match[0].replaceAll(/\s+/g, ' '), posix.join(...segments.slice(at)));
+    }
+  }
+  return dead;
+}
 
 type ExportedNames = { runtime: string[]; types: string[] };
 
@@ -1678,7 +1819,15 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
     selected: [],
     owner: new Map(),
     components: new Map(),
-    result: { selected: [], moves: [], created: [], written: [], rewrites: [], warnings: [] },
+    result: {
+      selected: [],
+      moves: [],
+      created: [],
+      written: [],
+      rewrites: [],
+      warnings: [],
+      dead: [],
+    },
     exportKeys: new Map(),
     pending: new Map(),
     location: new Map(),
@@ -1734,7 +1883,8 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
   for (const path of plan.options.listFiles('.')) rewriteRepositoryPaths(plan, path);
   if (!plan.options.dryRun) {
     for (const path of plan.result.written) {
-      if (!/\.(?:ts|css|json|svelte)$/.test(path)) continue;
+      // Everything the run wrote that Prettier formats, so `format:check` holds after it.
+      if (!/\.(?:ts|js|mjs|css|json|jsonc|svelte|md|ya?ml)$/.test(path)) continue;
       const absolute = join(root, path);
       const text = readFileSync(absolute, 'utf8');
       const formatted = await plan.options.format(absolute, text);
@@ -1744,6 +1894,7 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
     plan.result.written = plan.result.written.filter(
       (path) => readFileSync(join(root, path), 'utf8') !== plan.originals.get(path),
     );
+    plan.result.dead = deadPaths(plan);
   }
   return plan.result;
 }
@@ -1898,6 +2049,10 @@ async function main(argv: string[]): Promise<number> {
     `${result.created.length} created, ${result.moves.length} files moved, ${result.rewrites.length} imports rewritten, ${result.written.length} files written.`,
   );
   for (const warning of result.warnings) out(`warning: ${warning}`);
+  // A path that still reaches where a moved file was is a reader the rewrites missed: stop here,
+  // unstaged, with every one named, rather than leave it to fail in a test or a browser suite.
+  for (const line of result.dead) out(`dead path: ${line}`);
+  if (result.dead.length > 0) return 1;
   if (dryRun) {
     for (const { from, to } of result.moves.slice(0, 40)) out(`  ${from} -> ${to}`);
     if (result.moves.length > 40) out(`  … and ${result.moves.length - 40} more moves`);

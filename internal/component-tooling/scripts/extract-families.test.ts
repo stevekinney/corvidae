@@ -101,6 +101,15 @@ const TREE: Record<string, string> = {
     '',
   ].join('\n'),
   [`${CORE}/src/exports/extra.ts`]: "export { cardContext } from '../_internal/card-context.ts';\n",
+  // A core test that reads other packages' files from its own directory: by a template on it, by
+  // literal segments joined to it, and by a relative string resolved on it.
+  [`${CORE}/src/exports/anchored.test.ts`]: [
+    'const partial = `${import.meta.dir}/../styles/components/_partial.css`;',
+    "const runtime = join(import.meta.dir, '..', 'tokens', 'runtime', file);",
+    "const card = resolve(dirname(fileURLToPath(import.meta.url)), '../components/card/card.css');",
+    "const own = join(import.meta.dirname, 'extra.ts');",
+    '',
+  ].join('\n'),
   [`${CORE}/src/styles/index.css`]:
     "@import './tokens.css' layer(cinder.tokens);\n@import './foundation.css' layer(cinder.foundation);\n",
   [`${CORE}/src/styles/tokens.css`]: ':root { --cinder-red: red; }\n',
@@ -209,6 +218,22 @@ const TREE: Record<string, string> = {
   'components/chat/README.md': 'See [`Button`](../core/src/components/button/README.md#usage).\n',
   'components/chat/src/focus.test.ts':
     "const css = new URL('../../core/src/components/button/button.css', import.meta.url);\n",
+  // A test outside the packages (a fixture suite's, which a test-file pattern takes for one) that
+  // reaches core by segments from the repository: only a path that names core is core's.
+  'scripts/browser-fixtures/tests/runtime.playwright.ts': [
+    'const runtime = join(',
+    '  import.meta.dirname,',
+    "  '..',",
+    "  'components',",
+    "  'core',",
+    "  'src',",
+    "  'tokens',",
+    "  'runtime',",
+    "  'index.ts',",
+    ');',
+    "const own = join(fixtureRoot, 'src', 'tokens', 'runtime', 'index.ts');",
+    '',
+  ].join('\n'),
   'turbo.json':
     '{\n  "inputs": [\n        "$TURBO_ROOT$/components/core/scripts/**",\n        "$TURBO_ROOT$/scripts/**"\n  ]\n}\n',
   'scripts/check.ts': [
@@ -378,8 +403,19 @@ describe('extract-families', () => {
     const root = repository();
     const namesBefore = exportNames(join(root, CORE, 'src/index.ts'));
 
-    await extract(root, { kind: 'packages', names: ['tokens'] });
+    // Every reader of a moved path is rewritten, so the guard behind the rewrites finds none.
+    expect((await extract(root, { kind: 'packages', names: ['tokens'] })).dead).toEqual([]);
     expect(existsSync(join(root, CORE, 'src/tokens'))).toBe(false);
+    const anchored = `${CORE}/src/exports/anchored.test.ts`;
+    expect(read(root, anchored)).toContain(
+      "join(import.meta.dir, '../../../tokens/src/tokens/runtime', file)",
+    );
+    expect(read(root, 'scripts/browser-fixtures/tests/runtime.playwright.ts')).toContain(
+      "'components',\n  'tokens', 'src',\n  'tokens',",
+    );
+    expect(read(root, 'scripts/browser-fixtures/tests/runtime.playwright.ts')).toContain(
+      "join(fixtureRoot, 'src', 'tokens', 'runtime', 'index.ts')",
+    );
     expect(read(root, 'components/tokens/src/tokens/runtime/index.ts')).toContain('resolveTokens');
     expect(read(root, 'components/tokens/scripts/tokens/check.ts')).toContain(
       "'../../src/tokens/runtime/index.ts'",
@@ -420,7 +456,10 @@ describe('extract-families', () => {
     );
     expect(read(root, 'scripts/check.ts')).toContain("'components/tokens/scripts/tokens/check.ts'");
 
-    await extract(root, { kind: 'packages', names: ['foundation'] });
+    expect((await extract(root, { kind: 'packages', names: ['foundation'] })).dead).toEqual([]);
+    expect(read(root, anchored)).toContain(
+      '`${import.meta.dir}/../../../foundation/src/styles/components/_partial.css`',
+    );
     expect(read(root, 'components/foundation/src/utilities/focus.ts')).toContain(
       "from '@lostgradient/tokens/tokens/runtime/index.ts'",
     );
@@ -434,8 +473,12 @@ describe('extract-families', () => {
     expect(read(root, focusTest)).toContain("'../../../core/src/components/card/card.css'");
     expect(read(root, focusTest)).toContain("'..', 'core', 'src', 'components', 'card'");
 
-    await extract(root, { kind: 'all' });
+    expect((await extract(root, { kind: 'all' })).dead).toEqual([]);
     expect(existsSync(join(root, CORE, 'src/components'))).toBe(false);
+    expect(read(root, anchored)).toContain(
+      "resolve(dirname(fileURLToPath(import.meta.url)), '../../../card/src/components/card/card.css')",
+    );
+    expect(read(root, anchored)).toContain("join(import.meta.dirname, 'extra.ts')");
     expect(read(root, 'components/card/src/components/card/examples/basic.example.svelte')).toBe(
       [
         '<script lang="ts">',
@@ -570,6 +613,19 @@ describe('extract-families', () => {
     expect(read(root, moved)).toContain(
       "join(packageRoot, '..', 'core', 'src', 'styles', 'components.css')",
     );
+  });
+
+  test('names a path no rewrite follows that still reaches where a moved file was', async () => {
+    const root = repository();
+    // Core's own JSON names a token module by a relative path, which no rewrite reads.
+    writeFileSync(
+      join(root, CORE, 'scripts/paths.json'),
+      '{ "runtime": "../src/tokens/runtime/index.ts", "kept": "../src/index.ts" }\n',
+    );
+    const result = await extract(root, { kind: 'packages', names: ['tokens'] });
+    expect(result.dead).toEqual([
+      `${CORE}/scripts/paths.json: ../src/tokens/runtime/index.ts reaches ${CORE}/src/tokens/runtime/index.ts, now components/tokens/src/tokens/runtime/index.ts.`,
+    ]);
   });
 
   test('a second run changes nothing', async () => {
