@@ -16,8 +16,8 @@ async function execute(taskId: string, control: TaskControl): Promise<number | n
   return result.exitCode;
 }
 
-test('local fixtures reject buggy and empty candidates while accepting repairs', async () => {
-  for (const taskId of ['local-01', 'local-02']) {
+test('materialized fixtures reject buggy and empty candidates while accepting repairs', async () => {
+  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02']) {
     expect(await execute(taskId, 'buggy')).toBe(1);
     expect(await execute(taskId, 'empty')).toBe(1);
     expect(await execute(taskId, 'repaired')).toBe(0);

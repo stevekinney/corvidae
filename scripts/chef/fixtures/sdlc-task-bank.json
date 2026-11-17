@@ -22,6 +22,28 @@
       },
       "repairedFiles": { "candidate.ts": "import { copy } from './support.ts';\nexport function uniqueKeys(values: readonly string[]): string[] { return [...new Set(copy(values))]; }\n" },
       "oraclePath": "oracle.ts", "oracleArgv": ["oracle.ts"], "acceptanceCases": ["preserves first occurrence", "preserves input array", "supports inherited-key spellings"]
+    },
+    {
+      "id": "contract-01", "family": "cross-workspace-contract", "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b", "heldOut": false, "permittedPaths": ["packages/producer/src/result.ts"], "deliveryBoundary": "contract",
+      "files": {
+        "packages/producer/package.json": "{\\\"name\\\":\\\"producer\\\",\\\"private\\\":true}\n",
+        "packages/producer/src/result.ts": "export type Result = { id: string; state: 'ready' | 'failed'; retryable: boolean }; export function serializeResult(result: Result) { return { id: result.id, state: result.state }; }\n",
+        "packages/consumer/package.json": "{\\\"name\\\":\\\"consumer\\\",\\\"private\\\":true}\n",
+        "packages/consumer/src/present.ts": "import type { Result } from '../../producer/src/result.ts'; export function presentResult(result: Result) { return { id: result.id, action: result.state === 'failed' && result.retryable ? 'retry' : 'none' }; }\n",
+        "oracle.ts": "import { serializeResult } from './packages/producer/src/result.ts'; import { presentResult } from './packages/consumer/src/present.ts'; const cases = [{ id: 'one', state: 'failed', retryable: false, action: 'none' }, { id: 'two', state: 'failed', retryable: true, action: 'retry' }, { id: 'three', state: 'ready', retryable: true, action: 'none' }] as const; for (const item of cases) { const wire = serializeResult(item); if (JSON.stringify(wire) !== JSON.stringify({ id: item.id, state: item.state, retryable: item.retryable }) || presentResult(wire).action !== item.action) process.exit(1); }\n"
+      },
+      "repairedFiles": { "packages/producer/src/result.ts": "export type Result = { id: string; state: 'ready' | 'failed'; retryable: boolean }; export function serializeResult(result: Result): Result { return { id: result.id, state: result.state, retryable: result.retryable }; }\n" }, "oraclePath": "oracle.ts", "oracleArgv": ["oracle.ts"], "acceptanceCases": ["preserves false", "maps retry action", "keeps IDs"]
+    },
+    {
+      "id": "contract-02", "family": "cross-workspace-contract", "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b", "heldOut": true, "permittedPaths": ["packages/producer/src/receipt.ts"], "deliveryBoundary": "contract",
+      "files": {
+        "packages/producer/package.json": "{\\\"name\\\":\\\"producer\\\",\\\"private\\\":true}\n",
+        "packages/producer/src/receipt.ts": "export type Receipt = { key: string; sequence: number; label?: string }; export function serializeReceipt(receipt: Receipt) { return { key: receipt.key, label: receipt.label || 'Untitled' }; }\n",
+        "packages/consumer/package.json": "{\\\"name\\\":\\\"consumer\\\",\\\"private\\\":true}\n",
+        "packages/consumer/src/present.ts": "import type { Receipt } from '../../producer/src/receipt.ts'; export function presentReceipt(receipt: Receipt) { return { key: receipt.key, sequence: receipt.sequence, label: receipt.label ?? 'Untitled' }; }\n",
+        "oracle.ts": "import { serializeReceipt } from './packages/producer/src/receipt.ts'; import { presentReceipt } from './packages/consumer/src/present.ts'; const cases = [{ key: 'zero', sequence: 0, label: '' }, { key: 'next', sequence: 2, label: 'Ready' }, { key: 'missing', sequence: 7 }] as const; for (const item of cases) { const actual = presentReceipt(serializeReceipt(item)); const label = item.label === undefined ? 'Untitled' : item.label; if (actual.key !== item.key || actual.sequence !== item.sequence || actual.label !== label) process.exit(1); }\n"
+      },
+      "repairedFiles": { "packages/producer/src/receipt.ts": "export type Receipt = { key: string; sequence: number; label?: string }; export function serializeReceipt(receipt: Receipt): Receipt { return { key: receipt.key, sequence: receipt.sequence, ...(receipt.label === undefined ? {} : { label: receipt.label }) }; }\n" }, "oraclePath": "oracle.ts", "oracleArgv": ["oracle.ts"], "acceptanceCases": ["preserves zero", "preserves empty label", "defaults absent labels"]
     }
   ]
 }
