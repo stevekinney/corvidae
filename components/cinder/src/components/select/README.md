@@ -21,7 +21,7 @@ Dropdown select for choosing a single option from a predefined list: the platfor
 
 ### Ghost variant
 
-Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"`: no border or fill at rest, a neutral tint on hover and while open, the focus ring around the whole control, the chevron kept. A ghost select that leads its row is pulled back by its own padding and border, so its text starts at the field edge, on the text above it; only its hover tint and ring reach past. Bordered selects remain for forms and filter bars. `valuePrefix` draws a muted word before the value.
+Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"`: no border or fill at rest, a neutral tint on hover and while open, the focus ring around the whole control, the chevron kept. Set `flush` on a ghost select that leads its row under text: it is pulled back by its own padding and border, so its text starts at the field edge, on the text above it; only its hover tint and ring reach past. Bordered selects remain for forms and filter bars. `valuePrefix` draws a muted word before the value.
 
 ```svelte
 <script lang="ts">
@@ -90,6 +90,7 @@ The native select never shows the browser's caret: it uses `appearance: none` an
 | `description` | `string` | no | — | Helper text rendered below the control; wired via `aria-describedby`. |
 | `disabled` | `boolean` | no | — | Disables the control. |
 | `error` | `string` | no | — | Validation error message; sets `aria-invalid="true"` and is wired via `aria-describedby`. |
+| `flush` | `boolean` | no | `false` | The ghost select leads a row under text, so its words line up with that text: it is pulled back by its inline padding and its 1px transparent border, so its text starts at the field edge, and only its hover tint and ring reach past it. Only the `ghost` variant reads it; set it on the select that starts its row, never on one after another control. |
 | `id` | `string` | yes | — | Unique identifier — required for label association and ARIA wiring. |
 | `label` | `string` | no | — | Visible label rendered in a `<label>` associated via `for`. |
 | `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` to visually hide it while keeping it available to assistive technology. |

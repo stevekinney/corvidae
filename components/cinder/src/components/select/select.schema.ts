@@ -63,6 +63,12 @@ const schema = {
         'Colour of the value. `accent` draws it in the accent colour and weight, for the one select that\nnames what the container it sits in is about to do (the agent a new chat is with), beside\n`default` controls that only set options.',
       default: 'default',
     },
+    flush: {
+      type: 'boolean',
+      description:
+        'The ghost select leads a row under text, so its words line up with that text: it is pulled\nback by its inline padding and its 1px transparent border, so its text starts at the field\nedge, and only its hover tint and ring reach past it. Only the `ghost` variant reads it; set it\non the select that starts its row, never on one after another control.',
+      default: false,
+    },
     presentation: {
       enum: ['native', 'listbox'],
       description:

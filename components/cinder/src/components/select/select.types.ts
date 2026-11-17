@@ -134,6 +134,14 @@ export type SelectProps<T extends string = string> = Omit<
    */
   tone?: SelectTone;
   /**
+   * The ghost select leads a row under text, so its words line up with that text: it is pulled
+   * back by its inline padding and its 1px transparent border, so its text starts at the field
+   * edge, and only its hover tint and ring reach past it. Only the `ghost` variant reads it; set it
+   * on the select that starts its row, never on one after another control.
+   * @default false
+   */
+  flush?: boolean;
+  /**
    * Native `<select>` or a drawn listbox; see `SelectPresentation`. The listbox-only props below
    * (`placeholder`, `valuePrefix`, `leading`, `footer`, `groups`, and the rich option fields) do
    * nothing in the native presentation.
