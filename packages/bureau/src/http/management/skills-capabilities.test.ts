@@ -424,7 +424,12 @@ describe('bureau.agents.catalog', () => {
     await served.put(
       'support.md',
       agentFileText(
-        { name: 'Support', model: KNOWN_MODEL, tools: '[lookup-order, issue-refund]' },
+        {
+          name: 'Support',
+          model: KNOWN_MODEL,
+          tools: '[lookup-order, issue-refund]',
+          approvals: '{ issue-refund: blocked, lookup-order: never }',
+        },
         'Help.\n',
       ),
     );
@@ -476,6 +481,12 @@ describe('bureau.agents.catalog', () => {
       defaultApproval: 'ask',
       users: [],
     });
+    // What each file states for a tool is told by agent (COR-2435): a user whose file states none, and
+    // a code agent, have no entry, so they follow the default.
+    expect(byName['lookup-order']?.['userApprovals']).toEqual({ support: 'never' });
+    expect(byName['issue-refund']?.['userApprovals']).toEqual({ support: 'blocked' });
+    expect(byName['wipe-orders']?.['userApprovals']).toEqual({});
+    for (const tool of tools) expect(typeof tool['userApprovals']).toBe('object');
     // Bureau's own tools are in the catalog, as Bureau's.
     expect(byName['settings-update']).toMatchObject({ source: 'bureau', users: [] });
     expect(byName['settings-get']).toMatchObject({ source: 'bureau' });

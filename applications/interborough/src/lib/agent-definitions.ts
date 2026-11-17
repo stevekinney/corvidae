@@ -446,6 +446,8 @@ const catalogSchema = z.object({
       skill: z.string().nullable().default(null),
       /** The agents that use the tool now. */
       users: z.array(z.string()),
+      /** What each user's own file states for the tool, by agent identifier; a user with no entry follows the default. */
+      userApprovals: z.record(z.string(), z.enum(TOOL_APPROVALS)).optional(),
     }),
   ),
 });

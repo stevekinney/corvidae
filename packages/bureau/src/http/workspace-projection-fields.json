@@ -146,6 +146,8 @@
     "$.tools[].source",
     "$.tools[].tier",
     "$.tools[].title",
+    "$.tools[].userApprovals",
+    "$.tools[].userApprovals.*",
     "$.tools[].users"
   ],
   "output:bureau.agents.definitions.create": ["$.hash", "$.id"],

@@ -110,6 +110,32 @@ export function asksWord(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): s
   return AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)];
 }
 
+/**
+ * What an agent that uses `tool` asks for it, as Used by says it (rows 30c, 30d, 31j, 31w): the
+ * level the agent's own file states, else the tool's default marked as such. Blocked belongs to one
+ * agent, so it reads "Blocked on this agent" here and is never a property of the tool.
+ */
+export function userAsks(
+  tool: Pick<CatalogTool, 'tier' | 'defaultApproval' | 'userApprovals'>,
+  user: string,
+): { readonly text: string; readonly blocked: boolean } {
+  const copy = TOOL.userAsks;
+  const stated =
+    tool.userApprovals !== undefined && Object.hasOwn(tool.userApprovals, user)
+      ? tool.userApprovals[user]
+      : undefined;
+  if (stated === 'blocked') return { text: copy.blocked, blocked: true };
+  const words = AGENT_PAGE_COPY.access.approvals;
+  return stated === undefined
+    ? { text: copy.defaulted(words[defaultAsks(tool)]), blocked: false }
+    : { text: copy.level(words[stated]), blocked: false };
+}
+
+/** Whether any agent that uses `tool` has it blocked: the cue for the "Allow all never overrides" note (row 31x). */
+export function hasBlockedUser(tool: Pick<CatalogTool, 'userApprovals'>): boolean {
+  return Object.values(tool.userApprovals ?? {}).includes('blocked');
+}
+
 /** The tools from which Capabilities groups its rows by source (row 32e, the "40 or more" frame). */
 export const GROUP_TOOLS_FROM = 40;
 

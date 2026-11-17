@@ -119,7 +119,11 @@ import {
   refusedGuardrailConfigurations,
   unresolvedContributions,
 } from './agent-contributions';
-import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
+import {
+  createToolApprovalHooks,
+  defaultToolApproval,
+  type ToolApprovalMode,
+} from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileSaveOptions,
@@ -281,6 +285,14 @@ export interface AgentToolDescription {
    * so it changes when a file does.
    */
   readonly users: readonly string[];
+  /**
+   * What an agent's own file states for the tool in its `approvals`, by agent identifier, for the
+   * users whose file states one: a user with no entry follows {@link
+   * AgentToolDescription.defaultApproval}. A code-defined agent never appears, because its
+   * approvals are a function the catalog cannot read. Read from the definitions as they stand,
+   * never stored.
+   */
+  readonly userApprovals: Readonly<Record<string, ToolApprovalMode>>;
 }
 
 /**
@@ -1877,10 +1889,17 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     tools() {
       const users = new Map<string, string[]>();
+      const userApprovals = new Map<string, Record<string, ToolApprovalMode>>();
       for (const entry of directoryWatcher.entries().values()) {
         if (entry.agent === undefined || entry.definition === undefined) continue;
+        const stated = entry.definition.approvals;
         for (const name of entry.definition.tools) {
           users.set(name, [...(users.get(name) ?? []), entry.id]);
+          const mode =
+            stated !== undefined && Object.hasOwn(stated, name) ? stated[name] : undefined;
+          if (mode !== undefined) {
+            userApprovals.set(name, { ...userApprovals.get(name), [entry.id]: mode });
+          }
         }
       }
       return Object.entries(options.tools)
@@ -1892,6 +1911,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           ...describeToolCapability(tool),
           ...toolOrigin(name, tool, options),
           users: (users.get(name) ?? []).toSorted(),
+          userApprovals: userApprovals.get(name) ?? {},
         }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     },

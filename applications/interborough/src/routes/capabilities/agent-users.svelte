@@ -17,6 +17,8 @@
     heading: string;
     /** The identifiers of the agents that use the capability. */
     users: readonly string[];
+    /** What sits muted beside an agent's link (its asks level on a tool); nothing when absent. */
+    note?: ((user: string) => string) | undefined;
     /**
      * What an empty list says, and the action that fills it: a `title` and `description` draw a
      * compact empty state, and a `line` draws one muted line with the action inline.
@@ -30,7 +32,7 @@
       | { readonly line: string; readonly action: EmptyAction };
   }
 
-  let { heading, users, empty }: Props = $props();
+  let { heading, users, note, empty }: Props = $props();
 
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -81,6 +83,11 @@
             href={router.href(agentPath(user))}
             onclick={(event) => go(event, agentPath(user))}>{user}</a
           >
+          {#if note !== undefined}
+            <span class="ib-capability__user-note" data-testid="capability-user-note"
+              >{note(user)}</span
+            >
+          {/if}
         </li>
       {/each}
     </ul>

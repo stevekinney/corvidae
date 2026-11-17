@@ -208,6 +208,52 @@ describe('the Tools tab', () => {
     expect(router.pathname).toBe('/agents/assistant');
   });
 
+  test('says what each agent asks for the tool beside its link, and a blocked agent in words with the Allow all note (rows 30c, 30d, 31j, 31w, 31x)', async () => {
+    const tools = TOOLS.map((tool) =>
+      tool.name === 'read-file'
+        ? {
+            ...tool,
+            users: ['assistant', 'planner', 'writer'],
+            userApprovals: { planner: 'always', writer: 'blocked' },
+          }
+        : tool,
+    );
+    restore = serve(tools).restore;
+    landAt('/capabilities?tool=read-file');
+    const { container } = mount();
+
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    const notes = [...detail.querySelectorAll('[data-testid="capability-user-note"]')].map(
+      (note) => note.textContent,
+    );
+    // Sorted as the host sends them: a default is marked as one, a stated level is not, Blocked is
+    // said as belonging to that agent.
+    expect(notes).toEqual(['Asks: Never (the default)', 'Asks: Always', 'Blocked on this agent']);
+    expect(detail.querySelector('[data-testid="tool-blocked-note"]')?.textContent).toBe(
+      copy.tool.blockedNote,
+    );
+    // Blocked is never a property of the tool: the chip still says its default.
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: Never',
+    );
+  });
+
+  test('draws no Blocked note when no agent has the tool blocked', async () => {
+    restore = serve().restore;
+    landAt('/capabilities?tool=read-file');
+    const { container } = mount();
+    const detail = await waitFor(() => {
+      const found = container.querySelector('[data-testid="tool-detail"]');
+      if (found === null) throw new Error('the tool is not open yet');
+      return found;
+    });
+    expect(detail.querySelector('[data-testid="tool-blocked-note"]')).toBeNull();
+  });
+
   test('says a tool no agent uses with the action that gives it a user, and a tool without a described input in words', async () => {
     restore = serve().restore;
     landAt('/capabilities?tool=run-shell');

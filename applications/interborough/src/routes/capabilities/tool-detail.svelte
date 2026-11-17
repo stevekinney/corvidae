@@ -16,6 +16,7 @@
   import {
     asksLabel,
     asksTooltip,
+    hasBlockedUser,
     riskLabel,
     riskTooltip,
     tierOf,
@@ -23,6 +24,7 @@
     toolSourceChip,
     toolSourceTooltip,
     toolSummary,
+    userAsks,
     type CatalogTool,
   } from './capability-presentation.ts';
 
@@ -74,7 +76,12 @@
     </li>
   </ul>
 
-  <AgentUsers heading={copy.users} users={tool.users} empty={copy.noUsers} />
+  <AgentUsers
+    heading={copy.users}
+    users={tool.users}
+    note={(user) => userAsks(tool, user).text}
+    empty={copy.noUsers}
+  />
 
   <section class="ib-capability__section">
     <SectionHeading level={4} title={copy.inputs} />
@@ -85,4 +92,8 @@
       data-testid="tool-input-schema"
     />
   </section>
+
+  {#if hasBlockedUser(tool)}
+    <p class="ib-capability__line" data-testid="tool-blocked-note">{copy.blockedNote}</p>
+  {/if}
 </article>

@@ -43,6 +43,18 @@ export const CAPABILITIES_COPY = {
     noInputs: 'This tool takes no inputs.',
     noSchema: 'This tool does not describe its inputs.',
     users: 'Used by',
+    /**
+     * What sits beside an agent in Used by (rows 30c, 31j, 31w): its asks level, "(the default)"
+     * when its file states none, or "Blocked on this agent", since Blocked belongs to one agent.
+     */
+    userAsks: {
+      level: (level: string): string => `Asks: ${level}`,
+      defaulted: (level: string): string => `Asks: ${level} (the default)`,
+      blocked: 'Blocked on this agent',
+    },
+    /** The note under the detail when an agent has the tool blocked (row 31x): Allow all never overrides Blocked. */
+    blockedNote:
+      'Agents can’t run this tool, even in a chat that allows all. Change it on that agent’s Access tab.',
     /** Used by when no agent has the tool: one muted line with a link inline, never a centred empty state (rows 30e, 30h, 32j). */
     noUsers: {
       line: 'No agent has this tool yet.',

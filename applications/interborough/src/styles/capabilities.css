@@ -172,6 +172,13 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* What an agent asks for a tool, muted beside its link in Used by; the link carries the meaning, so no colour. */
+.ib-capability__user-note {
+  margin-inline-start: var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 /* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. A
  * name read as words can still hold one long word, since a skill's identifier is up to 64 characters. */
 .ib-capability__name,
