@@ -931,10 +931,9 @@ test.describe('chat harness — mounts cleanly', () => {
         await expect(
           card.getByRole('heading', { name: 'Approve running this tool before it executes?' }),
         ).toBeVisible();
-        const viewInputButton = card.getByRole('button', { name: /^Input/ });
-        await expect(viewInputButton).toHaveAttribute('aria-expanded', 'false');
-        await viewInputButton.click();
-        await expect(viewInputButton).toHaveAttribute('aria-expanded', 'true');
+        // The input is in the open as rows, with the command above it, and no disclosure.
+        await expect(card.getByRole('group', { name: 'Input' })).toBeVisible();
+        await expect(card.getByRole('button', { name: /^Input/ })).toHaveCount(0);
         await expect(
           card.getByText('deploy_to_production --environment production --version 2.4.1', {
             exact: true,

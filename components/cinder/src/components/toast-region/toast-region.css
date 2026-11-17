@@ -8,9 +8,10 @@
  *
  * A bottom-anchored region sits above whatever is docked to the bottom of the page and inside
  * the bottom safe area (design rows 04w, 06x, 15g): its offset is the on-screen keyboard
- * (`--_cinder-keyboard-inset`, 0 without one) plus the docked action bar's height
- * (`--_cinder-docked-action-bar-height`, which already includes the bar's own safe-area padding)
- * or, with no bar, `env(safe-area-inset-bottom)`, plus the gutter.
+ * (`--_cinder-keyboard-inset`, 0 without one) plus how far the bars docked there reach, to the top
+ * of the highest when they stack (`--_cinder-docked-action-bar-height`, which already includes the
+ * bars' own safe-area padding; docked-bar-height.ts) or, with no bar, `env(safe-area-inset-bottom)`,
+ * plus the gutter.
  * ======================================== */
 
   .cinder-toast-region {

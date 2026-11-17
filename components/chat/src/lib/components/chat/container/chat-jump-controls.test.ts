@@ -82,10 +82,15 @@ describe('Jump to latest on a phone', () => {
     // waiting any more, clears it. A press inside the card does not, so the control never comes in
     // under the finger mid-press.
     expect(chat).toMatch(
-      /scroller\.scrollTop \+= shift;\s*liftedTop = scroller\.scrollTop;\s*attentionLifted = true;/,
+      /scroller\.scrollTop \+= shift;\s*attentionLiftedTop = scroller\.scrollTop;\s*attentionLifted = true;/,
     );
     expect(chat).toMatch(
-      /Math\.abs\(scroller\.scrollTop - liftedTop\) > 2\) \{\s*attentionLifted = false;/,
+      /Math\.abs\(scroller\.scrollTop - attentionLiftedTop\) > 2\) \{\s*attentionLifted = false;/,
+    );
+    // A waiting approval's arrival placement holds it too, so the button's band never shrinks the
+    // transcript under the card it is placing (COR-2327).
+    expect(chat).toMatch(
+      /attentionLifted = true;\s*attentionLiftedTop = scroller\.scrollTop;\s*const viewportBox = approvalArrivalBox\(scroller\);/,
     );
     expect(chat).toMatch(/if \(next === null\) attentionLifted = false;/);
     expect(chat).not.toMatch(/released = target !== null;\s*attentionLifted = false;/);
