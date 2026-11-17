@@ -175,6 +175,14 @@ function componentsRoots(packageRoot: string, holders: readonly Holder[]): strin
     .filter((root) => existsSync(root));
 }
 
+/** The component barrels core's root re-exports, in evaluation order, wherever each lives. */
+export function rootBarrelDirectories(
+  packageRoot: string = DEFAULT_PACKAGE_ROOT,
+  recorded?: readonly string[],
+): string[] {
+  return barrelDirectories(componentsRoots(packageRoot, cinderHolders(packageRoot)), recorded);
+}
+
 /**
  * How core's file `from` (a core-relative path) names the file core gave the path `path`: by a
  * relative specifier while core holds it, by the holding package's specifier once a package does.

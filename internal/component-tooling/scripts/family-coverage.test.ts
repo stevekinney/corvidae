@@ -32,6 +32,7 @@ import {
   discoverComponentDirectories,
 } from './discover-component-directories.ts';
 import { createFamilyFixture } from './family-fixture.test-support.ts';
+import { rootBarrelDirectories } from './generate-root-registries.ts';
 
 const fixture = createFamilyFixture();
 afterAll(() => rmSync(fixture.root, { recursive: true, force: true }));
@@ -46,6 +47,7 @@ write(join(familyDirectory, `${fixture.familyComponent}.a11y.md`), '# Accessibil
 write(join(familyDirectory, `${fixture.familyComponent}.meta.json`), '{}\n');
 write(join(familyDirectory, `${fixture.familyComponent}.svelte`), '<div class="fixture"></div>\n');
 write(join(fixture.familyRoot, 'src', 'utilities', 'probe.ts'), 'export const probe = 1;\n');
+write(join(familyDirectory, 'index.ts'), 'export {};\n');
 
 const familyCss = join(familyDirectory, `${fixture.familyComponent}.css`);
 const familySvelte = join(familyDirectory, `${fixture.familyComponent}.svelte`);
@@ -136,6 +138,10 @@ describe('each check sees the family package', () => {
       reportPrefix: '../fixture-family/src/components',
       componentsPrefix: '../fixture-family/src/components',
     });
+  });
+
+  test('root registries (core barrel and components.css)', () => {
+    expect(rootBarrelDirectories(fixture.coreRoot, [])).toContain(fixture.familyComponent);
   });
 
   test('component name shadowing (prop conventions)', () => {
