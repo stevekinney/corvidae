@@ -438,11 +438,11 @@ const scenario8 = await outcomeOf(async () => {
       }),
     );
     await Bun.write(
-      join(directory, 'components/cinder/package.json'),
+      join(directory, 'components/core/package.json'),
       JSON.stringify({ name: '@fixture/cinder', private: true }),
     );
     for (const [path, text] of [
-      ['components/cinder/src/index.ts', 'export const value = 1;\n'],
+      ['components/core/src/index.ts', 'export const value = 1;\n'],
       ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 1;\n'],
       ['scripts/bun-test-junit.ts', 'export const runner = 1;\n'],
       ['scripts/tool.ts', 'export const tool = 1;\n'],
@@ -489,7 +489,7 @@ const scenario8 = await outcomeOf(async () => {
 
     // Provider source, the fixtures' own files, and the root runner it executes each move it.
     const changes: Array<[string, string]> = [
-      ['components/cinder/src/index.ts', 'export const value = 2;\n'],
+      ['components/core/src/index.ts', 'export const value = 2;\n'],
       ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 2;\n'],
       ['scripts/bun-test-junit.ts', 'export const runner = 2;\n'],
     ];

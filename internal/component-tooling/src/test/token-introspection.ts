@@ -3,7 +3,7 @@
  * part of the public package surface: these helpers live outside
  * `package.json#exports`, alongside other test-only infrastructure like
  * `src/test/happy-dom.ts` and `src/test/css.ts`, and are reached from
- * `packages/playground` test files via the `components/cinder/src/test/*`
+ * `packages/playground` test files via the `components/core/src/test/*`
  * relative-import allowance that `check-consumer-boundaries.ts` carves out.
  *
  * Parsing is done with PostCSS (a real CSS tokenizer) rather than a

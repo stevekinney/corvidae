@@ -174,7 +174,7 @@ it('generates root imports and package-relative artifact paths for every compone
       if (path.startsWith('src/components/')) {
         const packageRoot = join(
           import.meta.dir,
-          '../../../components/cinder',
+          '../../../components/core',
           component.source.packageRoot,
         );
         expect(await Bun.file(join(packageRoot, path)).exists()).toBe(true);

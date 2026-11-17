@@ -9,7 +9,7 @@ import { formatGenerated } from './component-artifact-operations.ts';
 import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../..');
-const packageRoot = resolve(import.meta.dirname, '../../../components/cinder');
+const packageRoot = resolve(import.meta.dirname, '../../../components/core');
 
 // Plain Bun (no `--conditions browser`) is the behavior under test here, so the probe process runs
 // once at module scope, off bun's per-test clock; the test below only asserts on the settled result.
@@ -94,7 +94,7 @@ describe('formatGenerated prettier resolution', () => {
    * `prettier` range once made bun nest a newer prettier under this package, and
    * the artifact pipeline formatted with it while the root stayed locked on
    * another version -- ~150 READMEs reported stale on a branch that never
-   * touched `components/cinder`. The pipeline must format with the root's copy.
+   * touched `components/core`. The pipeline must format with the root's copy.
    */
   test('resolves prettier to the version the repository root locks', () => {
     const parsed: unknown = JSON.parse(

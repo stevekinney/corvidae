@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
+const packageRoot = resolve(scriptDirectory, '../../../components/core');
 const utilitiesRoot = resolve(packageRoot, 'src', 'utilities');
 const repositoryRoot = resolve(packageRoot, '..', '..');
 

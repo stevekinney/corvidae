@@ -19,7 +19,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-// Cinder's A2UI catalog id (`components/cinder/a2ui-catalog.json`), spelled out because this
+// Cinder's A2UI catalog id (`components/core/a2ui-catalog.json`), spelled out because this
 // package's tests must not read a sibling workspace's files. Clients list it in
 // `supportedCatalogIds`, so Cinder pins it as a one-way door.
 const CINDER_CATALOG_ID = 'https://cinder.website/a2ui/v0_9_1/catalogs/cinder/v1/catalog.json';

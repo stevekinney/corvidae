@@ -6,7 +6,7 @@ import ts from 'typescript';
 import { cinderPackages, corePath } from './discover-component-directories.ts';
 
 const scriptDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
-const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
+const packageRoot = resolve(scriptDirectory, '../../../components/core');
 const repositoryRoot = resolve(packageRoot, '..', '..');
 
 export type ProseReferenceFailure = { reference: string; filePath: string };

@@ -788,7 +788,7 @@ describe('cinder script tests keep temporary fixtures out of the source tree', (
     // Built from pieces so this file, which the guard also scans, holds no matching text itself.
     const call = 'mkdtemp';
     const forbidden = [
-      `${call}Sync(join(import.meta.dir, '../../../components/cinder/src'`,
+      `${call}Sync(join(import.meta.dir, '../../../components/core/src'`,
       `${call}(resolve(__dirname,`,
     ];
     for (const sample of forbidden) expect(anchoredInPackage.test(sample)).toBe(true);

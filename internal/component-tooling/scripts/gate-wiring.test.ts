@@ -19,7 +19,7 @@ import {
 } from './gate-wiring.ts';
 
 const REPOSITORY_ROOT = join(import.meta.dirname, '../../..');
-const PACKAGE_ROOT = join(REPOSITORY_ROOT, 'components/cinder');
+const PACKAGE_ROOT = join(REPOSITORY_ROOT, 'components/core');
 const SCRIPTS_DIRECTORY = import.meta.dirname;
 /** The packages whose gates run the tooling's checks: the tooling and every component workspace. */
 const GATED_PACKAGES = [

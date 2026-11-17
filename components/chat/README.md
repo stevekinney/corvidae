@@ -1,6 +1,6 @@
 # @lostgradient/chat
 
-`@lostgradient/chat` is the [Svelte](https://svelte.dev/) conversation surface for Corvidae. It stays separate from [Cinder](../cinder/README.md) so an application that only needs domain-neutral interface primitives does not also pull in conversation state, transport adapters, and tool-call presentation.
+`@lostgradient/chat` is the [Svelte](https://svelte.dev/) conversation surface for Corvidae. It stays separate from [Cinder](../core/README.md) so an application that only needs domain-neutral interface primitives does not also pull in conversation state, transport adapters, and tool-call presentation.
 
 `Chat` and `ChatAdapter` own conversation state and transport. `ChatMessage` owns streaming presentation, adapter-provided metadata, and tool calls. Cinder's `Message` remains the smaller, domain-neutral primitive.
 
@@ -318,7 +318,7 @@ A tool result with `outcome: 'action_required'` and an `input` action that carri
 | Number | `type: 'number'` or `'integer'` | A number field |
 | Date or time | `format: 'date'`, `'time'` or `'date-time'` | Date and time fields, answered as RFC 3339 |
 | Rating | `type: 'integer'` with `x-kind: 'rating'` | A step per integer, labelled from `x-labels` |
-| A few fields | `type: 'object'`, or any schema that matches no other kind | Cinder's [`SchemaForm`](../cinder/src/components/schema-form/README.md) |
+| A few fields | `type: 'object'`, or any schema that matches no other kind | Cinder's [`SchemaForm`](../core/src/components/schema-form/README.md) |
 | Secret | `x-secret: true` | A password field; the answer is never rendered or kept |
 | File | `x-asset: true` | A drop zone that uploads through `uploadAttachment` and answers the managed asset id |
 

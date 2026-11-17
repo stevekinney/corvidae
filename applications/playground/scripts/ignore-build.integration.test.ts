@@ -244,7 +244,7 @@ describe('dependencyClosure', () => {
     expect(closure.map((workspace) => workspace.directory)).toEqual([
       'applications/playground',
       'components/chat',
-      'components/cinder',
+      'components/core',
       'components/editor',
       'internal/component-tooling',
       'internal/typescript',

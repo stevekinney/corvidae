@@ -39,7 +39,7 @@ describe('ScheduleBuilder "Default schedule" example', () => {
     const entries: { id: string; code: string }[] = JSON.parse(
       readFileSync(
         new URL(
-          '../../../components/cinder/src/components/schedule-builder/schedule-builder.examples.json',
+          '../../../components/core/src/components/schedule-builder/schedule-builder.examples.json',
           import.meta.url,
         ),
         'utf8',
