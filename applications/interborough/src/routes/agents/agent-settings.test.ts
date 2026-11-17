@@ -71,6 +71,8 @@ const version = (
   definition: { ...DEFINITION, ...definition },
   overrides: null,
   changedKeys,
+  // A Bureau that predates the summary, so the page words each change itself.
+  summary: null,
 });
 
 /** Four saved versions, newest first: Version 3 moved the model from Haiku to Sonnet. */
@@ -324,6 +326,104 @@ describe('the delete question (row 39a)', () => {
       ),
     );
     expect(within(dialog).getByLabelText('Type researcher to confirm')).not.toBeNull();
+  });
+});
+
+describe('disabling an agent defined in code (rows 38y and 40d, COR-2429)', () => {
+  test('ends the tab with Disable this agent, asks first, and shows Enable agent afterwards', async () => {
+    landAt('/agents/assistant/settings');
+    let state: 'ready' | 'disabled' = 'ready';
+    const BUILT_IN = {
+      ...readyAgent({ id: 'assistant' }),
+      source: 'code' as const,
+      hash: null,
+      definition: null,
+      codeDefinition: {
+        name: 'assistant',
+        description: null,
+        model: 'anthropic/sonnet',
+        models: [],
+        tools: [],
+        skills: [],
+        card: [],
+        instructions: null,
+      },
+    };
+    const installed = serve({
+      // The Bureau's list of agents leaves a disabled agent out.
+      'bureau.agents.list': () => ({ agents: state === 'ready' ? [AGENT] : [] }),
+      'bureau.agents.definitions.get': () => ({ ...BUILT_IN, state }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'assistant',
+        hash: 'hash-0',
+        version: null,
+        overrides: {},
+        ownTools: [],
+      }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.contexts.list': () => ({
+        contexts: [
+          { ...CONTEXT, id: 'a', agentName: 'assistant' },
+          { ...CONTEXT, id: 'b', agentName: 'assistant' },
+          { ...CONTEXT, id: 'c', agentName: 'assistant' },
+        ],
+        nextOffset: null,
+      }),
+      'bureau.agents.references': () => ({
+        agentName: 'assistant',
+        schedules: [{ id: 'audit', name: 'Weekly refund audit' }],
+        workflows: [{ id: 'order-refund', title: 'Order refund' }],
+        hooks: [{ id: 'refund-audit', name: 'Refund audit' }],
+      }),
+      'bureau.agents.disable': (params) => {
+        state = 'disabled';
+        return { id: params['id'], disabled: true };
+      },
+      'bureau.agents.enable': (params) => {
+        state = 'ready';
+        return { id: params['id'], disabled: false };
+      },
+    });
+    const { findByRole, findByTestId } = mount();
+
+    const settings = await findByTestId('agent-settings');
+    const block = await findByTestId('agent-disable');
+    // Last on the tab, after the versions.
+    expect(settings.lastElementChild).toBe(block);
+    expect(block.textContent).toContain('Disable this agent');
+    expect(block.textContent).toContain(
+      'Assistant is built in, so it can be disabled but not deleted. Its chats stay, read-only, until you enable it again.',
+    );
+    expect(within(settings).queryByRole('button', { name: 'Delete agent' })).toBeNull();
+
+    await fireEvent.click(within(block).getByRole('button', { name: 'Disable agent' }));
+    const dialog = await findByRole('dialog', { name: 'Disable Assistant?' });
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        'Its 3 chats stay, read-only. 1 schedule (Weekly refund audit), 1 workflow (Order refund) and 1 hook (Refund audit) will stop finding it until you enable it again.',
+      ),
+    );
+    // Reversible, so no typed confirmation.
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+    expect(installed.callsTo('bureau.agents.disable')).toEqual([]);
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Disable agent' }));
+
+    await waitFor(() =>
+      expect(installed.callsTo('bureau.agents.disable').map((call) => call.params)).toEqual([
+        { id: 'assistant' },
+      ]),
+    );
+    const enable = await findByRole('button', { name: 'Enable agent' });
+    const disableBlock = await findByTestId('agent-disable');
+    expect(disableBlock.contains(enable)).toBe(true);
+    await fireEvent.click(enable);
+    await waitFor(() =>
+      expect(installed.callsTo('bureau.agents.enable').map((call) => call.params)).toEqual([
+        { id: 'assistant' },
+      ]),
+    );
+    await findByRole('button', { name: 'Disable agent' });
   });
 });
 

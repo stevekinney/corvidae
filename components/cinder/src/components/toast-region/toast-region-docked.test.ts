@@ -97,6 +97,61 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     expect(left[0]).toContain('Sticky note');
   });
 
+  test('onClose is called once, after the action, however the toast closes', async () => {
+    jest.useFakeTimers();
+    const { api, container } = await mountRegion();
+    const closed: string[] = [];
+    const order: string[] = [];
+    api.show('Timed.', { duration: 1000, onClose: () => closed.push('timer') });
+    api.show('Undone.', {
+      undo: () => order.push('undo'),
+      onClose: () => {
+        order.push('close');
+        closed.push('undo');
+      },
+    });
+    const left = api.show('Left.', { undo: () => {}, onClose: () => closed.push('left') });
+    api.show('Dismissed.', { duration: 0, onClose: () => closed.push('dismissed') });
+    await tick();
+
+    // Nothing has closed yet, however long an Undo toast waits.
+    expect(closed).toEqual([]);
+    jest.advanceTimersByTime(1000);
+    await tick();
+    expect(closed).toEqual(['timer']);
+
+    const undo = [...container.querySelectorAll<HTMLButtonElement>('.cinder-toast__action')].find(
+      (button) => button.closest('.cinder-toast')?.textContent?.includes('Undone.'),
+    );
+    await fireEvent.click(undo as HTMLButtonElement);
+    expect(order).toEqual(['undo', 'close']);
+
+    const close = [...container.querySelectorAll<HTMLButtonElement>('.cinder-toast__dismiss')].find(
+      (button) => button.closest('.cinder-toast')?.textContent?.includes('Dismissed.'),
+    );
+    await fireEvent.click(close as HTMLButtonElement);
+    api.dismissUndo();
+    api.dismiss(left);
+    await tick();
+    expect(closed).toEqual(['timer', 'undo', 'dismissed', 'left']);
+  });
+
+  test('onClose is called for a toast pushed out of the stack and for every toast when the region unmounts', async () => {
+    const { api } = await mountRegion();
+    const closed: string[] = [];
+    for (const name of ['one', 'two', 'three', 'four', 'five', 'six']) {
+      api.show(name, { duration: 0, onClose: () => closed.push(name) });
+    }
+    await tick();
+    // The region keeps a bounded stack: the oldest went first.
+    expect(closed[0]).toBe('one');
+    const pushedOut = closed.length;
+    cleanup();
+    expect(closed).toHaveLength(6);
+    expect(new Set(closed).size).toBe(6);
+    expect(pushedOut).toBeLessThan(6);
+  });
+
   test('an explicit action wins over undo', async () => {
     const { api, container } = await mountRegion();
     api.show('Moved.', {

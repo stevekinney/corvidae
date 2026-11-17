@@ -4,6 +4,9 @@
    * agent defined in code whose generator it cannot look inside), then its tools, then its skills. The list shows the tool count; an agent's page names
    * each tool and skill.
    *
+   * On an agent's page the skills are the set the Access tab grants (sweep S65): the ones the
+   * agent's definition states, then the ones it is granted (`mergedSkills`).
+   *
    * The Bureau tells an agent file's model and skills (`bureau.agents.definitions.get`), a
    * code-defined agent's model (`bureau.agents.models`, asked only when the agent names a model at
    * all), and every agent's tools in `bureau.agents.list`. An agent whose listing carries no tools
@@ -13,7 +16,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENTS_COPY } from '../../app/copy/agents.ts';
-  import { getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { getAgentDefinition, type AgentDetail } from '../../lib/agent-definitions.ts';
   import { getAgentModels, type AgentSummary } from '../../lib/bureau-client.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -24,9 +27,11 @@
     agent: AgentSummary;
     /** Name every tool and skill instead of counting the tools. */
     detailed?: boolean;
+    /** The agent's definition, when the page already read it: a code agent's skills are in it. */
+    detail?: AgentDetail | undefined;
   }
 
-  let { agent, detailed = false }: AgentFactsProps = $props();
+  let { agent, detailed = false, detail }: AgentFactsProps = $props();
 
   const definition = createQuery(
     () => ({
@@ -48,7 +53,16 @@
     undefined,
   );
 
-  const facts = $derived(agentFacts(agent, definition.data?.definition, models.data));
+  // A code agent's skills are in its definition, which the agent's page reads on every tab but
+  // Chats and hands in; this reads it for an agent file only (S65).
+  const facts = $derived(
+    agentFacts(
+      agent,
+      definition.data?.definition,
+      models.data,
+      (detail ?? definition.data)?.codeDefinition,
+    ),
+  );
   const toolCount = $derived(toolCountText(facts.tools));
 </script>
 

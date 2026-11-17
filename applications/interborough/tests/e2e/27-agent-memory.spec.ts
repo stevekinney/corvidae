@@ -46,15 +46,18 @@ async function openMoreOptions(page: Page) {
   }
 }
 
-/** Forgets the memory whose text is `text` from its details, and confirms the question. */
+/**
+ * Forgets the memory whose text is `text` from its details: there is no question, a toast with
+ * Undo says so (row 45r), and the forget is sent once the toast closes, which leaving the page does.
+ */
 async function forgetFromDetails(page: Page, text: string) {
   await openDetails(page, text);
   await detailOf(page).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }).click();
-  const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
-  await expect(dialog).toBeVisible();
-  // The question names what goes.
-  await expect(dialog).toContainText(text.slice(0, 20));
-  await dialog.getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const toast = page.locator('.cinder-toast[data-cinder-undo]');
+  await expect(toast).toContainText('Forgot');
+  await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await expect(rowOf(page, text)).toHaveCount(0);
 }
 
 test.describe('the memory page', () => {
@@ -124,23 +127,40 @@ test.describe('the memory page', () => {
     const label = uniqueLabel('Forget me');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-forget'), label);
     // A second memory keeps the agent from being empty when this one goes.
-    await runToEnd(
-      request,
-      TEXT_ECHO_AGENT_NAME,
-      newThreadId('memory-keep'),
-      uniqueLabel('Keep me'),
-    );
+    const keep = uniqueLabel('Keep me');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-keep'), keep);
     await page.goto(MEMORY_PATH);
 
     await forgetFromDetails(page, label);
 
-    await expect(
-      page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
-    ).toBeVisible();
-    await expect(rowOf(page, label)).toHaveCount(0);
+    // Leaving the page closes the toast, which sends the forget; coming back, it is gone.
+    await page.goto('/agents');
+    await expect
+      .poll(async () => {
+        await page.goto(MEMORY_PATH);
+        await expect(rowOf(page, keep)).toHaveCount(1);
+        return rowOf(page, label).count();
+      })
+      .toBe(0);
   });
 
-  test('keeps the deletion’s receipt on screen when the agent’s only memory is forgotten', async ({
+  test('keeps a memory whose forget was undone', async ({ page, request }) => {
+    const label = uniqueLabel('Undo me');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-undo'), label);
+    await page.goto(MEMORY_PATH);
+
+    await forgetFromDetails(page, label);
+    await page
+      .locator('.cinder-toast[data-cinder-undo]')
+      .getByRole('button', { name: 'Undo' })
+      .click();
+
+    await expect(rowOf(page, label)).toHaveCount(1);
+    await page.goto(MEMORY_PATH);
+    await expect(rowOf(page, label)).toHaveCount(1);
+  });
+
+  test('says nothing is left at once when the agent’s only memory is forgotten', async ({
     page,
     request,
   }) => {
@@ -150,15 +170,17 @@ test.describe('the memory page', () => {
 
     await forgetFromDetails(page, label);
 
-    // The page says nothing is left, and the receipt is still there to read.
+    // The page says nothing is left while the Undo still shows.
     await expect(page.getByRole('heading', { name: MEMORY_COPY.nothing.title })).toBeVisible();
-    await expect(
-      page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
-    ).toBeVisible();
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
-    // Opening the page again asks the Bureau again, and the agent is empty.
-    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
-    await expect(page.getByRole('heading', { name: MEMORY_COPY.nothing.title })).toBeVisible();
+    // Leaving sends the forget; opening the page again asks the Bureau again, and the agent is empty.
+    await page.goto('/agents');
+    await expect
+      .poll(async () => {
+        await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
+        return page.getByRole('heading', { name: MEMORY_COPY.nothing.title }).count();
+      })
+      .toBe(1);
   });
 
   test('adds a memory in the person’s own words, opens it, and says where it came from', async ({

@@ -52,6 +52,11 @@ import { type CodeAgentOverrides, createCodeAgentOverrides } from './code-agent-
 import { effectiveCodeAgent, type EffectiveCodeAgentDeployment } from './code-agent-effective';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
+import {
+  type AgentDisabledRecord,
+  type AgentDisabledStore,
+  createAgentDisabledStore,
+} from './agent-disabled-store';
 
 /**
  * A plain literal map of agent name to `RunnableAgent`. There is no
@@ -158,6 +163,16 @@ export interface AgentCatalogEntry<
   readonly agent: D[TName];
 }
 
+/** COR-2429 — how {@link BureauAgentCatalog.find} treats an agent a person disabled. */
+export interface AgentFindOptions {
+  /**
+   * `true` for a run that already started and is being resumed: a disabled agent still finishes
+   * what it was doing, as a file agent's run resumes from its snapshot, and starts nothing new.
+   * Omitted, a disabled agent is not found.
+   */
+  readonly includeDisabled?: boolean | undefined;
+}
+
 /**
  * Read-only, immutable inspection surface over a fixed `AgentDefinitions`
  * map — `bureau.agents`. Nothing here mutates the catalog; the map itself is
@@ -180,7 +195,7 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * conditional the same way `AgentDefinitions` itself does — see its doc
    * comment.
    */
-  find(name: string): AnyRunnableAgent | undefined;
+  find(name: string, options?: AgentFindOptions): AnyRunnableAgent | undefined;
   /**
    * Narrows a runtime `string` to a known literal key of `D` where
    * TypeScript permits it (a type predicate) — `if (catalog.has(name))`
@@ -288,6 +303,26 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * definition resolver take none.
    */
   readonly overrides: CodeAgentOverrides;
+  /**
+   * COR-2429 — disable the agent `id`, durably, saved as by `options.disabledBy`: it stays listed
+   * as `disabled` and can still be read ({@link detail}, {@link models}, its versions, overrides,
+   * chats and memory), and {@link find}, which every start of a run by an agent's name asks, no
+   * longer holds it, so no run, chat, schedule, workflow step or hook can start on it. Disabling a disabled agent keeps its
+   * first record. Resolves `undefined`, writing nothing, when the catalog lists no agent `id` or
+   * lists it `unavailable` (a disabled plugin's agent, which runs nothing already).
+   */
+  disable(
+    id: string,
+    options: { readonly disabledBy: string },
+  ): Promise<AgentDisabledRecord | undefined>;
+  /**
+   * COR-2429 — enable the agent `id` again, so every lookup holds it as before. Resolves `false`,
+   * writing nothing, when the catalog lists no agent `id`; enabling an agent that is not disabled
+   * writes nothing and resolves `true`.
+   */
+  enable(id: string): Promise<boolean>;
+  /** COR-2429 — whether a person disabled the agent `id`. */
+  isDisabled(id: string): boolean;
   /**
    * Rescan the agent directory now, and when the model catalog has changed since the last scan,
    * revalidate against it. Resolves once the catalog reflects the directory. Without
@@ -428,6 +463,11 @@ export interface CreateAgentCatalogOptions {
    */
   readonly overrides?: AgentOverrideStore | undefined;
   /**
+   * COR-2429 — which agents a person disabled, read before the catalog is built. Defaults to a
+   * memory store, which a restart forgets.
+   */
+  readonly disabled?: AgentDisabledStore | undefined;
+  /**
    * COR-2236 — the tools (`plugin:name`) that disabled plugins contribute. `duplicate` names a
    * disabled plugin's code agent's own tools by them, so its copy keeps them and is `needs-setup`
    * until the plugin is enabled, instead of being refused with `unknown-tool`.
@@ -507,6 +547,17 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       .filter((entry) => !byName.has(entry.id))
       .map((entry) => [entry.id, entry]),
   );
+  // COR-2429: the one gate every lookup of an agent by name consults.
+  const gate =
+    options?.disabled ??
+    createAgentDisabledStore({
+      nowISO: options?.codeAgentRuns?.runtime?.clock.nowISO ?? (() => new Date().toISOString()),
+    });
+  /** `listing` as the gate has it: a disabled agent is listed `disabled`, and opts into nothing. */
+  const gated = <L extends AgentListing>(listing: L): L =>
+    listing.state !== 'unavailable' && gate.isDisabled(listing.id)
+      ? { ...listing, state: 'disabled', a2a: false }
+      : listing;
   const unavailableListing = (entry: UnavailableCodeAgent): AgentListing => ({
     id: entry.id,
     source: 'code',
@@ -643,7 +694,10 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       }
       return entry.agent as D[TName];
     },
-    find(name) {
+    find(name, findOptions) {
+      // COR-2429: every lookup of an agent by name comes through here, so a disabled agent is held
+      // by none of them, except the resume of a run it already started.
+      if (findOptions?.includeDisabled !== true && gate.isDisabled(name)) return undefined;
       const code = byName.get(name);
       return code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
     },
@@ -687,16 +741,16 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     },
     list() {
       return [
-        ...entries.map(codeListing),
+        ...entries.map((entry) => gated(codeListing(entry))),
         ...[...unavailable.values()].map(unavailableListing),
-        ...(files?.list() ?? []),
+        ...(files?.list() ?? []).map(gated),
       ];
     },
     async detail(id) {
       const code = byName.get(id);
       if (code !== undefined) {
         return {
-          ...codeListing(code),
+          ...gated(codeListing(code)),
           text: null,
           definition: null,
           dropped: droppedBeforeCopy(id),
@@ -718,12 +772,26 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           codeDefinition: describeCodeAgent(disabled.agent, descriptors(), modelPolicy()),
         };
       }
-      const detail = await files?.detail(id);
+      const fileDetail = await files?.detail(id);
+      const detail = fileDetail === undefined ? undefined : gated(fileDetail);
       const from = detail?.definition?.from;
       if (detail === undefined || from === undefined) return detail;
       // COR-2234: a copy states the version its source is at now, so a client compares the two
       // without a second read.
       return { ...detail, fromNow: await versionNow(from.agent) };
+    },
+    async disable(id, disableOptions) {
+      const listing = catalog.list().find((candidate) => candidate.id === id);
+      if (listing === undefined || listing.state === 'unavailable') return undefined;
+      return gate.disable(id, disableOptions);
+    },
+    async enable(id) {
+      if (!catalog.list().some((candidate) => candidate.id === id)) return false;
+      await gate.enable(id);
+      return true;
+    },
+    isDisabled(id) {
+      return gate.isDisabled(id);
     },
     models(name) {
       const code = byName.get(name);
@@ -761,7 +829,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     },
     overrides,
     async refresh() {
-      await Promise.all([files?.refresh(), overrides.load()]);
+      await Promise.all([files?.refresh(), overrides.load(), gate.load()]);
     },
     onChange(listener) {
       return files?.onChange(listener) ?? (() => undefined);

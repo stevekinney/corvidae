@@ -250,6 +250,7 @@ import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
 import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
 import { createAgentOverrideStore } from './agent-override-store';
+import { type AgentDisabledStore, createAgentDisabledStore } from './agent-disabled-store';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { createWorkflowDocumentHost } from './workflow-host';
 import { createFireReviewSeeds, trackFireReviewSeeds } from './fire-review-seeds';
@@ -542,7 +543,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   const bureauTools = [
     createAgentDiscoveryTool(
       {
-        entries: () => agentCatalog.entries(),
+        // COR-2429: a disabled agent is offered to no agent.
+        entries: () => agentCatalog.entries().filter(({ name }) => !agentCatalog.isDisabled(name)),
         list: () => agentCatalog.list(),
         find: (name) => agentCatalog.find(name),
       },
@@ -2624,6 +2626,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** COR-1911 — the agents being tried, held in memory for the contexts that started them. */
   const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
+  /** COR-2429 — which agents a person disabled: the gate `agentCatalog.find` consults. */
+  let agentDisabled: AgentDisabledStore;
   let workflowRuntime: WorkflowRuntime | undefined;
   // COR-1952: a schedule a hook-started run creates records the hook, and the chain guard reads the
   // record for each run the schedule fires. These closures read `tasks`, declared far below, only
@@ -3118,6 +3122,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       for (const [name, tool] of added) agentToolCatalog[name] = tool;
       await files.revalidate();
     }
+    agentDisabled = createAgentDisabledStore({
+      store: runtime.kv,
+      nowISO: runtimeServices.clock.nowISO,
+    });
+    // COR-2429: read before the catalog answers any lookup, so no run starts on a disabled agent.
+    await agentDisabled.load();
     agentCatalog = createAgentCatalog(agentsSnapshot, {
       selectorAvailable: true,
       addTools: addHostTools,
@@ -3132,6 +3142,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         store: runtime.kv,
         nowISO: runtimeServices.clock.nowISO,
       }),
+      disabled: agentDisabled,
       codeAgentRuns: codeAgentRunsDeployment(),
     });
     // COR-2009: the overrides in force of the built-in agents, read before any run can start.
@@ -3352,10 +3363,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         // the same overrides, and only a change in the store is drift.
         if (!isTryAgentName(name)) {
           await agentCatalog.overrides.reload(name);
+          // COR-2429: the same holds for the gate, so an agent another Bureau disabled starts nothing.
+          await agentDisabled.reload(name);
         }
+        // COR-2429: a run being resumed (`recorded`) finishes on a disabled agent, as a file
+        // agent's resumes from its snapshot; only a run that is starting is refused.
         agent = isTryAgentName(name)
           ? tryAgents.find(name, ownerOrLocal(context.principal))
-          : agentCatalog.find(name);
+          : agentCatalog.find(name, { includeDisabled: recorded !== undefined });
         agentBinding = agent === undefined ? undefined : readFileAgentBinding(agent);
       }
     } catch (error) {

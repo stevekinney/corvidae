@@ -570,6 +570,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.list',
         'bureau.agents.definitions.revisions',
         'bureau.agents.definitions.update',
+        'bureau.agents.disable',
+        'bureau.agents.enable',
         'bureau.agents.list',
         'bureau.agents.models',
         'bureau.agents.overrides.get',

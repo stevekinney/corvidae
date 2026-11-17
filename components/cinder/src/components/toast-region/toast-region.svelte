@@ -201,8 +201,12 @@
         ...(options.icon ? { icon: options.icon } : {}),
         ...(action ? { action } : {}),
         ...(undo ? { undo } : {}),
+        ...(options.onClose ? { onClose: options.onClose } : {}),
       };
     }
+    // A toast shown again under the same id closes the one it replaces.
+    const replaced = findToast(id);
+    if (replaced !== undefined && !replaced.leaving) notifyClose(replaced);
     clearTimer(id);
     clearRemovalTimer(id);
     removeFromBothStacks(id);
@@ -221,6 +225,7 @@
       ...(options.icon ? { icon: options.icon } : {}),
       ...(action ? { action } : {}),
       ...(undo ? { undo } : {}),
+      ...(options.onClose ? { onClose: options.onClose } : {}),
     };
 
     setCurrentStack(variant, [...getCurrentStack(variant), item]);
@@ -363,12 +368,21 @@
     return regionElement?.querySelector(`[data-cinder-toast-id="${CSS.escape(id)}"]`) ?? null;
   }
 
+  /** Tells the toast's `onClose`, once, that it is closing. */
+  function notifyClose(item: InternalToastItem): void {
+    const close = item.onClose;
+    if (close === undefined) return;
+    delete item.onClose;
+    close();
+  }
+
   function beginDismiss(id: string, reason: DismissReason): void {
     const item = findToast(id);
     if (!item || item.leaving) return;
 
     clearTimer(id);
     invalidateGeneration(id);
+    notifyClose(item);
 
     const element = getToastElement(id);
     const shell = element?.closest<HTMLElement>('.cinder-toast-shell');
@@ -629,6 +643,10 @@
     // Tear down timers so unmounting the region (e.g., during route change)
     // doesn't leak timers that fire later and try to mutate disposed state.
     destroyed = true;
+    // Every toast still showing closes with the region.
+    for (const item of [...politeStack, ...assertiveStack]) {
+      if (!item.leaving) notifyClose(item);
+    }
     for (const id of timers.keys()) clearTimer(id);
     for (const id of removalTimers.keys()) clearRemovalTimer(id);
     generations.clear();

@@ -318,6 +318,8 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.agents.versions.restore', 'administrator'],
       ['bureau.agents.overrides.get', 'shared'],
       ['bureau.agents.overrides.update', 'administrator'],
+      ['bureau.agents.disable', 'administrator'],
+      ['bureau.agents.enable', 'administrator'],
     ],
   },
   {

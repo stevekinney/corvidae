@@ -214,8 +214,12 @@ const unavailableSchema = z
 const detailSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
-  state: z.enum(['ready', 'invalid', 'unavailable']),
+  /**
+   * `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run.
+   * `disabled` is an agent a person disabled (COR-2429): it can be read, and runs nothing until it
+   * is enabled again.
+   */
+  state: z.enum(['ready', 'invalid', 'unavailable', 'disabled']),
   unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
@@ -372,6 +376,12 @@ const versionsSchema = z.object({
       /** The overrides a code agent's version holds (COR-2229); `null` for a file agent's. */
       overrides: overridesSchema.nullable().default(null),
       changedKeys: z.array(z.string()),
+      /**
+       * What the version changed, in words the Bureau read from its content (COR-2429): `Created`,
+       * or each changed part, such as `Instructions: added “Refunds over $25 need approval.”`.
+       * `null` from a Bureau that predates it, where the page words the change itself.
+       */
+      summary: z.string().nullable().default(null),
     }),
   ),
 });
@@ -614,8 +624,8 @@ export async function listAgentReferences(id: string, options?: Options): Promis
 const listingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
-  state: z.enum(['ready', 'invalid', 'unavailable']),
+  /** `unavailable` is a code agent of a disabled plugin, `disabled` an agent a person disabled (COR-2429). */
+  state: z.enum(['ready', 'invalid', 'unavailable', 'disabled']),
   unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
@@ -746,6 +756,27 @@ export async function deleteAgent(
   return writeResultSchema.parse(
     await callBureau('bureau.agents.definitions.delete', { id, expectedHash }, options),
   );
+}
+
+const disabledSchema = z.object({ id: z.string(), disabled: z.boolean() });
+
+/**
+ * Disables the agent (`bureau.agents.disable`, COR-2429): it stays listed as `disabled` and can be
+ * read, and nothing starts on it until {@link enableAgent}.
+ */
+export async function disableAgent(
+  id: string,
+  options?: Options,
+): Promise<z.infer<typeof disabledSchema>> {
+  return disabledSchema.parse(await callBureau('bureau.agents.disable', { id }, options));
+}
+
+/** Enables an agent {@link disableAgent} disabled (`bureau.agents.enable`, COR-2429). */
+export async function enableAgent(
+  id: string,
+  options?: Options,
+): Promise<z.infer<typeof disabledSchema>> {
+  return disabledSchema.parse(await callBureau('bureau.agents.enable', { id }, options));
 }
 
 /** The saved versions of the agent, newest first, whether or not each ran (`bureau.agents.versions.list`). */

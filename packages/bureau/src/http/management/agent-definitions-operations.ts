@@ -88,6 +88,7 @@ import {
   auditOverrideWrite,
   overrideVersionView,
 } from './agent-overrides-wire.ts';
+import { summarizeVersion } from './agent-version-summary.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -99,7 +100,12 @@ import {
 /** One entry of the audit trail, as the operations write it. */
 export interface AgentDefinitionAuditEntry {
   readonly runId: string;
-  readonly type: 'agent.created' | 'agent.updated' | 'agent.deleted';
+  readonly type:
+    | 'agent.created'
+    | 'agent.updated'
+    | 'agent.deleted'
+    | 'agent.disabled'
+    | 'agent.enabled';
   readonly detail: AgentDefinitionAuditDetail;
   /** The caller's owner string; absent for a caller the deployment cannot attribute. */
   readonly principal?: string;
@@ -114,8 +120,8 @@ export interface AgentDefinitionAuditEntry {
 export interface AgentDefinitionAuditDetail {
   /** The agent's identifier. */
   readonly id: string;
-  /** The SHA-256 of the file the write left. */
-  readonly hash: string;
+  /** The SHA-256 of the file the write left; absent when a disable or an enable wrote no file. */
+  readonly hash?: string;
   /** The hash the write replaced, for an update. */
   readonly previousHash?: string;
   /** The agent's identifier again, under the key every audit record names an agent with. */
@@ -148,6 +154,8 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
       | 'delete'
       | 'duplicate'
       | 'try'
+      | 'disable'
+      | 'enable'
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
     readonly optsCodeAgentIntoA2A: (id: string) => boolean;
@@ -182,8 +190,8 @@ const problemSchema = z.object({
 const agentListingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  /** `unavailable` is a code agent of a disabled plugin, listed read-only (COR-2009): it can be read and duplicated, never run. */
-  state: z.enum(['ready', 'invalid', 'unavailable']),
+  /** `unavailable` is a code agent of a disabled plugin, listed read-only (COR-2009): it can be read and duplicated, never run. `disabled` is an agent a person disabled with `bureau.agents.disable` (COR-2429): it can be read, and runs nothing until `bureau.agents.enable`. */
+  state: z.enum(['ready', 'invalid', 'unavailable', 'disabled']),
   name: z.string(),
   description: z.string().nullable(),
   a2a: z.boolean(),
@@ -432,9 +440,9 @@ function problemView(problem: NonNullable<AgentListing['problem']>) {
  * its own file for a persisted one.
  */
 function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentListing) {
-  // An unavailable agent answers nobody, A2A callers included.
+  // An unavailable or disabled agent answers nobody, A2A callers included.
   const a2a =
-    listing.state === 'unavailable'
+    listing.state === 'unavailable' || listing.state === 'disabled'
       ? false
       : (host.agentDefinitions.a2aOverride(listing.id) ??
         (listing.source === 'code'
@@ -1066,6 +1074,14 @@ const versionSchema = z.object({
   referenceDigests: z.array(z.object({ path: z.string(), digest: z.string() })).nullable(),
   /** The definition keys that differ from the previous version's, such as `["instructions"]`. */
   changedKeys: z.array(z.string()),
+  /**
+   * COR-2429: what the version changed, in words, read from its content and the version before it:
+   * `Created` for a first version, `Saved with no change`, or each changed key's change joined by
+   * semicolons, such as `Instructions: added “Refunds over $25 need approval.”; Tools: added
+   * issue-refund` or `Model: anthropic/haiku to anthropic/sonnet`. A key whose earlier version is
+   * no longer kept says only that it changed.
+   */
+  summary: z.string(),
 });
 
 const versionsListOutput = z.object({ versions: z.array(versionSchema) });
@@ -1080,7 +1096,7 @@ export const agentVersionsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the saved versions of an agent',
   description:
-    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `["references"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.',
+    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `["references"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`), with `summary`, what the version changed in words read from its content and the version before it (`Created` for a first version, `Saved with no change`, or each changed key joined by semicolons, such as `Instructions: added “Refunds over $25 need approval.”; Tools: added issue-refund`; a key whose earlier version is no longer kept says only that it changed). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -1094,23 +1110,41 @@ export const agentVersionsListOperation = defineOperation<
     const definitions = requireAccess(host, principal, 'bureau.agents:read', input.id);
     if (definitions.agents.overrides.isCodeAgent(input.id)) {
       const saved = await definitions.agents.overrides.versions(input.id);
-      return { versions: saved.map(overrideVersionView) };
+      // Newest first: the version before one is the next entry, while it is still kept.
+      return {
+        versions: saved.map((record, index) =>
+          overrideVersionView(
+            record,
+            saved[index + 1]?.version === record.version - 1 ? saved[index + 1] : undefined,
+          ),
+        ),
+      };
     }
     const known = definitions.agents.list().some((listing) => listing.id === input.id);
     const versions = await definitions.agents.versions.list(input.id);
     if (versions.length === 0 && !known) throw resourceNotFound('agent', input.id);
     return {
-      versions: versions.map((version) => ({
-        revision: version.revision,
-        hash: version.hash,
-        savedAt: version.savedAt,
-        savedBy: version.savedBy,
-        owner: version.owner,
-        definition: definitionView(version.definition),
-        overrides: null,
-        referenceDigests: version.referenceDigests?.map((digest) => ({ ...digest })) ?? null,
-        changedKeys: [...version.changedKeys],
-      })),
+      versions: versions.map((version, index) => {
+        const before = versions[index + 1];
+        return {
+          revision: version.revision,
+          hash: version.hash,
+          savedAt: version.savedAt,
+          savedBy: version.savedBy,
+          owner: version.owner,
+          definition: definitionView(version.definition),
+          overrides: null,
+          referenceDigests: version.referenceDigests?.map((digest) => ({ ...digest })) ?? null,
+          changedKeys: [...version.changedKeys],
+          // COR-2429: what it changed, in words, read from it and the version before it.
+          summary: summarizeVersion({
+            changedKeys: version.changedKeys,
+            current: version.definition,
+            previous: before?.revision === version.revision - 1 ? before.definition : undefined,
+            first: version.revision === 1,
+          }),
+        };
+      }),
     };
   },
 });

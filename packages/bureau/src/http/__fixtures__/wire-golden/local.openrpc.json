@@ -11196,7 +11196,8 @@
               "enum": [
                 "ready",
                 "invalid",
-                "unavailable"
+                "unavailable",
+                "disabled"
               ],
               "type": "string"
             },
@@ -11434,7 +11435,8 @@
                     "enum": [
                       "ready",
                       "invalid",
-                      "unavailable"
+                      "unavailable",
+                      "disabled"
                     ],
                     "type": "string"
                   },
@@ -12510,7 +12512,7 @@
       }
     },
     {
-      "description": "Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `[\"references\"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `[\"instructions\"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.",
+      "description": "Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `[\"references\"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `[\"instructions\"]`), with `summary`, what the version changed in words read from its content and the version before it (`Created` for a first version, `Saved with no change`, or each changed key joined by semicolons, such as `Instructions: added “Refunds over $25 need approval.”; Tools: added issue-refund`; a key whose earlier version is no longer kept says only that it changed). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -13268,6 +13270,9 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "summary": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -13279,7 +13284,8 @@
                   "definition",
                   "overrides",
                   "referenceDigests",
-                  "changedKeys"
+                  "changedKeys",
+                  "summary"
                 ],
                 "type": "object"
               },
@@ -15294,6 +15300,162 @@
           "id",
           "expectedHash",
           "overrides"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Disables the agent `id` (a built-in agent the host defines, the agent of a running plugin, `plugin:name`, or an agent file) durably, without deleting anything, and returns `disabled: true`. A disabled agent is listed with state `disabled` by `bureau.agents.definitions.list` and `.get`, and can still be read: its definition, versions, overrides, chats and memory. No new chat, run, schedule, workflow step or hook can start on it, because every lookup of an agent by name consults the one gate this operation writes: `bureau.agents.list` leaves it out, a run that names it is refused as an unknown agent, and it opts into no A2A. `bureau.agents.enable` brings it back as it was. Disabling an agent that is already disabled changes nothing. The change is appended to the audit trail as `agent.disabled`. An identifier that is no agent, and the agent of a disabled plugin (state `unavailable`, which runs nothing already), is `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.agents.disable",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "disabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "disabled"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Disable an agent until it is enabled again",
+      "tags": [
+        {
+          "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Enables the agent `id` that `bureau.agents.disable` disabled, so chats, runs, schedules, workflow steps and hooks find it again, and returns `disabled: false`. Enabling an agent that is not disabled changes nothing. The change is appended to the audit trail as `agent.enabled`. An identifier that is no agent is `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.agents.enable",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "disabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "disabled"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Enable an agent a person disabled",
+      "tags": [
+        {
+          "name": "Agents"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The identifier of the agent: a built-in agent, a plugin’s, or an agent file.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       }

@@ -465,16 +465,6 @@ export const AGENT_EDITOR_COPY = {
     title: 'The agent could not be loaded',
     description: 'The server did not answer. Check that the host is running, then try again.',
   },
-  revisions: {
-    heading: 'Revision history',
-    description: 'The versions of this agent that have run, most recently run first.',
-    caption: 'Versions of this agent that have run',
-    versionColumn: 'Version',
-    lastRunColumn: 'Last run',
-    emptyTitle: 'No version has run yet',
-    empty: 'A version appears here once the agent runs on it.',
-    failedTitle: 'The revision history could not be loaded',
-  },
 } as const;
 
 /**
@@ -513,6 +503,8 @@ export const AGENTS_COPY = {
   row: {
     /** The words after the chat count of an agent the host ships itself (row 36g). */
     builtIn: 'Built in',
+    /** The status of an agent a person disabled (COR-2429). */
+    disabled: 'Disabled',
     noActivity: 'No activity yet',
     yesterday: 'Yesterday',
     /** In the action slot of an agent a disabled plugin holds back, when the host gives no reason. */
@@ -1000,6 +992,40 @@ export const AGENT_PAGE_COPY = {
       named: (counted: string, names: readonly string[]): string =>
         `${counted} (${names.join(', ')})`,
       joined: (groups: readonly string[]): string => joinedWithAnd(groups),
+    },
+    /**
+     * The block at the end of an agent defined in code, which can be disabled but not deleted (row
+     * 38y), and the question Disable agent asks (row 40d). Afterwards Enable agent sits where
+     * Disable was.
+     */
+    disable: {
+      heading: 'Disable this agent',
+      note: (name: string, plugin: string | null): string =>
+        `${name} ${plugin === null ? 'is built in' : `comes from ${plugin}`}, so it can be disabled but not deleted. Its chats stay, read-only, until you enable it again.`,
+      action: 'Disable agent',
+      enabledHeading: 'This agent is disabled',
+      enabledNote: (name: string): string =>
+        `${name} is disabled. Its chats stay, read-only, and nothing finds it until you enable it again.`,
+      enable: 'Enable agent',
+      failed: 'The agent could not be disabled.',
+      enableFailed: 'The agent could not be enabled.',
+      dialog: {
+        title: (name: string): string => `Disable ${name}?`,
+        description: (chats: number | undefined, dependents: string): string => {
+          const kept =
+            chats === undefined || chats === 0
+              ? 'Its chats stay, read-only.'
+              : chats === 1
+                ? 'Its 1 chat stays, read-only.'
+                : `Its ${String(chats)} chats stay, read-only.`;
+          return dependents === ''
+            ? `${kept} Nothing can start it until you enable it again.`
+            : `${kept} ${dependents} will stop finding it until you enable it again.`;
+        },
+        confirm: 'Disable agent',
+      },
+      /** Why New chat is held on a disabled agent's page. */
+      newChatReason: (name: string): string => `Enable ${name} to start a chat`,
     },
     stale: 'This agent changed after the page loaded. Reload to see its current settings.',
     forbidden: 'You may not change this agent.',

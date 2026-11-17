@@ -313,6 +313,8 @@ export const OPERATION_MAP = {
     workspaceClass: 'administrator-shared',
     member: 'agents.overrides.save',
   },
+  'bureau.agents.disable': { workspaceClass: 'administrator-shared', member: 'agents.disable' },
+  'bureau.agents.enable': { workspaceClass: 'administrator-shared', member: 'agents.enable' },
 
   // COR-1813: the wire name is `rollback` because operation names are lowercase; the in-process
   // member keeps the camel-cased `rollBack`.

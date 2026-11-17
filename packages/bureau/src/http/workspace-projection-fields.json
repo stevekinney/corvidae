@@ -384,6 +384,8 @@
     "$.version"
   ],
   "output:bureau.agents.overrides.update": ["$.hash", "$.id", "$.version"],
+  "output:bureau.agents.disable": ["$.disabled", "$.id"],
+  "output:bureau.agents.enable": ["$.disabled", "$.id"],
   "output:bureau.agents.references": [
     "$.agentName",
     "$.hooks",
@@ -479,7 +481,8 @@
     "$.versions[].referenceDigests|anyOf[0][].path",
     "$.versions[].revision",
     "$.versions[].savedAt",
-    "$.versions[].savedBy"
+    "$.versions[].savedBy",
+    "$.versions[].summary"
   ],
   "output:bureau.agents.versions.restore": ["$.hash", "$.id", "$.revision"],
   "output:bureau.assets.get": [

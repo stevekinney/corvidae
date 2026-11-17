@@ -8,19 +8,27 @@
 <script lang="ts">
   /**
    * Forgetting a memory, for the whole Memory page. The details panel starts it (`askToForget`),
-   * so the question, the server's refusals, and the deletion's receipt exist once.
+   * so the toast, the server's refusals, and the deletion's receipt exist once.
    *
-   * Forgetting asks first, naming the memory that goes, then reports what the deletion came to in
-   * the words for its state (`MEMORY_COPY.forget.outcome`). Correcting is the details panel's own
-   * form (`memory-detail.svelte`), and sharing, holding, quarantining and exporting are
-   * `memory-governance.svelte`. Each change names the memory it is for when it is asked, so a
-   * second request never changes what the first one reports.
+   * The trash button forgets at once, with no question (row 45r): the memory leaves the list, and a
+   * toast reads Forgot "…" with an Undo that stays until it is pressed or the page is left. The
+   * Bureau has no way to bring a forgotten memory back, so nothing is sent while the toast shows:
+   * the forget is sent when the toast closes (`onClose`), however it closes (the page left, a newer
+   * toast pushing it out, a second forget taking its place), and Undo sends nothing and puts the
+   * memory back. A forget that was sent reports what the deletion came to in the words for its
+   * state (`MEMORY_COPY.forget.outcome`); once the page is gone, a forget that did not complete
+   * says so in a toast instead. Correcting is the details panel's own form (`memory-detail.svelte`),
+   * and sharing, holding, quarantining and exporting are `memory-governance.svelte`. Each change
+   * names the memory it is for when it is asked, so a second request never changes what the first
+   * one reports.
    */
-  import { Alert, ConfirmDialog } from '@lostgradient/cinder';
+  import { Alert } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import type { SvelteMap } from 'svelte/reactivity';
+  import { onDestroy } from 'svelte';
+  import type { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
   import { MEMORY_COPY } from '../../app/copy/memory.ts';
+  import { dismissToast, hasToastHost, showToast } from '../../app/toast-host.svelte';
   import {
     forgetMemory,
     memoryFaultOf,
@@ -39,9 +47,14 @@
      * and unlike the receipt, which a person can dismiss, a hold the server confirmed stays known.
      */
     holds: SvelteMap<string, 'held' | 'free'>;
+    /**
+     * The memories the page leaves out of its list: one forgotten while its Undo shows, and one
+     * whose forget is being saved. Undo, and a forget that did not complete, put it back.
+     */
+    hidden: SvelteSet<string>;
     /** True while a forget is being saved, for the page to hold every Forget until it settles. */
     forgetPending?: boolean;
-    /** Called once a memory is gone, so the page can close its details. */
+    /** Called once a memory leaves the list, so the page can open the next one in its place. */
     onForgotten: (id: string) => void;
   };
 
@@ -49,30 +62,52 @@
     agentId,
     outcome = $bindable(),
     holds,
+    hidden,
     forgetPending = $bindable(false),
     onForgotten,
   }: Props = $props();
 
   const queryClient = useQueryClient();
+  const toasts = hasToastHost();
 
-  let forgetting = $state<Pick<Memory, 'id' | 'content'> | undefined>(undefined);
-  let confirmingForget = $state(false);
   let failure = $state<MemoryFault | undefined>(undefined);
+
+  /** A memory forgotten on the page whose forget waits for its toast to close. */
+  type Waiting = {
+    readonly id: string;
+    toast: string | undefined;
+    /** Undo was pressed: nothing is sent. */
+    undone: boolean;
+    /** The forget was sent: nothing is sent again. */
+    sent: boolean;
+  };
+  let waiting: Waiting | undefined;
+  let destroyed = false;
+
+  /** What a forget answered: the receipt above the list, and the memory back when it stays. */
+  function settled(id: string, result: Awaited<ReturnType<typeof forgetMemory>>): void {
+    if (result.deletion === 'exempt') holds.set(id, 'held');
+    if (result.deletion !== 'completed') hidden.delete(id);
+    // A memory that is gone has no details to read again: the outcome stays on screen.
+    void queryClient.invalidateQueries(
+      result.deletion === 'completed'
+        ? memoryListingsFilter(agentId)
+        : { queryKey: queryKeys.memory.all(agentId) },
+    );
+  }
 
   const forget = createMutation(() => ({
     mutationFn: (id: string) => forgetMemory(agentId, id),
+    onMutate: () => {
+      failure = undefined;
+      outcome = undefined;
+    },
     onSuccess: (result, id) => {
       outcome = { id, result };
-      if (result.deletion === 'exempt') holds.set(id, 'held');
-      // A memory that is gone has no details to read again: the outcome stays on screen.
-      void queryClient.invalidateQueries(
-        result.deletion === 'completed'
-          ? memoryListingsFilter(agentId)
-          : { queryKey: queryKeys.memory.all(agentId) },
-      );
-      if (result.deletion === 'completed') onForgotten(id);
+      settled(id, result);
     },
-    onError: (error) => {
+    onError: (error, id) => {
+      hidden.delete(id);
       failure = memoryFaultOf(error);
     },
   }));
@@ -81,20 +116,91 @@
     forgetPending = forget.isPending;
   });
 
-  /** Asks whether to forget `memory`, unless a forget is already being saved. */
-  export function askToForget(memory: Pick<Memory, 'id' | 'content'>): void {
-    if (forget.isPending) return;
-    forgetting = memory;
-    confirmingForget = true;
+  /**
+   * Sends the forget of `entry`, once, unless Undo was pressed. On the page the receipt says what
+   * it came to; once the page is gone, only a forget that did not complete says so, in a toast.
+   */
+  function send(entry: Waiting): void {
+    if (entry.undone || entry.sent) return;
+    entry.sent = true;
+    if (waiting === entry) waiting = undefined;
+    if (!destroyed) {
+      forget.mutate(entry.id);
+      return;
+    }
+    void sendAfterLeaving(entry.id);
   }
 
-  /** Asks the server to forget, with the last refusal and receipt forgotten first. */
-  function confirmForget(): void {
-    if (forgetting === undefined || forget.isPending) return;
-    failure = undefined;
-    outcome = undefined;
-    forget.mutate(forgetting.id);
+  /** The forget the page held back, sent once it is gone: only one that did not complete says so. */
+  async function sendAfterLeaving(id: string): Promise<void> {
+    try {
+      const result = await forgetMemory(agentId, id);
+      settled(id, result);
+      if (result.deletion !== 'completed' && toasts) {
+        showToast(MEMORY_COPY.forget.outcome[result.deletion].title, { variant: 'warning' });
+      }
+    } catch {
+      if (toasts) showToast(MEMORY_COPY.forget.failed, { variant: 'danger' });
+    }
   }
+
+  /**
+   * Forgets `memory` at once, with no question (row 45r): it leaves the list, and a toast with Undo
+   * says so. The forget is sent when the toast closes. A second forget sends the first one's now,
+   * so only the newest has an Undo. Nothing happens while a forget is being saved.
+   */
+  export function askToForget(memory: Pick<Memory, 'id' | 'content'>): void {
+    if (forget.isPending || waiting?.id === memory.id) return;
+    const before = waiting;
+    if (before !== undefined) {
+      if (before.toast !== undefined) dismissToast(before.toast);
+      send(before);
+    }
+    const entry: Waiting = { id: memory.id, toast: undefined, undone: false, sent: false };
+    waiting = entry;
+    // The page opens the next memory while this one is still in its list, then it leaves.
+    onForgotten(memory.id);
+    hidden.add(memory.id);
+    if (!toasts) {
+      // With nowhere to offer Undo, the forget is sent at once.
+      send(entry);
+      return;
+    }
+    entry.toast = showToast(MEMORY_COPY.forget.toast(excerpt(memory.content)), {
+      variant: 'success',
+      undo: () => {
+        entry.undone = true;
+        if (waiting === entry) waiting = undefined;
+        hidden.delete(entry.id);
+      },
+      onClose: () => send(entry),
+    });
+  }
+
+  // Closing the tab or the window takes the toast with it, and no component is destroyed then: the
+  // forget is sent as the page goes, kept alive past the page's end.
+  $effect(() => {
+    const pageHidden = (): void => {
+      const entry = waiting;
+      if (entry === undefined || entry.undone || entry.sent) return;
+      entry.sent = true;
+      waiting = undefined;
+      void forgetMemory(agentId, entry.id, {
+        fetch: (input, init) => fetch(input, { ...init, keepalive: true }),
+      }).catch(() => undefined);
+    };
+    window.addEventListener('pagehide', pageHidden);
+    return () => window.removeEventListener('pagehide', pageHidden);
+  });
+
+  // Leaving the page closes the toast, and the forget it held back is sent.
+  onDestroy(() => {
+    destroyed = true;
+    const entry = waiting;
+    if (entry === undefined) return;
+    if (entry.toast !== undefined) dismissToast(entry.toast);
+    send(entry);
+  });
 
   const outcomeWords = $derived(
     outcome === undefined ? undefined : MEMORY_COPY.forget.outcome[outcome.result.deletion],
@@ -130,15 +236,6 @@
     <p class="weft-memory-changes__alert-body">{words.description || words.title}</p>
   </Alert>
 {/if}
-
-<ConfirmDialog
-  bind:open={confirmingForget}
-  title={MEMORY_COPY.forget.dialog.title}
-  description={MEMORY_COPY.forget.dialog.description(excerpt(forgetting?.content ?? ''))}
-  confirmLabel={MEMORY_COPY.forget.dialog.confirm}
-  destructive
-  onConfirm={confirmForget}
-/>
 
 <style>
   .weft-memory-changes__alert-title {

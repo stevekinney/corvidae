@@ -28,6 +28,7 @@ ToastRegion provides live toast notifications and a `useToast()` controller for 
 Toasts follow one rule about how long they stay: an Undo toast stays until the person acts or leaves the page, a failure stays until it is dismissed, and everything else dismisses itself.
 
 - **Undo**: `toast.show('Memory forgotten.', { undo: () => restore() })` shows an "Undo" action that calls the function. The toast has no timer and no close button, so the Undo is not lost to a stray click. Call `toast.dismissUndo()` when the page changes, so an Undo never outlives the page it would undo a change on.
+- **Closing**: `onClose` is called once when a toast starts to close, however it closes (its timer, its close button, its action after the action runs, `dismiss`, `dismissAll`, `dismissUndo`, a newer toast pushing it out, or the region unmounting). A page that holds a change back until its Undo toast is gone sends the change from `onClose`.
 - **Failure**: a `danger` toast has no timer, shows the warning triangle, and keeps its dismiss button. Pair it with an action: `toast.show("Couldn't export memories", { variant: 'danger', action: { label: 'Try again', onAction } })`.
 - **Everything else**: `info`, `success` and `warning` toasts dismiss themselves after `defaultDuration`. "Back online. Updated just now." is one of these, not a banner, so the page does not shift twice.
 

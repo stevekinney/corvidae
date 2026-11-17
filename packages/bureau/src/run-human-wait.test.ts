@@ -649,6 +649,34 @@ describe('a bureau.run() park after a restart', () => {
     expect(after.resumed.join('')).toContain('production');
     expect(restarted.reviews.list()).toEqual([]);
   });
+
+  it('finishes a parked run of an agent disabled meanwhile, and starts no new one (COR-2429)', async () => {
+    const database = nextDatabase();
+    const crashed = await over(database, newSeen());
+    const run = await crashed.tasks.start('asker', 'deploy', { principal: 'alice' });
+    await nextReview(crashed, run.id);
+    expect(await crashed.agents.disable('asker', { disabledBy: 'operator' })).toMatchObject({
+      id: 'asker',
+    });
+
+    const after = newSeen();
+    const restarted = await over(database, after);
+    expect(restarted.agents.isDisabled('asker')).toBe(true);
+    const restored = await nextReview(restarted, run.id);
+    await restarted.reviews.resolve({
+      id: restored.id,
+      decision: 'approve',
+      principal: 'operator',
+      payload: { environment: 'production' },
+    });
+    const finished = await restarted.tasks.wait(run.id);
+
+    // The run it had started resumes and finishes, as a file agent's resumes from its snapshot.
+    expect(finished?.status).toBe('completed');
+    expect(after.resumed.join('')).toContain('production');
+    // Nothing new starts on it.
+    expect(await rejectionOf(restarted.tasks.start('asker', 'again'))).toBeDefined();
+  });
 });
 
 describe('a long signalName on a bureau.run() park (COR-1577)', () => {

@@ -1154,6 +1154,100 @@ describe('bureau.agents.catalog', () => {
   });
 });
 
+describe('bureau.agents.disable and bureau.agents.enable (COR-2429)', () => {
+  it('disables a code agent through the one gate every lookup by name consults, and enables it again', async () => {
+    const served = await serve();
+    await seed(served);
+    expect(served.bureau.agents.find('alpha')).toBeDefined();
+
+    const disabled = await callAs(served.local, 'bureau.agents.disable', { id: 'alpha' });
+    expect(disabled.error).toBeUndefined();
+    expect(disabled.result).toEqual({ id: 'alpha', disabled: true });
+
+    // Still listed and readable, as `disabled`, and answering no A2A caller.
+    const listed = await callAs(served.local, 'bureau.agents.definitions.list', {});
+    expect(listOf(listed, 'agents').map((entry) => [entry['id'], entry['state']])).toEqual([
+      ['alpha', 'disabled'],
+      ['researcher', 'ready'],
+    ]);
+    const got = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'alpha' });
+    expect(got.result).toMatchObject({ id: 'alpha', state: 'disabled', a2a: false });
+    expect(got.result?.['codeDefinition']).not.toBeNull();
+    // Its overrides and versions can still be read, so the page can show Enable agent.
+    const overrides = await callAs(served.local, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(overrides.error).toBeUndefined();
+
+    // Every lookup by name: the catalog, the agents a chat offers, and a run's start.
+    expect(served.bureau.agents.find('alpha')).toBeUndefined();
+    const offered = await callAs(served.local, 'bureau.agents.list', {});
+    expect(listOf(offered, 'agents').map((entry) => entry['name'])).toEqual(['researcher']);
+    await expect(runTask(served.bureau, 'alpha', 'hello')).rejects.toThrow();
+    const schedule = await callAs(served.local, 'bureau.schedules.create', {
+      agentName: 'alpha',
+      spec: '1d',
+      input: 'hello',
+    });
+    expect(schedule.error?.data?.httpStatus).toBe(404);
+    // Another agent is untouched.
+    const other = await runTask(served.bureau, 'researcher', 'hello');
+    expect(other.content).toBeString();
+
+    const again = await callAs(served.local, 'bureau.agents.disable', { id: 'alpha' });
+    expect(again.result).toEqual({ id: 'alpha', disabled: true });
+
+    const enabled = await callAs(served.local, 'bureau.agents.enable', { id: 'alpha' });
+    expect(enabled.result).toEqual({ id: 'alpha', disabled: false });
+    expect(served.bureau.agents.find('alpha')).toBeDefined();
+    const after = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'alpha' });
+    expect(after.result).toMatchObject({ id: 'alpha', state: 'ready' });
+    const resumed = await runTask(served.bureau, 'alpha', 'hello');
+    expect(resumed.content).toBe('alpha');
+
+    // One audit entry for each change, none for the repeated disable.
+    const trail = await served.bureau.internals.auditTrail?.query({ runId: 'agent:alpha' });
+    expect(trail?.map((entry) => entry.type)).toEqual(['agent.disabled', 'agent.enabled']);
+  });
+
+  it('keeps an agent disabled across a restart over the same store', async () => {
+    const storage = new MemoryStorage();
+    const first = await serve({ overrides: { storage } });
+    await callAs(first.local, 'bureau.agents.disable', { id: 'alpha' });
+    await first.dispose();
+
+    const second = await serve({ overrides: { storage } });
+    expect(second.bureau.agents.find('alpha')).toBeUndefined();
+    expect(second.bureau.agents.list().find((listing) => listing.id === 'alpha')?.state).toBe(
+      'disabled',
+    );
+    await callAs(second.local, 'bureau.agents.enable', { id: 'alpha' });
+    expect(second.bureau.agents.find('alpha')).toBeDefined();
+  });
+
+  it('disables an agent file the same way', async () => {
+    const served = await serve();
+    await seed(served);
+    await callAs(served.local, 'bureau.agents.disable', { id: 'researcher' });
+    expect(served.bureau.agents.find('researcher')).toBeUndefined();
+    await expect(runTask(served.bureau, 'researcher', 'hello')).rejects.toThrow();
+    await callAs(served.local, 'bureau.agents.enable', { id: 'researcher' });
+    expect(served.bureau.agents.find('researcher')).toBeDefined();
+  });
+
+  it('answers an unknown agent, and a caller who may not write, as NotFound and writes nothing', async () => {
+    const served = await serve();
+    for (const method of ['bureau.agents.disable', 'bureau.agents.enable']) {
+      const unknown = await callAs(served.local, method, { id: 'nobody' });
+      expect(unknown.error?.data?.httpStatus).toBe(404);
+      const reader = await rpc(served.keyed, method, { id: 'alpha' }, 'agents-reader-key');
+      expect(reader.error?.data?.httpStatus).toBe(404);
+    }
+    expect(served.bureau.agents.find('alpha')).toBeDefined();
+    const writer = await rpc(served.keyed, 'bureau.agents.disable', { id: 'alpha' }, 'agents-writer-key');
+    expect(writer.result).toEqual({ id: 'alpha', disabled: true });
+    expect(served.bureau.agents.isDisabled('alpha')).toBe(true);
+  });
+});
+
 describe('credentials', () => {
   it('refuses a request with no credentials, and one with a key the deployment does not know', async () => {
     const served = await serve();
