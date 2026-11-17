@@ -14,11 +14,13 @@ async function execute(taskId: string, control: TaskControl): Promise<number | n
   if (task === undefined) throw new Error(`Missing ${taskId}.`);
   const root = materializeTask(task, scratch, control);
   const result = await runWithHangGuard(['bun', '--no-install', ...task.oracleArgv], { cwd: root });
+  if (control === 'repaired' && result.exitCode !== 0)
+    throw new Error(`${taskId} repaired: ${result.stderr.toString()}`);
   return result.exitCode;
 }
 
 const controlsOutcome = await outcomeOf(async () => {
-  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02']) {
+  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02', 'ui-01', 'ui-02']) {
     expect(await execute(taskId, 'buggy')).toBe(1);
     expect(await execute(taskId, 'empty')).toBe(1);
     expect(await execute(taskId, 'repaired')).toBe(0);
@@ -39,7 +41,7 @@ test('the materializer never allows an oracle replacement or filesystem escape',
 });
 
 const constantsOutcome = await outcomeOf(async () => {
-  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02']) {
+  for (const taskId of ['local-01', 'local-02', 'contract-01', 'contract-02', 'concurrency-01', 'concurrency-02', 'ui-01', 'ui-02']) {
     const task = bank.tasks.find((entry) => entry.id === taskId)!;
     const root = materializeTask(task, scratch, 'repaired');
     writeFileSync(join(root, task.permittedPaths[0]!), 'export const parseAttemptCount = () => 12; export const uniqueKeys = () => []; export const serializeResult = () => ({ id: \'one\', state: \'failed\', retryable: false }); export const serializeReceipt = () => ({ key: \'zero\', sequence: 0, label: \'\' });\n');
