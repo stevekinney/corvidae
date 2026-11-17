@@ -43,31 +43,21 @@
     return tableContext?.registerControls?.(controls !== 'fit');
   });
 
-  // On a stacked `fit` table the row header is the card's title: it holds to two lines, and the
-  // whole of it opens in a tooltip from the title's link, or from the title itself when it has none.
-  const clampTitle = $derived(as === 'th' && !truncate && tableContext?.stackCard === true);
-  let titleElement = $state<HTMLElement | null>(null);
-  let titleTrigger = $state<HTMLElement | null>(null);
+  // In a `fit` table the row header is the row's title, stacked or not: it holds to two lines, and
+  // while the clamp cuts it the whole of it opens in a tooltip from the title's link, or from the
+  // title itself when it has none. A title that fits has no tab stop and no tooltip.
+  const clampTitle = $derived(as === 'th' && !truncate && tableContext?.fit === true);
+  const titleCut = createCutText('block');
   let titleText = $state<string | undefined>();
-  const holdTitle: Attachment<HTMLElement> = (element) => {
+  const readTitleText: Attachment<HTMLElement> = (element) => {
     const read = (): void => {
-      const link = element.querySelector<HTMLElement>('a');
-      if (!link) element.tabIndex = 0;
-      titleTrigger = link ?? element;
       const text = element.textContent?.trim();
       titleText = text === undefined || text === '' ? undefined : text;
     };
-    titleElement = element;
     read();
     const observer = new MutationObserver(read);
     observer.observe(element, { childList: true, characterData: true, subtree: true });
-    return () => {
-      observer.disconnect();
-      if (titleElement === element) {
-        titleElement = null;
-        titleTrigger = null;
-      }
-    };
+    return () => observer.disconnect();
   };
 
   // A truncating cell shows the full text on hover. Unless the caller supplied
@@ -118,8 +108,16 @@
         triggerRef={textCut.trigger}
       />{/if}
   {:else if clampTitle}
-    <span class="cinder-table__cell-title" {@attach holdTitle}>{@render children?.()}</span
-    ><FullTextTooltip text={title ?? titleText ?? ''} triggerRef={titleTrigger} />
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the title is cut, so focusing it opens the tooltip with the whole title. -->
+    <span
+      class="cinder-table__cell-title"
+      tabindex={titleCut.tabbable ? '0' : undefined}
+      {@attach readTitleText}
+      {@attach titleCut.attach}>{@render children?.()}</span
+    >{#if titleCut.cut}<FullTextTooltip
+        text={title ?? titleText ?? ''}
+        triggerRef={titleCut.trigger}
+      />{/if}
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

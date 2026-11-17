@@ -9,7 +9,8 @@ import { DEFAULT_TEST_VIEWPORT, setTestViewportWidth } from '../../test/viewport
 
 setupHappyDom();
 
-const { render } = await import('@testing-library/svelte');
+const { render, fireEvent } = await import('@testing-library/svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
 const { default: CardFixture } = await import('./table-card.fixture.svelte');
 const { default: DescriptionList } = await import('../description-list/description-list.svelte');
@@ -409,22 +410,55 @@ describe('Table fit stacks into cards', () => {
     expect(container.querySelector('[data-cinder-stack-title]')?.textContent).toBe('Second');
   });
 
-  test('a clamped title opens a tooltip with its whole text', async () => {
-    setTestViewportWidth(375);
-    const { container } = render(CardFixture, {});
-    flushSync();
-    await waitUntil(() => container.querySelector('.cinder-table__cell-title') !== null);
-    const title = container.querySelector('.cinder-table__cell-title');
-    expect(title?.textContent).toContain('Claude Opus');
-    expect(title?.getAttribute('tabindex')).toBe('0');
+  test('a title the clamp cuts takes the tab stop and opens a tooltip with its whole text', async () => {
+    const restore = stubCutLayout(true);
+    try {
+      setTestViewportWidth(375);
+      const { container } = render(CardFixture, {});
+      flushSync();
+      await waitUntil(() => container.querySelector('.cinder-table__cell-title') !== null);
+      const title = container.querySelector('.cinder-table__cell-title') as HTMLElement;
+      expect(title.textContent).toContain('Claude Opus');
+      await waitUntil(() => title.getAttribute('tabindex') === '0');
+      await fireEvent.focus(title);
+      await waitUntil(() => document.querySelector('[role="tooltip"]') !== null);
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('Claude Opus');
+    } finally {
+      restore();
+    }
   });
 
-  test('a table that is not stacked draws the title cell without the clamp wrapper', () => {
-    setTestViewportWidth(768);
+  test('a title the clamp does not cut has no tab stop and no tooltip', async () => {
+    const restore = stubCutLayout(false);
+    try {
+      setTestViewportWidth(375);
+      const { container } = render(CardFixture, {});
+      flushSync();
+      await waitUntil(() => container.querySelector('.cinder-table__cell-title') !== null);
+      const title = container.querySelector('.cinder-table__cell-title') as HTMLElement;
+      expect(title.hasAttribute('tabindex')).toBe(false);
+      await fireEvent.focus(title);
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  test('a table that is not stacked clamps the row header too, with no card marks', () => {
+    setTestViewportWidth(1280);
     const { container } = render(CardFixture, {});
     flushSync();
-    expect(container.querySelector('.cinder-table__cell-title')).toBeNull();
+    expect(container.querySelector('.cinder-table__cell-title')).not.toBeNull();
     expect(container.querySelector('[data-cinder-stack-title]')).toBeNull();
+  });
+
+  test('the two-line clamp belongs to every fit table, not only the stacked one', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-table\[data-cinder-fit\] \.cinder-table__cell-title \{[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/,
+    );
   });
 
   test('a stacked sortable table offers one sort control and keeps the header buttons out of the tab order', async () => {

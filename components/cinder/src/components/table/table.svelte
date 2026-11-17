@@ -335,6 +335,9 @@
     get stackCard() {
       return stackCard;
     },
+    get fit() {
+      return fit;
+    },
     onSortChange,
     registerControls,
   });

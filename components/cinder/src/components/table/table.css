@@ -724,8 +724,9 @@
     content: none;
   }
 
-  /* The name holds to two lines; its tooltip carries the whole of it. */
-  .cinder-table[data-cinder-stack-card] .cinder-table__cell-title {
+  /* The row header's name holds to two lines in any `fit` table, stacked or not, and ends with an
+     ellipsis; its tooltip, drawn only while the clamp cuts, carries the whole of it. */
+  .cinder-table[data-cinder-fit] .cinder-table__cell-title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -734,7 +735,7 @@
     overflow-wrap: break-word;
   }
 
-  .cinder-table[data-cinder-stack-card] .cinder-table__cell-title:focus-visible {
+  .cinder-table[data-cinder-fit] .cinder-table__cell-title:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     border-radius: var(--cinder-radius-sm);
     box-shadow: var(--_cinder-focus-ring-shadow);

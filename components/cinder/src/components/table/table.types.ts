@@ -48,6 +48,8 @@ export type TableContext = {
   registerControls?: (fill?: boolean) => () => void;
   /** True while the table draws its rows as cards (a stacked `fit` table). Cells read it. */
   readonly stackCard?: boolean;
+  /** True for a `fit` table. Its row header holds to two lines, stacked or not. */
+  readonly fit?: boolean;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
