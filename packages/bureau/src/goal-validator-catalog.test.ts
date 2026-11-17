@@ -5,6 +5,7 @@
  */
 import type { Validator } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import {
   createGoalValidatorCatalog,
@@ -233,6 +234,45 @@ describe('goal validator descriptors', () => {
         validator('tests@bureau', '1.0.0', 'deterministic'),
       ]).descriptors()[0]?.descriptorDigest,
     ).toBe(first?.descriptorDigest);
+  });
+
+  it('keeps the digest a validator without a configuration schema had before COR-2117', () => {
+    const catalog = createGoalValidatorCatalog([
+      validator('tests@bureau', '1.0.0', 'deterministic'),
+      validator('plain@bureau', '1.0.0'),
+    ]);
+
+    expect(catalog.descriptors().map((descriptor) => descriptor.descriptorDigest)).toEqual([
+      '864bb2409a7c730dd813cb2cfa28740ae632b8086d09fe2fabe8080fcf5ca45c',
+      '8ba8783e73b890b59001bc86a882f681633d4ffa744f3c46cd3d156449807945',
+    ]);
+    expect(catalog.descriptors().some((descriptor) => 'configuration' in descriptor)).toBe(false);
+  });
+
+  it('describes a configuration schema as JSON Schema, covers it in the digest, and round-trips', () => {
+    const configured = {
+      ...validator('contains-phrase', '1', 'deterministic'),
+      configuration: z.strictObject({ phrase: z.string().min(1) }),
+    };
+    const plain = validator('contains-phrase', '1', 'deterministic');
+    const [descriptor] = createGoalValidatorCatalog([configured]).descriptors();
+    const [bare] = createGoalValidatorCatalog([plain]).descriptors();
+
+    expect(descriptor?.configuration).toMatchObject({
+      type: 'object',
+      properties: { phrase: { type: 'string' } },
+      required: ['phrase'],
+    });
+    expect(descriptor?.descriptorDigest).not.toBe(bare?.descriptorDigest);
+    expect(decodeGoalValidatorDescriptor(JSON.parse(JSON.stringify(descriptor)))).toEqual(
+      descriptor,
+    );
+    expect(
+      decodeGoalValidatorDescriptor({
+        ...JSON.parse(JSON.stringify(descriptor)),
+        configuration: { type: 'string' },
+      }),
+    ).toBeUndefined();
   });
 
   it('decodes fail-closed: tampering, extra keys, and the wrong shape are refused', () => {

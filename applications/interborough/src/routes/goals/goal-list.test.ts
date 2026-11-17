@@ -66,7 +66,8 @@ function sampleGoals(): Goal[] {
   return [
     goalFixture('goal-hello', {
       identity: { name: 'Say hello', version: '1' },
-      validator: { name: 'reply-says-hello', version: '1' },
+      validator: { name: 'contains-phrase', version: '1' },
+      validatorConfiguration: { phrase: 'hello' },
       agentName: 'assistant',
       status: 'succeeded',
       createdAt: '2026-10-30T12:48:00.000Z',
@@ -75,7 +76,8 @@ function sampleGoals(): Goal[] {
     }),
     goalFixture('goal-draft', {
       identity: { name: 'Draft release notes', version: '1' },
-      validator: { name: 'notes-mention-the-staging-fix', version: '1' },
+      validator: { name: 'contains-phrase', version: '1' },
+      validatorConfiguration: { phrase: 'staging fix' },
       agentName: 'assistant',
       status: 'exhausted',
       createdAt: '2026-10-30T13:12:00.000Z',
@@ -84,7 +86,8 @@ function sampleGoals(): Goal[] {
     }),
     goalFixture('goal-summarize', {
       identity: { name: 'Summarize open refunds', version: '1' },
-      validator: { name: 'summary-lists-every-refund-waiting-for-approval', version: '1' },
+      validator: { name: 'contains-phrase', version: '1' },
+      validatorConfiguration: { phrase: 'waiting for approval' },
       agentName: 'tool-runner',
       status: 'canceled',
       createdAt: '2026-10-30T15:05:00.000Z',
@@ -147,11 +150,11 @@ describe('the goals', () => {
     const first = row(view.container, 'goal-summarize') as HTMLElement;
     expect(first.textContent).toContain('Tool runner');
     expect(first.textContent).toContain('2 of 5');
-    expect(first.textContent).toContain('Check: Summary lists every refund waiting for approval');
+    expect(first.textContent).toContain('Check: Contains phrase "waiting for approval"');
     expect(within(first).getByRole('img', { name: '2 of 5 attempts' })).not.toBeNull();
     const second = row(view.container, 'goal-draft') as HTMLElement;
     expect(second.textContent).toContain('5 of 5');
-    expect(second.textContent).toContain('Check: Notes mention the staging fix');
+    expect(second.textContent).toContain('Check: Contains phrase "staging fix"');
     expect(within(second).getByRole('img', { name: '5 of 5 attempts' })).not.toBeNull();
     const third = row(view.container, 'goal-hello') as HTMLElement;
     expect(within(third).getByRole('img', { name: '1 of 1 attempts' })).not.toBeNull();

@@ -1,0 +1,6 @@
+{
+  "kind": "pattern",
+  "description": "Keeps the secret sauce secret.",
+  "checks": "output",
+  "phrases": ["secret-sauce"]
+}

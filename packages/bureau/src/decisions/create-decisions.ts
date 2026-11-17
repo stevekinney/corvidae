@@ -415,6 +415,24 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
   }
 
   /**
+   * The row a request names (`BureauDecideOptions.model`): the one that answers it, or a refusal.
+   * It is not replaced by another when it cannot answer, because the caller chose it. With
+   * `nativeOnly` (the call also named `requireKinds`) only a native answer qualifies.
+   */
+  function namedModel(name: string, kind: DecisionKind, nativeOnly: boolean): Answerer {
+    const row = findDecisionRow(dependencies.models.catalog().descriptors, name);
+    const answerer = row === undefined ? undefined : modelOfRow(row, kind, nativeOnly);
+    if (answerer === undefined) {
+      throw dependencies.notConfigured(
+        row === undefined
+          ? `No model can answer this decision: "${name}" is not in the model catalog`
+          : `No model can answer this decision: "${name}" cannot answer a ${kind} request`,
+      );
+    }
+    return answerer;
+  }
+
+  /**
    * The model that answers a `kind` request: the registered one, the chosen row's, else the
    * fallback. With `nativeOnly` (the call named `requireKinds`) only a model that answers natively
    * qualifies, and nothing answers by the fallback or a row's `generate`: no such model is built.
@@ -504,7 +522,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       decideOptions: BureauDecideOptions = {},
     ): Promise<Decision<DecisionValue<Request>>> {
       // The caller owns `request` and `decideOptions`: read them once, before the first await.
-      const { principal, taskId, routingId, signal } = decideOptions;
+      const { principal, taskId, routingId, signal, model } = decideOptions;
       const required =
         decideOptions.requireKinds === undefined ? undefined : [...decideOptions.requireKinds];
       try {
@@ -530,7 +548,10 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       };
       let answerer: Answerer;
       try {
-        const chosen = modelFor(kind, required !== undefined);
+        const chosen =
+          model === undefined
+            ? modelFor(kind, required !== undefined)
+            : namedModel(model, kind, required !== undefined);
         // The model that answers is the object whose kinds are read: a registered model's own, or
         // the model the host builds for a row.
         if (required !== undefined && !required.every((each) => chosen.model.kinds.has(each))) {

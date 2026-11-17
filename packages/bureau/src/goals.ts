@@ -44,9 +44,19 @@ import {
   GoalRunIdError,
   type GoalState,
   InvalidGoalStateError,
+  isJsonValue,
   isTerminalGoalStatus,
 } from './goal-state';
+import { canonicalJson } from './canonical-json';
+import type { GoalValidatorResolution } from './goal-validator-catalog';
+import {
+  describeConfigurationRefusal,
+  type GoalConfigurationIssue,
+  parseValidatorConfiguration,
+  type ValidatorConfigurationParse,
+} from './goal-validator-configuration';
 import type {
+  BureauGoalValidatorRequest,
   BureauGoalActiveWork,
   BureauGoalCancelOptions,
   BureauGoalCancelOutcome,
@@ -83,33 +93,12 @@ const GOAL_ID_NOT_TEXT = 'The goal id must be text.';
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-/**
- * JSON with object keys sorted and `undefined` members dropped, so two requests
- * that list the same configuration in another key order (an artifact, a budget,
- * an identity) compare equal. Arrays keep their order: it is part of the value.
- */
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry)).join(',')}]`;
-  if (typeof value === 'object' && value !== null) {
-    const members = Object.keys(value)
-      .toSorted()
-      .flatMap((key) => {
-        const member: unknown = (value as Record<string, unknown>)[key];
-        return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
-      });
-    return `{${members.join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
-}
-
 /** Whether an untyped field is text or absent. */
 const isOptionalText = (value: unknown): value is string | undefined =>
   value === undefined || typeof value === 'string';
 
 /** Whether an untyped field is a validator's name and version, both text, or absent. */
-function isOptionalIdentity(
-  value: unknown,
-): value is { readonly name: string; readonly version: string } | undefined {
+function isOptionalIdentity(value: unknown): value is BureauGoalValidatorRequest | undefined {
   if (value === undefined) return true;
   if (typeof value !== 'object' || value === null) return false;
   const { name, version } = value as Record<string, unknown>;
@@ -126,6 +115,7 @@ function configurationOf(state: GoalState): string {
     state.identity,
     state.objective,
     state.validator,
+    state.validatorConfiguration ?? null,
     state.requireDeterministicValidation,
     state.validatorTimeoutMs ?? null,
     state.conversationPolicy,
@@ -186,11 +176,13 @@ export function createBureauGoals<TName extends string = string>(
       code: Extract<BureauGoalCreateOutcome, { outcome: 'rejected' }>['code'],
       reason: string,
       availableVersions?: readonly string[],
+      issues?: readonly GoalConfigurationIssue[],
     ): BureauGoalCreateOutcome => ({
       outcome: 'rejected',
       code,
       reason,
       ...(availableVersions === undefined ? {} : { availableVersions }),
+      ...(issues === undefined ? {} : { issues }),
     });
 
     // `create` takes input the type system does not reach (a JSON body, a script),
@@ -212,6 +204,109 @@ export function createBureauGoals<TName extends string = string>(
             version: (validatorRequest as typeof request.validator).version,
           }
         : undefined;
+    // COR-2117: the configuration is read once, here, and parsed by the schema of the validator the
+    // catalog holds under that identity, so the record built below stores the parsed copy and a
+    // repeat of the request compares equal to it whatever defaults the schema applies. A validator
+    // the catalog does not hold, or a configuration it refuses, is reported where the validator is
+    // resolved, below; the record is then built from what was supplied, to be refused there.
+    const suppliedConfiguration: unknown =
+      typeof validatorRequest === 'object' && validatorRequest !== null
+        ? (validatorRequest as BureauGoalValidatorRequest).configuration
+        : undefined;
+    // The catalog changes while this call awaits (a validator file is written, settled, removed), so
+    // what it holds is read twice: here, to compare a repeat with what is stored, and again after
+    // the last await, immediately before the record is written, which is the reading the stored
+    // record is built from and the acceptance is decided by (`settleValidator`, below).
+    const early = validator === undefined ? undefined : catalog.resolve(validator);
+    const parseConfiguration = (
+      resolved: GoalValidatorResolution | undefined,
+    ): ValidatorConfigurationParse | undefined =>
+      resolved?.ok === true
+        ? parseValidatorConfiguration(resolved.entry.validator, suppliedConfiguration)
+        : undefined;
+    const configurationParse = parseConfiguration(early);
+    /** The record this request describes, with the configuration and definition `resolved` gives it. */
+    const buildRecord = (
+      resolved: GoalValidatorResolution | undefined,
+      parsed: ValidatorConfigurationParse | undefined,
+    ): GoalState =>
+      createGoalState({
+        goalRunId,
+        identity: request.identity,
+        objective: {
+          agentName: request.agentName,
+          prompt: request.prompt,
+          ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
+        },
+        // A request with no validator object is carried through as it is, for the
+        // record's own check to name (`describeCreateDefect`).
+        validator: validator ?? (validatorRequest as typeof request.validator),
+        validatorConfiguration:
+          parsed?.ok === true
+            ? parsed.value
+            : isJsonValue(suppliedConfiguration)
+              ? suppliedConfiguration
+              : undefined,
+        // COR-2119: a goal that names an owner-defined validator copies the definition it reads now.
+        validatorDefinition: resolved?.ok === true ? resolved.entry.definition : undefined,
+        requireDeterministicValidation: request.requireDeterministicValidation,
+        validatorTimeoutMs: request.validatorTimeoutMs,
+        conversationPolicy:
+          conversationPolicy === undefined ? { kind: 'continue' } : conversationPolicy,
+        retryPolicy: request.retryPolicy,
+        bounds: request.bounds,
+        // The goal's owner of record, stored once. A request with no principal
+        // is owned by `anonymous:local`. The request is untyped input, so a
+        // principal that is not text passes through `ownerOrLocal` unchanged and
+        // `createGoalState` refuses it with `principalDefect`, before anything
+        // is stored.
+        principal: ownerOrLocal(request.principal),
+        ...(source === undefined ? {} : { source }),
+        now: clock.nowISO(),
+      });
+    /**
+     * What the catalog holds under `named` now: the resolution and the parsed configuration a goal
+     * is recorded with, or the refusal the request earns (an unknown validator, a version it does
+     * not have, a configuration its schema refuses).
+     */
+    const settleValidator = (named: {
+      readonly name: string;
+      readonly version: string;
+    }):
+      | { readonly refusal: BureauGoalCreateOutcome }
+      | {
+          readonly resolution: GoalValidatorResolution;
+          readonly parse: ValidatorConfigurationParse | undefined;
+        } => {
+      const resolution = catalog.resolve(named);
+      if (!resolution.ok) {
+        return {
+          refusal:
+            resolution.reason === 'missing'
+              ? rejected(
+                  'validator-missing',
+                  `The validator "${named.name}@${named.version}" is not registered.`,
+                )
+              : rejected(
+                  'validator-version-mismatch',
+                  `The validator "${named.name}" has no version "${named.version}".`,
+                  resolution.availableVersions,
+                ),
+        };
+      }
+      const parse = parseConfiguration(resolution);
+      if (parse !== undefined && !parse.ok) {
+        return {
+          refusal: rejected(
+            'invalid-configuration',
+            describeConfigurationRefusal(named, parse.issues),
+            undefined,
+            parse.issues,
+          ),
+        };
+      }
+      return { resolution, parse };
+    };
 
     // The record this request describes, built from the request alone: nothing
     // in it depends on what the bureau can do today (the validator's identity is
@@ -220,34 +315,7 @@ export function createBureauGoals<TName extends string = string>(
     // request that cannot be built is reported where it always was, below.
     let built: { readonly state: GoalState } | { readonly error: unknown };
     try {
-      built = {
-        state: createGoalState({
-          goalRunId,
-          identity: request.identity,
-          objective: {
-            agentName: request.agentName,
-            prompt: request.prompt,
-            ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
-          },
-          // A request with no validator object is carried through as it is, for the
-          // record's own check to name (`describeCreateDefect`).
-          validator: validator ?? (validatorRequest as typeof request.validator),
-          requireDeterministicValidation: request.requireDeterministicValidation,
-          validatorTimeoutMs: request.validatorTimeoutMs,
-          conversationPolicy:
-            conversationPolicy === undefined ? { kind: 'continue' } : conversationPolicy,
-          retryPolicy: request.retryPolicy,
-          bounds: request.bounds,
-          // The goal's owner of record, stored once. A request with no principal
-          // is owned by `anonymous:local`. The request is untyped input, so a
-          // principal that is not text passes through `ownerOrLocal` unchanged and
-          // `createGoalState` refuses it with `principalDefect`, before anything
-          // is stored.
-          principal: ownerOrLocal(request.principal),
-          ...(source === undefined ? {} : { source }),
-          now: clock.nowISO(),
-        }),
-      };
+      built = { state: buildRecord(early, configurationParse) };
     } catch (error) {
       built = { error };
     }
@@ -336,19 +404,8 @@ export function createBureauGoals<TName extends string = string>(
         'The goal validator must be exactly a non-empty name and version.',
       );
     }
-    const resolution = catalog.resolve(validator);
-    if (!resolution.ok) {
-      return resolution.reason === 'missing'
-        ? rejected(
-            'validator-missing',
-            `The validator "${validator.name}@${validator.version}" is not registered.`,
-          )
-        : rejected(
-            'validator-version-mismatch',
-            `The validator "${validator.name}" has no version "${validator.version}".`,
-            resolution.availableVersions,
-          );
-    }
+    const accepted = settleValidator(validator);
+    if ('refusal' in accepted) return accepted.refusal;
 
     // Everything a `fresh-from-artifact` attempt will check about its artifact,
     // so a goal whose artifact could never seed an attempt is refused before it
@@ -400,8 +457,29 @@ export function createBureauGoals<TName extends string = string>(
       }
       throw error;
     }
-    const { state } = built;
     if (artifactRefusal !== undefined) return artifactRefusal;
+
+    // The catalog is read once more, with no await between this and the write: the record stores the
+    // definition and the parsed configuration of the validator that accepts this create, and a
+    // validator that changed or went while the awaits above ran is refused as it would have been had
+    // it been so at the start. Built from the first reading alone, a goal could be accepted against a
+    // file that a later scan settled and name it with no copy of what it said.
+    const settled = settleValidator(validator);
+    if ('refusal' in settled) return settled.refusal;
+    let state: GoalState;
+    try {
+      state = {
+        ...buildRecord(settled.resolution, settled.parse),
+        ...(built.state.workspaceAuthority === undefined
+          ? {}
+          : { workspaceAuthority: built.state.workspaceAuthority }),
+      };
+    } catch (error) {
+      if (error instanceof InvalidGoalStateError) {
+        return rejected('invalid-configuration', error.message);
+      }
+      throw error;
+    }
 
     const created = await store.create(state);
     if (created.status === 'duplicate') {
@@ -574,7 +652,17 @@ export function createBureauGoals<TName extends string = string>(
       ...(principal === undefined ? {} : { principal }),
       ...(prompt === undefined ? {} : { prompt }),
       ...(agentName === undefined ? {} : { agentName }),
-      ...(validator === undefined ? {} : { validator }),
+      ...(validator === undefined
+        ? {}
+        : {
+            validator: {
+              name: validator.name,
+              version: validator.version,
+              ...(validator.configuration === undefined
+                ? {}
+                : { configuration: validator.configuration }),
+            },
+          }),
       ...(maximumAttempts === undefined ? {} : { maximumAttempts }),
     };
     const record = await authorized(goalRunId, request);
@@ -764,6 +852,7 @@ export function createBureauGoals<TName extends string = string>(
         name: identity.name,
         version: identity.version,
         determinism: descriptor.determinism ?? null,
+        configuration: descriptor.configuration ?? null,
         source,
       })),
     create: (request: BureauGoalRequest<TName>) => create(request),

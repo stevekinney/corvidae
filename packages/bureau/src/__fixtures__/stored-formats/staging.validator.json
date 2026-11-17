@@ -1,0 +1,5 @@
+{
+  "kind": "match",
+  "description": "The notes name the staging fix.",
+  "phrases": ["staging fix"]
+}

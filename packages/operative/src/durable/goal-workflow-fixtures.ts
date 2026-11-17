@@ -126,6 +126,8 @@ export interface GoalWorld {
   readonly startSignals: (AbortSignal | undefined)[];
   /** The `validatorTimeoutMs` each validator call received, in order. */
   readonly validatorTimeouts: (number | undefined)[];
+  /** Every request a validator call received, in order. */
+  readonly validatorRequests: GoalWorkflowValidatorRequest[];
   /** The `feedback` each `startAttempt` call received, by attempt index. */
   readonly startFeedback: Map<number, string | undefined>;
   /** Outcomes the validator returns, one per call, in order. Defaults to `pass`. */
@@ -191,6 +193,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
   const abortedRuns: string[] = [];
   const startSignals: (AbortSignal | undefined)[] = [];
   const validatorTimeouts: (number | undefined)[] = [];
+  const validatorRequests: GoalWorkflowValidatorRequest[] = [];
   const startFeedback = new Map<number, string | undefined>();
   const validatorOutcomes: ProjectedValidatorOutcome[] = [];
 
@@ -315,6 +318,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
   async function runValidator(request: GoalWorkflowValidatorRequest) {
     calls.push(`validate:${request.attemptIndex}`);
     validatorTimeouts.push(request.validatorTimeoutMs);
+    validatorRequests.push(structuredClone(request));
     const outcome = validatorOutcomes[validatorCalls] ?? { kind: 'pass', evidence: [] };
     validatorCalls += 1;
     options.onValidate?.();
@@ -362,6 +366,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     abortedRuns,
     startSignals,
     validatorTimeouts,
+    validatorRequests,
     startFeedback,
     validatorOutcomes,
     requestCancellation() {

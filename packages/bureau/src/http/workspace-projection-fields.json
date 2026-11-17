@@ -1059,6 +1059,8 @@
     "$.goal.validator",
     "$.goal.validator.name",
     "$.goal.validator.version",
+    "$.goal.validatorConfiguration",
+    "$.goal.validatorConfiguration.*",
     "$.outcome"
   ],
   "output:bureau.goals.get": [
@@ -1104,7 +1106,9 @@
     "$.usage.tokens",
     "$.validator",
     "$.validator.name",
-    "$.validator.version"
+    "$.validator.version",
+    "$.validatorConfiguration",
+    "$.validatorConfiguration.*"
   ],
   "output:bureau.goals.list": [
     "$.goals",
@@ -1151,6 +1155,8 @@
     "$.goals[].validator",
     "$.goals[].validator.name",
     "$.goals[].validator.version",
+    "$.goals[].validatorConfiguration",
+    "$.goals[].validatorConfiguration.*",
     "$.nextOffset"
   ],
   "output:bureau.goals.update": ["$.goalRunId", "$.outcome", "$.revision", "$.status"],
@@ -2387,6 +2393,9 @@
   ],
   "output:bureau.validators.list": [
     "$.validators",
+    "$.validators[].configuration",
+    "$.validators[].configuration|anyOf[0].*",
+    "$.validators[].configuration|anyOf[0].*.*",
     "$.validators[].determinism",
     "$.validators[].name",
     "$.validators[].source",

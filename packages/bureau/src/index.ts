@@ -136,6 +136,8 @@ export type {
   DefinitionSource,
   DefinitionSourceChange,
   DefinitionSourceHost,
+  GuardrailSource,
+  ValidatorSource,
   WorkflowSource,
 } from './sources/definition-source';
 export {
