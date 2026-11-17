@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import { coordinatedBuild } from './build-artifacts-shared.ts';
@@ -7,6 +8,7 @@ import {
   DOCUMENTATION_CINDER_COMPONENTS,
   LANDING_CINDER_COMPONENTS,
 } from './component-sources.ts';
+import { stylePackages } from './package-stylesheets.ts';
 
 export { DOCUMENTATION_CINDER_COMPONENTS, LANDING_CINDER_COMPONENTS } from './component-sources.ts';
 
@@ -42,6 +44,16 @@ function stylesheetImportPath(path: string): string {
   return importPath.startsWith('.') ? importPath : `./${importPath}`;
 }
 
+/**
+ * A stylesheet of Cinder's `src/styles/`: core's own, or the one a package core depends on holds
+ * since the split moved it there (P-COR-101).
+ */
+function cinderStylesheet(name: string): string {
+  const { core, dependencies } = stylePackages();
+  const candidates = [core, ...dependencies].map(({ root }) => join(root, 'src', 'styles', name));
+  return candidates.find((path) => existsSync(path)) ?? (candidates[0] as string);
+}
+
 function stylesheetEntry(components: readonly string[]): string {
   const cinderStylesRoot = join(CINDER_COMPONENT_SOURCE.packageRoot, 'src', 'styles');
   const imports = components
@@ -53,7 +65,7 @@ function stylesheetEntry(components: readonly string[]): string {
     )
     .join('\n');
   return `@import '${stylesheetImportPath(join(cinderStylesRoot, 'index.css'))}';
-@import '${stylesheetImportPath(join(cinderStylesRoot, 'json-highlight.css'))}';
+@import '${stylesheetImportPath(cinderStylesheet('json-highlight.css'))}';
 ${imports}
 `;
 }
