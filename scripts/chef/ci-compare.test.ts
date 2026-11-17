@@ -12,6 +12,7 @@ const failures = (id: string, jobs: [string, string[]][], status = 'completed'):
 describe('failingTests', () => {
   test('reads each (fail) line under its job, once, without the duration', () => {
     const log = [
+      'Tests (apps)\tRun bun test\t2026-11-17T00:10:25Z ##[group]src/schedule-detail.test.ts:',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:26Z (fail) ScheduleDetail > a current run [120111.22ms]',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:26Z (fail) ScheduleDetail > a current run [120111.22ms]',
       'Tests (apps)\tRun bun test\t2026-11-17T00:10:25Z (pass) storageGet > ok [0.62ms]',
@@ -19,8 +20,8 @@ describe('failingTests', () => {
     ].join('\n');
     expect(failingTests(log)).toEqual(
       new Map([
-        ['Tests (apps)', ['ScheduleDetail > a current run']],
-        ['Slow', ['two hosts > B completes']],
+        ['Tests (apps)', ['src/schedule-detail.test.ts › ScheduleDetail > a current run']],
+        ['Slow', ['<unknown test file> › two hosts > B completes']],
       ]),
     );
   });
@@ -83,13 +84,19 @@ describe('compare', () => {
     expect(result.jobs[0]?.tests.map((t) => t.seenIn.length)).toEqual([1, 0]);
   });
 
-  test('a test seen only under another job is new', () => {
-    const result = compare(failures('1', [['E2E (4/4)', ['chat layout']]]), [
+  test('a file-qualified test seen under a different control topology is known', () => {
+    const result = compare(failures('1', [['E2E (4/4)', ['src/chat.test.ts › chat layout']]]), [
+      failures('10', [['E2E (2/4)', ['src/chat.test.ts › chat layout']]]),
       ...main,
       failures('13', [['E2E (4/4)', ['other']]]),
     ]);
-    expect(result.jobs[0]?.tests[0]?.seenIn).toEqual([]);
-    expect(result.hasNew).toBe(true);
+    expect(result.jobs[0]?.tests[0]?.seenIn).toEqual(['10']);
+    expect(result.jobs[0]?.seenIn).toEqual(['10']);
+    expect(result.hasNew).toBe(false);
+  });
+
+  test('a bare title under a different job remains new', () => {
+    expect(compare(failures('1', [['E2E (4/4)', ['chat layout']]]), main).hasNew).toBe(true);
   });
 
   test('a run that failed or was cancelled with no failed job never passes', () => {
@@ -142,7 +149,7 @@ describe('run', () => {
     };
     const result = run(['1', '--main-runs', '3'], runner);
     expect(result.code).toBe(1);
-    expect(result.output).toContain('NEW test brand new');
+    expect(result.output).toContain('NEW test <unknown test file> › brand new');
     expect(result.output).toContain('compared with 1 main run(s)');
     expect(calls.some((c) => c.includes('5'))).toBe(false);
     // Most completed main runs are replaced ones, so the listing reads well past the count.

@@ -76,16 +76,28 @@ function gh(runner: Runner, args: string[]): string {
 
 /** A Bun `(fail) <name> [12ms]` line. */
 const BUN_FAILURE = /^([^\t]+)\t.*?\(fail\) (.+?)(?: \[[\d.]+m?s\])?\s*$/;
+/** A Bun file group before its test names. */
+const BUN_TEST_FILE = /^([^\t]+)\t.*?##\[group\](.+?\.test\.ts):\s*$/;
 /** A Playwright failure heading, `  1) [chromium] › tests/e2e/x.spec.ts:69:3 › title`. */
 const PLAYWRIGHT_FAILURE = /^([^\t]+)\t.*?\s\d+\) \[[\w-]+\] › (.+?)\s*$/;
 
 /** The failing test names in a `--log-failed` dump, keyed by the job name each line starts with. */
 export function failingTests(log: string): Map<string, string[]> {
   const byJob = new Map<string, Set<string>>();
+  const fileByJob = new Map<string, string>();
   for (const line of log.split('\n')) {
+    const file = BUN_TEST_FILE.exec(line);
+    if (file !== null) {
+      const [, job = '', path = ''] = file;
+      fileByJob.set(job, path);
+      continue;
+    }
     const match = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
     if (match === null) continue;
-    const [, job = '', test = ''] = match;
+    const [, job = '', rawTest = ''] = match;
+    const test = BUN_FAILURE.test(line)
+      ? `${fileByJob.get(job) ?? '<unknown test file>'} › ${rawTest}`
+      : rawTest;
     let tests = byJob.get(job);
     if (tests === undefined) byJob.set(job, (tests = new Set()));
     tests.add(test);
@@ -151,22 +163,39 @@ export function recentMainRuns(
 /** A job that runs tests, so its failures should name them. */
 const TEST_JOB = /(^|\s)tests\b|end-to-end|e2e|fixtures|integration/i;
 
+/** Only a file-qualified failure can be matched across changed jobs or workflow topology. */
+function isStableTestIdentity(name: string): boolean {
+  return (
+    /(?:^|\s)[^\s]+\.test\.ts › /.test(name) || /(?:^|\s)[^\s]+\.spec\.ts:\d+:\d+ › /.test(name)
+  );
+}
+
 /** Judge each failure of `target` against the failures of `main` runs. */
 export function compare(target: RunFailures, main: RunFailures[]): Comparison {
   const jobs = target.jobs.map((job): JudgedJob => {
-    const seenIn = main.filter((m) => m.jobs.some((j) => j.name === job.name)).map((m) => m.id);
-    // A test counts as seen only under the same job: one name in another shard or suite is a
-    // different failure.
+    const sameJobRuns = main
+      .filter((m) => m.jobs.some((j) => j.name === job.name))
+      .map((m) => m.id);
+    // A named test remains the same failure if a workflow or shard topology changes. A test job
+    // with no named failure is still unknown, because its job name alone proves nothing.
     const tests = job.tests.map((name): JudgedTest => ({
       name,
       seenIn: main
-        .filter((m) => m.jobs.some((j) => j.name === job.name && j.tests.includes(name)))
+        .filter((m) =>
+          m.jobs.some(
+            (j) => j.tests.includes(name) && (j.name === job.name || isStableTestIdentity(name)),
+          ),
+        )
         .map((m) => m.id),
     }));
     // A test job whose log names no failing test cannot be judged by its name alone: a new failure
     // in a shard that is already red on main would read as known.
     const unknown = tests.length === 0 && TEST_JOB.test(job.name);
-    const isNew = unknown || seenIn.length === 0 || tests.some((test) => test.seenIn.length === 0);
+    const seenIn =
+      tests.length === 0 ? sameJobRuns : [...new Set(tests.flatMap((test) => test.seenIn))];
+    const isNew =
+      unknown ||
+      (tests.length === 0 ? seenIn.length === 0 : tests.some((test) => test.seenIn.length === 0));
     return { name: job.name, seenIn, tests, isNew, unknown };
   });
   const complete = target.status === 'completed';

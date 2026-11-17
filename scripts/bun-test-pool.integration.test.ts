@@ -17,6 +17,8 @@ import {
   isHolderAlive,
   isTestWorkerCommand,
   memoryStatusLine,
+  poolAdmissionErrorExitCode,
+  poolBusyExitCode,
   poolSize,
   poolWaitLimitMs,
   readProcessTable,
@@ -440,23 +442,26 @@ const exportsItsTokenToTheTests = await inScratchDirectory(async (directory) => 
   expect(token.length).toBeGreaterThan(0);
 });
 
-const runsWithoutASlotWhenThePoolIsUnusable = await inScratchDirectory(async (directory) => {
+const doesNotStartWhenThePoolIsUnusable = await inScratchDirectory(async (directory) => {
   const blocked = join(directory, 'a-file');
+  const started = join(directory, 'started');
   await writeFile(blocked, '');
   const reports: string[] = [];
   const code = await runPooledBunTest({
     bunTestArguments: [],
-    command: ['sh', '-c', 'exit 5'],
+    command: ['sh', '-c', `touch '${started}'; exit 5`],
     poolDirectory: join(blocked, 'pool'),
     size: 1,
     report: (line) => reports.push(line),
   });
-  expect(code).toBe(5);
-  expect(reports.join('\n')).toContain('bun-test-pool: running without a test slot');
+  expect(code).toBe(poolAdmissionErrorExitCode);
+  expect(existsSync(started)).toBe(false);
+  expect(reports.join('\n')).toContain('not run locally: test pool unavailable');
 });
 
-const runsWithoutASlotPastTheWaitBound = await inScratchDirectory(async (directory) => {
+const doesNotStartWithoutASlotPastTheWaitBound = await inScratchDirectory(async (directory) => {
   const pool = join(directory, 'pool');
+  const started = join(directory, 'started');
   // This process holds the only slot for the whole run, so the second run can only wait.
   const holder = await acquireTestSlots({
     poolDirectory: pool,
@@ -468,14 +473,15 @@ const runsWithoutASlotPastTheWaitBound = await inScratchDirectory(async (directo
     const reports: string[] = [];
     const code = await runPooledBunTest({
       bunTestArguments: [],
-      command: ['sh', '-c', 'exit 7'],
+      command: ['sh', '-c', `touch '${started}'; exit 7`],
       environment: { CORVIDAE_TEST_POOL_WAIT_SECONDS: '1' },
       poolDirectory: pool,
       size: 1,
       report: (line) => reports.push(line),
     });
-    expect(code).toBe(7);
-    expect(reports.join('\n')).toContain('no test slot within 1s');
+    expect(code).toBe(poolBusyExitCode);
+    expect(existsSync(started)).toBe(false);
+    expect(reports.join('\n')).toContain('not run locally: pool busy after 1s');
   } finally {
     await holder.release();
   }
@@ -886,11 +892,11 @@ describe('running a pooled bun test', () => {
 
   test('exports its token to the tests it runs', () => rethrow(exportsItsTokenToTheTests));
 
-  test('runs without a slot, with a warning, when the pool cannot be used', () =>
-    rethrow(runsWithoutASlotWhenThePoolIsUnusable));
+  test('does not start a child when the pool cannot be used', () =>
+    rethrow(doesNotStartWhenThePoolIsUnusable));
 
-  test('runs without a slot, with a warning, once the wait bound passes', () =>
-    rethrow(runsWithoutASlotPastTheWaitBound));
+  test('does not start a child once the wait bound passes', () =>
+    rethrow(doesNotStartWithoutASlotPastTheWaitBound));
 
   test('a pooled run never waits on the host lock', () => rethrow(pooledRunIgnoresTheHostLock));
 

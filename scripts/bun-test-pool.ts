@@ -60,7 +60,8 @@
  * The pool's size is {@link defaultPoolSize}, or `CORVIDAE_TEST_SLOTS` when set. A request above it
  * is clamped: the run holds every slot and its `--parallel` is rewritten to the pool's size, so the
  * slots held always equal the workers running. A checkout whose wrappers predate the pool simply
- * goes uncounted. When the pool cannot be used at all, the run warns and runs without a slot.
+ * goes uncounted. When the pool cannot be used, the run does not start tests and reports the
+ * admission failure.
  *
  * Usage: `bun scripts/bun-test-pool.ts status [--pool <directory>] [--size <n>]` prints the holders
  * and the free slots.
@@ -112,6 +113,12 @@ export const poolSizeVariable = 'CORVIDAE_TEST_SLOTS';
 
 /** Names the slots a run holds, in the environment of the `bun test` it starts. */
 export const heldSlotsTokenVariable = 'CORVIDAE_TEST_SLOTS_TOKEN';
+
+/** A bounded waiter did not start tests because all host-wide test slots remained held. */
+export const poolBusyExitCode = 75;
+
+/** The pool could not admit a test run, so no child was started outside the cap. */
+export const poolAdmissionErrorExitCode = 76;
 
 /** The pool's directory inside the Git common directory. */
 export const poolDirectoryName = 'corvidae-test-slots';
@@ -833,11 +840,14 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
       });
     }
   } catch (error) {
-    report(
-      (error as Error).name === 'TimeoutError'
-        ? `bun-test-pool: no test slot within ${(waitLimit ?? 0) / 1000}s (${poolWaitVariable}); running without one`
-        : `bun-test-pool: running without a test slot: ${(error as Error).message}`,
-    );
+    if ((error as Error).name === 'TimeoutError') {
+      report(
+        `bun-test-pool: not run locally: pool busy after ${(waitLimit ?? 0) / 1000}s (${poolWaitVariable})`,
+      );
+      return poolBusyExitCode;
+    }
+    report(`bun-test-pool: not run locally: test pool unavailable: ${(error as Error).message}`);
+    return poolAdmissionErrorExitCode;
   }
   // Bun starts workers only under `--parallel`; without it the leader runs the tests itself.
   const tracker = argumentsList.some((argument) => parallelArgument.test(argument))

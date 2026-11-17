@@ -429,6 +429,24 @@ describe('runChecks', () => {
     expect(result.output).toBe('focused-checks: 2 passed, 2 failed (lint:root, typecheck:root)');
   });
 
+  test('keeps a pool-admission result pending and never calls it passed', async () => {
+    const { runner } = fakeRunner({ changed: ['scripts/chef/a.ts'] });
+    const deps = dependencies(runner, { 'lint:root': 75 });
+    const result = await runChecks('/repo', { ...options, json: true }, deps);
+    expect(result.code).toBe(1);
+    const output = JSON.parse(result.output) as { ok: boolean; steps: unknown[] };
+    expect(output.ok).toBe(false);
+    const pending = output.steps.find(
+      (step): step is { name: string; command: string; exitCode: number; pending?: boolean } =>
+        typeof step === 'object' &&
+        step !== null &&
+        (step as { name?: unknown }).name === 'lint:root',
+    );
+    expect(pending).toBeDefined();
+    expect(pending).toMatchObject({ name: 'lint:root', exitCode: 75, pending: true });
+    expect(pending?.command).toBe('bun run lint:root');
+  });
+
   test('reports a step ended by a signal as killed, with exit code 3 and not as failed', async () => {
     const { runner } = fakeRunner({ changed: ['scripts/chef/a.ts'] });
     const deps = {
