@@ -8,13 +8,18 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, fireEvent, render, screen } = await import('@testing-library/svelte');
-const { default: Toolbar } = await import('./index.ts');
-const { default: ToolbarGroup } = await import('./toolbar-group.svelte');
-const { default: ToolbarSpacer } = await import('./toolbar-spacer.svelte');
+const { default: Toolbar } = await import('@lostgradient/toolbar/components/toolbar/index.ts');
+const { default: ToolbarGroup } =
+  await import('@lostgradient/toolbar/components/toolbar/toolbar-group.svelte');
+const { default: ToolbarSpacer } =
+  await import('@lostgradient/toolbar/components/toolbar/toolbar-spacer.svelte');
 const { default: ToolbarCompositionFixture } =
   await import('../../test/fixtures/toolbar-composition-fixture.svelte');
 
-const toolbarCss = readFileSync(new URL('./toolbar.css', import.meta.url), 'utf8');
+const toolbarCss = readFileSync(
+  new URL('../../../../toolbar/src/components/toolbar/toolbar.css', import.meta.url),
+  'utf8',
+);
 
 afterEach(() => cleanup());
 
@@ -509,7 +514,9 @@ describe('Toolbar', () => {
   });
 
   test('separator spacing relies on flex gap without horizontal separators or extra margins', async () => {
-    const styleSheet = await Bun.file(new URL('./toolbar.css', import.meta.url)).text();
+    const styleSheet = await Bun.file(
+      new URL('../../../../toolbar/src/components/toolbar/toolbar.css', import.meta.url),
+    ).text();
 
     expect(styleSheet).not.toMatch(
       /\.cinder-toolbar\[data-cinder-orientation='horizontal'\]\s*>\s*\.cinder-toolbar__group\s*\+\s*\.cinder-toolbar__group::before/,

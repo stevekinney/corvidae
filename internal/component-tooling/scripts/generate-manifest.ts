@@ -75,7 +75,7 @@ export type ManifestComponent = {
    * Where the component's source lives (COR-2085): the package that owns it, that package's
    * directory relative to this manifest's package, and the component's directory relative to the
    * owning package. A component still in core reads `{ package: '@lostgradient/cinder',
-   * packageRoot: '.', directory: 'src/components/button' }`; one in a family package names the
+   * packageRoot: '.', directory: '../button/src/components/button' }`; one in a family package names the
    * family and its directory beside core.
    */
   source: { package: string; packageRoot: string; directory: string };

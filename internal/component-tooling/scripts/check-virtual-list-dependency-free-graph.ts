@@ -17,7 +17,14 @@ import { readJsonFile } from './lib/read-json-file.ts';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, '../../../components/core');
 const packageJsonPath = join(packageRoot, 'package.json');
-const virtualListRoot = join(packageRoot, 'src', 'components', 'virtual-list');
+const virtualListRoot = join(
+  packageRoot,
+  '..',
+  'virtual-list',
+  'src',
+  'components',
+  'virtual-list',
+);
 const fixedVirtualWindowFile = join(
   packageRoot,
   '..',

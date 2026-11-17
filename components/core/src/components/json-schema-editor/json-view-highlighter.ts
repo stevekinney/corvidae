@@ -11,8 +11,8 @@
  * the grammar it loaded.
  */
 
+import { shikiHighlighter } from '@lostgradient/code-block/highlighters/shiki/index.ts';
 import type { Highlighter } from '@lostgradient/foundation/utilities/highlighter.ts';
-import { shikiHighlighter } from '../../highlighters/shiki/index.ts';
 
 export const jsonViewHighlighter: Highlighter = /* @__PURE__ */ shikiHighlighter({
   languageLoaders: { json: () => import('@shikijs/langs/json') },

@@ -10,12 +10,12 @@
  */
 import type { Component } from 'svelte';
 
+import DropdownGroup from '@lostgradient/dropdown/components/dropdown-group/dropdown-group.svelte';
+import DropdownItem from '@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte';
+import DropdownLabel from '@lostgradient/dropdown/components/dropdown-label/dropdown-label.svelte';
+import DropdownMenu from '@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte';
+import DropdownSeparator from '@lostgradient/dropdown/components/dropdown-separator/dropdown-separator.svelte';
 import ContextMenuTrigger from '../context-menu-trigger/context-menu-trigger.svelte';
-import DropdownGroup from '../dropdown-group/dropdown-group.svelte';
-import DropdownItem from '../dropdown-item/dropdown-item.svelte';
-import DropdownLabel from '../dropdown-label/dropdown-label.svelte';
-import DropdownMenu from '../dropdown-menu/dropdown-menu.svelte';
-import DropdownSeparator from '../dropdown-separator/dropdown-separator.svelte';
 import { ContextMenu } from './index.ts';
 
 const trigger: typeof ContextMenuTrigger = ContextMenu.Trigger;

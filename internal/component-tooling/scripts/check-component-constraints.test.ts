@@ -44,7 +44,7 @@ describe('the constraints prop cross-check', () => {
 
   test('knows the HTML attributes and snippets a props type takes', () => {
     const names = componentPropNames(
-      join(import.meta.dir, '../../../components/core/src/components/button'),
+      join(import.meta.dir, '../../../components/button/src/components/button'),
       'button',
     );
     for (const name of ['label', 'iconOnly', 'children', 'leadingIcon', 'aria-label']) {

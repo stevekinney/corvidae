@@ -6,12 +6,12 @@
   import { SvelteMap } from 'svelte/reactivity';
   import { untrack } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
   import { ChevronDown, ChevronRight } from '@lostgradient/foundation/components/icons/index.ts';
   import Input from '@lostgradient/input/components/input/input.svelte';
-  import Modal from '../modal/modal.svelte';
-  import Skeleton from '../skeleton/skeleton.svelte';
+  import Modal from '@lostgradient/modal/components/modal/modal.svelte';
+  import Skeleton from '@lostgradient/skeleton/components/skeleton/skeleton.svelte';
   import type { ToolPickerItem, ToolPickerProps } from './tool-picker.types.ts';
   import {
     buildSections,

@@ -5,7 +5,7 @@
  * defines `.cinder-table-scroll`). Without this, the data-table subpath ships
  * an unstyled table and the scroll override below has no base behaviour to
  * extend. Sibling-leaf paths resolve identically in `src/` and `dist/`. */
-@import '../table/table.css';
+@import '@lostgradient/table/table.css';
 @import '@lostgradient/checkbox/checkbox.css';
 
 @layer cinder.components {

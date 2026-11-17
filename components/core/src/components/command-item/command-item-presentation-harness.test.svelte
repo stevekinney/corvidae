@@ -1,5 +1,5 @@
 <script lang="ts">
-  import CommandItem from './command-item.svelte';
+  import CommandItem from '@lostgradient/command-menu/components/command-item/command-item.svelte';
   import CommandPalette from '../command-palette/command-palette.svelte';
 
   let {

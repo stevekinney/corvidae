@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../copy-button/copy-button.css';
+@import '@lostgradient/copy-button/copy-button.css';
 @layer cinder.components {
   /* ========================================
  * RESTART STATE

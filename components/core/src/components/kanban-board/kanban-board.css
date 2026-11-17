@@ -4,7 +4,7 @@
    Without it an a-la-carte consumer importing only `@lostgradient/cinder/kanban-board`
    gets controls with no styling at all — worse than before the change, since there is
    no longer any local rule to fall back on. */
-@import '../button/button.css';
+@import '@lostgradient/button/button.css';
 @layer cinder.components {
   .cinder-kanban-board {
     display: block;

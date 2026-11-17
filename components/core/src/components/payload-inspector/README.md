@@ -146,6 +146,6 @@ This component does not declare any local CSS variables.
 
 ## Accessibility
 
-The root is a named `group`, not a landmark, so a dashboard rendering many inspectors adds nothing to the screen reader's landmark list. The `label` (or "Payload") names it, and the JSON tree is cinder's `JsonViewer`, a WAI-ARIA tree composite; see [json-viewer accessibility documentation](../json-viewer/json-viewer.a11y.md) for its keyboard contract.
+The root is a named `group`, not a landmark, so a dashboard rendering many inspectors adds nothing to the screen reader's landmark list. The `label` (or "Payload") names it, and the JSON tree is cinder's `JsonViewer`, a WAI-ARIA tree composite; see [json-viewer accessibility documentation](../../../../json-viewer/src/components/json-viewer/json-viewer.a11y.md) for its keyboard contract.
 
 A failed load carries `role="alert"`. The copy confirmation is announced by the copy button's own polite live region. See [payload-inspector.a11y.md](./payload-inspector.a11y.md) for the full pattern.

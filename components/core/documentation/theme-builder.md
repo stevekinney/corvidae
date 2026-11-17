@@ -248,15 +248,15 @@ No published component is admitted for layout alone.
 
 | Builder control | Existing Cinder primitive or evidence | Required behavior |
 | --- | --- | --- |
-| Toolbar/actions | [`Button`](../src/components/button/README.md) with `variant`, `size`, `label`, and icon slots | Every icon-only action has an accessible name; loading exposes busy state. |
+| Toolbar/actions | [`Button`](../../button/src/components/button/README.md) with `variant`, `size`, `label`, and icon slots | Every icon-only action has an accessible name; loading exposes busy state. |
 | Text, numeric, search, name inputs | [`FormField`](../../form-field/src/components/form-field/README.md) plus [`Input`](../../input/src/components/input/README.md) with `id`, `label`, `description`, `error`, `type`, and `value` | Stable ids, associated help/error, invalid state, native text undo. |
-| Color value and picker | [`ColorPicker`](../src/components/color-picker/README.md) plus `Input` | Preserve authored color space; numeric/text entry remains available. |
-| Foundation parameter | [`ParameterField`](../src/components/parameter-field/README.md) | Typed value and constraint presentation for dimensions, opacity, duration, numeric profiles. |
-| Context/category choice | [`Select`](../src/components/select/README.md) and [`Dropdown`](../src/components/dropdown/README.md) | Keyboard selection, anchored trigger, explicit current value. |
+| Color value and picker | [`ColorPicker`](../../color-picker/src/components/color-picker/README.md) plus `Input` | Preserve authored color space; numeric/text entry remains available. |
+| Foundation parameter | [`ParameterField`](../../parameter-field/src/components/parameter-field/README.md) | Typed value and constraint presentation for dimensions, opacity, duration, numeric profiles. |
+| Context/category choice | [`Select`](../../select/src/components/select/README.md) and [`Dropdown`](../../dropdown/src/components/dropdown/README.md) | Keyboard selection, anchored trigger, explicit current value. |
 | Mobile tabs and preview scenes | [`Tabs`](../src/components/tabs/index.ts), [`TabList`](../src/components/tab-list/tab-list.types.ts), [`Tab`](../src/components/tab/tab.types.ts), and [`TabPanel`](../src/components/tab-panel/tab-panel.types.ts) | Bind `Tabs.value`; use separate exports and actual `activateOnFocus`/orientation behavior. |
-| Rename and rich proposal confirmation | [`Modal`](../src/components/modal/modal.types.ts) | `open`, `title`, `triggerRef`, `describedById`, dismissal, and focus restoration are explicit. |
-| Delete/permanent confirmation | [`ConfirmDialog`](../src/components/confirm-dialog/confirm-dialog.types.ts) | Use `confirmLabel`, `destructive`, `typeToConfirm`, and `onConfirm`; cancel remains the safe default. |
-| Urgent blocking error | [`AlertDialog`](../src/components/alert-dialog/alert-dialog.types.ts) | Use only when Escape/backdrop dismissal must be disabled and explicit acknowledgement is required. |
+| Rename and rich proposal confirmation | [`Modal`](../../modal/src/components/modal/modal.types.ts) | `open`, `title`, `triggerRef`, `describedById`, dismissal, and focus restoration are explicit. |
+| Delete/permanent confirmation | [`ConfirmDialog`](../../confirm-dialog/src/components/confirm-dialog/confirm-dialog.types.ts) | Use `confirmLabel`, `destructive`, `typeToConfirm`, and `onConfirm`; cancel remains the safe default. |
+| Urgent blocking error | [`AlertDialog`](../../alert-dialog/src/components/alert-dialog/alert-dialog.types.ts) | Use only when Escape/backdrop dismissal must be disabled and explicit acknowledgement is required. |
 | Findings/import outcomes | [`Callout`](../../callout/src/components/callout/README.md) plus a separate native `aria-live` announcer | Callout is static status content; its implementation strips live-region attributes, so announcements are emitted by the dedicated announcer. |
 | Source/dependencies metadata | Existing disclosure and Lucide chevron | Rotating chevron; nested navigation uses lateral chevrons. |
 | Short explanations | [`Tooltip`](../../tooltip/src/components/tooltip/README.md) | Supplements an accessible name; never carries the only state. |

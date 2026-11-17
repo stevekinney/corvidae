@@ -2,7 +2,7 @@
 
 A semantic list container (`<ul role="list">`) for a homogeneous collection of records. DataList owns the list element, the list reset, and the empty state; it delegates row chrome (padding, dividers, density) to the row primitive. Each record is rendered through the `children` snippet, which **must** render an `<li>` — [`StackedListItem`](../stacked-list-item/README.md) is the recommended row.
 
-Reach for DataList when you have a vertical list of like records. For key–value metadata about a single entity use [`DescriptionList`](../description-list/README.md); for tabular rows and columns use [`Table`](../table/README.md).
+Reach for DataList when you have a vertical list of like records. For key–value metadata about a single entity use [`DescriptionList`](../../../../description-list/src/components/description-list/README.md); for tabular rows and columns use [`Table`](../../../../table/src/components/table/README.md).
 
 ## Usage
 

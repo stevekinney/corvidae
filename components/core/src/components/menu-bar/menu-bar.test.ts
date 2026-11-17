@@ -704,11 +704,17 @@ describe('MenuBar', () => {
   test('reuses dropdown primitives instead of copying their markup classes', async () => {
     const source = await Bun.file(new URL('./menu-bar.svelte', import.meta.url)).text();
 
-    expect(source).toContain("DropdownMenu from '../dropdown-menu/dropdown-menu.svelte'");
-    expect(source).toContain("DropdownItem from '../dropdown-item/dropdown-item.svelte'");
-    expect(source).toContain("DropdownLabel from '../dropdown-label/dropdown-label.svelte'");
     expect(source).toContain(
-      "DropdownSeparator from '../dropdown-separator/dropdown-separator.svelte'",
+      "DropdownMenu from '@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte'",
+    );
+    expect(source).toContain(
+      "DropdownItem from '@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte'",
+    );
+    expect(source).toContain(
+      "DropdownLabel from '@lostgradient/dropdown/components/dropdown-label/dropdown-label.svelte'",
+    );
+    expect(source).toContain(
+      "DropdownSeparator from '@lostgradient/dropdown/components/dropdown-separator/dropdown-separator.svelte'",
     );
     expect(source).toContain('[role="menuitemcheckbox"]:not([data-disabled])');
     expect(source).toContain('submenuLeavePoint = latestPointerPoint;');

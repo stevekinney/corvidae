@@ -108,5 +108,5 @@ Only absolute non-web URI schemes such as `person:` and `linear:` become mention
 ## Related
 
 - [`Chat`](../chat/README.md) — full conversation surface and composer.
-- [`CommandMenu`](../../../../../core/src/components/command-menu/README.md) — generic caret-anchored command list.
-- [`CommandItem`](../../../../../core/src/components/command-item/README.md) — selectable command row used by the popover.
+- [`CommandMenu`](../../../../../command-menu/src/components/command-menu/README.md) — generic caret-anchored command list.
+- [`CommandItem`](../../../../../command-menu/src/components/command-item/README.md) — selectable command row used by the popover.

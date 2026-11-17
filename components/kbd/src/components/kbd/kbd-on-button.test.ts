@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 const kbdCss = await Bun.file(new URL('./kbd.css', import.meta.url)).text();
 const buttonCss = await Bun.file(
-  new URL('../../../../core/src/components/button/button.css', import.meta.url),
+  new URL('../../../../button/src/components/button/button.css', import.meta.url),
 ).text();
 const tokens = await Bun.file(
   new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),

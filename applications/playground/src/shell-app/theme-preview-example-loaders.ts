@@ -17,7 +17,7 @@ export function exampleComponent(module: ExampleModule): Component<{ mountIdPref
 export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promise<ExampleModule>>> =
   {
     'button/variants': () =>
-      import('../../../../components/core/src/components/button/examples/variants.example.svelte'),
+      import('../../../../components/button/src/components/button/examples/variants.example.svelte'),
     'link/basic': () =>
       import('../../../../components/link/src/components/link/examples/basic.example.svelte'),
     'input/basic': () =>
@@ -25,9 +25,9 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'input/with-error': () =>
       import('../../../../components/input/src/components/input/examples/with-error.example.svelte'),
     'select/basic': () =>
-      import('../../../../components/core/src/components/select/examples/basic.example.svelte'),
+      import('../../../../components/select/src/components/select/examples/basic.example.svelte'),
     'select/with-error': () =>
-      import('../../../../components/core/src/components/select/examples/with-error.example.svelte'),
+      import('../../../../components/select/src/components/select/examples/with-error.example.svelte'),
     'checkbox/basic': () =>
       import('../../../../components/checkbox/src/components/checkbox/examples/basic.example.svelte'),
     'checkbox/with-error': () =>
@@ -37,9 +37,9 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'callout/variants': () =>
       import('../../../../components/callout/src/components/callout/examples/variants.example.svelte'),
     'table/basic': () =>
-      import('../../../../components/core/src/components/table/examples/basic.example.svelte'),
+      import('../../../../components/table/src/components/table/examples/basic.example.svelte'),
     'line-chart/multi-series': () =>
-      import('../../../../components/core/src/components/line-chart/examples/multi-series.example.svelte'),
+      import('../../../../components/chart/src/components/line-chart/examples/multi-series.example.svelte'),
     'modal/with-form': () =>
       import('../../../../components/core/src/components/modal/examples/with-form.example.svelte'),
     'popover/basic': () =>

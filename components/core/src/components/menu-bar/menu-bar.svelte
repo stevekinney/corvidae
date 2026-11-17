@@ -27,11 +27,11 @@
     isTypeaheadKey,
     TypeaheadBuffer,
   } from '@lostgradient/foundation/utilities/typeahead.ts';
-  import type { DropdownContext } from '../dropdown/dropdown.types.ts';
-  import DropdownItem from '../dropdown-item/dropdown-item.svelte';
-  import DropdownLabel from '../dropdown-label/dropdown-label.svelte';
-  import DropdownMenu from '../dropdown-menu/dropdown-menu.svelte';
-  import DropdownSeparator from '../dropdown-separator/dropdown-separator.svelte';
+  import type { DropdownContext } from '@lostgradient/dropdown/components/dropdown/dropdown.types.ts';
+  import DropdownItem from '@lostgradient/dropdown/components/dropdown-item/dropdown-item.svelte';
+  import DropdownLabel from '@lostgradient/dropdown/components/dropdown-label/dropdown-label.svelte';
+  import DropdownMenu from '@lostgradient/dropdown/components/dropdown-menu/dropdown-menu.svelte';
+  import DropdownSeparator from '@lostgradient/dropdown/components/dropdown-separator/dropdown-separator.svelte';
   import MenuBarDropdownContext from './menu-bar-dropdown-context.svelte';
   import type {
     MenuBarEntry,

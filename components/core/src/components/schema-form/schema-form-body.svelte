@@ -10,18 +10,18 @@
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
-  import Collapsible from '../collapsible/collapsible.svelte';
+  import Collapsible from '@lostgradient/collapsible/components/collapsible/collapsible.svelte';
   import Input from '@lostgradient/input/components/input/input.svelte';
-  import JsonEditor from '../json-editor/json-editor.svelte';
-  import NumberInput from '../number-input/number-input.svelte';
+  import JsonEditor from '@lostgradient/json-editor/components/json-editor/json-editor.svelte';
+  import NumberInput from '@lostgradient/number-input/components/number-input/number-input.svelte';
   import Segment from '@lostgradient/segmented-control/components/segment/segment.svelte';
   import SchemaFormNamedControl from './schema-form-named-control.svelte';
   import SettingRow from '../setting-row/setting-row.svelte';
   import TagInput from '@lostgradient/tag-input/components/tag-input/tag-input.svelte';
   import SegmentedControl from '@lostgradient/segmented-control/components/segmented-control/segmented-control.svelte';
-  import Select from '../select/select.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
   import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
   import Toggle from '@lostgradient/toggle/components/toggle/toggle.svelte';
 
@@ -45,7 +45,7 @@
   } from './schema-form-model.ts';
   import SchemaFormChips from './schema-form-chips.svelte';
   import DurationField from '../duration-field/duration-field.svelte';
-  import { focusFirstProblem } from '../form/focus-first-problem.ts';
+  import { focusFirstProblem } from '@lostgradient/form/components/form/focus-first-problem.ts';
   import SchemaFormJsonPanel from './schema-form-json-panel.svelte';
   import SchemaFormRecord from './schema-form-record.svelte';
   import { createSchemaFormState } from './schema-form-state.svelte.ts';

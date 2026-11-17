@@ -1,13 +1,13 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '@lostgradient/badge/badge.css';
-@import '../button/button.css';
-@import '../code-block/code-block.css';
-@import '../copy-button/copy-button.css';
-@import '../inline-loading/inline-loading.css';
-@import '../json-viewer/json-viewer.css';
+@import '@lostgradient/button/button.css';
+@import '@lostgradient/code-block/code-block.css';
+@import '@lostgradient/copy-button/copy-button.css';
+@import '@lostgradient/inline-loading/inline-loading.css';
+@import '@lostgradient/json-viewer/json-viewer.css';
 @import '@lostgradient/segmented-control/segmented-control.css';
 @import '@lostgradient/source-diff-viewer/source-diff-viewer.css';
-@import '../table/table.css';
+@import '@lostgradient/table/table.css';
 @import '@lostgradient/tooltip/tooltip.css';
 
 @layer cinder.components {
