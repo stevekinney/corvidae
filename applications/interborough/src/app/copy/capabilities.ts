@@ -574,7 +574,12 @@ export const CAPABILITIES_COPY = {
     status: {
       label: 'Source status',
       /** How the source signs in, when the host says: an OAuth source, or one that holds a stored credential. */
-      auth: { oauth: 'OAuth sign-in', credentials: 'Credential stored' },
+      auth: {
+        oauth: 'OAuth sign-in',
+        apiKey: 'API key',
+        bearer: 'Bearer token',
+        credentials: 'Credential stored',
+      },
       lastTested: (ago: string): string => `last tested ${ago}`,
     },
     /** The ⋯ menu beside Test connection (row 32m): its button's name, and its entries in order. */

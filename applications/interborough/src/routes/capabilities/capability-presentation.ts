@@ -13,6 +13,7 @@ import type {
   ToolSourceStanding,
   ToolSourceTool,
 } from '../../lib/host-tool-sources.ts';
+import { API_KEY_CREDENTIAL, BEARER_CREDENTIAL } from '../../lib/tool-source-form.ts';
 import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
 import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 
@@ -377,6 +378,10 @@ export function sourceStatusFacts(
 ): string[] {
   const facts: string[] = [];
   if (source.authorized !== undefined) facts.push(SOURCE.status.auth.oauth);
+  // The connect form stores an API key as `key` and a bearer token as `token` (row 32k), so the
+  // names the host reports say which one the source holds; any other credential stays unnamed.
+  else if (source.credentials.includes(API_KEY_CREDENTIAL)) facts.push(SOURCE.status.auth.apiKey);
+  else if (source.credentials.includes(BEARER_CREDENTIAL)) facts.push(SOURCE.status.auth.bearer);
   else if (source.credentials.length > 0) facts.push(SOURCE.status.auth.credentials);
   const tested = source.lastTested === undefined ? Number.NaN : Date.parse(source.lastTested);
   if (!Number.isNaN(tested)) facts.push(SOURCE.status.lastTested(waitedFor(tested, now)));

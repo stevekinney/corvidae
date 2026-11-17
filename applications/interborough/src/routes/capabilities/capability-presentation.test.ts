@@ -346,7 +346,16 @@ describe('a tool source', () => {
     const tested = '2026-11-11T09:00:00.000Z';
     expect(
       sourceStatusFacts({ kind: 'openapi', credentials: ['key'], lastTested: tested }, now),
-    ).toEqual(['Credential stored', 'last tested 1 h ago', 'OpenAPI spec']);
+    ).toEqual(['API key', 'last tested 1 h ago', 'OpenAPI spec']);
+    // The credential's name says which kind it is; one this form did not store is only "stored".
+    expect(sourceStatusFacts({ kind: 'mcp', credentials: ['token'] }, now)).toEqual([
+      'Bearer token',
+      'MCP server',
+    ]);
+    expect(sourceStatusFacts({ kind: 'mcp', credentials: ['other'] }, now)).toEqual([
+      'Credential stored',
+      'MCP server',
+    ]);
     // An OAuth source says so, whether or not it holds tokens; one with nothing stored and no test says only what it is.
     expect(sourceStatusFacts({ kind: 'mcp', credentials: [], authorized: false }, now)).toEqual([
       'OAuth sign-in',
