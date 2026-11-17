@@ -65,7 +65,10 @@ function renderIn(direction: 'ltr' | 'rtl', onDecision?: (decision: DecisionDeck
   const host = document.createElement('div');
   host.setAttribute('dir', direction);
   document.body.append(host);
-  return render(DecisionDeck, { props: { items, onDecision }, target: host });
+  return render(DecisionDeck, {
+    props: { items, ...(onDecision === undefined ? {} : { onDecision }) },
+    target: host,
+  });
 }
 
 describe('DecisionDeck exit animation', () => {

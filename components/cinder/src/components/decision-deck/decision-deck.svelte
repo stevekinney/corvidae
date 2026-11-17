@@ -33,6 +33,7 @@
   import { flushSync } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
   import Button from '../button/button.svelte';
   import DecisionDeckCard from './decision-deck-card.svelte';
   import {
@@ -182,11 +183,7 @@
     return getComputedStyle(rootElement).direction === 'rtl';
   }
 
-  function prefersReducedMotion(): boolean {
-    return (
-      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
-    );
-  }
+  const reducedMotion = useReducedMotion();
 
   function focusTarget(target: Exclude<FocusOrigin, null>): void {
     const selector =
@@ -221,7 +218,7 @@
     history = [...history, { decision, origin }];
     // Accept lies toward the inline-end side, reject toward the inline-start side.
     const direction = (outcome === 'accept') === !rightToLeft ? 1 : -1;
-    leaving = prefersReducedMotion()
+    leaving = reducedMotion.current
       ? null
       : { key: (leavingKey += 1), item, from: offset, exit: { outcome, direction } };
     offset = 0;
