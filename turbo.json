@@ -11,7 +11,7 @@
       "cache": false
     },
     "metadata": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": [".metadata/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -135,10 +135,7 @@
     "//#test:browser-fixtures": {
       "dependsOn": [
         "@lostgradient/browser-fixtures#transit",
-        "@lostgradient/cinder#metadata",
-        "@lostgradient/chat#metadata",
-        "@lostgradient/editor#metadata",
-        "@lostgradient/terminal#metadata"
+        "@lostgradient/browser-fixtures#metadata"
       ],
       "env": ["CODEX_CI", "CORVIDAE_TEST_SELECTION"],
       "passThroughEnv": ["TMPDIR"],
@@ -171,12 +168,7 @@
     "//#dev:browser-fixtures": {
       "persistent": true,
       "cache": false,
-      "dependsOn": [
-        "@lostgradient/cinder#metadata",
-        "@lostgradient/chat#metadata",
-        "@lostgradient/editor#metadata",
-        "@lostgradient/terminal#metadata"
-      ]
+      "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
     },
     "@lostgradient/interborough#build": {
       "dependsOn": ["transit"],
@@ -933,7 +925,7 @@
     },
     "@lostgradient/cinder#test": {
       "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit", "metadata", "@lostgradient/editor#metadata"],
+      "dependsOn": ["transit", "metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -957,7 +949,7 @@
     },
     "@lostgradient/cinder#test:slow": {
       "outputs": [],
-      "dependsOn": ["transit", "metadata", "@lostgradient/editor#metadata"],
+      "dependsOn": ["transit", "metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
         "$TURBO_DEFAULT$",

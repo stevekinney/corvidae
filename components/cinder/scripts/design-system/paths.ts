@@ -29,9 +29,7 @@ export const sourcePaths = {
     'components/cinder/src/tokens/resolved/dark.json',
   ],
   styles: ['components/cinder/src/styles/all.css'],
-  components: [
-    'components/cinder/.metadata/components.json',
-    'components/editor/.metadata/components.json',
-  ],
+  // Each package's manifest is built from the authored `<name>.meta.json` under these.
+  components: ['components/cinder/src/components', 'components/editor/src/lib/components'],
   examples: ['applications/playground/src/examples'],
 };

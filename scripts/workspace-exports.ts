@@ -104,5 +104,19 @@ export function declaresImportSpecifier(
   if (specifier === packageName) return true;
   if (!specifier.startsWith(`${packageName}/`)) return false;
   if (typeof exports !== 'object' || exports === null) return false;
-  return Object.hasOwn(exports, `.${specifier.slice(packageName.length)}`);
+  const subpath = `.${specifier.slice(packageName.length)}`;
+  if (Object.hasOwn(exports, subpath)) return true;
+  // A wildcard subpath (`./*/schema`) declares every specifier its `*` can stand for, as Node's
+  // resolution does: one path segment or more, never empty.
+  return Object.keys(exports).some((key) => {
+    const star = key.indexOf('*');
+    if (star === -1 || key.indexOf('*', star + 1) !== -1) return false;
+    const prefix = key.slice(0, star);
+    const suffix = key.slice(star + 1);
+    return (
+      subpath.length > prefix.length + suffix.length &&
+      subpath.startsWith(prefix) &&
+      subpath.endsWith(suffix)
+    );
+  });
 }

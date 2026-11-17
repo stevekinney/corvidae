@@ -37,7 +37,7 @@
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
     "tokens:audit": "bun scripts/check-component-css-token-usage.ts",
-    "design-system:build": "cd ../.. && bunx turbo run metadata --filter=@lostgradient/cinder --filter=@lostgradient/editor && cd components/cinder && bun scripts/design-system/build.ts",
+    "design-system:build": "bun scripts/design-system/build.ts",
     "design-system:url": "bun scripts/design-system/url.ts",
     "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
     "check:test-cleanup": "bun scripts/check-test-cleanup.ts",

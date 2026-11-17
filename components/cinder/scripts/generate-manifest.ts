@@ -186,9 +186,8 @@ export function enhancementArtifactPath(
   componentsRoot: string = COMPONENTS_ROOT,
 ): string | undefined {
   const enhancement = discoverComponentEnhancements([{ name: id }], componentsRoot)[0];
-  return enhancement === undefined
-    ? undefined
-    : `${packageRelative(componentPackage(), componentsRoot)}/${id}/${id}-enhancement.ts`;
+  // Only Cinder ships enhancements, and its manifest names them by their package path.
+  return enhancement === undefined ? undefined : `src/components/${id}/${id}-enhancement.ts`;
 }
 
 // ---------------------------------------------------------------------------

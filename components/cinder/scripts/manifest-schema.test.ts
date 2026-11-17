@@ -185,7 +185,7 @@ describe('manifest schema', () => {
     // modal in the synthetic set has hasExamples=true and an examples artifact
     const modal = manifest.components.find((c) => c.id === 'modal');
     expect(modal?.hasExamples).toBe(true);
-    expect(modal?.artifacts.examples).toBe('src/components/modal/modal.examples.json');
+    expect(modal?.artifacts.examples).toBe('.metadata/modal/examples.json');
     const valid = validateManifest(manifest);
     expect(valid).toBe(true);
   });
