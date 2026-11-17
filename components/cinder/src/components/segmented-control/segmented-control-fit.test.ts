@@ -12,7 +12,9 @@ import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const geometry = { room: 375, need: 300 };
+// `padding` is the inline padding of the control's parent: the parent's `clientWidth` (`room`)
+// includes it, while the control can only be as wide as the parent's content box.
+const geometry = { room: 375, need: 300, padding: 0 };
 
 const CONTAINER = 'cinder-segmented-control-container';
 const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
@@ -20,7 +22,9 @@ const originalScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototyp
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
   configurable: true,
   get(this: HTMLElement) {
-    if (this.classList.contains(CONTAINER)) return Math.min(geometry.need, geometry.room);
+    if (this.classList.contains(CONTAINER)) {
+      return Math.min(geometry.need, geometry.room - 2 * geometry.padding);
+    }
     return this.querySelector(`:scope > .${CONTAINER}`) === null ? 0 : geometry.room;
   },
 });
@@ -78,6 +82,7 @@ afterEach(() => {
   resizeCallbacks.length = 0;
   geometry.room = 375;
   geometry.need = 300;
+  geometry.padding = 0;
   document.body.replaceChildren();
 });
 
@@ -138,6 +143,25 @@ describe('SegmentedControl falls back when its options do not fit (COR-2448 AC3)
     expect(
       container.querySelector('[role="radiogroup"]')?.getAttribute('data-cinder-orientation'),
     ).toBe('horizontal');
+  });
+
+  test('a parent with inline padding settles: the control stacks once and stays, with no update loop', () => {
+    // The parent measures 400 across, 380 of it content, and the options need 390: they overflow
+    // the 380 the control can have, yet 390 is under the parent's 400. Judging the room by the
+    // parent's padding box un-stacked it, the next pass stacked it again, and the effect never
+    // settled (effect_update_depth_exceeded, which the application's boundary caught).
+    geometry.room = 400;
+    geometry.padding = 10;
+    geometry.need = 390;
+    const { container } = renderStarts();
+    flushSync();
+    expect(stacked(container)).toBe(true);
+
+    resizeTo(400);
+    expect(stacked(container)).toBe(true);
+
+    resizeTo(420);
+    expect(stacked(container)).toBe(false);
   });
 
   test('the stylesheet gives the stacked list the full width, one option per row', () => {

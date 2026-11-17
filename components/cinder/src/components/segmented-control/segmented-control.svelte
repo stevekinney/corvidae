@@ -68,6 +68,8 @@
   let containerElement: HTMLDivElement | undefined = $state();
   let stacked = $state(false);
   let stackedNeed = 0;
+  // What the parent's width exceeded the control's own by when it overflowed.
+  let stackedSlack = 0;
   let measureRequest = $state(0);
   const effectiveOrientation = $derived(stacked ? 'vertical' : orientation);
 
@@ -83,13 +85,18 @@
       const room = container.parentElement?.clientWidth ?? 0;
       // No layout (hidden, or a DOM that draws nothing) measures nothing and keeps what is drawn.
       if (room <= 0) return;
-      const ringRoom = Number.parseFloat(getComputedStyle(container).paddingLeft) || 0;
       if (wasStacked) {
-        if (stackedNeed > 0 && room + 2 * ringRoom >= stackedNeed) stacked = false;
+        // The control can be as wide as the parent less what the parent keeps for itself (its
+        // padding, which `clientWidth` includes), so the judgement mirrors the one that stacked it:
+        // the options against the width the control itself would have. Judging by the parent's
+        // whole width un-stacked a control the next pass stacked again, and the effect never
+        // settled.
+        if (stackedNeed > 0 && room - stackedSlack + 1 >= stackedNeed) stacked = false;
         return;
       }
       if (container.scrollWidth - container.clientWidth > 1) {
         stackedNeed = container.scrollWidth;
+        stackedSlack = room - container.clientWidth;
         stacked = true;
       }
     });

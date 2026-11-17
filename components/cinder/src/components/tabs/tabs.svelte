@@ -109,6 +109,8 @@
   let overflowing = $state(false);
   let measureRequest = $state(0);
   let overflowNeed = 0;
+  // What the root's width exceeded the bar's own by when the bar overflowed.
+  let overflowSlack = 0;
   let measuredVersion = -1;
 
   const collapsed = $derived(
@@ -139,13 +141,18 @@
       // A hidden tabs root, or a DOM with no layout, measures nothing and keeps what is drawn.
       if (available <= 0) return;
       if (stillOverflowing) {
-        if (overflowNeed > 0 && available >= overflowNeed) overflowing = false;
+        // The bar can be as wide as the root less what the root keeps for itself, so this mirrors
+        // the judgement that collapsed it: the tabs against the width the bar itself would have.
+        // Judging by the root's whole width un-collapsed a bar the next pass collapsed again, and
+        // the effect never settled.
+        if (overflowNeed > 0 && available - overflowSlack + 1 >= overflowNeed) overflowing = false;
         return;
       }
       const list = root.querySelector<HTMLElement>(':scope > .cinder-tab-list');
       if (list === null || list.hidden) return;
       if (list.scrollWidth - list.clientWidth > 1) {
         overflowNeed = list.scrollWidth;
+        overflowSlack = Math.max(0, available - list.clientWidth);
         overflowing = true;
       }
     });

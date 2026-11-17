@@ -12,15 +12,18 @@ import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const geometry = { rootWidth: 375, barNeed: 240 };
+// `rootPadding` is the inline padding of the tabs root: its `clientWidth` includes it, while the bar
+// is only as wide as the root's content box.
+const geometry = { rootWidth: 375, barNeed: 240, rootPadding: 0 };
 
 const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
 const originalScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
   configurable: true,
   get(this: HTMLElement) {
-    return this.classList.contains('cinder-tabs') || this.classList.contains('cinder-tab-list')
-      ? geometry.rootWidth
+    if (this.classList.contains('cinder-tabs')) return geometry.rootWidth;
+    return this.classList.contains('cinder-tab-list')
+      ? geometry.rootWidth - 2 * geometry.rootPadding
       : 0;
   },
 });
@@ -28,7 +31,7 @@ Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
   configurable: true,
   get(this: HTMLElement) {
     return this.classList.contains('cinder-tab-list')
-      ? Math.max(geometry.barNeed, geometry.rootWidth)
+      ? Math.max(geometry.barNeed, geometry.rootWidth - 2 * geometry.rootPadding)
       : 0;
   },
 });
@@ -71,6 +74,7 @@ afterEach(() => {
   resizeCallbacks.length = 0;
   geometry.rootWidth = 375;
   geometry.barNeed = 240;
+  geometry.rootPadding = 0;
   document.body.replaceChildren();
 });
 
@@ -128,6 +132,25 @@ describe('Tabs collapse on overflow (COR-2448 AC2)', () => {
 
     resizeTo(375);
     expect(collapsed(container)).toBe(true);
+  });
+
+  test('a root with inline padding settles: the bar collapses once and stays, with no update loop', () => {
+    // The root measures 400 across, 380 of it the bar's, and the tabs need 390: they overflow the
+    // bar's 380, yet 390 is under the root's 400. Judging the room by the root's padding box
+    // un-collapsed the bar, the next pass collapsed it again, and the effect never settled
+    // (effect_update_depth_exceeded, which the application's boundary caught).
+    geometry.rootWidth = 400;
+    geometry.rootPadding = 10;
+    geometry.barNeed = 390;
+    const { container } = render(Harness);
+    flushSync();
+    expect(collapsed(container)).toBe(true);
+
+    resizeTo(400);
+    expect(collapsed(container)).toBe(true);
+
+    resizeTo(420);
+    expect(collapsed(container)).toBe(false);
   });
 
   test('collapseOnOverflow={false} keeps a bar that scrolls sideways', () => {
