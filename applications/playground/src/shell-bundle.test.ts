@@ -6,7 +6,7 @@
  * bytes each input contributes to the output, not whether it was parsed.
  */
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
 
 import { PUBLIC_PATH_BY_FAMILY, SHARED_BUILD_OPTIONS } from './build-artifacts-shared.ts';
@@ -20,7 +20,9 @@ type Metafile = {
 const CINDER_ROOT = '@lostgradient/cinder';
 /** The curated highlighter the playground publishes beneath every component it mounts. */
 const CURATED_SHIKI_ADAPTER_PATH = join(PLAYGROUND_ROOT, 'src', 'curated-shiki-adapter.ts');
-const BARREL_SUFFIX = 'components/cinder/src/index.ts';
+const BARREL_SUFFIX = 'components/core/src/index.ts';
+/** A Cinder component's module: in core's `src/components`, or in the package that holds it now. */
+const CINDER_COMPONENT_PATH = /(?:^|\/)components\/[^/]+\/src\/components\//u;
 const GRAMMAR = /@shikijs[\\/]langs[\\/]dist[\\/]([^\\/]+)$/u;
 
 async function metafileOf(entrypoint: string, publicPath: string): Promise<Metafile> {
@@ -103,6 +105,16 @@ function declaresExport(source: string, name: string): boolean {
 }
 
 /**
+ * The file a specifier in `file` names: a relative path, or (core's barrel re-exports the packages
+ * the split moved its components into, P-COR-101) a package specifier, through its `exports`.
+ */
+function moduleFile(file: string, specifier: string): string {
+  return specifier.startsWith('.')
+    ? normalize(join(dirname(file), specifier))
+    : realpathSync(Bun.resolveSync(specifier, dirname(file)));
+}
+
+/**
  * The module `name` resolves to through `file`'s exports: a named re-export, the file's own
  * declaration, or (recursively) one of its `export *` targets. Absolute path, or undefined.
  */
@@ -115,10 +127,10 @@ export function resolveExport(
   seen.add(file);
   const source = readFileSync(file, 'utf8');
   const named = barrelModules(source).get(name);
-  if (named !== undefined) return normalize(join(dirname(file), named));
+  if (named !== undefined) return moduleFile(file, named);
   if (declaresExport(source, name)) return file;
   for (const match of source.matchAll(/export\s+\*\s+from\s*['"]([^'"]+)['"]/gu)) {
-    const found = resolveExport(normalize(join(dirname(file), match[1]!)), name, seen);
+    const found = resolveExport(moduleFile(file, match[1]!), name, seen);
     if (found !== undefined) return found;
   }
   return undefined;
@@ -169,8 +181,7 @@ describe('the shared shell bundle (CIN-588 preservation)', () => {
     const allowed = reachable(shell, starts);
     const shippedComponents = [...shipped]
       .filter(
-        ([path, bytes]) =>
-          bytes > 0 && path.includes('components/cinder/src/components/') && !path.endsWith('.css'),
+        ([path, bytes]) => bytes > 0 && CINDER_COMPONENT_PATH.test(path) && !path.endsWith('.css'),
       )
       .map(([path]) => path);
     expect(shippedComponents.length).toBeGreaterThan(0);

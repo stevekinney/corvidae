@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { analyzeAll, analyzeComponent, getProjectCreationCount } from './analyze.ts';
 import { validateComponentDocumentationPayload } from './component-documentation-reference.ts';
@@ -241,8 +241,10 @@ describe('buildComponentDocumentation', () => {
       await componentManifest('collapsible'),
     );
 
+    // The mirror directory of the package that holds Collapsible: core's, or its family's.
+    const { repositoryDirectory } = CINDER_COMPONENT_SOURCE.components().get('collapsible')!;
     expect(payload.readme.html).toContain(
-      'href="https://github.com/stevekinney/cinder/blob/main/packages/components/src/components/collapsible/collapsible.a11y.md" target="_blank" rel="noopener noreferrer"',
+      `href="https://github.com/stevekinney/cinder/blob/main/${repositoryDirectory}/collapsible.a11y.md" target="_blank" rel="noopener noreferrer"`,
     );
     expect(payload.readme.html).not.toContain('href="./collapsible.a11y.md"');
   });
@@ -299,10 +301,14 @@ describe('buildComponentDocumentation', () => {
 
   describe('README links across component packages', () => {
     // READMEs are authored for this repository's layout, so a Chat README reaches a
-    // Cinder README as `components/cinder/...` from `components/chat/...`, not as a
-    // sibling directory of its own package.
-    const chatToCinderCommandMenu =
-      '<a href="../../../../../cinder/src/components/command-menu/README.md">CommandMenu</a>';
+    // Cinder README by its path from `components/chat/...` to wherever the package that holds
+    // it is (core, or the family the split moved it into), not as a sibling directory.
+    const fromChat = (file: string): string =>
+      relative(
+        componentDirectory(CHAT_COMPONENT_SOURCE, 'chat-composer-popover'),
+        join(componentDirectory(CINDER_COMPONENT_SOURCE, 'command-menu'), file),
+      );
+    const chatToCinderCommandMenu = `<a href="${fromChat('README.md')}">CommandMenu</a>`;
 
     it('routes a Chat README link to a Cinder component README to its playground page', () => {
       const html = rewriteComponentReadmeLinks(
@@ -330,7 +336,7 @@ describe('buildComponentDocumentation', () => {
 
     it('does not mistake a link to a non-README file in another package for a component page', () => {
       const html = rewriteComponentReadmeLinks(
-        '<a href="../../../../../cinder/src/components/command-menu/command-menu.a11y.md">Accessibility</a>',
+        `<a href="${fromChat('command-menu.a11y.md')}">Accessibility</a>`,
         'chat-composer-popover',
         new Set(['chat-composer-popover', 'command-menu']),
         CHAT_COMPONENT_SOURCE,
