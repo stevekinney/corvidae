@@ -24,7 +24,7 @@ import {
 } from './extract-families.ts';
 import { specifierFor, virtualPathFor } from './split-layout.ts';
 
-const CORE = 'components/cinder';
+const CORE = 'components/core';
 
 const RULES: FamilyRules = {
   packageRoot: CORE,
@@ -191,16 +191,16 @@ const TREE: Record<string, string> = {
     '<script lang="ts">\n  import Card from \'../card/card.svelte\';\n</script>\n',
   [`${CORE}/scripts/design-system/build.ts`]: 'export const build = 1;\n',
   'turbo.json':
-    '{\n  "inputs": [\n        "$TURBO_ROOT$/components/cinder/scripts/**",\n        "$TURBO_ROOT$/scripts/**"\n  ]\n}\n',
+    '{\n  "inputs": [\n        "$TURBO_ROOT$/components/core/scripts/**",\n        "$TURBO_ROOT$/scripts/**"\n  ]\n}\n',
   'scripts/check.ts': [
-    "const button = 'components/cinder/src/components/button/button.css';",
-    "const all = 'components/cinder/src/components';",
-    "const tokens = 'components/cinder/scripts/tokens/check.ts';",
-    "const runtime = join(root, 'components', 'cinder', 'src', 'tokens', 'runtime', 'index.ts');",
+    "const button = 'components/core/src/components/button/button.css';",
+    "const all = 'components/core/src/components';",
+    "const tokens = 'components/core/scripts/tokens/check.ts';",
+    "const runtime = join(root, 'components', 'core', 'src', 'tokens', 'runtime', 'index.ts');",
     "const sibling = join(cinderRoot, 'src', 'tokens', 'runtime');",
     "const single = join(cinderRoot, 'src/tokens/runtime/index.ts');",
     "const own = join(cinderRoot, 'src', 'styles', 'components.css');",
-    'const inTokens = /\\/components\\/cinder\\/src\\/tokens\\//;',
+    'const inTokens = /\\/components\\/core\\/src\\/tokens\\//;',
     '',
   ].join('\n'),
 };
@@ -361,7 +361,7 @@ describe('extract-families', () => {
     expect(manifest(root, 'tokens').scripts['tokens:check']).toBe('bun scripts/tokens/check.ts');
     expect(manifest(root, 'tokens').scripts['lint']).toContain('bun run tokens:check');
     expect(read(root, 'turbo.json')).toContain(
-      '"$TURBO_ROOT$/components/cinder/scripts/**",\n        "$TURBO_ROOT$/components/tokens/scripts/**",\n        "$TURBO_ROOT$/scripts/**"',
+      '"$TURBO_ROOT$/components/core/scripts/**",\n        "$TURBO_ROOT$/components/tokens/scripts/**",\n        "$TURBO_ROOT$/scripts/**"',
     );
     expect(read(root, 'scripts/check.ts')).toContain(
       [
@@ -405,8 +405,8 @@ describe('extract-families', () => {
     expect(manifest(root, 'foundation').dependencies['@lostgradient/tokens']).toBe('workspace:*');
     expect(manifest(root, 'foundation').scripts['lint']).toContain('check-foundation-imports.ts');
     const focusTest = 'components/foundation/src/utilities/focus.test.ts';
-    expect(read(root, focusTest)).toContain("'../../../cinder/src/components/card/card.css'");
-    expect(read(root, focusTest)).toContain("'..', 'cinder', 'src', 'components', 'card'");
+    expect(read(root, focusTest)).toContain("'../../../core/src/components/card/card.css'");
+    expect(read(root, focusTest)).toContain("'..', 'core', 'src', 'components', 'card'");
 
     await extract(root, { kind: 'all' });
     expect(existsSync(join(root, CORE, 'src/components'))).toBe(false);
@@ -441,10 +441,10 @@ describe('extract-families', () => {
       "from '@lostgradient/button/components/button/button.svelte'",
     );
     expect(read(root, 'components/button/src/components/button/button.test.ts')).toContain(
-      "'../../../../cinder/src/styles/components.css'",
+      "'../../../../core/src/styles/components.css'",
     );
     expect(read(root, 'components/button/src/components/button/button.test.ts')).toContain(
-      "join(packageRoot, '..', 'cinder', 'src', 'styles', 'components.css')",
+      "join(packageRoot, '..', 'core', 'src', 'styles', 'components.css')",
     );
     expect(read(root, `${CORE}/src/exports/extra.ts`)).toContain(
       "from '@lostgradient/card/_internal/card-context.ts'",
@@ -486,7 +486,7 @@ describe('extract-families', () => {
     expect(read(root, 'scripts/check.ts')).toContain(
       "'components/button/src/components/button/button.css'",
     );
-    expect(read(root, 'scripts/check.ts')).toContain("'components/cinder/src/components'");
+    expect(read(root, 'scripts/check.ts')).toContain("'components/core/src/components'");
 
     // Core exports the same names, and the split tree derives the same map.
     expect(exportNames(join(root, CORE, 'src/index.ts'))).toEqual(namesBefore);
@@ -515,7 +515,7 @@ describe('extract-families', () => {
     expect(existsSync(join(root, 'components/button', file))).toBe(false);
     // Its paths into core still reach core from there: a sibling path names core by directory.
     expect(read(root, moved)).toContain(
-      "join(packageRoot, '..', 'cinder', 'src', 'styles', 'components.css')",
+      "join(packageRoot, '..', 'core', 'src', 'styles', 'components.css')",
     );
   });
 

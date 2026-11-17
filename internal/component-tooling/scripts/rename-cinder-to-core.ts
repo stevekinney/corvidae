@@ -101,8 +101,8 @@ const NAMED: [string, string, string][] = [
   ],
   [
     'internal/component-tooling/scripts/check-component-css-token-usage.test.ts',
-    "reportPrefix: 'cinder/browser-fixtures'",
-    "reportPrefix: 'core/browser-fixtures'",
+    "reportPrefix: 'cinder/browser/fixtures'",
+    "reportPrefix: 'core/browser/fixtures'",
   ],
   // A live link in an exempt document: the process documents' link check follows it. Only the
   // link target changes; the document's history stays as written.

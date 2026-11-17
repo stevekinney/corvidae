@@ -162,16 +162,13 @@ const SCAN_ROOTS = [
   ['packages/components/src/styles', 'components/cinder/src/styles'],
   ['packages/chat/src', 'components/chat/src'],
   ['packages/editor/src', 'components/editor/src'],
-  // The packages the split moved Cinder's components and partials into (P-COR-101) keep core's
-  // layout, so each file is classified under the path it had in core.
+  // The packages the split moved Cinder's components and partials into (P-COR-101). The split
+  // rewrites each classified path to follow its file, so a file is classified where it is now.
   ...cinderPackages().flatMap(([, packageRoot]) =>
-    (['components', 'styles'] as const).map(
-      (directory) =>
-        [
-          `${relative(REPOSITORY_ROOT, packageRoot)}/src/${directory}`,
-          `components/cinder/src/${directory}`,
-        ] as const,
-    ),
+    (['components', 'styles'] as const).map((directory) => {
+      const root = `${relative(REPOSITORY_ROOT, packageRoot)}/src/${directory}`;
+      return [root, root] as const;
+    }),
   ),
 ] as const;
 
