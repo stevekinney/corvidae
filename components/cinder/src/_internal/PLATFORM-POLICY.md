@@ -42,7 +42,7 @@ Every modern feature Cinder uses falls into exactly one tier. The tier decides w
 
 ## The two rules every component author must internalize
 
-1. **Container width, not viewport width.** If a component changes because _its own_ box is narrow, it must use a container query, not a viewport media query. Viewport queries are only for things the viewport genuinely owns. The documented exception is Sidebar's mobile Drawer switch (see `RESPONSIVE-POLICY.md`).
+1. **Container width, not viewport width.** If a component changes because _its own_ box is narrow, it must use a container query, not a viewport media query. Viewport queries are only for things the viewport genuinely owns. The documented exceptions are listed in `RESPONSIVE-POLICY.md`, and the viewport queries left in component CSS under [Enforcement](#enforcement).
 2. **Native top-layer over hand-rolled geometry.** Prefer `<dialog>` and the Popover API + Anchor Positioning over manual document listeners and Floating UI where the native primitive fits — but always behind the Tier-2 guards in `OVERLAY-POLICY.md`. Virtual anchors (pointer, caret, text selection) stay on the shared anchored-overlay helper with a Floating UI virtual element; CSS Anchor Positioning is intentionally not used for those.
 
 ## Enforcement

@@ -88,3 +88,28 @@ export function declarationsFor(css: string, selector: string): Map<string, stri
   });
   return found;
 }
+
+/**
+ * Declarations of the rules whose whole selector (whitespace-normalised) is `selector`, inside the
+ * at-rules named `name` whose prelude is exactly `params`, such as a container or media query. The
+ * selector is compared whole, so one that holds a comma inside `:is()` still matches.
+ */
+export function atRuleDeclarationsFor(
+  css: string,
+  name: string,
+  params: string,
+  selector: string,
+): Map<string, string> {
+  const wanted = selector.replace(/\s+/g, ' ').trim();
+  const found = new Map<string, string>();
+  parse(css).walkAtRules(name, (atRule) => {
+    if (atRule.params !== params) return;
+    atRule.walkRules((rule) => {
+      if (rule.selector.replace(/\s+/g, ' ').trim() !== wanted) return;
+      rule.walkDecls((declaration) => {
+        found.set(declaration.prop, declaration.value);
+      });
+    });
+  });
+  return found;
+}

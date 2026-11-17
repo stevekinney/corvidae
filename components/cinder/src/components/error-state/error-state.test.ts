@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
-import { declarationsFor } from '../../test/css.ts';
+import { atRuleDeclarationsFor, declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init, so register happy-dom's globals first.
@@ -217,9 +217,10 @@ describe('ErrorState variant', () => {
     // The row has no padding, so its content box is its width and 40rem is the phone breakpoint.
     expect(row.get('padding')).toBe('0');
     expect(css).not.toMatch(/@media[^{]*width/);
-    const narrow = css.slice(css.indexOf('@container cinder-error-state (max-width: 40rem)'));
-    const action = declarationsFor(
-      narrow,
+    const action = atRuleDeclarationsFor(
+      css,
+      'container',
+      'cinder-error-state (max-width: 40rem)',
       ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
     );
     expect(action.get('flex-basis')).toBe('100%');
