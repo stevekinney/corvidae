@@ -125,6 +125,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
+  // Capabilities and Connect tools in the states the sample world does not hold (COR-2435, COR-2436).
+  'tests/e2e/capabilities-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

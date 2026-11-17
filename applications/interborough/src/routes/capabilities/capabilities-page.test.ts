@@ -985,7 +985,7 @@ describe('a skill’s page', () => {
     });
     expect(
       detail.querySelector('[data-testid="skill-instructions-title"]')?.textContent?.trim(),
-    ).toMatch(/^Instructions\s+SKILL\.md, 1\.2 KB$/);
+    ).toMatch(/^Instructions\s+SKILL\.md 1\.2 KB$/);
     // The body, not the frontmatter, is rendered; the file is untrusted, so no script survives.
     expect(section.querySelector('p')?.textContent).toBe(
       'Group the merged pull requests by what changed for a customer.',

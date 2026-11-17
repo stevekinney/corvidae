@@ -18,7 +18,18 @@ import { fakeToolSources, sourceTool } from './sources-host.test-support.ts';
 const copy = CAPABILITIES_COPY.source.connect;
 const signInCopy = copy.authentication.signIn;
 
-type FakeWindow = { closed: boolean; close(): void; location: { href: string } };
+/**
+ * A class, not an object literal: the page keeps the window it opened in `$state`, which wraps a
+ * plain object in a proxy (so `event.source` would never equal it) and leaves a class instance, as
+ * a real `Window` is, as it is.
+ */
+class FakeWindow {
+  closed = false;
+  location = { href: 'about:blank' };
+  close(): void {
+    this.closed = true;
+  }
+}
 
 let restore: (() => void) | undefined;
 let opened: FakeWindow[] = [];
@@ -27,13 +38,7 @@ const originalOpen = window.open;
 beforeEach(() => {
   opened = [];
   window.open = () => {
-    const popup: FakeWindow = {
-      closed: false,
-      close() {
-        popup.closed = true;
-      },
-      location: { href: 'about:blank' },
-    };
+    const popup = new FakeWindow();
     opened.push(popup);
     return popup as unknown as Window;
   };
@@ -137,11 +142,11 @@ describe('signing in before the source is saved', () => {
     await signIn(getByRole);
     await findByTestId('connect-sign-in-waiting');
 
-    const message = (origin: string) =>
+    const message = (origin: string, source: unknown = opened[0]) =>
       window.dispatchEvent(
         Object.assign(new window.Event('message'), {
           origin,
-          source: opened[0],
+          source,
           data: {
             type: 'interborough:tool-source-sign-in',
             signIn: 'sign-in-reference',
@@ -155,6 +160,17 @@ describe('signing in before the source is saved', () => {
     await tick();
     expect(document.body.querySelector('[data-testid="connect-signed-in"]')).toBeNull();
     expect(document.body.querySelector('[data-testid="connect-sign-in-waiting"]')).not.toBeNull();
+    // The right origin from a window the page did not open: not read either.
+    message(window.location.origin, new FakeWindow());
+    await tick();
+    await tick();
+    expect(document.body.querySelector('[data-testid="connect-signed-in"]')).toBeNull();
+
+    // The opened window, from the host's own origin: read. This fails if the listener is dead.
+    message(window.location.origin);
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="connect-signed-in"]')).not.toBeNull(),
+    );
   });
 
   test('says a closed window canceled the sign-in, in neutral words, with Try again', async () => {

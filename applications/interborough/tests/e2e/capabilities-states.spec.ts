@@ -144,6 +144,27 @@ async function open(page: Page, width: number, path: string): Promise<void> {
 }
 
 for (const width of WIDTHS) {
+  // The sample world's own pages, under state names `responsive.spec.ts` (which captures the same
+  // routes with stress data under the same file names) never writes.
+  test(`the sample world's tools, sources and connect form, at ${width} pixels`, async ({
+    page,
+  }) => {
+    for (const [path, state] of [
+      ['/capabilities', 'sample world tools'],
+      ['/capabilities?tab=sources', 'sample world sources'],
+      ['/capabilities/connect', 'sample world connect form'],
+    ] as const) {
+      await open(page, width, path);
+      await expect(page.locator('main').first()).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await captureForDesignReview(page, {
+        route: path.split('?')[0] ?? path,
+        state,
+        source: SOURCE,
+      });
+    }
+  });
+
   test.describe(`lost tools and skills, at ${width} pixels`, () => {
     test('a failed source keeps its last listing: the tool, its warning, Reconnect and the kept asks level (30n, 30o)', async ({
       page,

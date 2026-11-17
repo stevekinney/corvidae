@@ -195,7 +195,7 @@ export const CAPABILITIES_COPY = {
       showAll: 'Show all',
       showLess: 'Show less',
       cardTitle: 'Instructions',
-      cardFile: (size: string): string => `SKILL.md, ${size}`,
+      cardFile: (size: string): string => `SKILL.md ${size}`,
       raw: 'SKILL.md',
       rawLabel: (skill: string): string => `The SKILL.md file of ${skill}`,
       loading: 'Reading SKILL.md',
