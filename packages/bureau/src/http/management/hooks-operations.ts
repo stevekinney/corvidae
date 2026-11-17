@@ -380,7 +380,7 @@ const listedHookSchema = hookSchema.extend({
   problems: z
     .array(hookProblemSchema)
     .describe(
-      'Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.',
+      'Why a plugin hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. Empty when nothing is wrong, and for every other action.',
     ),
 });
 

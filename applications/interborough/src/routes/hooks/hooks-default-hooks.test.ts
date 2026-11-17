@@ -217,6 +217,41 @@ describe('the list (rows R10-01 to R10-03)', () => {
     }
   });
 
+  test('shows the problems the Bureau lists, as reaction-unavailable is shown: Needs attention for configuration-invalid (COR-2182)', async () => {
+    const invalid = hook('owned-invalid', { name: 'My broken post', declaredBy: null });
+    const unavailable = hook('owned-unavailable', { name: 'My lost post', declaredBy: null });
+    const view = open('/hooks', [invalid, unavailable], {
+      'bureau.hooks.list': () => ({
+        hooks: [
+          {
+            ...invalid,
+            lastDelivery: null,
+            problems: [
+              {
+                code: 'configuration-invalid',
+                issues: [{ path: ['channel'], code: 'invalid_type' }],
+              },
+            ],
+          },
+          { ...unavailable, lastDelivery: null, problems: [{ code: 'reaction-unavailable' }] },
+        ],
+      }),
+    });
+
+    const rows = await waitFor(() => {
+      const found = view.container.querySelectorAll<HTMLElement>('li[data-hook]');
+      if (found.length !== 2) throw new Error('the rows are not drawn');
+      return found;
+    });
+    const wordOf = (id: string) =>
+      [...rows]
+        .find((row) => row.getAttribute('data-hook') === id)
+        ?.querySelector('[data-status-word]')
+        ?.getAttribute('data-status-word');
+    await waitFor(() => expect(wordOf('owned-invalid')).toBe('Needs attention'));
+    expect(wordOf('owned-unavailable')).toBe('Unavailable');
+  });
+
   test('holds the switch of a hook its plugin withdrew, off, with the reason as a tooltip', async () => {
     const view = open('/hooks', [WITHDRAWN]);
 

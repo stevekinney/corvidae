@@ -7,6 +7,9 @@
  *   withdrew says nothing here, because the page's note says it once.
  * - Unavailable: the hook runs a plugin's action that is not offered now, because the plugin is
  *   disabled or no longer offers the action.
+ * - Needs attention: the Bureau lists a `configuration-invalid` problem, so the action's schema now
+ *   refuses the configuration the hook stored (COR-2182); shown as Unavailable is, from the
+ *   Bureau's own say-so.
  * - Needs setup: the action is offered but its plugin needs a secret.
  * - Otherwise the latest delivery's word, or `undefined` for "Nothing sent".
  *
@@ -53,7 +56,13 @@ export type StandingAction =
 
 /** The state that decided the word. */
 export type StandingState =
-  'delivery' | 'off' | 'withdrawn' | 'plugin-disabled' | 'not-offered' | 'needs-setup';
+  | 'delivery'
+  | 'off'
+  | 'withdrawn'
+  | 'plugin-disabled'
+  | 'not-offered'
+  | 'configuration-invalid'
+  | 'needs-setup';
 
 /** A hook's one status. */
 export type HookStanding = {
@@ -130,6 +139,14 @@ export function hookStanding(hook: StandingHook, context: StandingContext): Hook
         state: 'not-offered',
         word: 'Unavailable',
         sentence: copy.notOffered(title, actionTitleOf(kind)),
+        plugin,
+      };
+    }
+    if (hook.problems?.some((problem) => problem.code === 'configuration-invalid') === true) {
+      return {
+        state: 'configuration-invalid',
+        word: 'Needs attention',
+        sentence: copy.configurationInvalid(title, actionTitleOf(kind)),
         plugin,
       };
     }

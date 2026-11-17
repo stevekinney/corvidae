@@ -1170,6 +1170,99 @@ test('[plugin-hook-save-failed] a refused save keeps every value and shows the r
   });
 });
 
+// ─── Receipts and problems (COR-2182) ─────────────────────────────────────────────────────────────
+
+/** A delivery of a plugin hook whose reaction answered with a receipt, as `bureau.hooks.deliveries` lists it. */
+const RECEIPTED = {
+  id: 'delivery-receipt',
+  hookId: 'owner-plugin',
+  owner: 'anonymous:local',
+  actionType: 'plugin',
+  kind: 'review.requested',
+  test: false,
+  status: 'delivered',
+  request: null,
+  work: null,
+  attempts: [
+    {
+      number: 1,
+      startedAt: Date.UTC(2026, 10, 2, 15),
+      finishedAt: Date.UTC(2026, 10, 2, 15, 0, 1),
+      outcome: 'completed',
+      status: null,
+      responseExcerpt: null,
+      responseTruncated: null,
+      error: null,
+      receipt: {
+        runId: null,
+        notificationId: null,
+        id: 'C0SAMPLE/1730559600.000100',
+        url: 'https://slack.example/archives/C0SAMPLE/p1730559600000100',
+        summary: 'Posted the review to #ops',
+      },
+    },
+  ],
+  maxAttempts: 5,
+  createdAt: Date.UTC(2026, 10, 2, 15),
+  updatedAt: Date.UTC(2026, 10, 2, 15, 0, 1),
+};
+
+test('[hook-delivery-receipt] a delivery whose reaction made something shows its summary, a link to it and its reference', async ({
+  page,
+}) => {
+  await openHooks(page, '/hooks/owner-plugin', [OWNER_PLUGIN_HOOK], {
+    'bureau.hooks.deliveries': () => ({ deliveries: [RECEIPTED] }),
+  });
+  const item = page.getByTestId('hook-deliveries').locator('li[data-delivery="delivery-receipt"]');
+  await item.locator('button[aria-expanded]').first().click();
+  const facts = item.getByTestId('hook-delivery-facts');
+  await expect(facts.getByText('Posted the review to #ops')).toBeVisible();
+  await expect(facts.getByRole('link', { name: 'slack.example' })).toHaveAttribute(
+    'href',
+    'https://slack.example/archives/C0SAMPLE/p1730559600000100',
+  );
+  await expect(facts.locator('code', { hasText: 'C0SAMPLE/1730559600.000100' })).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-delivery-receipt',
+    source: SOURCE,
+  });
+});
+
+const UNAVAILABLE_HOOK = hookRecord('owner-unavailable', {
+  name: 'My Slack post that lost its action',
+  declaredBy: null,
+});
+const INVALID_HOOK = hookRecord('owner-invalid', {
+  name: 'My Slack post the upgrade broke',
+  declaredBy: null,
+});
+
+for (const [state, record, problem, word] of [
+  ['hook-reaction-unavailable', UNAVAILABLE_HOOK, { code: 'reaction-unavailable' }, 'Unavailable'],
+  [
+    'hook-configuration-invalid',
+    INVALID_HOOK,
+    { code: 'configuration-invalid', issues: [{ path: ['channel'], code: 'invalid_type' }] },
+    'Needs attention',
+  ],
+] as const) {
+  test(`[${state}] a hook the Bureau lists with a ${problem.code} problem says ${word} in its row`, async ({
+    page,
+  }) => {
+    await openHooks(page, '/hooks', [record], {
+      'bureau.hooks.list': () => ({
+        hooks: [{ ...record, lastDelivery: DELIVERED, problems: [problem] }],
+      }),
+    });
+    await expect(page.locator('[data-view="hooks"]')).toHaveAttribute('data-state', 'ready');
+    const row = page.locator(`li[data-hook="${record.id}"]`);
+    await expect(row.locator('.cinder-status-dot')).toHaveCount(1);
+    await expect(row.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
+    await captureForDesignReview(page, { route: '/hooks', state, source: SOURCE });
+  });
+}
+
 // R10-20 holds at the narrowest phone too.
 for (const width of [320, ...WIDTHS] as const) {
   test(`[new-hook-plugin-action] every action choice is on screen, and a plugin’s action is chosen from a grouped Select, at ${width} pixels`, async ({

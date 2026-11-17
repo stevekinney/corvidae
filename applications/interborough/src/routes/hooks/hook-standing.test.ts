@@ -134,6 +134,46 @@ describe('hookStanding', () => {
     });
   });
 
+  test('is Needs attention when the Bureau lists a configuration-invalid problem, after Off and Unavailable', () => {
+    const invalid = {
+      code: 'configuration-invalid' as const,
+      issues: [{ path: ['channel'], code: 'invalid_type' }],
+    };
+    const standing = hookStanding(pluginHook({ problems: [invalid] }), {
+      plugins: [SLACK],
+      reactions: [reaction('slack', 'post-message', 'needs-setup')],
+    });
+    expect(standing).toEqual({
+      state: 'configuration-invalid',
+      word: 'Needs attention',
+      sentence:
+        'Slack changed what Post message takes, so this hook’s configuration no longer fits.',
+      plugin: 'slack',
+    });
+    // Off and Unavailable still come first.
+    expect(
+      hookStanding(pluginHook({ enabled: false, problems: [invalid] }), {
+        plugins: [SLACK],
+        reactions: [],
+      }).word,
+    ).toBe('Off');
+    expect(
+      hookStanding(pluginHook({ problems: [invalid] }), { plugins: [SLACK], reactions: [] }).word,
+    ).toBe('Unavailable');
+  });
+
+  test('says Off once for a withdrawn default hook the Bureau lists as reaction-unavailable', () => {
+    const standing = hookStanding(
+      pluginHook({
+        enabled: false,
+        declaredBy: { plugin: 'slack', ownerDisabled: false, withdrawn: true },
+        problems: [{ code: 'reaction-unavailable' }],
+      }),
+      { plugins: [SLACK], reactions: [reaction('slack', 'post-message')] },
+    );
+    expect(standing).toEqual({ state: 'withdrawn', word: 'Off', sentence: undefined });
+  });
+
   test('is Needs setup with Add the key when exactly one secret is missing', () => {
     const standing = hookStanding(pluginHook(), {
       plugins: [

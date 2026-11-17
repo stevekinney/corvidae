@@ -396,7 +396,8 @@ export type HookProblem =
   | {
       /**
        * The plugin hook's reaction is not registered: its plugin is disabled, was removed, failed
-       * to set up, or dropped the kind. The hook writes no delivery until the reaction is back.
+       * to set up, or dropped the kind. The hook writes no delivery until the reaction is back. A
+       * default hook its plugin withdrew has it too, while it stays withdrawn.
        */
       readonly code: 'reaction-unavailable';
     }

@@ -1063,11 +1063,15 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
    * COR-2182 — what is wrong with `hook` as it is now: its reaction is not registered, or its
    * reaction's schema refuses the configuration it stored (a plugin upgrade changed the schema).
    * The configuration is checked as `create` checks it, so a secret field that holds a reference is
-   * no problem. Empty when nothing is, and for every action but a plugin's.
+   * no problem. Empty when nothing is, and for every action but a plugin's. A default hook its
+   * plugin withdrew (R8 turned it off) is `reaction-unavailable` too, though the plugin may still
+   * register the reaction: the plugin no longer offers the hook, which stays off and runs nothing.
    */
   function problemsOf(hook: HookRecord): readonly HookProblem[] {
     if (hook.action.type !== 'plugin') return [];
-    if (reactionUnavailable(hook)) return [{ code: 'reaction-unavailable' }];
+    if (reactionUnavailable(hook) || hook.declaredBy?.withdrawn === true) {
+      return [{ code: 'reaction-unavailable' }];
+    }
     const registration = actionKinds.get(actionKindKey(hook.action.plugin, hook.action.kind));
     if (registration === undefined) return [];
     const secretFields = secretFieldsOf(registration.kind.configuration);

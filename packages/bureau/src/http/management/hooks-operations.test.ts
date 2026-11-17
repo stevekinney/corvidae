@@ -1077,6 +1077,34 @@ describe('bureau.hooks.* problems and receipts (COR-2182)', () => {
     expect(listed.hooks).toHaveLength(2);
   });
 
+  it('lists a default hook its plugin withdrew as reaction-unavailable, though the plugin still registers the reaction', async () => {
+    const storage = new MemoryStorage();
+    const first = await open({ storage, actionKinds: [pagerKind()] });
+    const [declared] = await first.opened.bureau.hooks!.reconcileDeclared('pager', [
+      {
+        name: 'Page on settle',
+        events: ['run.settled'],
+        reaction: 'page',
+        configuration: { channel: 'ops' },
+      },
+    ]);
+    await first.opened.dispose();
+    cleanups.splice(cleanups.length - 1, 1);
+
+    // The Bureau starts again with the plugin running, its reaction registered, and the hook no
+    // longer declared: R8 withdraws it.
+    const reopened = await open({ storage, actionKinds: [pagerKind()] });
+    await reopened.opened.bureau.hooks!.reconcileDeclared('pager', []);
+    const listed = await wire(reopened.opened, 'bureau.hooks.list', {}, 'hooks-reader-key');
+
+    expect(listed.hooks).toHaveLength(1);
+    const [withdrawn] = listed.hooks;
+    expect(withdrawn.id).toBe(declared!.id);
+    expect(withdrawn.enabled).toBe(false);
+    expect(withdrawn.declaredBy).toMatchObject({ plugin: 'pager', withdrawn: true });
+    expect(withdrawn.problems).toEqual([{ code: 'reaction-unavailable' }]);
+  });
+
   it('lists the paths and codes of what the reaction’s schema now refuses, and no message', async () => {
     const storage = new MemoryStorage();
     const first = await open({ storage, actionKinds: [pagerKind()] });

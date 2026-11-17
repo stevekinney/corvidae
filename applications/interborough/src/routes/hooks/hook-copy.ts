@@ -124,6 +124,9 @@ export const HOOKS_COPY = {
     notOffered: (plugin: string, action: string): string =>
       `${plugin} no longer offers ${action}, so this hook can’t run.`,
     needsSetup: (plugin: string): string => `${plugin} needs setup before this hook can run.`,
+    /** A hook whose stored configuration the action's schema now refuses (COR-2182). */
+    configurationInvalid: (plugin: string, action: string): string =>
+      `${plugin} changed what ${action} takes, so this hook’s configuration no longer fits.`,
     addKey: 'Add the key',
     /** The tooltip of the disabled switch of a default hook its plugin withdrew. */
     withdrawnSwitch: (plugin: string): string =>
