@@ -2,12 +2,7 @@
 import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import {
-  expectNoLeakedTimers,
-  requiredInstance,
-  setupHappyDom,
-  trackTimers,
-} from '@lostgradient/testing';
+import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
 
 import type { ApprovalCardProps } from './approval-card.types.ts';
 
@@ -182,6 +177,35 @@ describe('ApprovalCard decision layout', () => {
 
     expect(squash(container.querySelector('[data-cinder-countdown]')?.textContent)).toBe(
       'Expires in 4m 10s',
+    );
+    // Already short, so no second form is drawn.
+    expect(container.querySelector('.cinder-approval-card__countdown-short')).toBeNull();
+  });
+
+  test('a deadline more than a day out carries the narrow card’s day-only form beside the full one', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z');
+    jest.useFakeTimers({ now });
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({ expiresAt: '2026-06-30T09:30:00.000Z' }),
+    });
+    await tick();
+
+    const fact = container.querySelector('[data-cinder-countdown]');
+    expect(fact?.hasAttribute('data-cinder-shortened')).toBe(true);
+    expect(fact?.querySelector('.cinder-approval-card__countdown-full')?.textContent).toMatch(
+      /^Expires \w{3} Jun 30, 9:30 AM$/,
+    );
+    expect(fact?.querySelector('.cinder-approval-card__countdown-short')?.textContent).toBe(
+      'Expires Jun 30',
+    );
+    // Only a narrow card (its own width) draws the short form, and then only it.
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toContain('.cinder-approval-card__countdown-short { display: none; }');
+    expect(css).toMatch(
+      /@container \(inline-size < 24rem\) \{[^@]*\[data-cinder-shortened\] > \.cinder-approval-card__countdown-full \{ display: none; \}[^@]*\[data-cinder-shortened\] > \.cinder-approval-card__countdown-short \{ display: inline; \}/,
     );
   });
 
@@ -701,20 +725,35 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(queryByRole('button', { name: 'Refund $42.00' })).toBeNull();
   });
 
-  test('holds the input disclosure for what the open anatomy leaves out', async () => {
-    const { getByRole, container } = render(ApprovalCard, { props: decisionCard() });
-    const toggle = requiredInstance(getByRole('button', { name: /^Input/ }), HTMLButtonElement);
+  test('shows the input in the open as rows at the content edge, with no disclosure', () => {
+    const { getByRole, container, queryByRole } = render(ApprovalCard, {
+      props: decisionCard(),
+    });
+    const input = getByRole('group', { name: 'Input' });
 
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    await fireEvent.click(toggle);
-    expect(
-      container.querySelector('.cinder-approval-card__row-input')?.hasAttribute('hidden'),
-    ).toBe(false);
+    expect(queryByRole('button', { name: /^Input/ })).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__row-input')).toBeNull();
+    expect(input.querySelectorAll('.cinder-description-list__row').length).toBeGreaterThan(0);
+    // The group sits straight in the card, after the facts, not inside a button or a box.
+    expect(input.parentElement?.classList.contains('cinder-approval-card--decision')).toBe(true);
+  });
+
+  test('draws no empty facts list, which would stand a second stack gap under the title', () => {
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({
+        facts: [],
+        tool: { name: 'create-label', risk: 'medium' },
+        operation: { kind: 'other', argsPreview: { orderId: 4471 } },
+      }),
+    });
+
+    expect(container.querySelector('.cinder-approval-card__facts')).toBeNull();
+    expect(container.querySelector('.cinder-description-list__row')).not.toBeNull();
   });
 
   // C#14 (chat stress sweep): "Input: Command refund order 4471" repeated the Command fact.
-  test('leaves out an Input disclosure whose only field is already shown as a fact', () => {
-    const { queryByRole } = render(ApprovalCard, {
+  test('leaves out input rows whose only field is already shown as a fact', () => {
+    const { queryByRole, container } = render(ApprovalCard, {
       props: decisionCard({
         operation: {
           kind: 'command',
@@ -724,7 +763,8 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
       }),
     });
 
-    expect(queryByRole('button', { name: /^Input/ })).toBeNull();
+    expect(queryByRole('group', { name: 'Input' })).toBeNull();
+    expect(container.querySelector('.cinder-description-list__row')).toBeNull();
   });
 });
 
@@ -780,17 +820,102 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/text-wrap:\s*(balance|pretty)/);
   });
 
-  test('the action row sits one --cinder-space-3 under the metadata row in both layouts', () => {
+  test('groups stand one stack gap apart, and the action row takes no margin of its own', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    expect(css).toContain(
-      '.cinder-approval-card--decision .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-2)); }',
+    for (const container of [
+      '--decision',
+      '--row',
+      '__row-main',
+      '__row-body, .cinder-approval-card--row > .cinder-approval-card__result',
+      '__receipt',
+      '__body',
+      '__title-group',
+      '--detail',
+      '__detail-header',
+      '__detail-body',
+    ]) {
+      const rule = new RegExp(`\\.cinder-approval-card${container} \\{([^}]*)\\}`).exec(css);
+      expect(rule?.[1], `${container} rule`).toContain('gap: var(--cinder-gap-stack);');
+    }
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-title-line \{[^}]*gap: var\(--cinder-gap-stack\) var\(--cinder-space-2\);/,
     );
-    expect(css).toContain(
-      '.cinder-approval-card--row .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1)); }',
+    expect(css).toMatch(
+      /\.cinder-approval-card__decision-head \{[^}]*gap: var\(--cinder-gap-stack\) var\(--cinder-space-2\);/,
     );
+    expect(css).not.toMatch(/__row-actions \{ margin-block-start:/);
+    expect(css).not.toMatch(/__body > \.cinder-approval-card__actions \{ margin-block-start:/);
+  });
+
+  test('the input is DescriptionList’s grid at the content edge, with no indent and no box', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // The card aggregates DescriptionList's styles, so its grid variant lays the pairs out.
+    expect(css).toContain("@import '../description-list/description-list.css';");
+    const list = /\.cinder-approval-card__input-list \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(list).not.toMatch(/padding-inline|margin-inline-start|border|background/);
+    expect(css).toContain(
+      '.cinder-approval-card__input-list > .cinder-approval-card__input-rows[hidden] { display: none; }',
+    );
+    // The card's arguments summary takes the line under its name at the content edge, never a
+    // column past the chevron.
+    expect(css).not.toMatch(
+      /__disclosures \.cinder-approval-card__input-pairs \{[^}]*padding-inline-start/,
+    );
+  });
+
+  test('a narrow row says the tool once, keeps who asked on one line, and indents nothing it decided', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // The card's own width, not the viewport, drops the tool's name from the row's line.
+    expect(css).toContain(
+      '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; }',
+    );
+    // "Approval from Tool runner, 3 min ago" breaks only on a card narrower than 14rem.
+    expect(css).toMatch(
+      /@container \(inline-size < 14rem\) \{ \.cinder-approval-card__line \.cinder-approval-card__time-separator \{ display: none; \}/,
+    );
+    expect(css).not.toContain('@container (inline-size < 17rem)');
+    // The decided input is the waiting grid: no summary line and no indent of its own; only a
+    // collapsed row's outcome lines up past its glyph.
+    expect(css).not.toContain('__decided-input');
+    expect(css).not.toContain('.cinder-approval-card__input-summary');
+    expect(css).toContain(
+      '.cinder-approval-card--row:has(> .cinder-approval-card__row[data-cinder-collapsed]) > .cinder-approval-card__outcome { padding-inline-start:',
+    );
+  });
+
+  test('every line keeps the body line height, never a tighter one', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    for (const text of [
+      'title',
+      'decision-title',
+      'row-question',
+      'settled-title',
+      'settled-note',
+      'line',
+      'facts-line',
+      'consequence',
+      'context',
+      'reason',
+      'footnote',
+      'outcome',
+      'detail-ask',
+      'elsewhere-title',
+      'elsewhere-body',
+    ]) {
+      const rule = new RegExp(
+        `\\n  \\.cinder-approval-card__${text}(?:,\\n[^{]*)? \\{([^}]*)\\}`,
+      ).exec(css);
+      expect(rule?.[1], `${text} rule`).toMatch(/line-height: var\(--cinder-leading-normal\);/);
+    }
   });
 
   test('the facts line is 12px text with 14px glyphs, under the title and at its end from 30rem', () => {
@@ -1002,7 +1127,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     // Painted at text height: the 44px hit area is a pseudo-element that takes no layout space.
     expect(coarse).toContain(
-      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
+      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before, .cinder-approval-card__show-all::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
     );
     expect(coarse).not.toMatch(/__(?:input|said|note)-toggle\s*\{\s*min-block-size/);
   });

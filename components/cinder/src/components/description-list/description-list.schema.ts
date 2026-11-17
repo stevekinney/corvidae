@@ -5,9 +5,9 @@ const schema = {
   type: 'object',
   properties: {
     variant: {
-      enum: ['default', 'striped', 'two-column', 'narrow', 'facts', 'fields'],
+      enum: ['default', 'striped', 'two-column', 'narrow', 'facts', 'fields', 'grid'],
       description:
-        'Controls the visual layout:\n- `default`: stacked rows with visible terms.\n- `striped`: alternating row backgrounds.\n- `two-column`: a muted term on the left and the value on the right, with no row dividers;\n  collapses to stacked at narrow widths.\n- `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when\n  surrounding context already labels the value. NOT a general compact mode.\n- `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value\n  beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group);\n  stacks below 28rem.\n- `facts`: one row of equal columns, each a muted term above its value, between two quiet\n  rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the\n  container narrows.',
+        "Controls the visual layout:\n- `default`: stacked rows with visible terms.\n- `striped`: alternating row backgrounds.\n- `two-column`: a muted term on the left and the value on the right, with no row dividers;\n  collapses to stacked at narrow widths.\n- `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when\n  surrounding context already labels the value. NOT a general compact mode.\n- `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value\n  beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group);\n  stacks below 28rem.\n- `facts`: one row of equal columns, each a muted term above its value, between two quiet\n  rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the\n  container narrows.\n- `grid`: the pairs flow in as many equal columns as the list's own width fits (about 6.5rem\n  each), each a muted term above its value at the column's start edge, with no rules and no\n  fill: a wide card reads three short pairs on one row, a phone two, a narrow column one. A\n  `wide` item takes the whole row.",
     },
     stack: {
       type: 'boolean',

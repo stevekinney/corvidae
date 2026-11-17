@@ -53,6 +53,11 @@
       "description": "Where `status` sits: `inline` beside the title on its first line, or `below` the title.",
       "default": "below"
     },
+    "narrowActions": {
+      "enum": ["own-row", "beside-status"],
+      "description": "Where the actions go in a narrow header (a phone): `own-row` on a row of their own under the\ntitle and the status, or `beside-status` at the inline end of the status's row.",
+      "default": "own-row"
+    },
     "overflowLabel": {
       "type": "string",
       "description": "The accessible name of the overflow menu button.",

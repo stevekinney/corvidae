@@ -10,6 +10,9 @@ export type PageHeaderHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
  */
 export type PageHeaderStatusPlacement = 'inline' | 'below';
 
+/** Where a narrow header's actions go: on a row of their own, or beside the status. */
+export type PageHeaderNarrowActions = 'own-row' | 'beside-status';
+
 /**
  * The header's layout. `default` is the page title beside its actions. `large` sets the title at
  * the large page-title size and, once it scrolls away, shows it at the default size in a sticky
@@ -187,6 +190,15 @@ export type PageHeaderProps = Omit<
    */
   statusPlacement?: PageHeaderStatusPlacement;
   /**
+   * Where the actions go in a narrow header (a phone). `own-row` puts them on a row of their own
+   * under the title and the status. `beside-status` puts them at the inline end of the status's
+   * row instead, which saves that row's height, for a page whose actions are a few compact
+   * controls and whose content below needs the room, such as a chat; with no status they sit
+   * beside the title. A wide header is the same either way.
+   * @default "own-row"
+   */
+  narrowActions?: PageHeaderNarrowActions;
+  /**
    * The title's plain text, for the tooltip that shows the full title when it is cut off, when
    * `title` is a snippet. A string `title` is used as it is.
    */
@@ -251,6 +263,12 @@ export interface PageHeaderSchemaProps {
    * @default "below"
    */
   statusPlacement?: PageHeaderStatusPlacement;
+  /**
+   * Where the actions go in a narrow header (a phone): `own-row` on a row of their own under the
+   * title and the status, or `beside-status` at the inline end of the status's row.
+   * @default "own-row"
+   */
+  narrowActions?: PageHeaderNarrowActions;
   /**
    * The accessible name of the overflow menu button.
    * @default "More actions"

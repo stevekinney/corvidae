@@ -118,14 +118,21 @@ describe('FormActions', () => {
   });
 
   test('a sticky bar publishes its height for the toast region while it is mounted', () => {
-    const { unmount } = render(FormActions, { props: { sticky: true, end: buttons } });
-    // happy-dom lays nothing out, so the height is zero, but the property is published.
-    expect(
-      document.documentElement.style.getPropertyValue('--_cinder-docked-action-bar-height'),
-    ).toBe('0px');
-    unmount();
-    expect(
-      document.documentElement.style.getPropertyValue('--_cinder-docked-action-bar-height'),
-    ).toBe('');
+    // happy-dom lays nothing out, so the bar is given a box 64px tall at the bottom of the viewport.
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({ height: 64, top: window.innerHeight - 64, bottom: window.innerHeight }) as DOMRect;
+    try {
+      const { unmount } = render(FormActions, { props: { sticky: true, end: buttons } });
+      expect(
+        document.documentElement.style.getPropertyValue('--_cinder-docked-action-bar-height'),
+      ).toBe('64px');
+      unmount();
+      expect(
+        document.documentElement.style.getPropertyValue('--_cinder-docked-action-bar-height'),
+      ).toBe('');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+    }
   });
 });

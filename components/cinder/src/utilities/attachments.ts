@@ -1,5 +1,26 @@
 import type { Attachment } from 'svelte/attachments';
+import { trackDockedBar } from '../_internal/docked-bar-height.ts';
 import { lockBodyScroll } from '../_internal/overlay.ts';
+
+/**
+ * Marks a surface that is docked to the bottom of the page, such as a chat's composer, so a
+ * bottom `ToastRegion` sits above it, as it sits above a `DockedActionBar` or a bottom
+ * `NavigationBar`. While the surface's bottom edge is the bottom of the viewport (above the
+ * on-screen keyboard), or the top of another docked bar such as a phone's tab bar, or
+ * stops short of that edge by less than its own height (its page's bottom padding), its top edge
+ * counts towards the toast region's offset; the highest docked edge wins. It positions nothing:
+ * the surface docks itself, and it is measured again when it changes size and when the viewport
+ * or the keyboard does. A surface further up the page lifts the toasts by its own height only, and
+ * one that is not drawn does not count.
+ *
+ * @example
+ * ```svelte
+ * <div class="composer-dock" {@attach dockedToBottom()}>…</div>
+ * ```
+ */
+export function dockedToBottom(): Attachment<HTMLElement> {
+  return (node) => trackDockedBar(node);
+}
 
 /**
  * Creates a body scroll lock attachment that participates in the shared

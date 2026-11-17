@@ -13,6 +13,7 @@ import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import {
   callsTo,
+  describedBy,
   mount,
   openMenu,
   restoreBureau,
@@ -336,7 +337,9 @@ describe('Branch', () => {
     expect(item.getAttribute('aria-disabled') === 'true' || item.hasAttribute('disabled')).toBe(
       true,
     );
-    expect(item.getAttribute('title')).toBe(MORE.noBranchPoint);
+    // The reason is a second line the item is described by, not a `title` touch never shows.
+    expect(item.hasAttribute('title')).toBe(false);
+    expect(describedBy(item)).toBe(MORE.noBranchPoint);
   });
 });
 

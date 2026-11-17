@@ -194,9 +194,58 @@
     color: var(--cinder-text-muted);
   }
 
+  /* A wide item takes the whole row of a column variant: a long value, several lines or code. */
+  .cinder-description-list:is([data-cinder-variant='facts'], [data-cinder-variant='grid'])
+    .cinder-description-list__row[data-cinder-wide] {
+    grid-column: 1 / -1;
+  }
+
+  /* Grid variant: the pairs flow in as many equal columns as the list's own width fits, a muted term
+   * above its value at the column's start edge, with no rules and no fill. The tracks follow the
+   * list's inline size, never the viewport: a wide card reads three short pairs on one row, a phone
+   * card two, and a column narrower than two tracks one. */
+  .cinder-description-list[data-cinder-variant='grid'] {
+    --_cinder-description-list-column-min: calc(var(--cinder-space-24) + var(--cinder-space-2));
+
+    display: grid;
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, var(--_cinder-description-list-column-min)), 1fr)
+    );
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .cinder-description-list[data-cinder-variant='grid'] .cinder-description-list__row {
+    gap: 0;
+    min-width: 0;
+    padding: 0;
+  }
+
+  /* The term is the quiet half of the pair: the value's size, regular weight and muted, so the
+   * value carries the column; both keep the body line height. */
+  .cinder-description-list[data-cinder-variant='grid'] dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-description-list[data-cinder-variant='grid'] dd {
+    color: var(--cinder-text-default);
+  }
+
   /* ----------------------------------------
    * Formatted values
    * ---------------------------------------- */
+
+  /* Code is shown whole in the code font and breaks anywhere, so a long value never widens a column. */
+  .cinder-description-list__code {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    color: var(--cinder-text-default);
+  }
 
   .cinder-description-list__timestamp {
     font-variant-numeric: tabular-nums;

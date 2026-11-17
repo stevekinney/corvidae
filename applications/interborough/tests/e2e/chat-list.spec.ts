@@ -8,11 +8,13 @@
  */
 import type { Page, Route } from '@playwright/test';
 
+import { tasksOf } from '../../fixtures/chat-states.ts';
 import {
   SAMPLE_NOW,
   SAMPLE_NOW_MILLISECONDS,
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
+import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -192,6 +194,8 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await expect(show).toBeFocused();
     const detailAfter = await detail.boundingBox();
     expect(detailAfter!.width).toBeGreaterThan(detailBefore!.width + 150);
+    // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.
+    await expect(detail.locator('[data-approval-decision]')).toBeVisible();
     await checkA11y('the chat list hidden beside an open chat');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
@@ -207,6 +211,141 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
     await page.getByRole('button', { name: 'Show chats' }).click();
     await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
     await expect(list(page).getByRole('button', { name: 'Hide chats' })).toBeFocused();
+  });
+});
+
+test.describe('one left edge for the open chat (COR-2327 B4)', () => {
+  const refund = 'Please refund order 4471, it arrived damaged.';
+
+  /**
+   * The left edges of the title, the runs line and each alert when drawn, the transcript's content
+   * and the composer's, read in one pass so a scroll or a late layout cannot fall between them.
+   */
+  const leftEdges = (page: Page) =>
+    page.evaluate(() => {
+      const region = document.querySelector('[aria-label="Open chat"]') ?? document;
+      const left = (element: Element | null, inner = false): number | null => {
+        if (element === null) return null;
+        const box = element.getBoundingClientRect();
+        if (box.width === 0 && box.height === 0) return null;
+        return inner
+          ? box.left + Number.parseFloat(getComputedStyle(element).paddingLeft)
+          : box.left;
+      };
+      const edges: Record<string, number | null> = {
+        title: left(region.querySelector('h1.cinder-page-header__title')),
+        runs: left(region.querySelector('.weft-chat-strip')),
+        transcript: left(region.querySelector('.chat-timeline'), true),
+        composer: left(region.querySelector('.chat-input-area'), true),
+      };
+      region
+        .querySelectorAll('.weft-chat-head > .cinder-alert, .weft-chat-head > [role="alert"]')
+        .forEach((alert, index) => (edges[`alert ${index}`] = left(alert)));
+      return edges;
+    });
+
+  async function expectOneEdge(
+    page: Page,
+    label: string,
+    expected: readonly string[] = ['title', 'transcript', 'composer'],
+  ): Promise<void> {
+    const open = page.getByRole('region', { name: 'Open chat' });
+    await expect(open.getByRole('heading', { level: 1, name: refund })).toBeVisible();
+    // The transcript is drawn once the chat's history is read (COR-2327 B3).
+    await expect(page.locator('.chat-timeline').first()).toBeVisible();
+    if (expected.includes('runs')) await expect(open.locator('.weft-chat-strip')).toBeVisible();
+    if (expected.includes('alert 0')) {
+      await expect(open.locator('.weft-chat-head > .cinder-alert').first()).toBeVisible();
+    }
+    const edges = await leftEdges(page);
+    const drawn = Object.entries(edges).filter(
+      (entry): entry is [string, number] => entry[1] !== null,
+    );
+    expect(
+      drawn.map(([name]) => name),
+      label,
+    ).toEqual(expect.arrayContaining([...expected]));
+    const title = drawn.find(([name]) => name === 'title')![1];
+    for (const [name, edge] of drawn) {
+      expect(
+        Math.abs(edge - title),
+        `${label}: ${name} at ${edge}, title at ${title}`,
+      ).toBeLessThanOrEqual(1);
+    }
+  }
+
+  test('the title, runs line, alerts, transcript and composer share one left edge at 375, 768 and 1280, with the list shown and hidden', async ({
+    page,
+  }) => {
+    for (const width of [768, 1280]) {
+      await openChats(page, width);
+      await row(page, refund).getByRole('link').first().click();
+      await expectOneEdge(page, `${width}, list shown`);
+      await list(page).locator('header').getByRole('button', { name: 'Hide chats' }).click();
+      await expect(list(page)).toHaveCount(0);
+      await expectOneEdge(page, `${width}, list hidden`);
+      await page.getByRole('button', { name: 'Show chats' }).click();
+      await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
+    }
+    // A phone shows the chat as a screen of its own.
+    await openChats(page, 375);
+    await row(page, refund).getByRole('link').first().click();
+    await expectOneEdge(page, '375');
+  });
+
+  test('a runs line and the alerts over the transcript share that edge too, at 375 and 1280', async ({
+    page,
+    pageErrors,
+  }) => {
+    // The chat's runs say one failed, so the runs line is drawn, and its thread cannot be read in a
+    // way a retry cannot change, so the failure and Disconnected alerts are drawn above it.
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(403, /\/ag-ui\/threads\//),
+      reason: 'the test refuses the open chat’s thread with a 403',
+    });
+    await answerOperation(page, 'bureau.tasks.list', async (route, id) => {
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            tasks: [
+              {
+                ...tasksOf('failed-partway')[0],
+                id: 'run-edge',
+                contextId: SAMPLE_WORLD_THREADS.refund,
+                status: 'failed',
+              },
+            ],
+            nextPageToken: null,
+          },
+        },
+      });
+    });
+    await page.route('**/ag-ui/threads/**', (route) => route.fulfill({ status: 403, body: '' }));
+    // With no provider key, an unread chat is the Connect a model provider state in place of the
+    // transcript and the composer; with one, the transcript and the composer are drawn to measure.
+    await page.route('**/host/providers', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { providers: { hasKey: boolean }[] };
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          providers: body.providers.map((provider) => ({
+            ...provider,
+            hasKey: true,
+            connected: true,
+          })),
+        },
+      });
+    });
+    const expected = ['title', 'runs', 'alert 0', 'alert 1', 'transcript', 'composer'];
+    for (const width of [1280, 375]) {
+      await openChats(page, width);
+      await row(page, refund).getByRole('link').first().click();
+      await expectOneEdge(page, `${width}, runs line and alerts`, expected);
+    }
   });
 });
 
@@ -262,6 +401,8 @@ test.describe('the chat list at other widths', () => {
     await row(page, 'Please refund order 4471, it arrived damaged.').getByRole('link').click();
     await expect(page.getByRole('region', { name: 'Open chat' })).toBeVisible();
     await expect(list(page)).toBeVisible();
+    // The capture is of the chat as it is, with its history in (COR-2327 B3): its waiting approval.
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'list beside the chat',
