@@ -121,7 +121,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
   });
 
   // COR-2329 reverses row 01d (owner, 2026-11-13): one Spotlight and one quiet count, not four tiles.
-  test('leads with one Spotlight, 2 need you, and one unframed count under it', async ({
+  test('leads with one Spotlight, 2 need you, and one unframed count after its list', async ({
     page,
   }) => {
     await openHome(page);
@@ -132,7 +132,8 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     // The count draws no card: no border and no surface of its own.
     await expect(counts.locator('.cinder-statistic')).toHaveCSS('border-top-width', '0px');
     await expect(counts).toHaveCSS('border-top-width', '0px');
-    // The Spotlight is the largest text on the page, and the count sits under it.
+    // The Spotlight is the largest text on the page, and the count sits under the list the
+    // Spotlight titles, never between the two (COR-2489, owner decision 2026-11-16).
     const sizes = await page.evaluate(() => ({
       spotlight: parseFloat(
         getComputedStyle(document.querySelector('.cinder-spotlight__value')!).fontSize,
@@ -143,8 +144,10 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     }));
     expect(sizes.spotlight).toBeGreaterThan(sizes.count);
     const spotlightBox = await spotlight.boundingBox();
+    const listBox = await needsYou(page).boundingBox();
     const countBox = await counts.boundingBox();
-    expect(countBox!.y).toBeGreaterThan(spotlightBox!.y + spotlightBox!.height - 1);
+    expect(listBox!.y).toBeGreaterThan(spotlightBox!.y + spotlightBox!.height - 1);
+    expect(countBox!.y).toBeGreaterThan(listBox!.y + listBox!.height - 1);
   });
 
   test('lists the two reviews waiting on you, oldest first, kind first on line two (01f, 01g)', async ({
@@ -343,7 +346,9 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(clear.getByRole('group', { name: 'Nothing needs attention' })).toContainText(
       'Storage, schedules, providers and hooks are fine.',
     );
-    await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
+    // COR-2489: the link to Health is the section's action beside its heading, as it is with rows,
+    // and never moves into the clear line.
+    await expect(clear.getByRole('link', { name: 'Open Health' })).toHaveCount(0);
     // The clear line sits under its own heading, so it never reads as part of the section above.
     const attentionSection = page.locator('[data-home-card="Needs attention"]');
     await expect(
@@ -351,6 +356,11 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     ).toBeVisible();
     await expect(attentionSection.getByTestId('attention-clear')).toHaveCount(1);
     await expect(attentionSection.getByRole('link', { name: 'Open Health' })).toHaveCount(1);
+    await expect(
+      attentionSection
+        .locator('.cinder-section__actions')
+        .getByRole('link', { name: 'Open Health' }),
+    ).toBeVisible();
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(rows.nth(0)).toContainText('Done');
     await expect(rows.nth(0)).toContainText(

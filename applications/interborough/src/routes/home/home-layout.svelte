@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
    * The layout Home's sections sit in, shared by the page and by its loading placeholders so the
-   * two are the same layout and nothing moves when data arrives: the date line, the Spotlight with
-   * the one count under it, then two columns (what needs you, what is running and what needs
+   * two are the same layout and nothing moves when data arrives: the date line, the Spotlight, then
+   * two columns (what needs you with the one count after it, what is running and what needs
    * attention at the left, the box that starts a chat at the right) and the chats you were last in
    * across the full width below. On a phone every section is a row of one column, in the order the
-   * Spotlight, Needs you, Running now, the box that starts a chat, Needs attention, Recent chats.
+   * Spotlight, Needs you, the count, Running now, the box that starts a chat, Needs attention,
+   * Recent chats.
    * While the first-run
    * checklist shows the box that starts a chat sits under it, in the left column.
    *
@@ -21,10 +22,12 @@
     busy?: boolean;
     /** The line that leads the page. */
     date: Snippet;
-    /** The Spotlight and the one count under it; the checklist has neither. */
+    /** The Spotlight; the checklist has none. */
     focus?: Snippet | undefined;
     /** What needs you, or the checklist. */
     primary?: Snippet | undefined;
+    /** The one count, after the list the Spotlight titles; the checklist has none. */
+    counts?: Snippet | undefined;
     /** The Running now card, while a run is going. */
     running?: Snippet | undefined;
     /** The box that starts a chat under the checklist, in the left column. */
@@ -43,6 +46,7 @@
     date,
     focus,
     primary,
+    counts,
     running,
     startChatBelow,
     attention,
@@ -57,6 +61,9 @@
   <div class="ib-home__columns">
     <div class="ib-home__main">
       {#if primary}<div class="ib-home__needs-you">{@render primary()}</div>{/if}
+      <!-- The count follows the list the Spotlight titles, never between the two (owner decision
+           2026-11-16). -->
+      {#if counts}<div class="ib-home__counts">{@render counts()}</div>{/if}
       {#if running}<div class="ib-home__running">{@render running()}</div>{/if}
       <!-- While the checklist shows, the box that starts a chat sits under it, in the same column. -->
       {#if startChatBelow}<div class="ib-home__start-chat">{@render startChatBelow()}</div>{/if}
@@ -79,6 +86,11 @@
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-base);
+  }
+
+  /* A Spotlight that could not be read is left out, and its place takes no gap. */
+  .ib-home > .ib-home__focus:not(:has(*)) {
+    display: none;
   }
 
   /* On a phone every section is a row of one column, in the order the page lists them: what needs
@@ -104,6 +116,12 @@
    * no gap either. */
   .ib-home__needs-you:not(:has(*)) {
     display: none;
+  }
+
+  /* The count keeps the list's place in the order, after it in the markup, so it follows the list
+   * on a phone as it does in the wide column. */
+  .ib-home__counts {
+    order: 1;
   }
 
   .ib-home__running {

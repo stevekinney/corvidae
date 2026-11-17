@@ -20,6 +20,7 @@ import {
   test,
 } from 'bun:test';
 import { Window } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 
 import { FIRST_RUN_SAID_HELLO_KEY } from '../../app/first-run.ts';
 import {
@@ -86,6 +87,12 @@ async function open(
   return rendered;
 }
 
+/** A Cinder button's form: its variant and its size. */
+const buttonForm = (button: Element) => [
+  button.getAttribute('data-cinder-variant'),
+  button.getAttribute('data-cinder-size'),
+];
+
 /** The text of a card's rows, after the rows have been read. */
 function cardOf(container: HTMLElement, title: string): HTMLElement {
   const card = container.querySelector<HTMLElement>(`[data-home-card="${title}"]`);
@@ -105,7 +112,7 @@ describe('Home', () => {
   });
 
   // COR-2329: the content-first Home leads with one Spotlight and one quiet count, not four tiles.
-  test('leads with a Spotlight that says how many reviews wait on you, and one count under it', async () => {
+  test('leads with a Spotlight that says how many reviews wait on you, and one count after its list', async () => {
     const { getByTestId } = await open();
     await waitFor(() =>
       expect(
@@ -129,6 +136,35 @@ describe('Home', () => {
       cardOf(document.body, 'Needs you'),
     );
     expect(needsYou & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // COR-2489 (owner decision 2026-11-16): the count sat between the Spotlight and the list it
+  // titles. It renders after the list, in the markup and in the order the layout shows it.
+  test('renders "Failed in 24 hours" after the Needs you list the Spotlight titles', async () => {
+    const { container, getByTestId } = await open();
+    const list = cardOf(container, 'Needs you');
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
+    const counts = getByTestId('home-counts');
+    expect(getByTestId('home-focus').contains(counts)).toBe(false);
+    expect(
+      list.compareDocumentPosition(counts) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the count follows the list',
+    ).toBeTruthy();
+    expect(
+      getByTestId('home-spotlight').compareDocumentPosition(list) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // On screen too: the count's slot is placed right after the list's, before Running now, in the
+    // one-column order a phone uses, and follows it in the wide column's markup.
+    const slot = counts.closest('.ib-home__counts');
+    const listSlot = list.closest('.ib-home__needs-you');
+    expect(slot).not.toBeNull();
+    expect(listSlot?.nextElementSibling).toBe(slot);
+    const layout = readFileSync(new URL('./home-layout.svelte', import.meta.url), 'utf8');
+    const orderOf = (name: string) =>
+      new RegExp(`\\.ib-home__${name} \\{\\s*order: (\\d+);`).exec(layout)?.[1];
+    expect(orderOf('counts')).toBe(orderOf('needs-you'));
+    expect(Number(orderOf('counts'))).toBeLessThan(Number(orderOf('running')));
   });
 
   test('reads the recent chats without the archived ones, which are put away (COR-2285 V5)', async () => {
@@ -313,6 +349,12 @@ describe('Home', () => {
     expect(within(card).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
     );
+    // The link is the section's action, beside its heading, as it is with nothing listed (COR-2489).
+    expect(
+      within(card.querySelector('.cinder-section__actions') as HTMLElement).getByRole('link', {
+        name: 'Open Health',
+      }),
+    ).toBeDefined();
     // The provider notice is the third row alone: no banner or alert says it again.
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).not.toContain('Connect a model provider to chat');
@@ -413,21 +455,23 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     expect(container.textContent).not.toContain('Nothing is waiting on you');
   });
 
-  test('keeps the Needs attention heading over one line with the link to Health (01u)', async () => {
+  test('keeps the Needs attention heading over one line, with the link to Health as the section’s action (01u)', async () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
     // Cinder's empty state in its row layout: no line drawn by the page.
     const empty = within(line).getByRole('group', { name: 'Nothing needs attention' });
     expect(empty.getAttribute('data-cinder-layout')).toBe('row');
     expect(empty.textContent).toContain('Storage, schedules, providers and hooks are fine.');
-    expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
-      '/health',
-    );
     // The section's heading stays over it (COR-2329: without it the line read as part of the
-    // section above), and the link is in the line, not also beside the heading.
+    // section above). COR-2489: the link to Health is the section's action, beside the heading, as
+    // it is when there are rows; it no longer moves into the line.
     const card = cardOf(container, 'Needs attention');
     expect(card.contains(line)).toBe(true);
     expect(within(card).getByRole('heading', { level: 2, name: 'Needs attention' })).toBeDefined();
+    expect(within(line).queryByRole('link', { name: 'Open Health' })).toBeNull();
+    expect(line.querySelector('.cinder-empty-state-action')).toBeNull();
+    const action = card.querySelector('.cinder-section__actions');
+    expect(within(action as HTMLElement).getByRole('link', { name: 'Open Health' })).toBeDefined();
     expect(within(card).getAllByRole('link', { name: 'Open Health' })).toHaveLength(1);
   });
 
@@ -509,6 +553,35 @@ describe('Home’s Start a chat card (01k)', () => {
     await fireEvent.click(within(card).getByRole('button', { name: 'Use Assistant' }));
     await waitFor(() => expect(card.querySelector('textarea')).not.toBeNull());
     expect(card.querySelector('[data-chat-composer-status="blocked"]')).toBeNull();
+  });
+
+  // COR-2489: "Connect a provider" is drawn in one button form per context: a secondary small
+  // button in a Needs attention row and in the blocked composer, and the checklist's primary small
+  // button while its step is current.
+  test('draws Connect a provider in one button form per context', async () => {
+    const { container, getByTestId } = await open();
+    const card = getByTestId('home-start-chat');
+    await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
+    await chooseOption(card, 'Tool runner', 'home-start-chat-agent');
+    const composer = await waitFor(() =>
+      within(card).getByRole('link', { name: 'Connect a provider' }),
+    );
+    const attention = cardOf(container, 'Needs attention');
+    const row = await waitFor(() =>
+      within(attention).getByRole('link', { name: 'Connect a provider' }),
+    );
+    expect(buttonForm(row)).toEqual(['secondary', 'sm']);
+    expect(buttonForm(composer)).toEqual(['secondary', 'sm']);
+  });
+
+  test('draws the checklist’s Connect a provider as its one primary small button', async () => {
+    const { container } = await open(freshInstallation());
+    const step = within(stepOf(container, 'provider')).getByRole('link', {
+      name: 'Connect a provider',
+    });
+    expect(buttonForm(step)).toEqual(['primary', 'sm']);
+    // The checklist stands in for the notice, so the step is the only Connect a provider there.
+    expect(within(container).getAllByRole('link', { name: 'Connect a provider' })).toHaveLength(1);
   });
 
   test('a model agent is not blocked once a provider holds a key', async () => {

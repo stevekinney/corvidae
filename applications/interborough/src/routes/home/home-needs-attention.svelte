@@ -10,14 +10,15 @@
    * leaves that row out; the rest stay.
    *
    * With nothing to show the section keeps its heading over one row, Cinder's `EmptyState` in its
-   * row layout: "Nothing needs attention", with the link to Health at the end of it. (Without the
-   * heading the row read as part of the section above it.) A read that failed says so in the
+   * row layout: "Nothing needs attention". The link to Health is the section's action beside the
+   * heading either way, so it never moves into the row (COR-2489). (Without the heading the row
+   * read as part of the section above it.) A read that failed says so in the
    * section's own place, with a Try again and no link to Health, and never claims all is well;
    * while it has not answered the section holds Cinder's grouped placeholder rows. Each row's button
    * only opens a page, so it stays live while the server does not answer, as the link to Health
    * does.
    */
-  import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -66,13 +67,11 @@
   );
 </script>
 
-<!-- With nothing to show the link to Health moves into the clear row, at the end of its line, so
-     the section never says it twice. -->
+<!-- The link to Health is the section's action whether it lists rows or says nothing needs
+     attention, so it sits in one place, beside the heading (COR-2489). -->
 <HomeCard
   title={copy.title}
-  link={items.data === undefined || rows.length === 0
-    ? undefined
-    : { label: copy.link, href: '/health' }}
+  link={items.data === undefined ? undefined : { label: copy.link, href: '/health' }}
 >
   {#if items.data === undefined && items.isError}
     <HomeCardError
@@ -89,15 +88,7 @@
         headingLevel={3}
         title={copy.clear.title}
         description={copy.clear.description}
-      >
-        {#snippet action()}
-          <Link
-            variant="more"
-            href={router.href('/health')}
-            onclick={(event: MouseEvent) => openInApplication(event, '/health')}>{copy.link}</Link
-          >
-        {/snippet}
-      </EmptyState>
+      />
     </div>
   {:else}
     <GroupedList aria-label={copy.listLabel}>

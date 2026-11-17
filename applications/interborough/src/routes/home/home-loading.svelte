@@ -17,6 +17,7 @@
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeLayout from './home-layout.svelte';
+  import { START_CHAT_MESSAGE_HEIGHT } from './home-start-chat.ts';
 
   interface HomeLoadingProps {
     /** Called when the person cancels a load that is taking long. */
@@ -38,20 +39,12 @@
   <HomeLayout mode="loading" busy>
     {#snippet date()}{dateLine(clock())}. {timesShowIn(clock())}.{/snippet}
     {#snippet focus()}
-      <Stack gap="var(--cinder-space-4)" data-testid="home-loading-focus">
+      <div data-testid="home-loading-focus">
         <!-- One line of the Spotlight (32px type at its 1.1 leading), so nothing moves when it
              arrives. It is the page's first placeholder, so after 10 s the "Still loading" line
              takes its place and nothing moves then either (COR-2329). -->
         <Skeleton width="11rem" height="2.2rem" radius="var(--cinder-radius-md)" holdsStatusLine />
-        <StatisticGroup
-          label={HOME_COPY.countsLabel}
-          columns={1}
-          variant="plain"
-          data-testid="home-loading-counts"
-        >
-          <Statistic label={HOME_COPY.counts.failed} value="" loading />
-        </StatisticGroup>
-      </Stack>
+      </div>
     {/snippet}
     {#snippet primary()}
       <!-- The Spotlight is the list's title, so the placeholder rows sit under its placeholder with
@@ -59,6 +52,17 @@
       <div data-home-card={HOME_COPY.needsYou.title}>
         <Skeleton variant="grouped" rows={2} action />
       </div>
+    {/snippet}
+    {#snippet counts()}
+      <!-- The count follows the list, as the loaded count does. -->
+      <StatisticGroup
+        label={HOME_COPY.countsLabel}
+        columns={1}
+        variant="plain"
+        data-testid="home-loading-counts"
+      >
+        <Statistic label={HOME_COPY.counts.failed} value="" loading />
+      </StatisticGroup>
     {/snippet}
     {#snippet attention()}
       <HomeCard title={HOME_COPY.attention.title}>
@@ -68,9 +72,18 @@
     {#snippet startChatAside()}
       <HomeCard title={HOME_COPY.startChat.title}>
         <Stack gap="var(--cinder-space-3)">
-          <Skeleton height="4.75rem" radius="var(--cinder-radius-md)" />
+          <!-- As tall as the message box it stands for: Cinder's Textarea is 6rem at least, and the
+               box's three-line placeholder sits inside that, so nothing below moves when the box
+               arrives (COR-2489: the placeholder was 4.75rem). -->
+          <Skeleton height={START_CHAT_MESSAGE_HEIGHT} radius="var(--cinder-radius-md)" />
           <Stack direction="row" justify="between" align="center" gap="var(--cinder-space-3)">
-            <Skeleton width="8.25rem" height="2rem" radius="var(--cinder-radius-md)" />
+            <!-- The agent picker is a small Select, which takes the small control height, and Send a
+                 Button at its painted height. -->
+            <Skeleton
+              width="8.25rem"
+              height="var(--cinder-control-height-sm)"
+              radius="var(--cinder-radius-md)"
+            />
             <Skeleton width="4.75rem" height="2rem" radius="var(--cinder-radius-md)" />
           </Stack>
         </Stack>
