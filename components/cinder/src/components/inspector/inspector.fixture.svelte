@@ -20,6 +20,7 @@
       </p>
       <DescriptionList
         variant="fields"
+        framed
         data-testid="inspector-detail-facts"
         items={[
           { term: 'Owner', definition: 'Ada Lovelace', href: '#owner' },

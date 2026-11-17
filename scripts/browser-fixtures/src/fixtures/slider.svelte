@@ -16,7 +16,7 @@
   // prove `displayValue`'s output reacts to a value it didn't set itself.
   let compactSingle = $state(7);
   let compactRange = $state<[number, number]>([3, 19]);
-  const singleDisplayValue = (nextValue: number) => `${nextValue} notes · C4–B4`;
+  const singleDisplayValue = (nextValue: number) => `${nextValue} notes (C4–B4)`;
   const rangeDisplayValue = ([low, high]: [number, number]) => `${low}–${high}`;
 </script>
 

@@ -133,7 +133,7 @@ describe('Modal', () => {
   test('body opts into the shared scroll-fade recipe with a surface-colored overlay, never a mask', async () => {
     const css = await Bun.file(new URL('./modal.css', import.meta.url)).text();
     expect(css).toMatch(
-      /\.cinder-modal__body\s*\{[^}]*--_cinder-scroll-fade-color:\s*var\(--cinder-surface\)/s,
+      /\.cinder-modal__body\s*\{[^}]*--_cinder-scroll-fade-color:\s*var\(--cinder-surface-raised\)/s,
     );
     expect(css).not.toContain('mask-image:');
     expect(css).not.toMatch(/(?:-webkit-)?mask(?:-[a-z]+)?\s*:/);

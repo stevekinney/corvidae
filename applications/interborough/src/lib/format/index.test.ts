@@ -6,7 +6,26 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { formatBytes, formatDuration, formatRelativeTime, truncateId } from './index.ts';
+import {
+  formatBytes,
+  formatDuration,
+  formatRelativeTime,
+  truncateId,
+  truncateRevision,
+} from './index.ts';
+
+describe('truncateRevision', () => {
+  test('drops the sha256 prefix so the shown characters tell revisions apart', () => {
+    const digest = '1a2b3c4d5e6f708192a3b4c5d6e70e6f';
+    expect(truncateRevision(`sha256:${digest}`)).toBe('1a2b3c…0e6f');
+    expect(truncateRevision(digest)).toBe('1a2b3c…0e6f');
+  });
+
+  test('leaves a short revision whole', () => {
+    expect(truncateRevision('sha256:abc123')).toBe('abc123');
+    expect(truncateRevision('rev-current')).toBe('rev-current');
+  });
+});
 
 describe('truncateId', () => {
   test('truncates a long id to first8…last4', () => {

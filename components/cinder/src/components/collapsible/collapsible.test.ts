@@ -23,6 +23,7 @@ const { default: BindableHarness } = await import('./collapsible-bindable-harnes
 const { default: SnippetTriggerHarness } =
   await import('./collapsible-snippet-trigger-harness.svelte');
 const { default: OpenPropHarness } = await import('./collapsible-open-prop-harness.svelte');
+const { default: NestedHarness } = await import('./collapsible-nested-harness.svelte');
 const { createRawSnippet } = await import('svelte');
 
 function bodySnippet(text = 'panel body') {
@@ -394,6 +395,35 @@ describe('Collapsible root', () => {
 
     expect(root?.classList.contains('extra-class')).toBe(true);
     expect(root?.getAttribute('data-testid')).toBe('collapsible-root');
+  });
+});
+
+describe('Collapsible nested in a Collapsible', () => {
+  test('is flat by default, with the outer one keeping its frame', () => {
+    const { container } = render(NestedHarness, {});
+    const [outer, inner] = [...container.querySelectorAll('.cinder-collapsible')];
+
+    expect(outer?.hasAttribute('data-cinder-variant')).toBe(false);
+    expect(inner?.getAttribute('data-cinder-variant')).toBe('flat');
+  });
+
+  test('framed keeps the frame of the nested one', () => {
+    const { container } = render(NestedHarness, { framed: true });
+    const inner = container.querySelectorAll('.cinder-collapsible')[1];
+
+    expect(inner?.hasAttribute('data-cinder-variant')).toBe(false);
+  });
+
+  test('a Collapsible that is not nested ignores framed', () => {
+    const { container } = render(Collapsible, {
+      trigger: 'Details',
+      children: bodySnippet(),
+      framed: false,
+    });
+
+    expect(
+      container.querySelector('.cinder-collapsible')?.hasAttribute('data-cinder-variant'),
+    ).toBe(false);
   });
 });
 

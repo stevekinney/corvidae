@@ -1,7 +1,7 @@
 <script lang="ts" module>
-  export const title = 'Clamped run with Show all';
+  export const title = 'Clamped run with Show more';
   export const description =
-    "A long run holds to five lines; Show all opens the rest in place and the page's own link sits beside it.";
+    "A long run holds to five lines; Show more opens the rest in place and the page's own link sits beside it.";
 </script>
 
 <script lang="ts">

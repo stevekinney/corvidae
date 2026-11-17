@@ -360,6 +360,7 @@
       />
     {:else if listQuery.isPending}
       <ScheduleListLoading
+        {phone}
         {segments}
         segmentValue={filters.status}
         {facets}

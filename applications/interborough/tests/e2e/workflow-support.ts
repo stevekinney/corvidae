@@ -121,19 +121,16 @@ export async function workflowRunStatus(
 }
 
 /**
- * The width below which Cinder's `Tabs` turns a horizontal tab bar into one select named Tab
- * (`PHONE_VIEWPORT_BREAKPOINT` in Cinder's `viewport-below.svelte.ts`, the `collapseBelow` default).
- * The workflow pages keep that default, so at the phone width a tab is chosen from the select's
- * options and the selected tab is the select's value.
+ * Cinder's `Tabs` turns a horizontal tab bar into one select named Tab only when the bar does not
+ * fit its container (`collapseOnOverflow`), so whether a tab is chosen from the select's options,
+ * with the selected tab as the select's value, is read from the page and not from the viewport.
  */
-const TABS_COLLAPSE_BELOW_PIXELS = 640;
 
 /** The accessible name Cinder gives the select a collapsed tab bar becomes (`collapseLabel`). */
 const COLLAPSED_TABS_LABEL = 'Tab';
 
-function tabsAreCollapsed(root: Locator): boolean {
-  const width = root.page().viewportSize()?.width;
-  return width !== undefined && width < TABS_COLLAPSE_BELOW_PIXELS;
+async function tabsAreCollapsed(root: Locator): Promise<boolean> {
+  return (await collapsedTabs(root).count()) > 0;
 }
 
 /** The control that shows which tab is open: the select when the bar is collapsed. */
@@ -143,7 +140,7 @@ function collapsedTabs(root: Locator): Locator {
 
 /** Opens the tab `name` of the tab bar in `root`, from the select at the phone width. */
 export async function openTab(root: Locator, name: string): Promise<void> {
-  if (!tabsAreCollapsed(root)) {
+  if (!(await tabsAreCollapsed(root))) {
     await root.getByRole('tab', { name }).click();
     return;
   }
@@ -153,7 +150,7 @@ export async function openTab(root: Locator, name: string): Promise<void> {
 
 /** Expects the tab `name` of the bar in `root` to be the one that is open. */
 export async function expectTabOpen(root: Locator, name: string): Promise<void> {
-  if (tabsAreCollapsed(root)) {
+  if (await tabsAreCollapsed(root)) {
     await expect(collapsedTabs(root)).toContainText(name);
     return;
   }
@@ -176,7 +173,7 @@ export async function expectTabNames(
       ? name
       : new RegExp(`^\\s*${name.source.replace(/^\^/, '').replace(/\$$/, '')}\\s*$`, name.flags),
   );
-  if (!tabsAreCollapsed(root)) {
+  if (!(await tabsAreCollapsed(root))) {
     await expect(root.getByRole('tab')).toHaveText(expected);
     return;
   }

@@ -18,6 +18,7 @@
     Link,
     StatusDot,
     Table,
+    Text,
     type TableSort,
   } from '@lostgradient/cinder';
   import { Cpu } from '@lucide/svelte';
@@ -26,7 +27,6 @@
   import type { ProviderModel } from '../../../lib/host-providers.ts';
   import { deniedProvidersOf, isModelAllowed, type ModelPolicy } from '../model-policy-edit.ts';
   import { formatContext, formatModelAbilities, modelDisplayName } from './format-model.ts';
-  import ModelName from './model-name.svelte';
 
   /** Why the list of models did not come back: the names of the providers that are connected, and the answer's status. */
   export interface CatalogFailure {
@@ -83,12 +83,14 @@
 <div class="ib-models" data-section="models">
   {#if failure === undefined && models.length > 0}
     <FormSection grouped heading={copy.heading} description={copy.description} />
-    <Table caption={copy.tableLabel} density="comfortable" fit class="ib-records__table" bind:sort>
+    <Table caption={copy.tableLabel} density="comfortable" fit bind:sort>
       <colgroup>
-        <col style="width: 40%" />
-        <col style="width: 32%" />
-        <col style="width: 14%" />
-        <col style="width: 14%" />
+        <!-- The three narrow columns are as wide as their content (a status word is never cut, a
+             long list of abilities wraps); Model takes the rest and ends in an ellipsis. -->
+        <col />
+        <col style="width: 7rem" />
+        <col style="width: 5rem" />
+        <col style="width: 6rem" />
       </colgroup>
       <Table.Header>
         <Table.Row>
@@ -101,12 +103,19 @@
       <Table.Body>
         {#each rows as row (`${row.model.provider}/${row.model.model}`)}
           <Table.Row data-model={`${row.model.provider}/${row.model.model}`}>
-            <Table.Cell>
-              <ModelName name={row.name} identifier={row.model.model} />
+            <!-- Below a phone's width the row is the name and its identifier, the status under them,
+                 then Abilities and Context as labelled lines (Cinder Table `fit`, COR-2364). -->
+            <Table.Cell as="th" class="ib-models__name">
+              {row.name}
+              {#snippet detail()}
+                <code class="ib-models__identifier"
+                  ><Text as="span" truncate="end" text={row.model.model} /></code
+                >
+              {/snippet}
             </Table.Cell>
             <Table.Cell>{formatModelAbilities(row.model)}</Table.Cell>
             <Table.Cell>{formatContext(row.model.contextWindowTokens)}</Table.Cell>
-            <Table.Cell>
+            <Table.Cell stack="status">
               <StatusDot
                 status={row.allowed ? 'success' : 'neutral'}
                 label={row.allowed ? copy.allowed : copy.notAllowed}
@@ -149,5 +158,21 @@
 <style>
   .ib-models {
     min-inline-size: 0;
+  }
+
+  /* The name as a person says it, with the identifier the provider calls it small and monospaced
+     under it (board SettingsShell, "Models, provider connected"). */
+  .ib-models :global(.ib-models__name) {
+    font-weight: var(--cinder-font-semibold);
+    text-align: start;
+  }
+
+  .ib-models__identifier {
+    display: block;
+    min-inline-size: 0;
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-normal);
   }
 </style>

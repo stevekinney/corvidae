@@ -130,7 +130,7 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    * - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when
    *   surrounding context already labels the value. NOT a general compact mode.
    * - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value
-   *   beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text;
+   *   beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group);
    *   a row with an `href` ends in a trailing chevron; the term stacks above its value while the list
    *   is narrower than 700px.
    * - `facts`: one row of equal columns, each a muted term above its value, between two quiet
@@ -150,6 +150,13 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    * @default false
    */
   stack?: boolean;
+  /**
+   * Keeps the tinted, rounded frame around the `fields` variant. The variant is flat by default, so
+   * a record inside a pane or a card never draws a box inside a box; set this where the list stands
+   * alone on the page canvas. Has no effect on any other variant.
+   * @default false
+   */
+  framed?: boolean;
   /** Additional class merged onto the `.cinder-description-list` root element. */
   class?: string;
   /**

@@ -537,10 +537,8 @@ test.describe('Health › Audit log on the sample world', () => {
 
     // 83f: the target keeps to one line with an ellipsis, so the row is as tall as any other.
     const cell = rows(page).first().locator('td').last();
-    await expect(cell.locator('.cinder-table__cell-text')).toHaveAttribute(
-      'title',
-      `Storage › ${key}`,
-    );
+    await expect(cell.locator('.cinder-table__cell-text')).toHaveText(`Storage › ${key}`);
+    await expect(cell.locator('.cinder-table__cell-text')).toHaveAttribute('tabindex', '0');
     const lineHeights = await rows(page).evaluateAll((all) =>
       all.map((row) => row.getBoundingClientRect().height),
     );

@@ -123,12 +123,16 @@
 
   /* Fields variant: a record read as a list, the record-details anatomy shared with InspectorRow. The
    * term is a regular-weight muted label in a fixed 140px column, the value beside it in the default
-   * color, and each row is at least 44px tall. The rows sit in one tinted group, and a quiet rule
-   * under each row starts at the text. It stacks below 700px. */
+   * color, and each row is at least 44px tall, with a quiet rule under each row. It is flat by
+   * default, so it never draws a box inside a pane or a card; `framed` puts the rows in one tinted
+   * group. A row with an `href` ends in a trailing chevron. It stacks below 700px. */
   .cinder-description-list[data-cinder-variant='fields'] {
     container-type: inline-size;
     display: grid;
     grid-template-columns: 8.75rem minmax(0, 1fr);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] {
     padding-inline-start: var(--cinder-space-4);
     overflow: hidden;
     border-radius: var(--cinder-radius-surface);

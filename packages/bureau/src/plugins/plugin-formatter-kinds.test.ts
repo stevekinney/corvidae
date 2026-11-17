@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';
-import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
+import { isPublishedEventKind } from '../bureau-event-catalog';
 import { createBureau } from '../create-bureau';
 import { listedPlugins } from '../testing/plugin-listing.test-support';
 import type { Bureau } from '../bureau-types/facade';
@@ -71,23 +71,35 @@ describe('formatter event kinds', () => {
     ]);
   });
 
-  it('names only catalog kinds in the README code fences', async () => {
+  it('names only published kinds, or kinds its own fence declares, in the README code fences', async () => {
     const readme = await Bun.file(
       new URL('../../../interborough-plugin/README.md', import.meta.url),
     ).text();
-    const kinds: string[] = [];
+    const kinds: { kind: string; declared: string[] }[] = [];
     for (const fence of readme.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)) {
+      // The kinds the fence's own plugin declares: its `name` plus each declared event's `name`.
+      const body = fence[1] ?? '';
+      const plugin = /\bname:\s*'([^']+)'\s*,\s*version:/u.exec(body)?.[1];
+      const block = /\n( *)events:\s*\[\s*(?=\{)([\s\S]*?)\n\1\]/u.exec(body)?.[2] ?? '';
+      const declared =
+        plugin === undefined
+          ? []
+          : [...block.matchAll(/\bname:\s*'([^']+)'/gu)].map((match) => `${plugin}:${match[1]}`);
       // An `events` array of kinds starts with a string; the `events` contribution (COR-2223) is an
       // array of declarations, which start with an object and name no kind to check.
       for (const array of (fence[1] ?? '').matchAll(
         /\b(?:eventKinds|events)\s*:\s*\[\s*(?=['"`])([^\]]*)\]/gu,
       )) {
         for (const literal of (array[1] ?? '').matchAll(/(['"`])((?:(?!\1).)*)\1/gu)) {
-          kinds.push(literal[2] ?? '');
+          kinds.push({ kind: literal[2] ?? '', declared });
         }
       }
     }
     expect(kinds.length).toBeGreaterThan(0);
-    for (const kind of kinds) expect(Object.hasOwn(BUREAU_EVENT_CATALOG, kind)).toBe(true);
+    for (const { kind, declared } of kinds) {
+      expect(isPublishedEventKind(kind, declared)).toBe(true);
+    }
+    // A formatter in the README lists a kind its own fence declares.
+    expect(kinds.some(({ kind }) => kind.includes(':'))).toBe(true);
   });
 });

@@ -186,7 +186,11 @@ test.describe('Health › Storage on the sample world', () => {
     const shortened = await row.locator('th').innerText();
     expect(shortened).toMatch(/…/);
     expect(shortened.length).toBeLessThan(key.length);
-    await expect(row.locator('th [title]').first()).toHaveAttribute('title', key);
+    // The whole key is one focus (or hover, or tap) away, in a tooltip, not a mouse-only title.
+    const keyText = row.locator('th .cinder-table__cell-text');
+    await expect(keyText).not.toHaveAttribute('title');
+    await keyText.focus();
+    await expect(page.getByRole('tooltip').filter({ hasText: key })).toBeVisible();
     await row.click();
     await expect(main.getByTestId('storage-key-name')).toHaveText(key);
 

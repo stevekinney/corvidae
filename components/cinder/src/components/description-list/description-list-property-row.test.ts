@@ -49,6 +49,19 @@ describe('DescriptionList fields: the PropertyRow trailing chevron', () => {
     expect(readOnly?.hasAttribute('data-cinder-linked')).toBe(false);
   });
 
+  test('a framed list draws the tinted group and its linked row still ends in the chevron', () => {
+    const { container } = render(DescriptionList, {
+      variant: 'fields',
+      framed: true,
+      items: [{ term: 'Owner', definition: 'Ada Lovelace', href: '/people/ada' }],
+    });
+    expect(container.querySelector('dl')?.hasAttribute('data-cinder-framed')).toBe(true);
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+    );
+    expect(container.querySelector('.cinder-description-list__link svg')).not.toBeNull();
+  });
+
   test('a linked row whose value is not plain text is named for its term', () => {
     const { container } = render(DescriptionList, {
       variant: 'fields',
