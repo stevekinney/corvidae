@@ -663,6 +663,63 @@ function moveUnmountableTests(
   }
 }
 
+/**
+ * Two packages whose tests mount each other (button's fixture mounts card, card's mounts button)
+ * cycle through their test dependencies though neither source depends on the other, and a package
+ * manager or task graph refuses the cycle. In each such cycle, the tests that mount a package of
+ * the same or a higher layer go to core; repeats to a fixpoint.
+ */
+function breakTestCycles(
+  context: Context,
+  owners: Map<string, string>,
+  graph: Graph,
+  testMoves: TestMove[],
+): void {
+  const layer = layersOf(graph.edges);
+  for (;;) {
+    const edges = new Map([...graph.edges].map(([name, targets]) => [name, new Set(targets)]));
+    const witnesses = new Map<string, { files: string[]; chain: string }>();
+    for (const [file, owner] of [...owners].toSorted(([a], [b]) => a.localeCompare(b))) {
+      if (!isTestFile(file) || !CODE_FILE.test(file) || !movesWithItsTests(owner, file)) continue;
+      for (const [needed, chain] of packagesNeeded(context, owners, file, owner)) {
+        if (needed === 'core' || !edges.has(needed)) continue;
+        edges.get(owner)?.add(needed);
+        const key = `${owner} ${needed}`;
+        const witness = witnesses.get(key) ?? { files: [], chain };
+        witness.files.push(file);
+        witnesses.set(key, witness);
+      }
+    }
+    const cycles = findCycles(edges);
+    if (cycles.length === 0) return;
+    let moved = false;
+    for (const cycle of cycles) {
+      const members = new Set(cycle);
+      for (const [key, { files, chain }] of witnesses) {
+        const [from = '', to = ''] = key.split(' ');
+        if (!members.has(from) || !members.has(to)) continue;
+        if ((layer.get(to) ?? 0) < (layer.get(from) ?? 0)) continue;
+        for (const file of files) {
+          moveToCore(
+            context,
+            owners,
+            testMoves,
+            file,
+            `it mounts "${to}", whose tests mount "${from}" in turn (${chain})`,
+          );
+        }
+        moved = true;
+      }
+    }
+    if (!moved) {
+      context.problems.push(
+        `Tests cycle through ${cycles.map((cycle) => cycle.join(', ')).join('; ')} with no test of a lower layer to move.`,
+      );
+      return;
+    }
+  }
+}
+
 function checkHelpers(context: Context, placements: ReadonlyMap<string, Placement>): void {
   for (const [file, placement] of placements) {
     if (typeof placement.rule !== 'number') continue;
@@ -725,6 +782,7 @@ export function deriveFamilies(
   if (graph !== undefined) {
     decideByImports(context, owners, graph, testMoves);
     moveUnmountableTests(context, owners, graph, testMoves);
+    breakTestCycles(context, owners, graph, testMoves);
     for (const owner of owners.values()) if (owner !== '') packages.add(owner);
   }
   if (graph === undefined) throw new FamilyDerivationError([...new Set(context.problems)]);

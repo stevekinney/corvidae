@@ -482,6 +482,38 @@ function importedPackages(
 }
 
 /**
+ * The cycles the selected and extracted packages would form through everything their files import,
+ * tests included, checked before anything moves.
+ */
+function selectionCycles(plan: Plan): string[][] {
+  const members = new Set([...plan.selected, ...plan.extracted]);
+  const imported = importedPackages(plan, new Set(plan.selected));
+  const graph = new Map<string, Set<string>>();
+  for (const name of plan.selected) {
+    const edges = new Set(
+      [
+        ...(imported.get(name)?.keys() ?? []),
+        ...(plan.options.families.packages[name]?.dependencies ?? []),
+      ].filter((target) => members.has(target) && target !== name),
+    );
+    graph.set(name, edges);
+  }
+  for (const name of plan.extracted) {
+    const path = join(plan.options.root, 'components', name, 'package.json');
+    if (!existsSync(path)) continue;
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as Manifest;
+    const edges = new Set(
+      [...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {})]
+        .filter((dependency) => dependency.startsWith(PACKAGE_SCOPE))
+        .map((dependency) => dependency.slice(PACKAGE_SCOPE.length))
+        .filter((target) => members.has(target) && target !== name),
+    );
+    graph.set(name, edges);
+  }
+  return findCycles(graph);
+}
+
+/**
  * The candidates that can move now: a package moves only once everything its files import has
  * (its source dependencies, and what its tests and fixtures mount), so a family whose fixture
  * mounts a family of a higher layer waits for it. Repeats to a fixpoint; the rest are deferred.
@@ -1248,6 +1280,12 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
   plan.result.warnings.push(...deferred.map((reason) => `deferred: ${reason}`));
   plan.selected = ready;
   plan.result.selected = ready;
+  const cycles = selectionCycles(plan);
+  if (cycles.length > 0) {
+    throw new Error(
+      `The selection's packages would cycle through what their files import: ${cycles.map((cycle) => cycle.join(' -> ')).join('; ')}. Re-derive families.json.`,
+    );
+  }
   readOrder(plan);
   planMoves(plan);
   scaffold(plan);

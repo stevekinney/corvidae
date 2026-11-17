@@ -136,6 +136,30 @@ describe('deriveFamilies', () => {
     expectNoPackageCycle(derived);
   });
 
+  test('tests that mount each other move the one that mounts a higher layer to core', () => {
+    const tree = baseTree();
+    // card (layer 2) uses button (layer 1); button's fixture mounts card and card's mounts button.
+    tree.set('src/components/button/button-in-card.fixture.svelte', svelte('../card/card.svelte'));
+    tree.set('src/components/card/card-footer.fixture.svelte', svelte('../button/button.svelte'));
+    const derived = derive(tree);
+    expect(derived.testMoves.map(({ file }) => file)).toEqual([
+      'src/components/button/button-in-card.fixture.svelte',
+    ]);
+    expectNoPackageCycle(derived);
+  });
+
+  test('a foundation test that mounts a family moves to core', () => {
+    const tree = baseTree();
+    tree.set(
+      'src/_internal/id.test.ts',
+      "import Button from '../components/button/button.svelte';\n",
+    );
+    const derived = derive(tree);
+    expect(derived.testMoves.map(({ file, from }) => `${from} ${file}`)).toEqual([
+      'foundation src/_internal/id.test.ts',
+    ]);
+  });
+
   test('a family may import another family module while the graph stays acyclic', () => {
     const tree = baseTree();
     tree.set('src/components/card/card.svelte', svelte('../../_internal/pair-context.ts'));
