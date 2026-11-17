@@ -25,6 +25,8 @@ applications/playground/src/.tmp-*/
 **/*.generated.d.ts
 # Standalone schema validators are machine-generated Ajv output, checked against exact generator output.
 components/cinder/src/tokens/runtime/*-validator.generated.js
+# React 18's published UMD builds, byte-exact, which the design-system render check loads into its harness.
+components/cinder/scripts/design-system/harness/*.production.min.js
 # DR-5 (COR-513) diff-review export golden fixtures are byte-exact generated agent-handoff
 # output, checked verbatim against `exportDiffReviewMarkdown`/`exportDiffReviewJson` in
 # diff-review-export-golden.test.ts. Their Markdown deliberately stacks single-newline-separated
