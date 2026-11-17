@@ -2,15 +2,15 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { record } from './protocol.test-support.ts';
 
-import type { DefinitionSchemaDirection } from '../core/types/definition-schema-to-json.ts';
 import {
+  type ErasedOperation,
   buildOperationEntry,
   buildSseChannel,
   buildSseMessages,
   buildWebSocketChannel,
   buildWebSocketMessages,
-} from './asyncapi-channels.ts';
-import type { ErasedOperation } from './operation-catalog.ts';
+} from '@lostgradient/backchannel/internals';
+import type { DefinitionSchemaDirection } from '../core/types/definition-schema-to-json.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
 
 function definitionSchemaToJsonSchema(

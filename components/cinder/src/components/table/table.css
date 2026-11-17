@@ -344,7 +344,7 @@
 
   /* ----------------------------------------
  * Truncation — a cell with `truncate` keeps its text on one line and ends it
- * with an ellipsis, with the full text in the `title`. The text sits in a block
+ * with an ellipsis, with the full text in a tooltip. The text sits in a block
  * with a maximum inline size, which bounds the width the column asks for: a
  * 2,000px value cannot widen the table, whatever the table layout.
  * ---------------------------------------- */
@@ -356,6 +356,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The cut text takes focus to open its tooltip with the whole text. */
+  .cinder-table__cell-text:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* ----------------------------------------
@@ -593,5 +600,262 @@
 
   .cinder-table[data-cinder-stacked] .cinder-table__cell-text {
     max-inline-size: 100%;
+  }
+
+  /* ----------------------------------------
+ * Cards — a `fit` table below `stackBelow` (table.svelte sets `data-cinder-stack-card` on the table
+ * and its scroll box) is a list of flat rows in the phone shape of a stacked list item: the title
+ * and its end value on line one, the status on line two, then a line of label and value for every
+ * other cell. A control that keeps its size sits at the trailing edge across the first two lines.
+ * The rows are not cards inside a box: the scroll box and the table draw no frame, and one hairline
+ * divides the rows. Every rule is scoped to the marker and declared after the control layout above,
+ * at the same specificity, so it replaces what that layout set for the same cells.
+ * ---------------------------------------- */
+
+  .cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card]) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
+  }
+
+  .cinder-table[data-cinder-stack-card] {
+    background: transparent;
+    --_cinder-table-fill: transparent;
+  }
+
+  /* The sort control sits above the rows, at the inline end, as compact as its field allows. */
+  .cinder-table__stack-sort {
+    display: flex;
+    justify-content: flex-end;
+    padding-block-end: var(--cinder-space-2);
+  }
+
+  /* The select is a ghost one, as wide as its longest option and the chevron, and 36px tall even on
+     a touch screen, where a field is raised to 43px. This box adds the padding that makes its hit
+     area 44px. */
+  .cinder-table__stack-sort-hit {
+    display: flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding-block: var(--cinder-space-1);
+  }
+
+  .cinder-table__stack-sort-hit .cinder-select[data-cinder-variant='ghost'][data-cinder-size] {
+    min-block-size: 2.25rem;
+    max-block-size: 2.25rem;
+  }
+
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    column-gap: 0;
+    row-gap: var(--cinder-space-1);
+    align-items: baseline;
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-4);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* No break line: there is no control line to separate. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:has(> .cinder-table__cell[data-cinder-controls])::before {
+    content: none;
+  }
+
+  /* Every cell is a line across the row, in the order it is written; the parts below move to theirs. */
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__cell {
+    grid-column: 1 / -1;
+    display: flex;
+    column-gap: var(--cinder-space-3);
+    overflow: visible;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    text-align: start;
+  }
+
+  /* The control layout above puts a cell with no control first by `order`; a field follows the prose. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell:not([data-cinder-controls]) {
+    order: 3;
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell:not([data-cinder-controls])
+    ~ .cinder-table__cell:not([data-cinder-controls]) {
+    flex: 0 1 auto;
+    text-align: start;
+  }
+
+  /* A labelled field: the header text, muted, in a column of its own, then the value. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack-label]::before {
+    content: attr(data-cinder-stack-label);
+    flex: 0 0 var(--_cinder-table-stack-label-size);
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-table[data-cinder-stack-card] {
+    --_cinder-table-stack-label-size: 6.5rem;
+  }
+
+  /* A field's value shares the line with its label and wraps inside its own column. */
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__cell > * {
+    min-inline-size: 0;
+  }
+
+  /* A cell with nothing in it, and its label, are not drawn. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack-empty] {
+    display: none;
+  }
+
+  /* The title: line one, at the leading edge. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack-title] {
+    grid-column: 1;
+    grid-row: 1;
+    order: 0;
+    display: block;
+    min-inline-size: 0;
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    overflow-wrap: break-word;
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack-title]::before {
+    content: none;
+  }
+
+  /* The row header's name holds to two lines in any `fit` table, stacked or not, and ends with an
+     ellipsis; its tooltip, drawn only while the clamp cuts, carries the whole of it. */
+  .cinder-table[data-cinder-fit] .cinder-table__cell-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: break-word;
+  }
+
+  .cinder-table[data-cinder-fit] .cinder-table__cell-title:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* The title's detail (an identifier) is one muted line under it; any other cell's stays hidden. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__cell[data-cinder-stack-title]
+    .cinder-table__cell-detail {
+    display: block;
+    overflow: hidden;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The end value: line one, at the inline end, on the title's baseline. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack='end'] {
+    grid-column: 2;
+    grid-row: 1;
+    order: 0;
+    display: block;
+    margin-inline-start: var(--cinder-space-3);
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack='end']::before,
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack='status']::before,
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack='plain']::before {
+    content: none;
+  }
+
+  /* The status: starts line two, and its word is never cut. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack='status'] {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    order: 0;
+    display: block;
+    white-space: nowrap;
+  }
+
+  /* Prose is a muted line with no label. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-stack='plain'] {
+    order: 1;
+    display: block;
+    color: var(--cinder-text-muted);
+  }
+
+  /* A control that keeps its size: the trailing edge, across lines one and two, with a 44px hit area. */
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls='fit'] {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    order: 0;
+    align-self: center;
+    justify-content: center;
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+    margin-inline-start: var(--cinder-space-3);
+    position: relative;
+    z-index: 1;
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls='fit'][data-cinder-stack-label]::before {
+    content: none;
+  }
+
+  /* A linked title makes the whole row the link: its pseudo-element stretches over the row, above
+   * the text and below the controls, and the row wears the focus ring. */
+  .cinder-table[data-cinder-stack-card] .cinder-table__cell[data-cinder-stack-title] a::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__cell[data-cinder-stack-title]
+    a:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 }

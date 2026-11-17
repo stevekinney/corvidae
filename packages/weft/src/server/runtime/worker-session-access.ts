@@ -1,4 +1,5 @@
-import { isAuthenticated, type Principal } from '../principal.ts';
+import { type Principal } from '@lostgradient/backchannel';
+import { isAuthenticated } from '@lostgradient/backchannel/internals';
 import type { LongPollWorkerSession, ServerContext } from './context.ts';
 import { authorizeWorkerPrincipal } from './task-result-submission.ts';
 

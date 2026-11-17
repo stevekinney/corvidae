@@ -5,8 +5,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { createRateLimiter } from '../authentication.ts';
-import { principalFromUnauthenticatedLocal } from '../principal.ts';
+import { createRateLimiter, principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
 import { authenticateRequest, gateRequest } from './request-gate.ts';
 import { minimalServerContext } from './server-context.test-support.ts';
 

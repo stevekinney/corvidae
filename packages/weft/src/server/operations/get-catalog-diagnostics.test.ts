@@ -4,6 +4,8 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { buildWorkflowContract } from '../../core/contract/build.ts';
@@ -15,8 +17,6 @@ import { getWorkflowCatalog } from '../../core/engine/index.ts';
 import { workflow, type WorkflowContext } from '../../core/types.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import { TaskQueue } from '../task-queue.ts';
 import {

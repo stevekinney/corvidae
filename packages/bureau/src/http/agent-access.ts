@@ -10,7 +10,7 @@
  * @module agent-access
  */
 
-import type { Principal } from '@lostgradient/weft';
+import type { Principal } from '@lostgradient/backchannel';
 
 import { ownerOrLocal } from '../owner-of-record.ts';
 import type { BureauScope } from './bureau-scopes.ts';

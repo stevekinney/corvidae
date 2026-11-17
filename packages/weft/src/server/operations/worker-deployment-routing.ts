@@ -1,3 +1,9 @@
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import {
+  type UnknownRestBinding,
+  invalidParamsFault,
+  readRestTextBody,
+} from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
 import type {
   WorkerDeploymentCatalog,
@@ -6,11 +12,7 @@ import type {
   WorkerDeploymentRoutingWrite,
 } from '../../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
-import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { readRestTextBody } from '../rest-body.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
@@ -22,8 +24,7 @@ const routingInput = z.object({
   expectedGeneration: z.number().int().min(0).optional(),
 });
 const deploymentInput = z.object({ deploymentName: z.string().min(1), buildId: z.string().min(1) });
-// Promote and rollback read the current generation themselves; a caller that previewed the change
-// passes the generation the preview reported, and a move past it is a Conflict, not a silent overwrite.
+// Promote and rollback read the current generation; one past a previewed generation is a Conflict.
 const moveBuildInput = deploymentInput.extend({
   expectedGeneration: z.number().int().min(0).optional(),
 });
@@ -165,8 +166,7 @@ async function moveToBuild(
     currentBuildId: input.buildId,
     rampBasisPoints: 10_000,
   });
-  // Without an `expectedGeneration` the move is conditional on the generation just read, which
-  // still refuses a pointer that moves between the read and the write.
+  // Without an `expectedGeneration` the move is conditional on the generation just read.
   const expectedGeneration =
     input.expectedGeneration ?? (await currentGenerationOf(catalog, input.deploymentName));
   const routing = await setRoutingOrThrow(catalog, { ...target, expectedGeneration });
@@ -421,7 +421,7 @@ function binding(method: 'GET' | 'POST', path: string, operationName: string): U
     extractInput: async (request, _path, context) =>
       JSON.parse(await readRestTextBody(request, context)),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   };
 }
 export const workerDeploymentRoutingRestBinding = binding(
@@ -440,7 +440,7 @@ export const workerDeploymentDiagnosticsRestBinding: UnknownRestBinding = {
     return deploymentName === null ? {} : { deploymentName };
   },
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };
 export const workerDeploymentPromoteRestBinding = binding(
   'POST',

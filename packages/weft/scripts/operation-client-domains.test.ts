@@ -1,5 +1,5 @@
+import type { CatalogOperationSnapshot } from '@lostgradient/backchannel';
 import { expect, test } from 'bun:test';
-import type { CatalogOperationSnapshot } from '../src/server/operation-catalog-snapshot.ts';
 import { createOperationClientSources } from './generate-operation-client.ts';
 import { operationDomains } from './operation-client-domains.ts';
 

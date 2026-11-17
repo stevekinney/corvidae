@@ -7,6 +7,8 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../core/codec.ts';
 import {
@@ -25,9 +27,7 @@ import {
   manifestForActivities,
   TEST_ACCEPTED_MANIFEST_DIGEST,
 } from '../worker/registry-fixtures.test-support.ts';
-import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { createRetryTaskDeadLetterOperation } from './operations/retry-task-dead-letter.ts';
-import { principalFromApiKey } from './principal.ts';
 import {
   FailingTerminalCommitStorage,
   minimalServeOptions,

@@ -10,13 +10,15 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import {
+  AUTHORIZATION_SCOPES,
+  authContextToPrincipal,
+  principalFromUnauthenticatedLocal,
+  type AuthConfig,
+} from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import type { AuthConfig } from './authentication.ts';
-import { AUTHORIZATION_SCOPES } from './authorization-scope.ts';
-import { authContextToPrincipal } from './handler/auth-context-principal.ts';
 import { serve, type WeftServer } from './index.ts';
-import { principalFromUnauthenticatedLocal } from './principal.ts';
 import { NO_AUTHENTICATION_WARNING } from './serve-internals.ts';
 
 const API_KEY = 'unauthenticated-local-test-key';

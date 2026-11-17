@@ -1,0 +1,13 @@
+{
+  "extends": "@lostgradient/typescript/browser.json",
+  "include": ["src"],
+  "exclude": [
+    "${configDir}/node_modules",
+    "${configDir}/coverage",
+    "${configDir}/src/testing.ts",
+    "${configDir}/src/**/*.test.*",
+    "${configDir}/src/**/*.test-d.ts",
+    "${configDir}/src/**/*.test-support.ts",
+    "${configDir}/src/__fixtures__/**"
+  ]
+}

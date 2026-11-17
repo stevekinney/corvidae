@@ -1,31 +1,29 @@
 import { z } from 'zod';
 
-import type { FleetEventEnvelope, FleetEventFeed } from '../fleet-event-feed.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { EVENTS_READ_EVENT_TYPES } from '../runtime/client-visible-events.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
 import {
-  decodeCursor,
   type Cursor,
+  type OperationFault,
+  type ReplayAwareClosableIterable,
   type ReplayLiveSubscribeOptions,
-} from '../workflow-event-feed.ts';
-import {
   createReplayAwareClosableIterable,
-  fleetEventEnvelopeSchema,
+  decodeCursor,
+  defineOperation,
+} from '@lostgradient/backchannel';
+import {
+  type ConnectionLease,
+  type UnknownRestBinding,
+  createEventEnvelopeSSEStream,
+  invalidParamsFault,
   isClosableAsyncIterable,
   isReplayAwareClosableIterable,
-  type ReplayAwareClosableIterable,
-} from './event-stream-contracts.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
-import {
-  createEventEnvelopeSSEStream,
   readServerSentEventsCursor,
   requireServerSentEventsAccept,
   shapeServerSentEventsFault,
   SSE_RESPONSE_HEADERS,
-} from './sse-stream.ts';
+} from '@lostgradient/backchannel/internals';
+import type { FleetEventEnvelope, FleetEventFeed } from '../fleet-event-feed.ts';
+import { EVENTS_READ_EVENT_TYPES } from '../runtime/client-visible-events.ts';
+import { fleetEventEnvelopeSchema } from './event-stream-contracts.ts';
 
 type FleetEventsSseOutput = AsyncIterable<FleetEventEnvelope>;
 type ReplayAwareFleetEventsOutput = ReplayAwareClosableIterable<FleetEventEnvelope>;

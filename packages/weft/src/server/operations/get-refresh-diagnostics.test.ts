@@ -4,11 +4,11 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
-import { executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import {
   REFRESH_TEST_WORKFLOW,

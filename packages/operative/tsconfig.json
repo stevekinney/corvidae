@@ -4,6 +4,9 @@
   "exclude": ["node_modules", "coverage"],
   "references": [
     {
+      "path": "../backchannel/tsconfig.source.json"
+    },
+    {
       "path": "../cryptography/tsconfig.source.json"
     },
     {

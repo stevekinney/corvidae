@@ -48,6 +48,8 @@
 
 import type { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { Storage } from '@lostgradient/storage';
 import {
   decodeTaskAttemptRecord,
@@ -68,8 +70,6 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import {
   executionIdentitySchema,
   executionRequirementSchema,

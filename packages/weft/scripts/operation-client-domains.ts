@@ -1,5 +1,5 @@
-import { compareStrings } from '../src/server/json-schema-utilities.ts';
-import type { CatalogOperationSnapshot } from '../src/server/operation-catalog-snapshot.ts';
+import type { CatalogOperationSnapshot } from '@lostgradient/backchannel';
+import { compareStrings } from '@lostgradient/backchannel/internals';
 import { renderRoot, schemaToNode } from './operation-client-schema.ts';
 
 export const GENERATED_HEADER =

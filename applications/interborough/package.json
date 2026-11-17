@@ -48,6 +48,7 @@
     "@lostgradient/storage-indexeddb": "workspace:*",
     "@lostgradient/storage-postgres": "workspace:*",
     "@lostgradient/testing": "workspace:*",
+    "@lostgradient/backchannel": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@modelcontextprotocol/ext-apps": "catalog:",

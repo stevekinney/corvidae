@@ -1,28 +1,31 @@
 import type { ServerWebSocket } from 'bun';
 
+import { type AuthConfig, authContextToPrincipal } from '@lostgradient/backchannel';
+import {
+  type AuthContext,
+  type OpenApiSecuritySchemeName,
+  API_PREFIX,
+  JSON_RPC_PATH,
+  MCP_STREAMABLE_HTTP_PATH,
+  buildPreflightResponse,
+  closeJsonRpcWebSocketSession,
+  decorateResponseWithCors,
+  handleJsonRpcWebSocketMessage,
+  isPreflightRequest,
+} from '@lostgradient/backchannel/internals';
 import type { Engine, RegistryAgnosticEngine } from '../../core/engine.ts';
 import { handleMcpHttpRequest } from '../../mcp/http.ts';
 import type { PrometheusExporter } from '../../observability/metrics.ts';
-import type { AuthConfig, AuthContext } from '../authentication.ts';
-import type { HandlerOptions } from '../handler.ts';
-import { authContextToPrincipal, handleRequest } from '../handler.ts';
+import { type HandlerOptions, handleRequest } from '../handler.ts';
 import { handleJsonRpcHttpRequestSafely } from '../json-rpc-transport-helpers.ts';
+import { type WebSocketData, openJsonRpcWebSocketSession } from '../json-rpc-websocket-runtime.ts';
 import {
-  closeJsonRpcWebSocketSession,
-  handleJsonRpcWebSocketMessage,
-  openJsonRpcWebSocketSession,
-  type WebSocketData,
-} from '../json-rpc-websocket-runtime.ts';
-import type { OpenApiSecuritySchemeName } from '../openapi.ts';
-import { API_PREFIX, JSON_RPC_PATH, MCP_STREAMABLE_HTTP_PATH } from '../route-model.ts';
-import {
+  type ServerContext,
   acquireFleetSseConnection,
   acquireFleetWebSocketConnection,
   acquireWorkflowSseConnection,
   acquireWorkflowWebSocketConnection,
-  type ServerContext,
 } from './context.ts';
-import { buildPreflightResponse, decorateResponseWithCors, isPreflightRequest } from './cors.ts';
 import { gateRequest } from './request-gate.ts';
 import { handleTaskHeartbeatRequest, handleTaskPollRequest } from './task-polling.ts';
 import { handleTaskResultRequest } from './task-result-submission.ts';
@@ -48,7 +51,7 @@ type ServerFetchOptions = {
   // registry-erased `Engine` behavior.
   engine: RegistryAgnosticEngine;
   prometheusExporter?: PrometheusExporter;
-  discoveryInfo?: import('../discovery-info.ts').DiscoveryInfo;
+  discoveryInfo?: import('@lostgradient/backchannel').DiscoveryInfo;
   publicOrigin?: string;
   trustedHosts?: ReadonlyArray<string>;
   maxRequestBodyBytes?: number;

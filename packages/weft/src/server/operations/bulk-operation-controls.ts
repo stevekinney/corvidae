@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { Principal } from '@lostgradient/backchannel';
+import { type AccessPolicy, invalidParamsFault } from '@lostgradient/backchannel/internals';
 import type {
   BulkOperationCommitOptions,
   BulkOperationDryRunOptions,
@@ -9,9 +11,6 @@ import {
   MAX_BULK_CONFIRMATION_TOKEN_LENGTH,
   MAX_BULK_OPERATION_REQUEST_ID_LENGTH,
 } from '../../core/types/bulk.ts';
-import type { AccessPolicy } from '../authorization.ts';
-import type { Principal } from '../principal.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
 
 export const bulkOperationControlInputSchema = z.object({
   dryRun: z

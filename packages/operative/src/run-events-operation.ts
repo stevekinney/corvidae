@@ -15,7 +15,7 @@ import {
   defineOperation,
   type OperationFault,
   type ReplayLiveSubscribeOptions,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import {

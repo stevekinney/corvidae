@@ -4,17 +4,15 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { decode, encode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
 import { listWorkflowsOperation, listWorkflowsRestBinding } from './list-workflows.ts';
 import { waitForWorkflowStatus } from './operation-test-helpers.test-support.ts';
 

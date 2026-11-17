@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { anonymousPrincipal } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { FleetEventEnvelope } from '../fleet-event-feed.ts';
-import { createFleetEventFeed } from '../fleet-event-feed.ts';
-import { anonymousPrincipal } from '../principal.ts';
+import { createFleetEventFeed, type FleetEventEnvelope } from '../fleet-event-feed.ts';
 import {
   fleetEventsSubscriptionOperation,
   type FleetEventsSubscriptionInput,

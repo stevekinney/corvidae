@@ -38,7 +38,7 @@ import {
   decodeCursor,
   defineOperation,
   encodeCursor,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';

@@ -1,13 +1,13 @@
 import { expect } from 'bun:test';
 
-import { MemoryStorage } from '@lostgradient/storage';
-import { Engine } from '../../core/engine.ts';
-import { executeOperation, type OperationRegistry } from '../operation-catalog.ts';
 import {
   principalFromApiKey,
   principalFromJwtClaims,
   type AuthenticatedPrincipal,
-} from '../principal.ts';
+} from '@lostgradient/backchannel';
+import { executeOperation, type OperationRegistry } from '@lostgradient/backchannel/internals';
+import { MemoryStorage } from '@lostgradient/storage';
+import { Engine } from '../../core/engine.ts';
 
 /** Engine backed by `MemoryStorage` for operation tests. */
 export function createOperationTestEngine(): Engine {

@@ -152,30 +152,6 @@
       "reason": "metric names come from the METRICS table, which is declared in this package"
     },
     {
-      "file": "src/server/openapi.ts",
-      "expression": "paths[openApiPath]",
-      "count": 4,
-      "reason": "the key is an OpenAPI path, which always begins with `/`; no inherited name does"
-    },
-    {
-      "file": "src/server/operation-catalog/pipeline-stages.ts",
-      "expression": "key in parsed",
-      "count": 1,
-      "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
-    },
-    {
-      "file": "src/server/operation-catalog/pipeline-stages.ts",
-      "expression": "rawInput[key]",
-      "count": 1,
-      "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
-    },
-    {
-      "file": "src/server/operation-fault.ts",
-      "expression": "(fault.data as Record<string, unknown>)[field]",
-      "count": 1,
-      "reason": "the field is a key from Object.entries(fault.data), so it is an own key of the same object"
-    },
-    {
       "file": "src/worker/manifest/json-scan.ts",
       "expression": "simple[escaped]",
       "count": 1,

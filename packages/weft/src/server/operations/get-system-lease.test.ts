@@ -2,11 +2,11 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey, principalFromJwtClaims } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey, principalFromJwtClaims } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import { getSystemLeaseOperation, getSystemLeaseRestBinding } from './get-system-lease.ts';
 

@@ -1,4 +1,4 @@
-import type { PackageAuthorizationScope } from '@lostgradient/weft';
+import type { PackageAuthorizationScope } from '@lostgradient/backchannel';
 
 /**
  * Every authorization scope Bureau's catalog operations declare, in one list.

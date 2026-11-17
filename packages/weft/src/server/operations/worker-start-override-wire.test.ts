@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decode } from '../../core/codec.ts';
@@ -16,8 +18,6 @@ import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/types.ts';
 import { issueWorkflowWorkerStartOverridePreview } from '../../worker/start-override-preview.ts';
 import { resolveWorkflowWorkerStartBinding } from '../../worker/versioning-policy.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createStartOrSignalWorkflowOperation } from './start-or-signal-workflow.ts';
 import { createStartWorkflowOperation } from './start-workflow.ts';
 import { buildClientBody } from './worker-start-override-wire.test-support.ts';

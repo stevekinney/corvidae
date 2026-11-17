@@ -1,4 +1,15 @@
 import {
+  createReplayLiveFeed,
+  encodeCursor,
+  type Cursor,
+  type ReplayLiveFeed,
+  type ReplayLiveFeedBackend,
+} from '@lostgradient/backchannel';
+import {
+  createDurableSubscription,
+  createSerialOperationQueue,
+} from '@lostgradient/backchannel/internals';
+import {
   MAX_BATCH_OPERATIONS,
   storageConditionalBatch,
   type BatchOperation,
@@ -29,19 +40,10 @@ import {
 } from './fleet-event-feed-storage.ts';
 import type { FleetEventFeed } from './fleet-event-feed.ts';
 import {
-  createDurableSubscription,
-  createSerialOperationQueue,
-} from './replay-live-feed-internals.ts';
-import {
-  createReplayLiveFeed,
-  encodeCursor,
-  type Cursor,
   type FleetEventAppendOptions,
   type FleetEventEnvelope,
   type FleetEventInput,
   type FleetWorkflowEventInput,
-  type ReplayLiveFeed,
-  type ReplayLiveFeedBackend,
 } from './workflow-event-feed.ts';
 
 export function createFleetEventFeedOperations(

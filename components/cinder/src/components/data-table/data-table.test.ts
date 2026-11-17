@@ -13,6 +13,7 @@ setupHappyDom();
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { default: DataTable } = await import('./data-table.svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 const { default: SnippetsFixture } = await import('./data-table-snippets.fixture.svelte');
 
 afterEach(() => cleanup());
@@ -1179,7 +1180,8 @@ describe('DataTable — virtualized rows', () => {
 describe('DataTable — truncating columns', () => {
   const storageKey = `storage/${'segment-'.repeat(250)}`;
 
-  test('a truncate column ellipsizes its text and keeps the full value in the title', () => {
+  test('a truncate column ellipsizes its text and keeps the full value in a focusable cut text', () => {
+    const restoreLayout = stubCutLayout(true);
     const { container } = render(DataTable, {
       columns: [
         { key: 'key', label: 'Key', truncate: true },
@@ -1192,7 +1194,9 @@ describe('DataTable — truncating columns', () => {
     );
     expect(truncated).toHaveLength(1);
     const text = truncated[0]?.querySelector('.cinder-table__cell-text');
-    expect(text?.getAttribute('title')).toBe(storageKey);
+    expect(text?.textContent?.trim()).toBe(storageKey);
+    expect(text?.getAttribute('tabindex')).toBe('0');
+    restoreLayout();
 
     // A column without the option is untouched.
     const owner = Array.from(container.querySelectorAll('tbody td')).find(

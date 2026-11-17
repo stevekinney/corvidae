@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { isDiscoverable } from './discovery-filter.ts';
+import { isDiscoverable } from '@lostgradient/backchannel/internals';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
 
 const ALLOW_LIST: ReadonlySet<string> = new Set([]);

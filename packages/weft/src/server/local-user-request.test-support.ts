@@ -14,7 +14,8 @@
  * build) and must never be imported by production server code.
  */
 
-import { handleRequest, unauthenticatedLocalAuthContext, type HandlerOptions } from './handler.ts';
+import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
+import { handleRequest, type HandlerOptions } from './handler.ts';
 
 /** The context `serve()` attaches to every request when it has no `auth`. */
 export const LOCAL_USER_AUTH_CONTEXT = unauthenticatedLocalAuthContext();

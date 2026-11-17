@@ -1,45 +1,16 @@
+import type { OperationFault } from '@lostgradient/backchannel';
+import {
+  invalidParamsFault,
+  isOperationFault,
+  readRestTextBody,
+  type RestFaultResponseOptions,
+  type RestInputContext,
+} from '@lostgradient/backchannel/internals';
 import type { Storage } from '@lostgradient/storage';
 import { UndeclaredWorkflowMessageError, type Engine } from '../../core/engine.ts';
-import type { WeftErrorCode } from '../../core/weft-error.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
-import {
-  shapeRestFaultAsJson,
-  type OperationFault,
-  type RestFaultResponseOptions,
-} from '../operation-fault.ts';
-import type { RestInputContext } from '../rest-binding.ts';
-import { readRestTextBody } from '../rest-body.ts';
+import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
-
-/** Type guard distinguishing an `OperationFault` from a value type. */
-export function isOperationFault(value: unknown): value is OperationFault {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'code' in value &&
-    'message' in value &&
-    'data' in value
-  );
-}
-
-/**
- * Construct an `InvalidParams` fault with the `{ issues: [] }` data
- * shape. This is the canonical 400-class fault for caller-input validation
- * errors raised inside `invoke()` or `extractInput()`.
- *
- * Pass `weftCode` only when a typed `WeftError` is in hand (e.g. a caught
- * `WorkflowNotRegisteredError`) so REST clients can branch on it through
- * `isWeftFault`. It is omitted entirely when absent — never written as
- * `weftCode: undefined` — so the dozens of generic validation callers keep
- * their exact `{ issues: [] }` data shape.
- */
-export function invalidParamsFault(message: string, weftCode?: WeftErrorCode): OperationFault {
-  return {
-    code: 'InvalidParams',
-    message,
-    data: weftCode === undefined ? { issues: [] } : { issues: [], weftCode },
-  };
-}
 
 /**
  * The `Conflict` a start answers when its worker start-override token cannot
@@ -84,7 +55,7 @@ export function shapeRestFault(
   fault: OperationFault,
   options?: RestFaultResponseOptions,
 ): Response {
-  return shapeRestFaultAsJson(fault, options);
+  return shapeWeftRestFaultAsJson(fault, options);
 }
 
 export function faultMessage(error: unknown): string {
