@@ -63,6 +63,12 @@ const schema = {
       description:
         "Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one.",
     },
+    questionPlacement: {
+      enum: ['inline', 'docked'],
+      default: 'inline',
+      description:
+        "Where a question that has choices (a choice, a choice with Something else, a yes or no) is answered. `'inline'` (default) draws its controls in its transcript row; on a coarse pointer, choice questions dock so phone users always get the explicit Reply and Answer controls. `'docked'` draws the question in place of the composer, with a Needs you warning, a fieldset named Question, the choices with the keys 1, 2 and 3, Something else, a quiet Reply in chat and a primary Answer. Every other kind of question stays in its row either way. Needs `onInputSubmit`.",
+    },
     composerAnswering: {
       type: 'boolean',
       description:
@@ -319,6 +325,12 @@ const schema = {
           "Override or supplement the suggestion list for a message. Called\nper-message; return an array of label strings to show suggestion chips,\n`undefined` to fall back to `message.metadata['cinder:suggestions']`. An\nempty array suppresses suggestions.",
       },
       {
+        name: 'messageTurnState',
+        reason: 'function-or-snippet',
+        description:
+          'Where each assistant turn stands, as the host knows it. Called per assistant message; return a `ChatTurnState` to draw the turn\'s outcome on the turn itself (`reconnecting`, `stopped`, `failed` or `empty`), or `undefined` to leave it streaming while text arrives and complete after. A reconnecting turn reads "Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s." by the composer, with Retry and a bar that drains until the next try. A callback that throws or returns something else draws the turn as Chat sees it.',
+      },
+      {
         name: 'onAdapterError',
         reason: 'function-or-snippet',
         description:
@@ -396,7 +408,18 @@ const schema = {
         description:
           'Called after pointer or selection activity may have moved the composer\ncaret without changing text. Overlay primitives can resync their active\ntoken from the textarea selection.',
       },
-
+      {
+        name: 'onContinueTurn',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set.",
+      },
+      {
+        name: 'onDiscardTurn',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation.",
+      },
       {
         name: 'onEdit',
         reason: 'function-or-snippet',
@@ -437,6 +460,24 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'onRetryConnection',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set.",
+      },
+      {
+        name: 'onRetryStep',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a failed tool call's id when the person chooses Retry under it. The button shows only when this is set; Copy error always shows.",
+      },
+      {
+        name: 'onRetryTurn',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Retry. Each shows only when this is set.",
+      },
+      {
         name: 'onRollback',
         reason: 'function-or-snippet',
         description:
@@ -471,6 +512,12 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'questionLabels',
+        reason: 'unknown-shape',
+        description:
+          'The words of the docked question (`ChatQuestionDockLabels`), any of which the host can replace.',
+      },
+      {
         name: 'readReceipts',
         reason: 'unknown-shape',
         description:
@@ -487,6 +534,12 @@ const schema = {
         reason: 'unknown-shape',
         description:
           'The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link.',
+      },
+      {
+        name: 'turnLabels',
+        reason: 'unknown-shape',
+        description:
+          "The words of a turn's outcome and of the steps under it (`ChatTurnLabels`), any of which the host can replace, such as `stepsDone` to read `Checked 2 of 3 sources`.",
       },
       {
         name: 'typingParticipants',

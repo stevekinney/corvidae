@@ -195,6 +195,29 @@ test('composer popover example imports the named public component export', () =>
   expect(examples.examples[0]?.code).not.toMatch(/import ChatComposerPopover\s*,/);
 });
 
+test('the schema lists the run-outcome props and the docked question props (COR-2283, COR-2278)', () => {
+  const unsupported = new Map(
+    (chatSchema.metadata?.unsupportedProps ?? []).map((entry) => [entry.name, entry.reason]),
+  );
+  for (const name of [
+    'messageTurnState',
+    'onRetryConnection',
+    'onContinueTurn',
+    'onDiscardTurn',
+    'onRetryTurn',
+    'onRetryStep',
+  ]) {
+    expect(unsupported.get(name)).toBe('function-or-snippet');
+  }
+  expect(unsupported.get('turnLabels')).toBe('unknown-shape');
+  expect(unsupported.get('questionLabels')).toBe('unknown-shape');
+  // An enum is expressible in JSON Schema, so it is a property, as `composerPlacement` is.
+  expect(chatSchema.properties['questionPlacement']).toMatchObject({
+    enum: ['inline', 'docked'],
+    default: 'inline',
+  });
+});
+
 test('the committed Chat JSON schema matches the typed schema', async () => {
   const jsonSchema = await Bun.file(new URL('./chat.schema.json', import.meta.url)).json();
   expect(jsonSchema).toEqual(chatSchema);
