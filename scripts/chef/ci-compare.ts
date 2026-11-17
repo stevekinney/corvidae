@@ -15,13 +15,14 @@
 // Exit codes: 0 every failure was seen on main (or nothing failed), 1 a new failure or the run
 // is not complete, 2 invalid CLI usage or GitHub could not be read.
 
+import { createClient, LinearError, type LinearClient } from './linear.ts';
 import { MAIN_WORKFLOW } from './main-ci.ts';
 import {
   defaultRunner,
   emitResult,
   parseOptions,
-  type Runner,
   UsageError,
+  type Runner,
 } from './process-runner.ts';
 import { loadRepositoryConfig } from './repository-config.ts';
 
@@ -42,6 +43,14 @@ export interface RunFailures {
 export interface JudgedTest {
   name: string;
   seenIn: string[];
+  flakes?: FlakeMatch[];
+}
+
+/** An existing COR flake issue whose description names the failed test. */
+export interface FlakeMatch {
+  identifier: string;
+  /** A completed issue this flake report identifies as the earlier attempted repair. */
+  recursAfter?: string;
 }
 
 export interface JudgedJob {
@@ -63,6 +72,8 @@ export interface Comparison {
   mainRuns: string[];
   jobs: JudgedJob[];
   hasNew: boolean;
+  /** Linear is advisory evidence: an unread lookup never turns a known CI failure into a new one. */
+  flakeLookupProblem?: string;
 }
 
 function gh(runner: Runner, args: string[]): string {
@@ -78,6 +89,10 @@ function gh(runner: Runner, args: string[]): string {
 const BUN_FAILURE = /^([^\t]+)\t.*?\(fail\) (.+?)(?: \[[\d.]+m?s\])?\s*$/;
 /** A Bun file group before its test names. */
 const BUN_TEST_FILE = /^([^\t]+)\t.*?##\[group\](.+?\.test\.ts):\s*$/;
+/** Bun's assertion header when a failed test is printed without a `(fail)` summary line. */
+const BUN_ASSERTION = /^([^\t]+)\t.*?error: (expect\(.+\))\s*$/;
+/** The assertion's specific expected value, which makes its file-qualified identity stable. */
+const BUN_EXPECTED = /^([^\t]+)\t.*?Expected to contain: (.+)\s*$/;
 /** A Playwright failure heading, `  1) [chromium] › tests/e2e/x.spec.ts:69:3 › title`. */
 const PLAYWRIGHT_FAILURE = /^([^\t]+)\t.*?\s\d+\) \[[\w-]+\] › (.+?)\s*$/;
 
@@ -85,11 +100,33 @@ const PLAYWRIGHT_FAILURE = /^([^\t]+)\t.*?\s\d+\) \[[\w-]+\] › (.+?)\s*$/;
 export function failingTests(log: string): Map<string, string[]> {
   const byJob = new Map<string, Set<string>>();
   const fileByJob = new Map<string, string>();
+  const assertionByJob = new Map<string, { file: string; assertion: string }>();
   for (const line of log.split('\n')) {
     const file = BUN_TEST_FILE.exec(line);
     if (file !== null) {
       const [, job = '', path = ''] = file;
       fileByJob.set(job, path);
+      continue;
+    }
+    const assertion = BUN_ASSERTION.exec(line);
+    if (assertion !== null) {
+      const [, job = '', message = ''] = assertion;
+      const currentFile = fileByJob.get(job);
+      // Bun sometimes omits the `(fail)` line. Do not treat a generic error in a file group as a
+      // known failure: wait for its assertion-specific expected value below.
+      if (currentFile !== undefined) assertionByJob.set(job, { file: currentFile, assertion: message });
+      continue;
+    }
+    const expected = BUN_EXPECTED.exec(line);
+    if (expected !== null) {
+      const [, job = '', value = ''] = expected;
+      const currentAssertion = assertionByJob.get(job);
+      if (currentAssertion !== undefined) {
+        let tests = byJob.get(job);
+        if (tests === undefined) byJob.set(job, (tests = new Set()));
+        tests.add(`${currentAssertion.file} › ${currentAssertion.assertion} › ${value}`);
+        assertionByJob.delete(job);
+      }
       continue;
     }
     const match = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
@@ -229,18 +266,97 @@ export function renderComparison(comparison: Comparison): string {
     );
     for (const test of job.tests)
       lines.push(
-        `  ${test.seenIn.length === 0 ? 'NEW' : 'known'} test ${test.name}${test.seenIn.length === 0 ? '' : ` (main ${test.seenIn.join(', ')})`}`,
+        `  ${test.seenIn.length === 0 ? 'NEW' : 'known'} test ${test.name}${test.seenIn.length === 0 ? '' : ` (main ${test.seenIn.join(', ')})`}${test.flakes === undefined ? '' : test.flakes.map((flake) => ` (${flake.identifier}${flake.recursAfter === undefined ? '' : ` recurs after ${flake.recursAfter} Done`})`).join('')}`,
       );
   }
+  if (comparison.flakeLookupProblem !== undefined)
+    lines.push(`FLAKE LOOKUP UNAVAILABLE: ${comparison.flakeLookupProblem}`);
   if (comparison.jobs.length === 0 && comparison.complete) lines.push('no failed jobs');
   lines.push(comparison.hasNew ? 'verdict: new failures' : 'verdict: no new failures');
   return lines.join('\n');
 }
 
-export function run(
+interface LinearIssue {
+  identifier: string;
+  description: string | null;
+  state: { name: string; type: string };
+}
+
+const normalizeMatchText = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** The test title is the stable part after the owning file or Playwright location. */
+function testTitle(name: string): string | undefined {
+  const title = name.split(' › ').at(-1)?.trim();
+  return title === undefined || title === '' || title.startsWith('expect(') ? undefined : title;
+}
+
+async function referencedCompletedFixes(
+  client: LinearClient,
+  description: string,
+): Promise<string[]> {
+  const identifiers = [...new Set(description.match(/\bCOR-\d+\b/g) ?? [])];
+  const completed: string[] = [];
+  for (const identifier of identifiers) {
+    const data = await client.request<{ issue: Pick<LinearIssue, 'identifier' | 'state'> | null }>(
+      `query FlakeFix($id: String!) { issue(id: $id) { identifier state { name type } } }`,
+      { id: identifier },
+    );
+    if (data.issue?.state.type === 'completed') completed.push(identifier);
+  }
+  return completed;
+}
+
+/**
+ * Adds existing COR flake reports to named CI failures. Matching requires the test title in an
+ * issue description; a similar issue title alone is deliberately not evidence of the same flake.
+ */
+export async function matchFlakeIssues(
+  comparison: Comparison,
+  client: LinearClient,
+): Promise<Comparison> {
+  const tests = comparison.jobs.flatMap((job) => job.tests);
+  try {
+    for (const test of tests) {
+      const title = testTitle(test.name);
+      if (title === undefined) continue;
+      const data = await client.request<{ issues: { nodes: LinearIssue[] } }>(
+        `query FlakeIssues($filter: IssueFilter) { issues(first: 100, filter: $filter) { nodes { identifier description state { name type } } } }`,
+        {
+          filter: {
+            team: { key: { eq: 'COR' } },
+            description: { containsIgnoreCase: title },
+          },
+        },
+      );
+      const titleText = normalizeMatchText(title);
+      const matches = data.issues.nodes.filter((issue) =>
+        normalizeMatchText(issue.description ?? '').includes(titleText),
+      );
+      if (matches.length === 0) continue;
+      const flakeMatches = await Promise.all(
+        matches.map(async (issue) => {
+          const completed = await referencedCompletedFixes(client, issue.description ?? '');
+          return {
+            identifier: issue.identifier,
+            ...(completed[0] === undefined ? {} : { recursAfter: completed[0] }),
+          };
+        }),
+      );
+      test.flakes = flakeMatches.toSorted((left, right) =>
+        left.identifier.localeCompare(right.identifier),
+      );
+    }
+  } catch (error) {
+    comparison.flakeLookupProblem =
+      error instanceof LinearError || error instanceof Error ? error.message : String(error);
+  }
+  return comparison;
+}
+
+function judge(
   argv: string[],
   runner: Runner = defaultRunner,
-): { code: number; output: string } {
+): { comparison: Comparison; json: boolean } {
   const parsed = parseOptions(argv, { values: ['main-runs', 'config'], flags: ['json'] });
   const [id] = parsed.positionals;
   if (id === undefined || !/^\d+$/.test(id) || parsed.positionals.length > 1)
@@ -255,15 +371,38 @@ export function run(
   const mainIds = recentMainRuns(runner, config.repository, config.defaultBranch, count, id);
   const main = mainIds.map((mainId) => readFailures(runner, config.repository, mainId));
   const comparison = compare(target, main);
+  return { comparison, json: parsed.flags.has('json') };
+}
+
+/** CI comparison without tracker evidence, kept synchronous for local callers and unit tests. */
+export function run(
+  argv: string[],
+  runner: Runner = defaultRunner,
+): { code: number; output: string } {
+  const { comparison, json } = judge(argv, runner);
   return {
     code: comparison.hasNew ? 1 : 0,
-    output: parsed.flags.has('json') ? JSON.stringify(comparison) : renderComparison(comparison),
+    output: json ? JSON.stringify(comparison) : renderComparison(comparison),
+  };
+}
+
+/** The coordinator-facing command: enrich comparison output with read-only COR flake evidence. */
+export async function runWithFlakeIssues(
+  argv: string[],
+  runner: Runner = defaultRunner,
+  client: LinearClient = createClient(),
+): Promise<{ code: number; output: string }> {
+  const { comparison, json } = judge(argv, runner);
+  await matchFlakeIssues(comparison, client);
+  return {
+    code: comparison.hasNew ? 1 : 0,
+    output: json ? JSON.stringify(comparison) : renderComparison(comparison),
   };
 }
 
 if (import.meta.main) {
   try {
-    const { code, output } = run(Bun.argv.slice(2));
+    const { code, output } = await runWithFlakeIssues(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {

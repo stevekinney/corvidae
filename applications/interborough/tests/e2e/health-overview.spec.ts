@@ -19,6 +19,7 @@ import { answerRecentActivityAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { expectTabOpen } from './workflow-support.ts';
 
 const SOURCE = 'health-overview.spec.ts';
 const WIDTHS = [1280, 768, 375] as const;
@@ -59,20 +60,7 @@ test.describe('the sample world', () => {
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
       await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite in');
       await expect(main.getByRole('button', { name: 'Storage details' })).toBeVisible();
-      if (width >= 640) {
-        await expect(main.getByRole('tab')).toHaveText([
-          'Overview',
-          'Workers',
-          'Storage',
-          'Audit log',
-        ]);
-        await expect(main.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
-      } else {
-        await expect(main.locator('.cinder-tabs__collapse')).toContainText('Section: Overview');
-      }
+      await expectTabOpen(main, 'Overview');
       await expect(
         main.getByRole('tab', { name: /Diagnostics|Metrics|Alerts|Checks/ }),
       ).toHaveCount(0);
@@ -256,7 +244,7 @@ test.describe('the sample world', () => {
   test.describe('on a touch phone', () => {
     test.use({ viewport: { width: 375, height: 900 }, hasTouch: true, isMobile: true });
 
-    test('the Storage tab collapses its tabs to a select, warns without inventing a capacity, and scrolls its table inside its own box', async ({
+    test('the Storage tab stays selected after responsive tab measurement, warns without inventing a capacity, and scrolls its table inside its own box', async ({
       page,
       checkA11y,
     }) => {
@@ -265,9 +253,9 @@ test.describe('the sample world', () => {
       await expect(main.getByTestId('storage-warning')).toBeVisible();
 
       await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-      // 06o: the sections are one select, the warning names no capacity, and the controls are 44px.
-      await expect(main.locator('.cinder-tabs__collapse')).toContainText('Section: Storage');
-      await expect(main.getByRole('tab')).toHaveCount(0);
+      // 06o: the responsive section control keeps Storage selected, whether the tab bar fits or
+      // Cinder collapses it after measuring its container.
+      await expectTabOpen(main, 'Storage');
       await expect(main.getByTestId('storage-warning')).toContainText(
         'Storage is over its warning level, 1.6 GB.',
       );

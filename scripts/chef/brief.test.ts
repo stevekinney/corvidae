@@ -300,6 +300,23 @@ describe('charter rules', () => {
     }
   });
 
+  test('requires every rendered brief to record one final branch CI receipt', () => {
+    expect(pushRule).toContain(
+      'After the final push run `gh workflow run main.yml --ref <branch>` once per batch',
+    );
+    expect(pushRule).not.toContain('When the brief requires branch CI');
+    expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
+      'record its returned run ID in the ready-for-review receipt',
+    );
+  });
+
+  test('requires an owned-PID and worktree leftovers receipt before handoff', () => {
+    expect(charterRules.join('\n')).toContain(
+      'leftovers.ts --worktree <owned-worktree> --pids <owned-pid,...>',
+    );
+    expect(charterRules.join('\n')).toContain('a live owned PID is a reported charter defect');
+  });
+
   // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a
   // charter rule and the phrase of the governing rule it restates, in AGENTS.md or in the execution
   // record's remaining coordinator text, so a change to either side that drops the rule fails here.

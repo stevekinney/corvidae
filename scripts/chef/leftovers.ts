@@ -128,7 +128,8 @@ export function findWorktreeProcesses(
     const detail = result.stderr.trim().split('\n').slice(-1)[0] ?? '';
     throw new ProbeError(`lsof could not check ${resolved} (exit ${result.code}): ${detail}`);
   }
-  return parseLsofFields(result.stdout).filter((item) => item.pid !== ownPid);
+  // `lsof +D` reports the probe process it starts. It is not work owned by the checked worktree.
+  return parseLsofFields(result.stdout).filter((item) => item.pid !== ownPid && item.command !== 'lsof');
 }
 
 export interface LeftoversRequest {

@@ -149,6 +149,12 @@ describe('findWorktreeProcesses fails closed', () => {
     );
   });
 
+  test('does not report its lsof probe as a worktree leftover', () => {
+    expect(findWorktreeProcesses(sandbox, answer(0, 'p10\nclsof\np11\cbun\n', ''), 0)).toEqual([
+      { pid: 11, command: 'bun' },
+    ]);
+  });
+
   test('a missing lsof (exit 127) or an error on stderr is unknown, not empty', () => {
     for (const runner of [
       answer(127, '', 'could not start the command (Error ENOENT)'),

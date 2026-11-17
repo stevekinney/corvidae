@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { compare, failingTests, renderComparison, run, type RunFailures } from './ci-compare.ts';
+import {
+  compare,
+  failingTests,
+  matchFlakeIssues,
+  renderComparison,
+  run,
+  type RunFailures,
+} from './ci-compare.ts';
+import type { LinearClient } from './linear.ts';
 import type { Runner } from './process-runner.ts';
 
 const failures = (id: string, jobs: [string, string[]][], status = 'completed'): RunFailures => ({
@@ -35,6 +43,33 @@ describe('failingTests', () => {
     expect(failingTests(log)).toEqual(
       new Map([['E2E (4/4)', ['tests/e2e/settings.spec.ts:69:3 › draws a control']]]),
     );
+  });
+
+  test('reads a Bun assertion without a fail summary by its owning file and expected assertion', () => {
+    const log = [
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1149205Z ##[group]src/lib/components/chat/chat.test.ts:',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1163486Z error: expect(received).toContain(expected)',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1162773Z ',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:34:01.1162993Z Expected to contain: "const shift = approvalArrivalShift(cardBox, viewportBox);"',
+    ].join('\n');
+    expect(failingTests(log)).toEqual(
+      new Map([
+        [
+          'Affected fast-lane tests',
+          [
+            'src/lib/components/chat/chat.test.ts › expect(received).toContain(expected) › "const shift = approvalArrivalShift(cardBox, viewportBox);"',
+          ],
+        ],
+      ]),
+    );
+  });
+
+  test('does not classify an unqualified generic error in a file group as a known test', () => {
+    const log = [
+      'Tests (components)\tRun bun test\t2026-11-17T19:21:40Z ##[group]src/lib/components/chat/chat.test.ts:',
+      'Tests (components)\tRun bun test\t2026-11-17T19:21:40Z error: unexpected failure',
+    ].join('\n');
+    expect(failingTests(log)).toEqual(new Map());
   });
 });
 
@@ -112,6 +147,54 @@ describe('compare', () => {
     const result = compare(failures('1', [], 'in_progress'), main);
     expect(result.hasNew).toBe(true);
     expect(renderComparison(result)).toContain('NOT COMPLETE');
+  });
+
+  test('names a matching COR flake and reports its recurrence after a completed repair', async () => {
+    const client: LinearClient = {
+      async request(document) {
+        if (document.includes('FlakeIssues'))
+          return {
+            issues: {
+              nodes: [
+                {
+                  identifier: 'COR-2504',
+                  description:
+                    'The slow test "two hosts > B completes" failed again. COR-1906 made it deterministic before.',
+                  state: { name: 'In Progress', type: 'started' },
+                },
+                {
+                  identifier: 'COR-irrelevant',
+                  description:
+                    'A matching title is not enough without this test in the description.',
+                  state: { name: 'Done', type: 'completed' },
+                },
+              ],
+            },
+          } as never;
+        if (document.includes('FlakeFix'))
+          return {
+            issue: { identifier: 'COR-1906', state: { name: 'Done', type: 'completed' } },
+          } as never;
+        throw new Error(`unexpected request ${document}`);
+      },
+    };
+    const result = await matchFlakeIssues(
+      compare(failures('1', [['Slow', ['src/host.test.ts › two hosts > B completes']]]), main),
+      client,
+    );
+    expect(result.jobs[0]?.tests[0]?.flakes).toEqual([
+      { identifier: 'COR-2504', recursAfter: 'COR-1906' },
+    ]);
+    expect(renderComparison(result)).toContain('COR-2504 recurs after COR-1906 Done');
+  });
+
+  test("keeps CI's new-failure verdict when flake lookup is unavailable", async () => {
+    const result = await matchFlakeIssues(
+      compare(failures('1', [['Unit', ['src/x.test.ts › a failure']]]), main),
+      { request: async () => Promise.reject(new Error('Linear offline')) },
+    );
+    expect(result.hasNew).toBe(true);
+    expect(renderComparison(result)).toContain('FLAKE LOOKUP UNAVAILABLE: Linear offline');
   });
 });
 
