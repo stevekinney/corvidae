@@ -20,7 +20,10 @@ import {
   type Rgb,
 } from '../../tokens/runtime/contrast/index.ts';
 
-const css = await Bun.file(new URL('./app-bar.css', import.meta.url)).text();
+const css = await Bun.file(
+  new URL('../../styles/components/_translucent-surface.css', import.meta.url),
+).text();
+const SHARED_ENTRIES = ['../../styles/index.css', '../../styles/components.css'] as const;
 
 const toRgb = (color: OklchColor): Rgb => clampRgb(oklchToLinearSrgb(color.l, color.c, color.h));
 const BLACK: Rgb = [0, 0, 0];
@@ -68,12 +71,20 @@ describe('the translucent surface', () => {
     expect(css).toMatch(
       /@supports \(backdrop-filter: blur\(1px\)\) \{\s*\.cinder-translucent-surface \{\s*background: var\(--cinder-surface-translucent\);/,
     );
-    const reduced = css.slice(
-      css.indexOf('@media (prefers-reduced-transparency: reduce)'),
-      css.indexOf('.cinder-app-bar__leading'),
-    );
+    const reduced = css.slice(css.indexOf('@media (prefers-reduced-transparency: reduce)'));
     expect(reduced).toMatch(
       /\.cinder-translucent-surface\s*\{\s*background: var\(--cinder-surface-canvas\);\s*backdrop-filter: none;/,
     );
+  });
+
+  // A page applies the class by hand, so the rule must reach an application that imports no
+  // AppBar: it lived in app-bar.css once, and Interborough's chat header painted no ground at all.
+  test('ships with the shared styles every application loads, not in a component stylesheet', async () => {
+    for (const entry of SHARED_ENTRIES) {
+      const text = await Bun.file(new URL(entry, import.meta.url)).text();
+      expect(text).toContain("@import './components/_translucent-surface.css';");
+    }
+    const appBar = await Bun.file(new URL('./app-bar.css', import.meta.url)).text();
+    expect(appBar).not.toMatch(/\.cinder-translucent-surface\s*\{/);
   });
 });

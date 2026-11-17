@@ -210,11 +210,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
         .locator('.cinder-stacked-list-item__description, .cinder-stacked-list-item__meta')
         .first(),
     ).toContainText('Hello! How can I help?');
-    // No fixed column: the word is followed by a comma and the message, close by.
-    const dot = await done
+    // No fixed column and no glyph between them: the word is followed by a space and the message,
+    // close by, set apart by its colour step (COR-2449).
+    const separator = await done
       .locator('.cinder-stacked-list-item__status')
       .evaluate((element) => getComputedStyle(element, '::after').content);
-    expect(dot).toMatch(/^","/);
+    expect(separator).toBe('none');
     const statusBox = await boxOf(done.locator('.cinder-stacked-list-item__status'));
     const previewBox = await boxOf(
       done
@@ -561,7 +562,17 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
           viewport: document.documentElement.clientWidth,
           phoneGutter,
           title: box('h1.cinder-page-header__title'),
-          head: box('.weft-chat-head'),
+          // The header's translucent ground spans the pane; its content box is the column.
+          head: (() => {
+            const element = document.querySelector('.weft-chat-head');
+            if (element === null) return null;
+            const { left, right } = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return {
+              left: left + Number.parseFloat(style.paddingLeft),
+              right: right - Number.parseFloat(style.paddingRight),
+            };
+          })(),
           composer: box('.chat-input-shell'),
         };
       });
