@@ -533,7 +533,7 @@ const schema = {
         name: 'sourcesByMessageId',
         reason: 'unknown-shape',
         description:
-          'The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link.',
+          'The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. A source with a `claim` (the words it backs, trimmed, at most 500 characters) is also drawn as a marker inside the paragraph right after those words, on every width; the text is not changed. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link.',
       },
       {
         name: 'typingParticipants',

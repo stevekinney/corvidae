@@ -330,6 +330,64 @@ describe('Chat — sourcesByMessageId', () => {
     });
   });
 
+  test('a source that names its claim is a marker inside the paragraph at the claim, on a phone too, and the rest keep today’s placement (board row M4)', async () => {
+    const { preloadMarkdownPipeline } = await import('./message/markdown-pipeline.ts');
+    const realm = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: globalThis });
+    try {
+      await preloadMarkdownPipeline(async () => ({
+        renderMarkdownWithMath: async (content: string) => ({ html: `<p>${content}</p>` }),
+      }));
+      let conversation = createConversation();
+      conversation = appendMessage(conversation, 'user', 'What changed?', 'user-1');
+      conversation = appendMessage(
+        conversation,
+        'assistant',
+        'Revenue rose. Costs fell.',
+        'assistant-a',
+      );
+      await onPhone(async () => {
+        const { container } = render(Chat, {
+          id: 'sources-inline',
+          conversation,
+          variant: 'transcript',
+          sourcesByMessageId: new Map<string, readonly CitationSource[]>([
+            [
+              'assistant-a',
+              [
+                {
+                  label: 'Annual report',
+                  url: 'https://example.com/annual',
+                  claim: 'Revenue rose.',
+                },
+                { label: 'Board minutes' },
+              ],
+            ],
+          ]),
+        });
+        await tick();
+
+        const marker = await waitFor(() => {
+          const found = container.querySelector<HTMLElement>('[data-chat-inline-citation="0"]');
+          expect(found === null).toBe(false);
+          return found!;
+        });
+        const paragraph = marker.closest('p');
+        expect(paragraph === null).toBe(false);
+        expect(paragraph?.textContent).toContain('Costs fell.');
+        // The marker follows the claim's words, and the text reads as it did.
+        expect(paragraph?.textContent?.replace(marker.textContent ?? '', '')).toBe(
+          'Revenue rose. Costs fell.',
+        );
+        // The Sources control still lists every source, as it did before.
+        expect(sourcesControl(container, 'assistant-a') === null).toBe(false);
+        expect(container.querySelectorAll('[data-chat-inline-citation]')).toHaveLength(1);
+      });
+    } finally {
+      if (realm) Object.defineProperty(globalThis, 'window', realm);
+    }
+  });
+
   test('changing the controlled map removes the control', async () => {
     const { container, rerender } = render(Chat, {
       id: 'sources-change',

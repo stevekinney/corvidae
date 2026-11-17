@@ -242,6 +242,7 @@
     Button,
     Callout,
     CircleAlert,
+    Citation,
     CopyButton,
     Info,
     Pencil,
@@ -255,6 +256,7 @@
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import RetryButton from './retry-button.svelte';
   import MessageSources from './message-sources.svelte';
+  import { inlineCitationGroups, setInlineCitations } from './inline-citations.ts';
   import { sourceKeys } from './source-keys.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
@@ -428,6 +430,14 @@
     message.role === 'assistant' && sources !== undefined && sources.length > 0
       ? sources
       : undefined,
+  );
+  // The sources that name the words they back are drawn as markers at those words in the text, on
+  // every width (board row M4); the Sources control still lists every source.
+  const citationGroups = $derived(inlineCitationGroups(shownSources));
+  setInlineCitations(() =>
+    citationGroups.length === 0
+      ? undefined
+      : { claims: citationGroups.map((group) => group.claim), marker: inlineCitationMarker },
   );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
@@ -839,6 +849,21 @@
     onsourcestoggle?.();
   }
 </script>
+
+<!-- A citation at its claim (board row M4): Cinder's Citation marker in the text right after the
+     words its sources back, opening their list in a popover, or the bottom sheet on a phone. -->
+{#snippet inlineCitationMarker(index: number)}
+  {@const group = citationGroups[index]}
+  {#if group !== undefined}
+    <Citation
+      sources={group.sources}
+      label={messageLabels.sources}
+      labels={{ noLink: messageLabels.internalDocument, unsafeLink: messageLabels.unsafeLink }}
+      class="chat-message-inline-citation"
+      data-chat-inline-citation={index}
+    />
+  {/if}
+{/snippet}
 
 {#snippet transcriptLine()}
   <div

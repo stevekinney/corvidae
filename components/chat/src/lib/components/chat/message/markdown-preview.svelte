@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
   import type { ChatMarkdownNode, MarkdownNodeOverride } from './chat-message-parts.ts';
+  import { anchorClaims, CITATION_ANCHOR_TAG, type InlineCitations } from './inline-citations.ts';
 
   export type ChatMarkdownPreviewProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
     content: string;
@@ -10,10 +11,16 @@
     images?: boolean | undefined;
     /** `false` renders each link as its text, so the content navigates nowhere. Default `true`. */
     links?: boolean | undefined;
+    /**
+     * Citations drawn at their claims (board row M4): a marker after the first place each claim
+     * reads in the rendered text, outside code. The text is not changed.
+     */
+    citations?: InlineCitations | undefined;
   };
 
   export type MarkdownSegment =
     | { kind: 'html'; html: string }
+    | { kind: 'citation'; index: number }
     | { kind: 'node'; node: ChatMarkdownNode }
     | {
         kind: 'element';
@@ -35,6 +42,9 @@
   ): MarkdownSegment {
     if (node.nodeType !== 1) return { kind: 'html', html: serializeNode(node, ownerDocument) };
     const element = node as HTMLElement;
+    if (element.matches(CITATION_ANCHOR_TAG)) {
+      return { kind: 'citation', index: Number(element.dataset['cinderCitationIndex'] ?? -1) };
+    }
     if (element.matches('cinder-markdown-node')) {
       return {
         kind: 'node',
@@ -47,7 +57,7 @@
         },
       };
     }
-    if (!element.querySelector('cinder-markdown-node')) {
+    if (!element.querySelector(`cinder-markdown-node, ${CITATION_ANCHOR_TAG}`)) {
       return { kind: 'html', html: element.outerHTML };
     }
     return {
@@ -71,10 +81,17 @@
   export function segmentRenderedMarkdown(
     html: string,
     ownerDocument: Document = document,
-    options: { readonly images?: boolean | undefined; readonly links?: boolean | undefined } = {},
+    options: {
+      readonly images?: boolean | undefined;
+      readonly links?: boolean | undefined;
+      readonly claims?: readonly string[] | undefined;
+    } = {},
   ): MarkdownSegment[] {
     const template = ownerDocument.createElement('template');
     template.innerHTML = html;
+    if (options.claims !== undefined && options.claims.length > 0) {
+      anchorClaims(template.content, options.claims, ownerDocument);
+    }
     if (options.images === false) {
       for (const image of template.content.querySelectorAll('img')) {
         image.replaceWith(ownerDocument.createTextNode(image.getAttribute('alt') ?? ''));
@@ -102,6 +119,7 @@
     markdownNode,
     images = true,
     links = true,
+    citations,
     class: className,
     ...rest
   }: ChatMarkdownPreviewProps = $props();
@@ -145,6 +163,18 @@
     return extendsSource(content, rendered.source) ? rendered : undefined;
   });
   const renderCurrent = $derived(visibleRender !== undefined && visibleRender.source === content);
+  // With claims to anchor, the committed render is segmented again with a marker after each claim
+  // it holds (board row M4); without, its segments are shown as they were made.
+  const shownSegments = $derived.by(() => {
+    if (visibleRender === undefined) return undefined;
+    const claims = citations?.claims ?? [];
+    if (claims.length === 0 || visibleRender.html === '') return visibleRender.segments;
+    return segmentRenderedMarkdown(visibleRender.html, document, {
+      images: visibleRender.images,
+      links: visibleRender.links,
+      claims,
+    });
+  });
 
   function commitRender(
     generation: number,
@@ -281,7 +311,11 @@
 {/snippet}
 
 {#snippet renderSegment(segment: MarkdownSegment)}
-  {#if segment.kind === 'node'}
+  {#if segment.kind === 'citation'}
+    {#if citations !== undefined && segment.index >= 0}
+      {@render citations.marker(segment.index)}
+    {/if}
+  {:else if segment.kind === 'node'}
     {#if markdownNode}
       {@render markdownNode(segment.node, renderDefaultNode)}
     {:else}
@@ -314,8 +348,8 @@
   data-state={renderCurrent ? 'rendered' : 'pending'}
   {...rest}
 >
-  {#if visibleRender}
-    {#each visibleRender.segments as segment, index (`${segment.kind}:${index}`)}
+  {#if visibleRender && shownSegments}
+    {#each shownSegments as segment, index (`${segment.kind}:${index}`)}
       {@render renderSegment(segment)}
     {/each}
   {:else}
