@@ -378,8 +378,18 @@
        trailing value and the subtitle sit where they sit in a row without one: the subtitle ends
        where the photo's column starts (after the name, and after the stale marker and the
        trailing value when the row has them). */
-    .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__photo {
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content
+      > .cinder-grouped-list-item__photo {
+      /* The child combinators outrank the shared row-one rule for the trailing parts below. */
       grid-row: 1 / span 2;
+    }
+
+    /* The photo is taller than the name's line: the room it needs goes to the subtitle's row, so
+       the subtitle still follows the name directly. */
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
+      > .cinder-grouped-list-item__content:has(> .cinder-grouped-list-item__photo) {
+      grid-template-rows: auto 1fr;
     }
 
     .cinder-grouped-list-item.cinder-grouped-list-item--timed
