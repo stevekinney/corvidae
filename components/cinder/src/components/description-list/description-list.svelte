@@ -134,6 +134,8 @@
     >
       <dt class={variant === 'narrow' ? 'cinder-sr-only' : 'cinder-_label-text'}>{item.term}</dt>
       <dd class="cinder-_value-text">
+        <!-- The note's block follows the value's with no whitespace between them, and its space is
+             its own, so a definition's text ends where its value or note does. -->
         <div class="cinder-description-list__definition">
           {#if typeof item.definition === 'string'}
             {item.definition}
@@ -193,10 +195,9 @@
                 <Button size="xs" variant="ghost" onclick={tags.onAddTag}>Add a tag</Button>
               {/if}
             </span>
-          {/if}
-          {#if item.note !== undefined && item.note !== ''}
-            <span class="cinder-description-list__note">{item.note}</span>
-          {/if}
+          {/if}{#if item.note !== undefined && item.note !== ''}{' '}<span
+              class="cinder-description-list__note">{item.note}</span
+            >{/if}
         </div>
         {#if actions}
           <div class="cinder-description-list__actions">{@render actions(item)}</div>
