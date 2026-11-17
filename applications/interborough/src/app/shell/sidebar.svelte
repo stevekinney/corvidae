@@ -28,8 +28,10 @@
   } from '@lostgradient/cinder';
   import { PanelLeftClose, PanelLeftOpen } from '@lucide/svelte';
 
+  import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
+  import { PLUGIN_PAGE_COPY } from '../copy/plugin-pages.ts';
   import { NAVIGATION_COPY, SHORTCUT_COPY } from '../copy/shell.ts';
   import { VIEW_COPY } from '../copy/view-pages.ts';
   import { getKeyboardPreferences } from '../keyboard-preferences.svelte.ts';
@@ -41,8 +43,10 @@
     isActiveDestinationPath,
     NEW_CHAT_KEY,
     NEW_CHAT_PATH,
+    pluginDestinations,
     type Destination,
     type DestinationGroup,
+    type PluginDestination,
   } from './destinations.ts';
   import {
     DRAWER_BREAKPOINT,
@@ -71,6 +75,15 @@
 
   function destinationsIn(group: DestinationGroup): readonly Destination[] {
     return DESTINATIONS.filter((destination) => destination.group === group);
+  }
+
+  // The pages plugins add, each after the built-ins of the group it names, in the order the host
+  // lists them (COR-2213). They have no shortcut, and the sidebar draws each as a Cinder row with
+  // the badge Cinder gives it, never a badge or a tooltip of its own.
+  const plugins = usePluginPages();
+  const pluginEntries = $derived(pluginDestinations(plugins.pages()));
+  function pluginsIn(group: DestinationGroup): readonly PluginDestination[] {
+    return pluginEntries.filter((entry) => entry.group === group);
   }
 
   function isActivePath(path: string): boolean {
@@ -219,6 +232,19 @@
           </SideNavigationItem>
         {/if}
       {/snippet}
+      {#snippet pluginItem(entry: PluginDestination)}
+        {@const Icon = entry.icon}
+        <SideNavigationItem
+          href={router.href(entry.path)}
+          label={entry.title}
+          badge={PLUGIN_PAGE_COPY.badge}
+          active={router.pathname === entry.path}
+          onclick={(event) => onNavClick(event, entry.path)}
+        >
+          {#snippet icon()}<Icon size="1rem" />{/snippet}
+          {entry.title}
+        </SideNavigationItem>
+      {/snippet}
       <SideNavigation
         ariaLabel={NAVIGATION_COPY.destinations}
         class="weft-shell-side-navigation"
@@ -238,6 +264,9 @@
             >
               {#each destinationsIn(group) as destination (destination.path)}
                 {@render destinationItem(destination)}
+              {/each}
+              {#each pluginsIn(group) as entry (entry.path)}
+                {@render pluginItem(entry)}
               {/each}
             </SideNavigationGroup>
           {/if}

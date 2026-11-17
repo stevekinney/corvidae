@@ -1,0 +1,36 @@
+{
+  "ref": "refs/heads/main",
+  "before": "6113728f27ae82c7b1a177c8d03f9e96e0adf246",
+  "after": "5e8cbe4d6ed0b7e1d3f5d6b1e8ae5f0c2b6e0a77",
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "compare": "https://github.com/octo-org/octo-repo/compare/6113728f27ae...5e8cbe4d6ed0",
+  "commits": [
+    {
+      "id": "5e8cbe4d6ed0b7e1d3f5d6b1e8ae5f0c2b6e0a77",
+      "message": "Fix the release notes heading",
+      "timestamp": "2026-11-16T12:00:00Z",
+      "url": "https://github.com/octo-org/octo-repo/commit/5e8cbe4d6ed0b7e1d3f5d6b1e8ae5f0c2b6e0a77",
+      "author": { "name": "Octo Cat", "username": "octocat" },
+      "added": [],
+      "removed": [],
+      "modified": ["CHANGELOG.md"]
+    }
+  ],
+  "head_commit": {
+    "id": "5e8cbe4d6ed0b7e1d3f5d6b1e8ae5f0c2b6e0a77",
+    "message": "Fix the release notes heading",
+    "timestamp": "2026-11-16T12:00:00Z"
+  },
+  "repository": {
+    "id": 186853002,
+    "name": "octo-repo",
+    "full_name": "octo-org/octo-repo",
+    "private": false,
+    "default_branch": "main",
+    "html_url": "https://github.com/octo-org/octo-repo"
+  },
+  "pusher": { "name": "octocat", "email": "octocat@users.noreply.github.com" },
+  "sender": { "login": "octocat", "id": 583231, "type": "User" }
+}

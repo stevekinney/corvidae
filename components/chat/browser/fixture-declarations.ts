@@ -5,6 +5,7 @@
 export const chatAppFixtureDeclarations = {
   chat: ['assertion'],
   'chat-mcp-app': ['assertion'],
+  'chat-mcp-app-fill': ['assertion'],
   'chat-conversation-list': ['assertion'],
   'conversation-markdown': ['assertion'],
 } as const satisfies Record<string, readonly string[]>;

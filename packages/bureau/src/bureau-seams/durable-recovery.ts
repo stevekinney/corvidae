@@ -932,7 +932,11 @@ export function createDurableRecovery<D extends AgentDefinitions>(
                     sessionId: ownedSessionId,
                     // COR-1265 — the Bureau tier, snapshotted.
                     hooks: runtime.composeRunHooks({
-                      bureau: runRuntime.hooks,
+                      bureau: runtime.withPendingApprovalPersist(
+                        runRuntime.hooks,
+                        handle.id,
+                        ownedSessionId,
+                      ),
                       agent: reattachedSessionAgent?.options.hooks,
                     }),
                     executeOptions: sessionExecuteOptions(

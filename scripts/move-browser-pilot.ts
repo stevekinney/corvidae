@@ -123,7 +123,13 @@ export const MOVES: Move[] = [
   ...into('components/chat/browser/tests', chatSpecs),
   ...into(
     'components/chat/browser/fixtures',
-    svelte(['chat', 'chat-mcp-app', 'conversation-markdown', 'chat-conversation-list']),
+    svelte([
+      'chat',
+      'chat-mcp-app',
+      'chat-mcp-app-fill',
+      'conversation-markdown',
+      'chat-conversation-list',
+    ]),
   ),
   ...into('components/editor/browser/tests', [
     ...editorSpecs,

@@ -353,7 +353,7 @@ test.describe('on a phone', () => {
       'System',
     ]);
     const rows = panel.locator('a.cinder-side-navigation-item');
-    await expect(rows).toHaveCount(12);
+    await expect(rows).toHaveCount(13);
     for (const row of await rows.all()) expect(await heightOf(row)).toBeGreaterThanOrEqual(44);
     await expect(panel.getByRole('link', { name: REVIEWS })).toContainText('2');
     await expect(

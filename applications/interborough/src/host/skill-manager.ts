@@ -361,6 +361,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     if (closed || watchMode === false) return;
     if (pollTimer === undefined) {
       pollRuntime = options.runtime ?? createDefaultRuntimeServices();
+      // The native watcher is only a trigger and can miss an event (or be unavailable), so the rescan backs it.
+      // poll-reason: fallback
       pollTimer = pollRuntime.timers.setInterval(trigger, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
     }
     if (watchMode === 'poll') return;

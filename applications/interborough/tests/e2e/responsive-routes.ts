@@ -90,6 +90,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/runs': '/runs',
     '/runs/new': '/runs/new',
     '/runs/:run': `/runs/${run}`,
+    '/checks': '/checks',
     '/schedules': '/schedules',
     '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${encodeURIComponent(seed.schedule)}`,
@@ -118,6 +119,9 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',
+    // The main host serves no plugin page, so the address is the not-found state a plugin's page
+    // shows for one nobody serves; the pages themselves are `plugin-page.spec.ts`'s, on its own host.
+    '/plugins/:plugin/*': '/plugins/nobody/overview',
   };
 }
 

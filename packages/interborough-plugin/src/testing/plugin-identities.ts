@@ -263,7 +263,11 @@ function guardrailNamed(item: Named, family: GuardrailFamily) {
  * produce equal snapshots. Every guardrail is a `guardrail`, whose schema is a factory's configuration
  * schema or none for a detector or validator, and its id records its
  * family (`plugin:input/name`, `plugin:output/name`, `plugin:tools/name`, `plugin:memory/name`); an
- * agent file lists an input, output or tool-call guardrail as `plugin:name`.
+ * agent file lists an input, output or tool-call guardrail as `plugin:name`. A panel's digest covers
+ * its whole contract with the host: `uri`, `allowedTools`, `hostOnlyTools` (both in sorted order),
+ * `opensFromTool` and `placements` (in declared order). It leaves out what only presents the
+ * panel: its `title` and `description` are words no record refers to, and its `entry` and
+ * `styles` are the served bytes, which the host's `panel-changed` problem already reports.
  */
 export async function pluginIdentities(
   descriptor: PluginDescriptor<z.ZodType>,
@@ -335,7 +339,15 @@ export async function pluginIdentities(
     ),
     ...entriesOf(
       contributions.panels,
-      (app) => named(app, 'panel', { allowedTools: app.allowedTools.toSorted(compareText) }),
+      (app) =>
+        named(app, 'panel', {
+          uri: app.uri,
+          allowedTools: app.allowedTools.toSorted(compareText),
+          hostOnlyTools: (app.hostOnlyTools ?? []).toSorted(compareText),
+          opensFromTool: app.opensFromTool,
+          // Declared order is kept: a page the host lists first is part of what a client sees.
+          placements: app.placements ?? [],
+        }),
       descriptor,
     ),
     ...entriesOf(

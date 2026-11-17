@@ -1551,6 +1551,48 @@ describe('MCP apps a plugin contributes', () => {
     ]);
   });
 
+  it('lists a panel as a contribution with its title, so the host can name it (COR-2213)', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('titled', () => ({
+          panels: [
+            { ...mcpApp('review-queue', 'ui://titled/review-queue/v1'), title: 'Review queue' },
+          ],
+        })),
+      ],
+    });
+    expect(records[0]?.contributions).toEqual([
+      { kind: 'panel', id: 'titled:review-queue', title: 'Review queue' },
+    ]);
+  });
+
+  it('skips a plugin whose panel allows a tool without the bureau. prefix, naming the tool', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          panels: [
+            {
+              ...mcpApp('one', 'ui://a/one/v1', 'bureau.tasks.inspect'),
+              allowedTools: ['bureau.tasks.inspect', 'tool.elsewhere'],
+            },
+          ],
+        })),
+        pluginEntry('b', () => ({
+          panels: [mcpApp('two', 'ui://b/two/v1', 'bureau.tasks.events')],
+        })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+    expect(records[0]?.problems).toEqual([
+      expect.objectContaining({
+        code: 'setup-failed',
+        message: expect.stringContaining(
+          'setup returned the panel "one" with the tool "tool.elsewhere" in allowedTools, which is not a Bureau tool: every allowedTools entry begins bureau.',
+        ),
+      }),
+    ]);
+  });
+
   it('skips a plugin whose app is opened from a tool it may not call', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
@@ -1566,11 +1608,11 @@ describe('MCP apps a plugin contributes', () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
         pluginEntry('a', () => ({ panels: [mcpApp('one', 'https://example.test/one')] })),
-        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://b/shared/v1', 'tool.b')] })),
+        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://b/shared/v1', 'bureau.test.b')] })),
         pluginEntry('c', () => ({
           panels: [
-            mcpApp('one', 'ui://c/shared/v1', 'tool.c1'),
-            mcpApp('two', 'ui://c/shared/v1', 'tool.c2'),
+            mcpApp('one', 'ui://c/shared/v1', 'bureau.test.c1'),
+            mcpApp('two', 'ui://c/shared/v1', 'bureau.test.c2'),
           ],
         })),
       ],
@@ -1587,9 +1629,13 @@ describe('MCP apps a plugin contributes', () => {
       plugins: [
         // Another plugin's namespace, a prefix that is not a path segment, and no path at all.
         pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://bureau/one/v1')] })),
-        pluginEntry('ab', () => ({ panels: [mcpApp('one', 'ui://abc/one/v1', 'tool.ab')] })),
-        pluginEntry('abc', () => ({ panels: [mcpApp('one', 'ui://abc', 'tool.abc')] })),
-        pluginEntry('fine', () => ({ panels: [mcpApp('one', 'ui://fine/one/v1', 'tool.fine')] })),
+        pluginEntry('ab', () => ({
+          panels: [mcpApp('one', 'ui://abc/one/v1', 'bureau.test.ab')],
+        })),
+        pluginEntry('abc', () => ({ panels: [mcpApp('one', 'ui://abc', 'bureau.test.abc')] })),
+        pluginEntry('fine', () => ({
+          panels: [mcpApp('one', 'ui://fine/one/v1', 'bureau.test.fine')],
+        })),
       ],
     });
     expect(records.map(({ status }) => status)).toEqual([

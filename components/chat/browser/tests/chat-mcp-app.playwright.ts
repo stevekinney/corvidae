@@ -61,8 +61,35 @@ test.describe('McpApp host', () => {
     await expect(app.locator('#permissions')).toHaveText('{}');
     await expect(page.getByTestId('message-listeners')).toHaveText('1');
     await app.getByRole('button', { name: 'Navigate away' }).click();
-    await expect(page.getByRole('alert')).toHaveText('This app could not be loaded.');
+    await expect(page.getByRole('heading', { name: 'Couldn’t open Weather app' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
     await expect(page.locator('iframe[title="Weather app"]')).toHaveCount(0);
     await expect(page.getByTestId('message-listeners')).toHaveText('0');
+  });
+});
+
+test.describe('McpApp fill and open links', () => {
+  test('takes its container’s height whatever the app reports, and admits only a link inside the application', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('chat-mcp-app-fill'), { waitUntil: 'load' });
+    const frameElement = page.locator('iframe[title="Fill app"]');
+    const app = page.frameLocator('iframe[title="Fill app"]');
+    await expect(app.getByRole('heading', { name: 'Fill app' })).toBeVisible();
+
+    // The app reported 3000 pixels, and the container is 800.
+    const container = await page.getByTestId('fill-container').boundingBox();
+    const frame = await frameElement.boundingBox();
+    expect(container?.height).toBe(800);
+    expect(Math.round(frame?.height ?? 0)).toBe(800);
+
+    await app.getByRole('button', { name: 'Open inside' }).click();
+    await expect(app.locator('#answer')).toHaveText('opened');
+    await expect(page.getByTestId('opened-links')).toHaveText('/runs/abc?tab=steps');
+
+    await app.getByRole('button', { name: 'Open outside' }).click();
+    await expect(app.locator('#answer')).toHaveText('refused');
+    await expect(page.getByTestId('opened-links')).toHaveText('/runs/abc?tab=steps');
+    await expect(page.getByTestId('refused-links')).toHaveText('1');
   });
 });

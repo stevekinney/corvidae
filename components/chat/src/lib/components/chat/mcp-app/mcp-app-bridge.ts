@@ -11,7 +11,7 @@ import {
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 
 import { sanitizeDeclaredSources } from './mcp-app-content-security-policy.ts';
-import type { McpAppToolCallHandler } from './mcp-app.types.ts';
+import type { McpAppOpenLinkHandler, McpAppToolCallHandler } from './mcp-app.types.ts';
 
 const PERMISSION_NAMES = ['camera', 'microphone', 'geolocation', 'clipboardWrite'] as const;
 
@@ -31,6 +31,22 @@ export function resolveMcpAppPermissions(
   return resolved;
 }
 
+/**
+ * The path, query and hash of `url` when it resolves to this page's own origin, else `undefined`:
+ * a relative link is relative to the application, and a foreign origin, a scheme without an origin
+ * (`javascript:`) or an address that does not parse is not inside it.
+ */
+function pathInsideApplication(url: string): string | undefined {
+  try {
+    const resolved = new URL(url, window.location.origin);
+    return resolved.origin === window.location.origin
+      ? `${resolved.pathname}${resolved.search}${resolved.hash}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Everything a bridge needs from its host. */
 export type McpAppBridgeOptions = {
   /** The iframe's `contentWindow`: the only recipient of host messages and the only accepted source. */
@@ -43,6 +59,14 @@ export type McpAppBridgeOptions = {
   hostContext: McpUiHostContext;
   /** The host's tool-call callback. With none, the bridge does not answer `tools/call`. */
   onToolCall?: McpAppToolCallHandler | undefined;
+  /**
+   * The host's open-link callback. With none, the bridge does not advertise `openLinks` and the
+   * app's `ui/open-link` is refused as an unknown method. With one, a link is admitted only when it
+   * resolves to this page's origin, and the callback gets its path, query and hash.
+   */
+  onOpenLink?: McpAppOpenLinkHandler | undefined;
+  /** Called when `onOpenLink` is set and a link is refused. It carries no address. */
+  onOpenLinkRefused?: (() => void) | undefined;
   /** Called when the app reports a new content height. */
   onSizeChange: (height: number) => void;
   /** Called when the app finishes the initialize handshake. */
@@ -71,9 +95,10 @@ export type McpAppBridge = {
 /**
  * Creates the host half of the `@modelcontextprotocol/ext-apps` protocol for one iframe, on
  * the library's {@link AppBridge} with no MCP client attached. The only handler that reaches
- * outside the page is `tools/call`, and it reaches only `options.onToolCall`. Requests the host
- * did not opt into (`ui/open-link`, `ui/message`, `resources/read`, sampling, and the rest) get
- * the protocol's method-not-found error.
+ * outside the page is `tools/call`, and it reaches only `options.onToolCall`; `ui/open-link`
+ * reaches only `options.onOpenLink`, and only for a link inside this application. Requests the
+ * host did not opt into (`ui/open-link` without `onOpenLink`, `ui/message`, `resources/read`,
+ * sampling, and the rest) get the protocol's method-not-found error.
  */
 export function createMcpAppBridge(options: McpAppBridgeOptions): McpAppBridge {
   const capabilities: McpUiHostCapabilities = {
@@ -88,6 +113,7 @@ export function createMcpAppBridge(options: McpAppBridgeOptions): McpAppBridge {
     },
   };
   if (options.onToolCall !== undefined) capabilities.serverTools = {};
+  if (options.onOpenLink !== undefined) capabilities.openLinks = {};
 
   const bridge = new AppBridge(
     null,
@@ -125,6 +151,24 @@ export function createMcpAppBridge(options: McpAppBridgeOptions): McpAppBridge {
       } finally {
         pending.delete(controller);
       }
+    };
+  }
+
+  const onOpenLink = options.onOpenLink;
+  if (onOpenLink !== undefined) {
+    bridge.onopenlink = async ({ url }) => {
+      const path = pathInsideApplication(url);
+      let opened = false;
+      if (path !== undefined) {
+        try {
+          opened = onOpenLink(path);
+        } catch {
+          opened = false;
+        }
+      }
+      if (opened) return {};
+      options.onOpenLinkRefused?.();
+      return { isError: true };
     };
   }
 

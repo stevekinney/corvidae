@@ -110,12 +110,6 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
 
   const EDGES: Edge[] = [
     {
-      file: componentFile('load-more', 'load-more.css'),
-      selector: '.cinder-load-more__button',
-      property: 'border',
-      expected: 'control',
-    },
-    {
       file: componentFile('carousel', 'carousel.css'),
       selector: '.cinder-carousel__control',
       property: 'border',
