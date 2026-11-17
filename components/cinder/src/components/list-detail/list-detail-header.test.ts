@@ -49,4 +49,15 @@ describe('ListDetail pane header with actions', () => {
     );
     expect(rule.get('line-height')).toBe('var(--cinder-leading-tight)');
   });
+
+  test('a compact ghost text button keeps the sm side padding, so its content holds its inset', () => {
+    const css = Bun.file(new URL('./list-detail.css', import.meta.url));
+    return css.text().then((text) => {
+      const rule = declarationsFor(
+        text,
+        ".cinder-list-detail__header .cinder-button[data-cinder-compact][data-cinder-variant='ghost']:not([data-cinder-icon-only])",
+      );
+      expect(rule.get('padding-inline')).toBe('var(--cinder-button-padding-x-sm)');
+    });
+  });
 });
