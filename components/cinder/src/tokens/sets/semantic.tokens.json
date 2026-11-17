@@ -226,7 +226,7 @@
           "cssProperty": "--cinder-border",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 91%), color-mix(in oklch, var(--cinder-border-ink), transparent 88%))"
+          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 91%), color-mix(in oklch, var(--cinder-border-ink), transparent 65%))"
         }
       }
     },
@@ -243,7 +243,7 @@
             "cssProperty": "--cinder-border-control",
             "public": true,
             "category": "color",
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 68%), color-mix(in oklch, var(--cinder-border-ink), transparent 62%))"
           }
         }
       },
@@ -259,7 +259,7 @@
             "cssProperty": "--cinder-border-control-hover",
             "public": true,
             "category": "color",
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 58%)"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 58%), color-mix(in oklch, var(--cinder-border-ink), transparent 56%))"
           }
         }
       }
@@ -278,7 +278,7 @@
             "public": true,
             "category": "color",
             "contrastPairs": ["surface.base", "surface.raised"],
-            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 52%), oklch(56% 0.05 248))"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 52%), oklch(64% 0.03 265))"
           }
         }
       },
@@ -311,7 +311,7 @@
           "cssProperty": "--cinder-border-faint",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(92% 0.003 255), oklch(33% 0.03 245))",
+          "cssRecipe": "light-dark(oklch(92% 0.003 255), oklch(33% 0.03 265))",
           "palette": {
             "family": "neutral",
             "role": "border-faint"
@@ -347,7 +347,7 @@
           "cssProperty": "--cinder-border-strong",
           "public": true,
           "category": "color",
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)"
+          "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 85%), color-mix(in oklch, var(--cinder-border-ink), transparent 64%))"
         }
       }
     },
@@ -517,7 +517,7 @@
           "cssProperty": "--cinder-text-disabled",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(52% 0.01 245), oklch(64% 0.02 245))",
+          "cssRecipe": "light-dark(oklch(52% 0.01 245), oklch(64% 0.02 265))",
           "palette": {
             "family": "neutral",
             "role": "text-disabled"
@@ -575,7 +575,7 @@
           "cssProperty": "--cinder-fill-disabled",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(86% 0.006 255), oklch(30% 0.015 245))",
+          "cssRecipe": "light-dark(oklch(86% 0.006 255), oklch(30% 0.015 265))",
           "palette": {
             "family": "neutral",
             "role": "fill-disabled"
@@ -598,7 +598,7 @@
           "cssProperty": "--cinder-accent-contrast",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(100% 0 0), oklch(15% 0.035 245))"
+          "cssRecipe": "light-dark(oklch(100% 0 0), oklch(15% 0.035 270))"
         }
       }
     },
@@ -894,7 +894,7 @@
           "cssProperty": "--cinder-overlay-backdrop",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(20% 0.03 245 / 0.25), oklch(8% 0.02 245 / 0.65))"
+          "cssRecipe": "light-dark(oklch(20% 0.03 245 / 0.25), oklch(8% 0.02 265 / 0.65))"
         }
       }
     },

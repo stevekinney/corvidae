@@ -522,7 +522,7 @@
   },
   "control.background.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 265] },
     "$description": "Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -534,7 +534,7 @@
   },
   "control.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$description": "Resting control edge: the quiet `border.control` tier, which becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -547,7 +547,7 @@
   },
   "control.border.hover": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.42 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.44 },
     "$description": "Hovered control edge.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -560,7 +560,7 @@
   },
   "control.border.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.12 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.35 },
     "$description": "Disabled control edge: the structural tier, since a disabled control is not an interactive boundary.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1539,10 +1539,10 @@
     "$type": "color"
   },
   "border": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.12 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.35 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 88%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 65%)",
         "cssProperty": "--cinder-border",
         "public": true,
         "category": "color"
@@ -1565,10 +1565,10 @@
     "$type": "color"
   },
   "border.control": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 62%)",
         "cssProperty": "--cinder-border-control",
         "public": true,
         "category": "color"
@@ -1578,10 +1578,10 @@
     "$type": "color"
   },
   "border.control.hover": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.42 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.44 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 58%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 56%)",
         "cssProperty": "--cinder-border-control-hover",
         "public": true,
         "category": "color"
@@ -1591,10 +1591,10 @@
     "$type": "color"
   },
   "border.contrast": {
-    "$value": { "colorSpace": "oklch", "components": [0.56, 0.05, 248] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.03, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(56% 0.05 248)",
+        "cssRecipe": "oklch(64% 0.03 265)",
         "cssProperty": "--cinder-border-contrast",
         "public": true,
         "category": "color",
@@ -1619,7 +1619,7 @@
     "$type": "color"
   },
   "border.faint": {
-    "$value": { "colorSpace": "oklch", "components": [0.33, 0.03, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.33, 0.03, 265] },
     "$description": "Decorative-only hairline. Never use as a control boundary: it is intentionally below the WCAG 1.4.11 3:1 non-text threshold.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1645,10 +1645,10 @@
     "$type": "color"
   },
   "border.strong": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.15 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.36 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 64%)",
         "cssProperty": "--cinder-border-strong",
         "public": true,
         "category": "color"
@@ -1697,7 +1697,7 @@
     "$type": "color"
   },
   "text.disabled": {
-    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 265] },
     "$description": "Disabled text color. Clears the 3:1 UI floor in both themes even though disabled controls are exempt from WCAG text contrast; a disabled control still has to be visible as a control.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1735,7 +1735,7 @@
     }
   },
   "fill.disabled": {
-    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 265] },
     "$description": "Neutral fill for disabled solid controls (disabled-checked checkbox/radio) so they stop misusing `text.disabled` (a text-lightness token) as an assertive fill. The glyph on top must use `text.disabled`, not `accent.contrast`: accent-contrast is dark ink in both arms and would be near-invisible on the dark-arm fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1748,7 +1748,7 @@
     "$type": "color"
   },
   "accent.contrast": {
-    "$value": { "colorSpace": "oklch", "components": [0.15, 0.035, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.15, 0.035, 270] },
     "$description": "Label color for solid accent fills. Light arm flips to white (the indigo fill is dark enough); dark arm keeps dark ink against the bright dark-mode fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1981,7 +1981,7 @@
   },
   "overlay.backdrop": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 245], "alpha": 0.65 },
+    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 265], "alpha": 0.65 },
     "$description": "Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2954,7 +2954,7 @@
   },
   "status.neutral.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.12 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.35 },
     "$description": "Border color on the soft neutral surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3166,7 +3166,7 @@
   },
   "checker.base": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.28, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.28, 0.02, 265] },
     "$description": "Transparency checkerboard base tile, shared by color-domain components. Light mode preserves the historical white/gray grid; dark mode keeps the pattern visible without flashing a white backing inside dark chrome.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3178,7 +3178,7 @@
   },
   "checker.tile": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.38, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.38, 0.02, 265] },
     "$description": "Transparency checkerboard alternate tile.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3216,7 +3216,7 @@
   },
   "button.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$description": "Secondary (default) button border: `border.control` in both themes, so the edge reads heavier than a container's even though the structural tiers are faint, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3522,10 +3522,10 @@
     "$type": "dimension"
   },
   "toggle.track.off-resting": {
-    "$value": { "colorSpace": "oklch", "components": [0.58, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.58, 0.02, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(58% 0.02 245)",
+        "cssRecipe": "oklch(58% 0.02 265)",
         "cssProperty": "--cinder-toggle-track-off-resting",
         "public": true,
         "category": "color",
@@ -3536,10 +3536,10 @@
     "$type": "color"
   },
   "toggle.track.off-hover-resting": {
-    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 265] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(64% 0.02 245)",
+        "cssRecipe": "oklch(64% 0.02 265)",
         "cssProperty": "--cinder-toggle-track-off-hover-resting",
         "public": true,
         "category": "color",
@@ -3997,7 +3997,7 @@
   },
   "file-upload.border-color": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.38 },
     "$description": "Dropzone border color.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -4137,7 +4137,7 @@
   },
   "modal.backdrop": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 245], "alpha": 0.65 },
+    "$value": { "colorSpace": "oklch", "components": [0.08, 0.02, 265], "alpha": 0.65 },
     "$description": "`::backdrop` fill color override point. A consumer override should target `::backdrop` directly for cross-engine reliability.",
     "$extensions": {
       "com.lostgradient.cinder": {
