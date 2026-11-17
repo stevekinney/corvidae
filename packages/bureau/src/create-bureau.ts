@@ -150,6 +150,7 @@ import {
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
+import { attemptAgentName } from './goal-state';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { createWorkflowContributions } from './workflow-contributions';
@@ -4978,9 +4979,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     subjects: {
       run: subjectsOfRun,
       agentOfSchedule: (scheduleId) => schedules.agentName(scheduleId),
-      agentOfGoal: async (goalRunId) => {
+      agentOfGoal: async (goalRunId, attemptIndex) => {
         const goal = await goalsComposition.goals.get(goalRunId);
-        return goal?.objective.agentName;
+        if (goal === undefined) return undefined;
+        return attemptIndex === undefined
+          ? goal.objective.agentName
+          : attemptAgentName(goal, attemptIndex);
       },
     },
   });

@@ -149,15 +149,23 @@ export interface GoalObjective {
   readonly prompt: string;
   readonly instructions?: string | undefined;
   /**
-   * COR-2425 — the index of the first attempt that is given the prompt as edited: the number of
-   * attempts the goal had opened when its prompt last changed, so the attempts before it, whose
-   * transcript holds the earlier prompt, are never read as having been given this one. Under the
+   * COR-2425 — the index of the attempt whose start took the edited prompt: set by that start's
+   * own write ({@link promptPending} is consumed in the same write), from the record the start then
+   * seats the attempt from, so it can never disagree with what the attempt was given. Under the
    * `continue` conversation policy the retry at this index is turned with the prompt and then the
-   * validator's feedback, where every other retry is the feedback alone. Absent when the prompt
-   * has not changed after an attempt opened, and on every record written before it, which reads as
-   * a prompt that has not changed.
+   * validator's feedback, where every other retry is the feedback alone. Absent when no start has
+   * taken an edit, and on every record written before it, which reads as a prompt that has not
+   * changed.
    */
   readonly promptRevisedAtAttempt?: number | undefined;
+  /**
+   * COR-2425 — the prompt has been edited and no attempt's start has taken the edit yet. An update
+   * that changes the prompt sets it, whatever the goal is doing; the next start of an attempt
+   * clears it and records its own index in {@link promptRevisedAtAttempt}. An edit that lands after
+   * a start's read therefore stays pending for the attempt after it. Absent on every record written
+   * before it.
+   */
+  readonly promptPending?: boolean | undefined;
 }
 
 export interface DurableGoalAttemptUsage {
@@ -925,7 +933,14 @@ function isIdentity(value: unknown): value is GoalIdentity {
 function isObjective(value: unknown): value is GoalObjective {
   return (
     isPlainRecord(value) &&
-    hasExactKeys(value, ['agentName', 'prompt', 'instructions', 'promptRevisedAtAttempt']) &&
+    hasExactKeys(value, [
+      'agentName',
+      'prompt',
+      'instructions',
+      'promptRevisedAtAttempt',
+      'promptPending',
+    ]) &&
+    (value['promptPending'] === undefined || typeof value['promptPending'] === 'boolean') &&
     isNonEmptyString(value['agentName']) &&
     isString(value['prompt']) &&
     isOptionalString(value['instructions']) &&

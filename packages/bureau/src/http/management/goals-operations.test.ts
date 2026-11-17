@@ -471,7 +471,12 @@ describe('bureau.goals.update', () => {
     // and session check reads that, and the run is still the goal's.
     expect(stored?.attempts[0]).toMatchObject({ agentName: 'worker', status: 'running' });
     const read = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, 'alice-key');
-    expect(read.result).toMatchObject({ agentName: 'helper', status: 'running' });
+    // The view says which agent each attempt ran as, so the goal's new agent is not read onto it.
+    expect(read.result).toMatchObject({
+      agentName: 'helper',
+      status: 'running',
+      attempts: [{ attemptIndex: 0, agentName: 'worker' }],
+    });
 
     // An agent the catalog lacks is not found; the goal keeps the one it has.
     const missing = await updateAtCurrentRevision(opened, 'alice-key', gAlice, {

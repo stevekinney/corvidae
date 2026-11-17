@@ -277,6 +277,34 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     expect(new Set(rows.map((row) => row.word))).toEqual(new Set(['Check not met']));
   });
 
+  test('name the agent an attempt ran as when it is not the goal’s current one (COR-2425)', () => {
+    const goal = draftReleaseNotes();
+    const changed: Goal = {
+      ...goal,
+      agentName: 'helper',
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex < 2
+          ? { ...attempt, agentName: 'worker' }
+          : { ...attempt, agentName: 'helper' },
+      ),
+    };
+    const rows = attemptRows(changed, {
+      agent: 'Helper',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+      agentLabel: (name) => (name === 'worker' ? 'Worker' : name),
+    });
+    // Newest first: attempts 5 to 3 ran as the goal's agent, attempts 2 and 1 as Worker.
+    expect(rows.map((row) => row.lineTwo.split(',')[0])).toEqual([
+      'Helper',
+      'Helper',
+      'Helper',
+      'Worker',
+      'Worker',
+    ]);
+  });
+
   test('have a neutral note that says when it gave up, and opens its last attempt', () => {
     const note = goalNote(draftReleaseNotes(), { zone: ZONE, liveWait: undefined });
     expect(note?.tone).toBe('neutral');

@@ -225,8 +225,15 @@ export type AttemptRow = {
  * waits on, when it does; only that attempt's run is read for it.
  */
 export function attemptRows(
-  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt'>,
-  context: Omit<AttemptLineContext, 'wait'> & { readonly liveWait: AttemptWait | undefined },
+  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt' | 'agentName'>,
+  context: Omit<AttemptLineContext, 'wait'> & {
+    readonly liveWait: AttemptWait | undefined;
+    /**
+     * The name an agent goes by on screen, for an attempt that ran as another agent than the goal's
+     * current one. Omitted, the agent's identifier is said as it is.
+     */
+    readonly agentLabel?: (agentName: string) => string;
+  },
 ): AttemptRow[] {
   return goal.attempts
     .toSorted((left, right) => right.attemptIndex - left.attemptIndex)
@@ -242,7 +249,16 @@ export function attemptRows(
         title: copy.attemptTitle(number),
         word: attemptWord(attempt, wait),
         startedAt: instant(attempt.startedAt),
-        lineTwo: attemptLineTwo(attempt, { ...context, wait, agentEndedAt }),
+        // An attempt that ran as another agent than the goal's now says its own.
+        lineTwo: attemptLineTwo(attempt, {
+          ...context,
+          agent:
+            attempt.agentName === undefined || attempt.agentName === goal.agentName
+              ? context.agent
+              : (context.agentLabel?.(attempt.agentName) ?? attempt.agentName),
+          wait,
+          agentEndedAt,
+        }),
       };
     });
 }

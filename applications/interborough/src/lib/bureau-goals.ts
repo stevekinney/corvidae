@@ -72,6 +72,8 @@ const goalSchema = z.object({
   usage: usageSchema.extend({ attempts: z.number(), durationMs: z.number() }),
   attempts: z.array(
     z.object({
+      /** The agent the attempt ran as, which is not the goal's `agentName` once the goal's agent changed. */
+      agentName: z.string().optional(),
       attemptId: z.string(),
       attemptIndex: z.number().int(),
       runId: z.string(),

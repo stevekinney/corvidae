@@ -250,7 +250,7 @@
     {@const actions = goalActions(found)}
     {@const agent = agentLabel(found.agentName)}
     {@const note = goalNote(found, { zone, liveWait })}
-    {@const rows = attemptRows(found, { agent, zone, now, liveWait })}
+    {@const rows = attemptRows(found, { agent, zone, now, liveWait, agentLabel })}
     {@const facts = goalFacts(found, {
       agent,
       zone,
