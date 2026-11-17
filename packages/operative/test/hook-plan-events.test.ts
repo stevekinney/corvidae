@@ -200,6 +200,66 @@ describe('COR-766: hook-plan events', () => {
     expect(typeof events[0]?.durationMilliseconds).toBe('number');
   });
 
+  it('carries the registrant the registry stamped on a failed entry (COR-2097)', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>({
+      onError: () => 'continue',
+      source: 'agent',
+    });
+    hooks.on(
+      'onStep',
+      async () => {
+        throw new Error('hook exploded');
+      },
+      { id: 'thrower' },
+    );
+    hooks.on(
+      'onStep',
+      async () => {
+        throw new Error('hook exploded');
+      },
+      { id: 'plugin-thrower', source: 'audit' },
+    );
+    const activeRun = createActiveRun({
+      generate: async () => ({ content: 'done', toolCalls: [] }),
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+    });
+    const failed: HookPlanFailedEvent[] = [];
+    activeRun.addEventListener(HookPlanFailedEvent.type, (event) => failed.push(event));
+    await activeRun.result;
+
+    expect(failed.map((event) => [event.hookId, event.source])).toEqual([
+      ['thrower', 'agent'],
+      ['plugin-thrower', 'audit'],
+    ]);
+  });
+
+  it('leaves the registrant undefined when no one named one', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>({ onError: () => 'continue' });
+    hooks.on(
+      'onStep',
+      async () => {
+        throw new Error('hook exploded');
+      },
+      { id: 'anonymous' },
+    );
+    const activeRun = createActiveRun({
+      generate: async () => ({ content: 'done', toolCalls: [] }),
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+    });
+    const failed: HookPlanFailedEvent[] = [];
+    activeRun.addEventListener(HookPlanFailedEvent.type, (event) => failed.push(event));
+    await activeRun.result;
+
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.source).toBeUndefined();
+  });
+
   it("measures a hook's duration on the run's runtime clock, not the registry's", async () => {
     // The registry carries no clock, so it defaults to the real `Date.now`, as
     // every plan merged at dispatch does. Each handler moves only the manual

@@ -451,9 +451,51 @@ export interface BureauSteeringGate extends SteeringGate {
    * underlying persistent deletion succeeds (the same ordering
    * {@link purgeFromLedger}'s own doc comment already fixes for this gate)
    * and BEFORE that same `purgeFromLedger` call.
+   *
+   * COR-2097: the session is over, so every other command of it still `accepted` fails too: a
+   * pause or resume bound to a run this gate no longer tracks with `'run-terminal'`, and a
+   * session-scoped one (a configuration change, an agent identity) with `'session-terminal'`.
+   * No command outlives its session without a terminal state.
    */
   settleForDeletion(now: string): void;
+  /**
+   * COR-2097 — the commands this gate has moved out of `accepted` since the last call, in the order
+   * they moved: each to `applied` (a boundary observed it), `superseded` (a later command for the
+   * same target was admitted) or `failed` (its deadline passed, or its run or session ended), and
+   * cleared by the call. A command recorded applied at admission never was `accepted`, so it is
+   * not among them.
+   *
+   * The gate cannot tell a live change from a replay: the same methods fold another process's log
+   * and a restarted process's own. So it announces nothing, and the one caller that has just
+   * committed the change reads this and publishes. A caller that is only catching up reads it to
+   * drop it.
+   */
+  drainTransitions(): readonly SteeringGateTransition[];
 }
+
+/** A command a gate moved out of `accepted` (COR-2097): see {@link BureauSteeringGate.drainTransitions}. */
+export type SteeringGateTransition =
+  | {
+      /** A boundary of `runId` observed it, at `appliedAt`. */
+      readonly state: 'applied';
+      /** The command's id. */
+      readonly commandId: string;
+      /** The run whose boundary applied it. */
+      readonly runId: string;
+      /** When that boundary applied it. */
+      readonly appliedAt: string;
+    }
+  | {
+      /** What the command became. */
+      readonly state: 'superseded' | 'failed';
+      /** The command's id. */
+      readonly commandId: string;
+      /**
+       * `SteeringCommandFailure.reason`: `superseded-by`, `deadline-passed`, `run-terminal` or
+       * `session-terminal`.
+       */
+      readonly failureReason: SteeringCommandFailure['reason'];
+    };
 
 /**
  * The bureau-wide idempotency ledger every session's `SteeringGate` shares
@@ -746,6 +788,27 @@ export function createSteeringGate(
   // everywhere else.
   clock: RuntimeClock = createDefaultRuntimeServices().clock,
 ): BureauSteeringGate {
+  // COR-2097: the commands this gate moved out of `accepted` into `applied`, `superseded` or
+  // `failed`, kept until a caller that is itself the commit of what moved them takes them
+  // (`drainTransitions`). A gate folded from a log it did not write is read the same way and its
+  // transitions are dropped, so a fold never announces what another process decided.
+  let transitions: SteeringGateTransition[] = [];
+  const noteApplied = (stored: StoredSteeringCommand, runId: string, appliedAt: string): void => {
+    transitions.push({ state: 'applied', commandId: stored.id, runId, appliedAt });
+  };
+  const noteTransition = (stored: StoredSteeringCommand): void => {
+    if (
+      (stored.state !== 'superseded' && stored.state !== 'failed') ||
+      stored.failure === undefined
+    ) {
+      return;
+    }
+    transitions.push({
+      state: stored.state,
+      commandId: stored.id,
+      failureReason: stored.failure.reason,
+    });
+  };
   let rawConfigVersion = 0;
   let effectiveConfigVersion = 0;
   let appliedFloor = 0;
@@ -825,6 +888,7 @@ export function createSteeringGate(
       if (prior && prior.state === 'accepted') {
         prior.state = 'superseded';
         prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy: successorId };
+        noteTransition(prior);
       }
     }
     pendingConfigurationKeys.set(target, []);
@@ -932,6 +996,7 @@ export function createSteeringGate(
       if (prior && prior.state === 'accepted') {
         prior.state = 'superseded';
         prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy };
+        noteTransition(prior);
       }
     }
     runPauseOwners.delete(runId);
@@ -1300,6 +1365,28 @@ export function createSteeringGate(
         // steering versions as applied"). See `runPauseOwners`'s own doc
         // comment for why this is now every current owner, not one.
         clearPauseOwners(boundRunId, context.now, command.id);
+        // COR-2097: a resume is no pause owner, so the sweep above misses one this transition
+        // overtook before the run's boundary observed it. Its version is skipped now, and the
+        // exact-match rule of `recordApplied` would never apply it, so it is superseded too.
+        for (const principalMap of ledger.values()) {
+          for (const prior of principalMap.values()) {
+            if (
+              prior !== stored &&
+              prior.sessionId === sessionId &&
+              prior.state === 'accepted' &&
+              prior.runId === boundRunId &&
+              prior.requestedValue.target === 'resume'
+            ) {
+              prior.state = 'superseded';
+              prior.failure = {
+                failedAt: context.now,
+                reason: 'superseded-by',
+                supersededBy: command.id,
+              };
+              noteTransition(prior);
+            }
+          }
+        }
         if (target === 'pause') addPauseOwner(boundRunId, command.principal, command.id);
         return { outcome: 'accepted', command: snapshotOf(stored) };
       }
@@ -1411,6 +1498,7 @@ export function createSteeringGate(
             reason: 'superseded-by',
             supersededBy: command.id,
           };
+          noteTransition(prior);
         }
       }
       // Guaranteed present — the `policyRef` variant already returned above.
@@ -1512,9 +1600,11 @@ export function createSteeringGate(
             }
             stored.state = 'failed';
             stored.failure = { failedAt: now, reason: 'deadline-passed' };
+            noteTransition(stored);
             continue;
           }
           stored.state = 'applied';
+          noteApplied(stored, runId, now);
         }
       }
     },
@@ -1539,6 +1629,7 @@ export function createSteeringGate(
         ) {
           pending.state = 'failed';
           pending.failure = { failedAt: now, reason: 'deadline-passed' };
+          noteTransition(pending);
           pendingAgentName = undefined;
         }
       }
@@ -1577,6 +1668,12 @@ export function createSteeringGate(
       releaseRun(runId, now);
     },
 
+    drainTransitions(): readonly SteeringGateTransition[] {
+      const drained = transitions;
+      transitions = [];
+      return drained;
+    },
+
     settleForDeletion(now: string): void {
       // Every run this gate still has ANY bookkeeping for — not only
       // `pausedRunIds` — since a run that started but never paused still
@@ -1591,6 +1688,24 @@ export function createSteeringGate(
         ...waitersByRunId.keys(),
       ]);
       for (const runId of runIds) releaseRun(runId, now);
+      // COR-2097: what the session's end leaves accepted can never apply: a session-scoped command
+      // waits for a run that will not come, and a pause or resume of a run this gate no longer
+      // tracks has no boundary left.
+      for (const principalMap of ledger.values()) {
+        for (const stored of principalMap.values()) {
+          if (stored.sessionId !== sessionId || stored.state !== 'accepted') continue;
+          const target = stored.requestedValue.target;
+          stored.state = 'failed';
+          stored.failure = {
+            failedAt: now,
+            reason: target === 'pause' || target === 'resume' ? 'run-terminal' : 'session-terminal',
+          };
+          noteTransition(stored);
+        }
+      }
+      pendingAgentName = undefined;
+      pendingAgentDeadline = undefined;
+      pendingIdentityKey = undefined;
     },
 
     purgeFromLedger(): void {
@@ -1623,6 +1738,7 @@ export function createSteeringGate(
         ) {
           stored.state = 'failed';
           stored.failure = { failedAt: now, reason: 'run-terminal' };
+          noteTransition(stored);
         }
       }
     }

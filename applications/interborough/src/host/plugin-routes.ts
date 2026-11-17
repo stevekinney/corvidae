@@ -14,6 +14,9 @@ import { HostMutationError } from './host-mutation-context.ts';
  *   null` removes it.
  * - `PUT /host/plugins/<name>/secrets/<key>` with `{ "value": "..." }` stores a secret the plugin
  *   declared. The value travels in the body, never the path.
+ * - `DELETE /host/plugins/<name>/secrets/<key>` removes a secret the plugin declared and answers
+ *   `{ plugin, key, set: false }` (COR-2098). A key the plugin does not declare answers 400 naming
+ *   the field `key` and never repeating it.
  *
  * Every route runs the request guard first, so a page on another origin changes nothing. A change
  * answers 200; a refusal because the home is remote answers 403 with `reason: "deployment"`; an
@@ -166,6 +169,22 @@ export function pluginRoutes(
             );
           },
           'PUT',
+          HOST_PLUGIN_SECRET_ROUTE,
+          log,
+        ),
+      // Removes the secret (COR-2098), as `DELETE /host/providers/<name>` removes a provider's key.
+      // The key in the path is checked against what the plugin declares, and no answer, error or log
+      // line repeats it.
+      DELETE: (request: Bun.BunRequest<typeof HOST_PLUGIN_SECRET_ROUTE>) =>
+        refuse(request) ??
+        respond(
+          async () =>
+            manager.removeSecret(
+              decoded(request.params.name),
+              decoded(request.params.key),
+              await authority.mutation(request, await readObject(request)),
+            ),
+          'DELETE',
           HOST_PLUGIN_SECRET_ROUTE,
           log,
         ),

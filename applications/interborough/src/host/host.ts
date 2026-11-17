@@ -202,6 +202,7 @@ import {
 } from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
+import { createHostEvents } from './host-events.ts';
 import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
 import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
@@ -972,8 +973,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const isProviderPlugin = (plugin: string): boolean =>
       held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
+    // What the plugin manager reports of the writes it commits (COR-2098), and the port the Bureau
+    // hears it through: a secret stored or removed, a plugin's choices written, a status changed.
+    const hostEvents = createHostEvents();
     const pluginManager = await createPluginManager({
       workspaceSecrets,
+      events: hostEvents,
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
       },
@@ -1226,6 +1231,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       plugins: pluginManager.loadable().filter((entry) => entry.source !== 'built-in'),
       pluginConfiguration: pluginManager.settings(),
       pluginSecrets: pluginManager.secrets,
+      hostEvents: hostEvents.port,
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
