@@ -65,6 +65,7 @@
     STATE_LABELS,
     dedupeFilePaths,
     describeCountdown,
+    describeCountdownShort,
     describeFilesTouched,
     describeDecisionTime,
     describeExpiry,
@@ -306,6 +307,12 @@
     }
     return describeCountdown(expirationTimestamp, currentTime);
   });
+  // The same deadline as a narrow card writes it, so it shares a line with "Can't be undone".
+  const expirationTextShort = $derived(
+    expirationText === undefined || expirationTimestamp === undefined || currentTime === undefined
+      ? undefined
+      : describeCountdownShort(expirationTimestamp, currentTime),
+  );
 
   const payloadLabel = $derived(
     inputLabel ?? (layout === 'card' ? `${tool.name} arguments` : 'Input'),
@@ -622,6 +629,7 @@
       {requestedIso}
       {consequence}
       countdown={expirationText}
+      countdownShort={expirationTextShort}
       {rememberScope}
       decidedElsewhere={decidedIn !== undefined}
       {outcomeText}
@@ -668,6 +676,7 @@
       command={decisionCommand}
       {why}
       countdown={expirationText}
+      countdownShort={expirationTextShort}
       {consequence}
       {rememberScope}
       {approveLabel}

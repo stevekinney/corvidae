@@ -31,6 +31,8 @@
     why: string | undefined;
     /** The live countdown, such as "Expires in 4m 10s". */
     countdown: string | undefined;
+    /** The countdown as a narrow card writes it, such as "Expires Nov 17". */
+    countdownShort: string | undefined;
     /** What approving does; the warning glyph's tooltip says it when the action cannot be undone. */
     consequence: string | undefined;
     /** The checkbox's scope, or `undefined` when the tool never offers it. */
@@ -110,6 +112,7 @@
     command,
     why,
     countdown,
+    countdownShort,
     consequence,
     rememberScope,
     approveLabel,
@@ -318,6 +321,7 @@
     {#if undecidedPrefix === undefined}
       <ApprovalCardFactsLine
         countdown={isPending ? countdown : undefined}
+        countdownShort={isPending ? countdownShort : undefined}
         {irreversible}
         undoneExplanation={consequence ?? "Can't be undone"}
       />

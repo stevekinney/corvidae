@@ -178,6 +178,35 @@ describe('ApprovalCard decision layout', () => {
     expect(squash(container.querySelector('[data-cinder-countdown]')?.textContent)).toBe(
       'Expires in 4m 10s',
     );
+    // Already short, so no second form is drawn.
+    expect(container.querySelector('.cinder-approval-card__countdown-short')).toBeNull();
+  });
+
+  test('a deadline more than a day out carries the narrow card’s day-only form beside the full one', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z');
+    jest.useFakeTimers({ now });
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({ expiresAt: '2026-06-30T09:30:00.000Z' }),
+    });
+    await tick();
+
+    const fact = container.querySelector('[data-cinder-countdown]');
+    expect(fact?.hasAttribute('data-cinder-shortened')).toBe(true);
+    expect(fact?.querySelector('.cinder-approval-card__countdown-full')?.textContent).toMatch(
+      /^Expires \w{3} Jun 30, 9:30 AM$/,
+    );
+    expect(fact?.querySelector('.cinder-approval-card__countdown-short')?.textContent).toBe(
+      'Expires Jun 30',
+    );
+    // Only a narrow card (its own width) draws the short form, and then only it.
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toContain('.cinder-approval-card__countdown-short { display: none; }');
+    expect(css).toMatch(
+      /@container \(inline-size < 24rem\) \{[^@]*\[data-cinder-shortened\] > \.cinder-approval-card__countdown-full \{ display: none; \}[^@]*\[data-cinder-shortened\] > \.cinder-approval-card__countdown-short \{ display: inline; \}/,
+    );
   });
 
   test('a reversible approval commits on the first press and sends the note with it', async () => {
@@ -847,7 +876,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
     // The card's own width, not the viewport, drops the tool's name from the row's line.
     expect(css).toContain(
-      '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; } }',
+      '@container (inline-size < 24rem) { .cinder-approval-card--row .cinder-approval-card__line-tool-name { display: none; }',
     );
     // "Approval from Tool runner, 3 min ago" breaks only on a card narrower than 14rem.
     expect(css).toMatch(

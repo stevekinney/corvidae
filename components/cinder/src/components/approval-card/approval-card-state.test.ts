@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   describeCountdown,
+  describeCountdownShort,
   describeDecisionTime,
   describeExpiry,
   describeInputRows,
@@ -131,6 +132,19 @@ describe('the approval countdown', () => {
     const far = describeCountdown(now + 8_521_807 * HOUR, now);
     expect(far).not.toContain(' h');
     expect(far).toMatch(/^Expires /);
+  });
+
+  test('a narrow card names only the day of a deadline more than a day out, and keeps a countdown', () => {
+    expect(describeCountdownShort(Date.parse('2026-11-12T18:30:00.000Z'), now)).toBe(
+      'Expires tomorrow',
+    );
+    expect(describeCountdownShort(Date.parse('2026-11-20T09:30:00.000Z'), now)).toBe(
+      'Expires Nov 20',
+    );
+    // Under a day the countdown is already short, so both forms are the same words.
+    expect(describeCountdownShort(now + 3 * HOUR, now)).toBe(
+      describeCountdown(now + 3 * HOUR, now),
+    );
   });
 });
 

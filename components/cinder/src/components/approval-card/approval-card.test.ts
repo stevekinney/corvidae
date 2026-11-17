@@ -2586,7 +2586,7 @@ describe('ApprovalCard line wrapping', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(
-      /@container \(inline-size < 17rem\) \{[^@]*__line \.cinder-approval-card__time-separator \{\s*display: none;[^@]*__line time \{\s*display: block;/,
+      /@container \(inline-size < 14rem\) \{[^@]*__line \.cinder-approval-card__time-separator \{\s*display: none;[^@]*__line time \{\s*display: block;/,
     );
     expect(css).toMatch(
       /@container \(inline-size < 19rem\) \{[^@]*__eyebrow \.cinder-approval-card__time-separator,[^@]*__detail-ask \.cinder-approval-card__time-separator \{\s*display: none;/,

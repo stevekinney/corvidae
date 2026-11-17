@@ -182,6 +182,25 @@ export function describeCountdown(expirationTimestamp: number, now: number): str
   return `Expires in ${formatRemainingTime(remaining)}`;
 }
 
+const WEEKDAY_PREFIX = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) /;
+
+/**
+ * The countdown as a narrow card writes it, so it shares one line with "Can't be undone" on a
+ * phone: more than a day out it names only the day ("Expires Nov 17", "Expires tomorrow"); closer
+ * than that it is the countdown itself, which is already short.
+ */
+export function describeCountdownShort(expirationTimestamp: number, now: number): string {
+  const remaining = expirationTimestamp - now;
+  if (remaining <= DAY_SECONDS * 1_000) return describeCountdown(expirationTimestamp, now);
+  const when = formatDateTime(expirationTimestamp, { now });
+  const separator = when.lastIndexOf(', ');
+  const day = (separator < 0 ? when : when.slice(0, separator)).replace(WEEKDAY_PREFIX, '');
+  const inSentence = /^(Today|Tomorrow)\b/.test(day)
+    ? `${day.charAt(0).toLowerCase()}${day.slice(1)}`
+    : day;
+  return `Expires ${inSentence}`;
+}
+
 /**
  * Accepts serialized JSON strings as argument previews by parsing them into
  * their structured form; any other value passes through unchanged.

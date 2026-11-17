@@ -1265,6 +1265,11 @@
     block-size: 14px;
   }
 
+  /* The narrow card's form of the deadline; drawn only in a narrow card (below). */
+  .cinder-approval-card__countdown-short {
+    display: none;
+  }
+
   .cinder-approval-card__facts-line-tip {
     display: inline-flex;
     flex: none;
@@ -1569,6 +1574,18 @@
   @container (inline-size < 24rem) {
     .cinder-approval-card--row .cinder-approval-card__line-tool-name {
       display: none;
+    }
+
+    /* A deadline more than a day out is written as its day ("Expires Nov 17"), so the expiry and
+     * "Can't be undone" share one line. */
+    .cinder-approval-card__facts-line-fact[data-cinder-shortened]
+      > .cinder-approval-card__countdown-full {
+      display: none;
+    }
+
+    .cinder-approval-card__facts-line-fact[data-cinder-shortened]
+      > .cinder-approval-card__countdown-short {
+      display: inline;
     }
   }
 

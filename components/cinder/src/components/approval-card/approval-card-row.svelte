@@ -36,6 +36,8 @@
     consequence: string | undefined;
     /** The live countdown, such as "Expires in 30s". */
     countdown: string | undefined;
+    /** The countdown as a narrow card writes it, such as "Expires Nov 17". */
+    countdownShort: string | undefined;
     /** The checkbox's scope, or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
     /**
@@ -118,6 +120,7 @@
     requestedIso,
     consequence,
     countdown,
+    countdownShort,
     rememberScope,
     decidedElsewhere,
     outcomeText,
@@ -237,6 +240,7 @@
         {#if !collapsed}
           <ApprovalCardFactsLine
             countdown={isPending ? countdown : undefined}
+            countdownShort={isPending ? countdownShort : undefined}
             {irreversible}
             undoneExplanation={consequence ?? "Can't be undone"}
           />
