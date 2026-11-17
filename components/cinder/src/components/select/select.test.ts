@@ -544,6 +544,31 @@ describe('Select — ghost variant', () => {
     expect(controlBlock).toContain('min-inline-size: 0');
   });
 
+  // COR-2489: on Home's Start a chat the quiet Select's text started 11px inside the field edge (its
+  // 10px inline padding and a 1px transparent border), out of line with the text above it.
+  test('a ghost select that leads its row has a zero text inset: the pull-back is its padding and border', () => {
+    const styles = readSelectStyles();
+    const rest = styles.slice(styles.indexOf(".cinder-select[data-cinder-variant='ghost'] {"));
+    const restBlock = rest.slice(0, rest.indexOf('}'));
+    const leadingPadding = /padding-inline:\s*(var\(--cinder-pad-control\))\s/.exec(restBlock)?.[1];
+    expect(leadingPadding).toBe('var(--cinder-pad-control)');
+    // Every select is drawn inside a 1px border, transparent on the ghost.
+    const base = styles.slice(styles.indexOf('.cinder-select {'));
+    expect(base.slice(0, base.indexOf('}'))).toContain(
+      'border: 1px solid var(--cinder-control-border)',
+    );
+
+    const lead = styles.slice(
+      styles.indexOf(".cinder-select-field[data-cinder-variant='ghost']:first-child {"),
+    );
+    const leadBlock = lead.slice(0, lead.indexOf('}'));
+    expect(leadBlock).toContain(`margin-inline-start: calc(-1 * (${leadingPadding} + 1px));`);
+    // Only the leading one: a ghost select after another keeps its place, so none overlap.
+    expect(styles).not.toMatch(
+      /\.cinder-select-field\[data-cinder-variant='ghost'\] \{[^}]*margin-inline-start/,
+    );
+  });
+
   test('the ghost focus ring wraps the whole control through the shared ring, border transparent', () => {
     const styles = readSelectStyles();
     expect(styles).toContain('box-shadow: var(--_cinder-focus-ring-shadow)');

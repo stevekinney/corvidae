@@ -21,7 +21,7 @@ Dropdown select for choosing a single option from a predefined list: the platfor
 
 ### Ghost variant
 
-Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"`: no border or fill at rest, a neutral tint on hover and while open, the focus ring around the whole control, the chevron kept. Bordered selects remain for forms and filter bars. `valuePrefix` draws a muted word before the value.
+Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"`: no border or fill at rest, a neutral tint on hover and while open, the focus ring around the whole control, the chevron kept. A ghost select that leads its row is pulled back by its own padding and border, so its text starts at the field edge, on the text above it; only its hover tint and ring reach past. Bordered selects remain for forms and filter bars. `valuePrefix` draws a muted word before the value.
 
 ```svelte
 <script lang="ts">
