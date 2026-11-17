@@ -48,6 +48,15 @@ export async function validateSchemaValue(
 /** The keywords whose values are data, not schemas, so a `secret: true` inside one is no marker. */
 const VALUE_KEYWORDS: ReadonlySet<string> = new Set(['default', 'examples', 'const', 'enum']);
 
+/** The keywords whose value maps a name to a schema, so a name there is a field, never a keyword. */
+const SCHEMA_MAPS: ReadonlySet<string> = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+]);
+
 /** What a secret field holds in place of a string: a reference to a saved secret, and nothing else. */
 const SECRET_REFERENCE_SCHEMA = {
   type: 'object',
@@ -95,11 +104,30 @@ function rewriteSecrets(node: unknown, depth: number): unknown {
   let changed = false;
   const next: Record<string, unknown> = {};
   for (const [member, child] of Object.entries(node)) {
-    const rewritten = VALUE_KEYWORDS.has(member) ? child : rewriteSecrets(child, depth + 1);
+    // A schema map is read by its values first: a property named `default` or `enum` is a field,
+    // not the keyword, so its secret is rewritten like any other.
+    const rewritten = SCHEMA_MAPS.has(member)
+      ? rewriteSchemaMap(child, depth + 1)
+      : VALUE_KEYWORDS.has(member)
+        ? child
+        : rewriteSecrets(child, depth + 1);
     if (rewritten !== child) changed = true;
     next[member] = rewritten;
   }
   return changed ? next : node;
+}
+
+/** A map of names to schemas (`properties` and the like) with each schema's secrets rewritten. */
+function rewriteSchemaMap(map: unknown, depth: number): unknown {
+  if (!isRecord(map)) return rewriteSecrets(map, depth);
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [name, schema] of Object.entries(map)) {
+    const rewritten = rewriteSecrets(schema, depth + 1);
+    if (rewritten !== schema) changed = true;
+    next[name] = rewritten;
+  }
+  return changed ? next : map;
 }
 
 async function validateJsonSchemaValue(

@@ -312,6 +312,26 @@ describe('secret references in the model and the validator', () => {
     expect(withSecretReferences(inData)).toBe(inData);
   });
 
+  test.each(['default', 'examples', 'const', 'enum'])(
+    'validates a secret field named %s, a field and not the keyword',
+    async (name) => {
+      const named = {
+        type: 'object',
+        properties: { [name]: { type: 'string', secret: true } },
+        required: [name],
+      };
+      expect((await validateSchemaValue(named, { [name]: { $secret: 'k' } })).valid).toBe(true);
+      expect((await validateSchemaValue(named, { [name]: 'sk-live-x' })).valid).toBe(false);
+      // Under $defs, reached by a reference, the field's name is no keyword either.
+      const defined = {
+        type: 'object',
+        properties: { token: { $ref: '#/$defs/enum' } },
+        $defs: { enum: { type: 'string', secret: true } },
+      };
+      expect((await validateSchemaValue(defined, { token: { $secret: 'k' } })).valid).toBe(true);
+    },
+  );
+
   test('reads a reference and nothing else as a key', () => {
     expect(secretKeyOf({ $secret: 'k' })).toBe('k');
     expect(isSecretReference({ $secret: '' })).toBe(false);
