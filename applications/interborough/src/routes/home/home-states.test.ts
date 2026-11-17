@@ -21,6 +21,7 @@ import {
   test,
 } from 'bun:test';
 import { Window } from 'happy-dom';
+import { readFileSync } from 'node:fs';
 import { flushSync } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
@@ -28,6 +29,7 @@ import { CONNECTION_COPY } from '../../app/copy/views.ts';
 import { holdChangingActions } from '../../app/shell/changing-actions.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import { START_CHAT_MESSAGE_HEIGHT } from './home-start-chat.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';
 import {
   HOME_NOW,
@@ -181,6 +183,39 @@ describe('Home while it loads (02c, 02d)', () => {
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
     expect(container.querySelector('[data-page="home"]')?.hasAttribute('aria-busy')).toBe(false);
     expect(container.querySelector('[data-testid="home-loading-counts"]')).toBeNull();
+  });
+
+  // COR-2489: the message box's placeholder was 4.75rem against a 96px Textarea, so everything under
+  // the box moved down when the data arrived.
+  test('the Start a chat placeholder is as tall as the message box, so nothing below moves', async () => {
+    installed = installHome(sampleHomeWorld());
+    const hold = holdOpen();
+    installed.stub.on('bureau.contexts.list', async () => {
+      await hold.released;
+      return { contexts: SAMPLE_CHATS, nextOffset: null };
+    });
+    const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
+    await waitFor(() => expect(container.querySelector('[data-mode="loading"]')).not.toBeNull());
+    const placeholder = cardOf(container, 'Start a chat').querySelector<HTMLElement>(
+      '.cinder-skeleton',
+    );
+    expect(placeholder?.style.height).toBe(START_CHAT_MESSAGE_HEIGHT);
+
+    // The height is the Textarea's own: its least height in Cinder's stylesheet, which its three
+    // rows of 14px text at the normal leading and its padding stay inside.
+    const textareaCss = readFileSync(
+      new URL('./components/textarea/textarea.css', import.meta.resolve('@lostgradient/cinder')),
+      'utf8',
+    );
+    const control = /\n {2}\.cinder-textarea \{([^}]*)\}/.exec(textareaCss)?.[1] ?? '';
+    expect(control).toContain(`min-height: ${START_CHAT_MESSAGE_HEIGHT};`);
+    expect(START_CHAT_MESSAGE_HEIGHT).not.toBe('4.75rem');
+
+    hold.release();
+    await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
+    const box = cardOf(container, 'Start a chat').querySelector('textarea');
+    expect(box?.classList.contains('cinder-textarea')).toBe(true);
+    expect(box?.getAttribute('rows')).toBe('3');
   });
 
   test('the placeholders have the layout of the page they stand for', async () => {
