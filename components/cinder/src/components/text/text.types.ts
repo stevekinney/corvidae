@@ -24,7 +24,7 @@ type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
   expanded?: boolean;
   /**
    * Content that sits beside the "Show more" button on the line under a clamped run, separated from
-   * it by a comma, such as a "Show raw payloads" link. Ignored without `clamp`.
+   * it by a space and a colour step, such as a "Show raw payloads" link. Ignored without `clamp`.
    */
   actions?: Snippet;
   /** With `truncate="middle"`, how many characters at the end of the text stay visible. @default 4 */

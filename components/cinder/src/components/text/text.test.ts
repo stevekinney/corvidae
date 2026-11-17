@@ -176,7 +176,7 @@ describe('Text clamp', () => {
     expect(root.querySelector('button')).toBeNull();
   });
 
-  test("puts the page's own action beside Show more, after a comma in the stylesheet", () => {
+  test("puts the page's own action beside Show more, a space and a colour step apart", () => {
     measure({ scroll: 140, client: 100 });
     const { container } = render(Text, {
       clamp: 5,
@@ -187,7 +187,10 @@ describe('Text clamp', () => {
 
     expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show more Show raw payloads');
     expect(footer?.querySelector('.cinder-text__toggle + .cinder-text__actions')).not.toBeNull();
-    expect(textCss).toContain('.cinder-text__toggle + .cinder-text__actions::before');
+    expect(textCss).toMatch(/\.cinder-text__actions\s*\{[^}]*color:\s*var\(--cinder-text-muted\)/);
+    expect(textCss).not.toContain('.cinder-text__actions::before');
+    expect(footer?.textContent).not.toContain(',');
+    expect(footer?.textContent).not.toContain(String.fromCodePoint(0xb7));
   });
 
   test('shows the action alone when the run fits', () => {

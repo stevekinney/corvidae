@@ -114,11 +114,10 @@
     }
   }
 
-  /* The comma ends "Show more", so it takes back the footer's gap and sits against it. */
-  .cinder-text__toggle + .cinder-text__actions::before {
-    content: ',' / '';
-    margin-inline: calc(var(--cinder-space-2) * -1) var(--cinder-space-2);
-    opacity: 0.6;
+  /* The page's own action sits after "Show more" with a space and a colour step (muted), and no
+     glyph between them: no comma and no dot. */
+  .cinder-text__actions {
+    color: var(--cinder-text-muted);
   }
 
   /* The tooltip's wrapper fills the line and may shrink, so the head can give way inside it. */

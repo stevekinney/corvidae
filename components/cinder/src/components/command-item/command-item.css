@@ -134,12 +134,13 @@
     font-size: var(--cinder-text-xs);
   }
 
-  .cinder-command-item__meta::before {
-    content: ',';
-    margin-inline-end: var(--cinder-space-1-5);
+  /* The label and its meta are told apart by a space and the colour step (muted, smaller), with no
+     glyph drawn between them: no comma and no dot. */
+  .cinder-command-item__meta {
+    margin-inline-start: var(--cinder-space-1-5);
   }
 
-  /* A row whose meta has nothing to say has no separator to hang from the label. */
+  /* A row whose meta has nothing to say has no gap to hang from the label. */
   .cinder-command-item__meta:empty {
     display: none;
   }
