@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "goalRunId": "g1",
+  "workflowId": "goal:g1",
+  "revision": 1,
+  "transitionSeq": 0,
+  "identity": { "name": "goal", "version": "1" },
+  "objective": { "agentName": "worker", "prompt": "work" },
+  "validator": { "name": "check", "version": "1" },
+  "requireDeterministicValidation": false,
+  "conversationPolicy": { "kind": "continue" },
+  "retryPolicy": { "retryOn": ["validator-fail-retryable"] },
+  "bounds": { "maximumAttempts": 3, "maximumTotalSteps": 100 },
+  "principal": "anonymous:local",
+  "status": "pending",
+  "currentTransition": {
+    "seq": 0,
+    "transitionId": "g1:t0",
+    "from": "pending",
+    "to": "pending",
+    "at": "2026-10-02T12:00:00.000Z",
+    "cause": "created"
+  },
+  "attempts": [],
+  "usage": { "attempts": 0, "steps": 0, "tokens": 0, "durationMs": 0 },
+  "controllerRestarts": 0,
+  "auditLog": [],
+  "createdAt": "2026-10-02T12:00:00.000Z",
+  "updatedAt": "2026-10-02T12:00:00.000Z"
+}

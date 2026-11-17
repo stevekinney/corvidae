@@ -9,7 +9,11 @@ import { type QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
+import {
+  checkFixture,
+  taskFixture,
+  toolApprovalFixture,
+} from '../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { router } from '../lib/router.svelte.ts';
@@ -94,7 +98,8 @@ const GOAL = {
   owner: 'anonymous:local',
   agentName: 'assistant',
   identity: { name: 'Say hello', version: '1' },
-  validator: { name: 'reply-says-hello', version: '1' },
+  validator: { name: 'contains-phrase', version: '1' },
+  validatorConfiguration: { phrase: 'hello' },
   status: 'running',
   terminalReason: null,
   revision: 1,
@@ -162,6 +167,10 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
     const goals = empty ? [] : [GOAL];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
   }
+  if (call !== undefined && call.method === 'bureau.checks.list') {
+    const checks = empty ? [] : [checkFixture('1')];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { checks, nextCursor: null } });
+  }
   if (call !== undefined && call.method === 'bureau.hooks.list') {
     const hooks = empty ? [] : [HOOK];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { hooks } });
@@ -187,6 +196,23 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
                     ? { workflows: [], nextOffset: null }
                     : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
+  }
+  // A plugin's page asks the host which panels it serves, and loads the page of the one it finds.
+  if (url.pathname === '/host/panels') {
+    return Response.json({
+      apps: [
+        {
+          plugin: 'acme',
+          app: 'queue',
+          title: 'Review queue',
+          uri: 'ui://acme/queue/v1',
+          placements: [{ kind: 'page', path: 'queue' }],
+        },
+      ],
+    });
+  }
+  if (url.pathname === '/host/plugins/acme/apps/queue') {
+    return Response.json({ html: '<div id="root"></div>', ui: {} });
   }
   if (url.pathname.endsWith('/schedules')) {
     return Response.json({ items: empty ? [] : [{ id: 'schedule-1' }], total: empty ? 0 : 1 });
@@ -219,13 +245,19 @@ function mount(
 ) {
   let store: PrincipalStore | undefined;
   let queryClient: QueryClient | undefined;
+  // A plugin's page is an address a plugin and a path name, so it is mounted at one.
+  const pluginPage =
+    view === 'plugin-page' && options.parameters === undefined
+      ? { parameters: { plugin: 'acme', '*': 'queue' }, pattern: '/plugins/:plugin/*' }
+      : undefined;
+  const pattern = options.pattern ?? pluginPage?.pattern;
   const result = render(Harness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: options.scopes ?? AUTHORIZATION_SCOPES,
       view,
-      parameters: options.parameters ?? {},
-      ...(options.pattern === undefined ? {} : { pattern: options.pattern }),
+      parameters: options.parameters ?? pluginPage?.parameters ?? {},
+      ...(pattern === undefined ? {} : { pattern }),
       onStore: (created: PrincipalStore) => {
         store = created;
       },
@@ -344,7 +376,9 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is forbidden when its probe is refused`, async () => {
-      if (view === 'health' || view === 'home') return;
+      // A plugin's page holds no scope and has no forbidden state of its own (PL8-18): a caller who
+      // can open Interborough can open it, and a refused read of the panels is its failure.
+      if (view === 'health' || view === 'home' || view === 'plugin-page') return;
       stub(view, 'forbidden');
       const { container, findByRole } = mountWithProbe(view);
       expect(await findByRole('heading', { level: 1, name: copy.forbidden.title })).not.toBeNull();
@@ -452,8 +486,14 @@ describe('a view that finds something to show', () => {
 });
 
 describe('a view that owns its states', () => {
-  test('is a page that keeps its header: the schedules and hooks lists and the Health Workers and Audit log tabs', () => {
-    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules', 'workers', 'audit', 'hooks']);
+  test('is a page that keeps its header: the checks, schedules and hooks lists and the Health Workers and Audit log tabs', () => {
+    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual([
+      'checks',
+      'schedules',
+      'workers',
+      'audit',
+      'hooks',
+    ]);
   });
 
   for (const view of VIEWS_THAT_OWN_THEIR_STATES) {

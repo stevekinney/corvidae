@@ -637,10 +637,20 @@ async function isTerminal(bureau: Bureau, runId: string): Promise<boolean> {
 
 type Kv = NonNullable<Bureau['internals']['kv']>;
 
-/** Whether the log of a session incarnation is gone: its head key no longer exists. */
+/**
+ * Whether the log of a session incarnation is removed: its head key is gone (the boot sweep took
+ * it), or what is left is the sealed head and none of its entries (COR-2097: the head is kept, so a
+ * late admission finds the log sealed, until the boot sweep removes it).
+ */
 async function logRemoved(kv: Kv, sessionId: string, incarnation: string): Promise<boolean> {
   const head = await readSteeringLogHead(kv, sessionId, incarnation);
-  return head.raw === null;
+  if (head.raw === null) return true;
+  if (head.sealed !== true) return false;
+  if (head.sequence === 0) return true;
+  return readSteeringLogEntries(kv, sessionId, incarnation, 0, 1).then(
+    () => false,
+    () => true,
+  );
 }
 
 /** Whether the log of a session incarnation is sealed. */
@@ -1103,6 +1113,11 @@ const AT_HEAD_EXTRA: Readonly<Record<string, unknown>> = {
   },
   'two configuration commands, one boundary': ['steering.applied'],
   'seal winner dies before announcing': { terminal: ['failed:run-terminal'], logRemoved: true },
+  'an admission after the log was removed': {
+    sealed: true,
+    sequence: 3,
+    terminal: ['failed:session-terminal'],
+  },
   'orphan sweep meets a pending entry': { keptBySweep: false, terminal: [], logRemoved: true },
   'two drainers race the same entry': { terminal: [] },
 };
@@ -1232,6 +1247,16 @@ describe('the extra rows of the table (COR-2097, revision 2026-11-16)', () => {
         .map((event) => event.kind);
       extraRow('two configuration commands, one boundary', observed);
       expect(observed).toEqual(['steering.applied']);
+      // Ending the session announces what the ending did to commands still accepted: both were
+      // applied, so neither fails.
+      await rig.a.contexts.delete(run.contextId);
+      await waitUntil(() => outboxDrained(rig.b), { message: 'the session’s ending drained' });
+      await quietFor(100);
+      const afterEnding = await rig.events();
+      const failed = afterEnding.filter(
+        (event) => event.payload['sessionId'] === run.contextId && event.kind === 'steering.failed',
+      );
+      expect(failed.map((event) => event.payload['commandId'])).toEqual([]);
     });
   });
 
@@ -1273,6 +1298,33 @@ describe('the extra rows of the table (COR-2097, revision 2026-11-16)', () => {
       };
       extraRow('seal winner dies before announcing', observed);
       expect(observed).toEqual({ terminal: [], logRemoved: true });
+    });
+  });
+
+  it('the log of an ended session keeps its sealed head after its removal, so an admission that reads it late is refused as sealed and appends to no fresh log', async () => {
+    await withRig(async (rig) => {
+      const idle = await idleWithEffort(rig);
+      await rig.a.contexts.delete(idle.sessionId);
+      const kv = rig.b.internals.kv!;
+      await waitUntil(() => outboxDrained(rig.b), { message: 'the entry drained' });
+      await waitUntil(() => logRemoved(kv, idle.sessionId, idle.incarnation), {
+        message: 'the log was removed',
+      });
+      await quietFor(100);
+      // What a late admission reads: the head. Absent, it is an empty log that is neither sealed
+      // nor shorter than what was folded, and the admission would append to a fresh one.
+      const head = await readSteeringLogHead(kv, idle.sessionId, idle.incarnation);
+      const observed = {
+        sealed: head.sealed === true,
+        sequence: head.sequence,
+        terminal: await terminalOf(rig, idle.sessionId, idle.commandId),
+      };
+      extraRow('an admission after the log was removed', observed);
+      expect(observed).toEqual({
+        sealed: true,
+        sequence: 3,
+        terminal: ['failed:session-terminal'],
+      });
     });
   });
 

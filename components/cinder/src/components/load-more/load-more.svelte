@@ -20,6 +20,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { formatNumber } from '../../utilities/format-number.ts';
   import { useIntersection } from '../../utilities/use-intersection.svelte.ts';
+  import Button from '../button/button.svelte';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
 
   let {
@@ -210,6 +211,10 @@
   }
 </script>
 
+{#snippet spinner()}
+  <span class="cinder-load-more__spinner" aria-hidden="true"></span>
+{/snippet}
+
 <div
   class={mergedClassName}
   aria-busy={busy}
@@ -229,18 +234,20 @@
   {/if}
 
   {#if hasMore}
-    <button
+    <!-- Cinder's own Button, drawn at its compact size: a footer button is a secondary action, and
+         the button reaches 44px on a touch screen through its invisible hit area, never its paint. -->
+    <Button
       type="button"
+      size="sm"
+      variant="secondary"
       class="cinder-load-more__button"
       disabled={buttonDisabled}
       aria-busy={busy}
       onclick={() => void requestNextPage('button')}
+      {...busy ? { trailingIcon: spinner } : {}}
     >
-      <span>{buttonText}</span>
-      {#if busy}
-        <span class="cinder-load-more__spinner" aria-hidden="true"></span>
-      {/if}
-    </button>
+      {buttonText}
+    </Button>
   {/if}
 
   <VisuallyHiddenLiveRegion message={statusText} />

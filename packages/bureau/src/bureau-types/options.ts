@@ -21,7 +21,12 @@ import type {
 import type { SkillCatalogRevision } from '../skills';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { BureauAttentionItem } from '../attention-feed';
-import type { AgentSource, WorkflowSource } from '../sources/definition-source';
+import type {
+  AgentSource,
+  GuardrailSource,
+  ValidatorSource,
+  WorkflowSource,
+} from '../sources/definition-source';
 import type { Storage, TextValueStore } from '@lostgradient/storage';
 import type {
   AlertingOptions,
@@ -582,6 +587,23 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentSkillCatalog?: () => SkillCatalogRevision | undefined;
   /**
+   * COR-2100 — where the host reports a change to the skills it discovers. Discovery stays the
+   * host's, so this is a subscription, not a watcher: each report is published as
+   * `definitions.changed` with `catalog: 'skills'`, `added`, `changed`, `removed` and `rejected`.
+   * The host calls the listener after it has replaced the catalog `agentSkillCatalog` reads, and
+   * never for the first discovery. The Bureau unsubscribes when it is disposed.
+   */
+  skillChanges?: {
+    onChange(
+      listener: (change: {
+        readonly added: readonly string[];
+        readonly changed: readonly string[];
+        readonly removed: readonly string[];
+        readonly rejected: readonly string[];
+      }) => void,
+    ): () => void;
+  };
+  /**
    * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
    * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON
    * workflow files (COR-1527): every `*.json` file in it is an agent-authored workflow
@@ -631,6 +653,26 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * version. Two validators with the same name and version are a startup error.
    */
   validators?: readonly Validator[];
+  /**
+   * COR-2119 — where the owner's validator files are (`validatorFileDirectory` or
+   * `validatorObjectSource`): a JSON file per validator that says when a goal's work is done,
+   * watched like the agent and workflow files. A goal may name one beside the validators of
+   * {@link BureauOptions.validators}, which are looked up first; a goal copies the definition it was
+   * created with, so editing or deleting the file never changes a goal that began on it. A file that
+   * cannot be used is reported through `definitions.changed` (`catalog: 'validators'`, `rejected`).
+   */
+  validatorSource?: ValidatorSource;
+  /**
+   * COR-2120 — where the owner's guardrail files are (`guardrailFileDirectory` or
+   * `guardrailObjectSource`): a JSON file per guardrail (`kind: 'pattern'`, `checks`, `action`,
+   * `phrases` and `patterns`) that an agent file lists in `guardrails` by the file's stem, beside
+   * the plugin guardrails (`plugin:name`). Watched like the agent files: an edit changes the agents
+   * that name it from their next run, and never a run that started on the old one, whose snapshot
+   * holds a copy of the definition. A file that cannot be used is reported through
+   * `definitions.changed` (`catalog: 'guardrails'`, `rejected`), and an agent that names it is
+   * `reference-unresolved`.
+   */
+  guardrailSource?: GuardrailSource;
   /**
    * COR-851 — resolves the producing run of a `fresh-from-artifact` goal's
    * handoff artifact: its sealed context epoch and the actors permitted to

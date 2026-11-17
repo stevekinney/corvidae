@@ -11,6 +11,7 @@ import type { DataListGroup, StatusDotWordLabel } from '@lostgradient/cinder';
 
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal, type GoalStatus } from '../../lib/bureau-goals.ts';
+import { checkText } from '../../lib/check-text.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
 
 /** The segments of the filter bar. `all` holds every goal. */
@@ -83,19 +84,6 @@ export function goalListWord(goal: Pick<Goal, 'status' | 'cancellation'>): Statu
   }
 }
 
-/**
- * The words of a check, from the name of the validator it runs. A validator is named by the exact
- * text it was configured with, and a name with no space in it is a slug
- * (`summary-lists-every-refund-waiting-for-approval`), which reads as the sentence it stands for
- * ("Summary lists every refund waiting for approval"). A name that already has spaces is said as it is.
- */
-export function checkText(validatorName: string): string {
-  const name = validatorName.trim();
-  if (name === '' || /\s/.test(name)) return name;
-  const words = name.replaceAll(/[-_]+/g, ' ').trim();
-  return words === '' ? name : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
-}
-
 /** One goal as a row of the list: everything the row shows, and nothing it does not. */
 export type GoalRow = {
   readonly id: string;
@@ -127,7 +115,7 @@ export function goalRow(goal: Goal): GoalRow {
     status: goal.status,
     segment: goalSegmentOf(goal.status),
     statusWord: goalListWord(goal),
-    check: checkText(goal.validator.name),
+    check: checkText(goal.validator.name, goal.validatorConfiguration),
     made: goal.usage.attempts,
     allowed: goal.bounds.maximumAttempts,
     startedAt: Number.isNaN(started) ? null : started,

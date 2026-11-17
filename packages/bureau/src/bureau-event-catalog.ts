@@ -786,7 +786,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'definitions.changed': entry(
     'definitions.changed',
     'unattributed',
-    'A rescan of the agent or workflow files changed what the catalog holds. `rejected` names the added or changed definitions that are invalid now. A change that only the built-in `bureau` workflow tools wrote carries `source: "bureau"`.',
+    'A rescan of the agent, workflow, validator or guardrail files, or of the skill directories, changed what the catalog holds (`catalog` is `agents`, `workflows`, `validators`, `guardrails` or `skills`). `rejected` names the added or changed definitions that are invalid now, and for skills also a directory whose `SKILL.md` cannot be parsed, which is named as its directory. A change that only the built-in `bureau` workflow tools wrote carries `source: "bureau"`.',
     [
       ['catalog', 'string'],
       ['added', 'string[]'],
@@ -853,6 +853,28 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     [
       ['notificationId', 'string'],
       ['kind', 'string'],
+    ],
+  ),
+  'hook.delivery.failed': entry(
+    'hook.delivery.failed',
+    'unattributed',
+    'A hook’s delivery attempt failed and its failure is written. The payload names the hook, the delivery, the attempt number and how it failed (response, network-error, refused, error or rejected), with the HTTP status of a response. It carries no error text, URL or owner. Nothing is published for an interrupted or aborted attempt, a test delivery, or a delivery of a hook.delivery.* event. A hook that writes notifications cannot match this kind.',
+    [
+      ['hookId', 'string'],
+      ['deliveryId', 'string'],
+      ['attempt', 'number'],
+      ['outcome', 'string'],
+      ['status?', 'number'],
+    ],
+  ),
+  'hook.delivery.gave-up': entry(
+    'hook.delivery.gave-up',
+    'unattributed',
+    'A hook’s delivery was given up after its last retry, after the hook.delivery.failed event of that attempt. The payload names the hook and the delivery and counts the attempts the delivery’s record holds. Nothing is published for a test delivery or a delivery of a hook.delivery.* event. A hook that writes notifications cannot match this kind.',
+    [
+      ['hookId', 'string'],
+      ['deliveryId', 'string'],
+      ['attempts', 'number'],
     ],
   ),
   diagnostic: entry(

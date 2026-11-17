@@ -3,7 +3,9 @@
    * The banner every page shows after a startup where a plugin did not load: how many did not, what
    * that means for agents and workflows, and a link to Settings › Plugins. The count is the plugins
    * with something to fix once any did not load, plus the folders the host could not load a plugin from
-   * (`needAttentionCount`), which is the list the Plugins page opens with.
+   * (`needAttentionCount`). The Plugins page opens with the same cards, plus one for a plugin whose
+   * only problem is a changed panel: that plugin's panel is still served, so the banner leaves it
+   * out and the page does not.
    *
    * It is dismissible until the next startup. The host does not report a start of its own, so the
    * client's only sign of one is the connection: a restart makes the host unreachable, and the

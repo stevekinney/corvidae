@@ -3,7 +3,12 @@
  * its kind, so a new kind is one entry, and a kind with no entry is an error that quotes no credential.
  */
 import type { Bungalow, ContentLocation, DatabaseLocation } from '@lostgradient/bungalow';
-import type { AgentSource, WorkflowSource } from '@lostgradient/bureau/sources';
+import type {
+  AgentSource,
+  GuardrailSource,
+  ValidatorSource,
+  WorkflowSource,
+} from '@lostgradient/bureau/sources';
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, test } from 'bun:test';
 
@@ -11,7 +16,9 @@ import {
   DEFAULT_CONTENT_KINDS,
   DEFAULT_DATABASE_KINDS,
   createAgentSource,
+  createGuardrailSource,
   createHostStorage,
+  createValidatorSource,
   createWorkflowSource,
   describeContent,
   describeDatabaseState,
@@ -96,6 +103,8 @@ describe('a table that holds an extra kind', () => {
   test('builds the agent and workflow sources with the entry’s factories', () => {
     const agents = { kind: 'agent' } as unknown as AgentSource;
     const workflows = { kind: 'workflow' } as unknown as WorkflowSource;
+    const validators = { kind: 'validator' } as unknown as ValidatorSource;
+    const guardrails = { kind: 'guardrail' } as unknown as GuardrailSource;
     const received: unknown[] = [];
     const kinds: ContentKinds = {
       extra: {
@@ -107,6 +116,14 @@ describe('a table that holds an extra kind', () => {
           received.push(['workflows', content, directory]);
           return workflows;
         },
+        createValidatorSource: (_bungalow, content, directory) => {
+          received.push(['validators', content, directory]);
+          return validators;
+        },
+        createGuardrailSource: (_bungalow, content, directory) => {
+          received.push(['guardrails', content, directory]);
+          return guardrails;
+        },
         describe: () => 'the extra content',
         localDirectory: () => '/where/it/is',
       },
@@ -116,9 +133,13 @@ describe('a table that holds an extra kind', () => {
 
     expect(createAgentSource(home, extraContent, tools, { watch: false }, kinds)).toBe(agents);
     expect(createWorkflowSource(home, extraContent, { watch: 'poll' }, kinds)).toBe(workflows);
+    expect(createValidatorSource(home, extraContent, { watch: 'poll' }, kinds)).toBe(validators);
+    expect(createGuardrailSource(home, extraContent, { watch: 'poll' }, kinds)).toBe(guardrails);
     expect(received).toEqual([
       ['agents', extraContent, tools, { watch: false }],
       ['workflows', extraContent, { watch: 'poll' }],
+      ['validators', extraContent, { watch: 'poll' }],
+      ['guardrails', extraContent, { watch: 'poll' }],
     ]);
     expect(describeContent(extraContent, kinds)).toBe('the extra content');
     expect(localContentDirectory(extraContent, kinds)).toBe('/where/it/is');

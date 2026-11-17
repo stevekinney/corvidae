@@ -279,6 +279,12 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [['bureau.audit.query', 'audit']],
   },
   {
+    testFile: 'management/checks-operations.test.ts',
+    inputFixture: 'Guardrail rows of an owned run beside a goal row of another owner',
+    sentinel: 'PRIVATE-CHECK-INPUT-5d1e',
+    operations: [['bureau.checks.list', 'owner-collection']],
+  },
+  {
     testFile: 'workspace-settings-privacy.test.ts',
     inputFixture: 'Real settings state and emitted configuration change',
     sentinel: 'PRIVATE-SETTINGS-NEIGHBOR-a81c',

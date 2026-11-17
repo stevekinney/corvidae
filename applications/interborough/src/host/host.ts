@@ -142,6 +142,7 @@ import {
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
+import type { SkillCatalogChange } from '@lostgradient/bureau/skills';
 import {
   type GenerateFunction,
   type PeerCallJournal,
@@ -216,10 +217,12 @@ import { resolveLaunchCommand } from './launch-command.ts';
 import {
   claimWorkspaceBinding,
   createAgentSource,
+  createGuardrailSource,
   createHostStorage,
   createPluginAgentSource,
   createPluginSkillSource,
   createPluginWorkflowSource,
+  createValidatorSource,
   createWorkflowSource,
   DEFAULT_CONTENT_KINDS,
   DEFAULT_DATABASE_KINDS,
@@ -236,10 +239,15 @@ import {
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
 import {
+  hostPanelMountOptions,
+  panelCacheDirectoryOf,
+  reportPanelFallbacks,
+} from './panel-mount-options.ts';
+import {
   commitPanelDigests,
-  PANEL_PREBUILT_DIRECTORY_VARIABLE,
   panelMounts,
   reportPanelChanges,
+  type PanelMountOptions,
 } from './panel-mounts.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
@@ -254,7 +262,12 @@ import { allowedHosts, createRequestGuard, rawPathOf } from './request-guard.ts'
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
-import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
+import {
+  createSkillManager,
+  discoverFirstSkills,
+  type SkillManager,
+  type SkillManagerOptions,
+} from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
 import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
@@ -346,6 +359,19 @@ export const AGENT_DIRECTORY_NAME = 'agents';
  */
 export const WORKFLOW_DIRECTORY_NAME = 'workflows';
 
+/**
+ * The directory of validator files under the Interborough home: `staging-notes.json` is the
+ * validator `staging-notes`, which a goal may name by that name and the digest of what the file
+ * says (COR-2119).
+ */
+export const VALIDATOR_DIRECTORY_NAME = 'validators';
+
+/**
+ * The directory of guardrail files under the Interborough home: `no-secrets.json` is the guardrail
+ * `no-secrets`, which an agent file lists in `guardrails` by that name (COR-2120).
+ */
+export const GUARDRAIL_DIRECTORY_NAME = 'guardrails';
+
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
 
@@ -428,6 +454,12 @@ export type HostOptions = {
   readonly createConsoleEngine?: (
     storage: Storage,
   ) => RegistryAgnosticEngine | Promise<RegistryAgnosticEngine>;
+  /**
+   * Replaces how the host builds a panel's page and how long it waits (COR-2219), for a test that
+   * counts, stalls or times a build without a real one. The defaults are `buildPanelPage` and the
+   * platform's timers, with the deadline `PANEL_BUILD_DEADLINE_MILLISECONDS`.
+   */
+  readonly panelBuild?: Pick<PanelMountOptions, 'build' | 'clock'>;
   /** The few Weft server settings a host may tune for the engine API it relays. */
   readonly engineServer?: Pick<
     ServeOptions,
@@ -836,6 +868,20 @@ function applicationRoutes(
  * one is in flight changes nothing. A failure is reported and clears the request, so the person
  * can ask again; the entry's callback exits the process itself.
  */
+/**
+ * How the skill manager watches its directories (COR-2100): the host's own choice for the agent and
+ * workflow files, its warning sink and its runtime, each only when the host was given one.
+ */
+function skillWatchOptions(
+  options: Pick<HostOptions, 'directoryWatch' | 'warn' | 'runtime'>,
+): Pick<SkillManagerOptions, 'watch' | 'warn' | 'runtime'> {
+  return {
+    ...(options.directoryWatch === undefined ? {} : { watch: options.directoryWatch }),
+    ...(options.warn === undefined ? {} : { warn: options.warn }),
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+  };
+}
+
 function restartHandler(restart: () => void | Promise<void>): () => Response {
   let requested = false;
   return () => {
@@ -970,6 +1016,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
     // A folder that cannot load is reported and skipped, never a reason to stop the host.
     const content = bungalow.content(PLUGIN_FOLDER_NAME);
+    // Where built panel pages are kept between starts: the home's own directory, or none for a remote one.
+    const panelCacheDirectory = panelCacheDirectoryOf(bungalow, contentKinds, log);
     // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
     const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
@@ -1143,6 +1191,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
+    const validatorContent = bungalow.content(VALIDATOR_DIRECTORY_NAME);
+    const guardrailContent = bungalow.content(GUARDRAIL_DIRECTORY_NAME);
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
     // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
     // both run every task. The other restart-applied settings that overlap depends on are held too
@@ -1169,6 +1219,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return source === undefined ? [] : [source];
         }),
     });
+    // Who hears a skill change: the Bureau subscribes at construction, and the manager, created after
+    // the Bureau, reports into the set (the `agentSkillCatalog` arrangement, in the other direction).
+    const skillChangeListeners = new Set<(change: SkillCatalogChange) => void>();
     const peerToolNames = new Set(Object.keys(peerTools));
     const sourceTools = toolSources.tools();
     const directoryOptions: LocalDirectoryOptions =
@@ -1282,6 +1335,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         contentKinds,
       ),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
+      // The skill changes the manager reports once it is created (COR-2100): the Bureau publishes
+      // each as `definitions.changed` with `catalog: 'skills'`.
+      skillChanges: {
+        onChange(listener) {
+          skillChangeListeners.add(listener);
+          return () => {
+            skillChangeListeners.delete(listener);
+          };
+        },
+      },
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: (plugin, shipped) =>
         createPluginAgentSource(plugin, shipped, directoryOptions),
@@ -1305,6 +1368,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
       pluginWorkflowSource: (plugin, shipped) =>
         createPluginWorkflowSource(plugin, shipped, directoryOptions),
+      // Validator files: JSON files in Bungalow's `validators/` directory say when a goal is done
+      // (COR-2119), watched as the agent and workflow files are.
+      validatorSource: createValidatorSource(
+        bungalow,
+        validatorContent,
+        directoryOptions,
+        contentKinds,
+      ),
+      // Guardrail files: JSON files in Bungalow's `guardrails/` directory are guardrails an agent
+      // file lists by name (COR-2120), watched as the agent files are.
+      guardrailSource: createGuardrailSource(
+        bungalow,
+        guardrailContent,
+        directoryOptions,
+        contentKinds,
+      ),
       ...(settings === undefined ? {} : { settings }),
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
@@ -1357,6 +1436,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const skills = await createSkillManager({
       bungalow,
       configurationQueue,
+      // The skill directories are watched like the agent files are, and a change is reported to the Bureau.
+      ...skillWatchOptions(options),
+      onChange: (change) => {
+        for (const listener of skillChangeListeners) listener(change);
+      },
       // The skills a running plugin ships (COR-1977): its `content/skills`, read each time the catalog is discovered.
       pluginSources: async () => {
         const listed = await bureau.plugins.list();
@@ -1409,8 +1493,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const mcpMounts = await panelMounts(
       bureau.plugins.panels(),
       storage,
-      environment[PANEL_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
+      hostPanelMountOptions({
+        environment,
+        cacheDirectory: panelCacheDirectory,
+        log,
+        ...(options.panelBuild === undefined ? {} : { overrides: options.panelBuild }),
+      }),
     );
+    // A prebuilt page the host could not use is built at start instead, and a person sees why.
+    reportPanelFallbacks(mcpMounts.fallbacks, log);
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {

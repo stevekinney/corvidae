@@ -127,7 +127,11 @@ export interface SampleWorldGoal {
   readonly agentName: string;
   readonly prompt: string;
   /** The check, one of {@link SHOWCASE_GOAL_CHECKS}. */
-  readonly check: { readonly name: string; readonly version: string };
+  readonly check: {
+    readonly name: string;
+    readonly version: string;
+    readonly configuration: { readonly phrase: string };
+  };
   readonly maximumAttempts: number;
 }
 
@@ -415,7 +419,11 @@ async function startGoal(context: SessionContext, goal: SampleWorldGoal): Promis
     agentName: goal.agentName,
     prompt: goal.prompt,
     identity: { name: goal.name, version: '1' },
-    validator: { name: goal.check.name, version: goal.check.version },
+    validator: {
+      name: goal.check.name,
+      version: goal.check.version,
+      configuration: goal.check.configuration,
+    },
     bounds: { maximumAttempts: goal.maximumAttempts, maximumTotalDurationMs: 3_600_000 },
     retryPolicy: { retryOn: ['validator-fail-retryable'] },
   });

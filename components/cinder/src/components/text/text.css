@@ -71,6 +71,15 @@
     font-size: var(--cinder-text-xs);
   }
 
+  /* An identifier inside a line of text: the monospace face at the size, weight and leading of the
+     text around it. There is no em scaling, so it sits on the type scale instead of beside it. */
+  .cinder-text[data-cinder-variant='code'] {
+    font-family: var(--cinder-font-mono);
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+  }
+
   /* A clamped run holds to its lines until it is opened. */
   .cinder-text[data-cinder-clamp] {
     display: -webkit-box;

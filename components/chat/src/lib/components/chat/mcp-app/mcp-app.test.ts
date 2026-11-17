@@ -13,7 +13,7 @@ import {
   test,
 } from 'bun:test';
 
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 
 import { createLiveProps } from './mcp-app-test-fixture.svelte.ts';
 import McpApp from './mcp-app.svelte';
@@ -78,6 +78,10 @@ const RESOURCE: McpAppResource = {
     },
   },
 };
+
+const errorLink = createRawSnippet(() => ({
+  render: () => '<a href="/settings">Open settings</a>',
+}));
 
 async function settle(): Promise<void> {
   for (let turn = 0; turn < 6; turn += 1) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -198,6 +202,228 @@ describe('McpApp frame', () => {
     expect(view.container.querySelector('iframe')).toBeNull();
     expect(view.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  test('says "Couldn’t open <title>" in a Cinder error state and tries again with "Try again"', async () => {
+    let attempts = 0;
+    const view = render(McpApp, {
+      props: {
+        resourceUri: 'ui://missing',
+        title: 'Run inspector',
+        errorDescription: 'Inspectors didn’t send this page. Nothing you did caused it.',
+        loadResource: async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('no such resource');
+          return RESOURCE;
+        },
+      },
+    });
+    await settle();
+    const root = view.container.querySelector('.mcp-app');
+    expect(root?.getAttribute('data-state')).toBe('error');
+    expect(view.getByRole('heading', { name: 'Couldn’t open Run inspector' })).toBeTruthy();
+    expect(
+      view.getByText('Inspectors didn’t send this page. Nothing you did caused it.'),
+    ).toBeTruthy();
+    expect(view.queryByText('This app could not be loaded.')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Retry' })).toBeNull();
+    view.getByRole('button', { name: 'Try again' }).click();
+    await settle();
+    expect(attempts).toBe(2);
+    expect(view.container.querySelector('iframe')).not.toBeNull();
+    expect(root?.getAttribute('data-state')).toBe('ready');
+  });
+
+  test('says nothing you did caused it by default, and offers the caller’s second action', async () => {
+    const view = render(McpApp, {
+      props: {
+        resourceUri: 'ui://missing',
+        loadResource: async () => {
+          throw new Error('no such resource');
+        },
+        errorAction: errorLink,
+      },
+    });
+    await settle();
+    expect(view.getByText('Nothing you did caused it.')).toBeTruthy();
+    expect(view.getByRole('link', { name: 'Open settings' })).toBeTruthy();
+  });
+
+  test('waits in a labelled Cinder skeleton, not a line of its own', async () => {
+    const view = render(McpApp, {
+      props: {
+        resourceUri: 'ui://slow',
+        title: 'Run inspector',
+        loadResource: () => new Promise<McpAppResource>(() => {}),
+      },
+    });
+    await settle();
+    expect(view.container.querySelector('.mcp-app')?.getAttribute('data-state')).toBe('loading');
+    expect(view.getByRole('status').textContent).toBe('Loading Run inspector');
+    expect(view.queryByText('Loading app…')).toBeNull();
+  });
+});
+
+describe('McpApp fill', () => {
+  test('takes its container’s height, with no minimum and no maxHeight cap', async () => {
+    const { frame, container, source } = await mountApp({ fill: true, maxHeight: 300 });
+    await handshake(source);
+    fromApp(source, { method: 'ui/notifications/size-changed', params: { height: 5000 } });
+    await settle();
+    expect(container.querySelector('.mcp-app')?.hasAttribute('data-fill')).toBe(true);
+    expect(frame.style.height).toBe('');
+    expect(frame.style.minHeight).toBe('');
+  });
+
+  test('without fill the frame still follows the reported height, capped', async () => {
+    const { frame, container, source } = await mountApp({ maxHeight: 300 });
+    await handshake(source);
+    fromApp(source, { method: 'ui/notifications/size-changed', params: { height: 5000 } });
+    await settle();
+    expect(container.querySelector('.mcp-app')?.hasAttribute('data-fill')).toBe(false);
+    expect(frame.style.height).toBe('300px');
+  });
+
+  test('leaves maxHeight out of the host context and keeps the caller’s dimensions and the inline display mode', async () => {
+    const view = await mountApp({
+      fill: true,
+      maxHeight: 300,
+      hostContext: { containerDimensions: { height: 640, width: 480 }, displayMode: 'fullscreen' },
+    });
+    await handshake(view.source);
+    const result = responseTo(1)?.result as
+      { hostContext?: { containerDimensions?: object; displayMode?: string } } | undefined;
+    expect(result?.hostContext?.containerDimensions).toEqual({ height: 640, width: 480 });
+    expect(result?.hostContext?.displayMode).toBe('inline');
+  });
+
+  test('uses the preloaded page and calls loadResource only for "Try again"', async () => {
+    const loadResource = mock(async () => RESOURCE);
+    const { frame } = await mountApp({
+      fill: true,
+      preloadedResource: { html: '<p>preloaded</p>' },
+      loadResource,
+    });
+    expect(frame.getAttribute('srcdoc')).toContain('<p>preloaded</p>');
+    expect(loadResource).not.toHaveBeenCalled();
+  });
+
+  test('ignores a preloaded page without fill', async () => {
+    const loadResource = mock(async () => RESOURCE);
+    const { frame } = await mountApp({
+      preloadedResource: { html: '<p>preloaded</p>' },
+      loadResource,
+    });
+    expect(frame.getAttribute('srcdoc')).toContain(RESOURCE.html);
+    expect(loadResource).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('McpApp open links', () => {
+  const origin = () => window.location.origin;
+  const openLink = (source: object, id: number, url: unknown) =>
+    fromApp(source, { id, method: 'ui/open-link', params: { url } });
+
+  test('admits a link inside the application and hands the callback its path, query and hash', async () => {
+    const onOpenLink = mock((_path: string) => true);
+    const { source } = await mountApp({ onOpenLink });
+    await handshake(source);
+    openLink(source, 70, '/runs/abc?tab=steps#top');
+    openLink(source, 71, `${origin()}/settings/plugins`);
+    openLink(source, 72, 'reviews/one');
+    await settle();
+    expect(onOpenLink.mock.calls.map(([path]) => path)).toEqual([
+      '/runs/abc?tab=steps#top',
+      '/settings/plugins',
+      '/reviews/one',
+    ]);
+    for (const id of [70, 71, 72]) {
+      expect(responseTo(id)?.result).toEqual({});
+    }
+  });
+
+  test('advertises the open-link capability only when the callback is set', async () => {
+    const withLinks = await mountApp({ onOpenLink: () => true });
+    await handshake(withLinks.source);
+    expect(responseTo(1)?.result).toMatchObject({ hostCapabilities: { openLinks: {} } });
+    framePayloads = [];
+    const without = await mountApp();
+    await handshake(without.source);
+    const capabilities = (responseTo(1)?.result as { hostCapabilities?: object } | undefined)
+      ?.hostCapabilities;
+    expect(capabilities).not.toHaveProperty('openLinks');
+  });
+
+  test.each([
+    ['a foreign origin', 'https://example.com/runs/abc'],
+    ['a protocol-relative address', '//example.com/runs/abc'],
+    ['a backslash address', '/\\example.com/runs/abc'],
+    ['a javascript address', 'javascript:alert(1)'],
+    ['a mailto address', 'mailto:someone@example.com'],
+    ['an address that does not parse', 'http://'],
+  ])('refuses %s without calling the callback, and says so', async (_name, url) => {
+    const onOpenLink = mock((_path: string) => true);
+    const onOpenLinkRefused = mock(() => {});
+    const { source } = await mountApp({ onOpenLink, onOpenLinkRefused });
+    await handshake(source);
+    openLink(source, 80, url);
+    await settle();
+    expect(onOpenLink).not.toHaveBeenCalled();
+    expect(responseTo(80)?.result).toEqual({ isError: true });
+    expect(onOpenLinkRefused).toHaveBeenCalledTimes(1);
+    expect(onOpenLinkRefused.mock.calls[0]).toEqual([]);
+  });
+
+  test('refuses a link the callback declines or throws on', async () => {
+    const onOpenLinkRefused = mock(() => {});
+    let behavior: 'decline' | 'throw' = 'decline';
+    const onOpenLink = (_path: string): boolean => {
+      if (behavior === 'throw') throw new Error('secret router failure');
+      return false;
+    };
+    const { source } = await mountApp({ onOpenLink, onOpenLinkRefused });
+    await handshake(source);
+    openLink(source, 90, '/runs/abc');
+    behavior = 'throw';
+    openLink(source, 91, '/runs/abc');
+    await settle();
+    expect(responseTo(90)?.result).toEqual({ isError: true });
+    expect(responseTo(91)?.result).toEqual({ isError: true });
+    expect(JSON.stringify(framePayloads)).not.toContain('secret router failure');
+    expect(onOpenLinkRefused).toHaveBeenCalledTimes(2);
+  });
+
+  test('keeps ui/message and resources/read refused when the callback is set', async () => {
+    const onOpenLink = mock((_path: string) => true);
+    const { source } = await mountApp({ onOpenLink });
+    await handshake(source);
+    fromApp(source, {
+      id: 100,
+      method: 'ui/message',
+      params: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+    });
+    fromApp(source, { id: 101, method: 'resources/read', params: { uri: 'ui://x' } });
+    await settle();
+    expect(framePayloads.find((message) => message.id === 100)).toHaveProperty('error');
+    expect(framePayloads.find((message) => message.id === 101)).toHaveProperty('error');
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  test('calls the current onOpenLink after the prop is replaced, and remounts when it is set or removed', async () => {
+    const first = mock((_path: string) => true);
+    const second = mock((_path: string) => true);
+    const view = await mountLive({ onOpenLink: first });
+    await handshake(view.source);
+    await view.update({ onOpenLink: second });
+    openLink(view.source, 110, '/runs/abc');
+    await settle();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    view.destroy();
+    const plain = await mountLive();
+    await plain.update({ onOpenLink: () => true });
+    expect(plain.frame.isConnected).toBe(false);
+    plain.destroy();
   });
 });
 

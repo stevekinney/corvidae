@@ -12,6 +12,7 @@ import {
   House,
   Inbox,
   Keyboard,
+  ListChecks,
   MessageSquare,
   Play,
   Plus,
@@ -22,10 +23,17 @@ import {
   Wrench,
 } from '@lucide/svelte';
 
-import type { ShortcutRegistry } from '../../lib/shortcuts.ts';
+import {
+  pluginPageAddress,
+  type PluginPage,
+  type PluginPageGroup,
+} from '../../lib/plugin-pages.ts';
+import type { ShortcutAction, ShortcutRegistry } from '../../lib/shortcuts.ts';
+import { PLUGIN_PAGE_COPY } from '../copy/plugin-pages.ts';
 import { SHORTCUT_COPY } from '../copy/shell.ts';
 import { VIEW_COPY } from '../copy/view-pages.ts';
 import type { ViewName } from '../views.ts';
+import { pluginIcon } from './plugin-icons.ts';
 
 /** The focus region of a ListDetail list: its keys act only there. */
 export const LIST_DETAIL_REGION = 'list-detail';
@@ -56,6 +64,8 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'chat', path: '/chats', letter: 'c', icon: MessageSquare, group: 'work' },
   { view: 'reviews', path: '/reviews', letter: 'r', icon: Inbox, group: 'work' },
   { view: 'runs', path: '/runs', letter: 'u', icon: Play, group: 'work' },
+  // `x`: every letter of "checks" is taken (h, c, r, u, a, w, s, l, p, k, e, n, o, t and d).
+  { view: 'checks', path: '/checks', letter: 'x', icon: ListChecks, group: 'work' },
   { view: 'agents', path: '/agents', letter: 'a', icon: Bot, group: 'build' },
   { view: 'workflows', path: '/workflows', letter: 'w', icon: Workflow, group: 'build' },
   { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, group: 'build' },
@@ -66,6 +76,73 @@ export const DESTINATIONS: readonly Destination[] = [
   // The gear is Settings; the sliders icon in the top bar is quick settings.
   { view: 'settings', path: '/settings', letter: 'n', icon: Settings, group: 'system' },
 ];
+
+/**
+ * One page a plugin adds to the sidebar (COR-2213): a `page` placement that names a `sidebar` entry.
+ * It sits in its declared group after that group's built-in destinations, in the order the host
+ * lists panels, with its allowlisted icon (`plugin-icons.ts`), and it has no `letter`: a plugin
+ * cannot take a `g` shortcut from the application or from another plugin.
+ */
+export interface PluginDestination {
+  /** The plugin that contributes the page. */
+  readonly plugin: string;
+  /** The page's address in the application: `/plugins/<plugin>/<path>`. */
+  readonly path: string;
+  /** The panel's title, which is the entry's label. */
+  readonly title: string;
+  /** The allowlisted icon, or the default one. */
+  readonly icon: typeof Workflow;
+  /** The section of the sidebar it sits in, never Home. */
+  readonly group: PluginPageGroup;
+}
+
+/** The sidebar entries `pages` ask for, in the order the host lists them. */
+export function pluginDestinations(pages: readonly PluginPage[]): readonly PluginDestination[] {
+  return pages.flatMap((page) =>
+    page.sidebar === undefined
+      ? []
+      : [
+          {
+            plugin: page.plugin,
+            path: pluginPageAddress(page.plugin, page.path),
+            title: page.title,
+            icon: pluginIcon(page.sidebar.icon),
+            group: page.sidebar.group,
+          },
+        ],
+  );
+}
+
+/**
+ * What the command palette lists for a plugin's page: a "Go to <title>" action in the navigation
+ * group with no keys, a muted "From <Plugin title>" line when the plugin's title is known, and the
+ * page's icon. Every page is one, including a page placed with no sidebar entry, which the palette
+ * and its address alone reach.
+ */
+export interface PluginPaletteAction extends ShortcutAction {
+  readonly meta: string | undefined;
+  readonly icon: typeof Workflow;
+}
+
+/** The palette actions for `pages`, each running `navigate` to its page. */
+export function pluginPaletteActions(
+  pages: readonly PluginPage[],
+  pluginTitle: (plugin: string) => string | undefined,
+  navigate: (path: string) => void,
+): readonly PluginPaletteAction[] {
+  return pages.map((page) => {
+    const owner = pluginTitle(page.plugin);
+    const path = pluginPageAddress(page.plugin, page.path);
+    return {
+      label: SHORTCUT_COPY.goTo(page.title),
+      keys: [],
+      group: SHORTCUT_COPY.navigationGroup,
+      run: () => navigate(path),
+      meta: owner === undefined ? undefined : PLUGIN_PAGE_COPY.provenance(owner),
+      icon: pluginIcon(page.sidebar?.icon),
+    };
+  });
+}
 
 /**
  * The destinations the phone's bottom tab bar shows, in order, before its More tab: the places a
@@ -115,7 +192,9 @@ export const HEALTH_SHORTCUTS: readonly {
  * The glyph the command palette draws before an action: the destination's own icon for a "Go to"
  * row (the pages under Health use Health's), a plus for New chat, and the keyboard for the map.
  */
-export function actionIcon(label: string): typeof Workflow {
+export function actionIcon(label: string, icon?: typeof Workflow): typeof Workflow {
+  // A plugin's page brings its own icon, which `plugin-icons.ts` has already held to its allowlist.
+  if (icon !== undefined) return icon;
   const destination = DESTINATIONS.find(
     (candidate) => SHORTCUT_COPY.goTo(VIEW_COPY[candidate.view].label) === label,
   );

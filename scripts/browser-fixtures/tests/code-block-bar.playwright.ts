@@ -83,10 +83,11 @@ for (const theme of ['light', 'dark'] as const) {
     // The bar shares the block's fill, which is the code's fill: one shape, no divide.
     expect(full.root.background).toBe(full.code.background);
     expect(['rgba(0, 0, 0, 0)', full.code.background]).toContain(full.bar?.background);
-    // One quiet surface: a hairline in the light theme, a fill in the dark, never both.
+    // One quiet surface: the inset fill in both themes and no edge, so it is never a box inside a
+    // card (owner, 2026-11-16).
     const transparentEdge =
       full.root.edge === 'none' || full.root.edge.startsWith('rgba(0, 0, 0, 0)');
-    expect(transparentEdge).toBe(theme === 'dark');
+    expect(transparentEdge).toBe(true);
     // The language at the inline start, Copy at the inline end, icon only.
     expect(full.copy?.text).toBe('');
     expect(full.copy!.right).toBeGreaterThan(full.language!.right);
