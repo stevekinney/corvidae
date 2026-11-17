@@ -254,7 +254,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'inset -1px 0 0 var(--cinder-border),', category: 'hairline' },
     { declaration: 'inset 1px 0 0 var(--cinder-border),', category: 'hairline' },
   ],
-  'components/core/src/components/divider/divider.css': [
+  'components/divider/src/components/divider/divider.css': [
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },
     { declaration: 'background-color: var(--cinder-border-strong);', category: 'hairline' },
   ],
@@ -293,17 +293,17 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'feed-event',
     },
   ],
-  'components/core/src/components/kbd/kbd.css': [
+  'components/kbd/src/components/kbd/kbd.css': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/core/src/components/_internal/media-controls.css': [
+  'components/media-player/src/components/_internal/media-controls.css': [
     {
       declaration: 'background-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'media-controls',
     },
   ],
-  'components/core/src/components/mega-menu/mega-menu.css': [
+  'components/mega-menu/src/components/mega-menu/mega-menu.css': [
     // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.contrast`.
     {
       declaration: 'background: var(--cinder-border-contrast);',
@@ -346,14 +346,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'run-step-timeline',
     },
   ],
-  'components/core/src/components/attempts-indicator/attempts-indicator.css': [
+  'components/attempts-indicator/src/components/attempts-indicator/attempts-indicator.css': [
     {
       declaration: '--_cinder-attempts-indicator-fill: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'attempts-indicator',
     },
   ],
-  'components/core/src/components/connection-indicator/connection-indicator.css': [
+  'components/connection-indicator/src/components/connection-indicator/connection-indicator.css': [
     {
       declaration: '--_cinder-connection-indicator-dot-color: var(--cinder-border-contrast);',
       category: 'area',

@@ -6,7 +6,7 @@ import { tick } from 'svelte';
 import type { KeyValueEntry } from './key-value-editor.types.ts';
 setupHappyDom();
 const buttonModule = await import('../button/index.ts');
-const gridModule = await import('../grid/index.ts');
+const gridModule = await import('@lostgradient/grid/components/grid/index.ts');
 const inputModule = await import('../input/index.ts');
 mock.module('@lostgradient/cinder', () => buttonModule);
 mock.module('@lostgradient/cinder', () => gridModule);

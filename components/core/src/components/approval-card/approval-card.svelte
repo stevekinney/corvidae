@@ -32,11 +32,11 @@
     formatRelativeTime,
     formatTimeOfDay,
   } from '@lostgradient/foundation/utilities/format-date.ts';
-  import Badge from '../badge/badge.svelte';
-  import Card from '../card/card.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+  import Card from '@lostgradient/card/components/card/card.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
-  import Link from '../link/link.svelte';
+  import Link from '@lostgradient/link/components/link/link.svelte';
   import PayloadInspector from '../payload-inspector/payload-inspector.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';

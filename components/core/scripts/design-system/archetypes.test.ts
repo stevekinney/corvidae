@@ -35,7 +35,7 @@ const REQUIRED_ARCHETYPES = [
  */
 const UNSTYLED_HOOKS: Record<string, string> = {
   'cinder-map-legend__label': 'src/components/map-legend/map-legend.svelte',
-  'cinder-map-marker__label': 'src/components/map-marker/map-marker.svelte',
+  'cinder-map-marker__label': '../map-marker/src/components/map-marker/map-marker.svelte',
   'cinder-search-field__input': 'src/components/search-field/search-field.svelte',
 };
 

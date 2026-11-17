@@ -23,7 +23,7 @@
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import { formatBytes } from '@lostgradient/foundation/utilities/format-bytes.ts';
   import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
-  import Alert from '../alert/alert.svelte';
+  import Alert from '@lostgradient/alert/components/alert/alert.svelte';
   import Button from '../button/button.svelte';
   import FileUploadList from './file-upload-list.svelte';
   import {

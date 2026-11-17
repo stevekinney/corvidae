@@ -40,7 +40,7 @@ const files = {
 
 describe('table fill', () => {
   test('a table and a grid take the same fill as a card body', async () => {
-    const card = await declarations('../card/card.css');
+    const card = await declarations('../../../../card/src/components/card/card.css');
     const cardFill = valueOf(card, '.cinder-card__body', 'background');
 
     const table = await declarations(files.table);

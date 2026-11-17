@@ -1,6 +1,6 @@
+import type { BadgeVariant } from '@lostgradient/badge/components/badge/badge.types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLButtonAttributes } from 'svelte/elements';
-import type { BadgeVariant } from '../badge/badge.types.ts';
 // `onclick` and `onkeydown` are omitted because the component sets both
 // unconditionally on the root `<button>` (activation + the shared roving
 // tabindex keyboard handler) — same reasoning as `id` and `value` below. Since

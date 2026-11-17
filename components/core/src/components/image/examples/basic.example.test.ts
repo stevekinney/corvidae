@@ -10,7 +10,12 @@ const imageExamples = JSON.parse(
 // An `<img>` renders its SVG as a separate document, so `currentColor` there never
 // follows the host theme: the illustration went near-black on the dark theme (CIN-61).
 // It carries explicit opaque colors instead.
-const authoredSource = await Bun.file(new URL('./basic.example.svelte', import.meta.url)).text();
+const authoredSource = await Bun.file(
+  new URL(
+    '../../../../../image/src/components/image/examples/basic.example.svelte',
+    import.meta.url,
+  ),
+).text();
 
 function illustrationMarkup(source: string): string {
   const match = /"data:image\/svg\+xml,([^"]+)"/.exec(source);

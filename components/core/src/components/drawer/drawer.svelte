@@ -13,7 +13,7 @@
   import { overflowFade } from '@lostgradient/foundation/utilities/attachments.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { restoreFocusTo } from '@lostgradient/foundation/utilities/focus.ts';
-  import { createFocusTrap } from '../focus-trap/index.ts';
+  import { createFocusTrap } from '@lostgradient/focus-trap/components/focus-trap/index.ts';
   import {
     clampDragHeight,
     cycleDetent,

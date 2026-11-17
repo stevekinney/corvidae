@@ -64,7 +64,7 @@ const cases = [
   },
   {
     name: 'primary FloatingAction',
-    css: loadCss('../components/floating-action/floating-action.css'),
+    css: loadCss('../../../floating-action/src/components/floating-action/floating-action.css'),
     selectorFragments: ["[data-cinder-variant='primary']", ':active'],
   },
 ] as const;

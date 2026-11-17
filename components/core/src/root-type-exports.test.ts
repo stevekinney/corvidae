@@ -118,7 +118,7 @@ test('root exports retain the component contract types formerly exposed through 
     import('./components/carousel/index.ts').CarouselSlideContext
   >();
   expectTypeOf<import('./index.ts').ConnectionIndicatorSchemaProps>().toEqualTypeOf<
-    import('./components/connection-indicator/index.ts').ConnectionIndicatorSchemaProps
+    import('@lostgradient/connection-indicator/components/connection-indicator/index.ts').ConnectionIndicatorSchemaProps
   >();
   expectTypeOf<import('./index.ts').DataGridSelectionMode>().toEqualTypeOf<
     import('./components/data-grid/index.ts').DataGridSelectionMode
@@ -133,7 +133,7 @@ test('root exports retain the component contract types formerly exposed through 
     import('./components/invocation-rule-builder/index.ts').InvocationRuleBuilderSchemaProps
   >();
   expectTypeOf<import('./index.ts').KbdSize>().toEqualTypeOf<
-    import('./components/kbd/index.ts').KbdSize
+    import('@lostgradient/kbd/components/kbd/index.ts').KbdSize
   >();
   expectTypeOf<import('./index.ts').PayloadInspectorSchemaProps>().toEqualTypeOf<
     import('./components/payload-inspector/index.ts').PayloadInspectorSchemaProps

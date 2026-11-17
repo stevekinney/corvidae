@@ -35,7 +35,7 @@
   import { untrack } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
-  import Badge from '../badge/badge.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
   import Tab from '../tab/tab.svelte';
   import TabList from '../tab-list/tab-list.svelte';
   import TabPanel from '../tab-panel/tab-panel.svelte';

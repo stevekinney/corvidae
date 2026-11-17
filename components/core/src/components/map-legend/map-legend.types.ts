@@ -1,6 +1,6 @@
+import type { MapMarkerState } from '@lostgradient/map-marker/components/map-marker/map-marker.types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { MapMarkerState } from '../map-marker/map-marker.types.ts';
 
 /** One legend entry: a marker state and what it means. */
 export type MapLegendItem = {

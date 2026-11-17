@@ -6,7 +6,7 @@
   import type { SideNavigationItemProps } from './side-navigation-item.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { getSidebarContext } from '../../_internal/sidebar-context.ts';
-  import Badge from '../badge/badge.svelte';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
   import NavigationItem from '../navigation-item/navigation-item.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';

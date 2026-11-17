@@ -1,6 +1,6 @@
 <script lang="ts">
   import MenuBar from './menu-bar.svelte';
-  import LocaleProvider from '../locale-provider/locale-provider.svelte';
+  import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
   import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
   import { fileEditViewMenus } from './menu-bar-test-data.ts';
 

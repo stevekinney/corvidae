@@ -1,6 +1,6 @@
 <script lang="ts">
   import FileUpload from '../../components/file-upload/file-upload.svelte';
-  import FormField from '../../components/form-field/form-field.svelte';
+  import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
 
   let {
     fieldId = 'upload',
