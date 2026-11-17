@@ -159,4 +159,5 @@ jobs:
           cd "$UNIT_WORKSPACE"
           config=""
           if [ -n "$UNIT_CONFIG" ]; then config="--config=$UNIT_CONFIG"; fi
-          bun test $config --conditions browser --conditions svelte $UNIT_PATHS
+          # --isolate gives each file a fresh module registry, as the workspaces' own `--parallel` lanes do.
+          bun test --isolate $config --conditions browser --conditions svelte $UNIT_PATHS
