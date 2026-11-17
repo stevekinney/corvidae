@@ -209,10 +209,12 @@ test('the schema lists the run-outcome props and the docked question props (COR-
   ]) {
     expect(unsupported.get(name)).toBe('function-or-snippet');
   }
-  // A turn's and the docked question's words are in the one `labels` object (COR-2438).
+  // The words of turns and of the docked question ride on the one `labels` object (COR-2438), so
+  // neither is a prop of its own.
   expect(unsupported.get('labels')).toBe('unknown-shape');
   expect(unsupported.has('turnLabels')).toBe(false);
   expect(unsupported.has('questionLabels')).toBe(false);
+  expect(unsupported.get('questionDock')).toBe('function-or-snippet');
   // An enum is expressible in JSON Schema, so it is a property, as `composerPlacement` is.
   expect(chatSchema.properties['questionPlacement']).toMatchObject({
     enum: ['inline', 'docked'],

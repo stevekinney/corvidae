@@ -86,6 +86,7 @@ export async function runFixtureSweep(
   theme: Theme,
   viewport: Viewport,
   fixture: ManifestFixtureEntry,
+  options: { readonly hasTouch?: boolean } = {},
 ): Promise<void> {
   const page = await componentPage.open({
     entry,
@@ -93,6 +94,7 @@ export async function runFixtureSweep(
     viewport,
     fixtureName: fixture.name,
     fixtureContentHash: fixture.fixtureContentHash,
+    ...(options.hasTouch === undefined ? {} : { hasTouch: options.hasTouch }),
   });
 
   const key = {

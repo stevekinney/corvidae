@@ -2228,7 +2228,9 @@ test.describe('chat harness — tool calls', () => {
 
         // The chevron sits beside the first line of the header, not centered on a wrapped one.
         const alignment = await toggle.evaluate((button) => {
-          const chevron = button.querySelector('.chat-tool-call-chevron')!.getBoundingClientRect();
+          const chevron = button
+            .querySelector('.cinder-disclosure-trigger__chevron')!
+            .getBoundingClientRect();
           const count = button
             .querySelector('.chat-tool-call-summary-count')!
             .getBoundingClientRect();

@@ -29,6 +29,7 @@
     setCollapsibleNestingContext,
   } from '../../_internal/collapsible-nesting-context.ts';
 
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import type { CollapsibleProps } from './collapsible.types.ts';
 
   let {
@@ -54,7 +55,8 @@
   // disclosure never draws a box inside the box of the one that holds it.
   const nested = getCollapsibleNestingContext() === true;
   setCollapsibleNestingContext();
-  const flat = $derived(variant === 'flat' || (nested && !framed));
+  const disclosure = $derived(variant === 'disclosure');
+  const flat = $derived(!disclosure && (variant === 'flat' || (nested && !framed)));
 
   // Slide duration mirrors --cinder-duration-base (200ms); collapse to 0 when the
   // user prefers reduced motion.
@@ -107,35 +109,54 @@
   {...rest}
   class={classNames('cinder-collapsible', className)}
   data-cinder-chevron={chevron === 'start' ? 'start' : undefined}
-  data-cinder-variant={flat ? 'flat' : undefined}
+  data-cinder-variant={disclosure ? 'disclosure' : flat ? 'flat' : undefined}
   data-cinder-expanded={open ? '' : undefined}
   data-cinder-disabled={disabled ? '' : undefined}
 >
-  <button
-    type="button"
-    id={headerId}
-    class={classNames('cinder-collapsible__trigger', triggerClass)}
-    aria-label={computedTriggerAriaLabel}
-    aria-expanded={open}
-    aria-controls={open ? panelId : undefined}
-    {disabled}
-    onclick={handleClick}
-  >
-    {#if chevron === 'start'}{@render chevronIcon()}{/if}
-    {#if leadingIcon}<span class="cinder-collapsible__leading-icon" aria-hidden="true"
-        >{@render leadingIcon()}</span
-      >{/if}
-    <span class={classNames('cinder-collapsible__label cinder-_label-text', labelClass)}>
-      {#if typeof trigger === 'string'}
-        <span id={labelId}>{trigger}</span>
-      {:else}
-        <span id={labelId}>
-          {@render trigger({ open, disabled })}
-        </span>
-      {/if}
-    </span>
-    {#if chevron === 'end'}{@render chevronIcon()}{/if}
-  </button>
+  {#if disclosure}
+    <DisclosureTrigger
+      id={headerId}
+      class={triggerClass}
+      {open}
+      controls={open ? panelId : undefined}
+      aria-label={computedTriggerAriaLabel}
+      {disabled}
+      onclick={handleClick}
+    >
+      {#if leadingIcon}<span class="cinder-collapsible__leading-icon" aria-hidden="true"
+          >{@render leadingIcon()}</span
+        >{/if}
+      <span class={classNames('cinder-collapsible__label', labelClass)} id={labelId}>
+        {#if typeof trigger === 'string'}{trigger}{:else}{@render trigger({ open, disabled })}{/if}
+      </span>
+    </DisclosureTrigger>
+  {:else}
+    <button
+      type="button"
+      id={headerId}
+      class={classNames('cinder-collapsible__trigger', triggerClass)}
+      aria-label={computedTriggerAriaLabel}
+      aria-expanded={open}
+      aria-controls={open ? panelId : undefined}
+      {disabled}
+      onclick={handleClick}
+    >
+      {#if chevron === 'start'}{@render chevronIcon()}{/if}
+      {#if leadingIcon}<span class="cinder-collapsible__leading-icon" aria-hidden="true"
+          >{@render leadingIcon()}</span
+        >{/if}
+      <span class={classNames('cinder-collapsible__label cinder-_label-text', labelClass)}>
+        {#if typeof trigger === 'string'}
+          <span id={labelId}>{trigger}</span>
+        {:else}
+          <span id={labelId}>
+            {@render trigger({ open, disabled })}
+          </span>
+        {/if}
+      </span>
+      {#if chevron === 'end'}{@render chevronIcon()}{/if}
+    </button>
+  {/if}
 
   {#if open && animated}
     <div

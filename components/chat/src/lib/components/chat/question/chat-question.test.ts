@@ -455,7 +455,9 @@ describe('the question unit reads as one thing in the dock and the transcript', 
 describe('the pick of a held answer', () => {
   test('uses Cinder card selection so the radio indicator and label share one state', async () => {
     const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
-    expect(source).toContain('variant="card"');
+    // Cards by default; flat rows when the question is drawn in the dock (`choiceStyle="row"`).
+    expect(source).toContain("choiceStyle = 'card'");
+    expect(source).toContain('variant={choiceStyle}');
     expect(source).not.toContain('--_cinder-choice-card-min-block-size');
   });
 

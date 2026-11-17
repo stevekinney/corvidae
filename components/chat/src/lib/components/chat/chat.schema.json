@@ -434,6 +434,11 @@
         "reason": "function-or-snippet"
       },
       {
+        "name": "questionDock",
+        "reason": "function-or-snippet",
+        "description": "A question the host draws itself, docked in place of the composer in the dock’s one flat panel; the composer stays mounted but out of sight. Set it while the question waits and the person has not chosen to reply in chat. A question Chat docks itself comes first."
+      },
+      {
         "name": "readReceipts",
         "reason": "unknown-shape",
         "description": "Per-message read receipt state. Out-of-band UI state — NOT stored on `Message`.\nPass a `Map` keyed by message id with a {@link ReadReceipt} value; the\ncomponent renders a receipt badge on USER messages only. While defined,\nincluding as an empty `Map`, this prop determines the visible receipts instead\nof adapter-derived state. Adapter events still call `onReadReceipt`, and their\nderived state may continue accumulating and become visible if this prop later\nbecomes `undefined`. Omit the prop or pass `undefined` to show adapter-derived\nstate. Default `undefined` (no receipts shown until adapter state is available)."

@@ -43,10 +43,11 @@ describe('ErrorState rendering', () => {
     expect(withDetail.container.querySelector('.cinder-error-state-detail')?.textContent).toContain(
       'ECONNRESET',
     );
-    const details = withDetail.container.querySelector('details.cinder-error-state-details');
+    const details = withDetail.container.querySelector('.cinder-error-state-details');
     expect(details).not.toBeNull();
-    expect(details?.hasAttribute('open')).toBe(false);
-    expect(details?.querySelector('summary')?.textContent?.trim()).toBe('Show the error details');
+    const trigger = details?.querySelector('button.cinder-disclosure-trigger');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger?.textContent?.trim()).toBe('Show the error details');
     cleanup();
 
     const withoutDetail = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });
@@ -291,28 +292,34 @@ describe('ErrorState retry status', () => {
 });
 
 describe('ErrorState details disclosure', () => {
-  test('keeps the disclosure summary at a visible desktop face and a touch target on coarse pointers', async () => {
+  test('is the one disclosure trigger (board row X3) at a visible desktop face, whose own rules give the focus ring and the touch target', async () => {
     const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
     const summary = declarationsFor(css, '.cinder-error-state-details-summary');
     expect(summary.get('min-block-size')).toBe('var(--cinder-space-6)');
-    expect(css).toMatch(/\.cinder-error-state-details-summary:focus-visible\s*\{/);
-    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
-    expect(coarse).toMatch(
-      /\.cinder-error-state-details-summary::after\s*\{[^}]*position: absolute;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/,
-    );
-    expect(coarse).not.toMatch(/min-(block|inline)-size:\s*var\(--cinder-touch-target-min\)/);
+    expect(css).toContain("@import '../disclosure-trigger/disclosure-trigger.css';");
+    // No arrow, focus ring or hit area of its own: those are DisclosureTrigger's.
+    expect(css).not.toMatch(/\.cinder-error-state-details-summary::(?:before|after)/);
+    const { container } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', detail: 'HTTP 500' },
+    });
+    const trigger = container.querySelector('.cinder-error-state-details-summary');
+    expect(trigger?.classList.contains('cinder-disclosure-trigger')).toBe(true);
+    expect(trigger?.querySelector('.cinder-disclosure-trigger__chevron')).not.toBeNull();
   });
 
   test('detailsLabel overrides the disclosure text and the disclosure opens by activation', async () => {
-    const { container, getByText } = render(ErrorState, {
+    const { container, getByRole } = render(ErrorState, {
       props: { title: 'Failed', description: 'Nope.', detail: 'HTTP 500', detailsLabel: 'Details' },
     });
-    const summary = getByText('Details');
-    expect(summary.tagName).toBe('SUMMARY');
-    const details = container.querySelector('details');
-    expect(details?.hasAttribute('open')).toBe(false);
-    details!.open = true;
-    expect(container.querySelector('.cinder-error-state-detail')?.textContent).toBe('HTTP 500');
+    const trigger = getByRole('button', { name: 'Details' });
+    const detail = container.querySelector<HTMLElement>('.cinder-error-state-detail')!;
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger.getAttribute('aria-controls')).toBe(detail.id);
+    expect(detail.hidden).toBe(true);
+    await fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(detail.hidden).toBe(false);
+    expect(detail.textContent).toBe('HTTP 500');
   });
 });
 

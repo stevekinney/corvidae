@@ -1,4 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@import '../disclosure-trigger/disclosure-trigger.css';
+
 @layer cinder.components {
   /* ========================================
  * COLLAPSIBLE
@@ -163,6 +166,23 @@
 
   .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__panel-inner {
     padding: var(--cinder-space-2) 0 var(--cinder-space-3);
+    background: transparent;
+    border-radius: 0;
+  }
+
+  /* ----------------------------------------
+ * Disclosure variant — DisclosureTrigger (board row X3) over its region, with no box: the
+ * trigger draws the one chevron and label weight, and the region opens under it on the surface.
+ * ---------------------------------------- */
+
+  .cinder-collapsible[data-cinder-variant='disclosure'] {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .cinder-collapsible[data-cinder-variant='disclosure'] .cinder-collapsible__panel-inner {
+    padding: var(--cinder-space-1-5) 0 var(--cinder-space-2);
     background: transparent;
     border-radius: 0;
   }

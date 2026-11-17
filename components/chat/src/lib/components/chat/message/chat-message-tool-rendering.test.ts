@@ -162,7 +162,8 @@ describe('ChatMessage — tool-call rendering', () => {
 
   test('tool activity renders through the retained timeline, not the obsolete group component', () => {
     const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
-    expect(source).toContain('class="chat-tool-call-toggle"');
+    // The group's toggle is Cinder's one disclosure trigger (board row X3).
+    expect(source).toMatch(/<DisclosureTrigger\s+class="chat-tool-call-toggle"/);
     expect(source).not.toContain('RunStepTimeline');
     expect(source).not.toContain('tool-call-group');
   });
@@ -1131,7 +1132,7 @@ describe('ChatMessage — tool-call rendering', () => {
       // The 44px hit area is a pseudo-element that takes no layout: the header overhangs both
       // ways, a step row ends at its edges, and only the last row overhangs, below.
       expect(source).toMatch(
-        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-toggle::before\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
+        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-heading :global\(\.chat-tool-call-toggle::before\)\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
       );
       expect(source).toMatch(
         /\.chat-tool-call-item:last-child > \.chat-tool-call-row::before\s*\{[^}]*inset-block-end: min\(0px,/s,
@@ -1146,9 +1147,10 @@ describe('ChatMessage — tool-call rendering', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       const group = /\.chat-tool-call-timeline\s*\{([^}]*)\}/s.exec(source)?.[1] ?? '';
       expect(group).not.toMatch(/\bborder(?:-[a-z-]+)?:|radius/);
-      const rows = /\.chat-tool-call-toggle,\s*\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(
-        source,
-      )?.[1];
+      const rows =
+        /\.chat-tool-call-heading :global\(\.chat-tool-call-toggle\),\s*\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(
+          source,
+        )?.[1];
       expect(rows).toMatch(/padding:\s*0;/);
       // No hairline above the list or between its steps.
       expect(source).not.toMatch(/\.chat-tool-call-list\s*\{[^}]*border/s);

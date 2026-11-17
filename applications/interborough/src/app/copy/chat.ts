@@ -288,6 +288,8 @@ export const CHAT_COPY = {
   questionAnswerLabel: 'Answer',
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: 'Press 1 to 9 to pick a choice.',
+  /** The quiet action under a docked question that puts it back in its row and gives the composer back. */
+  replyInChat: 'Reply in chat',
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Chat',
   pickShortcut: (position: number): string => `Pick choice ${String(position)}`,
@@ -514,6 +516,13 @@ export const CHAT_COPY = {
      * goes when the run finishes (COR-2284), so it does not steer the run.
      */
     working: 'A message sent now waits until this run finishes.',
+    /**
+     * The warning drawer above the box while only the host is down (the browser is online): the
+     * host is named, not the network, and the draft stays (COR-2284 C5, row 17b).
+     */
+    hostUnreachable: 'Can’t reach Interborough. Your draft is kept here.',
+    /** Why Send is off while the host is down, read with Send. */
+    unreachable: 'Sending is off until Interborough is reachable',
     restarting: 'Sending resumes when Interborough is back.',
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,

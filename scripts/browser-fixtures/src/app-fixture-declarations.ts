@@ -134,6 +134,7 @@ export const appFixtureDeclarations = {
   'decision-deck': ['assertion'],
   'description-list': ['assertion'],
   'diff-statistics': ['assertion'],
+  'disclosure-trigger': ['assertion'],
   divider: ['assertion'],
   'video-player': ['assertion'],
   'audio-player': ['assertion'],

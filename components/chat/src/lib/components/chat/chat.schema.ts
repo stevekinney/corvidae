@@ -512,6 +512,12 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'questionDock',
+        reason: 'function-or-snippet',
+        description:
+          'A question the host draws itself, docked in place of the composer in the dock’s one flat panel; the composer stays mounted but out of sight. Set it while the question waits and the person has not chosen to reply in chat. A question Chat docks itself comes first.',
+      },
+      {
         name: 'readReceipts',
         reason: 'unknown-shape',
         description:

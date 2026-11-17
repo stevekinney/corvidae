@@ -1,0 +1,99 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+   * DISCLOSURE TRIGGER
+   * The one trigger for folded content (board row X3): a 14px chevron in the muted text colour at
+   * the inline start, pointing at the words and turning down when the region opens, and the words
+   * at the medium weight. Step rows, reasoning, a receipt's details and an error's details all use
+   * it, so every disclosure reads the same.
+   * ======================================== */
+
+  .cinder-disclosure-trigger {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-disclosure-trigger__chevron {
+    flex: none;
+    inline-size: 14px;
+    block-size: 14px;
+    /* Centred on the first line of the words, whatever their size. */
+    margin-block: calc((1lh - 14px) / 2);
+    color: var(--cinder-text-muted);
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-disclosure-trigger[aria-expanded='true'] .cinder-disclosure-trigger__chevron {
+    transform: rotate(90deg);
+  }
+
+  /* Closed, the chevron points at the words, so a right-to-left trigger mirrors it. */
+  .cinder-disclosure-trigger:dir(rtl)[aria-expanded='false'] .cinder-disclosure-trigger__chevron {
+    transform: scaleX(-1);
+  }
+
+  .cinder-disclosure-trigger__label {
+    min-inline-size: 0;
+  }
+
+  @media (hover: hover) {
+    .cinder-disclosure-trigger:hover:not(:disabled) .cinder-disclosure-trigger__chevron {
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-disclosure-trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-disclosure-trigger:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  .cinder-disclosure-trigger:disabled {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .cinder-disclosure-trigger:disabled .cinder-disclosure-trigger__chevron {
+    color: var(--cinder-text-disabled);
+  }
+
+  /* On a touch screen the trigger keeps its painted size; a 44px hit area that takes no layout
+   * reaches past it. */
+  @media (any-pointer: coarse) {
+    .cinder-disclosure-trigger {
+      position: relative;
+    }
+
+    .cinder-disclosure-trigger::before {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-disclosure-trigger__chevron {
+      transition: none;
+    }
+  }
+}

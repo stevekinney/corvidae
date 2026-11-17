@@ -33,9 +33,9 @@ const schema = {
       description: 'Additional class names applied to the trigger label wrapper.',
     },
     variant: {
-      enum: ['default', 'flat'],
+      enum: ['default', 'flat', 'disclosure'],
       description:
-        "Visual treatment. `'default'` is a bordered card with a raised trigger.\n`'flat'` drops the border, the raised trigger background, and the horizontal\npadding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.",
+        "Visual treatment. `'default'` is a bordered card with a raised trigger.\n`'flat'` drops the border, the raised trigger background, and the horizontal\npadding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.\n`'disclosure'` draws the trigger as `DisclosureTrigger`, the one inline disclosure (board row\nX3): a 14px muted chevron at the start and medium words, over its region with no box.\n`chevron` does not apply to it.",
       default: 'default',
     },
     framed: {

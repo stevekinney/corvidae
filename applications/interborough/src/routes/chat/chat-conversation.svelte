@@ -62,6 +62,7 @@
     Chat,
     ChatNote,
     ChatQuestion,
+    classifyQuestion,
     createConversationHistory,
     McpApp,
     resolveMessageNotes,
@@ -70,6 +71,7 @@
     type ChatTurnState,
     type Message,
     type MessageNoteInfo,
+    type QuestionKind,
   } from '@lostgradient/chat';
   import { parseStepRowIdentifier } from '@lostgradient/operative';
   import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
@@ -159,7 +161,7 @@
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { chatSessions, openChatSession } from './chat-session-registry.svelte.ts';
-  import type { GrantNotLoosened } from './run-wiring.ts';
+  import type { GrantNotLoosened, HumanRequest } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
@@ -275,7 +277,7 @@
   const storedDraft = untrack(() =>
     isNew || (draft !== undefined && draft !== '')
       ? undefined
-      : readChatDraft(draftStorage, sessionId),
+      : readChatDraft(draftStorage, sessionId, Date.now()),
   );
   /** When the draft put back in the box was written, until it is sent or discarded. */
   let restoredDraftAt = $state<number | undefined>(untrack(() => storedDraft?.savedAt));
@@ -593,6 +595,7 @@
   const composerStatus = $derived(
     composerStatusOf({
       unreachable: connection.unreachable,
+      browserOffline: connection.browserOffline,
       restarting: restart.running,
       archived:
         archivedAt === null
@@ -666,7 +669,7 @@
       noProvider &&
       composerStatus?.kind !== 'blocked' &&
       composerStatus?.kind !== 'archived' &&
-      composerStatus?.kind !== 'offline'
+      !connection.unreachable
     ) {
       return {
         kind: 'unconfigured',
@@ -1266,6 +1269,27 @@
       if (open?.interruptId !== sentRequest.interruptId) sentRequest = undefined;
     }
   });
+
+  // A question whose answer is a choice docks in the composer's place (COR-2437 AC6), until it is
+  // sent or the person chooses Reply in chat; one answered in the composer (free text) stays in its
+  // row, because the composer is how it is answered.
+  const DOCKED_QUESTION_KINDS: ReadonlySet<QuestionKind> = new Set([
+    'choice',
+    'choice-other',
+    'boolean',
+    'multiple',
+  ]);
+  let repliedInChat = $state<string | undefined>();
+  const dockedRequest = $derived(
+    session.streaming || sentRequest !== undefined
+      ? undefined
+      : shownRequests.find(
+          (request) =>
+            request.interruptId !== repliedInChat &&
+            request.schema !== undefined &&
+            DOCKED_QUESTION_KINDS.has(classifyQuestion(request.schema as never)),
+        ),
+  );
 
   async function uploadQuestionFile(file: File, signal: AbortSignal): Promise<string> {
     const asset = await uploadAsset(file, { signal });
@@ -2164,7 +2188,9 @@
         {composerStatus}
         messageTurnState={turnState}
         onRetryConnection={() => void session.reconnect()}
+        {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
         onComposerInput={rememberDraft}
+        questionDock={dockedRequest === undefined ? undefined : hostQuestionDock}
         composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
         composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
         composerFooter={!choosing
@@ -2194,36 +2220,9 @@
       >
         {#snippet trailing()}
           {#each shownRequests as request (request.interruptId)}
-            <div class="weft-chat-question" data-interrupt={request.interruptId}>
-              <p class="weft-chat-question__prompt">
-                <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
-                {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-              </p>
-              <div bind:this={questionElement} data-question-answer-region>
-                <ChatQuestion
-                  {...{ 'data-changes': true }}
-                  id={`chat-question-${request.interruptId}`}
-                  schema={request.schema ?? FREE_TEXT_SCHEMA}
-                  answerInComposer
-                  busy={session.attaching}
-                  uploadFile={uploadQuestionFile}
-                  undoMilliseconds={answerUndoMilliseconds()}
-                  onHoldChange={(held) => (answerHeld = held)}
-                  onSubmit={async (value) => {
-                    sentRequest = request;
-                    const taken = await session.answerQuestion(request.interruptId, value);
-                    // An answer the session did not take leaves the question open, not "answered".
-                    if (!taken) sentRequest = undefined;
-                    // An answer typed in the composer was sent, so it is no draft.
-                    else forgetDraft();
-                    return taken;
-                  }}
-                />
-              </div>
-              {#if pickable}
-                <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
-              {/if}
-            </div>
+            {#if request.interruptId !== dockedRequest?.interruptId}
+              {@render questionBlock(request, false)}
+            {/if}
           {/each}
         {/snippet}
         {#snippet composerControls({ folded })}
@@ -2400,6 +2399,65 @@
         {/snippet}
       </Chat>
     </div>
+    <!-- A question whose answer is a choice docks in the composer's place, in Chat's one dock panel
+         (COR-2278, COR-2437 AC6), with Reply in chat, which puts it back in its row and gives the
+         composer back. -->
+    {#snippet hostQuestionDock()}
+      {#if dockedRequest !== undefined}
+        {@render questionBlock(dockedRequest, true)}
+        <div class="weft-chat-question__dock-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onclick={() => (repliedInChat = dockedRequest?.interruptId)}
+          >
+            {CHAT_COPY.replyInChat}
+          </Button>
+        </div>
+      {/if}
+    {/snippet}
+    {#snippet questionBlock(request: HumanRequest, docked: boolean)}
+      <!-- Docked, the dock is the one box: the question has no card of its own and its choices are
+           flat rows. -->
+      <div
+        class="weft-chat-question"
+        data-interrupt={request.interruptId}
+        data-docked={docked ? '' : undefined}
+      >
+        <p class="weft-chat-question__prompt">
+          <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
+          {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+        </p>
+        <div bind:this={questionElement} data-question-answer-region>
+          <ChatQuestion
+            {...{ 'data-changes': true }}
+            id={`chat-question-${request.interruptId}`}
+            schema={request.schema ?? FREE_TEXT_SCHEMA}
+            answerInComposer={!docked}
+            choiceStyle={docked ? 'row' : 'card'}
+            busy={session.attaching}
+            uploadFile={uploadQuestionFile}
+            undoMilliseconds={answerUndoMilliseconds()}
+            onHoldChange={(held) => (answerHeld = held)}
+            onSubmit={async (value) => {
+              // Read the question once: sending it undocks it, so the snippet's argument changes.
+              const asked = request;
+              sentRequest = asked;
+              const taken = await session.answerQuestion(asked.interruptId, value);
+              // An answer the session did not take leaves the question open, not "answered".
+              if (!taken) sentRequest = undefined;
+              // An answer typed in the composer was sent, so it is no draft.
+              else forgetDraft();
+              return taken;
+            }}
+          />
+        </div>
+        {#if pickable}
+          <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
+        {/if}
+      </div>
+    {/snippet}
     <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
        before it has a session (applied once the first message has started it). Rendered once, in
        the row or folded into the one Settings control. -->

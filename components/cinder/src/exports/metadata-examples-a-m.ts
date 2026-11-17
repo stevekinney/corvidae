@@ -56,6 +56,7 @@ import dateRangeFieldExamplesJson from '../components/date-range-field/date-rang
 import decisionDeckExamplesJson from '../components/decision-deck/decision-deck.examples.json' with { type: 'json' };
 import descriptionListExamplesJson from '../components/description-list/description-list.examples.json' with { type: 'json' };
 import diffStatisticsExamplesJson from '../components/diff-statistics/diff-statistics.examples.json' with { type: 'json' };
+import disclosureTriggerExamplesJson from '../components/disclosure-trigger/disclosure-trigger.examples.json' with { type: 'json' };
 import dividerExamplesJson from '../components/divider/divider.examples.json' with { type: 'json' };
 import dockedActionBarExamplesJson from '../components/docked-action-bar/docked-action-bar.examples.json' with { type: 'json' };
 import donutChartExamplesJson from '../components/donut-chart/donut-chart.examples.json' with { type: 'json' };
@@ -225,6 +226,8 @@ export const decisionDeckExamples = decisionDeckExamplesJson;
 export const descriptionListExamples = descriptionListExamplesJson;
 /** Code examples for this component. */
 export const diffStatisticsExamples = diffStatisticsExamplesJson;
+/** Code examples for this component. */
+export const disclosureTriggerExamples = disclosureTriggerExamplesJson;
 /** Code examples for this component. */
 export const dividerExamples = dividerExamplesJson;
 /** Code examples for this component. */

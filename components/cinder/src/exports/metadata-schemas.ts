@@ -60,6 +60,7 @@ export { default as dateRangeFieldSchema } from '../components/date-range-field/
 export { default as decisionDeckSchema } from '../components/decision-deck/decision-deck.schema.ts';
 export { default as descriptionListSchema } from '../components/description-list/description-list.schema.ts';
 export { default as diffStatisticsSchema } from '../components/diff-statistics/diff-statistics.schema.ts';
+export { default as disclosureTriggerSchema } from '../components/disclosure-trigger/disclosure-trigger.schema.ts';
 export { default as dividerSchema } from '../components/divider/divider.schema.ts';
 export { default as dockedActionBarSchema } from '../components/docked-action-bar/docked-action-bar.schema.ts';
 export { default as donutChartSchema } from '../components/donut-chart/donut-chart.schema.ts';

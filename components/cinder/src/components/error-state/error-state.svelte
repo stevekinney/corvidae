@@ -26,6 +26,7 @@
   import { RefreshCw, Search, TriangleAlert } from '@lucide/svelte';
 
   import Button from '../button/button.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import type { ErrorStateProps } from './error-state.types.ts';
 
@@ -67,7 +68,25 @@
   const flat = $derived(variant === 'flat');
   const row = $derived(variant === 'row');
   const compact = $derived(size === 'compact' && !flat && !row);
+
+  // The error's details sit behind the one disclosure trigger (board row X3), closed until asked for.
+  let detailsOpen = $state(false);
+  const detailId = `${titleId}-detail`;
 </script>
+
+{#snippet details(text: string)}
+  <div class="cinder-error-state-details">
+    <DisclosureTrigger
+      class="cinder-error-state-details-summary"
+      open={detailsOpen}
+      controls={detailId}
+      onclick={() => (detailsOpen = !detailsOpen)}
+    >
+      {detailsLabel}
+    </DisclosureTrigger>
+    <p id={detailId} class="cinder-error-state-detail" hidden={!detailsOpen}>{text}</p>
+  </div>
+{/snippet}
 
 <div
   {...rest}
@@ -119,10 +138,7 @@
         </div>
       {/if}
       {#if detail}
-        <details class="cinder-error-state-details">
-          <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
-          <p class="cinder-error-state-detail">{detail}</p>
-        </details>
+        {@render details(detail)}
       {/if}
     {:else}
       {#if !flat}
@@ -181,10 +197,7 @@
         </div>
       {/if}
       {#if detail}
-        <details class="cinder-error-state-details">
-          <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
-          <p class="cinder-error-state-detail">{detail}</p>
-        </details>
+        {@render details(detail)}
       {/if}
     {/if}
   </div>

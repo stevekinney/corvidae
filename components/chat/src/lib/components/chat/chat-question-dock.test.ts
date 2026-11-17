@@ -7,7 +7,7 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
@@ -966,5 +966,43 @@ describe('a composer that is replaced', () => {
     await settle();
 
     expect(dockOf(container)).toBeNull();
+  });
+});
+
+describe('a question the host draws (questionDock, COR-2437)', () => {
+  const hostQuestion = createRawSnippet(() => ({
+    render: () => '<fieldset data-host-question><legend>Which environment?</legend></fieldset>',
+  }));
+
+  test('docks in the composer’s place in one panel, keeping the composer mounted', async () => {
+    const { container } = render(Chat, {
+      id: 'host-dock',
+      conversation: appendUserMessage(createConversationHistory({ id: 'host-dock' }), 'deploy'),
+      questionDock: hostQuestion,
+    });
+    await settle();
+
+    const dock = container.querySelector<HTMLElement>('[data-chat-question-dock="host"]');
+    expect(dock?.querySelector('[data-host-question]')).not.toBeNull();
+    expect(container.querySelector('.chat-input-area')?.hasAttribute('data-question-docked')).toBe(
+      true,
+    );
+    // The composer is out of sight but still there, so a draft survives.
+    expect(container.querySelector('textarea')).not.toBeNull();
+  });
+
+  test('gives way to a blocked composer, which has nothing to give back', async () => {
+    const { container } = render(Chat, {
+      id: 'host-dock-blocked',
+      conversation: appendUserMessage(
+        createConversationHistory({ id: 'host-dock-blocked' }),
+        'deploy',
+      ),
+      questionDock: hostQuestion,
+      composerStatus: { kind: 'blocked', reason: 'Sending is off' },
+    });
+    await settle();
+
+    expect(container.querySelector('[data-chat-question-dock="host"]')).toBeNull();
   });
 });

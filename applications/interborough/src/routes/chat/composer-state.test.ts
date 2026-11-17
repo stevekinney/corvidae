@@ -2,6 +2,7 @@
  * What the composer says: the blocked row that replaces its text box, in the order the reasons
  * take precedence, and the line under it.
  */
+import type { ChatComposerStatus } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
 import { CHAT_COPY } from '../../app/copy/chat.ts';
@@ -21,9 +22,23 @@ const QUIET: ComposerFacts = {
 
 const facts = (overrides: Partial<ComposerFacts>): ComposerFacts => ({ ...QUIET, ...overrides });
 
+const HOST_DOWN: ChatComposerStatus = {
+  kind: 'drawer-notice',
+  tone: 'warning',
+  text: 'Can’t reach Interborough. Your draft is kept here.',
+  sendDisabledReason: 'Sending is off until Interborough is reachable',
+};
+
 describe('an unreachable server (COR-2284 C5)', () => {
-  test('is the offline warning drawer above the box, which keeps the draft and turns Send off, not a blocked row', () => {
-    expect(composerStatusOf(facts({ unreachable: true }))).toEqual({ kind: 'offline' });
+  test('with only the host down, is a warning drawer that names Interborough, not the network, and turns Send off', () => {
+    expect(composerStatusOf(facts({ unreachable: true }))).toEqual(HOST_DOWN);
+    expect(JSON.stringify(composerStatusOf(facts({ unreachable: true })))).not.toContain('offline');
+  });
+
+  test('with the browser offline, is Chat’s offline drawer, which keeps the draft and turns Send off', () => {
+    expect(composerStatusOf(facts({ unreachable: true, browserOffline: true }))).toEqual({
+      kind: 'offline',
+    });
   });
 });
 
@@ -99,7 +114,7 @@ describe('a blocked composer', () => {
       reconnectAttempt: 2,
     });
 
-    expect(composerStatusOf(everything)).toEqual({ kind: 'offline' });
+    expect(composerStatusOf(everything)).toEqual(HOST_DOWN);
     expect(composerStatusOf({ ...everything, unreachable: false })).toMatchObject({
       reason: 'Sending resumes when Interborough is back.',
     });
@@ -161,7 +176,7 @@ describe('an archived chat (COR-2285 V5)', () => {
 
   test('gives way to an unreachable server and a restarting host, since Unarchive is a write', () => {
     const archived = { when: 'Nov 3', unarchive: () => undefined };
-    expect(composerStatusOf(facts({ archived, unreachable: true }))).toEqual({ kind: 'offline' });
+    expect(composerStatusOf(facts({ archived, unreachable: true }))).toEqual(HOST_DOWN);
     expect(composerStatusOf(facts({ archived, restarting: true }))).toEqual({
       kind: 'blocked',
       reason: 'Sending resumes when Interborough is back.',
@@ -216,9 +231,7 @@ describe('a draft put back from the draft store (COR-2284 C7)', () => {
 
   test('gives way to the offline drawer, a blocked row and the reconnect count, and outranks the lines under the box', () => {
     const restoredDraft = { when: '10:42 AM', discard: () => undefined };
-    expect(composerStatusOf(facts({ restoredDraft, unreachable: true }))).toEqual({
-      kind: 'offline',
-    });
+    expect(composerStatusOf(facts({ restoredDraft, unreachable: true }))).toEqual(HOST_DOWN);
     expect(composerStatusOf(facts({ restoredDraft, ended: true }))).toMatchObject({
       kind: 'blocked',
     });
