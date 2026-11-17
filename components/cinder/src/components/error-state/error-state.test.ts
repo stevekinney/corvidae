@@ -208,6 +208,23 @@ describe('ErrorState variant', () => {
     expect(flat.get('align-items')).toBe('flex-start');
     expect(flat.get('min-block-size')).toBe('0');
   });
+
+  test('a narrow row puts the action on a line of its own, by its own width (COR-2394)', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const row = declarationsFor(css, ".cinder-error-state[data-cinder-variant='row']");
+    expect(row.get('container-type')).toBe('inline-size');
+    expect(row.get('container-name')).toBe('cinder-error-state');
+    // The row has no padding, so its content box is its width and 40rem is the phone breakpoint.
+    expect(row.get('padding')).toBe('0');
+    expect(css).not.toMatch(/@media[^{]*width/);
+    const narrow = css.slice(css.indexOf('@container cinder-error-state (max-width: 40rem)'));
+    const action = declarationsFor(
+      narrow,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
+    );
+    expect(action.get('flex-basis')).toBe('100%');
+    expect(action.get('justify-content')).toBe('flex-start');
+  });
 });
 
 describe('ErrorState actions', () => {

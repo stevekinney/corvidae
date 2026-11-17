@@ -241,8 +241,11 @@
   /* A row is the failure of one card among cards that are live: a small glyph, the title and the
    * description as one sentence, and a secondary retry at the end. It takes a grouped list row's
    * insets (16px at the start, 8px at the end), so its retry ends on the same edge as a list row's
-   * button. On a phone the retry drops under the words. */
+   * button. A narrow row drops the retry under the words; the row is its own inline-size
+   * container for that. */
   .cinder-error-state[data-cinder-variant='row'] {
+    container-type: inline-size;
+    container-name: cinder-error-state;
     align-items: stretch;
     min-block-size: 0;
     padding: 0;
@@ -304,7 +307,10 @@
     max-inline-size: none;
   }
 
-  @media (max-width: 40rem) {
+  /* The row has no padding of its own (its body carries the insets), so its content box is its
+   * width and the phone breakpoint (640px) switches a full-width row at the same viewport width it
+   * always did. */
+  @container cinder-error-state (max-width: 40rem) {
     .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action {
       flex-basis: 100%;
       justify-content: flex-start;

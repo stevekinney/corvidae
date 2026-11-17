@@ -9,8 +9,9 @@
  * ======================================== */
 
   .cinder-code-block {
-    /* The light arm MUST stay pure white, and this is an accessibility constraint
-     * rather than a stylistic one — do not "simplify" it to a single token.
+    /* The code surface is `--cinder-code-block-background`, whose light arm MUST stay pure white,
+     * and this is an accessibility constraint rather than a stylistic one — do not "simplify" it
+     * to a single theme-blind value.
      *
      * Shiki's `github-light` theme picks its token colors against #ffffff and
      * leaves almost no margin: `#d73a49` (keyword red) measures 4.58:1 on white
@@ -23,11 +24,6 @@
      *
      * The dark arm keeps the deep inset so `github-dark` tokens hold contrast on a
      * very dark surface. The fork is load-bearing in both directions. */
-    --_cinder-code-block-code-surface: light-dark(
-      var(--cinder-surface-raised),
-      var(--cinder-surface-inset)
-    );
-
     position: relative;
     /* One surface: the bar and the code share the code's own fill, so nothing divides them. */
     background: var(--cinder-code-block-background);
@@ -259,6 +255,12 @@
     }
   }
 
+  /* The three rules below select a span by the hex color Shiki's `github-dark` theme writes inline
+   * (`--shiki-dark:#6a737d`, `#9ecbff`, `#79b8ff`). Those hex values match Shiki's theme colors,
+   * not a Cinder color, so they cannot be tokens: they stay in `scripts/raw-color-baseline.json`
+   * (COR-2394) until a Cinder highlighter theme built from tokens replaces the selectors. The
+   * colors the rules paint are tokens. */
+
   /* Shiki's `github-dark` comment color (#6A737D) reads 4.24:1 on the old 11% dark inset and 3.90:1
    * on the 18% inset the design adopts (COR-2010), both under the 4.5:1 AA text floor. Its dark
    * value is an inline custom property (`--shiki-dark`), which an `!important` declaration in a
@@ -278,9 +280,10 @@
   }
 
   /* The same theme paints a number in the key blue (#79b8ff), so `{ "total": 42.0 }` reads as one
-   * hue. The design draws a number in amber, oklch(82% 0.14 75), which is close to the dark warning
-   * fill (oklch(82% 0.156 75)), written as a literal because the fill token must not be consumed as
-   * text (scripts/status-solid-foreground.test.ts); this rule is dark-only. The warning text role is a pale 90%
+   * hue. The design draws a number in amber, `--cinder-code-block-number` (oklch(82% 0.14 75)),
+   * which is close to the dark warning fill (oklch(82% 0.156 75)) but its own token, because the
+   * fill token must not be consumed as text (scripts/status-solid-foreground.test.ts); this rule is
+   * dark-only. The warning text role is a pale 90%
    * step that reads almost as the plain text beside it. The fill clears AA on the inset by a wide
    * margin. The stylesheet cannot read a token's text, so `code-block-lines.ts` marks the tokens
    * that are numeric literals, and only a marked token painted in that blue is lifted: a number a
@@ -288,7 +291,7 @@
   .cinder-code-block
     :where(pre.shiki)
     span.cinder-code-block__number[style*='--shiki-dark:#79b8ff' i] {
-    --shiki-dark: oklch(82% 0.14 75) !important;
+    --shiki-dark: var(--cinder-code-block-number) !important;
   }
 
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just

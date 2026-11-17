@@ -456,6 +456,32 @@ describe('EmptyState layout', () => {
     expect(action.get('justify-content')).toBe('flex-end');
   });
 
+  test('a narrow row drops the action under the words, by its own width, not the viewport (COR-2394)', () => {
+    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
+    expect(root.get('container-type')).toBe('inline-size');
+    expect(root.get('container-name')).toBe('cinder-empty-state');
+    expect(emptyStateCss).not.toMatch(/@media[^{]*width/);
+    // The phone breakpoint (40rem) less the row's 1.5rem of inline padding: a size query measures
+    // the content box, so a full-width row switches at the same viewport width it always did.
+    const narrow = emptyStateCss.slice(
+      emptyStateCss.indexOf('@container cinder-empty-state (max-width: 38.5rem)'),
+    );
+    const withDisc = ".cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)";
+    const words = declarationsFor(
+      narrow,
+      `${withDisc} :is(.cinder-empty-state-title, .cinder-empty-state-description)`,
+    );
+    expect(words.get('grid-column')).toBe('2 / -1');
+    const action = declarationsFor(narrow, `${withDisc} .cinder-empty-state-action`);
+    expect(action.get('grid-column')).toBe('2 / -1');
+    expect(action.get('grid-row')).toBe('3');
+    const anyAction = declarationsFor(
+      narrow,
+      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
+    );
+    expect(anyAction.get('margin-block-start')).toBe('var(--cinder-space-2)');
+  });
+
   test('a row keeps its parts in reading order: disc, title, description, action', () => {
     const action = createRawSnippet(() => ({
       render: () => '<a href="/reviews">Open Reviews</a>',

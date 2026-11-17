@@ -1273,6 +1273,16 @@
       "$value": "{surface.inset}"
     }
   },
+  "docked-action-bar": {
+    "shadow-color": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0, 0, 0],
+        "alpha": 0.4
+      }
+    }
+  },
   "kanban-board": {
     "board": {
       "scroll-edge": {

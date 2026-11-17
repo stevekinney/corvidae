@@ -2,7 +2,7 @@
 
 <!-- generated:a11y-record:required -->
 
-`Inspector` groups the properties of one record as quiet rows, for a detail page. Each `InspectorRow` is a muted label in a fixed 140px column, the value in the default text colour, and a trailing affordance; an editable row becomes an editor when it is activated, and a read-only row draws no affordance, so the two never look the same. At desktop width the group is a right rail on one tinted surface with separators inset to the text. Below 700px each label stacks above its value and the group reads as a grouped list on the raised surface a `GroupedList` uses. Every row is at least 44px tall.
+`Inspector` groups the properties of one record as quiet rows, for a detail page. Each `InspectorRow` is a muted label in a fixed 140px column, the value in the default text colour, and a trailing affordance; an editable row becomes an editor when it is activated, and a read-only row draws no affordance, so the two never look the same. When the inspector's own box is 700px or wider the group is one tinted surface with separators inset to the text. Narrower, each label stacks above its value and the group reads as a grouped list on the raised surface a `GroupedList` uses. Every row is at least 44px tall.
 
 ## Usage
 
@@ -43,7 +43,7 @@
 
 ## Right rail and phone layout
 
-Put the inspector in a narrow column beside the page content for a right rail. Below 700px the label of each row stacks above its value and the group sits on the raised surface of a grouped list, so the same markup is the properties section of a phone page. Give it a `header` to name the group.
+The inspector is its own inline-size container, so it follows its own width, not the viewport's. Below 700px of that width the label of each row stacks above its value and the group sits on the raised surface of a grouped list, so the same markup is the properties section of a phone page, and a right rail narrower than 700px reads the same way. Give it a `header` to name the group.
 
 ## Props
 

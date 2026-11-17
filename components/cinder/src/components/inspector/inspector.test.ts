@@ -48,11 +48,14 @@ describe('Inspector', () => {
     expect(root?.getAttribute('data-testid')).toBe('inspector');
   });
 
-  test('stylesheet tints the group, and raises it below 700px', () => {
+  test('stylesheet tints the group, and raises it below 700px of its own width', () => {
     const css = readFileSync(new URL('./inspector.css', import.meta.url), 'utf8');
     expect(css).toMatch(/__group \{[^}]*background: var\(--cinder-surface-inset\)/);
+    expect(css).toMatch(/\.cinder-inspector \{[^}]*container-type: inline-size/);
+    expect(css).toMatch(/\.cinder-inspector \{[^}]*container-name: cinder-inspector/);
+    expect(css).not.toMatch(/@media[^{]*width/);
     expect(css).toMatch(
-      /@media \(width < 700px\) \{\s*\.cinder-inspector__group \{[^}]*background: var\(--cinder-surface-raised\)/,
+      /@container cinder-inspector \(width < 700px\) \{\s*\.cinder-inspector__group \{[^}]*background: var\(--cinder-surface-raised\)/,
     );
     expect(css).toMatch(/__group \{[^}]*overflow: hidden/);
   });

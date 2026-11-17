@@ -5,26 +5,6 @@
     "allowedCount": 3
   },
   {
-    "filePath": "src/components/code-block/code-block.css",
-    "colorClass": "light-dark",
-    "allowedCount": 1
-  },
-  {
-    "filePath": "src/components/code-block/code-block.css",
-    "colorClass": "oklch",
-    "allowedCount": 1
-  },
-  {
-    "filePath": "src/components/docked-action-bar/docked-action-bar.css",
-    "colorClass": "light-dark",
-    "allowedCount": 1
-  },
-  {
-    "filePath": "src/components/docked-action-bar/docked-action-bar.css",
-    "colorClass": "oklch",
-    "allowedCount": 2
-  },
-  {
     "filePath": "src/components/input/input.css",
     "colorClass": "oklch",
     "allowedCount": 1
@@ -48,11 +28,6 @@
     "filePath": "src/components/skeleton/skeleton.css",
     "colorClass": "oklch",
     "allowedCount": 1
-  },
-  {
-    "filePath": "src/components/theme-switch/theme-switch.css",
-    "colorClass": "oklch",
-    "allowedCount": 13
   },
   {
     "filePath": "src/components/toast-region/toast-region.css",

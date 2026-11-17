@@ -5,6 +5,7 @@ const variables: readonly string[] = [
   '--cinder-code-block-font-size',
   '--cinder-code-block-height',
   '--cinder-code-block-line-height',
+  '--cinder-code-block-number',
   '--cinder-code-block-padding',
 ];
 

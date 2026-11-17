@@ -173,9 +173,11 @@
   /* A row lays the parts on one line: the disc, then the title over the description, then the
    * action at the end. It is the line of a list, so it reads from the start, keeps the compact
    * type whatever the size, and takes a grouped list row's insets (16px at the start, 8px at the
-   * end), so its action ends on the same edge as a list row's button. A phone drops the action
-   * under the words. */
+   * end), so its action ends on the same edge as a list row's button. A narrow row drops the
+   * action under the words; the row is its own inline-size container for that. */
   .cinder-empty-state[data-cinder-layout='row'] {
+    container-type: inline-size;
+    container-name: cinder-empty-state;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
@@ -228,13 +230,23 @@
       'description action';
   }
 
-  @media (max-width: 40rem) {
-    .cinder-empty-state[data-cinder-layout='row'] {
-      grid-template-columns: auto minmax(0, 1fr);
-      grid-template-areas:
-        'icon title'
-        'icon description'
-        '. action';
+  /* A narrow row. The threshold is the phone breakpoint (640px) less the row's 1.5rem of inline
+   * padding, because a size query measures the content box: a full-width row switches at the same
+   * viewport width it always did, and a row in a narrow list switches too. A query cannot restyle
+   * its own container, so the grid keeps its three tracks and the parts move: the words span the
+   * second track and the empty third one (whose gap they take back, so their measure is what it
+   * was), and the action takes a third line under them. Without a disc the action stays beside
+   * the words, as it always has. */
+  @container cinder-empty-state (max-width: 38.5rem) {
+    .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
+      :is(.cinder-empty-state-title, .cinder-empty-state-description) {
+      grid-column: 2 / -1;
+    }
+
+    .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
+      .cinder-empty-state-action {
+      grid-column: 2 / -1;
+      grid-row: 3;
     }
 
     .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
