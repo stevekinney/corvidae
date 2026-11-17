@@ -248,10 +248,9 @@ export async function settle(
             [operation]: { ...prior, state: 'settled', actual: 'unknown' },
           },
         };
-      if (record.spentTokens === 'unknown') throw new Error('Actual usage is unresolved.');
       return {
         ...record,
-        spentTokens: record.spentTokens + actual,
+        spentTokens: record.spentTokens === 'unknown' ? 'unknown' : record.spentTokens + actual,
         operations: { ...record.operations, [operation]: { ...prior, state: 'settled', actual } },
       };
     },

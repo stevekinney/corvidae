@@ -93,7 +93,9 @@ export interface TranscriptReport {
   rewrites: number;
   rewriteTokens: number;
   rewriteGapsMinutes: number[];
-  cost: number | undefined;
+  complete: boolean;
+  problems: UsageProblem[];
+  cost: number | 'unknown';
 }
 
 export class UsageError extends Error {}
@@ -443,7 +445,8 @@ export function report(
     }
   });
   const costs = usage.calls.map((call) => costOf(call, prices));
-  const priced = prices !== undefined && costs.every((cost) => cost !== undefined);
+  const complete = usage.problems.length === 0;
+  const priced = complete && prices !== undefined && costs.every((cost) => cost !== undefined);
   const sum = (pick: (call: ModelCall) => number) =>
     usage.calls.reduce((total, call) => total + pick(call), 0);
   const byModel: Record<string, ModelTotals> = {};
@@ -480,7 +483,9 @@ export function report(
     rewrites,
     rewriteTokens,
     rewriteGapsMinutes: gaps,
-    cost: priced ? costs.reduce<number>((total, cost) => total + (cost ?? 0), 0) : undefined,
+    complete,
+    problems: usage.problems,
+    cost: priced ? costs.reduce<number>((total, cost) => total + (cost ?? 0), 0) : 'unknown',
   };
 }
 
@@ -574,11 +579,17 @@ function renderText(reports: TranscriptReport[]): string {
   lines.push(
     `Full-context rewrites: ${format(rewrites)} calls, ${format(reports.reduce((t, item) => t + item.rewriteTokens, 0))} tokens; median gap before one ${median(gaps).toFixed(1)} min.`,
   );
-  const costs = reports.map((item) => item.cost);
-  if (costs.some((cost) => cost !== undefined)) {
-    const unpriced = reports.filter((item) => item.cost === undefined).length;
+  if (reports.some((item) => item.problems.length > 0)) {
     lines.push(
-      `Cost from the supplied price table: $${costs.reduce<number>((t, c) => t + (c ?? 0), 0).toFixed(2)}${unpriced > 0 ? ` (${unpriced} transcripts had an unpriced model)` : ''}.`,
+      `Incomplete transcript usage: ${format(reports.filter((item) => !item.complete).length)} transcripts, ${format(reports.reduce((total, item) => total + item.problems.length, 0))} problems; cost is unknown.`,
+    );
+  } else if (reports.every((item) => item.cost !== 'unknown')) {
+    lines.push(
+      `Cost from the supplied price table: $${reports.reduce<number>((total, item) => total + (item.cost as number), 0).toFixed(2)}.`,
+    );
+  } else if (reports.some((item) => item.cost !== 'unknown')) {
+    lines.push(
+      'Cost from the supplied price table is unknown because at least one model is unpriced.',
     );
   }
   lines.push('Transcripts by tokens processed (input, cache write and cache read):');
@@ -612,7 +623,10 @@ export function run(argv: string[]): { code: number; output: string } {
   const reports = paths
     .flatMap(transcriptFiles)
     .map(readTranscript)
-    .filter((usage): usage is TranscriptUsage => usage !== undefined && usage.calls.length > 0)
+    .filter(
+      (usage): usage is TranscriptUsage =>
+        usage !== undefined && (usage.calls.length > 0 || usage.problems.length > 0),
+    )
     .map((usage) => report(usage, prices, rewriteFloor));
   if (reports.length === 0)
     return {

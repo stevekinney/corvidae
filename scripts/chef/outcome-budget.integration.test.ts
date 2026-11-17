@@ -104,6 +104,24 @@ const unknownUsageScenario = await (async () => {
   return { admitted, replay, settled, unknownAllowanceError };
 })();
 
+const mixedSettlementScenario = await (async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'outcome-budget-mixed-settlement-'));
+  const path = join(directory, 'budget.json');
+  try {
+    await initialize(path, 'mixed', { amount: 20, provenance: 'owner' });
+    await reserve(path, 'mixed', 'a', 10);
+    await reserve(path, 'mixed', 'b', 3);
+    await settle(path, 'mixed', 'a', 'unknown');
+    const settled = await settle(path, 'mixed', 'b', 3);
+    const replay = await settle(path, 'mixed', 'b', 3);
+    const changedReplay = await rejectionOf(settle(path, 'mixed', 'b', 4));
+    const laterDispatch = await rejectionOf(reserve(path, 'mixed', 'later', 1));
+    return { changedReplay, laterDispatch, replay, settled };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+})();
+
 test('unknown reservation and settlement retain their operation identities without an allowance', () => {
   const { admitted, replay, settled, unknownAllowanceError } = unknownUsageScenario;
   expect(admitted).toMatchObject({
@@ -118,6 +136,17 @@ test('unknown reservation and settlement retain their operation identities witho
   expect((unknownAllowanceError as Error).message).toContain(
     'Unknown reservation cannot use an allowance',
   );
+});
+
+test('a known settlement persists after an unknown settlement while the allowance remains blocked', () => {
+  const { changedReplay, laterDispatch, replay, settled } = mixedSettlementScenario;
+  expect(settled).toMatchObject({
+    spentTokens: 'unknown',
+    operations: { b: { amount: 3, actual: 3, state: 'settled' } },
+  });
+  expect(replay).toEqual(settled);
+  expect((changedReplay as Error).message).toContain('Settlement amount changed');
+  expect((laterDispatch as Error).message).toContain('Actual usage is unresolved');
 });
 
 async function interruptReserveAtReplacement(

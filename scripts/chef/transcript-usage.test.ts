@@ -129,7 +129,12 @@ describe('Claude Code transcripts', () => {
   });
 
   test('reports a full-context rewrite and the gap before it', () => {
-    const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
+    const usage = readTranscript(
+      write(
+        join(sandbox, 'parent.jsonl'),
+        claudeTranscript().filter((entry) => typeof entry !== 'string'),
+      ),
+    )!;
     const result = report(usage, undefined);
     expect(result.provider).toBe('claude-code');
     expect(result.calls).toBe(3);
@@ -139,7 +144,7 @@ describe('Claude Code transcripts', () => {
     expect(result.maxContext).toBe(90_005);
     expect(result.lastContext).toBe(90_005);
     expect(result.toolCalls).toBe(1);
-    expect(result.cost).toBeUndefined();
+    expect(result.cost).toBe('unknown');
   });
 
   test('does not count a call that read more from cache than it wrote as a rewrite', () => {
@@ -222,13 +227,16 @@ describe('prices', () => {
       report(usage, {
         'another-model': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
       }).cost,
-    ).toBeUndefined();
+    ).toBe('unknown');
   });
 });
 
 describe('totalUsage', () => {
   test('sums input (uncached plus cache writes), cached input and output over a directory', () => {
-    write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    write(
+      join(sandbox, 'coordinator.jsonl'),
+      claudeTranscript().filter((entry) => typeof entry !== 'string'),
+    );
     mkdirSync(join(sandbox, 'codex'));
     write(join(sandbox, 'codex', 'rollout-1.jsonl'), codexTranscript());
     write(join(sandbox, 'notes.jsonl'), ['{"not":"a transcript"}']);
