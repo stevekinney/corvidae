@@ -1,6 +1,7 @@
 import { HOOKS_COPY } from '../../routes/hooks/hook-copy.ts';
 import type { ViewName } from '../views.ts';
 import { GOALS_COPY } from './goals.ts';
+import { PLUGIN_PAGE_COPY } from './plugin-pages.ts';
 import { SCHEDULE_COPY } from './schedules.ts';
 import { FORBIDDEN_COPY, NOT_FOUND_COPY, type ViewCopy } from './views.ts';
 import { WORKFLOW_COPY } from './workflows.ts';
@@ -285,5 +286,23 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: FORBIDDEN_COPY.title('Health') },
+  },
+  // A plugin's page names the panel by its title, which the frame does not know, so the page words
+  // its own loading and failure (`pageOwnsLoading` and `pageOwnsFailure` in `views.ts`). The frame
+  // keeps the not-found state, and the probe's fault carries the words for a disabled plugin.
+  'plugin-page': {
+    label: PLUGIN_PAGE_COPY.crumb,
+    loading: { title: PLUGIN_PAGE_COPY.loading(undefined), description: '' },
+    error: {
+      title: PLUGIN_PAGE_COPY.failed.title(undefined),
+      description: PLUGIN_PAGE_COPY.failed.description(undefined),
+    },
+    forbidden: { title: FORBIDDEN_COPY.title('this page') },
+    notFound: {
+      title: PLUGIN_PAGE_COPY.notFound.title,
+      description: PLUGIN_PAGE_COPY.notFound.description,
+      back: PLUGIN_PAGE_COPY.notFound.back,
+      searchHidden: true,
+    },
   },
 };

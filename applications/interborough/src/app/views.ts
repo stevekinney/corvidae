@@ -23,6 +23,7 @@ export const VIEW_NAMES = [
   'goals',
   'hooks',
   'health',
+  'plugin-page',
 ] as const;
 
 export type ViewName = (typeof VIEW_NAMES)[number];
@@ -214,4 +215,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // The operator's page: `system:read` alone reaches it, and so does `workflows:read` alone. Each
   // count and band that needs a scope the caller lacks shows a dash instead of failing the page.
   health: { scopes: ['system:read', 'workflows:read'], canBeEmpty: false },
+  // A page a plugin's panel places at `/plugins/<plugin>/<path>` (COR-2213). It holds no scope: a
+  // caller who can open Interborough can open its plugin pages. The probe settles whether the host
+  // serves the address (not found, or a plugin that is disabled), and the page words its own
+  // loading, in a skeleton named for the panel, and its own failure, since both name the panel by a
+  // title the frame does not know.
+  'plugin-page': { scopes: [], canBeEmpty: false, pageOwnsLoading: true, pageOwnsFailure: true },
 };

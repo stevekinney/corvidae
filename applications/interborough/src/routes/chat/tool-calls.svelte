@@ -31,6 +31,8 @@
     duration?: string | undefined;
     /** An inline plugin panel for a completed tool call. */
     mcpApp?: Snippet<[ToolCallEntry]>;
+    /** Whether a completed call has an inline plugin panel, which keeps its row open on the rail. */
+    opensPanel?: (entry: ToolCallEntry) => boolean;
     /**
      * Fired with a call's id when its row is chosen, which opens the call in the page's side panel.
      * Without it a chosen row opens the call's arguments and result under it.
@@ -48,6 +50,7 @@
     endLabel,
     duration,
     mcpApp,
+    opensPanel,
     onSelect,
     selectedId,
   }: ToolCallsProps = $props();
@@ -63,11 +66,9 @@
       ]),
     ),
   );
-  /** A finished revision proposal keeps its inline panel on the rail, whatever the fold. */
+  /** A finished call whose agent tool a plugin panel is placed on keeps that panel on the rail, whatever the fold. */
   const showsPanel = (entry: ToolCallEntry): boolean =>
-    mcpApp !== undefined &&
-    entry.state === 'done' &&
-    entry.name === 'bureau__workflows-propose-update';
+    mcpApp !== undefined && entry.state === 'done' && opensPanel?.(entry) === true;
   /** Whether the call has a decision under its row: it waits on one, or the decision it got is kept. */
   const showsDecision = (entry: ToolCallEntry): boolean =>
     decision !== undefined &&

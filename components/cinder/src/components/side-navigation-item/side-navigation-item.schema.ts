@@ -38,6 +38,11 @@ const schema = {
       description:
         'A count of things that want attention. Zero, a negative number and `undefined` show nothing.\nShown as plain, muted, right-aligned text at the trailing edge of the row (never a badge), or\nas a small dot on the icon when collapsed, unless `dot` is set; always part of the\naccessible name when `label` is given.',
     },
+    badge: {
+      type: 'string',
+      description:
+        'A short word that marks the row as a kind of entry ("Plugin"), drawn as a neutral\nextra-small `Badge` at the trailing edge where the count sits. It is not a count: a row that\nsets `badge` ignores `count` and `dot`. It joins the accessible name and tooltip in lower\ncase ("Reports, plugin"), the label ends in an ellipsis before the badge, which is never\ncut, and a collapsed row draws no badge (its tooltip carries the word).',
+    },
     countLabel: {
       type: 'string',
       description:

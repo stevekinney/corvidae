@@ -189,6 +189,23 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
                     : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
+  // A plugin's page asks the host which panels it serves, and loads the page of the one it finds.
+  if (url.pathname === '/host/panels') {
+    return Response.json({
+      apps: [
+        {
+          plugin: 'acme',
+          app: 'queue',
+          title: 'Review queue',
+          uri: 'ui://acme/queue/v1',
+          placements: [{ kind: 'page', path: 'queue' }],
+        },
+      ],
+    });
+  }
+  if (url.pathname === '/host/plugins/acme/apps/queue') {
+    return Response.json({ html: '<div id="root"></div>', ui: {} });
+  }
   if (url.pathname.endsWith('/schedules')) {
     return Response.json({ items: empty ? [] : [{ id: 'schedule-1' }], total: empty ? 0 : 1 });
   }
@@ -220,13 +237,19 @@ function mount(
 ) {
   let store: PrincipalStore | undefined;
   let queryClient: QueryClient | undefined;
+  // A plugin's page is an address a plugin and a path name, so it is mounted at one.
+  const pluginPage =
+    view === 'plugin-page' && options.parameters === undefined
+      ? { parameters: { plugin: 'acme', '*': 'queue' }, pattern: '/plugins/:plugin/*' }
+      : undefined;
+  const pattern = options.pattern ?? pluginPage?.pattern;
   const result = render(Harness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: options.scopes ?? AUTHORIZATION_SCOPES,
       view,
-      parameters: options.parameters ?? {},
-      ...(options.pattern === undefined ? {} : { pattern: options.pattern }),
+      parameters: options.parameters ?? pluginPage?.parameters ?? {},
+      ...(pattern === undefined ? {} : { pattern }),
       onStore: (created: PrincipalStore) => {
         store = created;
       },
@@ -345,7 +368,9 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is forbidden when its probe is refused`, async () => {
-      if (view === 'health' || view === 'home') return;
+      // A plugin's page holds no scope and has no forbidden state of its own (PL8-18): a caller who
+      // can open Interborough can open it, and a refused read of the panels is its failure.
+      if (view === 'health' || view === 'home' || view === 'plugin-page') return;
       stub(view, 'forbidden');
       const { container, findByRole } = mountWithProbe(view);
       expect(await findByRole('heading', { level: 1, name: copy.forbidden.title })).not.toBeNull();

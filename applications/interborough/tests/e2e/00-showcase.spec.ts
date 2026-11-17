@@ -22,7 +22,12 @@ import { routes } from '../../src/app/routes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, goOffline, test } from './fixtures.ts';
-import { showcaseAddresses, showcaseVariantNames, showcaseVariants } from './showcase-routes.ts';
+import {
+  SHOWCASE_ROUTES_WITHOUT_CONTENT,
+  showcaseAddresses,
+  showcaseVariantNames,
+  showcaseVariants,
+} from './showcase-routes.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
@@ -62,7 +67,7 @@ test('gives every route in the table an address', () => {
 const NAMES = [
   ...routes.filter((route) => route.redirect === undefined).map((route) => route.pattern),
   ...showcaseVariantNames(),
-];
+].filter((name) => !SHOWCASE_ROUTES_WITHOUT_CONTENT.includes(name));
 
 for (const name of NAMES) {
   test(`${name} holds believable content at 375, 768 and 1280 pixels`, async ({ page }) => {

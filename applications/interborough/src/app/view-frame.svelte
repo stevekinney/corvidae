@@ -157,6 +157,10 @@
     const workflow = opened['workflow'];
     if (workflow !== undefined) return workflowViewInstance(initial.pattern ?? '', workflow);
     if (initial.pattern === '/chats/new') return `new:${initial.search.get('agent') ?? ''}`;
+    // A plugin's page is the one address its plugin and its path name.
+    if (initial.view === 'plugin-page') {
+      return `${opened['plugin'] ?? ''}/${opened['*'] ?? ''}`;
+    }
     // The sections of Settings that moved out of System ask the engine, not the Bureau.
     return initial.view === 'settings' &&
       initial.pattern !== undefined &&
@@ -396,12 +400,14 @@
       </EmptyState>
     {/if}
   {:else if state === 'not-found' && notFoundCopy}
+    <!-- A fault can say the missing thing in its own words, such as a plugin that is disabled. -->
+    {@const fault = probeQuery.error instanceof ViewProbeFault ? probeQuery.error.words : undefined}
     <NotFoundState
-      title={notFoundCopy.title}
-      description={notFoundCopy.description}
+      title={fault?.title ?? notFoundCopy.title}
+      description={fault?.description ?? notFoundCopy.description}
       view={initial.view}
       create={notFoundCopy.create}
-      back={notFoundCopy.back}
+      back={fault?.back ?? notFoundCopy.back}
       search={notFoundCopy.searchHidden !== true}
     />
   {:else if state === 'error'}

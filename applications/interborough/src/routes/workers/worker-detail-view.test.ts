@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
@@ -200,8 +200,12 @@ describe('a worker with a long id', () => {
   test('wraps the whole id under the heading with a Copy button', () => {
     const { view } = renderDetail(worker({ id, name: 'Payments worker EU' }));
     expect(view.getByRole('heading', { level: 2 }).textContent).toBe('Payments worker EU');
-    expect(view.getByTestId('worker-id').textContent).toBe(id);
-    expect(view.getByRole('button', { name: 'Copy the worker ID' })).not.toBeNull();
+    expect(view.getByTestId('worker-id').textContent).toContain(id);
+    // The id is a Cinder CopyableValue, with its Copy button inside it, beside the last character.
+    expect(view.getByTestId('worker-id').classList.contains('cinder-copyable-value')).toBe(true);
+    expect(
+      within(view.getByTestId('worker-id')).getByRole('button', { name: 'Copy the worker ID' }),
+    ).not.toBeNull();
   });
 
   test('has no Copy button when the id is short enough to sit beside the heading', () => {

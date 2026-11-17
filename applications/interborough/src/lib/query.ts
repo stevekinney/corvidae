@@ -354,6 +354,8 @@ export const queryKeys = {
   hostPluginRuns: (plugin: string) => ['host', 'plugins', 'runs', plugin] as const,
   /** The plugin panels the host serves, which the run page mounts (`/host/panels`). */
   hostPanels: () => ['host', 'panels'] as const,
+  /** One panel's page and its security metadata, which a plugin's page mounts (`/host/plugins/<plugin>/apps/<app>`). */
+  hostPanelPage: (plugin: string, app: string) => ['host', 'panels', 'page', plugin, app] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */

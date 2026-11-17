@@ -39,13 +39,51 @@ let asked: string[] = [];
 type Attention = number | 'refused';
 
 function stubEngine(
-  options: { bureauReviews?: number; attention?: Attention; pendingReviews?: number } = {},
+  options: {
+    bureauReviews?: number;
+    attention?: Attention;
+    pendingReviews?: number;
+    /** The panels `GET /host/panels` lists, for a host whose plugins place pages (COR-2213). */
+    panels?: readonly unknown[];
+    /** The plugins `GET /host/plugins` lists, by name and title. */
+    plugins?: readonly { name: string; title: string }[];
+  } = {},
 ): void {
   restore.push(
     installFetchImplementation(async (input, init) => {
       const text =
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const url = new URL(text, 'http://localhost');
+      if (url.pathname === '/host/panels' && options.panels !== undefined) {
+        return Response.json({ apps: options.panels });
+      }
+      if (url.pathname === '/host/plugins' && options.plugins !== undefined) {
+        return Response.json({
+          configurationRevision: null,
+          unloaded: [],
+          plugins: options.plugins.map(({ name, title }) => ({
+            descriptor: {
+              name,
+              title,
+              version: '1.0.0',
+              description: '',
+              required: false,
+              enabledByDefault: true,
+            },
+            source: 'package',
+            location: name,
+            status: 'running',
+            problems: [],
+            contributions: [],
+            enabled: true,
+            configuration: {},
+            configurationSchema: null,
+            running: { enabled: true, configuration: {} },
+            secrets: [],
+            restartRequired: false,
+          })),
+        });
+      }
       if (url.pathname.endsWith('/reviews')) {
         const items = Array.from({ length: options.pendingReviews ?? 0 }, (_, index) => ({
           status: 'pending',
@@ -548,5 +586,153 @@ describe('the sidebar as a drawer (04a, 04c, 05r, 07h, 07k)', () => {
     await fireEvent.click(dialog);
     await waitFor(() => expect(queryByRole('dialog')?.outerHTML ?? null).toBeNull());
     expect(navigation.drawerOpen).toBe(false);
+  });
+});
+
+/** A panel that places a page, as `GET /host/panels` lists it. */
+function pagePanel(
+  plugin: string,
+  app: string,
+  title: string,
+  path: string,
+  sidebar?: { group: 'work' | 'build' | 'system'; icon?: string },
+) {
+  return {
+    plugin,
+    app,
+    title,
+    uri: `ui://${plugin}/${app}/v1`,
+    placements: [{ kind: 'page', path, ...(sidebar === undefined ? {} : { sidebar }) }],
+  };
+}
+
+describe('the sidebar’s plugin entries (COR-2213, rows PL8-01 to PL8-05)', () => {
+  const PANELS = [
+    pagePanel('acme', 'overview', 'Acme overview', 'overview', {
+      group: 'work',
+      icon: 'chart-line',
+    }),
+    pagePanel('acme', 'queue', 'Review queue', 'reviews/queue', {
+      group: 'build',
+      icon: 'sparkles',
+    }),
+    pagePanel('beta', 'notes', 'Beta notes', 'notes', { group: 'work' }),
+    pagePanel('beta', 'status', 'Beta status', 'status', { group: 'system' }),
+    // A page placed with no sidebar entry is reached from the palette and its address alone.
+    pagePanel('beta', 'hidden', 'Beta hidden', 'hidden'),
+  ];
+
+  test('sit in their declared group after the group’s built-ins, in the order the host lists them, labelled by title', async () => {
+    onDesktop();
+    stubEngine({ panels: PANELS });
+    landAt('/chats');
+    const { getByRole, findByRole } = mount();
+    await findByRole('link', { name: 'Acme overview, plugin' });
+
+    const navigation = getByRole('navigation', { name: 'Views' });
+    const groups = Array.from(navigation.querySelectorAll('.cinder-side-navigation-group'));
+    expect(groups.map((group) => Array.from(group.querySelectorAll('a')).map(labelOf))).toEqual([
+      ['Chat', 'Reviews', 'Runs', 'Acme overview', 'Beta notes'],
+      ['Agents', 'Workflows', 'Schedules', 'Goals', 'Capabilities', 'Hooks', 'Review queue'],
+      ['Health', 'Settings', 'Beta status'],
+    ]);
+    expect(Array.from(navigation.querySelectorAll('a')).map(labelOf)).not.toContain('Beta hidden');
+    // Each entry opens its page.
+    expect(getByRole('link', { name: 'Review queue, plugin' }).getAttribute('href')).toBe(
+      '/plugins/acme/reviews/queue',
+    );
+  });
+
+  test('carry a Plugin badge Cinder draws, name the row "<title>, plugin", and have no shortcut', async () => {
+    onDesktop();
+    stubEngine({ panels: PANELS });
+    landAt('/chats');
+    const { findByRole } = mount();
+    const link = await findByRole('link', { name: 'Acme overview, plugin' });
+
+    const badge = link.querySelector('.cinder-side-navigation-item__badge .cinder-badge');
+    expect(badge?.textContent?.trim()).toBe('Plugin');
+    expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(badge?.getAttribute('data-cinder-size')).toBe('xs');
+    // No dot, no count, and no shortcut: the row names no key.
+    expect(link.querySelector('.cinder-side-navigation-item__dot')).toBeNull();
+    expect(link.querySelector('.cinder-side-navigation-item__count')).toBeNull();
+    expect(link.hasAttribute('aria-keyshortcuts')).toBe(false);
+  });
+
+  test('draw their allowlisted icon, and the puzzle for any other', async () => {
+    onDesktop();
+    stubEngine({ panels: PANELS });
+    landAt('/chats');
+    const { findByRole } = mount();
+    const allowed = await findByRole('link', { name: 'Acme overview, plugin' });
+    expect(allowed.querySelector('svg.lucide-chart-line')).not.toBeNull();
+    const fallback = await findByRole('link', { name: 'Review queue, plugin' });
+    expect(fallback.querySelector('svg.lucide-puzzle')).not.toBeNull();
+    const none = await findByRole('link', { name: 'Beta notes, plugin' });
+    expect(none.querySelector('svg.lucide-puzzle')).not.toBeNull();
+  });
+
+  test('mark the page that is open as current, and only that one', async () => {
+    onDesktop();
+    stubEngine({ panels: PANELS });
+    landAt('/plugins/acme/reviews/queue');
+    const { findByRole, getByRole } = mount();
+    const queue = await findByRole('link', { name: 'Review queue, plugin' });
+    expect(queue.getAttribute('aria-current')).toBe('page');
+    expect(getByRole('link', { name: 'Acme overview, plugin' }).hasAttribute('aria-current')).toBe(
+      false,
+    );
+  });
+
+  test('open their page in place, without leaving the application', async () => {
+    onDesktop();
+    stubEngine({ panels: PANELS });
+    landAt('/chats');
+    const { findByRole } = mount();
+    await fireEvent.click(await findByRole('link', { name: 'Beta notes, plugin' }));
+    expect(router.pathname).toBe('/plugins/beta/notes');
+  });
+
+  test('are in the drawer behind the tab bar, in the same order', async () => {
+    onPhone();
+    stubEngine({ panels: PANELS });
+    landAt('/');
+    const navigation = navigationState();
+    const { findByRole } = mount({ navigation });
+    navigation.drawerOpen = true;
+    const dialog = await findByRole('dialog');
+    await waitFor(() =>
+      expect(Array.from(dialog.querySelectorAll('nav a')).map(labelOf)).toEqual([
+        'Home',
+        'Chat',
+        'Reviews',
+        'Runs',
+        'Acme overview',
+        'Beta notes',
+        'Agents',
+        'Workflows',
+        'Schedules',
+        'Goals',
+        'Capabilities',
+        'Hooks',
+        'Review queue',
+        'Health',
+        'Settings',
+        'Beta status',
+      ]),
+    );
+  });
+
+  test('are absent when the host lists no panel that places a page', async () => {
+    onDesktop();
+    stubEngine({ panels: [] });
+    landAt('/chats');
+    const { getByRole } = mount();
+    await waitFor(() =>
+      expect(
+        Array.from(getByRole('navigation', { name: 'Views' }).querySelectorAll('a')).map(labelOf),
+      ).toEqual(ROW_LABELS),
+    );
   });
 });

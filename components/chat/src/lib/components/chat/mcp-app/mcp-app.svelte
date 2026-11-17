@@ -4,7 +4,7 @@
     type McpUiHostContext,
   } from '@modelcontextprotocol/ext-apps/app-bridge';
   import { untrack } from 'svelte';
-  import { Button } from '@lostgradient/cinder';
+  import { ErrorState, Skeleton } from '@lostgradient/cinder';
 
   import { buildMcpAppDocument } from './mcp-app-content-security-policy.ts';
   import {
@@ -24,19 +24,29 @@
     grantedPermissions,
     title = 'MCP App',
     maxHeight = 600,
+    fill = false,
+    preloadedResource,
+    onOpenLink,
+    onOpenLinkRefused,
+    errorDescription = 'Nothing you did caused it.',
+    errorAction,
     onRequestTeardown,
     onError,
     class: className,
   }: McpAppProps = $props();
 
-  let resource = $state<McpAppResource>();
+  // A preloaded page is the first page, so a fill frame draws no loading of its own.
+  let resource = $state<McpAppResource | undefined>(
+    untrack(() => (fill ? preloadedResource : undefined)),
+  );
   let failed = $state(false);
   let loadAttempt = $state(0);
   let frame = $state<HTMLIFrameElement>();
   // The height the app last reported; the frame never exceeds `maxHeight`, even when it shrinks.
+  // With `fill` the frame takes its container's height, so the report changes nothing.
   let reportedHeight = $state<number>();
   const height = $derived(
-    reportedHeight === undefined ? undefined : Math.min(reportedHeight, maxHeight),
+    fill || reportedHeight === undefined ? undefined : Math.min(reportedHeight, maxHeight),
   );
   let bridge: McpAppBridge | undefined;
   let initialized = $state(false);
@@ -49,9 +59,13 @@
     resolveMcpAppPermissions(resource?.ui?.permissions, grantedPermissions),
   );
   const allow = $derived(buildAllowAttribute(permissions));
-  // The frame remounts when its permissions or its tool-call capability change, because the
-  // app learns both only in its handshake.
-  const frameKey = $derived(`${allow}|${onToolCall === undefined ? 'no-tools' : 'tools'}`);
+  // The frame remounts when its permissions or its tool-call or open-link capability change,
+  // because the app learns each only in its handshake.
+  const frameKey = $derived(
+    `${allow}|${onToolCall === undefined ? 'no-tools' : 'tools'}|${
+      onOpenLink === undefined ? 'no-links' : 'links'
+    }`,
+  );
 
   function effectiveHostContext(): McpUiHostContext {
     // The component renders inline only, so the display fields are its own, not the caller's.
@@ -60,8 +74,11 @@
       ...hostContext,
       displayMode: 'inline',
       availableDisplayModes: ['inline'],
-      // The caller's dimensions stand; only the height cap is the component's.
-      containerDimensions: { ...hostContext?.containerDimensions, maxHeight },
+      // The caller's dimensions stand; only the height cap is the component's, and a filled
+      // frame has none.
+      containerDimensions: fill
+        ? { ...hostContext?.containerDimensions }
+        : { ...hostContext?.containerDimensions, maxHeight },
     };
   }
 
@@ -73,13 +90,16 @@
   $effect(() => {
     const uri = resourceUri;
     const load = loadResource;
-    void loadAttempt;
+    const attempt = loadAttempt;
+    // The caller's page is the first one; "Try again" loads afresh.
+    const preloaded = fill && attempt === 0 ? preloadedResource : undefined;
     const controller = new AbortController();
     untrack(() => {
-      resource = undefined;
+      resource = preloaded;
       failed = false;
       reportedHeight = undefined;
     });
+    if (preloaded !== undefined) return () => controller.abort();
     void (async () => {
       try {
         const loaded = await load(uri, { signal: controller.signal });
@@ -120,6 +140,12 @@
                 if (onToolCall === undefined) throw new Error('No tool-call handler.');
                 return onToolCall(params, callOptions);
               },
+        // Read the current prop on every call too; a refused link is told to the host, with no address.
+        onOpenLink:
+          onOpenLink === undefined
+            ? undefined
+            : (path) => (onOpenLink === undefined ? false : onOpenLink(path)),
+        onOpenLinkRefused: () => onOpenLinkRefused?.(),
         onSizeChange: (next) => {
           reportedHeight = next;
         },
@@ -189,6 +215,7 @@
   $effect(() => {
     void hostContext;
     void maxHeight;
+    void fill;
     if (!initialized) return;
     untrack(() => bridge?.setHostContext(effectiveHostContext()));
   });
@@ -196,11 +223,19 @@
 
 <div
   class={['mcp-app', className]}
+  data-fill={fill ? '' : undefined}
   data-state={failed ? 'error' : resource === undefined ? 'loading' : 'ready'}
 >
   {#if failed}
-    <p class="mcp-app-error" role="alert">This app could not be loaded.</p>
-    <Button size="sm" variant="secondary" onclick={() => (loadAttempt += 1)}>Retry</Button>
+    <!-- One failure form and one retry word wherever the app appears: chat, a run's page and a plugin's page. -->
+    <ErrorState
+      title={`Couldn’t open ${title}`}
+      description={errorDescription}
+      headingLevel={fill ? 2 : 3}
+      size={fill ? 'default' : 'compact'}
+      {...errorAction === undefined ? {} : { secondaryAction: errorAction }}
+      onRetry={() => (loadAttempt += 1)}
+    />
   {:else if resource !== undefined}
     <!-- A change to the effective permissions or the tool-call capability remounts the frame, so
          the app reinitializes against capabilities that match what the host now offers. -->
@@ -214,17 +249,22 @@
         {title}
         aria-label={title}
         style:height={height === undefined ? undefined : `${height}px`}
-        style:min-height={`${Math.min(120, maxHeight)}px`}
+        style:min-height={fill ? undefined : `${Math.min(120, maxHeight)}px`}
       ></iframe>
     {/key}
   {:else}
-    <p class="mcp-app-loading" role="status" aria-busy="true">Loading app…</p>
+    <Skeleton variant="card" lines={3} label={`Loading ${title}`} />
   {/if}
 </div>
 
 <style>
   .mcp-app {
     width: 100%;
+  }
+
+  /* A filled frame takes its container's height: the container sets it, the app scrolls inside. */
+  .mcp-app[data-fill] {
+    height: 100%;
   }
 
   .mcp-app-frame {
@@ -234,17 +274,7 @@
     background: transparent;
   }
 
-  .mcp-app-error {
-    margin: 0;
-    padding: var(--cinder-space-3);
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-  }
-
-  .mcp-app-loading {
-    margin: 0;
-    padding: var(--cinder-space-3);
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  .mcp-app[data-fill] .mcp-app-frame {
+    height: 100%;
   }
 </style>
