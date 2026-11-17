@@ -182,7 +182,8 @@ describe('retrying a failed document run from its failed step', () => {
       const before = new Map(calls);
 
       failOnB = false;
-      expect((await engine.retryFailed('run-map-together')).status).toBe('retried');
+      const retried = await engine.retryFailed('run-map-together');
+      expect(retried.status).toBe('retried');
       await settled(engine, 'run-map-together', 'completed');
 
       // An item that completed before the failure never ran again; the one that failed ran once more.
@@ -190,11 +191,8 @@ describe('retrying a failed document run from its failed step', () => {
         if (item === 'b') expect(calls.get(item)).toBe(count + 1);
         else expect(calls.get(item)).toBe(count);
       }
-      expect((await stateOf(engine, 'run-map-together'))?.result).toEqual([
-        'done a',
-        'done b',
-        'done c',
-      ]);
+      const finished = await stateOf(engine, 'run-map-together');
+      expect(finished?.result).toEqual(['done a', 'done b', 'done c']);
     },
   );
 
@@ -299,13 +297,15 @@ describe('retrying a failed document run from its failed step', () => {
     });
     await engine.start('two-steps', null, { id: 'run-history' });
     await settled(engine, 'run-history', 'failed');
-    const lifecycle = async () =>
-      (await engine.getEvents('run-history'))
+    const lifecycle = async () => {
+      const events = await engine.getEvents('run-history');
+      return events
         .filter((event) => event.type.startsWith('file-workflow:'))
         .map(
           (event) =>
             `${event.type.slice('file-workflow:'.length)}:${String(event.data['step'] ?? event.data['status'])}`,
         );
+    };
     const failedHistory = await lifecycle();
     expect(failedHistory.filter((event) => event === 'run-terminal:failed')).toHaveLength(1);
 

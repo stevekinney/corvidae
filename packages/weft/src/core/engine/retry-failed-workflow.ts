@@ -1,10 +1,8 @@
 import { KEYS } from '../../storage/keys.ts';
 import type { RetryFailedWorkflowResult } from '../types.ts';
-import {
-  ReactivationCleanupError,
-  reactivateFailedWorkflowFromCheckpoint,
-} from './bulk-operations-retry.ts';
+import { reactivateFailedWorkflowFromCheckpoint } from './bulk-operations-retry.ts';
 import type { EngineInternals } from './internals.ts';
+import { ReactivationCleanupError } from './reactivation-cleanup-error.ts';
 import { loadWorkflowState } from './storage-io.ts';
 
 /** Whether the engine still holds a checkpoint of `workflowId`. */

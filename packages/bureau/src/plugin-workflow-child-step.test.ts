@@ -385,7 +385,8 @@ describe('running a workflow step (G1, G2, G3, G6, O6)', () => {
     const error = await rejectionOf(harness.bureau.workflows!.retryRun(runId, { step: 1 }));
     expect(error).toBeInstanceOf(WorkflowRetryRefusedError);
     expect((error as WorkflowRetryRefusedError).code).toBe('step-not-retryable');
-    expect((await harness.bureau.workflows!.getRun(runId))?.status).toBe('failed');
+    const after = await harness.bureau.workflows!.getRun(runId);
+    expect(after?.status).toBe('failed');
   });
 
   it('waits for a child that parks, and continues when it is signalled (G3)', async () => {

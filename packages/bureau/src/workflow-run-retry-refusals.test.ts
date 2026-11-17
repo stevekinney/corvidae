@@ -31,14 +31,19 @@ async function start(replies: Record<string, () => string>): Promise<WorkflowBur
   return harness;
 }
 
+async function statusOf(
+  harness: WorkflowBureauHarness,
+  runId: string,
+): Promise<string | undefined> {
+  const run = await harness.bureau.workflows!.getRun(runId);
+  return run?.status;
+}
+
 async function failedRunOf(harness: WorkflowBureauHarness, file: string): Promise<string> {
   const { runId } = await harness.bureau.workflows!.start(file, { owner: OWNER });
-  await waitUntil(
-    async () => (await harness.bureau.workflows!.getRun(runId))?.status === 'failed',
-    {
-      message: `run ${runId} to fail`,
-    },
-  );
+  await waitUntil(async () => (await statusOf(harness, runId)) === 'failed', {
+    message: `run ${runId} to fail`,
+  });
   return runId;
 }
 
@@ -79,7 +84,7 @@ describe('a retry the failed step would only fail again', () => {
     expect(await codeOfRefusal(harness.bureau.workflows!.retryRun(runId, { step: 2 }))).toBe(
       'step-not-retryable',
     );
-    expect((await harness.bureau.workflows!.getRun(runId))?.status).toBe('failed');
+    expect(await statusOf(harness, runId)).toBe('failed');
   });
 
   it('is refused for a run a person rejected at a review', async () => {
@@ -117,9 +122,7 @@ describe('a retry the failed step would only fail again', () => {
       principal: 'person:test',
       reason: 'Not yet',
     });
-    await waitUntil(
-      async () => (await harness.bureau.workflows!.getRun(runId))?.status === 'failed',
-    );
+    await waitUntil(async () => (await statusOf(harness, runId)) === 'failed');
     expect(await codeOfRefusal(harness.bureau.workflows!.retryRun(runId, { step: 1 }))).toBe(
       'step-not-retryable',
     );

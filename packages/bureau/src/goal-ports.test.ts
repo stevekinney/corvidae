@@ -471,13 +471,15 @@ describe('startAttempt', () => {
     // The edit lands after try A read the goal.
     const before = (await raced.store.get('g1'))!;
     await raced.store.updateConfiguration('g1', { prompt: 'a new prompt' }, NOW, before.revision);
-    expect((await raced.store.get('g1'))?.objective.promptPending).toBe(true);
+    const edited = await raced.store.get('g1');
+    expect(edited?.objective.promptPending).toBe(true);
     // Try B finds no run when it first looks, takes the edit, and then its start finds try A's run.
     let reads = 0;
     raced.engine.get = (id: string) =>
       id === 'goal-g1-a0' && reads++ === 0 ? Promise.resolve(null) : original(id);
 
-    expect((await raced.ports.startAttempt(startRequest())).status).toBe('adopted');
+    const answer = await raced.ports.startAttempt(startRequest());
+    expect(answer.status).toBe('adopted');
 
     // Nothing was given the new prompt: the edit waits for an attempt that is.
     const after = (await raced.store.get('g1'))!;

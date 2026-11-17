@@ -45,6 +45,8 @@ import type { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import { startWorkflow, type LifecycleCallbacks } from './lifecycle.ts';
 import { buildCatalogEntryRevisionCondition } from './lifecycle/start-commit.ts';
+import { buildReactivatedWorkflowState } from './reactivated-workflow-state.ts';
+import { ReactivationCleanupError } from './reactivation-cleanup-error.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
 import { loadWorkflowState, runSerializedWorkflowStateWrite } from './storage-io.ts';
 import { decodeWorkflowState } from './validation.ts';
@@ -223,27 +225,11 @@ export async function reactivateFailedWorkflowFromCheckpoint(
   );
 
   if (reactivated.terminalCleanupTimerId !== undefined) {
-    try {
-      await internals.scheduler.cancel(reactivated.terminalCleanupTimerId, state.id);
-    } catch (error) {
-      throw new ReactivationCleanupError(state.id, error);
-    }
-  }
-}
-
-/**
- * The reactivation committed and the run is running again; only the cancel of its terminal cleanup
- * timer failed. A caller must go on and resume the run, not report it as unchanged.
- */
-export class ReactivationCleanupError extends Error {
-  constructor(workflowId: string, cause: unknown) {
-    super(
-      `Workflow "${workflowId}" was reactivated, but its terminal cleanup timer was not canceled.`,
-      {
-        cause,
-      },
-    );
-    this.name = 'ReactivationCleanupError';
+    await internals.scheduler
+      .cancel(reactivated.terminalCleanupTimerId, state.id)
+      .catch((error: unknown) => {
+        throw new ReactivationCleanupError(state.id, error);
+      });
   }
 }
 
@@ -477,25 +463,6 @@ async function commitFailedWorkflowReactivation(
   );
   if (result.status === 'committed') return true;
   return result.claimConflict ? throwWorkflowClaimUnavailable(internals, workflowId) : false;
-}
-
-function buildReactivatedWorkflowState(
-  internals: EngineInternals,
-  state: WorkflowState,
-): WorkflowState {
-  const reactivatedState: WorkflowState = {
-    ...state,
-    status: 'running',
-    updatedAt: internals.options.getNow(),
-  };
-  delete reactivatedState.error;
-  delete reactivatedState.errorStack;
-  delete reactivatedState.failureCategory;
-  delete reactivatedState.result;
-  delete reactivatedState.terminationReason;
-  delete reactivatedState.terminalCleanupToken;
-  delete reactivatedState.terminalCommittedBy;
-  return reactivatedState;
 }
 
 async function loadSearchAttributes(

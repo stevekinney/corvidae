@@ -220,7 +220,8 @@ describe('retrying a failed workflow run from its failed step', () => {
     const again = await harness.bureau.workflows!.retryRun(runId, { step: 2, retryId: 'x' });
     expect(again).toMatchObject({ runId, step: 2, retryId: 'x' });
     expect(agentCalls(harness, 'editor')).toHaveLength(calls);
-    expect((await engine.get(runId))?.status).toBe('failed');
+    const final = await engine.get(runId);
+    expect(final?.status).toBe('failed');
     const receipt = await receipts.get(runId);
     expect(receipt?.generation).toBe(1);
     expect(receipt?.pending).toBeNull();
