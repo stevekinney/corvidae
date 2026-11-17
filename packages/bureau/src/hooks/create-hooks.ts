@@ -1289,12 +1289,12 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         };
         try {
           // `dryRun` was checked above, before anything was resolved.
-          const resolved: unknown = context.test
+          const answer: unknown = context.test
             ? await registration.kind.dryRun?.(reaction)
             : await registration.kind.run(reaction);
           // What it says it made (COR-2182): a field that is not allowed is dropped, one warning
           // names them, and the delivery is still completed.
-          const { receipt, dropped } = receiptOf(resolved, context.resolvedSecrets);
+          const { receipt, dropped } = receiptOf(answer, context.resolvedSecrets);
           if (dropped.length > 0) {
             dependencies.notice?.(
               `[bureau] Hook ${context.hookId} dropped the ${dropped.join(' and ')} of the receipt of ${work.plugin}/${work.kind}: ${dropped.length === 1 ? 'it is' : 'they are'} not allowed in a receipt`,

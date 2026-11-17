@@ -89,7 +89,7 @@ describe('the hooks a plugin declares (COR-2180)', () => {
     ]);
     const listed = (await second.bureau.hooks?.list()) ?? [];
     expect(
-      listed.map(({ name }) => name).toSorted((left, right) => left.localeCompare(right)),
+      listed.map(({ name }) => name ?? '').toSorted((left, right) => left.localeCompare(right)),
     ).toEqual(['Page again', 'Page on settle']);
     // A changed declaration replaces the hook in place.
     expect(listed.find(({ name }) => name === 'Page on settle')?.id).toBe(before?.id);
