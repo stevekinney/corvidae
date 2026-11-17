@@ -67,6 +67,40 @@ test.describe('Breadcrumbs popover trigger, fine pointer', () => {
   });
 });
 
+test.describe('Breadcrumbs crumb link', () => {
+  test('is drawn on its 20px line and answers a press 24px tall, the minimum target', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ media: 'screen' });
+    await openTrail(page);
+    // One read: the link's painted box, and what presses 11px above and below its centre (inside a
+    // 24px target, outside a 20px one) and 14px out (past the target) land on.
+    const read = await page.evaluate(() => {
+      const link = document.querySelector('.cinder-breadcrumbs__link');
+      if (link === null) throw new Error('The crumb link is not on the page.');
+      const box = link.getBoundingClientRect();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      const lands = (at: number) => {
+        const hit = document.elementFromPoint(x, at);
+        return hit !== null && link.contains(hit);
+      };
+      return {
+        height: box.height,
+        above: lands(y - 11),
+        below: lands(y + 11),
+        farAbove: lands(y - 14),
+        farBelow: lands(y + 14),
+      };
+    });
+    expect(read.height).toBeCloseTo(20, 0);
+    expect(read.above).toBe(true);
+    expect(read.below).toBe(true);
+    expect(read.farAbove).toBe(false);
+    expect(read.farBelow).toBe(false);
+  });
+});
+
 test.describe('Breadcrumbs popover trigger, coarse pointer', () => {
   test('paints 30px and answers a press 44px tall', async ({ browser }) => {
     const { page, close } = await coarsePage(browser);
