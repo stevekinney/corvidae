@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { declarationsFor } from '../../test/css.ts';
 
 setupHappyDom();
 

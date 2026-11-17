@@ -15,7 +15,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { environmentConfiguration } from '../environment-configuration.ts';
+import { environmentConfiguration } from '@lostgradient/component-tooling/scripts/environment-configuration.ts';
 
 /** The environment variable that overrides the configuration file. */
 export const URL_ENVIRONMENT_VARIABLE = 'CORVIDAE_DESIGN_SYSTEM_URL';

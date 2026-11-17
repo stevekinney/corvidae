@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import {
   captureZeroDelayTimers,
   type ZeroDelayTimerCapture,
-} from '../../test/zero-delay-timers.ts';
+} from '@lostgradient/component-tooling/test/zero-delay-timers.ts';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { makeItems, renderedRows, rowSnippet } from './virtual-list-test-helpers.ts';
 
 setupHappyDom();

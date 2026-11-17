@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { parse, type ChildNode } from 'postcss';
 
-import { COMPONENT_LAYER_NAME, isSingleComponentLayer } from '../../scripts/check-component-css.ts';
+import {
+  COMPONENT_LAYER_NAME,
+  isSingleComponentLayer,
+} from '@lostgradient/component-tooling/scripts/check-component-css.ts';
 
 /**
  * Every component CSS file that reaches the cascade must carry its own

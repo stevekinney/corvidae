@@ -40,7 +40,7 @@ import { readFile } from 'node:fs/promises';
 
 import { describe, expect, test } from 'bun:test';
 
-import { readRootTokenNames } from '../../src/test/token-introspection.ts';
+import { readRootTokenNames } from '@lostgradient/component-tooling/test/token-introspection.ts';
 import { isRootDeclaredEntry } from '../../src/tokens/runtime/css-support.ts';
 import { buildBaseIndex } from '../../src/tokens/runtime/registry.ts';
 import { loadCorpus } from './generate.ts';

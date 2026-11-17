@@ -439,7 +439,8 @@
         "src/components/_internal/chart-data-table.svelte",
         "src/components/_internal/chart-tooltip.css",
         "src/components/_internal/chart-tooltip.svelte",
-        "src/components/chart.types.ts"
+        "src/components/chart.types.ts",
+        "src/test/focus-ring-recipe.test.ts"
       ]
     },
     "checkbox": {
@@ -2428,32 +2429,7 @@
       "layer": 0,
       "components": [],
       "dependencies": [],
-      "modules": [
-        "src/manifest.meta.ts",
-        "src/schema-types.test.ts",
-        "src/schema-types.ts",
-        "src/schemas/constraints.schema.json",
-        "src/schemas/examples.schema.json",
-        "src/schemas/manifest.schema.json",
-        "src/styles/border-tier-classification.test.ts",
-        "src/styles/border-tier-non-border-uses.test.ts",
-        "src/test/aria.ts",
-        "src/test/css.test.ts",
-        "src/test/css.ts",
-        "src/test/focus-ring-helpers.ts",
-        "src/test/focus-ring-recipe.test.ts",
-        "src/test/hydration-safety.integration.test.ts",
-        "src/test/hydration-safety.ts",
-        "src/test/import-without-dom-globals.ts",
-        "src/test/index.ts",
-        "src/test/jest-dom-matchers.d.ts",
-        "src/test/keyboard.ts",
-        "src/test/overflow-fade-test-helpers.ts",
-        "src/test/token-introspection.test.ts",
-        "src/test/token-introspection.ts",
-        "src/test/viewport.ts",
-        "src/test/zero-delay-timers.ts"
-      ]
+      "modules": ["src/schema-types.ts"]
     },
     "tooltip": {
       "kind": "family",

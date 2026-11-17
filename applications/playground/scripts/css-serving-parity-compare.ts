@@ -22,7 +22,7 @@ import {
   serializeFlattened,
   type FlattenedStylesheet,
   type ImportResolver,
-} from '../../../components/cinder/scripts/css-fingerprint.ts';
+} from '@lostgradient/component-tooling/scripts/css-fingerprint.ts';
 
 /** The two ways the playground serves a stylesheet. */
 export type ServingMode = 'dev' | 'static';

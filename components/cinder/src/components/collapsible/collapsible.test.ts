@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { declarationsFor } from '../../test/css.ts';
 import type { CollapsibleTriggerState } from './collapsible.types.ts';
 
 setupHappyDom();

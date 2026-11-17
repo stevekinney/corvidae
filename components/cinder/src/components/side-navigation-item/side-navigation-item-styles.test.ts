@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'bun:test';
 import { parse, type Rule } from 'postcss';
 
-import { isUnderForcedColors } from '../../test/focus-ring-helpers.ts';
+import { isUnderForcedColors } from '@lostgradient/component-tooling/test/focus-ring-helpers.ts';
 
 function loadCss(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');

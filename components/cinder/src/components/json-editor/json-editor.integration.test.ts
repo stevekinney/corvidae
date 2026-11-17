@@ -1,13 +1,13 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
+import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 import {
   prepareSvelteServerSource,
   renderSvelteOnServer,
   requiredInstance,
   setupHappyDom,
 } from '@lostgradient/testing';
-import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
 

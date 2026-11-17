@@ -175,7 +175,11 @@ function componentDirectoryOf(context: Context, path: string): string | undefine
 }
 
 /** Whether any file reached through test files only is inside a component directory. */
-function reachesComponent(context: Context, start: string): string | undefined {
+function reachesComponent(
+  context: Context,
+  start: string,
+  familyModules = false,
+): string | undefined {
   const seen = new Set<string>([start]);
   const queue = [start];
   while (queue.length > 0) {
@@ -185,6 +189,11 @@ function reachesComponent(context: Context, start: string): string | undefined {
       seen.add(target);
       if (componentDirectoryOf(context, target) !== undefined) return target;
       if (isTestFile(target)) queue.push(target);
+      else if (familyModules) {
+        // A module a row gives a family counts as that family's, like a component.
+        const owner = placeByRows(context, target, false).owner;
+        if (familyOf(owner)) return target;
+      }
     }
   }
   return undefined;
@@ -197,7 +206,8 @@ function placeByRows(context: Context, path: string, allowCompanion: boolean): P
     if (row.when === 'names-sibling-package' && !SIBLING_PACKAGE_PATH.test(content)) continue;
     if (row.when === 'names-component-stylesheet' && !COMPONENT_STYLESHEET_PATH.test(content))
       continue;
-    if (row.when === 'component-free' && reachesComponent(context, path) !== undefined) continue;
+    if (row.when === 'component-free' && reachesComponent(context, path, true) !== undefined)
+      continue;
     if (row.when === 'companion-test') {
       if (!allowCompanion || !isTestFile(path)) continue;
       const companion = companionCandidates(path).find(

@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "types": "bun ../cinder/scripts/emit-declarations.ts",
+    "types": "bun ../../internal/component-tooling/scripts/emit-declarations.ts",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",

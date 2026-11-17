@@ -1,6 +1,6 @@
+import { assertPrettierResolvesToRoot } from '@lostgradient/component-tooling/scripts/lib/prettier-resolution.ts';
 import { format } from 'prettier';
 import markdownPlugin from 'prettier/plugins/markdown';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 
 import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import type { TokenRegistry } from '../../src/tokens/runtime/registry.ts';

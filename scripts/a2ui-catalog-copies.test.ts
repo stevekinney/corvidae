@@ -28,8 +28,11 @@ describe('the vendored A2UI basic catalog', () => {
 
 describe("Bureau's other vendored A2UI schemas", () => {
   const copies: readonly [string, string][] = [
-    ['common-types.schema.json', 'components/cinder/scripts/a2ui/common_types.json'],
-    ['server-to-client.schema.json', 'components/cinder/scripts/a2ui/server_to_client.json'],
+    ['common-types.schema.json', 'internal/component-tooling/scripts/a2ui/common_types.json'],
+    [
+      'server-to-client.schema.json',
+      'internal/component-tooling/scripts/a2ui/server_to_client.json',
+    ],
     ['cinder-catalog.schema.json', 'components/cinder/a2ui-catalog.json'],
   ];
 
