@@ -76,7 +76,10 @@ const SPECIFICATIONS = {
  * agent whose plugin is disabled (`agent-plugin-editing.spec.ts`), and an open chat with no
  * message yet, one deleted while open, and both with no model provider (`chat-availability.spec.ts`),
  * and the workflow builder's step cards: a step of every kind, empty lists, the catalog loading and
- * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`).
+ * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`), and the hook
+ * editor and its deliveries: a plugin hook, a default hook, a withdrawn one, the secret field, a
+ * delivery with a receipt and a hook with a problem (`hooks.spec.ts`), and the Hooks list in each
+ * state of its board (`hooks-states.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
@@ -118,6 +121,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  'tests/e2e/hooks.spec.ts',
+  'tests/e2e/hooks-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
