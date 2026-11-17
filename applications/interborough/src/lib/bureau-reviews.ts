@@ -76,6 +76,10 @@ const toolActionSchema = z.discriminatedUnion('type', [
       })
       .loose(),
     expiresAt: z.string().optional(),
+    // COR-2438: what a person deciding needs, as the tool declared it; absent on older reviews.
+    irreversible: z.boolean().optional(),
+    consequence: z.string().optional(),
+    why: z.string().optional(),
   }),
 ]);
 

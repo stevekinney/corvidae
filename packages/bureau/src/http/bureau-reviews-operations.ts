@@ -198,7 +198,7 @@ const operationSchema = z.discriminatedUnion('kind', [
 
 /**
  * The action a tool call asks to take, as a reviewer sees it. Each member lists
- * the fields that say what will happen and to what; the action's environment,
+ * the fields that say what will happen, to what, and why; the action's environment,
  * sandbox, idempotency key, snapshot id, policy version, and argument preview are
  * not among them (the arguments are already on the approval itself).
  */
@@ -211,6 +211,12 @@ const toolActionSchema = z.discriminatedUnion('type', [
     operation: operationSchema,
     /** ISO timestamp after which the approval can no longer be given. */
     expiresAt: z.string().optional(),
+    /** COR-2438: whether the operation cannot be undone, as the tool declared it. Absent when it said nothing. */
+    irreversible: z.boolean().optional(),
+    /** COR-2438: what approving does, in one sentence, as the tool declared it. */
+    consequence: z.string().optional(),
+    /** COR-2438: why the agent wants to take the action, as the tool declared it. */
+    why: z.string().optional(),
   }),
 ]);
 
@@ -380,6 +386,10 @@ function projectAction(
     risk: action.risk,
     operation: projectOperation(action.operation),
     ...(expiresAt === undefined ? {} : { expiresAt }),
+    // What a reviewer needs to judge the action (COR-2438), each only when the tool declared it.
+    ...(action.irreversible === undefined ? {} : { irreversible: action.irreversible }),
+    ...(action.consequence === undefined ? {} : { consequence: action.consequence }),
+    ...(action.why === undefined ? {} : { why: action.why }),
   };
 }
 
