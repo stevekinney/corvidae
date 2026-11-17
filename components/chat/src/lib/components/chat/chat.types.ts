@@ -28,9 +28,7 @@ import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
-import type { ChatTurnLabels } from './message/turn-labels.ts';
 import type { ChatTurnState } from './message/turn-state.ts';
-import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
 import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
 /**
@@ -391,10 +389,27 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * row either way. Needs {@link ChatProps.onInputSubmit}.
    */
   questionPlacement?: 'inline' | 'docked' | undefined;
-  /** The words of the docked question, any of which the host can replace. */
-  questionLabels?: Partial<ChatQuestionDockLabels> | undefined;
-  /** The composer's attachment and approval-drawer words, any of which the host can replace. */
+  /**
+   * Every word Chat draws itself, any of which the host can replace: the composer's, the approval
+   * drawer's, a turn's outcome and the steps under it (such as `steps` for `3 steps`, or
+   * `stepsDone` to read `Checked 2 of 3 sources`), the docked question's, a message's content
+   * (a code block's `codeWriting`, a wide table's `scrollableTable`, `hiddenColumns` and
+   * `scrollToSeeAllColumns`, an image's `imageDidNotLoad` and `retryImage`), and the sources', which
+   * Chat forwards to Citation's own labels. Each word left out keeps its English default.
+   */
   labels?: Partial<ChatLabels> | undefined;
+  /**
+   * The reader's own principal. An approval whose result row records (under its `approvalDecision`
+   * metadata) that this principal decided it reads "Approved by you"; any other principal is
+   * named as recorded: "Approved by Priya Raman".
+   */
+  currentPrincipal?: string | undefined;
+  /**
+   * Where an approval decided in Reviews can be read, by its tool call id. Its receipt then writes
+   * "in Reviews" as a link there. Without it, or when it returns `undefined`, the place is plain
+   * text.
+   */
+  approvalReceiptHref?: ((toolCallId: string) => string | undefined) | undefined;
   /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */
@@ -443,8 +458,6 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Chat sees it.
    */
   messageTurnState?: ((message: Message) => ChatTurnState | undefined) | undefined;
-  /** The words of a turn's outcome and of the steps under it, any of which the host can replace. */
-  turnLabels?: Partial<ChatTurnLabels> | undefined;
   /** Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set. */
   onRetryConnection?: ((messageId: string) => void) | undefined;
   /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. */

@@ -25,6 +25,12 @@ export type Review = {
       readonly message?: string;
       readonly risk?: string;
       readonly expiresAt?: string;
+      /** COR-2438: whether the operation cannot be undone, as the tool declared it. */
+      readonly irreversible?: boolean;
+      /** COR-2438: what approving does, in one sentence. */
+      readonly consequence?: string;
+      /** COR-2438: why the agent wants to do it. */
+      readonly why?: string;
       readonly operation?: {
         readonly kind: string;
         readonly command?: string;
@@ -160,6 +166,9 @@ export function viewReview(review: Review, now: number): ReviewView {
     const action = review.approval?.action;
     if (action?.type === 'approval') {
       detail.push(`Risk: ${action.risk ?? 'unknown'}`);
+      if (action.irreversible === true) detail.push("Can't be undone");
+      if (action.consequence !== undefined) detail.push(`If approved: ${action.consequence}`);
+      if (action.why !== undefined) detail.push(`Why: ${action.why}`);
       const operation = action.operation;
       if (operation?.command !== undefined) detail.push(`Command: ${operation.command}`);
       // The whole change a reviewer approves: every path and the full patch, never a prefix.

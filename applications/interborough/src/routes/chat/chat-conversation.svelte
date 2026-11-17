@@ -133,8 +133,10 @@
   import { modelInUse } from './agent-model.ts';
   import BranchOrigin from './branch-origin.svelte';
   import ChatApproval from './chat-approval.svelte';
+  import { ApprovalReviewDeadlines } from './approval-review-deadlines.svelte.ts';
   import { branchPointIds } from './branch-points.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
+  import { inboxKey } from '../reviews/review-items.ts';
   import { setChatArchived } from './chat-archive.ts';
   import ChatAssets from './chat-assets.svelte';
   import {
@@ -1303,16 +1305,9 @@
     return typeof round === 'number' ? round : undefined;
   }
 
-  // Review expiry is authoritative only for the matching run, call and round. A later pending
-  // review must clear the old terminal marker so a stale read cannot expire fresh approval.
-  let expiredApprovalAt = $state<Record<string, string>>({});
-  let observedPendingApprovalExpiry = $state<
-    Record<string, { readonly expiresAt: string; readonly round: number }>
-  >({});
-  const historicalReviewReads = new Set<string>();
-  const historicalReviewTerminalReads = new Map<string, number>();
-  const historicalReviewKeyByIdentity = new Map<string, string>();
-  let historicalReviewGeneration = 0;
+  // Review expiry is authoritative only for the matching run, call and round, and only from the
+  // current generation of reads (`approval-review-deadlines.svelte.ts`, COR-2280 P7).
+  const reviewDeadlines = new ApprovalReviewDeadlines();
 
   const approvalReviewCandidates = $derived.by(() =>
     Object.values(session.conversation.messages).flatMap((row) => {
@@ -1376,12 +1371,13 @@
       const approvalKey =
         approvalKeyForResult(result) ?? session.parkedApprovalKeys.get(result.callId);
       const observedExpiry =
-        approvalKey === undefined
-          ? undefined
-          : observedPendingApprovalExpiry[approvalKey]?.expiresAt;
-      const durableExpiry = approvalKey === undefined ? undefined : expiredApprovalAt[approvalKey];
+        approvalKey === undefined ? undefined : reviewDeadlines.observed[approvalKey]?.expiresAt;
+      const durableExpiry =
+        approvalKey === undefined ? undefined : reviewDeadlines.expired[approvalKey];
       return {
         toolCallId: result.callId,
+        // The row that asks for the approval, which Chat looks the card up by (COR-2440 AC5).
+        messageId: message.id,
         reviewId: reviewed?.id,
         approvalKey,
         action:
@@ -1472,7 +1468,7 @@
       runActive: runGoing,
       tools: toolInfo,
       expiredApprovalAt: new Map([
-        ...Object.entries(expiredApprovalAt).flatMap(([key, value]) => {
+        ...Object.entries(reviewDeadlines.expired).flatMap(([key, value]) => {
           const timestamp = Date.parse(value);
           if (!Number.isFinite(timestamp)) return [];
           const approval = approvals.find((candidate) => candidate.approvalKey === key);
@@ -1500,7 +1496,7 @@
         }),
       ]),
       observedApprovalAt: new Map(
-        Object.entries(observedPendingApprovalExpiry).flatMap(([key, value]) => {
+        Object.entries(reviewDeadlines.observed).flatMap(([key, value]) => {
           const timestamp = Date.parse(value.expiresAt);
           return Number.isFinite(timestamp) ? [[key, timestamp] as const] : [];
         }),
@@ -1557,100 +1553,37 @@
   $effect(() => {
     // Re-read the canonical review when the pending-review poll changes status or round.
     void pendingReviews.data;
-    const generation = ++historicalReviewGeneration;
-    for (const candidate of approvalReviewCandidates) {
-      const identity = `${candidate.reviewId}:${candidate.rowId}`;
-      const previousKey = historicalReviewKeyByIdentity.get(identity);
-      if (previousKey !== undefined && previousKey !== candidate.key) {
-        const previousExpiry = expiredApprovalAt[previousKey];
-        if (previousExpiry !== undefined && expiredApprovalAt[candidate.key] === undefined) {
-          expiredApprovalAt = { ...expiredApprovalAt, [candidate.key]: previousExpiry };
-        }
-        const previousTerminalRound = historicalReviewTerminalReads.get(previousKey);
-        if (previousTerminalRound !== undefined) {
-          historicalReviewTerminalReads.set(candidate.key, previousTerminalRound);
-        }
-      }
-      historicalReviewKeyByIdentity.set(identity, candidate.key);
-    }
+    const generation = reviewDeadlines.begin(approvalReviewCandidates);
     const controllers = new Map<string, AbortController>();
     for (const candidate of approvalReviewCandidates) {
-      if (historicalReviewReads.has(candidate.key)) continue;
-      historicalReviewReads.add(candidate.key);
+      if (!reviewDeadlines.claim(candidate.key)) continue;
       const controller = new AbortController();
       controllers.set(candidate.key, controller);
       void getBureauReview(candidate.reviewId, { signal: controller.signal })
         .then((review) => {
-          if (controller.signal.aborted || generation !== historicalReviewGeneration)
-            return undefined;
-          if (
-            review.kind !== 'tool-approval' ||
-            review.runId !== candidate.runId ||
-            review.approval.callId !== candidate.rawCallId
-          )
-            return undefined;
-          const terminalRound = historicalReviewTerminalReads.get(candidate.key) ?? -1;
-          if (review.status === 'pending') {
-            // A pending read from the terminal round can be an older request resolving after the
-            // terminal review. It must not restore the future deadline over the authoritative
-            // terminal marker; only a strictly newer round represents a renewed approval.
-            if (review.round <= terminalRound) return undefined;
-            if (review.round > terminalRound) delete expiredApprovalAt[candidate.key];
-            const expiresAt =
-              review.approval.action.type === 'approval'
-                ? review.approval.action.expiresAt
-                : undefined;
-            if (
-              expiresAt !== undefined &&
-              review.round >= (observedPendingApprovalExpiry[candidate.key]?.round ?? -1)
-            ) {
-              session.controller.reconcileApprovalExpiry({
-                toolCallId: candidate.callId,
-                expiresAt,
-                expectedAction: candidate.expectedAction,
-              });
-              observedPendingApprovalExpiry = {
-                ...observedPendingApprovalExpiry,
-                [candidate.key]: { expiresAt, round: review.round },
-              };
-            }
-          } else if (review.status === 'expired' && review.round >= terminalRound) {
-            // A terminal review is authoritative even when the original action deadline was
-            // serialized in a different clock domain or remains future-dated in the transcript.
-            // Use the terminal decision time as the durable expiry marker for the local clock.
-            const now = session.clock.now();
-            const decidedAt = review.resolution?.decidedAt ?? now;
-            const expiresAt = new Date(Math.min(decidedAt, now)).toISOString();
-            // The terminal review can arrive after the approval clock's last tick. Advance the
-            // rail's projection clock with the same observation used to clamp the marker, so the
-            // canonical rail and card settle in the same render.
-            bureauNow = now;
-            session.controller.reconcileApprovalExpiry({
-              toolCallId: candidate.callId,
-              expiresAt,
-              expectedAction: candidate.expectedAction,
-            });
-            expiredApprovalAt = {
-              ...expiredApprovalAt,
-              [candidate.key]: expiresAt,
-            };
-            const { [candidate.key]: _cleared, ...remainingObservedExpiry } =
-              observedPendingApprovalExpiry;
-            observedPendingApprovalExpiry = remainingObservedExpiry;
-            historicalReviewTerminalReads.set(candidate.key, review.round);
-          }
+          if (controller.signal.aborted) return undefined;
+          const outcome = reviewDeadlines.apply(candidate, review, generation, session.clock.now());
+          if (outcome === undefined) return undefined;
+          // A terminal review can arrive after the approval clock's last tick: the rail's clock
+          // takes the same observation the marker was clamped to, so the rail and the card settle
+          // in the same render (the stale displayed clock of COR-2280 P7).
+          if (outcome.clockAt !== undefined) bureauNow = outcome.clockAt;
+          session.controller.reconcileApprovalExpiry({
+            ...outcome.reconcile,
+            expectedAction: candidate.expectedAction,
+          });
           return undefined;
         })
         .catch(() => undefined)
         .finally(() => {
           controllers.delete(candidate.key);
-          historicalReviewReads.delete(candidate.key);
+          reviewDeadlines.release(candidate.key);
         });
     }
     return () => {
       for (const [key, controller] of controllers) {
         controller.abort();
-        historicalReviewReads.delete(key);
+        reviewDeadlines.release(key);
       }
     };
   });
@@ -2381,6 +2314,15 @@
                         : undefined}
                       requestedAt={asked?.requestedAt}
                       alwaysAsks={asked?.alwaysAsks}
+                      approvalMessageId={asked?.messageId}
+                      irreversible={asked?.action?.irreversible}
+                      consequence={asked?.action?.consequence}
+                      why={asked?.action?.why}
+                      decidedInHref={entry.reviewId === undefined
+                        ? undefined
+                        : router.href(
+                            `/reviews?tab=done&review=${encodeURIComponent(inboxKey({ source: 'bureau', id: entry.reviewId }))}`,
+                          )}
                       {...asked?.action?.expiresAt === undefined
                         ? {}
                         : { expiresAt: asked.action.expiresAt }}

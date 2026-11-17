@@ -1,0 +1,56 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+
+@layer cinder.components {
+  /* ========================================
+   * APPROVAL GROUP
+   *
+   * Two or more approvals waiting together: one bordered surface with the heading at its top and
+   * the rows under it, each one inset separator apart. The rows are ApprovalCards in the `row`
+   * layout, which give up their own border, radius and fill here so no box sits inside the group's.
+   * ======================================== */
+
+  .cinder-approval-group {
+    display: block;
+    min-inline-size: 0;
+    box-sizing: border-box;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised);
+    overflow: hidden;
+  }
+
+  .cinder-approval-group__heading {
+    margin: 0;
+    padding: var(--cinder-space-3) var(--cinder-space-3) 0;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-approval-group__rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Each row stands one separator below the last, inset from the group's edges. */
+  .cinder-approval-group__rows > * + * {
+    border-block-start: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-approval-group .cinder-approval-card--row {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-approval-group {
+      border-color: CanvasText;
+    }
+
+    .cinder-approval-group__rows > * + * {
+      border-block-start-color: CanvasText;
+    }
+  }
+}

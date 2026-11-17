@@ -74,7 +74,7 @@ async function readApprovalPlacement(page: Page) {
     const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
       ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
     );
-    const question = decision?.querySelector('.cinder-approval-card__row-question') ?? null;
+    const question = decision?.querySelector('.cinder-approval-card__decision-title') ?? null;
     const questionBox = question?.getBoundingClientRect();
     const questionHit =
       questionBox === undefined
@@ -613,6 +613,84 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       source: SOURCE,
     });
     await connected.close();
+  });
+
+  // COR-2288 (COR-2439 AC19): on a phone, a waiting approval with a deadline puts its status (the
+  // countdown and "Can't be undone") above its title, as Cinder's narrow decision card does.
+  test('an expiring approval’s status sits above its title on a phone (COR-2288)', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== 'chromium', 'The layout is checked once, in Chromium.');
+    const deadline = new Date(Date.parse(SAMPLE_NOW) + 30 * 60_000).toISOString();
+    // The expiring approval fixture: the Bureau's reviews say the refund's approval lapses in
+    // thirty minutes, which the page reads back as the approval's deadline.
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.reviews.get' && body?.method !== 'bureau.reviews.list') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const json = (await response.json()) as { result?: unknown };
+      const withDeadline = (review: unknown): unknown => {
+        if (typeof review !== 'object' || review === null) return review;
+        const record = review as { kind?: string; approval?: { action?: object } };
+        if (record.kind !== 'tool-approval' || record.approval?.action === undefined) return review;
+        return {
+          ...record,
+          approval: {
+            ...record.approval,
+            action: { ...record.approval.action, expiresAt: deadline },
+          },
+        };
+      };
+      const result = json.result as { reviews?: unknown[] } | undefined;
+      const next =
+        result !== undefined && Array.isArray(result.reviews)
+          ? { ...result, reviews: result.reviews.map(withDeadline) }
+          : withDeadline(result);
+      await route.fulfill({ response, json: { ...json, result: next } });
+    });
+    await openRefundFromList(page);
+    const card = page.locator('[data-approval-decision]');
+    const facts = card.locator('.cinder-approval-card__facts-line');
+    await expect(facts).toContainText('Expires');
+    const title = card.locator('.cinder-approval-card__decision-title');
+    const factsBox = await boxOf(facts);
+    const titleBox = await boxOf(title);
+    expect(factsBox.y + factsBox.height).toBeLessThanOrEqual(titleBox.y + 1);
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'phone expiring approval, status above the title',
+      source: SOURCE,
+    });
+  });
+
+  // COR-2288 (COR-2439 AC20): the composer area's bottom padding adds the safe-area inset. A
+  // browser with no device has no inset to report, and Chromium reports it as 0: that is all this
+  // can check; a real inset needs a device.
+  test('the composer area adds the safe-area inset, which Chromium reports as 0 (COR-2288)', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== 'chromium', 'Chromium is the browser that reports the inset as 0.');
+    await connectProvider(page);
+    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const area = page.locator('.chat-input-area').first();
+    await expect(area).toBeVisible();
+    const read = await area.evaluate((element) => {
+      const probe = document.createElement('div');
+      probe.style.paddingBottom = 'env(safe-area-inset-bottom, 13px)';
+      document.body.append(probe);
+      const inset = getComputedStyle(probe).paddingBottom;
+      probe.remove();
+      const style = getComputedStyle(element);
+      return { inset, start: style.paddingBlockStart, end: style.paddingBlockEnd };
+    });
+    expect(read.inset).toBe('0px');
+    // The inset is 0, so the area's bottom padding is its top padding and nothing more.
+    expect(read.end).toBe(read.start);
   });
 });
 

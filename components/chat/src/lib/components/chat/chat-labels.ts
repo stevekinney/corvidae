@@ -1,10 +1,36 @@
-/** Host-overridable words used by the composer and approval drawer. */
-export type ChatLabels = {
+import { DEFAULT_TURN_LABELS, type ChatTurnLabels } from './message/turn-labels.ts';
+import {
+  DEFAULT_QUESTION_DOCK_LABELS,
+  type ChatQuestionDockLabels,
+} from './question/question-dock-labels.ts';
+
+/**
+ * Every word Chat draws itself, in one object (owner decision, 2026-11-13): the composer's, the
+ * approval drawer's, the sources', a turn's outcome and the steps under it ({@link ChatTurnLabels},
+ * such as `steps` for `3 steps`), and the docked question's ({@link ChatQuestionDockLabels}). A host
+ * passes any of them as Chat's `labels` prop; each one left out keeps its English default.
+ */
+export type ChatLabels = ChatComposerLabels & ChatTurnLabels & ChatQuestionDockLabels;
+
+/** The words of the composer, the approval drawer and a message's sources. */
+export type ChatComposerLabels = {
   sources: string;
   /** The Sources control's text and accessible name: the count and the word, "3 sources" or "1 source". */
   sourcesCount: (count: number) => string;
   internalDocument: string;
   unsafeLink: string;
+  /** What follows an image's name when it did not load: "screenshot.png didn't load". */
+  imageDidNotLoad: string;
+  /** The accessible name of the Retry beside an image that did not load. Default `Retry loading <name>`. */
+  retryImage: (name: string) => string;
+  /** The status a code block shows where Copy will be while its fence is still arriving. Default `Writing…`. */
+  codeWriting: string;
+  /** The accessible name of a table wider than the message, which scrolls. Default `Scrollable table`. */
+  scrollableTable: string;
+  /** The cue over such a table that counts the columns out of view. Default `+2 columns`. */
+  hiddenColumns: (count: number) => string;
+  /** What that cue says to assistive technology. Default `Scroll to see all columns`. */
+  scrollToSeeAllColumns: string;
   composerUnavailable: string;
   chatArchived: string;
   chatReadOnly: string;
@@ -120,12 +146,24 @@ export type ChatLabels = {
    * composer holds a draft: it says what a send does now.
    */
   approvalQueueNote: string;
+  /**
+   * Why Send is off while an approval waits and the composer has no queue to hold a message in (a
+   * compact composer, or an adapter with no `sendRunInput`). Written beside Send.
+   */
+  approvalHoldsSend: string;
   reviewApproval: string;
   /**
    * What the approval reminder's button reads in a narrow column, where the whole row is one line
    * on a phone. Its accessible name stays `reviewApproval`, which must contain these words.
    */
   reviewApprovalShort: string;
+  /** The reader, as an approval's receipt names a decision the reader made: "Approved by you". Default `you`. */
+  you: string;
+  /**
+   * Where an approval decided in Reviews was decided, as its receipt says it: "Approved by Priya
+   * Raman in Reviews". Default `Reviews`.
+   */
+  decidedInReviews: string;
   copy: string;
   copyMessage: string;
   copied: string;
@@ -148,10 +186,18 @@ export type ChatLabels = {
 };
 
 export const DEFAULT_CHAT_LABELS: ChatLabels = {
+  ...DEFAULT_TURN_LABELS,
+  ...DEFAULT_QUESTION_DOCK_LABELS,
   sources: 'Sources',
   sourcesCount: (count) => (count === 1 ? '1 source' : `${count} sources`),
   internalDocument: 'Internal document, no public link',
   unsafeLink: "Link hidden: the address isn't a safe web link",
+  imageDidNotLoad: "didn't load",
+  retryImage: (name) => `Retry loading ${name}`,
+  codeWriting: 'Writing…',
+  scrollableTable: 'Scrollable table',
+  hiddenColumns: (count) => `+${count} ${count === 1 ? 'column' : 'columns'}`,
+  scrollToSeeAllColumns: 'Scroll to see all columns',
   composerUnavailable: 'Composer unavailable',
   chatArchived: 'Chat archived',
   chatReadOnly: 'Chat read only',
@@ -244,8 +290,11 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   approvalWaiting: 'Approval waiting',
   approvalWaitingText: 'Approval needed.',
   approvalQueueNote: 'Messages you send now wait until you decide.',
+  approvalHoldsSend: 'Decide the approval to send',
   reviewApproval: 'Review approval',
   reviewApprovalShort: 'Review',
+  you: 'you',
+  decidedInReviews: 'Reviews',
   copy: 'Copy',
   copyMessage: 'Copy message',
   copied: 'Copied',

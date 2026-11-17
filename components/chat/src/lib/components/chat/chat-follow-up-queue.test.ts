@@ -20,6 +20,8 @@ import { setupHappyDom } from '@lostgradient/testing';
 import type { ChatAdapter } from './adapter/chat-adapter.ts';
 import {
   appendAssistantMessage,
+  appendToolCall,
+  appendToolResult,
   appendUserMessage,
   createConversationHistory,
 } from './builders.ts';
@@ -119,6 +121,89 @@ function recordingAdapter() {
 }
 
 describe('Chat queued follow-ups (COR-2284, row C3)', () => {
+  test('a message sent while an approval waits is queued, not handed to the run, and the line says so (COR-2282 M7)', async () => {
+    const { adapter, sent, runInput } = recordingAdapter();
+    let conversation = appendUserMessage(createConversationHistory({ id: 'queue-approval' }), 'go');
+    conversation = appendToolCall(conversation, { id: 'call', name: 'write', arguments: {} });
+    conversation = appendToolResult(conversation, {
+      callId: 'call',
+      outcome: 'action_required',
+      content: null,
+      action: {
+        type: 'approval',
+        message: 'Write the file?',
+        risk: 'high',
+        operation: { kind: 'other' },
+        policyVersion: 'test-policy',
+        idempotencyKey: 'queue-approval',
+      },
+    });
+    const { container } = render(Chat, {
+      id: 'queue-approval',
+      conversation,
+      adapter: { ...adapter, resolveToolApproval: async () => undefined },
+      composerStatus: { kind: 'waiting', queues: true },
+    });
+    await tick();
+
+    expect(container.querySelector('.chat-input-status')?.textContent).toBe(
+      'Waiting for your approval. A message sent now is queued until you decide.',
+    );
+    await submit(container, 'use the staging bucket');
+    await settle();
+
+    expect(runInput).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(ghostTexts(container)).toEqual(['use the staging bucket']);
+  });
+
+  for (const [label, withRunInput, compact] of [
+    ['a compact composer', true, true],
+    ['an adapter with no sendRunInput', false, false],
+  ] as const) {
+    test(`with ${label}, a message while an approval waits is neither run input nor a new turn, and Send says why (COR-2282 M7)`, async () => {
+      const { adapter, sent, runInput } = recordingAdapter();
+      let conversation = appendUserMessage(createConversationHistory({ id: 'hold' }), 'go');
+      conversation = appendToolCall(conversation, { id: 'call', name: 'write', arguments: {} });
+      conversation = appendToolResult(conversation, {
+        callId: 'call',
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          message: 'Write the file?',
+          risk: 'high',
+          operation: { kind: 'other' },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'hold-approval',
+        },
+      });
+      const { sendRunInput: _runInput, ...withoutRunInput } = adapter;
+      const { container } = render(Chat, {
+        id: `hold-${compact ? 'compact' : 'plain'}`,
+        conversation,
+        adapter: {
+          ...(withRunInput ? adapter : withoutRunInput),
+          resolveToolApproval: async () => undefined,
+        },
+        composerCompact: compact,
+      });
+      await tick();
+
+      await submit(container, 'use the staging bucket');
+      await settle();
+
+      expect(runInput).toEqual([]);
+      expect(sent).toEqual([]);
+      expect(container.querySelector<HTMLButtonElement>('[data-chat-send]')?.disabled).toBe(true);
+      expect(container.querySelector('.chat-input-paused-reason')?.textContent).toBe(
+        'Decide the approval to send',
+      );
+      // The draft is kept for when the approval is decided.
+      expect(composerOf(container).value).toBe('use the staging bucket');
+    });
+  }
+
   test('keeps queued follow-ups until an offline transport reconnects', async () => {
     const { adapter, sent, runInput, releases } = recordingAdapter();
     const rendered = render(Chat, {

@@ -7,6 +7,7 @@ import alertDialogExamplesJson from '../components/alert-dialog/alert-dialog.exa
 import alertExamplesJson from '../components/alert/alert.examples.json' with { type: 'json' };
 import appBarExamplesJson from '../components/app-bar/app-bar.examples.json' with { type: 'json' };
 import approvalCardExamplesJson from '../components/approval-card/approval-card.examples.json' with { type: 'json' };
+import approvalGroupExamplesJson from '../components/approval-group/approval-group.examples.json' with { type: 'json' };
 import areaChartExamplesJson from '../components/area-chart/area-chart.examples.json' with { type: 'json' };
 import aspectRatioExamplesJson from '../components/aspect-ratio/aspect-ratio.examples.json' with { type: 'json' };
 import attemptsIndicatorExamplesJson from '../components/attempts-indicator/attempts-indicator.examples.json' with { type: 'json' };
@@ -127,6 +128,8 @@ export const alertDialogExamples = alertDialogExamplesJson;
 export const appBarExamples = appBarExamplesJson;
 /** Code examples for this component. */
 export const approvalCardExamples = approvalCardExamplesJson;
+/** Code examples for this component. */
+export const approvalGroupExamples = approvalGroupExamplesJson;
 /** Code examples for this component. */
 export const areaChartExamples = areaChartExamplesJson;
 /** Code examples for this component. */

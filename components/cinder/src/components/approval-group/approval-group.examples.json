@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "approval-group",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Two approvals waiting together",
+      "description": "One bordered group under its heading; each approval is a compact row that gives up its own border and stays answerable on its own.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard, ApprovalGroup } from '@lostgradient/cinder';\n</script>\n\n<ApprovalGroup heading=\"2 approvals waiting\">\n  <div>\n    <ApprovalCard\n      layout=\"row\"\n      question=\"Refund order 4471 for $42.00?\"\n      tool={{ name: 'issue-refund', risk: 'high', irreversible: true }}\n      operation={{ kind: 'other', argsPreview: { orderId: 4471 } }}\n      policyVersion=\"policy:1\"\n      idempotencyKey=\"approval-4471\"\n      onResolve={() => {}}\n    />\n  </div>\n  <div>\n    <ApprovalCard\n      layout=\"row\"\n      question=\"Email the customer about order 4471?\"\n      tool={{ name: 'send-email', risk: 'medium' }}\n      operation={{ kind: 'other', argsPreview: { orderId: 4471 } }}\n      policyVersion=\"policy:1\"\n      idempotencyKey=\"approval-email-4471\"\n      onResolve={() => {}}\n    />\n  </div>\n</ApprovalGroup>"
+    }
+  ]
+}

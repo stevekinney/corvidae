@@ -264,6 +264,44 @@ describe('a run that stops on a tool approval', () => {
     });
   });
 
+  test('carries the interrupt’s irreversible, consequence and why onto the parked approval (COR-2438)', async () => {
+    const conversation = appendUserMessage(empty(), 'Refund it');
+    const explained = {
+      ...INTERRUPT,
+      metadata: {
+        '@lostgradient/bureau': {
+          kind: 'tool-approval',
+          irreversible: true,
+          consequence: 'Sends $42.00 back to the card.',
+          why: 'x'.repeat(2001),
+        },
+      },
+    };
+    const { wiring } = wiringOver(
+      [
+        stream([
+          started(),
+          ...toolEvents,
+          finished({ type: 'interrupt', interrupts: [explained] }),
+        ]),
+      ],
+      () => conversation,
+    );
+
+    const result = await frames(wiring, conversation);
+    const terminal = result.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+    const action = Object.values(terminal.conversation.messages).find(
+      (message) => message.toolResult?.callId === 'call-refund',
+    )?.toolResult?.action;
+    expect(action).toMatchObject({
+      irreversible: true,
+      consequence: 'Sends $42.00 back to the card.',
+    });
+    // A why past the schema's bound is left out rather than failing the row.
+    expect(action !== undefined && 'why' in action).toBe(false);
+  });
+
   test('sends the user’s decision as a resume that carries the opening turn, never a follow-up', async () => {
     const opener = appendUserMessage(empty(), 'Refund it');
     const withFollowUp = appendMessages(opener, {

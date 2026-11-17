@@ -656,6 +656,40 @@ function textOf(message: ConversationHistory['messages'][string]): string {
   return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
 }
 
+/** A non-empty string of at most `maximum` characters, or `undefined`. */
+function boundedText(value: unknown, maximum: number): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum
+    ? value
+    : undefined;
+}
+
+/**
+ * What the approval tells the person deciding beyond its question, as its interrupt's Bureau
+ * fields carry it (COR-2438): whether it cannot be undone, what approving does, and why. Each is
+ * kept only when it reads as the approval schema allows, so a malformed field is left out rather
+ * than failing the row.
+ */
+function explanationOf(interrupt: Interrupt): {
+  irreversible?: boolean;
+  consequence?: string;
+  why?: string;
+} {
+  if (!isRecord(interrupt.metadata)) return {};
+  const fields = interrupt.metadata[BUREAU_METADATA_KEY];
+  if (!isRecord(fields)) return {};
+  const irreversible = Object.hasOwn(fields, 'irreversible') ? fields['irreversible'] : undefined;
+  const consequence = boundedText(
+    Object.hasOwn(fields, 'consequence') ? fields['consequence'] : undefined,
+    500,
+  );
+  const why = boundedText(Object.hasOwn(fields, 'why') ? fields['why'] : undefined, 2000);
+  return {
+    ...(typeof irreversible === 'boolean' ? { irreversible } : {}),
+    ...(consequence === undefined ? {} : { consequence }),
+    ...(why === undefined ? {} : { why }),
+  };
+}
+
 /** The result row an interrupt parks its tool call on, until the user decides. */
 function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
   return {
@@ -667,6 +701,7 @@ function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
       ...(interrupt.message === undefined ? {} : { message: interrupt.message }),
       risk: 'medium',
       operation: { kind: 'other' },
+      ...explanationOf(interrupt),
       policyVersion: 'bureau',
       idempotencyKey: interrupt.id,
       ...(interrupt.expiresAt === undefined ? {} : { expiresAt: interrupt.expiresAt }),

@@ -89,6 +89,11 @@ export type ToolCallEntry = {
    * before the Bureau recorded decisions.
    */
   readonly decision?: ApprovalDecision | undefined;
+  /**
+   * COR-2282 A5: the Bureau review the decision was made on (`approval:<run>:<call>`), for a
+   * decided call whose outcome row names its run, so a receipt can link to it in Reviews.
+   */
+  readonly reviewId?: string | undefined;
 };
 
 /** Why a call failed: the tool's own error. */
@@ -405,6 +410,19 @@ export function createdWorkflow(
   };
 }
 
+/**
+ * The Bureau review a decided call's approval was made on, `approval:<run>:<call>`, read from its
+ * outcome row's identity as the waiting row's was; `undefined` for a row that names no run.
+ */
+function decidedReviewId(pair: ToolCallPair, rows: CallRows | undefined): string | undefined {
+  const result = rows?.result;
+  if (result === undefined) return undefined;
+  const parsed = parseStepRowIdentifier(result.id);
+  if (parsed?.kind !== 'result') return undefined;
+  const rawCallId = parsed.callId ?? result.toolResult?.providerCallId ?? pair.call.id;
+  return `approval:${parsed.runId}:${rawCallId}`;
+}
+
 function entryOf(
   pair: ToolCallPair,
   runActive: boolean,
@@ -448,6 +466,7 @@ function entryOf(
   const info = tools.get(pair.call.name);
   const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
   const decision = recordedDecision(rows?.result?.metadata);
+  const reviewId = decision === undefined ? undefined : decidedReviewId(pair, rows);
   const created =
     state === 'done'
       ? createdWorkflow(pair.call.name, pair.call.arguments, pair.result?.content)
@@ -455,6 +474,7 @@ function entryOf(
   return {
     ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
     ...(decision === undefined ? {} : { decision }),
+    ...(reviewId === undefined ? {} : { reviewId }),
     callId: pair.call.id,
     ...(approvalIdentity === undefined
       ? carriedRailId === undefined

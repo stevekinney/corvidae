@@ -270,32 +270,40 @@
           />
           <span class="cinder-approval-card__input-word">Details</span>
         </button>
-        <div id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
+        <!-- The note, the result and the command are one definition list with one label style
+             (board row A4), each term over its value. -->
+        <dl
+          id={detailsId}
+          class="cinder-approval-card__receipt-details cinder-approval-card__receipt-facts"
+          hidden={!detailsOpen}
+        >
           {#if hasNote}
-            <p class="cinder-approval-card__decision-note">
-              <span class="cinder-approval-card__decision-note-label">Your note:</span>
-              <span class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</span
-              >
-            </p>
-          {/if}
-          {#if result !== undefined}
-            <p class="cinder-approval-card__result">
-              <span class="cinder-approval-card__result-label">Result:</span>
-              {result}
-            </p>
-          {/if}
-          {#if command !== undefined}
-            <div class="cinder-approval-card__command">
-              <CodeBlock
-                code={command}
-                language="shell"
-                languageLabelVisible={false}
-                copyable={false}
-                wrap
-              />
+            <div class="cinder-approval-card__receipt-fact cinder-approval-card__decision-note">
+              <dt class="cinder-approval-card__receipt-term">Your note</dt>
+              <dd class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</dd>
             </div>
           {/if}
-        </div>
+          {#if result !== undefined}
+            <div class="cinder-approval-card__receipt-fact cinder-approval-card__result">
+              <dt class="cinder-approval-card__receipt-term">Result</dt>
+              <dd dir="auto">{result}</dd>
+            </div>
+          {/if}
+          {#if command !== undefined}
+            <div class="cinder-approval-card__receipt-fact">
+              <dt class="cinder-approval-card__receipt-term">Command</dt>
+              <dd class="cinder-approval-card__command">
+                <CodeBlock
+                  code={command}
+                  language="shell"
+                  languageLabelVisible={false}
+                  copyable={false}
+                  wrap
+                />
+              </dd>
+            </div>
+          {/if}
+        </dl>
       </div>
     {/if}
     {#if notice !== undefined}

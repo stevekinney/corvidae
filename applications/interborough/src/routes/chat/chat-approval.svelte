@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
-   * One tool approval under its call in the transcript (COR-2016): Cinder's shared approval row.
-   * Waiting, it asks the question with the tool, where it came from and the input, takes a note and
+   * One tool approval under its call in the transcript (COR-2016): Cinder's explicit decision
+   * surface (`layout="decision"`, COR-2282), the one Chat draws for a single approval. Waiting, it
+   * asks the question with the tool and the input, says why when the approval does, takes a note and
    * Allow for the rest of this chat, and offers Deny and Approve; while Interborough cannot be
    * reached both are off, with the reason written above them. Decided, it collapses to what was
    * asked and what became of it: "Approved by you, 10:33 AM", or "Approved by you in Reviews,
-   * 10:46 AM" when the decision was made on another page while this one was open, with the note a
+   * 10:46 AM" when the decision was made in Reviews, with Reviews a link to it, and the note a
    * refusal carried. The row is a group named by its question and focusable by script alone, so the
    * page can bring the person to it on opening without answering it. A held approval of an agent
    * whose plugin is disabled reads Unavailable with its reason and no buttons; while no provider is
@@ -19,6 +20,8 @@
     type ApprovalOperation,
     type ApprovalResolution,
   } from '@lostgradient/cinder';
+
+  import { CHAT_APPROVAL_FOR_ATTRIBUTE } from '@lostgradient/chat';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { approvalQuestion } from '../../lib/tool-text.ts';
@@ -40,7 +43,23 @@
     /** Who the person is to this chat and where decisions were made, for a decided approval. */
     context: DecisionContext;
     operation?: ApprovalOperation | undefined;
+    /** Whether the operation cannot be undone; without it, a dangerous tool's call is taken as such. */
     irreversible?: boolean | undefined;
+    /**
+     * The id of the message that asks for the approval. A waiting card carries it as
+     * `data-chat-approval-for`, so Chat's arrival scroll, visibility check and reminder find the
+     * card this page draws outside Chat's message rows (COR-2440 AC5).
+     */
+    approvalMessageId?: string | undefined;
+    /** What approving does, in one sentence, as the approval declares it (COR-2438). */
+    consequence?: string | undefined;
+    /** Why the agent wants to do it, offered as a disclosure (COR-2438). */
+    why?: string | undefined;
+    /**
+     * Where a decision made in Reviews can be read: the receipt writes "in Reviews" as a link there
+     * (COR-2282 A5).
+     */
+    decidedInHref?: string | undefined;
     policyVersion?: string | undefined;
     idempotencyKey?: string | undefined;
     expiresAt?: string | undefined;
@@ -78,6 +97,10 @@
     context,
     operation,
     irreversible,
+    approvalMessageId,
+    consequence,
+    why,
+    decidedInHref,
     policyVersion,
     idempotencyKey,
     expiresAt,
@@ -126,7 +149,7 @@
 <ApprovalCard
   {...dataChanges ? { 'data-changes': true } : {}}
   {id}
-  layout="row"
+  layout="decision"
   headingLevel={4}
   question={decision === undefined ? question : decidedQuestion}
   tool={{
@@ -144,6 +167,8 @@
   idempotencyKey={idempotencyKey ?? entry.callId}
   {...expiresAt === undefined ? {} : { expiresAt }}
   {...actionLabel === undefined ? {} : { actionLabel }}
+  {...consequence === undefined ? {} : { consequence }}
+  {...why === undefined ? {} : { why }}
   {...failure === undefined ? {} : { failure }}
   {...onAskAgain === undefined ? {} : { onAskAgain }}
   state={decision === undefined
@@ -171,7 +196,9 @@
     : {
         decidedBy: decidedByLabel(decision, context.owner),
         decidedAt: decision.decidedAt,
-        ...(place === undefined ? {} : { decidedIn: place }),
+        ...(place === undefined
+          ? {}
+          : { decidedIn: place, ...(decidedInHref === undefined ? {} : { decidedInHref }) }),
         ...(decision.reason === undefined ? {} : { decisionNote: decision.reason }),
       }}
   {...decision === undefined
@@ -179,6 +206,9 @@
         'data-approval-decision': true,
         'data-cinder-tool-approval': true,
         'data-cinder-tool-approval-call-id': entry.railId ?? entry.callId,
+        ...(approvalMessageId === undefined
+          ? {}
+          : { [CHAT_APPROVAL_FOR_ATTRIBUTE]: approvalMessageId }),
         tabindex: -1,
       }
     : {}}
@@ -188,6 +218,13 @@
        `.chat-approval-time`), not text inside the card. -->
   <div class="chat-approval-time">
     <time datetime={lapsedAt}><bdi>{formatTimeOfDay(lapsedAt)}</bdi></time>
+  </div>
+{:else if decision !== undefined}
+  <!-- The decision surface's receipt leaves when it was decided to the host, under the card, as an
+       expired card's lapse is. -->
+  {@const decidedAt = new Date(decision.decidedAt).toISOString()}
+  <div class="chat-approval-time">
+    <time datetime={decidedAt}><bdi>{formatTimeOfDay(decidedAt)}</bdi></time>
   </div>
 {/if}
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}

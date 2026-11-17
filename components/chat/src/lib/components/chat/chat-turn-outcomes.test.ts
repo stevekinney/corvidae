@@ -248,7 +248,7 @@ describe('Chat — run outcomes on the turn', () => {
       id: 'failed-step',
       conversation,
       onRetryStep: retryStep,
-      turnLabels: {
+      labels: {
         stepsDone: (worked: number, total: number) => `Checked ${worked} of ${total} sources`,
       },
     });

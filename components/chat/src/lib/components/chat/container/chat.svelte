@@ -42,6 +42,7 @@
     resolveMessageSteps,
     resolveMessageSuggestions,
   } from '../utilities/index.ts';
+  import { recordedApprovalReceipts } from '../utilities/recorded-approval-decision.ts';
   import { ChatMessage, ChatDateSeparator } from '../message/index.ts';
   import { ChatInput } from '../input/index.ts';
   import { DEFAULT_SCROLL_CONFIGURATION, isAtBottom } from './scroll-utilities.ts';
@@ -97,10 +98,11 @@
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
-  import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
+  import { setChatLabelsContext } from '../chat-labels-context.ts';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
+    ApprovalGroup,
     Button,
     ConfirmDialog,
     dockedToBottom,
@@ -178,7 +180,6 @@
     composerStatus,
     availability,
     questionPlacement = 'inline',
-    questionLabels,
     empty,
     trailing,
     trailingAskPending = false,
@@ -215,8 +216,9 @@
     messageSuggestions,
     onSuggestionSelect,
     messageTurnState,
-    turnLabels,
     labels,
+    currentPrincipal,
+    approvalReceiptHref,
     onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
@@ -249,17 +251,17 @@
     ...rest
   }: ChatImplementationProps = $props();
 
-  const chatWords = $derived(resolveTurnLabels(turnLabels));
+  // One `labels` object holds every word Chat draws (owner decision, 2026-11-13); each part of
+  // Chat reads the words it draws from it, a turn's and a step group's included.
   const chatLabels = $derived(resolveChatLabels(labels));
-  // Shared Chat words provide defaults for the dock; an explicit questionLabels override always
-  // wins so hosts can specialize question vocabulary without changing the rest of Chat.
+  // Content Chat draws outside a message row, such as a step group's narration, reads them too.
+  setChatLabelsContext(() => chatLabels);
+  // The dock's words where the composer has its own for the same thing: the host's dock word when
+  // it set one, else the composer's, so one override reads the same in both.
   const questionDockLabels = $derived({
-    answer: chatLabels.answer,
-    failed: chatLabels.answerFailed,
-    ownAnswer: chatLabels.yourOwnAnswer,
-    yes: chatLabels.yes,
-    no: chatLabels.no,
-    ...questionLabels,
+    ...chatLabels,
+    failed: labels?.failed ?? chatLabels.answerFailed,
+    ownAnswer: labels?.ownAnswer ?? chatLabels.yourOwnAnswer,
   });
   const initialCoarsePointer =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -669,6 +671,7 @@
     getAnsweredToolCallIds: () => [
       ...questions.answers.keys(),
       ...commandActions.approvalReceipts.keys(),
+      ...recordedReceipts.keys(),
       ...toolCallIdsWithOwnContent(messages),
     ],
     // Only a host that draws rows or parts itself sees every tool call as its own row: the group
@@ -715,6 +718,36 @@
     });
   }
   const messages = $derived(transcript.messages);
+  // Approvals the conversation records as decided (COR-2282 A5): read from each result row's
+  // `approvalDecision` metadata, so a reload, or a decision made in Reviews, keeps its receipt
+  // with who decided and where.
+  const recordedReceipts = $derived.by(() => {
+    const toolNames = new Map<string, string>();
+    for (const message of messages) {
+      if (message.toolCall !== undefined) toolNames.set(message.toolCall.id, message.toolCall.name);
+    }
+    return recordedApprovalReceipts(messages, {
+      toolName: (toolCallId) => toolNames.get(toolCallId),
+      currentPrincipal,
+      you: chatLabels.you,
+      reviews: chatLabels.decidedInReviews,
+      reviewsHref: approvalReceiptHref,
+    });
+  });
+  // The receipts every approval part reads. A decision made here wins over the record of it, and
+  // its receipt names the reader in the host's word.
+  const approvalReceipts = $derived.by(() => {
+    const held = commandActions.approvalReceipts;
+    if (recordedReceipts.size === 0 && held.size === 0) return held;
+    const merged = new Map(recordedReceipts);
+    for (const [toolCallId, record] of held) {
+      merged.set(toolCallId, {
+        ...record,
+        receipt: { decidedBy: chatLabels.you, ...record.receipt },
+      });
+    }
+    return merged;
+  });
   const lastMessageId = $derived(transcript.lastMessageId);
   const rollbackBoundaryIndex = $derived(transcript.rollbackBoundaryIndex);
   const messageIndexById = $derived(transcript.messageIndexById);
@@ -1608,9 +1641,16 @@
   // A canceled read is said once, by the state that stands in the transcript's place with its Retry:
   // the composer draws no notice of its own, and the reason Send is off sits beside Send
   // (COR-2327 B6).
-  const composerSendDisabledReason = $derived(
-    availability?.kind === 'canceled' ? availabilityLabels(availability).sendBlocked : undefined,
+  // While an approval waits a message is queued until the decision (COR-2282 M7). A composer that
+  // has no queue to hold it in (a compact composer, or an adapter with no `sendRunInput`) does not
+  // send it as run input or as a new turn either: Send is off, and says why beside it.
+  const approvalHoldsSend = $derived.by(
+    () => approvalWaiting && !composerSending && !(followUpsEnabled && !composerCompact),
   );
+  const composerSendDisabledReason = $derived.by(() => {
+    if (availability?.kind === 'canceled') return availabilityLabels(availability).sendBlocked;
+    return approvalHoldsSend ? chatLabels.approvalHoldsSend : undefined;
+  });
   const availabilityComposerStatus = $derived.by<ChatComposerStatus | undefined>(() => {
     if (availability?.kind === 'unconfigured' && unconfiguredWithHistory) {
       const words = availabilityLabels(availability);
@@ -2652,9 +2692,7 @@
           approvalResolutionInFlightIds={commandActions.approvalResolutionInFlightIds.size > 0
             ? commandActions.approvalResolutionInFlightIds
             : undefined}
-          approvalReceipts={commandActions.approvalReceipts.size > 0
-            ? commandActions.approvalReceipts
-            : undefined}
+          approvalReceipts={approvalReceipts.size > 0 ? approvalReceipts : undefined}
           describeApproval={adapter?.describeApproval
             ? (call, action) => adapter?.describeApproval?.(call, action)
             : undefined}
@@ -2678,7 +2716,7 @@
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
-          {turnLabels}
+          turnLabels={chatLabels}
           {onContinueTurn}
           {onDiscardTurn}
           {onRetryTurn}
@@ -2750,11 +2788,6 @@
         ])}
         {@const ordinaryPairs = groupPairs.filter(({ message }) => !approvalIds.has(message.id))}
         <div class="chat-tool-call-group">
-          {#if compactApprovalMessages.length > 1}
-            <h3 class="chat-approval-group-heading">
-              {chatWords.approvalWaiting(compactApprovalMessages.length)}
-            </h3>
-          {/if}
           {#if ordinaryPairs.length > 0}
             <ToolCallTimeline
               messageId={renderRow.messages[0]!.id}
@@ -2770,19 +2803,37 @@
               durations={toolCallDurations(ordinaryPairs)}
               startTimes={toolCallStartTimes(ordinaryPairs)}
               {onRetryStep}
-              labels={turnLabels}
+              labels={chatLabels}
               {cardOwnedCallIds}
               onToggle={onExpandedChange}
             />
           {/if}
           <div class="chat-approval-group-rows">
-            {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
-              {@render renderMessageRow(
-                { type: 'message', message: actionRequiredMessage },
-                true,
-                compactApprovalMessages.length > 1 ? 'row' : 'decision',
-              )}
-            {/each}
+            {#if compactApprovalMessages.length > 1}
+              <!-- Two or more approvals of one run wait together: Cinder's one bordered group of
+                   compact rows under "2 approvals waiting", whichever message rows they came in
+                   (COR-2282 A3). -->
+              <ApprovalGroup
+                heading={chatLabels.approvalsWaiting(compactApprovalMessages.length)}
+                headingLevel={3}
+              >
+                {#each compactApprovalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+                  {@render renderMessageRow(
+                    { type: 'message', message: actionRequiredMessage },
+                    true,
+                    'row',
+                  )}
+                {/each}
+              </ApprovalGroup>
+            {:else}
+              {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+                {@render renderMessageRow(
+                  { type: 'message', message: actionRequiredMessage },
+                  true,
+                  'decision',
+                )}
+              {/each}
+            {/if}
           </div>
           {#each inputMessages.filter((message) => !approvalIds.has(message.id)) as inputMessage (inputMessage.id)}
             {@render renderMessageRow({ type: 'message', message: inputMessage }, true)}
@@ -2812,7 +2863,7 @@
         {@const reconnecting = reconnectingTurn}
         <ChatConnectionNotice
           turn={reconnecting.state}
-          {turnLabels}
+          turnLabels={chatLabels}
           onRetry={onRetryConnection === undefined
             ? undefined
             : () => onRetryConnection(reconnecting.messageId)}
@@ -3697,13 +3748,6 @@
 
   .chat-composer-footer {
     margin-block-start: var(--cinder-space-4);
-  }
-
-  .chat-approval-group-heading {
-    margin: 0 0 var(--cinder-space-2);
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-semibold);
   }
 
   .chat-tool-call-group {

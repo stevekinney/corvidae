@@ -86,6 +86,53 @@ describe('ToolApprovalPart', () => {
     expect(container.textContent).toContain('deploy_to_production --environment production');
   });
 
+  test('reads irreversible and why from the approval action when the host says nothing (COR-2438)', () => {
+    const onApprovalResolve = mock(() => undefined);
+    const part = pendingPart();
+    const { container, getByRole } = render(ToolApprovalPart, {
+      props: {
+        part: {
+          ...part,
+          action: {
+            ...part.action,
+            irreversible: true,
+            consequence: 'Replaces the running release.',
+            why: 'The fix is verified in staging.',
+          },
+        },
+        onApprovalResolve,
+      },
+    });
+
+    // Irreversible arms on the first press.
+    fireEvent.click(getByRole('button', { name: 'Approve' }));
+    expect(onApprovalResolve).not.toHaveBeenCalled();
+    expect(container.querySelector('.cinder-approval-card__why-body')?.textContent).toBe(
+      'The fix is verified in staging.',
+    );
+  });
+
+  test('lets the host’s details override what the approval action says', () => {
+    const onApprovalResolve = mock(() => undefined);
+    const part = pendingPart();
+    const { container, getByRole } = render(ToolApprovalPart, {
+      props: {
+        part: {
+          ...part,
+          action: { ...part.action, irreversible: true, why: 'From the tool.' },
+          details: { irreversible: false, why: 'From the host.' },
+        },
+        onApprovalResolve,
+      },
+    });
+
+    fireEvent.click(getByRole('button', { name: 'Approve' }));
+    expect(onApprovalResolve).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.cinder-approval-card__why-body')?.textContent).toBe(
+      'From the host.',
+    );
+  });
+
   test('uses the compact actionable row when grouped with another approval', () => {
     const onApprovalResolve = mock(() => undefined);
     const { container, getByRole } = render(ToolApprovalPart, {

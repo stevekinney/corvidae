@@ -353,8 +353,12 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     await expect(rail(page).locator('.cinder-tool-call-rail__more[aria-expanded]')).toHaveCount(1);
     await expect(railRows(page).and(page.locator('[aria-expanded]'))).toHaveCount(0);
     await rowOf(page, 'Send email').click();
-    // A waiting approval's own input rows are a list; no call's details are.
-    await expect(rail(page).locator('dl:not(.cinder-approval-card__input-rows)')).toHaveCount(0);
+    // A waiting approval's own facts and input rows are lists; no call's details are.
+    await expect(
+      rail(page).locator(
+        'dl:not(.cinder-approval-card__input-rows):not(.cinder-approval-card__facts)',
+      ),
+    ).toHaveCount(0);
     await expect(rail(page)).not.toContainText('Template');
     // Opening the fold lists every call, all thirty, in the order they ran, still one line each.
     await rail(page).locator('.cinder-tool-call-rail__more').click();
