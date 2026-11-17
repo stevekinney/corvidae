@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Breadcrumbs, PageHeader } from '@lostgradient/cinder';
+  import { Button, Breadcrumbs, PageHeader, Segment, SegmentedControl } from '@lostgradient/cinder';
 
   // COR-2327 B2: a narrow header's actions beside the status (`narrowActions="beside-status"`),
   // next to the default, drawn only behind a query parameter so the default fixture, its
@@ -24,6 +24,52 @@
     {/snippet}
   </PageHeader>
 </div>
+
+<!-- COR-2445 AC7: the large title at rest and collapsed, and the hero on the accent and night tones,
+     each with decision actions and a SegmentedControl, so the focus-ring hook of each is drawn. -->
+{#snippet decisionButtons()}
+  <Button variant="primary">Approve</Button>
+  <Button>Deny</Button>
+{/snippet}
+{#snippet viewSwitch()}
+  <SegmentedControl id="page-header-view" selectionMode="single" value="runs" label="View">
+    <Segment value="runs">Runs</Segment>
+    <Segment value="calls">Calls</Segment>
+  </SegmentedControl>
+{/snippet}
+
+{#each [false, true] as collapsed (collapsed)}
+  <div
+    data-testid={collapsed ? 'large-title-collapsed' : 'large-title-rest'}
+    style="margin-top: var(--cinder-space-4);"
+  >
+    <PageHeader
+      headingLevel={2}
+      variant="large"
+      {collapsed}
+      title="Refund order 4471"
+      description="Waiting on your approval."
+      decisions={decisionButtons}
+      actions={viewSwitch}
+    />
+  </div>
+{/each}
+
+{#each ['accent', 'night'] as const as tone (tone)}
+  <div data-testid={`hero-${tone}`} style="margin-top: var(--cinder-space-4);">
+    <PageHeader
+      headingLevel={2}
+      variant="hero"
+      {tone}
+      eyebrow="Denver"
+      title="Poor Decisions"
+      titleSoft=", made easier"
+      description="Happy hours near you, open right now."
+      decisions={decisionButtons}
+      actions={viewSwitch}
+    />
+  </div>
+{/each}
 
 {#if narrowActions}
   {#each ['own-row', 'beside-status'] as const as placement (placement)}
