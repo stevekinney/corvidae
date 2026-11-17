@@ -275,11 +275,41 @@
     expanded[key] = true;
   }
 
+  /** A JSON Schema type in the words a person reads in the Type column: "Text", "Date", "Number". */
+  const TYPE_WORDS: Readonly<Record<string, string>> = {
+    string: 'Text',
+    number: 'Number',
+    integer: 'Whole number',
+    boolean: 'Yes or no',
+    object: 'Object',
+    array: 'List',
+    null: 'Nothing',
+  };
+
+  /** The formats of a string a person names by what it holds. */
+  const FORMAT_WORDS: Readonly<Record<string, string>> = {
+    date: 'Date',
+    'date-time': 'Date and time',
+    time: 'Time',
+    email: 'Email address',
+    uri: 'Link',
+  };
+
+  function typeWord(type: string): string {
+    return Object.hasOwn(TYPE_WORDS, type) ? (TYPE_WORDS[type] ?? type) : type;
+  }
+
   function summariseType(schema: JsonSchemaValue): string {
-    if (typeof schema === 'boolean') return schema ? 'true' : 'false';
+    if (typeof schema === 'boolean') return schema ? 'Any value' : 'No value';
     const t = schema.type;
-    if (t === undefined && Array.isArray(schema.enum)) return 'enum';
-    const base = t === undefined ? 'any' : Array.isArray(t) ? t.join(' | ') : t;
+    if (t === undefined && Array.isArray(schema.enum)) return 'Choice';
+    const format = typeof schema.format === 'string' ? schema.format : undefined;
+    if (t === 'string' && format !== undefined && Object.hasOwn(FORMAT_WORDS, format)) {
+      return FORMAT_WORDS[format] ?? 'Text';
+    }
+    if (t === 'string' && Array.isArray(schema.enum)) return 'Choice';
+    const base =
+      t === undefined ? 'Any value' : Array.isArray(t) ? t.map(typeWord).join(' or ') : typeWord(t);
     // "of <items>" only makes sense when the schema is exclusively an array —
     // a multi-type schema like ['array', 'null'] isn't only an array, so
     // items don't describe every value it can hold.
@@ -287,7 +317,7 @@
       ? t.length === 1 && t[0] === 'array'
       : t === 'array';
     if (isExclusivelyArray) {
-      return `${base} of ${summariseType(schema.items ?? {})}`;
+      return `${base} of ${summariseType(schema.items ?? {}).toLocaleLowerCase()}`;
     }
     return base;
   }
@@ -335,9 +365,10 @@
     >
       <Table.Header class={classNames(depth > 0 && 'cinder-sr-only')}>
         <Table.Row>
-          <Table.HeaderCell>Property key</Table.HeaderCell>
+          <Table.HeaderCell>Field</Table.HeaderCell>
           <Table.HeaderCell>Type</Table.HeaderCell>
           <Table.HeaderCell>Description</Table.HeaderCell>
+          <Table.HeaderCell>Required</Table.HeaderCell>
           <Table.HeaderCell><span class="cinder-sr-only">Actions</span></Table.HeaderCell>
         </Table.Row>
       </Table.Header>
@@ -396,13 +427,16 @@
             <Table.Cell class="cinder-jse-property-row__description">
               {description}
             </Table.Cell>
-            <Table.Cell class="cinder-jse-property-row__actions">
+            <!-- Whether the field is required is its own column, under its own heading (row 65s). -->
+            <Table.Cell class="cinder-jse-property-row__required">
               <Checkbox
                 checked={isRequired}
                 disabled={readonly}
                 aria-label={key}
                 onValueChange={(next) => setRequired(key, next)}
               />
+            </Table.Cell>
+            <Table.Cell class="cinder-jse-property-row__actions">
               <Button
                 variant="ghost"
                 size="xs"
@@ -437,7 +471,7 @@
             <Table.Row class="cinder-jse-property-row__detail-row">
               <Table.Cell
                 id={panelId}
-                colspan={4}
+                colspan={5}
                 class="cinder-jse-property-row__detail-cell"
                 style={`--cinder-jse-property-depth: ${depth}`}
               >
@@ -474,7 +508,7 @@
 
   <span class="cinder-jse-property-list__add-property-reference" bind:this={addPropertyElement}>
     <Button variant="secondary" size="sm" disabled={readonly} onclick={addProperty}>
-      Add property
+      Add a field
     </Button>
   </span>
 

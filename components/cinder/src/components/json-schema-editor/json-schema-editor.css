@@ -228,6 +228,12 @@
     color: var(--cinder-text-subtle);
   }
 
+  /* The Required column holds one checkbox under its heading, as narrow as the heading. */
+  .cinder-jse-property-row__required {
+    inline-size: 1%;
+    white-space: nowrap;
+  }
+
   .cinder-jse-property-row__actions {
     display: flex;
     flex-wrap: wrap;
