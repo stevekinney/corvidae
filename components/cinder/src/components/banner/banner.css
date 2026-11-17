@@ -354,13 +354,23 @@
     padding-inline: var(--cinder-space-5);
     border: 0;
     border-radius: var(--cinder-radius-surface);
+    /* The wash is the accent mixed over the surface: 9% in light, 18% in dark, where the same 9%
+     * of a dim accent over a dark surface reads as a plain dark card (COR-2441). The glow is the
+     * accent at 18% in light and 25% in dark (32% would drop the muted words under 4.5:1 at the glow's peak). `light-dark()` takes colours, so each arm is a whole
+     * mix. */
     background:
       radial-gradient(
         ellipse 45% 140% at var(--_cinder-banner-glow-at),
-        color-mix(in oklch, var(--cinder-accent-solid) 18%, transparent),
+        light-dark(
+          color-mix(in oklch, var(--cinder-accent-solid) 18%, transparent),
+          color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent)
+        ),
         transparent 70%
       ),
-      color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 9%);
+      light-dark(
+        color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 9%),
+        color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 18%)
+      );
     color: var(--cinder-text-default);
   }
 
@@ -405,6 +415,59 @@
 
   .cinder-banner[data-cinder-variant='feature'] .cinder-banner__text {
     color: var(--cinder-text-muted);
+  }
+
+  /* Below 560px of its own width the feature banner stops giving the art a column of its own: the
+   * art is a 32px disc with no halo on the title's line, the title steps in beside it, and the
+   * words and the actions start at the banner's leading padding, under the art's left edge, so a
+   * phone's width goes to the words. The dismiss button sits on the title's line. */
+  @container cinder-banner (max-width: 34.99rem) {
+    .cinder-banner[data-cinder-variant='feature'] {
+      grid-template-columns: 2rem minmax(0, 1fr) auto;
+      align-items: start;
+      padding-inline: var(--cinder-space-4);
+    }
+
+    .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__art {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: start;
+      inline-size: 2rem;
+      block-size: 2rem;
+      margin: 0;
+      box-shadow: none;
+    }
+
+    .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__art > :where(svg) {
+      inline-size: 1rem;
+      block-size: 1rem;
+    }
+
+    .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__content {
+      grid-column: 1 / 3;
+      grid-row: 1;
+    }
+
+    .cinder-banner[data-cinder-variant='feature'] .cinder-banner__title {
+      display: block;
+      box-sizing: border-box;
+      min-block-size: 2rem;
+      align-content: center;
+      padding-inline-start: calc(2rem + var(--cinder-space-3));
+      /* The title's second line, if it wraps, stays beside the art. */
+    }
+
+    .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__actions {
+      grid-column: 1 / 3;
+      grid-row: 2;
+    }
+
+    .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__dismiss {
+      grid-column: 3;
+      grid-row: 1;
+      align-self: start;
+      margin-block-start: calc((2rem - 1.5rem) / 2);
+    }
   }
 
   /* ----------------------------------------
