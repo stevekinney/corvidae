@@ -63,7 +63,7 @@
     collapsedBar = true,
     createAction,
     error = false,
-    flush = false,
+    inset = false,
     divider = false,
     status,
     statusPlacement = 'below',
@@ -313,8 +313,8 @@
 
 <div
   class={classNames('cinder-page-header', className)}
-  data-cinder-flush={flush ? 'true' : undefined}
-  data-cinder-divider={divider && !flush ? 'true' : undefined}
+  data-cinder-inset={inset ? 'true' : undefined}
+  data-cinder-divider={divider ? 'true' : undefined}
   data-cinder-variant={resolvedVariant === 'default' ? undefined : resolvedVariant}
   data-cinder-tone={hero ? resolvedTone : undefined}
   data-theme={darkBand ? 'dark' : undefined}
