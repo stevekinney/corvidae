@@ -69,7 +69,8 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * with the disc and the words at the start and the action at the end (`'row'`), or draws a 32px
    * disc beside the title and the sentence on one line (`'inline'`). A row reads as the line of a
    * list, such as "Nothing is waiting on you" with its link to the page that holds the rest, so it
-   * is the layout for a state inside a card; on a phone its action drops under the words. Inline
+   * is the layout for a state inside a card; a row narrower than 26rem drops its action under the
+   * words, starting where they start, as a grouped list row does. Inline
    * sits among rows at the inline start, without the vertical padding of a region; use it with
    * `size="compact"`.
    * @default 'stacked'

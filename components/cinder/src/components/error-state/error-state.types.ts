@@ -94,7 +94,8 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
    * the title and description as one sentence, and a secondary retry button (no refresh glyph
    * unless `retryIcon` is given) on one line, for the failure of one card among others that are
-   * live; the retry drops under the words on a phone.
+   * live; a row narrower than 26rem drops the retry under the words, starting where they start, as
+   * a grouped list row does.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
@@ -173,7 +174,8 @@ export interface ErrorStateSchemaProps {
    * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
    * the title and description as one sentence, and a secondary retry button (no refresh glyph
    * unless `retryIcon` is given) on one line, for the failure of one card among others that are
-   * live; the retry drops under the words on a phone.
+   * live; a row narrower than 26rem drops the retry under the words, starting where they start, as
+   * a grouped list row does.
    * @default 'default'
    */
   variant?: ErrorStateVariant;

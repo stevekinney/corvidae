@@ -173,9 +173,10 @@
   /* A row lays the parts on one line: the disc, then the title over the description, then the
    * action at the end. It is the line of a list, so it reads from the start, keeps the compact
    * type whatever the size, and takes a grouped list row's insets (16px at the start, 8px at the
-   * end), so its action ends on the same edge as a list row's button. A phone drops the action
+   * end), so its action ends on the same edge as a list row's button. A narrow row drops the action
    * under the words. */
   .cinder-empty-state[data-cinder-layout='row'] {
+    container: cinder-empty-state / inline-size;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
@@ -228,18 +229,19 @@
       'description action';
   }
 
-  @media (max-width: 40rem) {
-    .cinder-empty-state[data-cinder-layout='row'] {
-      grid-template-columns: auto minmax(0, 1fr);
-      grid-template-areas:
-        'icon title'
-        'icon description'
-        '. action';
+  /* Narrower than 26rem the row measures itself, as a grouped list row does (the same container
+   * query kind and width, COR-2489): the action takes a line of its own under the words, starting
+   * where the words start, as ErrorState's row and a grouped list row place theirs. */
+  @container cinder-empty-state (width < 26rem) {
+    .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
+      grid-area: 3 / 2 / auto / -1;
+      justify-content: flex-start;
+      margin-block-start: var(--cinder-space-2);
     }
 
-    .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      justify-content: flex-end;
-      margin-block-start: var(--cinder-space-2);
+    .cinder-empty-state[data-cinder-layout='row']:not(:has(.cinder-empty-state-icon))
+      .cinder-empty-state-action {
+      grid-area: 3 / 1 / auto / -1;
     }
   }
 

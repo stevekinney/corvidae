@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import { declarationsFor } from '../../test/css.ts';
@@ -454,6 +455,39 @@ describe('EmptyState layout', () => {
     );
     expect(action.get('grid-area')).toBe('action');
     expect(action.get('justify-content')).toBe('flex-end');
+  });
+
+  // COR-2489: on a phone the row's action sat at the row's end, while ErrorState's row put its retry
+  // at the start, and the row switched at a 40rem viewport query while GroupedListItem measures its
+  // own width at 26rem.
+  test('a narrow row drops the action under the words, from where they start, on GroupedListItem’s container query', () => {
+    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='row']");
+    expect(root.get('container')).toBe('cinder-empty-state / inline-size');
+    expect(emptyStateCss).not.toMatch(/@media \(max-width: 40rem\)/);
+
+    const groupedListItemCss = readFileSync(
+      new URL('../grouped-list-item/grouped-list-item.css', import.meta.url),
+      'utf8',
+    );
+    const query = (css: string, name: string) =>
+      new RegExp(`@container ${name} \\(([^)]*)\\)`).exec(css)?.[1];
+    expect(query(groupedListItemCss, 'cinder-grouped-list-item')).toBe('width < 26rem');
+    expect(query(emptyStateCss, 'cinder-empty-state')).toBe('width < 26rem');
+
+    const start = emptyStateCss.indexOf('@container cinder-empty-state');
+    const narrow = emptyStateCss.slice(start, emptyStateCss.indexOf('/* Inline:', start));
+    const action = declarationsFor(
+      narrow,
+      ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
+    );
+    // The words' column (the second, after the disc) to the end, on a line of its own.
+    expect(action.get('grid-area')).toBe('3 / 2 / auto / -1');
+    expect(action.get('justify-content')).toBe('flex-start');
+    const withoutDisc = declarationsFor(
+      narrow,
+      ".cinder-empty-state[data-cinder-layout='row']:not(:has(.cinder-empty-state-icon)) .cinder-empty-state-action",
+    );
+    expect(withoutDisc.get('grid-area')).toBe('3 / 1 / auto / -1');
   });
 
   test('a row keeps its parts in reading order: disc, title, description, action', () => {

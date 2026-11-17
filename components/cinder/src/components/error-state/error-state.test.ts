@@ -385,6 +385,45 @@ describe('ErrorState row variant', () => {
     expect(body.get('padding-inline')).toBe('var(--cinder-space-4) var(--cinder-space-2)');
   });
 
+  // COR-2489: on a phone the row's retry started under the glyph while EmptyState's row put its
+  // action at the end, and the row switched at a 40rem viewport query while GroupedListItem
+  // measures its own width at 26rem.
+  test('a narrow row drops the retry under the words, from where they start, on GroupedListItem’s container query', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const root = declarationsFor(css, ".cinder-error-state[data-cinder-variant='row']");
+    expect(root.get('container')).toBe('cinder-error-state / inline-size');
+    expect(css).not.toMatch(/@media \(max-width: 40rem\)/);
+
+    const groupedListItemCss = await Bun.file(
+      new URL('../grouped-list-item/grouped-list-item.css', import.meta.url),
+    ).text();
+    const query = (source: string, name: string) =>
+      new RegExp(`@container ${name} \\(([^)]*)\\)`).exec(source)?.[1];
+    expect(query(css, 'cinder-error-state')).toBe(
+      query(groupedListItemCss, 'cinder-grouped-list-item'),
+    );
+
+    const start = css.indexOf('@container cinder-error-state');
+    const narrow = css.slice(start, css.indexOf('@media (forced-colors: active)', start));
+    const action = declarationsFor(
+      narrow,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
+    );
+    expect(action.get('flex-basis')).toBe('100%');
+    expect(action.get('justify-content')).toBe('flex-start');
+    // Where the words start: past the 16px glyph and the row's 12px column gap.
+    const glyph = declarationsFor(css, '.cinder-error-state-glyph > svg');
+    expect(glyph.get('inline-size')).toBe('var(--cinder-space-4)');
+    const body = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-body",
+    );
+    expect(body.get('gap')).toBe('var(--cinder-space-2) var(--cinder-space-3)');
+    expect(action.get('padding-inline-start')).toBe(
+      'calc(var(--cinder-space-4) + var(--cinder-space-3))',
+    );
+  });
+
   test('an icon given for the retry button is drawn', () => {
     const { getByRole } = render(ErrorState, {
       props: {
