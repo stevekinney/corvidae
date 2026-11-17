@@ -58,7 +58,12 @@ export interface PluginHook {
    * plugin's hooks. Renaming a hook withdraws the old one and makes a new one.
    */
   readonly name: string;
-  /** The published event kinds the hook fires on: a Bureau kind, or a `<plugin>:<name>` kind a plugin declares. */
+  /**
+   * The event kinds the hook fires on: kinds of Bureau's event catalog (`PUBLISHED_BUREAU_EVENT_KINDS`,
+   * such as `run.settled`). A `<plugin>:<name>` kind a plugin declares is not one a hook can list
+   * today: the hooks service refuses it, and the hook is skipped with a `hook-invalid` problem at
+   * `events`.
+   */
   readonly events: readonly string[];
   /** The name of one of this plugin's `reactions`: what the hook does. */
   readonly reaction: string;

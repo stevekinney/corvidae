@@ -1796,6 +1796,41 @@ describe('the hooks a descriptor declares (COR-2180)', () => {
     expect(records[0]?.hooks?.map(({ name }) => name)).toEqual(['Own', 'Page on settle']);
   });
 
+  it.each([
+    ['before', 'after'],
+    ['after', 'before'],
+  ])(
+    'accepts a kind another running plugin declares when that plugin composes %s the hook’s (load order never refuses it)',
+    async (declaringPosition) => {
+      const hooked = hookedPlugin([{ ...valid, name: 'Greeted', events: ['greeter:greeted'] }]);
+      const greeter = pluginEntry('greeter', () => ({ events: [greeted] }));
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: declaringPosition === 'before' ? [greeter, hooked] : [hooked, greeter],
+        hooks: {},
+      });
+
+      const kit = records.find(({ entry }) => entry.descriptor.name === 'kit');
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+      expect(kit?.problems).toEqual([]);
+      expect(kit?.hooks?.map(({ name }) => name)).toEqual(['Greeted']);
+    },
+  );
+
+  it('still refuses a kind only a plugin that is not running declares', async () => {
+    const hooked = hookedPlugin([{ ...valid, name: 'Greeted', events: ['greeter:greeted'] }]);
+    const greeter = pluginEntry('greeter', () => {
+      throw new Error('setup failed');
+    });
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [hooked, greeter],
+      hooks: {},
+    });
+
+    const kit = records.find(({ entry }) => entry.descriptor.name === 'kit');
+    expect(kit?.problems).toEqual([{ code: 'hook-invalid', hook: 'Greeted', path: 'events' }]);
+    expect(kit?.hooks).toBeUndefined();
+  });
+
   it('skips a repeated name alone and keeps the first', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [

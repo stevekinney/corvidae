@@ -376,7 +376,10 @@ export type PluginProblem =
       readonly message: string;
     };
 
-/** The field a `hook-invalid` problem names; `declaration` is a hook that is not an object. */
+/**
+ * The field a `hook-invalid` problem names. A hook that is not an object is reported at `name`;
+ * `declaration` is a reconcile refusal that names no field of the hook (`reconcile-plugin-hooks.ts`).
+ */
 export type HookInvalidPath =
   'name' | 'reaction' | 'events' | 'configuration' | 'scope' | 'declaration';
 

@@ -898,8 +898,8 @@ const HOOK_PROBLEM_NAME_LIMIT = 100;
  * and a `hook-invalid` problem for each that does not, so a bad hook skips itself and never its
  * plugin. A hook is refused when its name is not text or repeats one before it, when its `reaction`
  * is not one of the plugin's own reactions, and when it lists no event kind or one that is not
- * published: a kind of the core catalog, or one a plugin declares (`declaredKinds`, plus this plugin's
- * own). Everything else, the configuration and the scope, is checked as `hooks.create` checks it when
+ * published: a kind of the core catalog, or one a running plugin declares (`declaredKinds`, every
+ * running plugin's, whatever the load order, plus this plugin's own). Everything else, the configuration and the scope, is checked as `hooks.create` checks it when
  * the hook is reconciled, and a refusal there is the same problem.
  */
 function declaredHooksOf(
@@ -1478,8 +1478,15 @@ export async function composePlugins<O extends ComposableOptions>(
   const unavailableTools: string[] = [];
   const claims = heldByHost(options);
   const storage = options.storage ?? new MemoryStorage();
-  // The event kinds the plugins composed so far declare, which a later plugin's hook can list.
+  // The event kinds every running plugin declares, which any running plugin's hook can list. The
+  // hooks are checked once every plugin has composed, so the load order never decides whether a
+  // hook may list another plugin's kind.
   const declaredKinds: string[] = [];
+  const hooksToCheck: Array<{
+    readonly index: number;
+    readonly entry: BureauPluginEntry;
+    readonly result: PluginSetupResult;
+  }> = [];
   for (const entry of pluginLoadOrder(options.plugins ?? [])) {
     const party: PluginClashParty = { source: entry.source, location: entry.location };
     const record = (
@@ -1539,7 +1546,6 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     for (const claim of plan.claims) claims.hold(claim, party);
-    const pluginHooks = declaredHooksOf(entry.descriptor, outcome.result, declaredKinds);
     for (const { name } of outcome.result.events ?? []) {
       declaredKinds.push(formatToolId({ namespace: entry.descriptor.name, name }));
     }
@@ -1551,21 +1557,27 @@ export async function composePlugins<O extends ComposableOptions>(
       plan.tools,
       outcome.gate,
     );
-    record(
-      'running',
-      [...providerEmptyProblems(outcome.result, providers), ...pluginHooks.problems],
-      {
-        ...(pluginHooks.hooks.length === 0 ? {} : { hooks: pluginHooks.hooks }),
-        contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
-        setup: {
-          result: outcome.result,
-          context: outcome.context,
-          redact: outcome.redact,
-          bindHost: outcome.bindHost,
-        },
-        ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
+    hooksToCheck.push({ index: records.length, entry, result: outcome.result });
+    record('running', providerEmptyProblems(outcome.result, providers), {
+      contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
+      setup: {
+        result: outcome.result,
+        context: outcome.context,
+        redact: outcome.redact,
+        bindHost: outcome.bindHost,
       },
-    );
+      ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
+    });
+  }
+  for (const { index, entry, result } of hooksToCheck) {
+    const pluginHooks = declaredHooksOf(entry.descriptor, result, declaredKinds);
+    const running = records[index];
+    if (running === undefined) continue;
+    records[index] = {
+      ...running,
+      problems: [...running.problems, ...pluginHooks.problems],
+      ...(pluginHooks.hooks.length === 0 ? {} : { hooks: pluginHooks.hooks }),
+    };
   }
   const gates = records.flatMap(({ gate }) => (gate === undefined ? [] : [gate]));
   return {

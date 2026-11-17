@@ -79,8 +79,8 @@ describe('the hooks a plugin declares (COR-2180)', () => {
     const [before] = (await first.bureau.hooks?.list()) ?? [];
     await close(first);
 
-    // The next release renames the hook and adds one: the old one is withdrawn, kept, and the new
-    // ones are made.
+    // The next release changes the hook's configuration and adds one: the changed one is replaced
+    // in place, and the new one is made.
     const second = await start(home, [
       pager([
         { name: 'Page on settle', configuration: { team: 'b' } },
@@ -95,6 +95,7 @@ describe('the hooks a plugin declares (COR-2180)', () => {
     expect(listed.find(({ name }) => name === 'Page on settle')?.id).toBe(before?.id);
     await close(second);
 
+    // The release after drops the first hook: it is withdrawn and kept.
     const third = await start(home, [
       pager([{ name: 'Page again', configuration: { team: 'b' } }]),
     ]);
