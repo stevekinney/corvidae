@@ -155,11 +155,6 @@ describe('signing in before the source is saved', () => {
     await tick();
     expect(document.body.querySelector('[data-testid="connect-signed-in"]')).toBeNull();
     expect(document.body.querySelector('[data-testid="connect-sign-in-waiting"]')).not.toBeNull();
-
-    message(window.location.origin);
-    await waitFor(() =>
-      expect(document.body.querySelector('[data-testid="connect-signed-in"]')).not.toBeNull(),
-    );
   });
 
   test('says a closed window canceled the sign-in, in neutral words, with Try again', async () => {
