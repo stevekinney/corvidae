@@ -11,7 +11,7 @@
       "cache": false
     },
     "metadata": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^metadata"],
       "outputs": [".metadata/**"],
       "inputs": [
         "$TURBO_DEFAULT$",

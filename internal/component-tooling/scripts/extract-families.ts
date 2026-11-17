@@ -1377,7 +1377,7 @@ function writeManifests(plan: Plan): void {
     scripts['typecheck'] = svelte
       ? 'svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings'
       : 'tsc --noEmit -p ./tsconfig.json';
-    Object.assign(scripts, movedScripts(plan, coreManifest, name));
+    Object.assign(scripts, movedScripts(plan, coreManifest, name), metadataScripts(kind));
     const next: Manifest = {
       ...manifest,
       exports: exportsField,
@@ -1480,18 +1480,19 @@ function shardAllowlists(plan: Plan): void {
 }
 
 /**
- * COR-2078 (branch `split-a-metadata`) makes `metadata` a Turborepo task. When it lands, this step
- * makes core's `metadata` task depend on `^metadata` and copy each extracted family's `.metadata/`
- * into core's `.metadata/`, so core's wildcard subpath exports keep resolving. Until then there is
- * no task to wire, and it only reports the packages it will wire.
+ * The `metadata` task a family runs (COR-2078): it generates its own components' schema,
+ * variables and examples copy into its `.metadata/`. Core's `metadata` task runs after every
+ * dependency's (`^metadata` in `turbo.json`) and copies each family component's files into core's
+ * `.metadata/` (`generate-component-artifacts.ts`), so `@lostgradient/cinder/<component>/schema`,
+ * `/variables` and `/examples` keep resolving.
  */
-function wireMetadata(plan: Plan): void {
-  const families = [...plan.extracted].filter((name) => kindOf(name) === 'family');
-  if (families.length > 0) {
-    plan.result.warnings.push(
-      `metadata: ${families.length} famil${families.length === 1 ? 'y' : 'ies'} to wire into core's metadata task once COR-2078 lands.`,
-    );
-  }
+function metadataScripts(kind: string): Record<string, string> {
+  return kind === 'family'
+    ? {
+        metadata:
+          'bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root .',
+      }
+    : {};
 }
 
 /** Plans, and unless it is a dry run applies, one extraction. */
@@ -1560,7 +1561,6 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
   writeManifests(plan);
   writeTsconfigs(plan);
   shardAllowlists(plan);
-  wireMetadata(plan);
   for (const path of plan.options.listFiles('.')) rewriteRepositoryPaths(plan, path);
   if (!plan.options.dryRun) {
     for (const path of plan.result.written) {
