@@ -24,6 +24,7 @@ const DESTINATIONS = [
   'Chat',
   'Reviews',
   'Runs',
+  'Checks',
   'Agents',
   'Workflows',
   'Schedules',
@@ -339,10 +340,10 @@ test('the sidebar groups Home, Work, Build and System, with System pinned to the
     'System',
   ]);
   // System sits below the rest, with the space between them.
-  const capabilities = await links.nth(8).boundingBox();
-  const hooks = await links.nth(9).boundingBox();
-  const health = await links.nth(10).boundingBox();
-  const settings = await links.nth(11).boundingBox();
+  const capabilities = await links.nth(9).boundingBox();
+  const hooks = await links.nth(10).boundingBox();
+  const health = await links.nth(11).boundingBox();
+  const settings = await links.nth(12).boundingBox();
   expect((health?.y ?? 0) - (hooks?.y ?? 0)).toBeGreaterThan(
     ((hooks?.y ?? 0) - (capabilities?.y ?? 0)) * 2,
   );

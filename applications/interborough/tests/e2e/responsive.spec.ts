@@ -106,7 +106,10 @@ const LONG_FIELD = `longField${'f'.repeat(300)}`;
 const LONG_FIELD_DESCRIPTION = `What it holds ${'d'.repeat(300)}`;
 
 /** The state the frame is in once a route holds its seeded content; `ready` unless listed. */
-const EXPECTED_STATE: Readonly<Record<string, string>> = {};
+const EXPECTED_STATE: Readonly<Record<string, string>> = {
+  // The address names a plugin that is not installed, so the page is the frame's not-found state.
+  '/plugins/:plugin/*': 'not-found',
+};
 
 /** Text a route prints only once its seeded content has loaded. */
 const MARKERS: Readonly<Record<string, RegExp>> = {

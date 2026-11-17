@@ -107,9 +107,10 @@ test.describe('the sample world', () => {
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(0)).toContainText('No model provider connected');
       await expect(rows.nth(0)).toContainText('The Anthropic key was removed at');
-      // A phone folds a row's buttons into one menu; the larger widths draw each button.
+      // A phone folds a row's buttons into one menu when it has more than one (the storage row);
+      // a row with a single action draws it, and the larger widths draw each button.
       const action = (row: number, name: string) =>
-        width >= 640
+        width >= 640 || row !== 1
           ? rows.nth(row).getByRole('link', { name })
           : rows.nth(row).getByRole('button', { name: 'More actions' });
       await expect(action(0, 'Connect a provider')).toBeVisible();
