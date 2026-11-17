@@ -527,11 +527,10 @@ export async function appendSteeringLogEvent(
 }
 
 /**
- * Deletes one session incarnation's log and every idempotency key it bound.
- * A key is deleted only while it still points at this incarnation, so a key
- * a newer session has since rebound survives.
+ * Removes the idempotency keys an incarnation's log bound, each only while it still points at this
+ * incarnation, so a key a newer session has since rebound survives.
  */
-export async function deleteSteeringLog(
+async function deleteBoundSteeringKeys(
   kv: ConditionalTextValueStore,
   sessionId: string,
   incarnation: string,
@@ -561,7 +560,46 @@ export async function deleteSteeringLog(
       );
     }
   }
-  await kv.deletePrefix(prefix);
+}
+
+/**
+ * Deletes one session incarnation's log and every idempotency key it bound.
+ * A key is deleted only while it still points at this incarnation, so a key
+ * a newer session has since rebound survives.
+ */
+export async function deleteSteeringLog(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  incarnation: string,
+): Promise<void> {
+  await deleteBoundSteeringKeys(kv, sessionId, incarnation);
+  await kv.deletePrefix(logPrefix(sessionId, incarnation));
+}
+
+/**
+ * Removes an ended session incarnation's log but keeps its sealed head (COR-2097): the entries and
+ * the keys they bound go, and the head stays, sealed, until the boot sweep removes it with
+ * {@link deleteSteeringLog}. A head that was removed with the entries reads as an empty log that is
+ * neither sealed nor shorter than what a cursor folded, so an admission that found the session
+ * before it ended and read the log after this would append to a fresh log and publish
+ * `steering.accepted` with no terminal event to follow. Sealed, it is refused. A head found
+ * unsealed is sealed first, so the log is never left open without its entries; a log with no head
+ * (never written, or already swept) gets none.
+ */
+export async function deleteEndedSteeringLogEntries(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  incarnation: string,
+): Promise<void> {
+  for (;;) {
+    const head = await readSteeringLogHead(kv, sessionId, incarnation);
+    if (head.raw === null) break;
+    if ((await sealSteeringLog(kv, sessionId, incarnation, head)) !== undefined) break;
+  }
+  await deleteBoundSteeringKeys(kv, sessionId, incarnation);
+  const prefix = logPrefix(sessionId, incarnation);
+  await kv.deletePrefix(`${prefix}entry:`);
+  await kv.deletePrefix(`${prefix}key:`);
 }
 
 /**

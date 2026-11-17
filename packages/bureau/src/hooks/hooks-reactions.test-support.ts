@@ -86,6 +86,36 @@ export interface HarnessOptions {
   readonly workspace?: HooksDependencies['workspace'];
   /** The records a hook's scope is matched against. */
   readonly subjects?: HooksDependencies['subjects'];
+  /** What publishing a delivery event does (COR-2099); the harness captures every one either way. */
+  readonly publish?: (event: Event) => void;
+}
+
+/** One `hook.delivery.*` event as a test reads it: the kind and the payload fields it carries. */
+export interface PublishedDeliveryEvent {
+  readonly kind: string;
+  readonly [field: string]: unknown;
+}
+
+/** The kind and payload of a published delivery event, whichever class carries it (COR-2099). */
+export function deliveryEventShape(event: Event): PublishedDeliveryEvent {
+  const fields = event as unknown as Record<string, unknown>;
+  const { type } = event;
+  if (type === 'hook.delivery.failed') {
+    return {
+      kind: type,
+      hookId: fields['hookId'],
+      deliveryId: fields['deliveryId'],
+      attempt: fields['attempt'],
+      outcome: fields['outcome'],
+      ...(fields['status'] === undefined ? {} : { status: fields['status'] }),
+    };
+  }
+  return {
+    kind: type,
+    hookId: fields['hookId'],
+    deliveryId: fields['deliveryId'],
+    attempts: fields['attempts'],
+  };
 }
 
 /** What a plugin's secret gate tells the hooks: whether its secrets are set, and when that changes. */
@@ -127,6 +157,7 @@ export function harness(options: HarnessOptions = {}) {
   const notices: string[] = [];
   const diagnostics: string[] = [];
   const audits: string[] = [];
+  const published: PublishedDeliveryEvent[] = [];
   const auditEntries: Array<{
     readonly runId: string;
     readonly type: string;
@@ -214,6 +245,10 @@ export function harness(options: HarnessOptions = {}) {
     notice: (message) => {
       notices.push(message);
     },
+    publish: (event: Event) => {
+      published.push(deliveryEventShape(event));
+      options.publish?.(event);
+    },
     actionKinds: registrations,
     timeoutSignal: (milliseconds) => {
       const controller = new AbortController();
@@ -248,6 +283,8 @@ export function harness(options: HarnessOptions = {}) {
     diagnostics,
     audits,
     auditEntries,
+    /** The `hook.delivery.*` events the hooks published, in order. */
+    published,
     tracked,
     /** Stops the process under its deliveries, as a shutdown does. */
     shutdown(): void {
@@ -258,14 +295,21 @@ export function harness(options: HarnessOptions = {}) {
       await created.resume();
     },
     /** Publishes an event and returns without waiting for its deliveries. */
-    dispatch(extra: { readonly kind?: string; readonly source?: string } = {}): void {
+    dispatch(
+      extra: {
+        readonly kind?: string;
+        readonly source?: string;
+        /** The event's payload; a run event names run `r1` by default. */
+        readonly payload?: Readonly<Record<string, unknown>>;
+      } = {},
+    ): void {
       created.dispatch({
         sequence: 0,
         cursor: '0',
         bureauId: 'matrix-bureau',
         kind: extra.kind ?? 'run.settled',
         emittedAtMs: START,
-        payload: { runId: 'r1' },
+        payload: extra.payload ?? { runId: 'r1' },
         ...(extra.source === undefined ? {} : { source: extra.source }),
       } satisfies BureauEventEnvelope);
     },

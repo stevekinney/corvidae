@@ -67,6 +67,22 @@ describe('SchemaForm host-reported issues', () => {
     );
   });
 
+  test('an issue the host reports while a blur check of the field is still running is not erased by it', async () => {
+    // A press on a Create button blurs the field, which starts its check; a refusal that is
+    // answered before that check resumes must still be on the field after it does. (A slow server
+    // hides this; a fast one, or a test double, does not.)
+    const view = render(SchemaForm, { props: { schema } });
+    await flush();
+    const room = screen.getByLabelText(/Room/);
+    await fireEvent.input(room, { target: { value: 'A' } });
+    void fireEvent.blur(room);
+    await view.rerender({ issues: [{ path: ['room'], message: 'Room is already booked' }] });
+    await flush();
+    await flush();
+
+    expect(screen.getByLabelText(/Room/).getAttribute('aria-invalid')).toBe('true');
+  });
+
   test('a string marked writeOnly is a password field', async () => {
     render(SchemaForm, {
       props: {
