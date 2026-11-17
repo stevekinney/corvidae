@@ -353,7 +353,9 @@ function statesOf(view: ViewName): Outcome[] {
 for (const view of VIEW_NAMES) {
   for (const outcome of statesOf(view)) {
     for (const width of WIDTHS) {
-      test(`${view} is ${outcome} at ${width} pixels, and passes axe`, async ({
+      // The title names the view's address too, so a design review's route grep (`--grep '/runs'`)
+      // reaches its loading, failed and empty captures.
+      test(`${view} (${PATHS[view]}) is ${outcome} at ${width} pixels, and passes axe`, async ({
         page,
         request,
         checkA11y,

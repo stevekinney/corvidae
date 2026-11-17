@@ -32,6 +32,18 @@ import {
 const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
 
+/**
+ * The routes `responsive.spec.ts` also captures with the stress seed under the state `ready`: the
+ * sample world's captures of them are named `sample world`, so neither overwrites the other.
+ */
+const SAMPLE_WORLD_STATE_ROUTES: ReadonlySet<string> = new Set([
+  '/runs',
+  '/runs/:run',
+  '/goals',
+  '/goals/:goal',
+  '/goals/new',
+]);
+
 let addresses: Readonly<Record<string, string>>;
 
 /** Waits until the outlet's text and busy state have stopped changing for three reads in a row. */
@@ -85,9 +97,9 @@ for (const name of NAMES) {
       );
       await captureForDesignReview(page, {
         route: name,
-        // `responsive.spec.ts` writes `runs--ready--…` for the stress seed's list, so the sample
-        // world's list has its own state name and the two captures never overwrite each other.
-        state: name === '/runs' ? 'sample world' : 'ready',
+        // `responsive.spec.ts` writes `<route>--ready--…` for the stress seed's pages, so a route it
+        // also captures has its own state name here and the two captures never overwrite each other.
+        state: SAMPLE_WORLD_STATE_ROUTES.has(name) ? 'sample world' : 'ready',
         source: '00-showcase.spec.ts',
       });
 

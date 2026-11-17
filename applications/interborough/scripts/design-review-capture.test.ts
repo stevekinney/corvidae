@@ -67,6 +67,10 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/run-page-states.spec.ts',
+      'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
     ]);
@@ -131,6 +135,10 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/run-page-states.spec.ts',
+      'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/goal-page-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
@@ -179,6 +187,10 @@ describe('parseArguments', () => {
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/run-page-states.spec.ts',
+      'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.
