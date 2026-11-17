@@ -1007,9 +1007,39 @@ function barrelHeader(name: string): string {
 }
 
 /**
+ * What core's barrel says instead of a statement that re-exports a package's module. A package of
+ * one component is re-exported from its barrel. A family of several components is re-exported from
+ * each component's own module (`@lostgradient/<family>/components/<component>/index.ts`), keeping
+ * the statement's clause: importing the family's barrel would evaluate every member's stylesheet
+ * where core named its first member, and change the order of the rules in `cinder.components`.
+ */
+function coreReexport(
+  plan: Plan,
+  entry: {
+    statement: ts.ExportDeclaration;
+    source: string;
+    name: string;
+    target: string;
+    names: ExportedNames;
+  },
+): string {
+  const { statement, source, name, target, names } = entry;
+  const components = plan.components.get(name) ?? [];
+  if (components.length <= 1) return reexport(names, `${PACKAGE_SCOPE}${name}`);
+  const own = specifierFor(name, target, components);
+  addExportKey(plan, name, own.exportKey);
+  const moduleSpecifier = statement.moduleSpecifier;
+  if (statement.exportClause === undefined || moduleSpecifier === undefined) {
+    return reexport(names, own.specifier);
+  }
+  return `${source.slice(statement.getStart(), moduleSpecifier.getStart())}'${own.specifier}'${source.slice(moduleSpecifier.getEnd(), statement.getEnd())}`;
+}
+
+/**
  * Moves each statement of core's barrel that re-exports a selected package into that package's
- * barrel, and leaves core re-exporting the same names from the package, so core's export list is
- * unchanged. An `export *` becomes the names it exports, which `export-names.ts` can read.
+ * barrel, and leaves core re-exporting the same names from the package (or, for a family of several
+ * components, from each component's module), so core's export list and its CSS order are unchanged.
+ * An `export *` becomes the names it exports, which `export-names.ts` can read.
  */
 function splitBarrel(plan: Plan): void {
   const { core } = plan.options;
@@ -1038,7 +1068,7 @@ function splitBarrel(plan: Plan): void {
     replacements.push({
       start: statement.getStart(),
       end: statement.getEnd(),
-      text: reexport(names, `${PACKAGE_SCOPE}${name}`),
+      text: coreReexport(plan, { statement, source, name, target, names }),
     });
   }
   if (replacements.length === 0) return;
