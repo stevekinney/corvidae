@@ -942,7 +942,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
     await expect(denied.locator('.cinder-approval-card__outcome')).toContainText(
-      /Denied by you,\s*10:40 AM/,
+      /Denied by you\s*10:40 AM/,
     );
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(
