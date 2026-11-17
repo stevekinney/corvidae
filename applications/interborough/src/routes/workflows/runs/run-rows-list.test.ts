@@ -262,7 +262,7 @@ describe('line two', () => {
     );
   });
 
-  test('titles a schedule’s fire by the schedule’s name, and says Interborough started its own runs', () => {
+  test('titles a schedule’s fire by the schedule’s name, says when the schedule runs, and says nothing of who started Interborough’s own runs', () => {
     const fire = onlyRow({
       tasks: [
         taskFixture({
@@ -280,6 +280,11 @@ describe('line two', () => {
     });
     expect(fire.title).toBe('Daily summary');
     expect(runLineTwo(fire, context)).toBe('Schedule, Assistant, 14 s');
+    // With the schedule read, its cadence follows the agent (row 53l).
+    const cadences = new Map([['daily-summary', 'every day at 3:00 AM']]);
+    expect(
+      runLineTwo(fire, { ...context, scheduleCadence: (id: string) => cadences.get(id) }),
+    ).toBe('Schedule, Assistant, every day at 3:00 AM, 14 s');
 
     const tick = onlyRow({
       tasks: [
@@ -295,7 +300,7 @@ describe('line two', () => {
       goals: [],
       chats: [],
     });
-    expect(runLineTwo(tick, context)).toBe('Internal, Interborough started, 1 s');
+    expect(runLineTwo(tick, context)).toBe('Internal, 1 s');
   });
 
   test('never joins its parts with a middle dot', () => {
@@ -553,12 +558,13 @@ describe('the Bureau’s own runs (COR-2423)', () => {
 
     expect(row).toMatchObject({ title: 'Schedule tick', workflowType: 'scheduleTick' });
     expect(runStatusWord(row)).toBe('Done');
+    // A tick recorded after a restart is the one Interborough started.
     expect(runLineTwo(row, context)).toBe(
       'Internal, Interborough started, logged 4 missed runs, 1 s',
     );
   });
 
-  test('a tick of a schedule that came due names the schedule (row 53l)', () => {
+  test('a tick of a schedule that came due names the schedule, and not who started it (row 53l)', () => {
     const row = onlyRow({
       tasks: [
         taskFixture({
@@ -579,9 +585,41 @@ describe('the Bureau’s own runs (COR-2423)', () => {
       goals: [],
       chats: [],
     });
-    expect(runLineTwo(row, context)).toBe(
-      'Internal, Interborough started, Daily summary came due, 1 s',
+    expect(runLineTwo(row, context)).toBe('Internal, Daily summary came due, 1 s');
+  });
+
+  test('an instance a schedule fired names the schedule and then its agent (row 53l, Triage inbox)', () => {
+    const [row] = runListRows(
+      buildRunRows({
+        tasks: [
+          taskFixture({
+            id: 'triage-step-1',
+            kind: 'catalog',
+            agentName: 'assistant',
+            status: 'completed',
+            origin: { kind: 'parent', parentRunId: 'triage-run' },
+            createdAt: '2026-10-24T08:00:00-05:00',
+            updatedAt: '2026-10-24T08:00:41-05:00',
+          }),
+        ],
+        goals: [],
+        chats: [],
+      }),
     );
+    const instance = {
+      ...row!,
+      origin: {
+        kind: 'schedule' as const,
+        title: '',
+        href: null,
+        scheduleId: 'inbox-triage',
+        schedulePath: null,
+        manual: false,
+      },
+      workflow: workflowOf('triage-inbox', { scheduleId: 'inbox-triage' }),
+      scheduleName: 'Inbox triage',
+    };
+    expect(runLineTwo(instance, context)).toBe('Schedule, Inbox triage, Assistant, 41 s');
   });
 
   test('an instance is named by its workflow and its schedule, and reads "failed at step 2 of 4" (rows 09r, 52i, 52t)', () => {

@@ -23,6 +23,7 @@ import {
 } from '../../fixtures/engine-console-ids.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { jsonEditor } from './json-editor-support.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 function attributes(page: Page): Locator {
   return page.getByRole('region', { name: 'Search attributes' });
@@ -46,6 +47,7 @@ test('operator edits a run’s search attributes, one of every type, and reads b
 }) => {
   await page.goto(`/runs/${ATTRIBUTE_SHOWCASE_RUN_ID}`);
   // Search attributes have a tab of their own in How it ran (COR-2424, row 54i).
+  await openHowItRan(page);
   await page.getByRole('tab', { name: 'Search attributes' }).click();
   await expect(attributes(page)).toBeVisible();
   await expect(attributes(page)).toHaveAttribute('data-state', 'ready');
@@ -137,6 +139,7 @@ test('operator reads a run’s update history, then sends an update that outlast
 }) => {
   await page.goto(`/runs/${UPDATE_DESK_RUN_ID}`);
   // Change or ask this run is in How it ran's Inspector tab (COR-2424, row 54i).
+  await openHowItRan(page);
   await page.getByRole('tab', { name: 'Inspector' }).click();
   await page.getByRole('button', { name: 'Send an update' }).click();
 

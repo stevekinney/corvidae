@@ -112,8 +112,8 @@ describe('an instance of a workflow file opened from the Runs list', () => {
 
     const view = mount('instance-1');
 
-    // No workflow file answered for the run's type, so it is shown by its type.
-    expect(await view.findByRole('heading', { level: 1, name: 'release-notes' })).not.toBeNull();
+    // No workflow file answered for the run's type, so it is shown by its type, in words (S68).
+    expect(await view.findByRole('heading', { level: 1, name: 'Release notes' })).not.toBeNull();
     expect(view.queryByText(TASK_COPY.notFound.title)).toBeNull();
     expect(view.queryByText(TASK_COPY.loadFailed.title)).toBeNull();
   });

@@ -85,7 +85,10 @@ export type RunOrigin =
   /** A goal's attempt: the goal, and the session the attempt ran in while the Bureau still has it. */
   | {
       readonly kind: 'goal';
+      /** The goal's identifier. */
       readonly name: string;
+      /** What the goal is called (`goalName`): its own name, or its identifier in words. */
+      readonly title: string;
       readonly href: string;
       readonly session: { readonly title: string; readonly href: string } | null;
     }
@@ -360,7 +363,13 @@ function recordedOrigin(
     case 'goal': {
       const goalRunId = recordedText(recorded, 'goalRunId');
       if (goalRunId === undefined) return undefined;
-      return { kind: 'goal', name: goalRunId, href: goalPath(goalRunId), session: null };
+      return {
+        kind: 'goal',
+        name: goalRunId,
+        title: goalTitle(goalRunId),
+        href: goalPath(goalRunId),
+        session: null,
+      };
     }
     case 'parent': {
       const parentRunId = recordedText(recorded, 'parentRunId');
@@ -437,7 +446,7 @@ function taskTitle(
   if (origin.kind === 'chat') return origin.title === '' ? TASK_COPY.untitledChat : origin.title;
   if (origin.kind === 'parent') return TASK_COPY.list.workflowRunTitle;
   // A goal's attempt is titled by its goal, whether or not the goal itself was read.
-  if (origin.kind === 'goal') return goalTitle(origin.name);
+  if (origin.kind === 'goal') return origin.title;
   return chats.get(task.contextId)?.title ?? TASK_COPY.runTitle;
 }
 
@@ -452,6 +461,16 @@ export function goalTitle(goalRunId: string): string {
   return GOAL_NAME_SHAPED.test(goalRunId)
     ? humanizeIdentifier(goalRunId, { casing: 'sentence' })
     : goalRunId;
+}
+
+/**
+ * What a goal is called wherever a page names it (rows 55f, 55h): the name the goal was given, and
+ * its identifier (`goalTitle`) only when it has none. The one helper every place that names a read
+ * goal uses, so no page says `16e7…-sample-goal-summarize-open-refunds`.
+ */
+export function goalName(goal: Pick<Goal, 'goalRunId' | 'identity'>): string {
+  const name = goal.identity.name.trim();
+  return name === '' ? goalTitle(goal.goalRunId) : name;
 }
 
 function taskRow(
@@ -518,13 +537,13 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
       origin: {
         kind: 'goal',
         name: goal.goalRunId,
+        title: goalName(goal),
         href: goalPath(goal.goalRunId),
         session:
           attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
       },
       // The goal's own name, as the goals list says it; the identifier only when it has none.
-      title:
-        goal.identity.name.trim() === '' ? goalTitle(goal.goalRunId) : goal.identity.name.trim(),
+      title: goalName(goal),
       summary: attempt.status === 'passed' ? '' : (attempt.finishReason ?? ''),
       startedAt,
       updatedAt: completedAt ?? startedAt,
@@ -801,6 +820,11 @@ export type RunLineContext = {
    * run a trigger started names its plugin ("GitHub"). Left out, the identifier is said.
    */
   readonly pluginTitle?: (plugin: string) => string | undefined;
+  /**
+   * When a schedule runs, as a clause in the viewer's time ("every day at 3:00 AM"), by its
+   * identifier, or `undefined` when the schedule was not read (row 53l).
+   */
+  readonly scheduleCadence?: (scheduleId: string) => string | undefined;
 };
 
 /**
@@ -813,17 +837,23 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   const copy = TASK_COPY.list;
   const workflow = row.workflow ?? null;
   const tick = workflow?.tick ?? null;
-  // An instance of a workflow file has no agent of its own: the schedule that fired it stands in
-  // that place when there is one, and nothing does when a person started it.
+  // An instance of a workflow file names the schedule that fired it, when one did, and then the
+  // agent its steps ran as: "Schedule, Inbox triage, Assistant" (row 53l).
   const instance =
     workflow !== null && workflow.type !== SCHEDULE_TICK_TYPE && isInstanceWorkflow(workflow.type);
-  // A run with no agent names who started it: Interborough, or the trigger's plugin by its title
-  // (COR-2171), and by its identifier only when no title is loaded; never "An agent".
+  // A run with no agent names who started it: the trigger's plugin by its title (COR-2171), and by
+  // its identifier only when no title is loaded; never "An agent". Interborough's own bookkeeping
+  // says "Interborough started" only of a tick it recorded after a restart, which is when that is
+  // true (row 53l); any other is said by what it did.
   const agent =
     row.origin.kind === 'system'
-      ? copy.interboroughStarted
+      ? tick?.whileStopped === true
+        ? copy.interboroughStarted
+        : null
       : instance
-        ? (row.scheduleName ?? null)
+        ? row.agentName === null
+          ? null
+          : context.agentLabel(row.agentName)
         : row.agentName !== null
           ? context.agentLabel(row.agentName)
           : row.origin.kind === 'trigger' && row.origin.plugin !== null
@@ -832,7 +862,18 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   // A run of a workflow file that nothing recorded an origin for is still a workflow's.
   const kind =
     instance && row.origin.kind === 'none' ? copy.kinds.parent : copy.kinds[row.origin.kind];
-  const parts: string[] = agent === null ? [kind] : [kind, agent];
+  const parts: string[] = [kind];
+  if (instance && row.scheduleName !== null && row.scheduleName !== undefined) {
+    parts.push(row.scheduleName);
+  }
+  if (agent !== null) parts.push(agent);
+  // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,
+  // every day at 3:00 AM, 14 s" (row 53l).
+  const scheduleId =
+    row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
+  const cadence =
+    !instance && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
+  if (cadence !== undefined && cadence !== '') parts.push(cadence);
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
   if (tick !== null) {
     parts.push(

@@ -238,9 +238,6 @@
 
 {#snippet actions()}
   <div class="ib-run__actions">
-    {#if besideButtons !== undefined}
-      <p class="ib-run__beside" data-run-beside>{besideButtons}</p>
-    {/if}
     {#if retry !== undefined}
       {@const retrying = retry}
       <Button
@@ -276,6 +273,7 @@
       {@const again = runAgain}
       <span class="ib-run__again">
         {#if again.blocked === true}
+          <!-- Held: the link that says why is the header's caption under the actions (row 54f). -->
           <Button
             variant="secondary"
             label={RUN_DETAIL_COPY.runAgain}
@@ -284,13 +282,6 @@
           >
             {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
           </Button>
-          <a
-            id="ib-run-again-blocked"
-            class="ib-run__again-note"
-            href={router.href(RUN_DETAIL_COPY.providersPath)}
-            onclick={(event) => openLink(event, RUN_DETAIL_COPY.providersPath)}
-            >{RUN_DETAIL_COPY.connectProvider}</a
-          >
         {:else if again.href !== undefined}
           {@const path = again.href}
           <Button
@@ -365,7 +356,29 @@
   </div>
 {/snippet}
 
-<PageHeader data-run-header headingLevel={1} title={heading} description={summary} {actions} />
+<!-- Under the actions, Cinder's caption: which version each button runs on (row 54z), and the link
+     to connect a provider while Run again is held (row 54f). -->
+{#snippet actionsNote()}
+  {#if besideButtons !== undefined}<span data-run-beside>{besideButtons}</span>{/if}
+  {#if runAgain?.blocked === true}
+    <a
+      id="ib-run-again-blocked"
+      class="ib-run__again-note"
+      href={router.href(RUN_DETAIL_COPY.providersPath)}
+      onclick={(event) => openLink(event, RUN_DETAIL_COPY.providersPath)}
+      >{RUN_DETAIL_COPY.connectProvider}</a
+    >
+  {/if}
+{/snippet}
+
+<PageHeader
+  data-run-header
+  headingLevel={1}
+  title={heading}
+  description={summary}
+  {actions}
+  actionsNote={besideButtons !== undefined || runAgain?.blocked === true ? actionsNote : undefined}
+/>
 {#if task !== undefined && cancelInHeader}
   <RunCancelNote
     {task}

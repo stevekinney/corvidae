@@ -36,7 +36,8 @@ test('list-row active-revision badges fit across widths and themes', async ({ pa
       await expect(parentLink).toBeVisible();
       await parentLink.click();
       await expect(
-        page.getByRole('heading', { level: 1, name: 'fulfillment-parent' }),
+        // The run's type heads its page in words (row S68).
+        page.getByRole('heading', { level: 1, name: 'Fulfillment parent' }),
       ).toBeVisible();
 
       // Related runs, in the Details rail: the runs this one started, each with its badge.

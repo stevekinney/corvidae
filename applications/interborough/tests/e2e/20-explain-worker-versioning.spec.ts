@@ -16,11 +16,11 @@ import {
   E2E_VERSIONED_FIRST_BUILD_ID,
 } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
-import { openTab } from './workflow-support.ts';
+import { openHowItRan, openTab } from './workflow-support.ts';
 
 /** Opens How it ran's Versioning tab, where the worker binding is (COR-2424, row 54i). */
 async function openVersioning(page: Page): Promise<void> {
-  await openTab(page.locator('[data-section="how-it-ran"]'), 'Versioning');
+  await openTab(await openHowItRan(page), 'Versioning');
 }
 
 const VIEWPORTS = [

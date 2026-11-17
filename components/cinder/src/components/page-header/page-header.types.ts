@@ -114,6 +114,19 @@ export type PageHeaderProps = Omit<
   /** Optional trailing actions (buttons, menus, controls). */
   actions?: Snippet;
   /**
+   * A short caption for the actions, under their row: which version each button runs on, or a
+   * "Connect a provider" link that says why a button is held. It sits at the inline end under the
+   * actions in a wide header and starts the line under them below 640px of header width, and the
+   * actions' group is described by it (`aria-describedby`). A button the caption explains can point
+   * its own `aria-describedby` at `actionsNoteId`.
+   */
+  actionsNote?: string | Snippet;
+  /**
+   * The id of the `actionsNote` element, for a button that points its own `aria-describedby` at it.
+   * Defaults to an id derived from the header's.
+   */
+  actionsNoteId?: string;
+  /**
    * The decision action group: approve, deny or edit for an approval, or Cancel for running or
    * paused work. It is drawn first among the actions, is never put in the overflow menu, and stays
    * visible at every width.
@@ -240,6 +253,10 @@ export interface PageHeaderSchemaProps {
   eyebrow?: string;
   /** Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet. */
   description?: string;
+  /** A short caption under the actions' row; the runtime API also accepts a template-only snippet. */
+  actionsNote?: string;
+  /** The id of the `actionsNote` element, for a button that points its `aria-describedby` at it. */
+  actionsNoteId?: string;
   /**
    * Draws the header with no padding around it, so its title lines up with the content beneath
    * it. A page that lays out its own column, such as a page of settings with a section navigation

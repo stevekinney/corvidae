@@ -269,8 +269,9 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     });
     // Newest first: the reason is one line, after how long the attempt took; an attempt whose check
     // said nothing, or whose read carried no feedback at all, is line two as it was.
+    // The reason has no prefix: "Assistant, took 6 s, <reason>" (67l).
     expect(rows.map((row) => row.lineTwo)).toEqual([
-      'Assistant, took 6 s, the check said: The notes never mention the staging fix.',
+      'Assistant, took 6 s, The notes never mention the staging fix.',
       'Assistant, took 7 s',
       'Assistant, took 5 s',
       'Assistant, took 6 s',
@@ -278,6 +279,52 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     ]);
     // The word stays neutral: the reason is on line two, never red.
     expect(new Set(rows.map((row) => row.word))).toEqual(new Set(['Check not met']));
+  });
+
+  test('say the reason of an attempt that met its check when its verdict carries one (67v)', () => {
+    const goal = draftReleaseNotes();
+    const passed: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? { ...attempt, status: 'passed', feedback: 'Reply said hello' }
+          : attempt,
+      ),
+    };
+    const [newest] = attemptRows(passed, {
+      agent: 'Assistant',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+    });
+    expect(newest?.lineTwo).toBe('Assistant, took 6 s, Reply said hello');
+  });
+
+  test('say how long the attempt’s run took, as Runs does, not until its check answered (67l, 67r)', () => {
+    const goal = draftReleaseNotes();
+    const checkedLate: Goal = {
+      ...goal,
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex === 4
+          ? {
+              ...attempt,
+              completedAt: new Date(Date.parse(attempt.startedAt) + 125_000).toISOString(),
+            }
+          : attempt,
+      ),
+    };
+    const newestRunId = checkedLate.attempts.find((attempt) => attempt.attemptIndex === 4)?.runId;
+    const read = (runDurations?: ReadonlyMap<string, number>) =>
+      attemptRows(checkedLate, {
+        agent: 'Assistant',
+        zone: ZONE,
+        now: 0,
+        liveWait: undefined,
+        runDurations,
+      })[0]?.lineTwo;
+    // Without the run's own duration the page can only say start to the check's answer.
+    expect(read()).toBe('Assistant, took 2 min 5 s');
+    expect(read(new Map([[newestRunId ?? '', 6_000]]))).toBe('Assistant, took 6 s');
   });
 
   test('name the agent an attempt ran as when it is not the goal’s current one (COR-2425)', () => {

@@ -581,3 +581,59 @@ describe('PageHeader narrowActions (COR-2327 B2)', () => {
     );
   });
 });
+
+describe('PageHeader actionsNote', () => {
+  const actions = createRawSnippet(() => ({
+    render: () => `<button type="button">Run again</button>`,
+    setup: () => {},
+  }));
+
+  test('draws the caption under the actions and describes their group with it', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Release notes', actions, actionsNote: 'Run again runs on 1.3.0.' },
+    });
+    const note = container.querySelector('.cinder-page-header__actions-note');
+    expect(note?.textContent?.trim()).toBe('Run again runs on 1.3.0.');
+    const group = container.querySelector('.cinder-page-header__actions');
+    expect(group?.getAttribute('role')).toBe('group');
+    expect(group?.getAttribute('aria-describedby')).toBe(note?.id);
+    // A sibling of the actions in the header's row, after them.
+    expect(note?.parentElement?.classList.contains('cinder-page-header__row')).toBe(true);
+    expect(group?.nextElementSibling).toBe(note);
+  });
+
+  test('takes a snippet, and the id a button can point its own aria-describedby at', () => {
+    const link = createRawSnippet(() => ({
+      render: () => `<a href="/settings/models">Connect a provider</a>`,
+      setup: () => {},
+    }));
+    const { container } = render(PageHeader, {
+      props: { title: 'Run', actions, actionsNote: link, actionsNoteId: 'run-again-reason' },
+    });
+    const note = container.querySelector('#run-again-reason');
+    expect(note?.querySelector('a')?.textContent).toBe('Connect a provider');
+  });
+
+  test('draws no caption, and no group, without actions or without words', () => {
+    const bare = render(PageHeader, {
+      props: { title: 'Runs', actionsNote: 'Nothing to explain' },
+    });
+    expect(bare.container.querySelector('.cinder-page-header__actions-note')).toBeNull();
+    bare.unmount();
+    const empty = render(PageHeader, { props: { title: 'Runs', actions, actionsNote: '' } });
+    expect(empty.container.querySelector('.cinder-page-header__actions-note')).toBeNull();
+    expect(
+      empty.container.querySelector('.cinder-page-header__actions')?.hasAttribute('role'),
+    ).toBe(false);
+  });
+
+  test('sits at the inline end under the actions when wide, and starts the line below 640px', () => {
+    expect(stylesheet).toMatch(
+      /\.cinder-page-header__actions-note \{[^}]*grid-row: 2;[^}]*text-align: end;/,
+    );
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 40rem)'),
+    );
+    expect(narrow).toMatch(/\.cinder-page-header__actions-note \{[^}]*text-align: start;/);
+  });
+});

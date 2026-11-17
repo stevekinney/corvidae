@@ -298,6 +298,28 @@ describe('viewerCadence', () => {
     expect(viewerCadence(DAILY_SUMMARY, 'UTC')).toBe('Every day at 9:00 AM');
   });
 
+  test('reads a fixed weekly time as its day and time, with the schedule’s zone where it differs (54y)', () => {
+    // Release notes digest: Fridays at 11:00 AM Central time; the next fire is Friday, Nov 6.
+    const weekly = {
+      cronExpression: '0 11 * * 5',
+      intervalMs: null,
+      timeZone: 'America/Chicago',
+      nextFireAt: '2026-11-06T17:00:00.000Z',
+    };
+    expect(viewerCadence(weekly, ZONE)).toBe('Every Friday at 11:00 AM');
+    expect(viewerCadence(weekly, 'UTC')).toBe('Every Friday at 5:00 PM (11:00 AM CST)');
+    // A time that is another day in the schedule's zone says that day too.
+    const lateNight = {
+      ...weekly,
+      cronExpression: '0 23 * * fri',
+      timeZone: 'UTC',
+      nextFireAt: '2026-11-06T23:00:00.000Z',
+    };
+    expect(viewerCadence(lateNight, 'Asia/Tokyo')).toBe(
+      'Every Saturday at 8:00 AM (Friday 11:00 PM UTC)',
+    );
+  });
+
   test('says any other cadence in the schedule’s own words', () => {
     expect(
       viewerCadence({ ...DAILY_SUMMARY, cronExpression: null, intervalMs: 3_600_000 }, ZONE),

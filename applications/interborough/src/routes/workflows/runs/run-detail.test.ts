@@ -8,7 +8,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
@@ -30,7 +30,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
-import { durationWords, goalTitle } from './run-rows.ts';
+import { durationWords } from './run-rows.ts';
 
 let stub: BureauWorldStub | undefined;
 
@@ -90,7 +90,7 @@ describe('where a run came from', () => {
     expect(router.pathname).toContain('session-1');
   });
 
-  test('a run that is the whole chain names what started it and draws no row for itself', async () => {
+  test('a chat’s run names the chat that started it, then itself as This run (row 06d)', async () => {
     const view = open('/runs/run-1', {
       tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', agentName: 'echo' })],
     });
@@ -99,8 +99,9 @@ describe('where a run came from', () => {
     const items = origin(view.container)?.querySelectorAll('li.ib-run-lineage__item') ?? [];
     expect(items).toHaveLength(1);
     expect(items[0]?.textContent).toContain(TASK_COPY.list.kinds.chat);
-    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')).toBeNull();
-    expect(origin(view.container)?.textContent).not.toContain(RUN_DETAIL_COPY.lineage.thisRun);
+    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')?.textContent).toContain(
+      RUN_DETAIL_COPY.lineage.thisRun,
+    );
   });
 
   test('a goal’s attempt says which attempt it is, after the goal', async () => {
@@ -118,11 +119,12 @@ describe('where a run came from', () => {
       expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.attempt(1, 3)),
     );
     expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal);
-    expect(origin(view.container)?.textContent).toContain(goalTitle('goal-1'));
+    // The goal's own name (the fixture's "Goal goal-1"), as everywhere a goal is named.
+    expect(origin(view.container)?.textContent).toContain('Goal goal-1');
     // The rail names the goal as a link, and the agent in words.
     const rail = view.getByRole('complementary');
     const goalLink = [...rail.querySelectorAll('a')].find(
-      (link) => link.textContent === goalTitle('goal-1'),
+      (link) => link.textContent === 'Goal goal-1',
     );
     expect(goalLink?.getAttribute('href')).toContain('goal-1');
     expect(rail.textContent).toContain(RUN_DETAIL_COPY.facts.goal);
@@ -435,6 +437,68 @@ describe('a goal’s attempt', () => {
       attempts: [goalAttemptFixture('goal-1-a0', { status })],
     });
 
+  test('a Bureau run’s rail says its message in one line, nothing more of a cancel, and no finish reason (rows 55h, 54j)', async () => {
+    const failed = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          status: 'failed',
+          finishReason: 'error',
+          statusMessage:
+            'Agent "assistant" failed: {"cause":{"message":"GitHub didn’t answer (HTTP 503)"}}',
+        }),
+      ],
+    });
+    const rail = await failed.findByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
+    await waitFor(() => expect(rail.textContent).toContain('GitHub didn’t answer'));
+    expect(rail.textContent).not.toContain('{');
+    expect(rail.textContent).not.toContain(RUN_PAGE_COPY.facts.finishReason);
+    cleanup();
+    stub?.restore();
+
+    const canceled = open('/runs/run-2', {
+      tasks: [
+        taskFixture({
+          id: 'run-2',
+          status: 'canceled',
+          finishReason: 'aborted',
+          statusMessage: '{"name":"AbortAgentRunError","message":"aborted"}',
+        }),
+      ],
+    });
+    const canceledRail = await canceled.findByRole('complementary', {
+      name: RUN_PAGE_COPY.detailsHeading,
+    });
+    await waitFor(() => expect(header(canceled.container)?.textContent).toContain('Canceled'));
+    expect(canceledRail.textContent).not.toContain(RUN_PAGE_COPY.facts.message);
+    expect(canceledRail.textContent).not.toContain('AbortAgentRunError');
+    expect(canceledRail.textContent).not.toContain('aborted');
+  });
+
+  test('names the goal by its own name in the rail and in Started by, never by its identifier (rows 55f, 55h)', async () => {
+    const goalRunId = '16e7c79642a7c4e1-sample-goal-summarize-open-refunds';
+    const goal = goalFixture(goalRunId, {
+      identity: { name: 'Summarize open refunds', version: '1' },
+      agentName: 'planner',
+      attempts: [goalAttemptFixture('refund-a1', { status: 'aborted' })],
+    });
+    const view = open('/runs/refund-a1', { goals: [goal], scopes: BUREAU_ONLY });
+
+    await view.findByRole('heading', { level: 1, name: 'Summarize open refunds' });
+    const rail = view.getByRole('complementary', { name: RUN_PAGE_COPY.detailsHeading });
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain('Summarize open refunds'),
+    );
+    expect(
+      [...rail.querySelectorAll('a')].filter(
+        (link) => link.textContent?.trim() === 'Summarize open refunds',
+      ),
+    ).toHaveLength(2);
+    expect(rail.textContent).not.toContain(goalRunId);
+    // A goal's attempt's chain is the goal, the attempt and this run: no untitled session.
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.untitledChat);
+  });
+
   const WORD = { completed: 'Done', failed: 'Failed', canceled: 'Canceled', working: 'Running' };
   test.each([
     ['passed', 'completed'],
@@ -447,24 +511,25 @@ describe('a goal’s attempt', () => {
     // The goal's own name, which the fixture writes as "Goal goal-1".
     await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     expect(header(view.container)?.textContent).toContain(WORD[state]);
-    expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
+    // The note is under How it ran, which a finished attempt's page gives closed (row 54a).
+    const howItRan = view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    if (howItRan.getAttribute('aria-expanded') !== 'true') await fireEvent.click(howItRan);
+    expect(await view.findByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
 
-  test('opens the session the attempt ran in, which Chat does not list', async () => {
+  test('a goal’s attempt offers Open goal and no Open the session in its header (row 55f)', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
     stub?.on('bureau.contexts.get', (params) => ({
       ...contextDetailFixture(String(params['contextId'])),
       origin: 'goal',
     }));
 
-    const link = (await view.findByRole('link', {
-      name: TASK_COPY.openSession,
-    })) as HTMLAnchorElement;
+    await view.findByRole('link', { name: RUN_DETAIL_COPY.openGoal });
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(stub?.callsTo('bureau.contexts.get')[0]?.params).toEqual({
       contextId: 'goal-session-goal-1-a0',
     });
-    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toContain('goal-session-goal-1-a0');
+    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });
 
   test('offers no session when the Bureau no longer has it', async () => {
@@ -478,7 +543,7 @@ describe('a goal’s attempt', () => {
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });
 
-  test('a goal’s attempt the Bureau also lists as a task opens the attempt’s session, never the run handle as a chat', async () => {
+  test('a goal’s attempt the Bureau also lists as a task reads the attempt’s session, never the run handle as a chat, and links neither from its header', async () => {
     const view = open('/runs/goal-1-a0', {
       tasks: [
         taskFixture({
@@ -497,17 +562,16 @@ describe('a goal’s attempt', () => {
       origin: 'goal',
     }));
 
-    const link = (await view.findByRole('link', {
-      name: TASK_COPY.openSession,
-    })) as HTMLAnchorElement;
     await waitFor(() =>
       expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal),
     );
-    expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
-      { contextId: 'goal-session-goal-1-a0' },
-    ]);
-    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toContain('goal-session-goal-1-a0');
+    await waitFor(() =>
+      expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
+        { contextId: 'goal-session-goal-1-a0' },
+      ]),
+    );
+    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
+    expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
   });
 
   test('a goal’s attempt whose goal the person cannot read still shows the task’s open decisions, and reads no thread', async () => {
@@ -557,8 +621,9 @@ describe('a goal’s attempt', () => {
   test('names the goal, which opens in place', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
 
-    // The origin line and the rail both name the goal as a link; each opens it in place.
-    const links = await view.findAllByRole('link', { name: goalTitle('goal-1') });
+    // The origin line and the rail both name the goal by its own name as a link; each opens it in
+    // place.
+    const links = await view.findAllByRole('link', { name: 'Goal goal-1' });
     const link = links[0] as HTMLAnchorElement;
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/goals/goal-1');

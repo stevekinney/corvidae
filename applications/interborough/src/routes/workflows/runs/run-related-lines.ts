@@ -30,6 +30,25 @@ export function otherAttempts(goal: Goal, runId: string): RelatedAttempt[] {
     }));
 }
 
+/**
+ * What the Details rail says of a run a schedule started, by which kind of run it is. A schedule's
+ * chat run, which the Bureau has a task for (row 55m), has a Schedule row, no Tags row, and says
+ * under Related runs whether it was the schedule's last run. An instance of a workflow file a
+ * schedule started (row 55d) says the schedule once, in Started by, keeps its Tags, and says what
+ * came from it under Related runs ("No other runs came from this one."), not the schedule's sentence.
+ */
+export function scheduleRailRules(input: {
+  readonly hasTask: boolean;
+  readonly scheduled: boolean;
+}): {
+  readonly scheduleRow: boolean;
+  readonly tags: boolean;
+  readonly scheduleRelated: boolean;
+} {
+  const chatRun = input.scheduled && input.hasTask;
+  return { scheduleRow: chatRun, tags: !chatRun, scheduleRelated: chatRun };
+}
+
 /** How far a run's start may be from the schedule's last fire and still be that fire's run. */
 const SAME_FIRE_MILLISECONDS = 60_000;
 

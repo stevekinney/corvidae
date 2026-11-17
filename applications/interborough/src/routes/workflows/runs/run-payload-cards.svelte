@@ -16,6 +16,7 @@
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import type { WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
   import RunPayload from './run-payload.svelte';
+  import { inputEnvelopeView } from './run-payload-links.ts';
 
   interface RunPayloadCardsProps {
     /** The engine's run. */
@@ -36,6 +37,10 @@
       ? undefined
       : record.outputName,
   );
+  // The Input card shows what the run was given, and the engine's envelope around it only in JSON.
+  const input = $derived(
+    inputEnvelopeView(workflow !== undefined ? workflow.input : record?.trigger),
+  );
   const failedWords = $derived(
     outputName !== undefined && failedAt !== undefined
       ? copy.noOutputFailedAt(failedAt, outputName)
@@ -46,9 +51,10 @@
 {#if workflow !== undefined || record !== undefined}
   <div class="ib-run__payloads">
     <RunPayload
-      value={workflow !== undefined ? workflow.input : record?.trigger}
+      value={input.value}
       label={copy.input}
       ownRunId={workflow?.id ?? record?.id}
+      jsonOnlyKeys={input.jsonOnly}
     />
     {#if workflow !== undefined}
       {#if workflow.status === 'completed'}

@@ -25,6 +25,8 @@
     agentLabel: (agentName: string) => string;
     /** The title of a plugin, for a run its trigger started; the identifier is said without one. */
     pluginTitle?: ((plugin: string) => string | undefined) | undefined;
+    /** When a schedule runs, by its identifier, which a schedule's chat run says (row 53l). */
+    scheduleCadence?: ((scheduleId: string) => string | undefined) | undefined;
     /**
      * Where the row leads, when not to the run's own page: a workflow's Runs tab opens each run
      * under the workflow it belongs to.
@@ -43,6 +45,7 @@
     zone,
     agentLabel,
     pluginTitle = undefined,
+    scheduleCadence = undefined,
     href = undefined,
     readable = true,
   }: Props = $props();
@@ -54,6 +57,7 @@
       zone,
       agentLabel,
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
+      ...(scheduleCadence === undefined ? {} : { scheduleCadence }),
     }),
   );
   // Line two keeps what the run was; why the row does not open is the row's own description, so a

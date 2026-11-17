@@ -41,7 +41,7 @@
     StatusDot,
   } from '@lostgradient/cinder';
   import { RotateCcw, Square } from '@lucide/svelte';
-  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQueries, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -128,6 +128,31 @@
           : false,
     };
   }, undefined);
+  // How long each finished attempt's run took, read from the run itself, as Runs says it (rows 67l,
+  // 67r): an attempt's own `completedAt` is when its check answered. A run that cannot be read
+  // leaves its attempt's line saying the attempt's own span.
+  const endedRunIds = $derived(
+    (goal.data?.attempts ?? [])
+      .filter((attempt) => attempt.completedAt !== null && attempt.runId !== '')
+      .map((attempt) => attempt.runId),
+  );
+  const attemptRuns = createQueries(() => ({
+    queries: endedRunIds.map((runId) => ({
+      queryKey: queryKeys.bureauTasks.detail(runId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getTask(runId, { signal }),
+      retry: false,
+    })),
+  }));
+  const runDurations = $derived.by(() => {
+    const durations = new Map<string, number>();
+    for (const read of attemptRuns) {
+      const run = read.data;
+      if (run === undefined || !isTerminalState(run.status)) continue;
+      const took = Date.parse(run.updatedAt) - Date.parse(run.createdAt);
+      if (Number.isFinite(took)) durations.set(run.id, Math.max(0, took));
+    }
+    return durations;
+  });
   // The review it is parked on names the tool and says how long it has waited.
   const openWait = $derived(
     liveTask.data?.status === 'input-required' ? liveTask.data.openWaits[0] : undefined,
@@ -256,7 +281,7 @@
     {@const actions = goalActions(found)}
     {@const agent = agentLabel(found.agentName)}
     {@const note = goalNote(found, { zone, liveWait })}
-    {@const rows = attemptRows(found, { agent, zone, now, liveWait, agentLabel })}
+    {@const rows = attemptRows(found, { agent, zone, now, liveWait, agentLabel, runDurations })}
     {@const facts = goalFacts(found, {
       agent,
       zone,
@@ -268,14 +293,6 @@
          action column holds buttons alone and a phone gives the title its width. -->
     {#snippet status()}
       <StatusDot {word} />
-      {#if actions.startAgain && needsProvider}
-        <a
-          class="ib-goal__reason"
-          id={providerReasonId}
-          href={router.href(copy.connectProviderPath)}
-          onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
-        >
-      {/if}
       {#if connection.unreachable}
         <span class="ib-goal__reason" id={offlineReasonId} data-testid="goal-offline-reason">
           {copy.offlineReason}
@@ -330,12 +347,24 @@
       stale={connection.unreachable}
       describedBy={connection.unreachable ? offlineReasonId : undefined}
     >
+      <!-- Why Start again is held sits beneath it, in the header's caption under the actions
+           (row 67p), tied to the button by its own aria-describedby. -->
+      {#snippet providerReason()}
+        <a
+          class="ib-goal__reason"
+          id={providerReasonId}
+          data-testid="goal-provider-reason"
+          href={router.href(copy.connectProviderPath)}
+          onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
+        >
+      {/snippet}
       <PageHeader
         title={name ?? copy.loadingTitle}
         headingLevel={1}
         {status}
         statusPlacement="inline"
         actions={headerActions}
+        actionsNote={actions.startAgain && needsProvider ? providerReason : undefined}
       />
 
       {#if found.prompt !== undefined && found.prompt.trim() !== ''}

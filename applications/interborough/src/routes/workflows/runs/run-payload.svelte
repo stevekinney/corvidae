@@ -39,11 +39,19 @@
     ownRunId?: string | undefined;
     /** A name drawn after the heading in code, such as the workflow's output name (row 54p). */
     labelCode?: string | undefined;
+    /** Top-level keys shown in the JSON view only, beside the run's own identifier (row 28e). */
+    jsonOnlyKeys?: readonly string[] | undefined;
   }
 
-  let { value, label, ownRunId = undefined, labelCode = undefined }: RunPayloadProps = $props();
+  let {
+    value,
+    label,
+    ownRunId = undefined,
+    labelCode = undefined,
+    jsonOnlyKeys = [],
+  }: RunPayloadProps = $props();
 
-  const jsonOnly = $derived(ownRunIdKeys(value, ownRunId));
+  const jsonOnly = $derived([...ownRunIdKeys(value, ownRunId), ...jsonOnlyKeys]);
 
   const references = $derived(payloadReferences(value));
 

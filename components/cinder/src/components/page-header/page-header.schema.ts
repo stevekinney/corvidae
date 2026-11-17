@@ -40,6 +40,16 @@ const schema = {
       description:
         'Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet.',
     },
+    actionsNote: {
+      type: 'string',
+      description:
+        "A short caption under the actions' row; the runtime API also accepts a template-only snippet.",
+    },
+    actionsNoteId: {
+      type: 'string',
+      description:
+        'The id of the `actionsNote` element, for a button that points its `aria-describedby` at it.',
+    },
     flush: {
       type: 'boolean',
       description:

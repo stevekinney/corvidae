@@ -149,6 +149,9 @@ function shortZone(at: number, zone: string): string {
 
 const FIXED_DAILY_CRON = /^\d{1,2} \d{1,2} \* \* \*$/;
 
+/** A fixed weekly time: minute, hour, any day of the month, any month, one day of the week. */
+const FIXED_WEEKLY_CRON = /^\d{1,2} \d{1,2} \* \* ([0-7]|sun|mon|tue|wed|thu|fri|sat)$/i;
+
 /**
  * A schedule's cadence as the viewer reads it, with the schedule's own zone in parentheses where it
  * differs: "Every day at 3:00 AM (9:00 AM UTC)". A fixed daily time is read off the schedule's next
@@ -158,6 +161,16 @@ const FIXED_DAILY_CRON = /^\d{1,2} \d{1,2} \* \* \*$/;
 export function viewerCadence(
   schedule: Pick<BureauSchedule, 'cronExpression' | 'intervalMs' | 'timeZone' | 'nextFireAt'>,
   zone: string = viewerTimeZone(),
+  options: { readonly scheduleZone?: boolean } = {},
+): string {
+  const said = viewerCadenceWithZone(schedule, zone);
+  // A row that has room for one clock says the viewer's only (row 53l).
+  return options.scheduleZone === false ? said.replace(/ \([^()]*\)$/, '') : said;
+}
+
+function viewerCadenceWithZone(
+  schedule: Pick<BureauSchedule, 'cronExpression' | 'intervalMs' | 'timeZone' | 'nextFireAt'>,
+  zone: string,
 ): string {
   const cadence = {
     ...(schedule.cronExpression === null ? {} : { cronExpression: schedule.cronExpression }),
@@ -165,16 +178,30 @@ export function viewerCadence(
     timeZone: schedule.timeZone,
   };
   const next = schedule.nextFireAt === null ? Number.NaN : Date.parse(schedule.nextFireAt);
-  if (
-    schedule.cronExpression === null ||
-    !FIXED_DAILY_CRON.test(schedule.cronExpression.trim()) ||
-    Number.isNaN(next)
-  ) {
-    return describeCadence(cadence);
+  const cron = schedule.cronExpression?.trim();
+  if (cron === undefined || Number.isNaN(next)) return describeCadence(cadence);
+  if (FIXED_DAILY_CRON.test(cron)) {
+    const viewer = `Every day at ${clockTime(next, zone)}`;
+    if (zone === schedule.timeZone) return viewer;
+    return `${viewer} (${clockTime(next, schedule.timeZone)} ${shortZone(next, schedule.timeZone)})`;
   }
-  const viewer = `Every day at ${clockTime(next, zone)}`;
-  if (zone === schedule.timeZone) return viewer;
-  return `${viewer} (${clockTime(next, schedule.timeZone)} ${shortZone(next, schedule.timeZone)})`;
+  // A fixed weekly time (row 54y): "Every Friday at 11:00 AM", the day and the time read off the
+  // next fire in the viewer's zone, and the schedule's own in parentheses where its zone differs,
+  // with its day when that differs too.
+  if (FIXED_WEEKLY_CRON.test(cron)) {
+    const day = weekdayIn(next, zone);
+    const viewer = `Every ${day} at ${clockTime(next, zone)}`;
+    if (zone === schedule.timeZone) return viewer;
+    const theirDay = weekdayIn(next, schedule.timeZone);
+    const theirs = `${clockTime(next, schedule.timeZone)} ${shortZone(next, schedule.timeZone)}`;
+    return `${viewer} (${theirDay === day ? theirs : `${theirDay} ${theirs}`})`;
+  }
+  return describeCadence(cadence);
+}
+
+/** The day of the week an instant falls on in `zone`: "Friday". */
+function weekdayIn(at: number, zone: string): string {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: zone }).format(at);
 }
 
 /**

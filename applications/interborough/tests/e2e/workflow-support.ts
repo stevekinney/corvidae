@@ -4,7 +4,7 @@
  * host's temporary home, so a spec that creates one removes it, and a later spec's list never sees
  * it. The files the specs read without changing are seeded by `e2e-server.ts`.
  */
-import type { APIRequestContext, Locator } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
 
@@ -139,6 +139,19 @@ function tabsAreCollapsed(root: Locator): boolean {
 /** The control that shows which tab is open: the select when the bar is collapsed. */
 function collapsedTabs(root: Locator): Locator {
   return root.getByRole('combobox', { name: COLLAPSED_TABS_LABEL });
+}
+
+/**
+ * Opens a run page's How it ran, which the page gives closed for a run that is over, at every
+ * width (row 54a), and open for one still going; returns the disclosure.
+ */
+export async function openHowItRan(page: Page): Promise<Locator> {
+  const section = page.locator('[data-section="how-it-ran"]');
+  const trigger = section.getByRole('button', { name: /^How it ran/ }).first();
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  return section;
 }
 
 /** Opens the tab `name` of the tab bar in `root`, from the select at the phone width. */

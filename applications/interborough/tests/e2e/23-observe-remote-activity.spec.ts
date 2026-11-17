@@ -17,6 +17,7 @@
 import type { Page } from '@playwright/test';
 
 import { expect, test } from './fixtures.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 const SETTLED_OPERATION_ID = 'as:e2e-remote-run:0:1';
 const RUNNING_TOKEN = 'async-act:v1:e2e-remote-run:1:1';
@@ -171,6 +172,8 @@ async function scriptRemoteRun(page: Page): Promise<Scripted> {
 
 async function openTimeline(page: Page, href: string): Promise<void> {
   await page.goto(href);
+  // The steps are in How it ran, closed for a run that is over (row 54a).
+  await openHowItRan(page);
   await expect(page.getByRole('heading', { level: 3, name: 'Steps' })).toBeVisible();
   await expect(page.getByText('reserveInventory').first()).toBeVisible();
 }

@@ -6,7 +6,35 @@
 import { describe, expect, test } from 'bun:test';
 
 import { goalAttemptFixture, goalFixture } from '../../../lib/bureau-fixtures.test-support.ts';
-import { otherAttempts, scheduleRelatedSentence } from './run-related-lines.ts';
+import { otherAttempts, scheduleRailRules, scheduleRelatedSentence } from './run-related-lines.ts';
+
+describe('scheduleRailRules', () => {
+  test('a schedule’s chat run has a Schedule row, no Tags row and the schedule’s sentence (55m)', () => {
+    expect(scheduleRailRules({ hasTask: true, scheduled: true })).toEqual({
+      scheduleRow: true,
+      tags: false,
+      scheduleRelated: true,
+    });
+  });
+
+  test('a workflow file’s instance a schedule started keeps Tags and says the schedule once (55d)', () => {
+    expect(scheduleRailRules({ hasTask: false, scheduled: true })).toEqual({
+      scheduleRow: false,
+      tags: true,
+      scheduleRelated: false,
+    });
+  });
+
+  test('a run no schedule started has Tags and no schedule rows', () => {
+    for (const hasTask of [true, false]) {
+      expect(scheduleRailRules({ hasTask, scheduled: false })).toEqual({
+        scheduleRow: false,
+        tags: true,
+        scheduleRelated: false,
+      });
+    }
+  });
+});
 
 const GOAL = goalFixture('summarize-open-refunds', {
   bounds: {

@@ -174,8 +174,8 @@
     {startedRun.title}, {dayStamp(startedRun.startedAt, viewerTimeZone())}
   </li>
 {/if}
-<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal, a schedule or a person, which are what the chain names (rows 55f, 55i, 54y, 54l). -->
-{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule' || (origin.kind === 'person' && task === undefined)}
+<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a chat, a goal, a schedule or a person, which are what the chain names (rows 06d, 55f, 55i, 54y, 54l). -->
+{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'chat' || origin.kind === 'goal' || origin.kind === 'schedule' || (origin.kind === 'person' && task === undefined)}
   <li
     class="ib-run-lineage__self"
     data-depth={(ancestors.data?.length ?? 0) + (startedRun === undefined ? 2 : 3)}
