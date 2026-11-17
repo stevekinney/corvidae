@@ -57,9 +57,17 @@ const real = {
   writeFile: fileSystem.writeFile,
 };
 
-type Method = 'mkdir' | 'readFile' | 'rename' | 'rm' | 'rmdir' | 'unlink';
+type Method = 'mkdir' | 'readFile' | 'rename' | 'rm' | 'rmdir' | 'stat' | 'unlink';
 
-const spiedMethods: readonly Method[] = ['mkdir', 'readFile', 'rename', 'rm', 'rmdir', 'unlink'];
+const spiedMethods: readonly Method[] = [
+  'mkdir',
+  'readFile',
+  'rename',
+  'rm',
+  'rmdir',
+  'stat',
+  'unlink',
+];
 
 type Interception = {
   /** The calls it may stop; the first matching call of any of them is the one. */
@@ -669,6 +677,47 @@ const m4StalledInstaller = await scenario(async (root) => {
   }).toEqual({ installed: true, lockMoved: 0, holder: 'I' });
 });
 
+/**
+ * Removing an ownerless lock, or looking at it, fails for a reason other than a race (a
+ * permission). The reclaim throws it rather than reading it as a lock still held, which the waiter
+ * would wait on for ever, and leaves the lock and no guard.
+ */
+async function reclaimFailing(root: string, method: Method): Promise<unknown> {
+  const lock = join(root, `host-lock-${method}`);
+  await real.mkdir(lock);
+  await age(lock);
+  const denied = Object.assign(new Error(`${method} denied`), { code: 'EPERM' });
+  const dispose = interceptFileSystem([
+    {
+      methods: [method],
+      matches: ([path]) => path === lock,
+      before: () => Promise.reject(denied),
+    },
+  ]);
+  let reclaim: Settled<boolean>;
+  try {
+    reclaim = await settle(reclaimAbandoned(lock, 0));
+  } finally {
+    dispose();
+  }
+  expect({ lockLeft: await exists(lock), guardLeft: await exists(`${lock}.reclaiming`) }).toEqual({
+    lockLeft: true,
+    guardLeft: false,
+  });
+  return reclaim.ok ? reclaim.value : errorCodeOf(reclaim.error);
+}
+
+function errorCodeOf(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException).code;
+}
+
+const m4UnexpectedFailureThrown = await scenario(async (root) => {
+  expect({
+    rmdir: await reclaimFailing(root, 'rmdir'),
+    stat: await reclaimFailing(root, 'stat'),
+  }).toEqual({ rmdir: 'EPERM', stat: 'EPERM' });
+});
+
 // --- M5: a `release` killed holding the admission lock, its pid reused ---------------------------
 
 const m5ReleaseKilledPidReused = await scenario(async (root) => {
@@ -921,6 +970,9 @@ describe('the COR-2463 outcome matrix', () => {
 
   test('M4: a lock whose installer is live is never moved, however long the install stalled', () =>
     rethrow(m4StalledInstaller));
+
+  test('M4: a failure to look at or remove an ownerless lock, other than a race, is thrown, never waited on', () =>
+    rethrow(m4UnexpectedFailureThrown));
 
   test('M5: a release killed holding the admission lock records its start time, so a reused pid does not hold the lock', () =>
     rethrow(m5ReleaseKilledPidReused));

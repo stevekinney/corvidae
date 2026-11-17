@@ -274,7 +274,11 @@ export async function surveySessions(
   // Ledgers a killed hook moved aside and never deleted. The directory stays, for a removal that
   // is about to move a ledger into it.
   const removed = removedDirectory(directory);
-  for (const name of await readdir(removed).catch(() => [] as string[])) {
+  const leftovers = await readdir(removed).catch((error: unknown) => {
+    if (isMissing(error)) return [] as string[];
+    throw error;
+  });
+  for (const name of leftovers) {
     await rm(join(removed, name), { recursive: true, force: true });
   }
   const live: SessionLedger[] = [];

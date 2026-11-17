@@ -259,6 +259,16 @@ function errorCode(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
 }
 
+/** The entry's status, or undefined when it does not exist; any other failure is thrown. */
+async function statIfPresent(path: string) {
+  try {
+    return await stat(path);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
 /** A unique name beside the lock to move it to before removing it. */
 function asideOf(lockDirectory: string): string {
   return `${lockDirectory}.removed-${process.pid}-${crypto.randomUUID()}`;
@@ -329,7 +339,14 @@ async function removeOwnerless(lockDirectory: string, identity: number): Promise
   if (entries.length === 0) {
     return rmdir(lockDirectory).then(
       () => true,
-      (error: unknown) => errorCode(error) === 'ENOENT',
+      (error: unknown) => {
+        // Gone already, or no longer empty because a lock was installed onto it: anything else
+        // (a permission, say) is thrown, never taken for a lock that is still held.
+        const code = errorCode(error);
+        if (code === 'ENOENT') return true;
+        if (code === 'ENOTEMPTY' || code === 'EEXIST') return false;
+        throw error;
+      },
     );
   }
   const aside = asideOf(lockDirectory);
@@ -440,7 +457,7 @@ async function clearAbandonedGuard(guard: string, judge: LivenessJudge): Promise
       });
     }
   } else {
-    const written = await stat(guard).catch(() => undefined);
+    const written = await statIfPresent(guard);
     if (written === undefined || Date.now() - Math.floor(written.mtimeMs) < tokenlessGuardStaleMs)
       return;
   }
@@ -518,7 +535,7 @@ async function reclaimUnderGuard(
   ownerlessGraceMs: number,
   judge: LivenessJudge,
 ): Promise<boolean> {
-  const before = await stat(lockDirectory).catch(() => undefined);
+  const before = await statIfPresent(lockDirectory);
   if (before === undefined) return true;
   const owner = await readOwner(lockDirectory);
   if (owner !== undefined) {
@@ -526,7 +543,7 @@ async function reclaimUnderGuard(
     await removeLock(lockDirectory, owner);
     return true;
   }
-  const after = await stat(lockDirectory).catch(() => undefined);
+  const after = await statIfPresent(lockDirectory);
   if (after === undefined) return true;
   if (after.ino !== before.ino) return false;
   // Whole milliseconds on both sides: `mtimeMs` keeps a fraction `Date.now()` drops, so a
