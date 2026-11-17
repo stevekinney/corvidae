@@ -34,7 +34,7 @@
     status,
     statusLabel,
     onRetry,
-    retryLabel = 'Retry',
+    retryLabel = 'Try again',
     loadError,
     required,
     disabled,

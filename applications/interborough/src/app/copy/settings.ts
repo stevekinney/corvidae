@@ -100,6 +100,7 @@ export const SETTINGS_COPY = {
         title: 'Runs',
         description: 'Settings that apply after a restart say so, and a saved one waits for it.',
       },
+      memory: { title: 'Memory' },
       storage: { title: 'Storage' },
       remote: { title: 'Remote deployment' },
       preferences: {
