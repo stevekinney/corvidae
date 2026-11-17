@@ -15,7 +15,12 @@ import type { TaskState } from '../../lib/bureau-tasks.ts';
 import { chatSessionPath, goalPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { WorkflowFileRun } from '../../lib/workflow-files.ts';
-import { type RunOrigin, type RunRow, triggerOrigin } from '../workflows/runs/run-rows.ts';
+import {
+  goalTitle,
+  type RunOrigin,
+  type RunRow,
+  triggerOrigin,
+} from '../workflows/runs/run-rows.ts';
 
 /**
  * How an instance's status reads on the Runs list. One that has not started yet is Running to
@@ -78,6 +83,7 @@ export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined):
       return {
         kind: 'goal',
         name: origin.goalRunId,
+        title: goalTitle(origin.goalRunId),
         href: goalPath(origin.goalRunId),
         session: null,
       };
