@@ -27,6 +27,7 @@ import { connectProvider, open, openStatesChat } from './chat-states-support.ts'
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -357,9 +358,11 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     );
     await expect(banner.getByRole('button')).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    const bannerBox = await banner.boundingBox();
-    const headerBox = await page.getByTestId('chat-header').boundingBox();
-    expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(headerBox!.y);
+    const { bannerBox, headerBox } = await readBoxes(page, {
+      bannerBox: banner,
+      headerBox: page.getByTestId('chat-header'),
+    });
+    expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(headerBox.y);
     expect(
       await page.evaluate(() => document.querySelector('.weft-shell')?.hasAttribute('inert')),
     ).toBe(false);

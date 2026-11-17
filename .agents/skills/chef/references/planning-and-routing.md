@@ -19,13 +19,15 @@ Work built from an agreed design (a Claude Design canvas, its boards, and its in
 
 ## Sizing and splitting
 
-Size work by area, not by issue (owner decision, 2026-11-10). Tokens per changed line fall as a unit grows, from about 66K under 300 lines to 8K over 3,000, because a worker's fixed cost is reading its context. Cluster the issues of one area under one worker, target 500 to 2,000 changed lines per unit, and never split below about 300 lines. `focused-checks.ts` warns above 3,000 changed lines outside tests or 60 files.
+Size work by area, not by issue (owner decision, 2026-11-10). Tokens per changed line fall as a unit grows, from about 66K under 300 lines to 8K over 3,000, because a worker's fixed cost is reading its context. Cluster the issues of one area under one worker as a [batch](#batching), target 500 to 2,000 changed lines per unit, and never split below about 300 lines. `focused-checks.ts` warns above 3,000 changed lines outside tests or 60 files.
 
-Estimate each issue's size before dispatch: call sites per removed or renamed member, and test files touched. Over about 60 call sites or about 40 test files, split it into a core and design stage and a mechanical stage (the codemod and per-call-site sweep), with a handoff file from the start so the second worker begins from the first's decisions; the 300-line floor wins over this split. The mechanical worker greps the removed names across the repository, fixtures included, because other sessions keep landing code against the old surface.
+Estimate each issue's size before dispatch: call sites per removed or renamed member, and test files touched. Over about 60 call sites or about 40 test files, split it into a core and design stage and a mechanical stage (the codemod and per-call-site sweep), with a handoff file from the start so the second worker begins from the first's decisions; the 300-line floor wins over this split.
 
 ## Batching
 
-Batch work when it shares one repository, a cohesive change, compatible files, validation, and delivery boundary. Split cross-repository work and independently released artifacts, serialize overlapping files and shared contracts, and give concurrent edits separate worktrees.
+Batching is the default (owner decision, 2026-11-16): one worker, one branch, consecutive issues in one area, one CI run ([mechanics](../../../../documentation/repository/test-lanes-and-checks.md#batching)). A single issue is the exception.
+
+Batch work that shares one repository, a cohesive change, and a delivery boundary. Split cross-repository work and independently released artifacts, serialize overlapping files, and give concurrent edits separate worktrees.
 
 ## Models and effort
 

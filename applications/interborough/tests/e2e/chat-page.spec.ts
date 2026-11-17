@@ -20,6 +20,7 @@ import { revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -308,9 +309,11 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     await expect(state.locator('[data-chat-availability-elapsed]')).toHaveText(/^\d+s$/);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     const cancel = state.getByRole('button', { name: 'Cancel' });
-    const statusBox = await state.locator('.chat-availability-status').boundingBox();
-    const composerBox = await loading.getByRole('textbox', { name: 'Message' }).boundingBox();
-    expect(statusBox!.y + statusBox!.height).toBeLessThanOrEqual(composerBox!.y);
+    const { statusBox, composerBox } = await readBoxes(page, {
+      statusBox: state.locator('.chat-availability-status'),
+      composerBox: loading.getByRole('textbox', { name: 'Message' }),
+    });
+    expect(statusBox.y + statusBox.height).toBeLessThanOrEqual(composerBox.y);
     // The accessibility check settles the paint on animation frames, which a stopped clock never
     // delivers, so the clock runs again from here (as `chat-new-states.spec.ts` does). The read
     // stays slow: its count only goes up.

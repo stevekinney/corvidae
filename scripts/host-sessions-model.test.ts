@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { exploreInterleavings, kindSequences } from './host-sessions-interleavings.ts';
+import {
+  dispatchKinds,
+  exploreInterleavings,
+  kindSequences,
+  reclaimKinds,
+  type ApplyEvent,
+} from './host-sessions-interleavings.ts';
 import {
   applySessionEvent,
   emptySession,
@@ -178,5 +184,38 @@ describe('every interleaving', () => {
     // 16 pairs of kinds, each with and without a repeated stop. The three-dispatch run, about
     // 8.9 million prefixes, is `host-sessions-model.slow.test.ts`.
     expect(prefixes).toBe(35_368);
+  });
+
+  const withReclaims = kindSequences(2, [...dispatchKinds, ...reclaimKinds]).filter((kinds) =>
+    kinds.some((kind) => reclaimKinds.includes(kind)),
+  );
+
+  function exploreReclaims(apply?: ApplyEvent): { prefixes: number; failures: string[] } {
+    let prefixes = 0;
+    const failures: string[] = [];
+    for (const kinds of withReclaims) {
+      for (const repeatStop of [false, true]) {
+        const result = exploreInterleavings(kinds, repeatStop, apply);
+        prefixes += result.prefixes;
+        failures.push(...result.failures);
+      }
+    }
+    return { prefixes, failures };
+  }
+
+  test('of two dispatches with an expiry or a release, holds exactly the admitted-or-running up to a survey, and never fewer than the running', () => {
+    const { prefixes, failures } = exploreReclaims();
+    expect(failures).toEqual([]);
+    // The 20 pairs with an expired or a released dispatch, each with and without a repeated stop.
+    expect(prefixes).toBe(44_180);
+  });
+
+  test('fails without the expiry or the release step', () => {
+    const without =
+      (kind: SessionEvent['kind']): ApplyEvent =>
+      (state, event) =>
+        event.kind === kind ? state : applySessionEvent(state, event);
+    expect(exploreReclaims(without('expire')).failures).not.toEqual([]);
+    expect(exploreReclaims(without('release')).failures).not.toEqual([]);
   });
 });

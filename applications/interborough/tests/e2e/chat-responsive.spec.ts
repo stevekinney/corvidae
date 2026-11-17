@@ -17,6 +17,7 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -166,11 +167,12 @@ async function expectApprovalTitleInView(page: Page): Promise<void> {
   const transcript = page.locator('.chat-timeline').first();
   await expect
     .poll(async () => {
-      const [titleBox, transcriptBox] = await Promise.all([
-        title.boundingBox(),
-        transcript.boundingBox(),
-      ]);
-      if (titleBox === null || transcriptBox === null) return false;
+      // A poll that throws would not retry, so a missing element is "not yet", as before.
+      const boxes = await readBoxes(page, { titleBox: title, transcriptBox: transcript }).catch(
+        () => null,
+      );
+      if (boxes === null) return false;
+      const { titleBox, transcriptBox } = boxes;
       return (
         titleBox.y >= transcriptBox.y - 1 &&
         titleBox.y + titleBox.height <= transcriptBox.y + transcriptBox.height + 1
