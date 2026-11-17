@@ -34,6 +34,9 @@ describe('rewritePaths', () => {
     expect(rewritePaths('[Cinder](../cinder/README.md) and ../../../cinder/src/styles/x.css')).toBe(
       '[Cinder](../core/README.md) and ../../../core/src/styles/x.css',
     );
+    expect(rewritePaths(String.raw`/^components\/cinder\/src\/components\//`)).toBe(
+      String.raw`/^components\/core\/src\/components\//`,
+    );
   });
 
   test('leaves the package name, node_modules paths and lookalikes alone', () => {

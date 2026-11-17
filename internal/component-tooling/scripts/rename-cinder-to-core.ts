@@ -17,7 +17,8 @@
  *
  * Then it rewrites, in every tracked text file, what names the old directory:
  *   - the repository path (`components/` then `cinder`, as in `<old>/src/styles/all.css`);
- *   - the same path spelled as separate segments, `'components', 'cinder'`, in a `join(…)`;
+ *   - the same path spelled as separate segments, `'components', 'cinder'`, in a `join(…)`, or
+ *     with its slash escaped in a regular expression literal;
  *   - a relative path that climbs to the components directory and names Cinder's contents,
  *     `../../cinder/src/…` (a sibling package's README link or test);
  *   - the places that name the directory by its last segment alone ({@link NAMED}), each an exact
@@ -98,9 +99,16 @@ const NAMED: [string, string, string][] = [
     "library === 'cinder' && command.startsWith('design-system:')",
     "library === 'core' && command.startsWith('design-system:')",
   ],
+  [
+    'internal/component-tooling/scripts/check-component-css-token-usage.test.ts',
+    "reportPrefix: 'cinder/browser-fixtures'",
+    "reportPrefix: 'core/browser-fixtures'",
+  ],
 ];
 
 const PATH = new RegExp(`${OLD.replace('/', '\\/')}(?![\\w-])`, 'g');
+/** The path inside a regular expression literal, its slash escaped: `components\/cinder\/src`. */
+const ESCAPED_PATH = /components\\\/cinder(?![\w-])/g;
 const SEGMENTS = /(['"])components\1(\s*,\s*)(['"])cinder\3/g;
 const RELATIVE =
   /((?:^|[^\w@./-])(?:\.\.\/)+)cinder(?=\/(?:src|scripts|README\.md|package\.json|components\.json|documentation)\b)/g;
@@ -156,6 +164,7 @@ export function planMoves(root: string, tracked: readonly string[]): Plan {
 export function rewritePaths(source: string): string {
   return source
     .replace(PATH, NEW)
+    .replace(ESCAPED_PATH, String.raw`components\/core`)
     .replace(
       SEGMENTS,
       (_whole, first: string, separator: string, second: string) =>
