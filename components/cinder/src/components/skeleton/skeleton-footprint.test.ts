@@ -23,6 +23,16 @@ const input = await sheet('../input/input.css');
 const card = await sheet('../card/card.css');
 const feed = await sheet('../feed/feed.css');
 const tokens = await sheet('../../styles/tokens-base.css');
+const foundation = await sheet('../../styles/foundation.css');
+
+/** A loaded status-first list draws no border of its own: not the list, and not a row. */
+function loadedHasNoFrame(): boolean {
+  const drawn = [
+    ...rule(stackedListItem, '.cinder-stacked-list-item').keys(),
+    ...rule(dataList, '.cinder-data-list').keys(),
+  ];
+  return !drawn.some((property) => property.startsWith('border') || property === 'background');
+}
 
 /** The declarations of every rule that names `selector` on its own, later rules over earlier. */
 function rule(css: string, selector: string): Map<string, string> {
@@ -57,42 +67,53 @@ const LOADED_LAYOUT =
   '.cinder-stacked-list-item.cinder-stacked-list-item--lines > .cinder-stacked-list-item__layout';
 
 describe('the list placeholder is as tall as a two-line StackedListItem', () => {
-  test('its row has the same padding and minimum height as the row', () => {
-    for (const property of ['padding-block', 'padding-inline']) {
-      expect(declared(skeleton, '.cinder-skeleton-row', property)).toBe(
-        declared(stackedListItem, LOADED_ROW, property),
-      );
+  // A copy of the row's numbers drifted by 4px to 5px (the placeholder was 59.5px, a loaded row 64px,
+  // COR-2449 review). The placeholder row is now the row's own markup in its own classes, so its
+  // padding, gaps, lines, status column and phone form are the row's by construction, and these
+  // tests hold the construction: the placeholder declares none of them and takes the real classes.
+  test('its row declares no padding, gap, grid or height of its own: the row classes give them', () => {
+    const own = rule(skeleton, '.cinder-skeleton-row');
+    for (const property of [
+      'display',
+      'padding',
+      'padding-block',
+      'padding-inline',
+      'min-block-size',
+      'grid-template-columns',
+      'grid-template-rows',
+      'grid-template-areas',
+      'row-gap',
+      'column-gap',
+      'border-block-start',
+    ]) {
+      expect(own.has(property), `.cinder-skeleton-row must not declare ${property}`).toBe(false);
     }
-    expect(declared(skeleton, '.cinder-skeleton-row', 'min-block-size')).toBe(
-      declared(stackedListItem, '.cinder-stacked-list-item', 'min-block-size'),
-    );
+    // The row's padding the placeholder takes is the two-line row's own.
+    expect(declared(stackedListItem, LOADED_ROW, 'padding-block')).toBeDefined();
   });
 
-  test('line one is the title line and line two the muted line, a row gap apart', () => {
-    expect(declared(skeleton, '.cinder-skeleton-row', '--_cinder-skeleton-line-one')).toBe(
-      declared(stackedListItem, LOADED_LAYOUT, '--_cinder-line-one-height'),
+  test('the markup is the row layout in the row classes, status column and phone form included', async () => {
+    const markup = await sheet('./skeleton.svelte');
+    for (const name of [
+      'cinder-stacked-list-item cinder-stacked-list-item--lines cinder-stacked-list-item--status-leading',
+      'cinder-stacked-list-item--status-column',
+      'cinder-stacked-list-item__layout',
+      'cinder-stacked-list-item__status',
+      'cinder-stacked-list-item__title',
+      'cinder-stacked-list-item__time',
+      'cinder-stacked-list-item__line-two',
+      'cinder-stacked-list-item__meta',
+      'cinder-stacked-list-item__detail',
+      'cinder-status-dot',
+    ]) {
+      expect(markup, name).toContain(name);
+    }
+    expect(skeleton).toContain("@import '../stacked-list-item/stacked-list-item.css';");
+    // The row's own phone form: the status leads line two at the row's width.
+    expect(stackedListItem).toMatch(
+      /'leading title title time trailing'\s*'leading status line line trailing'/,
     );
-    expect(declared(skeleton, '.cinder-skeleton-row', '--_cinder-skeleton-line-two')).toBe(
-      lineOf(
-        stackedListItem,
-        '.cinder-stacked-list-item--lines .cinder-stacked-list-item__description',
-      ),
-    );
-    expect(declared(skeleton, '.cinder-skeleton-row', 'grid-template-rows')).toBe(
-      'var(--_cinder-skeleton-line-one) var(--_cinder-skeleton-line-two)',
-    );
-    expect(declared(skeleton, '.cinder-skeleton-row', 'row-gap')).toBe(
-      declared(stackedListItem, LOADED_LAYOUT, 'row-gap'),
-    );
-  });
-
-  test('the status column is as wide as the real one: 8rem and the gap after it', () => {
-    expect(skeleton.replace(/\s+/g, ' ')).toMatch(
-      /\.cinder-skeleton-row \{ display: grid; grid-template-columns: 8rem minmax\(0, 1fr\) auto;/,
-    );
-    expect(declared(skeleton, '.cinder-skeleton-row', 'column-gap')).toBe(
-      declared(stackedListItem, '.cinder-stacked-list-item__layout', 'column-gap'),
-    );
+    // The status column is the real one.
     expect(
       declared(
         stackedListItem,
@@ -102,28 +123,15 @@ describe('the list placeholder is as tall as a two-line StackedListItem', () => 
     ).toBe('calc(var(--_cinder-status-width, 8rem) + var(--cinder-space-3))');
   });
 
-  test('bars are cells of those two lines, with no padding that adds height of its own', () => {
-    const css = skeleton.replace(/\s+/g, ' ');
-    expect(css).toMatch(/\.cinder-skeleton-row-text \{ display: contents; \}/);
-    expect(css).toMatch(
-      /\.cinder-skeleton-row-text > \.cinder-skeleton-title-bar \{ grid-area: title;/,
-    );
-    expect(css).toMatch(
-      /\.cinder-skeleton-row-text > \.cinder-skeleton-meta-bar \{ grid-area: meta;/,
-    );
-    expect(css).not.toMatch(/padding-block-start: var\(--cinder-space-1\)/);
-    expect(rule(skeleton, '.cinder-skeleton-row').get('align-items')).toBe('center');
+  test('the margin the page gives a loaded row is given to the placeholder row too', () => {
+    const margin = declared(foundation, ':where(li)', 'margin-bottom');
+    expect(declared(skeleton, '.cinder-skeleton-row', 'margin-block-end')).toBe(margin);
   });
 
-  test('on a phone the status takes the start of line two: still two lines, not three', () => {
-    const css = skeleton.replace(/\s+/g, ' ');
-    expect(css).toMatch(
-      /@container cinder-skeleton \(max-width: 448px\) \{ [^@]*\.cinder-skeleton-row \{ grid-template-columns: auto minmax\(0, 1fr\) auto; grid-template-areas: 'title title time' 'status meta meta'; grid-template-rows: var\(--_cinder-skeleton-line-one\) var\(--_cinder-skeleton-line-two\); \}/,
-    );
-    // The real phone row also reads two lines: the status leads line two.
-    expect(stackedListItem).toMatch(
-      /'leading title title time trailing'\s*'leading status line line trailing'/,
-    );
+  test('the placeholder draws no frame, and no divider between rows, by default', () => {
+    expect(skeleton.replace(/\s+/g, ' ')).not.toMatch(/\.cinder-skeleton-list \{[^}]*border/);
+    expect(skeleton).not.toMatch(/\.cinder-skeleton-row \+ \.cinder-skeleton-row/);
+    expect(loadedHasNoFrame()).toBe(true);
   });
 
   test('the day band bar sits in one line of the real group header, in its padding', () => {
