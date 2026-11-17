@@ -288,6 +288,8 @@ export const CHAT_COPY = {
   questionAnswerLabel: 'Answer',
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: 'Press 1 to 9 to pick a choice.',
+  /** The quiet action under a docked question that puts it back in its row and gives the composer back. */
+  replyInChat: 'Reply in chat',
   /** The shortcuts the `?` map lists for this page. */
   shortcutGroup: 'Chat',
   pickShortcut: (position: number): string => `Pick choice ${String(position)}`,

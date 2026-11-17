@@ -359,19 +359,38 @@ describe('a question in the transcript, answered with an Undo window', () => {
     for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
   }
 
-  test('is the last item of the transcript, with the payload’s own descriptions', async () => {
+  test('docks in the composer’s place as flat rows with its own descriptions, and Reply in chat puts it last in the transcript (COR-2437 AC6)', async () => {
     serve(ask(RELEASE_CHOICES));
     const { container, findByText } = await open();
 
     expect(await findByText('Deploys to the staging site')).not.toBeNull();
     expect(await findByText('Deploys to the live site')).not.toBeNull();
+    const docked = () =>
+      container.querySelector<HTMLElement>('[data-chat-question-dock="host"] .weft-chat-question');
+    await waitFor(() => expect(docked() === null).toBe(false));
+    expect(docked()?.closest('.chat-timeline')).toBeNull();
+    expect(
+      [...docked()!.querySelectorAll('[role="radio"]')].map((radio) =>
+        radio.getAttribute('data-cinder-variant'),
+      ),
+    ).toEqual(['row', 'row']);
+    expect(container.querySelector('.chat-input-area')?.hasAttribute('data-question-docked')).toBe(
+      true,
+    );
+
+    const reply = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Reply in chat',
+    )!;
+    await fireEvent.click(reply);
+
+    await waitFor(() => expect(docked() === null).toBe(true));
     const question = container.querySelector('.weft-chat-question');
     expect(question?.closest('.chat-timeline')).not.toBeNull();
     // The card is after the last message, before the transcript's end sentinel.
     expect(question?.closest('.chat-trailing')?.nextElementSibling?.className).toContain(
       'chat-bottom-sentinel',
     );
-    // The composer is where the person types an answer of their own: no field in the question.
+    // Back in its row, the composer is where the person types an answer of their own.
     expect(container.querySelector('.chat-question-own')).toBeNull();
   });
 

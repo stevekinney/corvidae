@@ -228,6 +228,19 @@
   background: var(--cinder-surface-raised);
 }
 
+/* Docked, the question sits in Chat's one dock panel, so it draws no card of its own. */
+.weft-chat-question[data-docked] {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Reply in chat ends the dock at the leading edge, where the question starts. */
+.weft-chat-question__dock-actions {
+  display: flex;
+  margin-block-start: var(--cinder-space-2);
+}
+
 .weft-chat-question__prompt,
 .weft-chat-question__hint {
   margin: 0;

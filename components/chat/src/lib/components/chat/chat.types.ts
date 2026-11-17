@@ -227,6 +227,14 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerFooter?: Snippet | undefined;
   /** Content above the composer, outside its border and at its width, after the transcript: the host's own note on where the conversation comes from, such as a chip that says a new chat was started from another page. It is drawn whether the composer is live or blocked. The snippet takes no arguments, and the caller owns the semantics inside it. */
   composerLead?: Snippet | undefined;
+  /**
+   * A question the host draws itself, docked in place of the composer (COR-2278, row P3): Chat
+   * draws it in the dock's one flat panel where the composer was, and keeps the composer mounted
+   * but out of sight, so a draft and its attachments survive. Set it while the question waits and
+   * the person has not chosen to reply in chat; the host draws its own Reply in chat, which clears
+   * it. A question Chat docks itself (`questionPlacement`) comes first. Left out, the composer shows.
+   */
+  questionDock?: Snippet | undefined;
   /** Whether Send empties the composer's text and files. Default `true`. Set it to `false` while a host must keep what was typed until the message has gone through, such as the first message of a new conversation that is still being started, and empty the box itself with `clearInput()` once it has. */
   clearComposerOnSubmit?: boolean | undefined;
   /** Set while the host is starting what the message belongs to, such as the conversation its first message opens: Send reads this word with a spinner and is off, there is no Stop because nothing is running yet, and the typed text and files stay in the box. Left out, Send is Send. */

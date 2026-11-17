@@ -165,6 +165,7 @@
     composerHeader,
     composerFooter,
     composerLead,
+    questionDock,
     clearComposerOnSubmit = true,
     composerStarting,
     composerPlacement = 'docked',
@@ -509,6 +510,15 @@
     dockedQuestion === undefined ? 1 : dockRound.indexOf(dockedQuestion) + 1,
   );
   const dockedTotal = $derived(dockRound.length);
+  // A question the host draws docks in the composer's place too, behind any Chat docks itself, and
+  // only where the composer has something to give back (no blocked row, bar or availability state).
+  const hostDocksQuestion = $derived(
+    questionDock !== undefined &&
+      dockedQuestion === undefined &&
+      composerStatus?.kind !== 'blocked' &&
+      !isComposerNoticeStatus(composerStatus) &&
+      !availabilityReplacesComposer(availability),
+  );
 
   // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
   // question asked later starts a new one.
@@ -2958,7 +2968,7 @@
            it), so a toast sits above it; a centred composer is in the middle and not counted. -->
       <div
         class="chat-input-area"
-        data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+        data-question-docked={dockedQuestion !== undefined || hostDocksQuestion ? '' : undefined}
         {@attach composerCentered ? undefined : dockedToBottom()}
       >
         {#if quotes.quotes.length > 0}
@@ -3019,6 +3029,11 @@
             onNavigate={moveDock}
             labels={questionDockLabels}
           />
+        {:else if hostDocksQuestion && questionDock !== undefined}
+          <!-- A question the host draws, docked in the same one flat panel in the composer's place. -->
+          <div class="chat-host-question-dock" data-chat-question-dock="host">
+            {@render questionDock()}
+          </div>
         {/if}
         <ChatInput
           labels={chatLabels}
@@ -3823,6 +3838,20 @@
      attachments survive, and comes back when the question is answered or replied to in chat. */
   .chat-input-area[data-question-docked] > :global(.chat-input-shell) {
     display: none;
+  }
+
+  /* A host's docked question: the dock's one panel (its edge, radius and surface), as tall as its
+     content up to about 80% of the viewport, scrolling inside past that. */
+  .chat-host-question-dock {
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-block-size: min(100%, 80dvh);
+    padding: var(--cinder-space-3);
+    overflow-y: auto;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised, var(--cinder-surface));
   }
 
   /* Responsive adjustments: tighten padding at narrow widths.

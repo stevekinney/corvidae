@@ -434,9 +434,9 @@
         "reason": "function-or-snippet"
       },
       {
-        "name": "questionLabels",
-        "reason": "unknown-shape",
-        "description": "The words of the docked question (`ChatQuestionDockLabels`), any of which the host can replace."
+        "name": "questionDock",
+        "reason": "function-or-snippet",
+        "description": "A question the host draws itself, docked in place of the composer in the dock’s one flat panel; the composer stays mounted but out of sight. Set it while the question waits and the person has not chosen to reply in chat. A question Chat docks itself comes first."
       },
       {
         "name": "readReceipts",
@@ -452,11 +452,6 @@
         "name": "sourcesByMessageId",
         "reason": "unknown-shape",
         "description": "The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link."
-      },
-      {
-        "name": "turnLabels",
-        "reason": "unknown-shape",
-        "description": "The words of a turn's outcome and of the steps under it (`ChatTurnLabels`), any of which the host can replace, such as `stepsDone` to read `Checked 2 of 3 sources`."
       },
       {
         "name": "typingParticipants",
