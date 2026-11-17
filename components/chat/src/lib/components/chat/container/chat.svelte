@@ -42,6 +42,7 @@
     resolveMessageSteps,
     resolveMessageSuggestions,
   } from '../utilities/index.ts';
+  import { recordedApprovalReceipts } from '../utilities/recorded-approval-decision.ts';
   import { ChatMessage, ChatDateSeparator } from '../message/index.ts';
   import { ChatInput } from '../input/index.ts';
   import { DEFAULT_SCROLL_CONFIGURATION, isAtBottom } from './scroll-utilities.ts';
@@ -101,6 +102,7 @@
   import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import {
+    ApprovalGroup,
     Button,
     ConfirmDialog,
     dockedToBottom,
@@ -219,6 +221,8 @@
     messageTurnState,
     turnLabels,
     labels,
+    currentPrincipal,
+    approvalReceiptHref,
     onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
@@ -662,6 +666,7 @@
     getAnsweredToolCallIds: () => [
       ...questions.answers.keys(),
       ...commandActions.approvalReceipts.keys(),
+      ...recordedReceipts.keys(),
       ...toolCallIdsWithOwnContent(messages),
     ],
     // Only a host that draws rows or parts itself sees every tool call as its own row: the group
@@ -708,6 +713,36 @@
     });
   }
   const messages = $derived(transcript.messages);
+  // Approvals the conversation records as decided (COR-2282 A5): read from each result row's
+  // `approvalDecision` metadata, so a reload, or a decision made in Reviews, keeps its receipt
+  // with who decided and where.
+  const recordedReceipts = $derived.by(() => {
+    const toolNames = new Map<string, string>();
+    for (const message of messages) {
+      if (message.toolCall !== undefined) toolNames.set(message.toolCall.id, message.toolCall.name);
+    }
+    return recordedApprovalReceipts(messages, {
+      toolName: (toolCallId) => toolNames.get(toolCallId),
+      currentPrincipal,
+      you: chatLabels.you,
+      reviews: chatLabels.decidedInReviews,
+      reviewsHref: approvalReceiptHref,
+    });
+  });
+  // The receipts every approval part reads. A decision made here wins over the record of it, and
+  // its receipt names the reader in the host's word.
+  const approvalReceipts = $derived.by(() => {
+    const held = commandActions.approvalReceipts;
+    if (recordedReceipts.size === 0 && held.size === 0) return held;
+    const merged = new Map(recordedReceipts);
+    for (const [toolCallId, record] of held) {
+      merged.set(toolCallId, {
+        ...record,
+        receipt: { decidedBy: chatLabels.you, ...record.receipt },
+      });
+    }
+    return merged;
+  });
   const lastMessageId = $derived(transcript.lastMessageId);
   const rollbackBoundaryIndex = $derived(transcript.rollbackBoundaryIndex);
   const messageIndexById = $derived(transcript.messageIndexById);
@@ -2652,9 +2687,7 @@
           approvalResolutionInFlightIds={commandActions.approvalResolutionInFlightIds.size > 0
             ? commandActions.approvalResolutionInFlightIds
             : undefined}
-          approvalReceipts={commandActions.approvalReceipts.size > 0
-            ? commandActions.approvalReceipts
-            : undefined}
+          approvalReceipts={approvalReceipts.size > 0 ? approvalReceipts : undefined}
           describeApproval={adapter?.describeApproval
             ? (call, action) => adapter?.describeApproval?.(call, action)
             : undefined}
@@ -2753,11 +2786,6 @@
         ])}
         {@const ordinaryPairs = groupPairs.filter(({ message }) => !approvalIds.has(message.id))}
         <div class="chat-tool-call-group">
-          {#if compactApprovalMessages.length > 1}
-            <h3 class="chat-approval-group-heading">
-              {chatWords.approvalWaiting(compactApprovalMessages.length)}
-            </h3>
-          {/if}
           {#if ordinaryPairs.length > 0}
             <ToolCallTimeline
               messageId={renderRow.messages[0]!.id}
@@ -2779,13 +2807,31 @@
             />
           {/if}
           <div class="chat-approval-group-rows">
-            {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
-              {@render renderMessageRow(
-                { type: 'message', message: actionRequiredMessage },
-                true,
-                compactApprovalMessages.length > 1 ? 'row' : 'decision',
-              )}
-            {/each}
+            {#if compactApprovalMessages.length > 1}
+              <!-- Two or more approvals of one run wait together: Cinder's one bordered group of
+                   compact rows under "2 approvals waiting", whichever message rows they came in
+                   (COR-2282 A3). -->
+              <ApprovalGroup
+                heading={chatLabels.approvalsWaiting(compactApprovalMessages.length)}
+                headingLevel={3}
+              >
+                {#each compactApprovalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+                  {@render renderMessageRow(
+                    { type: 'message', message: actionRequiredMessage },
+                    true,
+                    'row',
+                  )}
+                {/each}
+              </ApprovalGroup>
+            {:else}
+              {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+                {@render renderMessageRow(
+                  { type: 'message', message: actionRequiredMessage },
+                  true,
+                  'decision',
+                )}
+              {/each}
+            {/if}
           </div>
           {#each inputMessages.filter((message) => !approvalIds.has(message.id)) as inputMessage (inputMessage.id)}
             {@render renderMessageRow({ type: 'message', message: inputMessage }, true)}
@@ -3718,13 +3764,6 @@
 
   .chat-composer-footer {
     margin-block-start: var(--cinder-space-4);
-  }
-
-  .chat-approval-group-heading {
-    margin: 0 0 var(--cinder-space-2);
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-semibold);
   }
 
   .chat-tool-call-group {

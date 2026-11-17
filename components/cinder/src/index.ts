@@ -58,6 +58,9 @@ export type {
   ApprovalToolRisk,
 } from './components/approval-card/index.ts';
 
+export { default as ApprovalGroup } from './components/approval-group/index.ts';
+export type { ApprovalGroupProps } from './components/approval-group/index.ts';
+
 export { default as AreaChart } from './components/area-chart/index.ts';
 export type {
   ChartDataTableVisibility as AreaChartDataTableVisibility,
