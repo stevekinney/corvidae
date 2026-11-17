@@ -588,6 +588,8 @@ export interface ComponentsCssOrder {
   imports: OrderEntry[];
   /** Text after the last import. */
   trailer?: string;
+  /** Component stylesheets components.css does not import (their component entry does). */
+  unlisted?: string[];
 }
 
 const IMPORT_LINE = /@import\s+(['"])([^'"]+)\1\s*;/g;
@@ -639,8 +641,22 @@ function readOrder(plan: Plan): ComponentsCssOrder {
     return JSON.parse(read(plan, orderPath)) as ComponentsCssOrder;
   }
   const order = readComponentsCssOrder(read(plan, posix.join(core, COMPONENTS_CSS)));
+  const listed = new Set(order.imports.map((entry) => entry.path));
+  const unlisted = componentStylesheets(plan).filter((path) => !listed.has(path));
+  if (unlisted.length > 0) order.unlisted = unlisted;
   write(plan, orderPath, `${JSON.stringify(order, null, 2)}\n`);
   return order;
+}
+
+/** Every family component's own stylesheet, `src/components/<component>/<component>.css`. */
+function componentStylesheets(plan: Plan): string[] {
+  return [...plan.owner]
+    .filter(([path, name]) => {
+      const component = /^src\/components\/([^/]+)\/([^/]+)\.css$/.exec(path);
+      return component !== null && component[1] === component[2] && name !== 'core';
+    })
+    .map(([path]) => path)
+    .toSorted();
 }
 
 /** Regenerates core's `components.css` and each extracted family's stylesheet from the order file. */
@@ -648,13 +664,12 @@ function regenerateStylesheets(plan: Plan): void {
   const { core } = plan.options;
   const orderPath = posix.join(core, ORDER_FILE);
   const order = readOrder(plan);
-  const listed = new Set(order.imports.map((entry) => entry.path));
-  for (const [path, name] of plan.owner) {
-    const component = /^src\/components\/([^/]+)\/([^/]+)\.css$/.exec(path);
-    if (component === null || component[1] !== component[2] || name === 'core') continue;
-    if (!listed.has(path)) {
-      throw new Error(`${path} is in no line of ${orderPath}: place it in the order, then re-run.`);
-    }
+  const listed = new Set([...order.imports.map((entry) => entry.path), ...(order.unlisted ?? [])]);
+  const missing = componentStylesheets(plan).filter((path) => !listed.has(path));
+  if (missing.length > 0) {
+    throw new Error(
+      `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} in no line of ${orderPath}: place each in "imports" (or "unlisted"), then re-run.`,
+    );
   }
   const lines: string[] = [];
   for (const entry of order.imports) {
@@ -768,8 +783,8 @@ function writeManifests(plan: Plan): void {
       ...Object.keys(previous).filter((key) => !(key in exportsField)),
       ...(plan.exportKeys.get(name) ?? []),
     ]);
-    if (kind === 'family') {
-      for (const key of [...keys].toSorted()) exportsField[key] = `./src/${key.slice(2)}`;
+    for (const key of [...keys].toSorted()) {
+      exportsField[key] = key.startsWith('./scripts/') ? key : `./src/${key.slice(2)}`;
     }
     const scanned = scanDependencies(plan, name, coreManifest);
     plan.result.warnings.push(...scanned.problems);

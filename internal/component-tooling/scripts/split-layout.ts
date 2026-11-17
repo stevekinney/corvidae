@@ -60,10 +60,13 @@ export function specifierFor(
     if (subpath === undefined) throw new Error(`No tooling subpath exports ${path}.`);
     return { specifier: `${TOOLING_PACKAGE}/${subpath}` };
   }
+  const base = `${PACKAGE_SCOPE}${name}`;
+  // A script a package moved with its sources (the token scripts) is exported as `./scripts/*`.
+  if (path.startsWith('scripts/'))
+    return { specifier: `${base}/${path}`, exportKey: './scripts/*' };
   if (!path.startsWith('src/'))
     throw new Error(`${path} is outside src, so no package exports it.`);
   const rest = path.slice('src/'.length);
-  const base = `${PACKAGE_SCOPE}${name}`;
   if (kindOf(name) !== 'family') {
     const stylesheet = /^styles\/(.+\.css)$/.exec(rest);
     if (stylesheet !== null) return { specifier: `${base}/${stylesheet[1]}` };
@@ -93,6 +96,7 @@ export function virtualPathFor(specifier: string): { name: string; path: string 
     specifier.slice(PACKAGE_SCOPE.length).split('?')[0]?.split('/') ?? [];
   const subpath = parts.join('/');
   if (subpath === '') return { name, path: 'src/index.ts' };
+  if (subpath.startsWith('scripts/')) return { name, path: subpath };
   if (kindOf(name) !== 'family') {
     return { name, path: subpath.endsWith('.css') ? `src/styles/${subpath}` : `src/${subpath}` };
   }
