@@ -115,7 +115,8 @@ for (const width of WIDTHS) {
       const id = world.workflows.releaseNotes;
       await rewriteOperation(page, 'bureau.workflows.runs.list', (answer) => {
         const runs = Array.isArray(answer['runs']) ? (answer['runs'] as JsonRecord[]) : [];
-        const version = String(runs[0]?.['workflowVersion'] ?? 'sha256:sample');
+        const recorded = runs[0]?.['workflowVersion'];
+        const version = typeof recorded === 'string' ? recorded : 'sha256:sample';
         return withRunFirst(answer, waitingSignalRun(id, version));
       });
       await openWorkflow(page, `/workflows/${encodeURIComponent(id)}?tab=runs`, width);

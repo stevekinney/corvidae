@@ -1132,8 +1132,9 @@ export const WORKFLOW_COPY = {
     /** The heading: the workflow's title, or its identifier for a file with none. */
     heading: (name: string): string => `Edit ${name}`,
     textLabel: 'Workflow file',
+    /** The note under Edit's JSON tab (row 65j). */
     textDescription:
-      'The file’s JSON. Its name is the file’s identifier, so it is not sent when you save.',
+      'Every field the builder writes is here, including the schedule trigger, each title and the Input and Output schemas. Keys the builder doesn’t show are saved exactly as written.',
     saveAction: 'Save',
     /** The primary button while the file is written; the whole form is read-only meanwhile. */
     savingAction: 'Saving…',

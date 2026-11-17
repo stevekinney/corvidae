@@ -175,10 +175,22 @@ function signalPhrase(signal: string, timeout: DurationView | null): string {
   return signal === '' ? copy.anySignalWithin(limit) : copy.signalWithin(signal, limit);
 }
 
+/**
+ * A step's name as a clause of the sentence: its first word in lower case when it is an ordinary
+ * capitalized word ("Find" reads "find"), and as written when it is a name ("GitHub", "API").
+ */
+function asClause(title: string): string {
+  const [first = '', ...rest] = title.split(' ');
+  const ordinary = /^\p{Lu}\p{Ll}*$/u.test(first);
+  return ordinary ? [first.toLocaleLowerCase(), ...rest].join(' ') : title;
+}
+
 /** What a step reads as in its own words. A control-flow step is one clause that never says what it holds. */
 function stepPhrase(step: BuilderStep, names: ReadBackNames): string {
   switch (step.kind) {
     case 'agent':
+      // A step the file names reads as its name: "find the last release" (row 65j).
+      if (step.title.trim() !== '') return asClause(step.title.trim());
       return copy.ask(
         step.agent === '' ? copy.anAgent : names.agentName(step.agent),
         taskOf(step.message),

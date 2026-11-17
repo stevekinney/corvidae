@@ -65,6 +65,26 @@ describe('the read-back sentence', () => {
     );
   });
 
+  test('COR-2432: an agent step the file names reads as its name, a name kept as written (row 65j)', () => {
+    const titled = (title: string) => ({ ...agentStep('assistant', 'Do it.'), title });
+    expect(
+      readBack({
+        trigger: { kind: 'schedule', spec: '0 11 * * 5', timezone: 'America/Chicago' },
+        steps: [
+          titled('Find the last release'),
+          titled('Collect merged changes'),
+          titled('Draft the notes'),
+          { kind: 'await-signal', signal: 'notes-approved', title: 'Wait for approval' },
+        ],
+      }),
+    ).toBe(
+      'Every Friday at 11:00 AM CST, find the last release, collect merged changes, draft the notes, then wait for notes-approved.',
+    );
+    expect(readBack({ trigger: { kind: 'manual' }, steps: [titled('GitHub sync')] })).toContain(
+      'GitHub sync',
+    );
+  });
+
   test('names a weekly schedule’s day, and a zone the trigger does not name as UTC', () => {
     const steps = [{ kind: 'await-signal', signal: 'notes-approved' }];
     expect(
