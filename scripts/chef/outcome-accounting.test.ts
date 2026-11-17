@@ -109,6 +109,34 @@ describe('outcome accounting', () => {
     expect(result.cost).toBe('unknown');
   });
 
+  test('does not price malformed Codex or Claude counters as zero usage', () => {
+    const malformed = [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      { type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: {}, last_token_usage: { input_tokens: -1, cached_input_tokens: 0, output_tokens: 1 } } } },
+    ];
+    const path = write('malformed-counters.jsonl', malformed);
+    const result = accountOutcome(outcome(path), { 'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } });
+    expect(result.cost).toBe('unknown');
+    expect(result.incompleteUsage.length).toBeGreaterThan(0);
+  });
+
+  test('keeps malformed Claude token fields incomplete while pricing a valid control', () => {
+    const price = { 'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } };
+    const entry = (usage: Record<string, number>) => ({ type: 'assistant', timestamp: '2026-11-17T20:58:08.000Z', message: { id: 'm1', model: 'claude-test', usage, content: [{ type: 'text', text: 'x' }] } });
+    for (const usage of [
+      { input_tokens: -1, output_tokens: 1 },
+      { input_tokens: 1, output_tokens: -1 },
+      { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: -1 },
+      { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: -1 },
+    ]) {
+      const result = accountOutcome(outcome(write(`claude-${JSON.stringify(usage)}.jsonl`, [entry(usage)])), price);
+      expect(result.incompleteUsage.length).toBeGreaterThan(0);
+      expect(result.cost).toBe('unknown');
+    }
+    expect(accountOutcome(outcome(write('claude-valid.jsonl', [entry({ input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })])), price).cost).toBeCloseTo(0.000002);
+  });
+
   test('preserves absent allowances and stops dispatch when cumulative reservations reach one', () => {
     expect(assessBudget({ spentTokens: 12, reservedTokens: 4 })).toMatchObject({
       allowanceTokens: 'unknown',
