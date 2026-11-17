@@ -24,6 +24,7 @@ export interface RunnerResult {
   code: number;
   stdout: string;
   stderr: string;
+  pid?: number;
 }
 
 export type Runner = (command: string[], options?: RunnerOptions) => RunnerResult;
@@ -76,6 +77,7 @@ export const defaultRunner: Runner = (command, options = {}) => {
     return {
       ...exitStatus(result),
       stdout: result.stdout.toString(),
+      pid: result.pid,
     };
   } catch (error) {
     // `Bun.spawnSync` can put a rejected environment value in its message, and `options.env` may

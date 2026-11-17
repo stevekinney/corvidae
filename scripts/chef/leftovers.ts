@@ -32,6 +32,7 @@ export { UsageError };
 export interface FoundProcess {
   pid: number;
   command: string;
+  parent?: number;
 }
 
 export interface WorktreeLeftovers {
@@ -95,9 +96,28 @@ export function parseLsofFields(stdout: string): FoundProcess[] {
       found.set(pid, current);
     } else if (line.startsWith('c') && current !== undefined) {
       current.command = line.slice(1);
+    } else if (line.startsWith('R') && current !== undefined) {
+      const parent = Number(line.slice(1));
+      if (Number.isInteger(parent)) current.parent = parent;
     }
   }
   return [...found.values()];
+}
+
+function probeTree(processes: readonly FoundProcess[], probePid: number): Set<number> {
+  const parents = new Map(
+    processes.flatMap((item) => (item.parent === undefined ? [] : [[item.pid, item.parent]])),
+  );
+  const found = new Set([probePid]);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const [pid, parent] of parents)
+      if (found.has(parent) && !found.has(pid)) {
+        found.add(pid);
+        changed = true;
+      }
+  }
+  return found;
 }
 
 /** The caller chain is diagnostic machinery, not leftover work in its own worktree. */
@@ -145,15 +165,20 @@ export function findWorktreeProcesses(
 ): FoundProcess[] {
   // lsof compares against resolved paths, so a symlinked directory (macOS /tmp) must be resolved.
   const resolved = existsSync(directory) ? realpathSync(directory) : directory;
-  const result = runner(['lsof', '-F', 'pc', '+D', resolved]);
+  const result = runner(['lsof', '-F', 'pRc', '+D', resolved]);
   const nothing = result.code === 1 && result.stdout.trim() === '' && result.stderr.trim() === '';
+  if (nothing) return [];
   if (!nothing && result.code !== 0 && result.stdout.trim() === '') {
     const detail = result.stderr.trim().split('\n').slice(-1)[0] ?? '';
     throw new ProbeError(`lsof could not check ${resolved} (exit ${result.code}): ${detail}`);
   }
+  if (result.pid === undefined)
+    throw new ProbeError(`lsof could not identify its probe process for ${resolved}.`);
   const callers = callerAncestorPids(runner, ownPid);
-  return parseLsofFields(result.stdout).filter(
-    (item) => item.pid !== ownPid && !callers.has(item.pid),
+  const processes = parseLsofFields(result.stdout);
+  const probes = probeTree(processes, result.pid);
+  return processes.filter(
+    (item) => item.pid !== ownPid && !callers.has(item.pid) && !probes.has(item.pid),
   );
 }
 
