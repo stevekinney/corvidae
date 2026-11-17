@@ -86,8 +86,9 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # The packages' own browser suites (COR-2080): every package's cached `test:browser` task, which
-  # `validate:batch` runs (the chat, editor and terminal suites, moved out of the fixture suite above).
+  # The packages' own browser suites (COR-2080): the cached `test:browser` task of every package
+  # `turbo.json` gives one (chat, editor and terminal, moved out of the fixture suite above), which
+  # `validate:batch` runs.
   # Same image, architecture and block mode as the fixture shards, since the terminal suite compares
   # the baselines moved with it. A second, filtered run must come from the cache.
   packages:

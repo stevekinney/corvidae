@@ -127,7 +127,7 @@ bun run test:browser scripts/browser-fixtures/tests/components.playwright.ts
 bun run test:browser --grep 'CodeBlock'
 ```
 
-The chat, editor and terminal packages own their browser suites (COR-2080): each `browser/` directory holds its specs, application fixtures and baselines, and the package's `test:browser` runs it in Chromium as a cached Turborepo task (`bunx turbo run test:browser --filter=@lostgradient/editor`; `bun run validate:batch` runs every package's). They share the harness in `src/browser` (`packageSuite` for the fixture host, `packageSuiteConfiguration` for Playwright) and the Playwright helpers in `src/playwright`, which the root suite imports too.
+The chat, editor and terminal packages own their browser suites (COR-2080): each `browser/` directory holds its specs, application fixtures and baselines, and the package's `test:browser` runs it in Chromium as a cached Turborepo task (`bunx turbo run test:browser --filter=@lostgradient/editor`; `bun run validate:batch` runs the `test:browser` task of every package `turbo.json` gives one). They share the harness in `src/browser` (`packageSuite` for the fixture host, `packageSuiteConfiguration` for Playwright) and the Playwright helpers in `src/playwright`, which the root suite imports too.
 
 The host generates its fixture manifest and lazy-import catalog before starting. Its ignored test results contain failure traces. Accessibility and screenshot helpers write artifacts using the paths defined in `src/helpers/artifact-path.ts`; consuming tests decide which accessibility findings fail a case.
 

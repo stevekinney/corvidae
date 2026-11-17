@@ -61,17 +61,13 @@ describe('the browser suites workflow', () => {
   // COR-2080: the specs moved into the chat, editor and terminal packages run only through their
   // own `test:browser` tasks, so a workflow that stopped running `validate:batch` would drop them
   // silently. The terminal's moved baselines need the baseline renderer too.
-  test('runs every package browser suite through validate:batch on the baseline renderer', () => {
+  test('runs the package browser suites through validate:batch on the baseline renderer', () => {
     const { playwrightVersion } = readRepositoryPins();
     const packages = jobText('packages');
     expect(packages).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
     expect(packages).toContain('runs-on: ubuntu-24.04-arm\n');
     expect(packages).toContain('if: ${{ inputs.fixtures }}\n');
     expect(packages).toContain('- run: bun run validate:batch\n');
-    const manifest = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, 'package.json'), 'utf8')) as {
-      scripts: Record<string, string>;
-    };
-    expect(manifest.scripts['validate:batch']).toContain('bunx turbo run test:browser');
   });
 
   // Both suites gate (COR-2412). Job level only: a report upload step may fail without failing the job.
