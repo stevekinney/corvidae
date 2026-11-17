@@ -182,7 +182,7 @@ describe('Chat composer drawer for a waiting approval', () => {
 
     expect(drawer).not.toBeNull();
     expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
-      'Needs your approval.',
+      'Approval needed.',
     );
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
   });
@@ -416,13 +416,13 @@ describe('Chat composer drawer for a waiting approval', () => {
       drawerOf(container)?.querySelector('.chat-approval-drawer-text')?.textContent?.trim();
 
     // An empty composer keeps the short form, and Queue's note does not exist yet.
-    expect(reminder()).toBe('Needs your approval.');
+    expect(reminder()).toBe('Approval needed.');
     expect(container.querySelector('#chat-drawer-queue-note-input-queue-note')).toBeNull();
 
     await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
     await tick();
 
-    expect(reminder()).toBe(`Needs your approval. ${note}`);
+    expect(reminder()).toBe(`Approval needed. ${note}`);
     const describedBy = sendButton(container).getAttribute('aria-describedby') ?? '';
     const noteElement = describedBy
       .split(' ')
