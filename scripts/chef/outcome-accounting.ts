@@ -4,11 +4,18 @@
 //
 // Usage:
 //   bun scripts/chef/outcome-accounting.ts verify-task-bank <path>
+//   bun scripts/chef/outcome-accounting.ts initialize <record> <outcome> [<allowance> <provenance>]
+//   bun scripts/chef/outcome-accounting.ts reserve <record> <outcome> <operation> <tokens>
+//   bun scripts/chef/outcome-accounting.ts settle <record> <outcome> <operation> <tokens>
+//   bun scripts/chef/outcome-accounting.ts release <record> <outcome> <operation>
+//   bun scripts/chef/outcome-accounting.ts read <record> <outcome>
 //
 // Exit codes: 0 verified, 1 invalid task bank, 2 invalid CLI usage.
 
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { initialize, release, reserve, settle } from './outcome-budget.ts';
 import {
   costOf,
   readTranscript,
@@ -70,20 +77,6 @@ export interface BudgetState {
   allowanceTokens?: number;
   spentTokens: number;
   reservedTokens: number;
-  hardLimitEnforced: boolean;
-}
-
-/** Persist this value with the outcome; a resumed worker carries it forward rather than resetting it. */
-export function resumeBudget(
-  previous: BudgetState,
-  addition: Omit<BudgetState, 'allowanceTokens'>,
-): BudgetState {
-  return {
-    ...previous,
-    spentTokens: previous.spentTokens + addition.spentTokens,
-    reservedTokens: previous.reservedTokens + addition.reservedTokens,
-    hardLimitEnforced: previous.hardLimitEnforced && addition.hardLimitEnforced,
-  };
 }
 
 export interface BudgetAssessment {
@@ -91,7 +84,7 @@ export interface BudgetAssessment {
   cumulativeCommittedTokens: number;
   softLimitReached: boolean;
   mayDispatch: boolean;
-  hardLimitEnforced: boolean;
+  hardLimitEnforced: false;
 }
 
 function inAttempt(callTime: string | undefined, attempt: AttemptLink): boolean {
@@ -203,7 +196,7 @@ export function assessBudget(state: BudgetState): BudgetAssessment {
     cumulativeCommittedTokens,
     softLimitReached,
     mayDispatch: !softLimitReached,
-    hardLimitEnforced: state.hardLimitEnforced,
+    hardLimitEnforced: false,
   };
 }
 
@@ -219,8 +212,14 @@ export interface TaskSnapshot {
   heldOut: boolean;
   permittedPaths: string[];
   deliveryBoundary: string;
-  input: { source: string; patch: string; expected: string };
-  oracle: { command: string; expectedOutput: string };
+  files: {
+    candidatePath: string;
+    candidate: string;
+    repaired: string;
+    empty: string;
+    oraclePath: string;
+    oracle: string;
+  };
 }
 
 export interface TaskBank {
@@ -244,11 +243,12 @@ export function verifyTaskBank(bank: TaskBank): string[] {
     if (!task.baseRevision || !task.deliveryBoundary || task.permittedPaths.length === 0)
       errors.push(`${task.id} is missing a frozen boundary.`);
     if (
-      !task.input.source ||
-      !task.input.patch ||
-      !task.input.expected ||
-      !task.oracle.command ||
-      !task.oracle.expectedOutput
+      !task.files.candidatePath ||
+      !task.files.candidate ||
+      !task.files.repaired ||
+      !task.files.empty ||
+      !task.files.oraclePath ||
+      !task.files.oracle
     )
       errors.push(`${task.id} has no executable input or oracle.`);
   }
@@ -259,7 +259,61 @@ export function verifyTaskBank(bank: TaskBank): string[] {
   return errors;
 }
 
-function main(argv: string[]): number {
+/** Prove each oracle rejects its buggy and empty candidates while accepting the repair. */
+export function verifyTaskControls(bank: TaskBank, scratch = tmpdir()): string[] {
+  const errors = verifyTaskBank(bank);
+  const directory = mkdtempSync(join(scratch, 'chef-task-bank-'));
+  try {
+    for (const task of bank.tasks) {
+      const oracle = join(directory, `${task.id}-oracle.ts`);
+      writeFileSync(oracle, task.files.oracle);
+      for (const [name, contents, expected] of [
+        ['buggy', task.files.candidate, 1],
+        ['repaired', task.files.repaired, 0],
+        ['empty', task.files.empty, 1],
+      ] as const) {
+        const candidate = join(directory, `${task.id}-${name}.ts`);
+        writeFileSync(candidate, contents);
+        const result = Bun.spawnSync(['bun', oracle, candidate]);
+        if (result.exitCode !== expected)
+          errors.push(
+            `${task.id} ${name} control exited ${result.exitCode}, expected ${expected}.`,
+          );
+      }
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  return errors;
+}
+
+async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'initialize' && (argv.length === 3 || argv.length === 5)) {
+    const allowance =
+      argv.length === 5 ? { amount: Number(argv[3]), provenance: argv[4] ?? '' } : undefined;
+    process.stdout.write(`${JSON.stringify(await initialize(argv[1]!, argv[2]!, allowance))}\n`);
+    return 0;
+  }
+  if (argv[0] === 'read' && argv.length === 3) {
+    process.stdout.write(`${JSON.stringify(await initialize(argv[1]!, argv[2]!))}\n`);
+    return 0;
+  }
+  if (argv[0] === 'reserve' && argv.length === 5) {
+    process.stdout.write(
+      `${JSON.stringify(await reserve(argv[1]!, argv[2]!, argv[3]!, Number(argv[4])))}\n`,
+    );
+    return 0;
+  }
+  if (argv[0] === 'settle' && argv.length === 5) {
+    process.stdout.write(
+      `${JSON.stringify(await settle(argv[1]!, argv[2]!, argv[3]!, Number(argv[4])))}\n`,
+    );
+    return 0;
+  }
+  if (argv[0] === 'release' && argv.length === 4) {
+    process.stdout.write(`${JSON.stringify(await release(argv[1]!, argv[2]!, argv[3]!))}\n`);
+    return 0;
+  }
   if (argv[0] !== 'verify-task-bank' || argv.length !== 2) return 2;
   const path = argv[1] ?? '';
   if (!existsSync(path)) return 2;
@@ -269,7 +323,7 @@ function main(argv: string[]): number {
   } catch {
     return 2;
   }
-  const errors = verifyTaskBank(bank);
+  const errors = verifyTaskControls(bank);
   if (errors.length > 0) {
     process.stderr.write(`${errors.join('\n')}\n`);
     return 1;
@@ -278,4 +332,13 @@ function main(argv: string[]): number {
   return 0;
 }
 
-if (import.meta.main) process.exitCode = main(Bun.argv.slice(2));
+if (import.meta.main) {
+  main(Bun.argv.slice(2))
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((error: unknown) => {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
+}

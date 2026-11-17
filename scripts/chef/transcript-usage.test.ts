@@ -208,7 +208,7 @@ describe('Codex session logs', () => {
 describe('prices', () => {
   test('costs every call from the supplied table', () => {
     const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
-    const price = { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 };
+    const price = { asOf: '2026-11-17', input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 };
     const result = report(usage, { 'claude-opus-5-5': price });
     const expected =
       ((10 + 5 + 5) * 4 + (1_000 + 200 + 90_000) * 5 + 1_000 * 0.4 + (50 + 20 + 10) * 20) /
@@ -220,7 +220,7 @@ describe('prices', () => {
     const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
     expect(
       report(usage, {
-        'another-model': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+        'another-model': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
       }).cost,
     ).toBeUndefined();
   });
@@ -270,6 +270,59 @@ describe('totalUsage', () => {
       expect.objectContaining({ kind: 'malformed-line' }),
     ]);
   });
+
+  test('rejects malformed required token components instead of accounting them as zero', () => {
+    const path = write(join(sandbox, 'bad-component.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { total_tokens: 1 },
+            last_token_usage: { input_tokens: 'bad', output_tokens: 1 },
+          },
+        },
+      },
+    ]);
+    const transcript = readTranscript(path)!;
+    expect(transcript.calls).toEqual([]);
+    expect(transcript.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'malformed-usage',
+          message: expect.stringContaining('input_tokens'),
+        }),
+      ]),
+    );
+  });
+
+  test('rejects a supplied malformed cache component while allowing an absent optional cache component', () => {
+    const path = write(join(sandbox, 'bad-cache.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { total_tokens: 1 },
+            last_token_usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 'bad' },
+          },
+        },
+      },
+    ]);
+    expect(readTranscript(path)!.calls).toEqual([]);
+    expect(readTranscript(path)!.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'malformed-usage',
+          message: expect.stringContaining('cached_input_tokens'),
+        }),
+      ]),
+    );
+  });
 });
 
 describe('the command line', () => {
@@ -292,6 +345,7 @@ describe('the command line', () => {
       pricesPath,
       JSON.stringify({
         'claude-opus-5-5': {
+          asOf: '2026-11-17',
           input: 4,
           output: 20,
           cacheRead: 0.4,

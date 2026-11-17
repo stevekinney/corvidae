@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import {
   accountOutcome,
   assessBudget,
-  resumeBudget,
   verifyTaskBank,
   type OutcomeRecord,
 } from './outcome-accounting.ts';
@@ -89,7 +88,7 @@ describe('outcome accounting', () => {
       codex(33, 20, 2, '2026-11-17T20:58:08.000Z'),
     ]);
     const result = accountOutcome(outcome(path), {
-      'gpt-test': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+      'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
     });
     expect(result.tokens).toEqual({ uncachedInput: 30, cacheRead: 0, cacheWrite: 0, output: 3 });
     expect(result.includedTranscriptPaths).toHaveLength(1);
@@ -111,28 +110,23 @@ describe('outcome accounting', () => {
   });
 
   test('preserves absent allowances and stops dispatch when cumulative reservations reach one', () => {
-    expect(
-      assessBudget({ spentTokens: 12, reservedTokens: 4, hardLimitEnforced: false }),
-    ).toMatchObject({ allowanceTokens: 'unknown', mayDispatch: true, hardLimitEnforced: false });
+    expect(assessBudget({ spentTokens: 12, reservedTokens: 4 })).toMatchObject({
+      allowanceTokens: 'unknown',
+      mayDispatch: true,
+      hardLimitEnforced: false,
+    });
     expect(
       assessBudget({
         allowanceTokens: 16,
         spentTokens: 12,
         reservedTokens: 4,
-        hardLimitEnforced: true,
       }),
     ).toMatchObject({
       cumulativeCommittedTokens: 16,
       softLimitReached: true,
       mayDispatch: false,
-      hardLimitEnforced: true,
+      hardLimitEnforced: false,
     });
-    expect(
-      resumeBudget(
-        { allowanceTokens: 16, spentTokens: 4, reservedTokens: 3, hardLimitEnforced: true },
-        { spentTokens: 5, reservedTokens: 4, hardLimitEnforced: true },
-      ),
-    ).toMatchObject({ allowanceTokens: 16, spentTokens: 9, reservedTokens: 7 });
   });
 
   test('does not call an accepted attempt successful before complete delivery', () => {

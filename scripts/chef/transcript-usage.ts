@@ -49,10 +49,21 @@ export interface UsageProblem {
 }
 
 export interface Price {
+  asOf: string;
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
+}
+
+function validPrice(price: Price | undefined): price is Price {
+  return (
+    price !== undefined &&
+    !Number.isNaN(Date.parse(price.asOf)) &&
+    [price.input, price.output, price.cacheRead, price.cacheWrite].every(
+      (rate) => Number.isFinite(rate) && rate >= 0,
+    )
+  );
 }
 
 /** One model's share of a transcript's calls. */
@@ -94,6 +105,10 @@ export function contextOf(call: ModelCall): number {
 
 function numberAt(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function hasNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function parseLines(text: string): Record<string, unknown>[] {
@@ -154,6 +169,26 @@ export function usageProblems(text: string, provider: Provider): UsageProblem[] 
         line: index + 1,
         message: 'Model call usage is not an object.',
       });
+    else {
+      const fields = claimsClaudeCall
+        ? [
+            'input_tokens',
+            'output_tokens',
+            'cache_creation_input_tokens',
+            'cache_read_input_tokens',
+          ]
+        : ['input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens'];
+      for (const field of fields) {
+        const value = (usage as Record<string, unknown>)[field];
+        // Cache fields are optional in both transcript formats; supplied values must be numeric.
+        if (value !== undefined && !hasNumber(value))
+          problems.push({
+            kind: value === undefined ? 'missing-usage' : 'malformed-usage',
+            line: index + 1,
+            message: `Model call has no numeric ${field}.`,
+          });
+      }
+    }
   }
   return problems;
 }
@@ -192,6 +227,14 @@ export function claudeCodeCalls(entries: Record<string, unknown>[]): ModelCall[]
     // Claude Code writes `<synthetic>` entries for messages no model produced (an interrupted
     // turn, for example); they carry no usage and are not calls.
     if (message?.['model'] === '<synthetic>') continue;
+    if (
+      !hasNumber(usage['input_tokens']) ||
+      !hasNumber(usage['output_tokens']) ||
+      ['cache_creation_input_tokens', 'cache_read_input_tokens'].some(
+        (field) => usage[field] !== undefined && !hasNumber(usage[field]),
+      )
+    )
+      continue;
     const tools = toolIds.get(id) ?? new Set<string>();
     for (const block of Array.isArray(message?.['content'])
       ? (message['content'] as unknown[])
@@ -233,7 +276,16 @@ export function codexCalls(entries: Record<string, unknown>[]): ModelCall[] {
     const total = numberAt(
       (info?.['total_token_usage'] as Record<string, unknown> | undefined)?.['total_tokens'],
     );
-    if (last === undefined || total <= lastTotal) continue;
+    if (
+      last === undefined ||
+      !hasNumber(last['input_tokens']) ||
+      !hasNumber(last['output_tokens']) ||
+      ['cached_input_tokens', 'cache_write_input_tokens'].some(
+        (field) => last[field] !== undefined && !hasNumber(last[field]),
+      ) ||
+      total <= lastTotal
+    )
+      continue;
     lastTotal = total;
     const cached = numberAt(last['cached_input_tokens']);
     calls.push({
@@ -297,7 +349,7 @@ export function costOf(
   prices: Record<string, Price> | undefined,
 ): number | undefined {
   const price = prices?.[call.model];
-  if (price === undefined) return undefined;
+  if (!validPrice(price)) return undefined;
   return (
     (call.uncachedInput * price.input +
       call.cacheWrite * price.cacheWrite +
@@ -410,8 +462,14 @@ function readPrices(path: string): Record<string, Price> {
     throw new UsageError('A price table is a JSON object.');
   for (const [model, price] of Object.entries(parsed as Record<string, unknown>)) {
     const fields = price as Record<string, unknown>;
+    if (typeof fields?.['asOf'] !== 'string' || Number.isNaN(Date.parse(fields['asOf'])))
+      throw new UsageError(`Price for ${model} needs an ISO asOf date.`);
     for (const field of ['input', 'output', 'cacheRead', 'cacheWrite']) {
-      if (typeof fields?.[field] !== 'number')
+      if (
+        typeof fields?.[field] !== 'number' ||
+        !Number.isFinite(fields[field]) ||
+        fields[field] < 0
+      )
         throw new UsageError(`Price for ${model} needs a numeric ${field}.`);
     }
   }

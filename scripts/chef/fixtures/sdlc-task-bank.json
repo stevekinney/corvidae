@@ -8,52 +8,79 @@
       "family": "local-regression",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": false,
-      "permittedPaths": ["scripts/chef/transcript-usage.ts"],
-      "deliveryBoundary": "unit test",
-      "input": { "source": "return 0", "patch": "return 1", "expected": "1" },
-      "oracle": { "command": "bun -e \"console.log('1')\"", "expectedOutput": "1" }
+      "permittedPaths": ["fixtures/local-01/candidate.ts"],
+      "deliveryBoundary": "unit",
+      "files": {
+        "candidatePath": "fixtures/local-01/candidate.ts",
+        "candidate": "export const run=()=>Number('x')",
+        "repaired": "export const run=()=>Number.isNaN(Number('x'))?'invalid':'bad'",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/local-01/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='invalid')process.exit(1)"
+      }
     },
     {
       "id": "local-02",
       "family": "local-regression",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": true,
-      "permittedPaths": ["scripts/chef/outcome-accounting.ts"],
-      "deliveryBoundary": "unit test",
-      "input": { "source": "b,a", "patch": "sort", "expected": "a,b" },
-      "oracle": { "command": "bun -e \"console.log('a,b')\"", "expectedOutput": "a,b" }
+      "permittedPaths": ["fixtures/local-02/candidate.ts"],
+      "deliveryBoundary": "unit",
+      "files": {
+        "candidatePath": "fixtures/local-02/candidate.ts",
+        "candidate": "export const run=()=>['a','a'].join(',')",
+        "repaired": "export const run=()=>[...new Set(['a','a'])].join(',')",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/local-02/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='a')process.exit(1)"
+      }
     },
     {
       "id": "contract-01",
       "family": "cross-workspace-contract",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": false,
-      "permittedPaths": ["scripts/chef/direct-merge.ts"],
-      "deliveryBoundary": "direct merge receipt",
-      "input": { "source": "input", "patch": "map field", "expected": "field" },
-      "oracle": { "command": "bun -e \"console.log('field')\"", "expectedOutput": "field" }
+      "permittedPaths": ["fixtures/contract-01/producer.ts", "fixtures/contract-01/consumer.ts"],
+      "deliveryBoundary": "contract",
+      "files": {
+        "candidatePath": "fixtures/contract-01/candidate.ts",
+        "candidate": "export const run=()=>({id:'1'} as {id:string,name?:string}).name",
+        "repaired": "export const run=()=>({id:'1',name:'Ada'}).name",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/contract-01/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='Ada')process.exit(1)"
+      }
     },
     {
       "id": "contract-02",
       "family": "cross-workspace-contract",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": true,
-      "permittedPaths": ["scripts/chef/merge-gate.ts"],
-      "deliveryBoundary": "merge gate",
-      "input": { "source": "receipt", "patch": "preserve status", "expected": "accepted" },
-      "oracle": { "command": "bun -e \"console.log('accepted')\"", "expectedOutput": "accepted" }
+      "permittedPaths": ["fixtures/contract-02/producer.ts", "fixtures/contract-02/consumer.ts"],
+      "deliveryBoundary": "contract",
+      "files": {
+        "candidatePath": "fixtures/contract-02/candidate.ts",
+        "candidate": "export const run=()=>({id:'1',label:'READY'}).id",
+        "repaired": "export const run=()=>({id:'1',label:'READY'}).label.toLowerCase()",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/contract-02/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='ready')process.exit(1)"
+      }
     },
     {
       "id": "concurrency-01",
       "family": "concurrency",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": false,
-      "permittedPaths": ["scripts/chef/direct-merge.ts"],
-      "deliveryBoundary": "single merge",
-      "input": { "source": "two claimers", "patch": "lock", "expected": "one winner" },
-      "oracle": {
-        "command": "bun -e \"console.log('one winner')\"",
-        "expectedOutput": "one winner"
+      "permittedPaths": ["fixtures/concurrency-01/barrier.ts"],
+      "deliveryBoundary": "schedule",
+      "files": {
+        "candidatePath": "fixtures/concurrency-01/candidate.ts",
+        "candidate": "export const run=()=>['a','b'].length",
+        "repaired": "export const run=()=>['a'].length",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/concurrency-01/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!==1)process.exit(1)"
       }
     },
     {
@@ -61,22 +88,31 @@
       "family": "concurrency",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": true,
-      "permittedPaths": ["scripts/chef/gate-run.ts"],
-      "deliveryBoundary": "settled gate",
-      "input": { "source": "stale generation", "patch": "fence", "expected": "rejected" },
-      "oracle": { "command": "bun -e \"console.log('rejected')\"", "expectedOutput": "rejected" }
+      "permittedPaths": ["fixtures/concurrency-02/barrier.ts"],
+      "deliveryBoundary": "schedule",
+      "files": {
+        "candidatePath": "fixtures/concurrency-02/candidate.ts",
+        "candidate": "export const run=()=> 'stale-committed'",
+        "repaired": "export const run=()=> 'stale-rejected'",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/concurrency-02/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='stale-rejected')process.exit(1)"
+      }
     },
     {
       "id": "ui-01",
       "family": "agreed-ui-behavior",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": false,
-      "permittedPaths": ["applications/interborough/src/views"],
-      "deliveryBoundary": "design review",
-      "input": { "source": "label", "patch": "accessible label", "expected": "visible label" },
-      "oracle": {
-        "command": "bun -e \"console.log('visible label')\"",
-        "expectedOutput": "visible label"
+      "permittedPaths": ["fixtures/ui-01/render.ts"],
+      "deliveryBoundary": "a11y",
+      "files": {
+        "candidatePath": "fixtures/ui-01/candidate.ts",
+        "candidate": "export const run=()=>'<button>Save</button>'",
+        "repaired": "export const run=()=>'<button aria-label=\"Save draft\" disabled>Save</button>'",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/ui-01/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='<button aria-label=\"Save draft\" disabled>Save</button>')process.exit(1)"
       }
     },
     {
@@ -84,12 +120,15 @@
       "family": "agreed-ui-behavior",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": true,
-      "permittedPaths": ["components/cinder/src"],
-      "deliveryBoundary": "design review",
-      "input": { "source": "token", "patch": "selected token", "expected": "token applied" },
-      "oracle": {
-        "command": "bun -e \"console.log('token applied')\"",
-        "expectedOutput": "token applied"
+      "permittedPaths": ["fixtures/ui-02/render.ts"],
+      "deliveryBoundary": "a11y",
+      "files": {
+        "candidatePath": "fixtures/ui-02/candidate.ts",
+        "candidate": "export const run=()=>'<p>Loading</p>'",
+        "repaired": "export const run=()=>'<p role=\"status\" aria-live=\"polite\">Loading</p>'",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/ui-02/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='<p role=\"status\" aria-live=\"polite\">Loading</p>')process.exit(1)"
       }
     },
     {
@@ -97,12 +136,15 @@
       "family": "interrupted-delivery",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": false,
-      "permittedPaths": ["scripts/chef/deliver.ts"],
-      "deliveryBoundary": "resumed receipt",
-      "input": { "source": "cancelled attempt", "patch": "resume link", "expected": "one outcome" },
-      "oracle": {
-        "command": "bun -e \"console.log('one outcome')\"",
-        "expectedOutput": "one outcome"
+      "permittedPaths": ["fixtures/delivery-01/journal.ts"],
+      "deliveryBoundary": "journal",
+      "files": {
+        "candidatePath": "fixtures/delivery-01/candidate.ts",
+        "candidate": "export const run=()=>['merge','merge'].join(',')",
+        "repaired": "export const run=()=>['merge'].join(',')",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/delivery-01/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='merge')process.exit(1)"
       }
     },
     {
@@ -110,16 +152,15 @@
       "family": "interrupted-delivery",
       "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
       "heldOut": true,
-      "permittedPaths": ["scripts/chef/transcript-usage.ts"],
-      "deliveryBoundary": "outcome report",
-      "input": {
-        "source": "duplicate transcript",
-        "patch": "deduplicate",
-        "expected": "one accounting"
-      },
-      "oracle": {
-        "command": "bun -e \"console.log('one accounting')\"",
-        "expectedOutput": "one accounting"
+      "permittedPaths": ["fixtures/delivery-02/journal.ts"],
+      "deliveryBoundary": "journal",
+      "files": {
+        "candidatePath": "fixtures/delivery-02/candidate.ts",
+        "candidate": "export const run=()=>['email','email'].length",
+        "repaired": "export const run=()=>['email'].length",
+        "empty": "export const run=()=>undefined",
+        "oraclePath": "fixtures/delivery-02/oracle.ts",
+        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!==1)process.exit(1)"
       }
     }
   ]
