@@ -337,7 +337,7 @@ function storedFieldSchema(value: unknown): Record<string, unknown> {
     value !== null &&
     !Array.isArray(value) &&
     Object.keys(value).length === 1 &&
-    typeof (value as Record<string, unknown>)['$secret'] === 'string'
+    typeof Object.getOwnPropertyDescriptor(value, '$secret')?.value === 'string'
   ) {
     return { type: 'string', secret: true };
   }

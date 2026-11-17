@@ -73,10 +73,10 @@
   const secrets = $derived.by((): SchemaFormSecrets => {
     const listed = plugins.data?.plugins ?? [];
     return {
-      keys: listed.flatMap((plugin) =>
-        plugin.secrets.map((secret) => ({
+      keys: listed.flatMap((loaded) =>
+        loaded.secrets.map((secret) => ({
           key: secret.key,
-          group: plugin.descriptor.title,
+          group: loaded.descriptor.title,
           set: secret.set,
         })),
       ),
@@ -94,7 +94,7 @@
       },
       onRetry: () => void plugins.refetch(),
       onAdd: (key) => {
-        const owner = listed.find((plugin) => plugin.secrets.some((secret) => secret.key === key));
+        const owner = listed.find((loaded) => loaded.secrets.some((secret) => secret.key === key));
         if (owner !== undefined) adding = { plugin: owner.descriptor.name, key };
       },
       manage: {
