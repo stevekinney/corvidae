@@ -347,11 +347,11 @@ async function main(): Promise<number> {
   // open each card; the editors are named because they are the ones that bundle the most.
   const report = previewReport(live, staticNames, withoutCard);
   writeFileSync(join(projectDirectory, 'previews.json'), JSON.stringify(report, null, 2));
-  console.log(
-    `Editor previews: ${Object.entries(report.watched)
-      .map(([name, mode]) => `${name} ${mode}`)
-      .join(', ')}.`,
-  );
+  const watched: string[] = [];
+  for (const name of Object.keys(report.watched)) {
+    watched.push(`${name} ${report.watched[name] ?? 'missing'}`);
+  }
+  console.log(`Editor previews: ${watched.join(', ')}.`);
   const files = listFiles(projectDirectory, outputRoot);
   // The artifact service refuses a text file holding U+FFFD; every published file is text.
   for (const file of files) {
