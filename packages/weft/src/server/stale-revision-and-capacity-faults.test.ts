@@ -7,23 +7,26 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
-import { failureCategoryForFaultCode, isFaultCode } from '../core/fault-code.ts';
-import type { FailureCategory } from '../core/types/identity.ts';
-import { faultToHttpResponse } from './fault-to-http.ts';
-import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
-import { buildErrorResponses } from './openapi-error-responses.ts';
-import { buildOpenRpcComponentsErrors } from './openrpc-errors.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
 import {
-  assertFiniteFaultData,
-  FAULT_CODE_TO_HTTP_STATUS,
-  FAULT_CODE_TO_JSON_RPC_CODE,
-  shapeOperationFaultAsJson,
+  defineOperation,
+  isFaultCode,
   staleRevisionFault,
   type OperationFault,
-} from './operation-fault.ts';
-import { defineOperation } from './operation-registry.ts';
+} from '@lostgradient/backchannel';
+import {
+  assertFiniteFaultData,
+  buildErrorResponses,
+  buildOpenRpcComponentsErrors,
+  createOperationRegistry,
+  FAULT_CODE_TO_HTTP_STATUS,
+  FAULT_CODE_TO_JSON_RPC_CODE,
+  faultToHttpResponse,
+  faultToJsonRpcError,
+  generateOpenRpcDocument,
+  shapeOperationFaultAsJson,
+} from '@lostgradient/backchannel/internals';
+import { failureCategoryForFaultCode } from '../core/fault-code.ts';
+import type { FailureCategory } from '../core/types/identity.ts';
 import { isRecord } from './protocol.test-support.ts';
 
 type AddedFault = Extract<

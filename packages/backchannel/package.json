@@ -1,0 +1,32 @@
+{
+  "name": "@lostgradient/backchannel",
+  "private": true,
+  "description": "A transport-neutral operation layer: define an operation once, then serve it over REST, JSON-RPC (HTTP, WebSocket, stdio) and Server-Sent Events, with its OpenAPI, OpenRPC and AsyncAPI documents generated from the catalog. It imports no Bun or Node API.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./internals": "./src/internals.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.browser.json && bun ../../scripts/typecheck-contracts.ts",
+    "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/storage": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

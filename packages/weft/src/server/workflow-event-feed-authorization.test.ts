@@ -12,14 +12,12 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { type AuthorizationScope, principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
-import type { AuthorizationScope } from './authorization-scope.ts';
+import { workflow, type WorkflowContext } from '../core/types.ts';
 import { serve, type WeftServer } from './index.ts';
 import { openWebSocket, waitForMessage } from './json-rpc-websocket-client.test-support.ts';
-import { principalFromApiKey } from './principal.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (ctx: WorkflowContext) {
   return yield* ctx.waitForSignal<string>('release');

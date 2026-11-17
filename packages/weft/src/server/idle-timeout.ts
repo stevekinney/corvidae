@@ -1,7 +1,7 @@
 /**
  * How long Bun lets a connection stay silent before it closes it, for the server `serve()` starts.
  */
-import { DEFAULT_SSE_HEARTBEAT_INTERVAL_MS } from './operations/sse-stream.ts';
+import { DEFAULT_SSE_HEARTBEAT_INTERVAL_MS } from '@lostgradient/backchannel/internals';
 import { MAX_POLL_TIMEOUT } from './runtime/task-polling.ts';
 
 /** Seconds Bun waits past the longest silence a connection must survive. @internal Test export. */

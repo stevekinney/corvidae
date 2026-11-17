@@ -4,6 +4,8 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { ActivityRegistry } from '../../core/activity-registry.ts';
 import { Engine } from '../../core/engine.ts';
@@ -13,12 +15,9 @@ import { buildRegistrationEntry } from '../../core/engine/registration.ts';
 import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
 import { buildWorkflowManifestFromDefinition } from '../../core/registry-workflow-manifest.ts';
 import { workflowSource } from '../../core/source/index.ts';
-import type { WorkflowDefinition } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowDefinition, workflow } from '../../core/types.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import {
   preloadWorkflowRevisionOperation,

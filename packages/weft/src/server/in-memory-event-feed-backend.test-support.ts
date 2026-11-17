@@ -6,11 +6,8 @@
  * @module server/in-memory-event-feed-backend
  */
 
-import type {
-  EventEnvelope,
-  EventSelector,
-  WorkflowEventFeedBackend,
-} from './workflow-event-feed.ts';
+import type { EventSelector } from '@lostgradient/backchannel/internals';
+import type { EventEnvelope, WorkflowEventFeedBackend } from './workflow-event-feed.ts';
 
 export type InMemoryEventBackend = WorkflowEventFeedBackend & {
   append(envelope: EventEnvelope): Promise<void>;

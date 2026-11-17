@@ -19,9 +19,14 @@
     sessionId: string;
     /** Whether a run is going, so the list is read again when it stops. */
     streaming: boolean;
+    /**
+     * Whether the chat's header already says Waiting on you. One run waiting is then said once, by
+     * the header, and the line stays out, so a phone keeps the room for the transcript (COR-2327 B1).
+     */
+    headerSaysWaiting?: boolean;
   }
 
-  let { sessionId, streaming }: SessionTasksProps = $props();
+  let { sessionId, streaming, headerSaysWaiting = false }: SessionTasksProps = $props();
 
   const PAGE_SIZE = 50;
 
@@ -71,6 +76,7 @@
     const first = rows[0];
     if (first === undefined) return undefined;
     if (needing[0] !== undefined) {
+      if (needing.length === 1 && headerSaysWaiting) return undefined;
       return {
         text: CHAT_COPY.strip.waiting(needing.length),
         taskId: needing[0].id,

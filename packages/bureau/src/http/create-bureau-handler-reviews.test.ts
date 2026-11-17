@@ -5,7 +5,7 @@
  */
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { createToolbox, type Tool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 

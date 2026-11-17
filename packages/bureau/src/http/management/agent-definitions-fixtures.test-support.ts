@@ -11,7 +11,7 @@ import {
   createOperationHandler,
   unauthenticatedLocalAuthContext,
   type AuthenticatedPrincipal,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 import { agentFileText, KNOWN_MODEL } from '../../testing/agent-file-fixtures.test-support.ts';
 import {

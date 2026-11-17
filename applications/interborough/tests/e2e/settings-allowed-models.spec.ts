@@ -14,6 +14,7 @@ import { ALLOWED_MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { withKeylessProvider, withSampleCatalog } from './sample-catalog.ts';
 import { bureauCall } from './task-support.ts';
 
@@ -314,7 +315,7 @@ test.describe('Settings at the three widths', () => {
   test.describe('on a touch phone', () => {
     test.use({ hasTouch: true, isMobile: true });
 
-    test('phone: the section nav is a Section select above the content, and Restart now is a full-width 44px button', async ({
+    test('phone: the section nav is a Section select above the content, and the restart buttons are compact and side by side', async ({
       page,
       checkA11y,
     }) => {
@@ -339,28 +340,40 @@ test.describe('Settings at the three widths', () => {
         'Let agents schedule themselves to continue later.',
       );
 
-      // The banner stacks its buttons under its words (COR-2314), each as wide as the words' column,
-      // beside the glyph, and 44px tall.
+      // The banner's two buttons are compact and side by side under its words (COR-2511), each
+      // narrower than half the banner, with a 44px hit area.
       const banner = page.getByTestId('settings-restart-summary');
       await expect(banner).toContainText('1 change waits for a restart');
-      const wordsBox = await banner.locator('.cinder-banner__content').boundingBox();
-      expect(wordsBox).not.toBeNull();
-      for (const name of ['Revert 1 change', 'Restart now']) {
-        const box = await banner.getByRole('button', { name }).boundingBox();
+      const revertButton = banner.getByRole('button', { name: 'Revert 1 change' });
+      const restartButton = banner.getByRole('button', { name: 'Restart now' });
+      await expect(revertButton).toBeVisible();
+      await expect(restartButton).toBeVisible();
+      const boxes = await readBoxes(page, {
+        banner,
+        revert: revertButton,
+        restart: restartButton,
+      });
+      for (const key of ['revert', 'restart'] as const) {
+        expect(boxes[key].width, `${key} is narrower than half the banner`).toBeLessThan(
+          boxes.banner.width / 2,
+        );
+      }
+      expect(
+        boxes.revert.y < boxes.restart.y + boxes.restart.height &&
+          boxes.restart.y < boxes.revert.y + boxes.revert.height,
+        'the two buttons share a line',
+      ).toBe(true);
+      for (const [name, button] of [
+        ['Revert 1 change', revertButton],
+        ['Restart now', restartButton],
+      ] as const) {
         // The buttons paint compact and carry an invisible 44px hit area, a positioned
-        // pseudo-element that takes no space; stacked buttons' hit areas overlap, so read the
-        // pseudo-element's own height rather than scanning for the points that reach the button.
-        const hitAreaHeight = await banner.getByRole('button', { name }).evaluate((element) => {
+        // pseudo-element that takes no space, so read the pseudo-element's own height.
+        const hitAreaHeight = await button.evaluate((element) => {
           const hitArea = getComputedStyle(element, '::before');
           return hitArea.position === 'absolute' ? Number.parseFloat(hitArea.height) : 0;
         });
         expect(hitAreaHeight, `${name} has a 44px tall hit area`).toBeGreaterThanOrEqual(44);
-        expect(Math.round(box?.x ?? 0), `${name} starts under the words`).toBe(
-          Math.round(wordsBox?.x ?? -1),
-        );
-        expect(Math.round(box?.width ?? 0), `${name} is as wide as the words`).toBe(
-          Math.round(wordsBox?.width ?? -1),
-        );
       }
 
       // The question before a restart opens as a bottom sheet with the same sentence.

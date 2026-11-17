@@ -3,7 +3,7 @@ import { createCatalogSnapshot, createLiveOperationRegistry } from '../index.ts'
 
 import { z } from 'zod';
 
-import { defineOperation } from '../server/operation-registry.ts';
+import { defineOperation } from '@lostgradient/backchannel';
 import { executeApi, formatOperationDescription } from './api.ts';
 
 describe('api command', () => {

@@ -22,7 +22,7 @@ import {
 } from '@lostgradient/operative';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';

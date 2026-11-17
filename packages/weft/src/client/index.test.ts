@@ -1,12 +1,11 @@
+import { AUTHORIZATION_SCOPES } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { query, workflow } from '../core/types.ts';
-import { AUTHORIZATION_SCOPES } from '../server/authorization-scope.ts';
+import { query, workflow, type WorkflowContext } from '../core/types.ts';
 import { serve, type WeftServer } from '../server/index.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../server/local-user-request.test-support.ts';
 import {

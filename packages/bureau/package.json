@@ -24,6 +24,7 @@
     "@ag-ui/core": "catalog:",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/interborough-plugin": "workspace:*",
+    "@lostgradient/backchannel": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",

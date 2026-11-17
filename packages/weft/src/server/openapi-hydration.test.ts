@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  generateOpenApiDocument,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { serve, type WeftServer } from './index.ts';
-import { generateOpenApiDocument } from './openapi.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
 
 describe('OpenAPI hydration', () => {
   const servers: WeftServer[] = [];

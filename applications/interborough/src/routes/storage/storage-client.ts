@@ -23,7 +23,8 @@
  * - `conditional-batch` response body: JSON `{ applied: boolean }`.
  *
  */
-import { HttpClientError, isFaultCode, type FaultCode, type HttpClient } from '@lostgradient/weft';
+import { isFaultCode, type FaultCode } from '@lostgradient/backchannel';
+import { HttpClientError, type HttpClient } from '@lostgradient/weft';
 
 /** The slice of `HttpClient` this module needs — its resolved connection, never a typed operation. */
 export type StorageConnection = Pick<HttpClient, 'baseUrl' | 'headers'>;

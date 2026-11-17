@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import type { Engine } from '../core/engine.ts';
-import { principalFromApiKey } from '../server/principal.ts';
 import { assertScope } from './access.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';
 import { isWorkflowSearchResourceUri, listMcpResourceTemplates } from './resources.ts';

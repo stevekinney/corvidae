@@ -5,7 +5,11 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { type AuthConfig, type AuthorizationScope, principalFromApiKey } from '@lostgradient/weft';
+import {
+  type AuthConfig,
+  type AuthorizationScope,
+  principalFromApiKey,
+} from '@lostgradient/backchannel';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';

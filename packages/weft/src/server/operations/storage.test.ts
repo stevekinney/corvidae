@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import type { z } from 'zod';
 
+import { anonymousPrincipal, principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
-import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import { storageCapabilitiesOperation } from './storage-capabilities.ts';
 import { storageGetOutput, storagePutInput } from './storage-schemas.ts';

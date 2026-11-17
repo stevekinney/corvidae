@@ -24,6 +24,8 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { RemoteWorkerJsonValue } from '../../worker/protocol.ts';
 import type {
   RoutingPolicy,
@@ -33,9 +35,7 @@ import type {
   WorkerSummary,
   WorkerTransport,
 } from '../../worker/registry.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 
 const listWorkersInput = z.object({});
 
@@ -185,6 +185,6 @@ export function createListWorkersRestBinding(): UnknownRestBinding {
     inputSources: {},
     extractInput: async () => ({}),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   };
 }

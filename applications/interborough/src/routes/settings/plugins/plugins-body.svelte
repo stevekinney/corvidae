@@ -19,11 +19,11 @@
     Link,
     ListDetail,
     SelectableRow,
-    Skeleton,
     StatusDot,
   } from '@lostgradient/cinder';
   import { useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
   import { onDestroy, tick, untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
@@ -85,6 +85,8 @@
   let { plugins, schema, snapshot: settings }: Props = $props();
 
   const copy = PLUGINS_COPY;
+  /** A phone: the open plugin's pane takes no inset of its own, so its text starts at the page's edge. */
+  const phone = new MediaQuery('(max-width: 39.99rem)', false);
   const queryClient = useQueryClient();
   const selectionLocation = routerSelectionLocationFor('/settings/plugins');
 
@@ -417,6 +419,7 @@
           openFirst
           selectionParameter="plugin"
           {selectionLocation}
+          flushDetail={phone.current}
           storageKey="interborough-settings-plugins"
         >
           {#snippet header()}
@@ -494,16 +497,30 @@
       <Button variant="secondary" size="sm" onclick={tryAgain}>{copy.loading.tryAgain}</Button>
     </div>
   {:else}
-    <!-- The navigation and heading are real; the rows are placeholders after 300 ms, then say it is slow. -->
-    <Skeleton
-      variant="card"
-      lines={4}
-      delay={300}
-      stillLoadingAfter={10_000}
-      stillLoadingLabel={copy.loading.stillLoading}
-      label={copy.loading.label}
-      onCancel={cancelLoading}
-    />
+    <!-- The navigation and heading are real. The placeholder is the loaded page's own frame and
+         panes with nothing in them: after 300 ms a list of row placeholders beside a block of
+         lines (a list alone on a phone), announced once as loading, and after ten seconds it says
+         it is slow and offers Cancel. The list's width is the loaded page's, so nothing moves. -->
+    <div class="ib-plugins__frame" data-shortcut-region="list-detail" data-testid="plugins-loading">
+      <ListDetail
+        items={[] as PluginStanding[]}
+        key={(plugin: PluginStanding) => plugin.descriptor.name}
+        label={copy.listLabel}
+        detailLabel={copy.detailLabel}
+        loading
+        loadingLabel={copy.loading.label}
+        onLoadingCancel={cancelLoading}
+        storageKey="interborough-settings-plugins"
+      >
+        {#snippet header()}
+          <div class="ib-plugins__list-top">
+            <h2 class="ib-plugins__heading">{copy.listHeader.heading}</h2>
+          </div>
+        {/snippet}
+        {#snippet list()}{/snippet}
+        {#snippet detail()}{/snippet}
+      </ListDetail>
+    </div>
   {/if}
 </div>
 
@@ -540,6 +557,19 @@
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     overflow: hidden;
+  }
+
+  /* On a phone the list and the open plugin are one pane at a time, flat on the page: the frame's
+     border, radius and fixed height go, so there is no box in the page's own padding, and the open
+     plugin's pane adds no inline inset of its own (COR-2512, through ListDetail's `flushDetail`).
+     The list and the open plugin are told apart by the stacked layout's own Back button. */
+  @media (max-width: 39.99rem) {
+    .ib-plugins__frame {
+      block-size: auto;
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+    }
   }
 
   .ib-plugins__alert {

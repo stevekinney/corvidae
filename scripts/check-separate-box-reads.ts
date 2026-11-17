@@ -296,7 +296,7 @@ export const ALLOWED_INSTANCES: Record<string, { count: number; reason: string }
         'schedules-detail.spec.ts': 7,
         'schedules-new.spec.ts': 3,
         'schedules-states.spec.ts': 2,
-        'settings-allowed-models.spec.ts': 3,
+        'settings-allowed-models.spec.ts': 1,
         'settings-general.spec.ts': 1,
         'settings-models.spec.ts': 3,
         'shell-states.spec.ts': 1,

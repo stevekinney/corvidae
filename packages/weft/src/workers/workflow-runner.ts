@@ -1,4 +1,4 @@
-import { copyBytesToArrayBuffer } from '../core/byte-arrays.ts';
+import { copyBytesToArrayBuffer } from '@lostgradient/backchannel/internals';
 import { advanceCheckpoint, serializeCheckpoint } from '../core/checkpoint.ts';
 import type { ContextOperationRequest } from '../core/context.ts';
 import { resolveWorkflowVersionPatch } from '../core/context/version-patching.ts';

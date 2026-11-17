@@ -6,13 +6,12 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { query, signal, update, workflow } from '../core/types.ts';
+import { type WorkflowContext, query, signal, update, workflow } from '../core/types.ts';
 import { StandardSchemaValidationError } from '../core/types/standard-schema-validate.ts';
 import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
 import { waitForWorkflowStatus } from './operations/operation-test-helpers.test-support.ts';
 import {
   queryWorkflowOperation,

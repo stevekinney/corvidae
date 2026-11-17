@@ -6,16 +6,15 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import type { AuthContext } from '../server/authentication.ts';
+import { createOperationHandler, defineOperation } from '@lostgradient/backchannel';
+import type { AuthContext } from '@lostgradient/backchannel/internals';
 import {
   createTestHost,
   readerContext,
   strangerContext,
   testEventSchema,
   type TestHost,
-} from '../server/handler/operation-handler.test-support.ts';
-import { createOperationHandler } from '../server/handler/operation-handler.ts';
-import { defineOperation } from '../server/operation-registry.ts';
+} from '@lostgradient/backchannel/testing';
 import type { NegotiationMode } from './mcp-client.test-support.ts';
 import { createOperationMcpMount, type OperationMcpMountOptions } from './operation-tools.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';
