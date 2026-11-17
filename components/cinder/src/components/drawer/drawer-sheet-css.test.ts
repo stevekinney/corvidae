@@ -66,9 +66,8 @@ describe('drawer.css footer bar (COR-2322 AC2)', () => {
   });
 
   test('a side drawer keeps its footer rule and its padding', () => {
-    expect(declared('.cinder-drawer__footer', 'border-block-start')).toBe(
-      '1px solid var(--cinder-border-muted)',
-    );
+    // The rule is a 1px line that is transparent until the body scrolls (COR-2448 AC4).
+    expect(declared('.cinder-drawer__footer', 'border-block-start')).toBe('1px solid');
     expect(declared('.cinder-drawer__footer', 'padding-block-end')).toBeUndefined();
     expect(declared('.cinder-drawer__footer::before', 'content')).toBeUndefined();
   });

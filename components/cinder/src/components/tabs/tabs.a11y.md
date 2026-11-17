@@ -46,5 +46,5 @@ Consumers should avoid disabling the currently selected tab. If it happens, sele
 
 ## Narrow collapse
 
-- Below `collapseBelow` the tab bar is hidden with the `hidden` attribute, so its tabs leave the tab order and the accessibility tree, while `TabPanel`'s `aria-labelledby` still resolves to them.
+- When the bar does not fit its container (`collapseOnOverflow`), or below `collapseBelow`, the tab bar is hidden with the `hidden` attribute, so its tabs leave the tab order and the accessibility tree, while `TabPanel`'s `aria-labelledby` still resolves to them.
 - The select that replaces the bar is named "Tab" (`collapseLabel`) and shows the current tab's label with its prefix; the listbox exposes disabled tabs as disabled options.

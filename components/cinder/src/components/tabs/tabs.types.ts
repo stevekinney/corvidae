@@ -78,10 +78,18 @@ export type TabsProps = {
    */
   fill?: boolean;
   /**
-   * Viewport width below which a horizontal tab bar collapses to a select reading "Tab: Access",
-   * so a phone shows one full-width control instead of a bar that scrolls sideways. The tabs stay
-   * in the page, hidden, and the panels keep their names. A simple CSS length such as `'640px'`,
-   * or `false` to always show the tab bar. Vertical tabs never collapse. Default `'640px'`.
+   * Collapses a horizontal tab bar into a select reading "Tab: Access" when the bar does not fit
+   * its container, measured as FilterBar measures its row: the bar's content width against the
+   * width it has. Tabs that fit stay a bar at every width, so a phone with three short tabs keeps
+   * them. The tabs stay in the page, hidden, and the panels keep their names. Set `false` to keep
+   * a bar that scrolls sideways instead. Vertical tabs never collapse.
+   * @default true
+   */
+  collapseOnOverflow?: boolean;
+  /**
+   * Viewport width below which a horizontal tab bar always collapses to the select, whether or not
+   * it fits. A simple CSS length such as `'640px'`, or `false` for no viewport rule. Vertical tabs
+   * never collapse. Default `false`.
    */
   collapseBelow?: string | false;
   /**

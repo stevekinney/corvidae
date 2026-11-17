@@ -87,6 +87,26 @@
     flex: 1;
   }
 
+  /* ── Stacked (the options do not fit the room, COR-2448 AC3) ────────────── */
+
+  /* The control falls back to a radio list: one full-width option per row, none clipped. It takes the
+     full width like `fullWidth`, and the vertical rules below draw the separators between rows. */
+  .cinder-segmented-control-container[data-cinder-stacked] {
+    display: flex;
+    inline-size: calc(100% + 2 * var(--_cinder-segmented-control-ring-room));
+  }
+
+  .cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control {
+    inline-size: 100%;
+    align-self: stretch;
+    align-items: stretch;
+  }
+
+  .cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control-option {
+    justify-content: flex-start;
+    text-align: start;
+  }
+
   /* ── Vertical orientation ───────────────────────────────────────────────── */
 
   .cinder-segmented-control[data-cinder-orientation='vertical'] {
