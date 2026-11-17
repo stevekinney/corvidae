@@ -952,7 +952,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole."
+      "description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole."
     },
     {
       "path": "surface.hover",
@@ -1321,7 +1321,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Overlay backdrop scrim color."
+      "description": "Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright."
     },
     {
       "path": "overlay.blur",
@@ -1493,6 +1493,15 @@
       "themeAware": true,
       "deprecated": false,
       "description": "Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card."
+    },
+    {
+      "path": "selected.background",
+      "cssProperty": "--cinder-selected-background",
+      "category": "color",
+      "public": true,
+      "themeAware": false,
+      "deprecated": false,
+      "description": "Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links."
     },
     {
       "path": "list.row.min-height",
@@ -2690,7 +2699,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Code surface background. Light arm MUST stay pure `surface-raised` (not `surface-inset`) -- Shiki's github-light token colors measure their AA contrast against that surface with almost no margin; darkening it fails the axe sweep. See code-block.css for the full rationale. Dark arm uses `surface-inset` for the deeper github-dark ground."
+      "description": "Code surface background: the recessed inset well in both themes (owner, 2026-11-16), so a code block inside a white card or panel reads as sunk into it rather than as a second white box. Shiki's github-light colors that fall under AA on the light inset are lifted to Cinder text roles in code-block.css; see check-token-contrast-code-block.test.ts."
     },
     {
       "path": "code-block.edge",
@@ -2700,7 +2709,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues."
+      "description": "The block's edge against the page. Transparent in both themes: the inset field sets the block apart by its fill alone, so the block never carries two cues and never draws a box inside a card. A consumer can set it to draw a hairline."
     },
     {
       "path": "code-block.font-size",
@@ -3350,6 +3359,7 @@
     "gap.stack": "--cinder-gap-stack",
     "gap.inline": "--cinder-gap-inline",
     "skeleton.background": "--cinder-skeleton-background",
+    "selected.background": "--cinder-selected-background",
     "list.row.min-height": "--cinder-list-row-min-height",
     "pad.control": "--cinder-pad-control",
     "pad.card": "--cinder-pad-card",
@@ -3696,6 +3706,7 @@
     "--cinder-gap-stack": "gap.stack",
     "--cinder-gap-inline": "gap.inline",
     "--cinder-skeleton-background": "skeleton.background",
+    "--cinder-selected-background": "selected.background",
     "--cinder-list-row-min-height": "list.row.min-height",
     "--cinder-pad-control": "pad.control",
     "--cinder-pad-card": "pad.card",
@@ -4042,6 +4053,7 @@
     "--cinder-gap-stack": ["gap.stack"],
     "--cinder-gap-inline": ["gap.inline"],
     "--cinder-skeleton-background": ["skeleton.background"],
+    "--cinder-selected-background": ["selected.background"],
     "--cinder-list-row-min-height": ["list.row.min-height"],
     "--cinder-pad-control": ["pad.control"],
     "--cinder-pad-card": ["pad.card"],
@@ -4408,6 +4420,7 @@
       "chart.ramp.neutral",
       "chart.ramp.positive",
       "skeleton.background",
+      "selected.background",
       "status.success.contrast",
       "status.success.solid",
       "status.success.solid.active",

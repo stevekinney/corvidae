@@ -45,6 +45,9 @@ export function breadcrumbTrail(
     const match = matchRoute(path, table);
     const crumb = table.find((route) => route.pattern === match?.pattern)?.crumb;
     if (match === null || crumb === undefined) continue;
+    // A route that ends in `*` owns every address below it, so a leading part of the address is
+    // not a page of its own: the plugin page at `/plugins/<plugin>/reviews/queue` is one crumb.
+    if (match.pattern.endsWith('/*') && length < segments.length) continue;
     const label =
       labels.get(path) ??
       (typeof crumb === 'string'

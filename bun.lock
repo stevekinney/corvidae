@@ -55,6 +55,7 @@
         "@lostgradient/plugin-anthropic": "workspace:*",
         "@lostgradient/plugin-demo": "workspace:*",
         "@lostgradient/plugin-gemini": "workspace:*",
+        "@lostgradient/plugin-github": "workspace:*",
         "@lostgradient/plugin-guardrails": "workspace:*",
         "@lostgradient/plugin-inspectors": "workspace:*",
         "@lostgradient/plugin-ollama": "workspace:*",
@@ -852,6 +853,20 @@
         "typescript": "catalog:",
       },
     },
+    "plugins/github": {
+      "name": "@lostgradient/plugin-github",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/guardrails": {
       "name": "@lostgradient/plugin-guardrails",
       "dependencies": {
@@ -1374,6 +1389,8 @@
     "@lostgradient/plugin-demo": ["@lostgradient/plugin-demo@workspace:plugins/demo"],
 
     "@lostgradient/plugin-gemini": ["@lostgradient/plugin-gemini@workspace:plugins/gemini"],
+
+    "@lostgradient/plugin-github": ["@lostgradient/plugin-github@workspace:plugins/github"],
 
     "@lostgradient/plugin-guardrails": ["@lostgradient/plugin-guardrails@workspace:plugins/guardrails"],
 

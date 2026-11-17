@@ -199,6 +199,43 @@ export interface TaskInspectionStep {
    */
   readonly effectiveContext: EffectiveContextRecord | null;
 }
+/** One registration of a live run's hook plan, as `inspect` lists it (COR-2115): redacted, with no handler. */
+export interface TaskInspectionHook {
+  /** The registration's stable identity. */
+  readonly id: string;
+  /** The hook point it is registered at, such as `beforeToolExecution`. */
+  readonly hookPoint: string;
+  /** Who registered it, when one said: `bureau`, `agent`, `direct`, or a plugin's name. */
+  readonly source: string | null;
+  /** Higher runs first. */
+  readonly priority: number;
+  /** Whether replaying the hook after a restart is safe (`safe`) or may repeat its effects (`effectful`). */
+  readonly replay: 'safe' | 'effectful';
+}
+
+/** One registration of a run's plan that threw, with how often and when it last did. */
+export interface TaskInspectionFailedHook {
+  readonly hookId: string;
+  readonly hookPoint: string;
+  readonly source: string | null;
+  /** How many times it threw. At least one. */
+  readonly count: number;
+  /** ISO-8601 time of its latest failure. */
+  readonly lastFailedAt: string;
+}
+
+/** What {@link BureauTasks.inspect} reads about the hooks of one task's run. */
+export interface TaskInspectionHooks {
+  /**
+   * The plan of a run that is still going, as the run reads it now: after a restart, the plan the
+   * recovered run holds. `null` for a run that has ended, for one this process does not hold, and
+   * for one whose plan cannot be read; an empty list for a live run whose plan holds no hook.
+   */
+  readonly plan: readonly TaskInspectionHook[] | null;
+  /** The registrations of the run's plan that threw, latest failure first, for live and settled runs. */
+  readonly failed: readonly TaskInspectionFailedHook[];
+}
+
 /** What {@link BureauTasks.inspect} reads about one task. */
 export interface TaskInspection {
   readonly task: TaskView;
@@ -220,6 +257,8 @@ export interface TaskInspection {
    * engine, whose steps are not kept.
    */
   readonly steps: readonly TaskInspectionStep[];
+  /** The run's hook plan while it is live, and the hooks that threw (COR-2115). */
+  readonly hooks: TaskInspectionHooks;
 }
 /** How many of a run's newest steps {@link TaskInspection.steps} lists when no step is asked for. */
 export const INSPECTED_STEP_LIMIT = 50;

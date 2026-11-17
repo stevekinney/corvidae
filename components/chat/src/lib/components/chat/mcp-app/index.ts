@@ -11,6 +11,7 @@ export {
 } from './mcp-app-content-security-policy.ts';
 export { default as McpApp } from './mcp-app.svelte';
 export type {
+  McpAppOpenLinkHandler,
   McpAppProps,
   McpAppResource,
   McpAppResourceLoader,

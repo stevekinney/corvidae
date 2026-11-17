@@ -1,30 +1,30 @@
 {
   "plugin": "inspectors",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entries": [
     {
       "kind": "configuration",
       "id": "inspectors",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "schema": "sha256:93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225"
     },
     {
       "kind": "panel",
       "id": "inspectors:pending-review",
-      "version": "1.0.0",
-      "schema": "sha256:35b2a7d4770fe6ba40c5620b0b9744f36ab2279501f1cf8a63c83821466f72bf"
+      "version": "1.0.1",
+      "schema": "sha256:5c2158263a82973eba08b2a376c393ce14548bfedf504935d75b6d840b2eb964"
     },
     {
       "kind": "panel",
       "id": "inspectors:run-inspector",
-      "version": "1.0.0",
-      "schema": "sha256:6500e38d4ac04f1632fbced15b6b576dbdeebce9aa05d285eb326e072b5e709b"
+      "version": "1.0.1",
+      "schema": "sha256:94fd4bcd7495d850b5a56631bb7edc5e331cbd1f2174fc04d93b695376b4f8e0"
     },
     {
       "kind": "panel",
       "id": "inspectors:workflow-revision-review",
-      "version": "1.0.0",
-      "schema": "sha256:3662e38bcaf9ecf5de88a67031c715d41a108d863453edcb764aba4e9e196bab"
+      "version": "1.0.1",
+      "schema": "sha256:ac3860356c25c7ec275dcbe588705d9c1beb455612eda907e12c7fd10c2c1d4c"
     }
   ]
 }

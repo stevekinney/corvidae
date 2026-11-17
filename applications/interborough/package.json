@@ -35,6 +35,7 @@
     "@lostgradient/plugin-anthropic": "workspace:*",
     "@lostgradient/plugin-demo": "workspace:*",
     "@lostgradient/plugin-gemini": "workspace:*",
+    "@lostgradient/plugin-github": "workspace:*",
     "@lostgradient/plugin-guardrails": "workspace:*",
     "@lostgradient/plugin-inspectors": "workspace:*",
     "@lostgradient/plugin-ollama": "workspace:*",

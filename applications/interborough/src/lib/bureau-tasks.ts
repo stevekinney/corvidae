@@ -372,6 +372,51 @@ export async function inspectTaskStep(
   return answer.steps.find((entry) => entry.step === step) ?? null;
 }
 
+/** One registration of a live run's hook plan: its identity, hook point, who registered it, priority and replay. */
+export const taskHookSchema = z.object({
+  id: z.string(),
+  hookPoint: z.string(),
+  source: z.string().nullable(),
+  priority: z.number(),
+  replay: z.enum(['safe', 'effectful']),
+});
+
+/** One registration of a live run's hook plan. */
+export type TaskHook = z.infer<typeof taskHookSchema>;
+
+/** One registration of a run's plan that threw: how often, and when it last did. Never the error's text. */
+export const taskFailedHookSchema = z.object({
+  hookId: z.string(),
+  hookPoint: z.string(),
+  source: z.string().nullable(),
+  count: z.number().int().min(1),
+  lastFailedAt: z.string(),
+});
+
+/** One registration of a run's plan that threw. */
+export type TaskFailedHook = z.infer<typeof taskFailedHookSchema>;
+
+const inspectHooksAnswerSchema = z.object({
+  hooks: z.object({
+    plan: z.array(taskHookSchema).nullable(),
+    failed: z.array(taskFailedHookSchema),
+  }),
+});
+
+/**
+ * A run's hooks (`bureau.tasks.inspect`, COR-2115): the plan of a run that is still going (`null`
+ * once it has ended, and when the plan cannot be read) and the registrations of its plan that
+ * threw. A task the caller may not see is answered as a missing one: a not-found fault.
+ */
+export type TaskHooks = z.infer<typeof inspectHooksAnswerSchema>['hooks'];
+
+/** The hook plan and the failed hooks of one task. */
+export async function inspectTaskHooks(taskId: string, options?: Options): Promise<TaskHooks> {
+  return inspectHooksAnswerSchema.parse(
+    await callBureau('bureau.tasks.inspect', { taskId }, options),
+  ).hooks;
+}
+
 const cancelAnswerSchema = z.object({
   taskId: z.string(),
   receipt: taskCancelReceiptSchema,

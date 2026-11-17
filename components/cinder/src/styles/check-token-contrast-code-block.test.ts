@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'bun:test';
 
 import githubDark from '@shikijs/themes/github-dark';
+import githubLight from '@shikijs/themes/github-light';
 
 import type { Rgb } from '../tokens/runtime/contrast/index.ts';
 
@@ -59,6 +60,105 @@ function liftedDarkColors(): ReadonlyMap<string, string> {
   }
   return lifted;
 }
+
+/**
+ * The light lifts `code-block.css` makes: each rule that matches a github-light colour written
+ * inline (`span[style*='color:#rrggbb' i]`, or the older `E36209;` form) and repaints it with a
+ * Cinder token, keyed by the lowercase hex it replaces.
+ */
+function liftedLightColors(): ReadonlyMap<string, string> {
+  const css = readFileSync(
+    new URL('../components/code-block/code-block.css', import.meta.url),
+    'utf8',
+  );
+  const lifted = new Map<string, string>();
+  const rule =
+    /span\[style\*='(?:color:#)?([0-9a-f]{6});?' i\][^{]*\{\s*color:\s*var\((--cinder-[a-z-]+)\)\s*!important;/gi;
+  for (const match of css.matchAll(rule)) {
+    lifted.set(`#${(match[1] ?? '').toLowerCase()}`, match[2] ?? '');
+  }
+  return lifted;
+}
+
+/** Every foreground color the `github-light` theme paints text with: tokens and the default. */
+function githubLightForegrounds(): ReadonlyMap<string, string> {
+  const foregrounds = new Map<string, string>();
+  const defaultForeground = githubLight.colors?.['editor.foreground'];
+  if (defaultForeground !== undefined) foregrounds.set('editor.foreground', defaultForeground);
+  for (const rule of githubLight.tokenColors ?? []) {
+    const foreground = rule.settings?.foreground;
+    // A rule that paints its own background (the invalid-character marker) never sits on the inset.
+    if (foreground === undefined || rule.settings?.background !== undefined) continue;
+    const scope = Array.isArray(rule.scope) ? rule.scope.join(', ') : (rule.scope ?? 'unscoped');
+    foregrounds.set(`${scope} ${foreground}`, foreground);
+  }
+  return foregrounds;
+}
+
+describe('light code-block contrast (inset well, owner 2026-11-16)', () => {
+  // The light code field is the inset well, so a code block inside a white card reads as recessed
+  // rather than as a second white box. github-light picked its colors against white; the ones
+  // under AA on the inset are lifted in code-block.css.
+  const ground = readOklchToken('--cinder-code-block-background').light;
+  const groundLuminance = wcagLuminance(ground);
+
+  it('the light code field resolves to the inset well, a step below the white surface', () => {
+    expect(ground).toEqual(surfaceInset.light);
+    expect(
+      contrastRatio(groundLuminance, wcagLuminance(readOklchToken('--cinder-surface').light)),
+    ).toBeGreaterThan(1.1);
+  });
+
+  it('the code field draws no edge, so it is never a box inside a card', () => {
+    const css = readFileSync(new URL('./tokens-base.css', import.meta.url), 'utf8');
+    expect(css).toContain('--cinder-code-block-edge: transparent;');
+  });
+
+  it('every github-light token color clears AA text on the light inset', () => {
+    const foregrounds = githubLightForegrounds();
+    const lifted = liftedLightColors();
+    expect(foregrounds.size).toBeGreaterThan(5);
+    for (const [label, hex] of foregrounds) {
+      const lift = lifted.get(hex.toLowerCase());
+      const luminance =
+        lift === undefined
+          ? relativeLuminance(hexToLinearRgb(hex))
+          : wcagLuminance(readOklchToken(lift).light);
+      expect(
+        contrastRatio(luminance, groundLuminance),
+        `${label} on the light inset${lift === undefined ? '' : ` (lifted to ${lift})`}`,
+      ).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it('lifts exactly the four colors that fall under AA on the light inset', () => {
+    const lifted = liftedLightColors();
+    expect([...lifted.keys()].sort()).toEqual(['#22863a', '#6a737d', '#d73a49', '#e36209']);
+    for (const hex of lifted.keys()) {
+      expect(contrastRatio(relativeLuminance(hexToLinearRgb(hex)), groundLuminance)).toBeLessThan(
+        AA_TEXT,
+      );
+    }
+  });
+
+  it('json-highlight roles and Cinder text tokens clear AA text on the light inset', () => {
+    for (const token of [
+      '--cinder-text-default',
+      '--cinder-text-muted',
+      '--cinder-text-subtle',
+      '--cinder-accent-text',
+      '--cinder-status-success-text',
+      '--cinder-status-warning-text',
+      '--cinder-status-info-text',
+      '--cinder-status-danger-text',
+    ]) {
+      expect(
+        contrastRatio(wcagLuminance(readOklchToken(token).light), groundLuminance),
+        `${token} on the light inset`,
+      ).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+});
 
 describe('dark code-block contrast (COR-2308 inset at 21%)', () => {
   // The code-block ground is `--cinder-surface-inset` in the dark arm (code-block.css), which the
@@ -179,8 +279,7 @@ describe('dark json-highlight and line notes on the code block (row 07s, COR-201
 
   it('a muted line number clears AA on the code block ground in both themes', () => {
     for (const arm of ['light', 'dark'] as const) {
-      const ground =
-        arm === 'dark' ? surfaceInset.dark : readOklchToken('--cinder-surface-raised').light;
+      const ground = readOklchToken('--cinder-code-block-background')[arm];
       expect(
         contrastRatio(
           wcagLuminance(readOklchToken('--cinder-text-muted')[arm]),

@@ -93,7 +93,7 @@ test('Home on a fresh installation shows the grouped sidebar with no Reviews cou
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: 'Views' });
-  await expect(navigation.getByRole('link')).toHaveCount(12);
+  await expect(navigation.getByRole('link')).toHaveCount(13);
   await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveText([
     'Work',
     'Build',

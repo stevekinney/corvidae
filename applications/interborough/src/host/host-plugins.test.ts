@@ -31,6 +31,7 @@ import type { HostEventArguments, HostEventPublisher } from './host-events.ts';
 import { startHost, type Host } from './host.ts';
 import { createHostMemory } from './memory.ts';
 import { createPluginManager, type PluginAuditEntry } from './plugin-manager.ts';
+import { workspacePlugins } from './plugins.ts';
 import { fixtureSecretProvider } from './tool-source-memory-home.test-support.ts';
 
 const directories: string[] = [];
@@ -292,6 +293,22 @@ async function secretText(home: string, key: string): Promise<string | undefined
   const provider = createLocalSecretProvider({ root: home, workspaceId });
   return reference === undefined ? provider.readLegacy(key) : provider.readVersion(reference);
 }
+
+describe('the workspace’s own plugins (COR-2170)', () => {
+  test('list the GitHub plugin as a package plugin that is off until the owner enables it', () => {
+    const entry = workspacePlugins().find((candidate) => candidate.descriptor.name === 'github');
+    expect(entry).toMatchObject({
+      source: 'package',
+      location: '@lostgradient/plugin-github',
+      descriptor: { name: 'github', enabled: false },
+    });
+    // Every plugin the workspace ships off by default is one a host that never named it leaves off.
+    const disabled = workspacePlugins()
+      .filter((candidate) => candidate.descriptor.enabled === false)
+      .map((candidate) => candidate.descriptor.name);
+    expect(disabled).toContain('github');
+  });
+});
 
 describe('GET /host/plugins', () => {
   test('lists every plugin in load order with its status, choices, and secrets', async () => {

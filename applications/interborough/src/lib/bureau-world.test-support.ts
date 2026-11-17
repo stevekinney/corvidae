@@ -125,6 +125,13 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       if (task === undefined) throw notFound('task', id);
       return task;
     },
+    // The run page's Run hooks section reads the inspection: a run with an empty plan and no hook
+    // that threw has no section, so a test that is not about hooks sees none.
+    'bureau.tasks.inspect': (params) => {
+      const id = String(params['taskId']);
+      if (!world.tasks.some((task) => task.id === id)) throw notFound('task', id);
+      return { steps: [], hooks: { plan: [], failed: [] } };
+    },
     'bureau.contexts.get': (params) => {
       const id = String(params['contextId']);
       const known =

@@ -1,0 +1,25 @@
+{
+  "action": "opened",
+  "number": 42,
+  "pull_request": {
+    "id": 1934205113,
+    "number": 42,
+    "state": "open",
+    "title": "Fix the release notes heading",
+    "user": { "login": "octocat", "id": 583231, "type": "User" },
+    "draft": false,
+    "html_url": "https://github.com/octo-org/octo-repo/pull/42",
+    "head": { "ref": "fix-heading", "sha": "5e8cbe4d6ed0b7e1d3f5d6b1e8ae5f0c2b6e0a77" },
+    "base": { "ref": "main", "sha": "6113728f27ae82c7b1a177c8d03f9e96e0adf246" },
+    "merged": false
+  },
+  "repository": {
+    "id": 186853002,
+    "name": "octo-repo",
+    "full_name": "octo-org/octo-repo",
+    "private": false,
+    "default_branch": "main",
+    "html_url": "https://github.com/octo-org/octo-repo"
+  },
+  "sender": { "login": "octocat", "id": 583231, "type": "User" }
+}

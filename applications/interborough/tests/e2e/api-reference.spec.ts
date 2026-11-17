@@ -150,9 +150,16 @@ test('Discovery documents lists the three documents, each with its address and a
     await expect(panel).toContainText(description);
     await expect(panel.getByRole('button', { name: `Copy ${title}` })).toBeVisible();
   }
-  await expect(panel.locator('[data-document="openapi"] code')).toHaveText(/\/api\/openapi\.json$/);
-  await expect(panel.locator('[data-document="agent-card"] code')).toHaveText(/agent-card\.json$/);
-  await expect(panel.locator('[data-document="tools"] code')).toHaveText(/\/mcp$/);
+  // Each address is a Cinder CopyableValue.
+  await expect(panel.locator('[data-document="openapi"] .cinder-copyable-value')).toContainText(
+    /\/api\/openapi\.json/,
+  );
+  await expect(panel.locator('[data-document="agent-card"] .cinder-copyable-value')).toContainText(
+    /agent-card\.json/,
+  );
+  await expect(panel.locator('[data-document="tools"] .cinder-copyable-value')).toContainText(
+    /\/mcp/,
+  );
   await captureAtEveryWidth(page, 'discovery-documents', 'Discovery documents');
 });
 

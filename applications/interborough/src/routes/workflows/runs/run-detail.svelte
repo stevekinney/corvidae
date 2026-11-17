@@ -69,6 +69,7 @@
   import { RunEngine } from './run-engine.svelte.ts';
   import RunHappened from './run-happened.svelte';
   import RunHeader from './run-header.svelte';
+  import RunHooks from './run-hooks.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunHowItRan from './run-how-it-ran.svelte';
   import RunPanels from './run-panels.svelte';
@@ -202,7 +203,11 @@
     }),
     undefined,
   );
-  const failed = $derived((task.isError && !notFound) || (notFound && goals.isError));
+  // A read that fails after the task was read leaves the page as it was, as the run list does while
+  // the server does not answer (C3-23): the shell's banner says it once.
+  const failed = $derived(
+    (task.isError && !notFound && task.data === undefined) || (notFound && goals.isError),
+  );
   const attempt = $derived.by(() => {
     for (const goal of goals.data ?? []) {
       const found = goal.attempts.find((candidate) => candidate.runId === initialRunId);
@@ -649,6 +654,9 @@
               startedAt={summary.startedAt}
               events={taskEvents}
             />
+            <!-- Directly after What happened and before How it ran, at every width, so a settled
+                 run's failed hooks are never inside the disclosure that is closed for it. -->
+            <RunHooks task={task.data} over={summary.over} events={taskEvents} />
           {/if}
           <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
             {#if task.data !== undefined && (workflow !== undefined || record !== undefined)}
