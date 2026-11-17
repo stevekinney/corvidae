@@ -96,6 +96,19 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
     expect(row.hasAttribute('data-cinder-phone')).toBe(false);
   });
 
+  test('on a phone the status and the metadata draw no comma or dot between them (COR-2449)', () => {
+    const { container } = render(StatusListFixture, { props: { rows } });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    if (!row) throw new Error('no row');
+    resizeRow(row, 360);
+    const status = row.querySelector('.cinder-stacked-list-item__status')?.textContent ?? '';
+    const meta = row.querySelector('.cinder-stacked-list-item__meta')?.textContent ?? '';
+    expect(status).toContain('Waiting on you');
+    expect(meta).toBe('Chat');
+    expect(`${status}${meta}`).not.toMatch(/[,.]/);
+    expect(`${status}${meta}`).not.toContain(String.fromCodePoint(0xb7));
+  });
+
   test('the actions collapse into one menu button in a narrow pane and are buttons in a wide one', () => {
     const actions = [{ label: 'Memory', href: '/memory' }];
     const { container } = render(ExtrasFixture, { props: { mode: 'actions', actions } });

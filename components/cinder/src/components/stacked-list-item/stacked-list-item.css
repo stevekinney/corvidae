@@ -481,7 +481,7 @@
 
   /* A phone puts the status of either placement on line two with no fixed column. The chat list's
      line-two status gives up its column here too (a phone-only exception, COR-2016): the word, a
-     comma, then the latest message. */
+     space, then the latest message. */
   @container cinder-stacked-list-item (max-width: 639.98px) {
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
@@ -507,20 +507,20 @@
       padding-inline-end: 0;
     }
 
-    /* On a phone the status moves to line two beside the kind and agent: "Waiting on you, Chat".
-       The comma follows only a status that drew something (`:has(*)`), so a row whose status
-       snippet drew nothing has no stray comma at the start of line two. */
+    /* On a phone the status moves to line two beside the kind and agent: "Waiting on you Chat".
+       The status word (medium weight, the muted colour) and the line's text (regular weight, the
+       subtle colour) are told apart by that step and a space, with no glyph between them: no
+       comma and no dot (COR-2449). The space follows only a status that drew something
+       (`:has(*)`), so a row whose status snippet drew nothing starts line two flush. */
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-leading:not(.cinder-stacked-list-item--no-line-two)
-      .cinder-stacked-list-item__status:has(*)::after,
+      .cinder-stacked-list-item__status:has(*),
     .cinder-stacked-list-item--lines:not(
         .cinder-stacked-list-item--band
       ).cinder-stacked-list-item--status-line-two
-      .cinder-stacked-list-item__status:has(*)::after {
-      content: ',' / '';
+      .cinder-stacked-list-item__status:has(*) {
       margin-inline-end: var(--cinder-space-1-5);
-      color: var(--cinder-text-subtle);
     }
   }
 

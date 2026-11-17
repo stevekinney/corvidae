@@ -76,7 +76,7 @@ describe('StackedListItem on a phone', () => {
     );
     expect(stylesheet).toContain("'leading status line line trailing'");
     expect(stylesheet).toMatch(
-      /--status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)::after/,
+      /--status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*,/,
     );
     cleanup();
     setPhone(false);
@@ -94,7 +94,7 @@ describe('StackedListItem on a phone', () => {
       /--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /--status-line-two\s*\.cinder-stacked-list-item__status:has\(\*\)::after\s*\{\s*content:\s*','/,
+      /--status-line-two\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{\s*margin-inline-end:/,
     );
     cleanup();
     setPhone(false);
