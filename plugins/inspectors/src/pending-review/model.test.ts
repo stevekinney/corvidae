@@ -106,6 +106,28 @@ describe('the pending-review model', () => {
     expect(view.expired).toBe(false);
   });
 
+  it('says whether it can be undone, what approving does, and why, when the approval does (COR-2438)', () => {
+    const action = approval.approval?.action;
+    if (action === undefined) throw new Error('expected an approval action');
+    const explained = {
+      ...approval,
+      approval: {
+        ...approval.approval!,
+        action: {
+          ...action,
+          irreversible: true,
+          consequence: 'Deletes the build directory.',
+          why: 'The cache is stale.',
+        },
+      },
+    };
+    const view = viewReview(explained, Date.parse('2026-01-01T00:00:00Z'));
+    expect(view.detail).toContain("Can't be undone");
+    expect(view.detail).toContain('If approved: Deletes the build directory.');
+    expect(view.detail).toContain('Why: The cache is stale.');
+    expect(viewReview(approval, 0).detail.some((line) => line.startsWith('Why: '))).toBe(false);
+  });
+
   it('offers no decision once the approval expired, or the review is not pending', () => {
     const later = Date.parse('2026-01-01T00:10:00Z');
     expect(viewReview(approval, later)).toMatchObject({ expired: true, decidable: false });

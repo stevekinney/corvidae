@@ -109,6 +109,94 @@ describe('a waiting approval', () => {
     expect(view.container.textContent).toContain('Approved');
   });
 
+  test('is the explicit decision surface, not the row (COR-2282)', () => {
+    const { container } = mount('dangerous');
+    expect(
+      container.querySelector('.cinder-approval-card')?.getAttribute('data-cinder-layout'),
+    ).toBe('decision');
+  });
+
+  test('says why when the approval does, and takes irreversible from it over the tier (COR-2438)', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const view = render(ChatApproval, {
+      props: {
+        id: 'approval-why',
+        entry: entry('dangerous'),
+        question: 'Look up order 4471?',
+        source: 'Tool runner',
+        context: {},
+        unreachable: false,
+        irreversible: false,
+        why: 'The customer asked where it is.',
+        onResolve,
+      },
+    } as never);
+
+    expect(view.container.querySelector('.cinder-approval-card__why-body')?.textContent).toBe(
+      'The customer asked where it is.',
+    );
+    // Reversible, so the first press decides; a dangerous tier alone would arm it.
+    await fireEvent.click(view.getByRole('button', { name: /^Approve/ }));
+    expect(onResolve).toHaveBeenCalledTimes(1);
+  });
+
+  test('a decision made in Reviews writes the place as a link to it (COR-2282 A5)', () => {
+    const view = render(ChatApproval, {
+      props: {
+        id: 'approval-elsewhere',
+        entry: {
+          ...entry('dangerous'),
+          state: 'done',
+          reviewId: 'approval:run-1:call-1',
+          decision: {
+            outcome: 'approved',
+            decidedBy: 'priya',
+            decidedAt: Date.parse('2026-11-05T10:46:00Z'),
+            decisionSurface: 'reviews',
+          },
+        },
+        question: '',
+        source: 'Tool runner',
+        context: { owner: 'steve' },
+        unreachable: false,
+        decidedInHref: '#/reviews?review=bureau%3Aapproval%3Arun-1%3Acall-1',
+        onResolve: () => {},
+      },
+    } as never);
+
+    const link = view.container.querySelector<HTMLAnchorElement>('.cinder-approval-card a[href]');
+    expect(link?.getAttribute('href')).toBe('#/reviews?review=bureau%3Aapproval%3Arun-1%3Acall-1');
+    expect(link?.textContent?.trim()).toBe('Reviews');
+    expect(view.container.textContent?.replace(/\s+/g, ' ')).toContain('Approved by priya in');
+  });
+
+  test('reads expired from its expiresAt alone, writes when it lapsed under it, and offers Ask again (COR-2280)', async () => {
+    const onAskAgain = mock(() => undefined);
+    const view = render(ChatApproval, {
+      props: {
+        id: 'approval-lapsed',
+        entry: entry('dangerous'),
+        question: 'Look up order 4471?',
+        source: 'Tool runner',
+        context: {},
+        unreachable: false,
+        expiresAt: '2026-11-01T09:15:00.000Z',
+        onAskAgain,
+        onResolve: () => {},
+      },
+    } as never);
+
+    const card = view.container.querySelector('[data-approval-decision]');
+    expect(card?.getAttribute('data-cinder-state')).toBe('expired');
+    expect(card?.textContent).toContain('Expired before a decision');
+    expect(view.queryByRole('button', { name: 'Deny' })).toBeNull();
+    expect(view.container.querySelector('.chat-approval-time time')?.getAttribute('datetime')).toBe(
+      '2026-11-01T09:15:00.000Z',
+    );
+    await fireEvent.click(view.getByRole('button', { name: 'Ask again' }));
+    expect(onAskAgain).toHaveBeenCalledTimes(1);
+  });
+
   test('becomes expired when the mounted entry reaches its terminal state', async () => {
     const view = mount('dangerous');
     await view.rerender({

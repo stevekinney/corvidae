@@ -707,11 +707,18 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     );
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
 
-    const decided = page.locator('.cinder-approval-card--row').filter({ hasText: question });
+    // The explicit decision surface's receipt (COR-2282): one status line with Reviews a link to
+    // the review, and when it was decided under the card.
+    const decided = page.locator('.cinder-approval-card--decision').filter({ hasText: question });
     await expect(decided).toBeVisible();
-    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews,\s*10:46 AM/,
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
+      'Approved by you in Reviews',
     );
+    await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
+      'href',
+      /\/reviews\?tab=done&review=bureau%3Aapproval%3A/,
+    );
+    await expect(page.locator('.chat-approval-time').filter({ hasText: '10:46 AM' })).toBeVisible();
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
@@ -744,6 +751,17 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       state: 'answered in Reviews, run not joined yet',
       source: SOURCE,
     });
+    // The same receipt on a phone (COR-2282 A5): the decision surface's one status line with
+    // Reviews a link, and its time under the card.
+    const desktop = page.viewportSize();
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(decided).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'answered in Reviews, run not joined yet at 375',
+      source: SOURCE,
+    });
+    if (desktop !== null) await page.setViewportSize(desktop);
 
     // The decision was the last the run waited on, so the Bureau continues the chat with a run of
     // its own (`bureau.reviews.resolve`), which starts just after the decision is told. Once the
@@ -767,8 +785,8 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     );
     await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
     // The decision stays as it was, and is not told again.
-    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews,\s*10:46 AM/,
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
+      'Approved by you in Reviews',
     );
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
     // While the continuing run is going the rail row says so in place of the result (18i), and
@@ -938,12 +956,13 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
     await page.goto(`/chats/${THREAD}`);
 
     const denied = page
-      .locator('.cinder-approval-card--row')
+      .locator('.cinder-approval-card--decision')
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
-    await expect(denied.locator('.cinder-approval-card__outcome')).toContainText(
-      /Denied by you,\s*10:40 AM/,
+    await expect(denied.locator('.cinder-approval-card__settled-note')).toContainText(
+      'Denied by you',
     );
+    await expect(page.locator('.chat-approval-time').filter({ hasText: '10:40 AM' })).toBeVisible();
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(
       conversationArea(page).locator('.cinder-tool-call-rail__item[data-cinder-status="denied"]'),
@@ -975,6 +994,13 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'denied approval and note',
+      source: SOURCE,
+    });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(denied).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'denied approval and note at 375',
       source: SOURCE,
     });
   });

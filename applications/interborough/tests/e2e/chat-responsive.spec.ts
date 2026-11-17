@@ -74,7 +74,7 @@ async function readApprovalPlacement(page: Page) {
     const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
       ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
     );
-    const question = decision?.querySelector('.cinder-approval-card__row-question') ?? null;
+    const question = decision?.querySelector('.cinder-approval-card__decision-title') ?? null;
     const questionBox = question?.getBoundingClientRect();
     const questionHit =
       questionBox === undefined

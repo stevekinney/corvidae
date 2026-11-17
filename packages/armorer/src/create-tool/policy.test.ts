@@ -240,6 +240,19 @@ describe('createToolAction carries irreversible, consequence and why (COR-2438)'
     },
   };
 
+  it('refuses an over-long consequence where the pause is issued, as it refuses any other malformed field', () => {
+    const overLong: ToolPolicyDecision = {
+      status: 'needs_approval',
+      reason,
+      action: { consequence: 'c'.repeat(501) },
+    };
+    // The policy hears of it when it pauses the call, so no approval is issued with it: the same
+    // contract `expiresAt`, `env` and `snapshotId` already hold.
+    expect(() => createToolAction('approval', overLong, reason, context)).toThrow(
+      /consequence must be at most 500 characters/,
+    );
+  });
+
   it('puts the policy’s three fields on the approval action', () => {
     expect(createToolAction('approval', explained, reason, context)).toMatchObject({
       irreversible: true,

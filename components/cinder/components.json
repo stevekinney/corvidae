@@ -418,10 +418,11 @@
       ],
       "related": ["approval-card", "grouped-list"],
       "hasConstraints": false,
-      "hasExamples": false,
+      "hasExamples": true,
       "artifacts": {
         "schema": "src/components/approval-group/approval-group.schema.json",
-        "variables": "src/components/approval-group/approval-group.variables.json"
+        "variables": "src/components/approval-group/approval-group.variables.json",
+        "examples": "src/components/approval-group/approval-group.examples.json"
       }
     },
     {
