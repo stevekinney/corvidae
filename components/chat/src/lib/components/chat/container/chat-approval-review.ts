@@ -2,7 +2,7 @@ import type { ApprovalState } from '@lostgradient/cinder';
 import type { Message } from '../conversation-model.ts';
 
 /** The words the composer drawer says while an approval waits on the person. */
-export const APPROVAL_DRAWER_TEXT = 'Waiting for your approval.';
+export const APPROVAL_DRAWER_TEXT = 'Approval needed.';
 
 /** The drawer's action: it takes the person to the approval that waits. */
 export const APPROVAL_DRAWER_ACTION = 'Review approval';
@@ -82,6 +82,70 @@ export function approvalReviewBox(
   return { top: row.top, bottom: Math.max(row.bottom, bottom), left: row.left, right: row.right };
 }
 
+/**
+ * Whether a waiting approval card, with the clearance kept under it, is taller than the transcript's
+ * box: then it cannot be shown whole, and its decision buttons are what the page shows.
+ */
+export function approvalTallerThanTranscript(
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  clearance = APPROVAL_BOTTOM_CLEARANCE,
+): boolean {
+  return card.bottom + clearance - card.top > viewport.bottom - viewport.top + 0.5;
+}
+
+/**
+ * How far the transcript scrolls, in pixels (positive scrolls down), to bring a waiting approval
+ * into view when it opens or the chat opens on it (COR-2327). A card that fits the transcript with
+ * the clearance under it is shown whole: scrolled down until its bottom and the clearance are in
+ * view, or up until its top is. A card taller than the transcript has its bottom, where Deny and
+ * Approve are, aligned to the transcript's bottom with the clearance to spare; its top may scroll
+ * off. Half a pixel of rounding is no shift.
+ */
+export function approvalArrivalShift(
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  clearance = APPROVAL_BOTTOM_CLEARANCE,
+): number {
+  const below = card.bottom + clearance - viewport.bottom;
+  let shift = 0;
+  if (approvalTallerThanTranscript(card, viewport, clearance)) shift = below;
+  else if (below > 0) shift = below;
+  else if (card.top < viewport.top) shift = card.top - viewport.top;
+  return Math.abs(shift) <= 0.5 ? 0 : shift;
+}
+
+/**
+ * The room a drawn approval reminder takes from the transcript under `root`: its height and its
+ * block margins, or 0 when none is drawn. Read from the page, so it is what is drawn now.
+ */
+export function approvalReminderRoom(root: ParentNode | null | undefined): number {
+  const reminder = root?.querySelector<HTMLElement>('[data-chat-approval-drawer]');
+  if (reminder === null || reminder === undefined) return 0;
+  const style = getComputedStyle(reminder);
+  return (
+    reminder.getBoundingClientRect().height +
+    (Number.parseFloat(style.marginTop) || 0) +
+    (Number.parseFloat(style.marginBottom) || 0)
+  );
+}
+
+/**
+ * The transcript's visible box for placing a waiting approval, measured without the reminder:
+ * the reminder takes room from the transcript while it shows, so a placement judged against the
+ * box it leaves would move the card the reminder is about, and the two would feed each other
+ * (COR-2327). A host that brings the approval into view itself reads this same box.
+ */
+export function approvalArrivalBox(
+  transcript: HTMLElement,
+): Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'> {
+  const box = transcript.getBoundingClientRect();
+  const room = approvalReminderRoom(
+    transcript.closest('.chat-container') ?? transcript.parentElement,
+  );
+  return { top: box.top, bottom: box.bottom + room, left: box.left, right: box.right };
+}
+
 /** The selector of a pending approval card's row of decision buttons. */
 const APPROVAL_ACTION_ROW_SELECTOR =
   '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';
@@ -110,7 +174,16 @@ export function approvalActionRowShift(
   return above > 0 ? -above : 0;
 }
 
-/** Returns the pending approval card rendered by the message that is waiting. */
+/** The selector of an approval card still waiting on the person. */
+export const PENDING_APPROVAL_CARD_SELECTOR = '.cinder-approval-card[data-cinder-state="pending"]';
+
+/**
+ * Returns the pending approval card rendered by the message that is waiting. A host that draws its
+ * calls in a row of its own (Interborough folds a step's calls into the step's reply) renders no
+ * card under that message, so the first pending card in the transcript stands for it: the message
+ * is the first approval still waiting, so the first pending card is the one it means. Without the
+ * fallback the reminder could never tell that the card's decision row is in view, and stayed.
+ */
 export function pendingApprovalCard(
   root: ParentNode | null | undefined,
   messageId: string,
@@ -119,7 +192,8 @@ export function pendingApprovalCard(
     `article[data-message-id="${CSS.escape(messageId)}"]`,
   );
   return (
-    message?.querySelector<HTMLElement>('.cinder-approval-card[data-cinder-state="pending"]') ??
+    message?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
+    root?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
     null
   );
 }

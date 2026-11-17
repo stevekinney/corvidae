@@ -32,6 +32,7 @@ When Breadcrumbs accepts snippets or arbitrary children, the caller owns the sem
 
 - Below `collapseBelow` the trail is a link named "Back to {parent}" followed by the current page; the current page keeps `aria-current="page"`, and the ancestors that are not shown are removed from the page, not hidden.
 - A current page with a `popover` is a `button` that keeps `aria-current="page"`, and Popover gives it `aria-expanded` and `aria-haspopup="dialog"`. Its label truncates visually, but the full text is its accessible name and the popover's content.
+- Under a coarse pointer that button paints 30px tall and answers a press 44px tall: a positioned pseudo-element that takes no layout space extends its hit area, and the trail makes room for it inside its own clip. A fine pointer draws and hits it at 30px.
 
 ## Verification
 

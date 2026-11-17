@@ -6,13 +6,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { WorkflowAlreadyExistsError, WorkflowNotFoundError } from '../../core/engine/errors.ts';
-import { weftFaultPolicy } from '../weft-fault-policy.ts';
 import {
   classifyEngineError,
   transportToAvailabilityKey,
   transportToPolicyKey,
-} from './pipeline-helpers.ts';
+} from '@lostgradient/backchannel/internals';
+import { WorkflowAlreadyExistsError, WorkflowNotFoundError } from '../../core/engine/errors.ts';
+import { weftFaultPolicy } from '../weft-fault-policy.ts';
 
 describe('transportToPolicyKey', () => {
   it('maps http-rest to the dedicated http policy key', () => {

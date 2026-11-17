@@ -65,9 +65,11 @@
     STATE_LABELS,
     dedupeFilePaths,
     describeCountdown,
+    describeCountdownShort,
     describeFilesTouched,
     describeDecisionTime,
     describeExpiry,
+    describeInputRows,
     inputRepeatsShownFacts,
     isApprovalActionable,
     normalizeArgumentsPreviewValue,
@@ -305,6 +307,12 @@
     }
     return describeCountdown(expirationTimestamp, currentTime);
   });
+  // The same deadline as a narrow card writes it, so it shares a line with "Can't be undone".
+  const expirationTextShort = $derived(
+    expirationText === undefined || expirationTimestamp === undefined || currentTime === undefined
+      ? undefined
+      : describeCountdownShort(expirationTimestamp, currentTime),
+  );
 
   const payloadLabel = $derived(
     inputLabel ?? (layout === 'card' ? `${tool.name} arguments` : 'Input'),
@@ -321,30 +329,29 @@
     operation.kind === 'patch' ? FileDiff : operation.kind === 'file-write' ? FilePen : File,
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
-  // The row's Input discloses only what the operation carries.
   // Details holds what the host adds about where the request runs. Without any of it there is nothing to disclose.
   const hasDetails = $derived(
     sandbox !== undefined || environmentNames.length > 0 || snapshotId !== undefined,
   );
-  // The decision layout shows the command in the open, so its Input holds only what is left.
+  // The row and decision layouts show the command in the open, and the input under it.
   const decisionCommand = $derived(
     operation.kind === 'command' && operation.command ? operation.command : undefined,
   );
-  const hasRowInput = $derived(
-    (operation.kind === 'patch' && Boolean(operation.diff)) ||
-      filesTouched.length > 0 ||
-      (hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand])),
+  const patchDiff = $derived(
+    operation.kind === 'patch' && operation.diff ? operation.diff : undefined,
   );
-  // A command-only preview is already visible in the open command block. Keep an Input
-  // disclosure when the preview contains additional values, but do not repeat the command.
-  const rowInputPairs = $derived(
-    hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]) ? inputPairs : [],
-  );
-  // The card keeps its arguments and its Details behind disclosures, closed until asked for.
-  // Arguments that only repeat the command shown above get no disclosure of their own.
-  const hasCardArguments = $derived(
+  const hasOpenOperation = $derived(patchDiff !== undefined || filesTouched.length > 0);
+  // A command-only preview is already visible in the open command block, so it gets no input of
+  // its own; a preview with other values shows them all.
+  const argumentsBeyondCommand = $derived(
     hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]),
   );
+  const rowInputPairs = $derived(argumentsBeyondCommand ? inputPairs : []);
+  const inputRows = $derived(hasArgumentsPreview ? describeInputRows(operation.argsPreview) : []);
+  const rowInputRows = $derived(argumentsBeyondCommand ? inputRows : []);
+  // The card keeps its arguments and its Details behind disclosures, closed until asked for.
+  // Arguments that only repeat the command shown above get no disclosure of their own.
+  const hasCardArguments = $derived(argumentsBeyondCommand);
   // The title above already names the tool, so the closed line just says "Arguments"; the
   // inspector it opens keeps the tool's name, which also names its copy button.
   const cardArgumentsWord = $derived(inputLabel ?? 'Arguments');
@@ -354,7 +361,7 @@
   let detailsOpen = $state(false);
 
   // Arguments that only repeat what the facts already show in the open (the command, the target,
-  // the tool) get no Input disclosure of their own.
+  // the tool) get no input rows of their own.
   const argumentsRepeatFacts = $derived(
     inputRepeatsShownFacts(inputPairs, [
       decisionCommand,
@@ -364,11 +371,6 @@
     ]),
   );
   const hasDecisionArguments = $derived(hasArgumentsPreview && !argumentsRepeatFacts);
-  const hasDecisionInput = $derived(
-    (operation.kind === 'patch' && Boolean(operation.diff)) ||
-      filesTouched.length > 0 ||
-      hasDecisionArguments,
-  );
 
   $effect(() => {
     clearExpirationTimer();
@@ -565,38 +567,15 @@
   </div>
 {/snippet}
 
-{#snippet rowInputBody()}
-  {@render operationPreview()}
-  {@render filesTouchedSection()}
-  {#if hasArgumentsPreview}
+<!-- The row and decision layouts show the patch and the touched files in the open, under the
+     command, as the card does; the arguments follow them as rows. -->
+{#snippet openOperationBody()}
+  {#if patchDiff !== undefined}
     <div class="cinder-approval-card__section">
-      <PayloadInspector
-        value={argumentsPreview.value}
-        truncated={argumentsPreview.truncated}
-        label={payloadLabel}
-        bind:view
-      />
-    </div>
-  {/if}
-{/snippet}
-
-{#snippet decisionInputBody()}
-  {#if operation.kind === 'patch' && operation.diff}
-    <div class="cinder-approval-card__section">
-      <CodeBlock code={operation.diff} language="diff" languageLabelVisible={false} />
+      <CodeBlock code={patchDiff} language="diff" languageLabelVisible={false} />
     </div>
   {/if}
   {@render filesTouchedSection()}
-  {#if hasDecisionArguments}
-    <div class="cinder-approval-card__section">
-      <PayloadInspector
-        value={argumentsPreview.value}
-        truncated={argumentsPreview.truncated}
-        label={payloadLabel}
-        bind:view
-      />
-    </div>
-  {/if}
 {/snippet}
 
 {#if answeredElsewhere}
@@ -650,6 +629,7 @@
       {requestedIso}
       {consequence}
       countdown={expirationText}
+      countdownShort={expirationTextShort}
       {rememberScope}
       decidedElsewhere={decidedIn !== undefined}
       {outcomeText}
@@ -667,8 +647,8 @@
       inputLabel={payloadLabel}
       {context}
       requestKey={idempotencyKey}
-      inputPairs={rowInputPairs}
-      inputBody={hasRowInput ? rowInputBody : undefined}
+      inputRows={rowInputRows}
+      operationBody={hasOpenOperation ? openOperationBody : undefined}
       {onAskAgain}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />
@@ -696,6 +676,7 @@
       command={decisionCommand}
       {why}
       countdown={expirationText}
+      countdownShort={expirationTextShort}
       {consequence}
       {rememberScope}
       {approveLabel}
@@ -715,8 +696,8 @@
       {decisionNote}
       {context}
       requestKey={idempotencyKey}
-      inputBody={hasDecisionInput ? decisionInputBody : undefined}
-      inputPairs={hasDecisionArguments ? inputPairs : []}
+      operationBody={hasOpenOperation ? openOperationBody : undefined}
+      inputRows={hasDecisionArguments ? inputRows : []}
       inputLabel={payloadLabel}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />

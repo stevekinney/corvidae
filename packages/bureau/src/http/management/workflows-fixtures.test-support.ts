@@ -15,7 +15,7 @@ import {
   createOperationHandler,
   unauthenticatedLocalAuthContext,
   type AuthenticatedPrincipal,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createBureau } from '../../create-bureau.ts';

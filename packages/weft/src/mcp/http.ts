@@ -5,8 +5,9 @@ import {
   type McpRequestContext,
 } from '@modelcontextprotocol/server';
 
+import { anonymousPrincipal, type Principal } from '@lostgradient/backchannel';
+import { isAuthenticated } from '@lostgradient/backchannel/internals';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
-import { anonymousPrincipal, isAuthenticated, type Principal } from '../server/principal.ts';
 import { McpToolExecutionError, type McpAccessContext } from './access.ts';
 import { McpChangeFeed } from './change-feed.ts';
 import { DEFAULT_MCP_MAX_BODY_BYTES } from './protocol.ts';

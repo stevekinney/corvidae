@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { createReplayAwareClosableIterable } from '@lostgradient/backchannel';
 import {
-  createReplayAwareClosableIterable,
-  fleetEventEnvelopeSchema,
   isClosableAsyncIterable,
   isReplayAwareClosableIterable,
+} from '@lostgradient/backchannel/internals';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import {
+  fleetEventEnvelopeSchema,
   workflowEventEnvelopeSchema,
   workflowEventParameterizedAccess,
 } from './event-stream-contracts.ts';

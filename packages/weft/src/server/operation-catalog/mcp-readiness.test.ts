@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { defineOperation } from '../operation-registry.ts';
+import { defineOperation } from '@lostgradient/backchannel';
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 
 /**

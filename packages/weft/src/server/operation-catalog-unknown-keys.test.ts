@@ -20,9 +20,9 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
-import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
-import { anonymousPrincipal } from './principal.ts';
+import { anonymousPrincipal } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
+import { makeOperation as makeOp } from '@lostgradient/backchannel/testing';
 import { isRecord, record } from './protocol.test-support.ts';
 
 const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};

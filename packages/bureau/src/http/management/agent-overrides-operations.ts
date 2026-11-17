@@ -13,7 +13,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module agent-overrides-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { AGENT_IDENTIFIER_MAX_LENGTH } from '../../agent-file.ts';

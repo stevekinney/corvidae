@@ -33,7 +33,7 @@
  */
 
 import { sha256HexSync } from '@lostgradient/cryptography';
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauGoalCreateOutcome, BureauGoalUpdateOutcome } from '../../goal-types.ts';

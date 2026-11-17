@@ -11,7 +11,7 @@ import {
   type HumanInputSchema,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { expect } from 'bun:test';
 
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';

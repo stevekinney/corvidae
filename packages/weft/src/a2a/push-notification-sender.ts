@@ -23,9 +23,9 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
+import { canonicalJson } from '@lostgradient/backchannel/internals';
 import type { ApplicationDeliveryCausation } from '../core/outbox-types.ts';
 import type { Outbox } from '../core/outbox.ts';
-import { canonicalJson } from '../server/openapi-canonical-json.ts';
 import {
   A2A_PUSH_CONTENT_TYPE,
   type HttpDeliveryAdapterOptions,

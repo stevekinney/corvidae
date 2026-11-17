@@ -49,7 +49,7 @@ import {
   type MemoryDeletionReceipt,
   type MemoryGovernanceEvent,
 } from '@lostgradient/memory';
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauScope } from '../bureau-scopes.ts';

@@ -1,7 +1,7 @@
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
+import { principalFromStdioLocal } from '@lostgradient/backchannel';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
-import { principalFromStdioLocal } from '../server/principal.ts';
 import { McpChangeFeed } from './change-feed.ts';
 import { createMcpServerFactory, type McpServerRegistrar } from './server.ts';
 import { StreamLineTransport } from './stream-line-transport.ts';

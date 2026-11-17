@@ -17,11 +17,17 @@ import { waitForCondition } from '@lostgradient/testing/fake-timers';
 
 import { describe, expect, it } from 'bun:test';
 
+import { defineOperation, principalFromApiKey, type Principal } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  type OperationRegistry,
+  type RestBinding,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { z } from 'zod';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
+import { workflow, type WorkflowContext } from '../core/types.ts';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,
@@ -29,11 +35,6 @@ import {
 import { WorkerRegistry } from '../worker/registry.ts';
 import { handleRequest, type HandlerOptions } from './handler.ts';
 import { defaultOperationRegistry } from './handler/route-dispatch.ts';
-import { createOperationRegistry, type OperationRegistry } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
-import { principalFromApiKey, type Principal } from './principal.ts';
-import type { RestBinding } from './rest-binding.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
 import { TaskQueue } from './task-queue.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (

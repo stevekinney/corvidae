@@ -19,6 +19,7 @@ const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
+  'backchannel',
   'bureau',
   'interborough-plugin',
   'operative',
@@ -58,6 +59,7 @@ function publicWorkspaceName(directoryName: string): string {
 
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
+  '@lostgradient/backchannel',
   '@lostgradient/weft',
   '@lostgradient/cinder',
   '@lostgradient/chat',

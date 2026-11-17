@@ -4,7 +4,7 @@ import {
   type ClientOptions,
 } from '@modelcontextprotocol/client';
 
-import type { Principal } from '../server/principal.ts';
+import type { Principal } from '@lostgradient/backchannel';
 import { handleMcpHttpRequest, type McpEndpoint } from './http.ts';
 
 /** The official SDK client's protocol negotiation mode. */

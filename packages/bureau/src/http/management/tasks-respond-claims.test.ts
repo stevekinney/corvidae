@@ -5,7 +5,7 @@
  * that stands for a process which cannot see the run.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { Principal } from '@lostgradient/weft';
+import type { Principal } from '@lostgradient/backchannel';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';

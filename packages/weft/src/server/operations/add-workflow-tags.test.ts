@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { workflow } from '../../core/types/workflow-function.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import { addWorkflowTagsOperation, addWorkflowTagsRestBinding } from './add-workflow-tags.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (_ctx, input: unknown) {

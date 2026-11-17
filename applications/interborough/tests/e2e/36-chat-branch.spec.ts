@@ -17,6 +17,7 @@ import {
   releaseBarrier,
   runToEnd,
   showModelPicker,
+  untilChatLoaded,
 } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -152,6 +153,7 @@ test('offers a branch only on the last reply of a run, not on the earlier reply 
   await seeded;
   await page.goto(`/chats/${threadId}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+  await untilChatLoaded(page);
   await page.getByRole('textbox').fill('Start the work');
   await page.getByRole('textbox').press('Enter');
   await expectWaiting(request, 1);

@@ -8,10 +8,11 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { generateOpenRpcDocument } from './openrpc.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
-import { findUndescribedOperations } from './operation-description-audit.ts';
-import { defineOperation } from './operation-registry.ts';
+import { defineOperation, findUndescribedOperations } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
 
 function operation(options: {

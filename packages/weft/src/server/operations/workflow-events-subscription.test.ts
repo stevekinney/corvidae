@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
+import { anonymousPrincipal, principalFromApiKey } from '@lostgradient/backchannel';
 import { workflowEventsSubscriptionOperation } from './workflow-events-subscription.ts';
 
 describe('weft.workflows.events authorization', () => {

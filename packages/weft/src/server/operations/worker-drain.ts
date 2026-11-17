@@ -13,14 +13,17 @@
 
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import {
+  type AccessPolicy,
+  type UnknownRestBinding,
+  invalidParamsFault,
+  isOperationFault,
+  readRestTextBody,
+} from '@lostgradient/backchannel/internals';
 import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerDrainMutationResult, WorkerRegistry } from '../../worker/registry.ts';
-import type { AccessPolicy } from '../authorization.ts';
-import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { readRestTextBody } from '../rest-body.ts';
-import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
 const drainReasonSchema = z
@@ -305,7 +308,7 @@ function createWorkerDrainRestBinding(method: 'POST' | 'DELETE', operationName: 
       ...(method === 'POST' ? await readDrainBody(request, context) : {}),
     }),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   } satisfies UnknownRestBinding;
 }
 
@@ -332,7 +335,7 @@ function createDeploymentDrainRestBinding(method: 'POST' | 'DELETE', operationNa
         : readBuildQuery(new URL(request.url))),
     }),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   } satisfies UnknownRestBinding;
 }
 

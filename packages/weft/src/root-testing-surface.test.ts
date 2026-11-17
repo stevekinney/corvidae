@@ -3,6 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { getPrincipalOperation } from '@lostgradient/backchannel';
+
 import * as root from './index.ts';
 import * as testing from './testing/index.ts';
 
@@ -22,9 +24,10 @@ describe('the root entry and the testing barrel', () => {
     expect(typeof root.flushPortableMicrotasks).toBe('function');
   });
 
-  test('the root exports weft.system.principal for a package handler to register', () => {
-    expect(root.getPrincipalOperation.name).toBe('weft.system.principal');
-    expect(root.getPrincipalOperation.kind ?? 'unary').toBe('unary');
+  test('weft.system.principal for a package handler to register comes from @lostgradient/backchannel', () => {
+    expect(getPrincipalOperation.name).toBe('weft.system.principal');
+    expect(getPrincipalOperation.kind ?? 'unary').toBe('unary');
+    expect(Reflect.has(root, 'getPrincipalOperation')).toBe(false);
   });
 
   test('the root does not export the subprocess engine, which the testing subpath keeps', () => {

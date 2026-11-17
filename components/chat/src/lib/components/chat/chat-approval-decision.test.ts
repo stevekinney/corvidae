@@ -10,6 +10,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { ChatAdapter } from './adapter/chat-adapter.ts';
 import {
   appendToolCall,
@@ -104,6 +105,21 @@ function drawerOf(container: HTMLElement): HTMLElement | null {
   return container.querySelector<HTMLElement>('[data-chat-approval-drawer]');
 }
 
+/**
+ * Lets the arrival placement run: it runs on the next animation frame, and the reminder is drawn
+ * only from a settled placement (COR-2327), so a test reads the reminder after it.
+ */
+async function arrivalFrame(): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await tick();
+}
+
+/** The reminder, once the arrival placement has settled and drawn it. */
+async function settledDrawer(container: HTMLElement): Promise<HTMLElement> {
+  await waitUntil(() => drawerOf(container) !== null, { message: 'the approval reminder' });
+  return drawerOf(container)!;
+}
+
 function sendButton(container: HTMLElement): HTMLButtonElement {
   return container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;
 }
@@ -173,21 +189,59 @@ describe('Chat composer drawer for a waiting approval', () => {
     }
   });
 
-  test('explains the paused composer compactly without repeating the transcript card', () => {
+  test('explains the paused composer compactly without repeating the transcript card', async () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-waiting',
       conversation: approvalConversation('drawer-waiting'),
     });
-    const drawer = drawerOf(container);
+    const drawer = await settledDrawer(container);
 
     expect(drawer).not.toBeNull();
     expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
-      'Waiting for your approval.',
+      'Approval needed.',
     );
-    expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
+    expect(getByRole(drawer, 'button', { name: 'Review approval' })).not.toBeNull();
   });
 
-  test('draws no reminder while the card top is clipped but its action row is in view', () => {
+  test('is the neutral notice, its action kept beside the words while both fit, reading Review in a narrow column and keeping its name (COR-2327 B1)', async () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-one-row',
+      conversation: approvalConversation('drawer-one-row'),
+    });
+    const drawer = await settledDrawer(container);
+
+    // Cinder's notice recipe, with the fit layout: on a phone the action stays beside the words
+    // while both fit, rather than dropping to a line of its own as the inline layout does.
+    expect(drawer.classList.contains('cinder-callout')).toBe(true);
+    expect(drawer.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(drawer.classList.contains('cinder-callout--fit-action')).toBe(true);
+    const review = getByRole(drawer, 'button', { name: 'Review approval' });
+    expect(review.getAttribute('data-cinder-size')).toBe('sm');
+    expect(review.querySelector('.chat-approval-drawer-action-short')?.textContent).toBe('Review');
+
+    // The short words show only in a narrow column: the Callout is its own inline-size container,
+    // so the question is the notice's width, not the screen's.
+    const source = await Bun.file(
+      new URL('./container/chat-approval-drawer.svelte', import.meta.url),
+    ).text();
+    const narrow = /@container \(inline-size < 30rem\) \{([\s\S]*?)\n {2}\}\n/u.exec(source)?.[1];
+    expect(narrow).toMatch(/\.chat-approval-drawer-action-full \{\s*display: none;/u);
+    expect(narrow).toMatch(/\.chat-approval-drawer-action-short \{\s*display: inline;/u);
+  });
+
+  test('says the short Review in a host’s own words', async () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-short-label',
+      conversation: approvalConversation('drawer-short-label'),
+      labels: { reviewApproval: 'Genehmigung prüfen', reviewApprovalShort: 'Prüfen' },
+    });
+    const review = getByRole(await settledDrawer(container), 'button', {
+      name: 'Genehmigung prüfen',
+    });
+    expect(review.querySelector('.chat-approval-drawer-action-short')?.textContent).toBe('Prüfen');
+  });
+
+  test('draws no reminder while the card top is clipped but its action row is in view', async () => {
     const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
       if (this.matches('.chat-timeline')) return measuredBox(0, 600);
@@ -203,6 +257,7 @@ describe('Chat composer drawer for a waiting approval', () => {
         conversation: approvalConversation('drawer-clipped-top'),
         adapter: resolvingAdapter,
       });
+      await arrivalFrame();
 
       expect(container.querySelector(ACTION_ROW)).not.toBeNull();
       expect(drawerOf(container)).toBeNull();
@@ -240,7 +295,7 @@ describe('Chat composer drawer for a waiting approval', () => {
     }
   });
 
-  test('renders host-provided approval drawer labels and accessible names', () => {
+  test('renders host-provided approval drawer labels and accessible names', async () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-labels',
       conversation: approvalConversation('drawer-labels'),
@@ -250,7 +305,7 @@ describe('Chat composer drawer for a waiting approval', () => {
         reviewApproval: 'Genehmigung öffnen',
       },
     });
-    const drawer = drawerOf(container)!;
+    const drawer = await settledDrawer(container);
     expect(drawer.getAttribute('aria-label')).toBe('Genehmigung wartet');
     expect(drawer.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
       'Bitte zuerst die Genehmigung prüfen.',
@@ -258,12 +313,12 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(getByRole(drawer, 'button', { name: 'Genehmigung öffnen' })).not.toBeNull();
   });
 
-  test('sits above the composer, so the composer keeps its place', () => {
+  test('sits above the composer, so the composer keeps its place', async () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-order',
       conversation: approvalConversation('drawer-order'),
     });
-    const drawer = drawerOf(container)!;
+    const drawer = await settledDrawer(container);
     const shell = container.querySelector('.chat-input-shell')!;
 
     expect(drawer.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -284,9 +339,10 @@ describe('Chat composer drawer for a waiting approval', () => {
       adapter,
     });
     const card = getByRole(container, 'article', { name: QUESTION });
+    const drawer = await settledDrawer(container);
     composerOf(container).focus();
 
-    await fireEvent.click(getByRole(drawerOf(container)!, 'button', { name: 'Review approval' }));
+    await fireEvent.click(getByRole(drawer, 'button', { name: 'Review approval' }));
     await tick();
 
     expect(document.activeElement).toBe(card);
@@ -378,15 +434,16 @@ describe('Chat composer drawer for a waiting approval', () => {
     });
     const reminder = () =>
       drawerOf(container)?.querySelector('.chat-approval-drawer-text')?.textContent?.trim();
+    await settledDrawer(container);
 
     // An empty composer keeps the short form, and Queue's note does not exist yet.
-    expect(reminder()).toBe('Waiting for your approval.');
+    expect(reminder()).toBe('Approval needed.');
     expect(container.querySelector('#chat-drawer-queue-note-input-queue-note')).toBeNull();
 
     await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
     await tick();
 
-    expect(reminder()).toBe(`Waiting for your approval. ${note}`);
+    expect(reminder()).toBe(`Approval needed. ${note}`);
     const describedBy = sendButton(container).getAttribute('aria-describedby') ?? '';
     const noteElement = describedBy
       .split(' ')
@@ -742,6 +799,7 @@ describe('the reminder follows the decision row, not its own presence', () => {
       adapter: resolvingAdapter,
     });
     const scroller = layOut(container);
+    await arrivalFrame();
     await scrollTo(scroller, 150);
     // The row is in view with the reminder off: nothing to point to.
     expect(drawerOf(container)).toBeNull();
@@ -752,15 +810,15 @@ describe('the reminder follows the decision row, not its own presence', () => {
 
     // The row ends inside the strip the reminder takes, but within the box the transcript has
     // without the reminder: it is visible in both states, so the reminder goes and stays gone.
-    // The card's bottom, 16 below the row, plus the 12 of clearance must also be inside that box.
     await scrollTo(scroller, 328);
     expect(drawerOf(container)).toBeNull();
     await scrollTo(scroller, 328);
     expect(drawerOf(container)).toBeNull();
 
-    // A row whose card clears the box by less than the clearance keeps the reminder.
+    // The row is judged alone (COR-2327 B1): with the row in view and the card's bottom past the
+    // box, the reminder stays gone, since Deny and Approve are where the person can reach them.
     await scrollTo(scroller, 340);
-    expect(drawerOf(container)).not.toBeNull();
+    expect(drawerOf(container)).toBeNull();
 
     // A row ending below the tall box brings the reminder back.
     await scrollTo(scroller, 380);
@@ -771,6 +829,40 @@ describe('the reminder follows the decision row, not its own presence', () => {
     // Back in view, it goes.
     await scrollTo(scroller, 200);
     expect(drawerOf(container)).toBeNull();
+  });
+
+  test('on a 320 by 640 phone, a card nearly as tall as the transcript with its decision row in view draws no reminder (COR-2327 B1)', async () => {
+    // CI run 43655239414, from its trace: the transcript shows 205 to 448 without the reminder,
+    // Deny and Approve sit at 383 to 411, and the focused card ends at 425. Its bottom and the
+    // 12px clearance under it reach 437, inside the box; a slightly taller card (Linux fonts) ends
+    // 4px lower and its clearance passes the box, which kept the reminder over Deny and Approve.
+    // Here the row sits 200 to 244 in a 400 tall transcript and the card ends at 392, 4 short of
+    // the bottom: the clearance passes the box, the row does not.
+    rowTop = 200;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-phone',
+      conversation: approvalConversation('reminder-phone'),
+      adapter: resolvingAdapter,
+    });
+    const originalCard = HTMLElement.prototype.getBoundingClientRect;
+    const scroller = layOut(container);
+    const laidOut = HTMLElement.prototype.getBoundingClientRect;
+    // The card starts 170 above the row and ends at 392.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.matches('.cinder-approval-card')) {
+        return new DOMRect(0, rowTop - 170, 300, 392 - (rowTop - 170));
+      }
+      return laidOut.call(this);
+    };
+    try {
+      await arrivalFrame();
+      await scrollTo(scroller, 200);
+      expect(drawerOf(container)).toBeNull();
+      await scrollTo(scroller, 200);
+      expect(drawerOf(container)).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalCard;
+    }
   });
 
   test('at maximum scroll the arrival scroll hides the reminder and a clamp does not bring it back', async () => {
@@ -788,6 +880,7 @@ describe('the reminder follows the decision row, not its own presence', () => {
       adapter: resolvingAdapter,
     });
     const scroller = layOut(container);
+    await arrivalFrame();
     await scrollTo(scroller, rowDocumentTop - 348);
     expect(drawerOf(container)).toBeNull();
     await scrollTo(scroller, rowDocumentTop - 300);
@@ -806,7 +899,8 @@ describe('the reminder follows the decision row, not its own presence', () => {
     const scroller = layOut(container);
     await scrollTo(scroller, -200);
     const card = getByRole(container, 'article', { name: QUESTION });
-    await fireEvent.click(getByRole(drawerOf(container)!, 'button', { name: 'Review approval' }));
+    const drawer = await settledDrawer(container);
+    await fireEvent.click(getByRole(drawer, 'button', { name: 'Review approval' }));
     await tick();
     expect(document.activeElement).toBe(card);
   });

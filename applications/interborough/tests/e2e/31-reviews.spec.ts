@@ -10,7 +10,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
-import { conversation, newThreadId, runToEnd } from './chat-support.ts';
+import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
 import {
   bureauCall,
@@ -29,6 +29,7 @@ test.use({ viewport: { width: 1600, height: 900 } });
 const composer = (page: Page) => page.getByRole('textbox');
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   await composer(page).fill(text);
   await composer(page).press('Enter');
 }

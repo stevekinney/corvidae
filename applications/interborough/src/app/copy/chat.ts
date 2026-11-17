@@ -91,10 +91,9 @@ export const CHAT_COPY = {
     segments: { all: 'All', waiting: 'Waiting on you', done: 'Done' },
     /**
      * The archived chats (COR-2285 V5): the row at the end of the list that opens them, which is
-     * also the title of their view, and that view's way back.
+     * also the title of their view. The view's way back is labelled with the list's own title.
      */
     archivedTitle: 'Archived chats',
-    backToChats: 'Back to chats',
     archivedEmpty: {
       title: 'No archived chats',
       description: 'Archive a chat from its menu to put it away here.',
@@ -103,6 +102,11 @@ export const CHAT_COPY = {
     /** First use: no chat has been started, and the one primary New chat is here. */
     emptyTitle: 'No chats yet',
     emptyDescription: 'Start one with an agent.',
+    /** No chat is open, but some are archived, in the row under this state. */
+    allArchived: {
+      title: 'No open chats',
+      description: 'Every chat is archived. Open them below, or start a new one.',
+    },
     /** A search that matched nothing says what was searched. */
     noMatchTitle: (search: string): string => `No chats match “${search}”`,
     noMatchDescription: 'Check the spelling or try another word.',
@@ -482,10 +486,8 @@ export const CHAT_COPY = {
     canceledTitle: 'Loading was canceled',
     /** The sentence under that title. */
     canceledDescription: 'The chat was not loaded. Nothing was lost.',
-    /** The visible line in place of the composer's hint after a canceled read. */
-    canceledComposer: 'Loading this chat stopped.',
-    /** Why Send is off after a canceled read. */
-    sendBlocked: 'Load the chat to send messages.',
+    /** Why Send is off after a canceled read, beside Send: it names the button that loads the chat. */
+    sendBlocked: 'Try again to send messages.',
     /** The breadcrumb's last entry while the chat is not read yet or cannot be read, in place of its identifier. */
     crumb: 'This chat',
     errorTitle: 'This chat couldn’t be loaded',
@@ -519,6 +521,11 @@ export const CHAT_COPY = {
     /** The composer's placeholder while a question that draws choices waits. */
     answerPlaceholder: 'Choose an answer above, or type your own…',
     noProvider: 'Connect a model provider to chat',
+    /**
+     * Said under Connect a model provider in a chat with no message yet. Interborough has one
+     * person, who adds the provider themselves: there is no admin to wait for (COR-2327 N1).
+     */
+    unconfiguredDescription: 'The agent needs a model to answer. Add one in Settings.',
     connectProvider: 'Connect a provider',
     useAssistant: 'Use Assistant',
     /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */
@@ -610,9 +617,9 @@ export const CHAT_COPY = {
     label: 'More actions',
     rename: 'Rename',
     branch: 'Branch from the last reply',
-    /** Said as the hint on Branch when there is no finished reply to branch from. */
+    /** Said under Branch, as its second line, when there is no finished reply to branch from. */
     noBranchPoint: 'There is no finished reply to branch from yet.',
-    /** Said as the hint on Branch while a run is going. */
+    /** Said under Branch, as its second line, while a run is going. */
     branchWhileRunning: 'Wait for the run to finish, then branch from its last reply.',
     export: 'Export as Markdown',
     /** Said as the hint on Export when the chat has no messages. */
@@ -620,6 +627,15 @@ export const CHAT_COPY = {
     exportFault: 'The chat could not be exported.',
     /** Archive puts the chat away, out of the list, until it is unarchived; an archived chat's menu offers Unarchive. */
     archive: 'Archive',
+    /**
+     * Said under Archive, as its second line, while the chat cannot be archived yet, in the words of what holds
+     * it: an approval or a question waiting on the person, or a run that is going.
+     */
+    archiveBlocked: {
+      approval: 'Answer the waiting approval first, then archive the chat.',
+      question: 'Answer the waiting question first, then archive the chat.',
+      running: 'Wait for the run to finish or stop it, then archive the chat.',
+    },
     unarchive: 'Unarchive',
     /** What archiving or unarchiving says when it did not happen. */
     archiving: {

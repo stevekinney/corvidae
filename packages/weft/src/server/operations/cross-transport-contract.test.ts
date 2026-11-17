@@ -14,15 +14,13 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromJwtClaims } from '@lostgradient/backchannel';
+import { executeOperation, signJWT } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
-import { signJWT } from '../authentication.ts';
+import { workflow, type WorkflowContext } from '../../core/types.ts';
 import { serve, type WeftServer } from '../index.ts';
 import { openWebSocket, waitForMessage } from '../json-rpc-websocket-client.test-support.ts';
-import { executeOperation } from '../operation-catalog.ts';
-import { principalFromJwtClaims } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 
 /** Shape of the JSON-RPC error payload these tests assert against. */

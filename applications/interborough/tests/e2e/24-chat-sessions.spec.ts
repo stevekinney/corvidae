@@ -16,6 +16,7 @@ import {
   newThreadId,
   releaseBarrier,
   runToEnd,
+  untilChatLoaded,
 } from './chat-support.ts';
 import { E2E_BUREAU_URL, E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -38,6 +39,7 @@ test.afterEach(async ({ request }) => {
 });
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   await composer(page).fill(text);
   await composer(page).press('Enter');
 }

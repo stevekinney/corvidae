@@ -31,6 +31,8 @@ type DropdownItemBase = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
   children?: Snippet;
   /** When true the item is inert: click is blocked and aria-disabled is set. */
   disabled?: boolean | undefined;
+  /** Why the item is off: a second line under the label and its description while `disabled` is set. */
+  disabledReason?: string | undefined;
 };
 
 /**
@@ -139,4 +141,11 @@ export type DropdownItemProps = SharedHtmlAttributes &
     children?: Snippet;
     /** When true the item is inert: click is blocked and aria-disabled is set. */
     disabled?: boolean | undefined;
+    /**
+     * Why the item is off. While `disabled` is set it is drawn under the label as a second line in
+     * the muted text colour, and it is the item's description (`aria-describedby`), so it reads on
+     * a phone and by keyboard with no hover. Ignored while the item is enabled. Use it in place of
+     * a `title`, which touch never shows.
+     */
+    disabledReason?: string | undefined;
   };
