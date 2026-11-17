@@ -490,6 +490,27 @@ describe('the open event', () => {
       principal: 'system:host',
       detail: null,
     });
+    // happy-dom does no layout: this stands in for the browser, where the 2,000 characters are cut.
+    const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const original = Object.getOwnPropertyDescriptor(prototype, 'scrollWidth');
+    Object.defineProperty(prototype, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('cinder-table__cell-text') ? 4000 : 0;
+      },
+    });
+    try {
+      await auditTargetIsOneLineAndWhole(key, deleted);
+    } finally {
+      if (original === undefined) delete prototype['scrollWidth'];
+      else Object.defineProperty(prototype, 'scrollWidth', original);
+    }
+  });
+
+  async function auditTargetIsOneLineAndWhole(
+    key: string,
+    deleted: ReturnType<typeof record>,
+  ): Promise<void> {
     const { container, findByTestId } = open({ records: [deleted], nextCursor: null });
 
     const detail = await findByTestId('audit-target');
@@ -507,8 +528,8 @@ describe('the open event', () => {
     expect(cell?.textContent).toContain('Storage › ');
     const cutText = cell?.querySelector('.cinder-table__cell-text');
     expect(cutText?.textContent?.trim()).toBe(`Storage › ${key}`);
-    expect(cutText?.getAttribute('tabindex')).toBe('0');
-  });
+    await waitFor(() => expect(cutText?.getAttribute('tabindex')).toBe('0'));
+  }
 
   test('the pane says to select an event when none is open, after the filters change', async () => {
     const { container, findByTestId, findByText, getByLabelText } = open((params) =>

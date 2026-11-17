@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -16,6 +16,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 
 // Strip the @layer wrapper: happy-dom does not apply layer-nested rules to
 // getComputedStyle or expose them as top-level CSSStyleRules.
@@ -1091,6 +1092,24 @@ describe('Table data display', () => {
   // These tests assert the contract that produces the layout instead: the
   // markup that marks a cell, and the CSS the table ships for that marker.
   const longValue = 'storage/'.concat('segment-'.repeat(250)); // about 2,000 characters
+  let restoreLayout: () => void = () => {};
+  beforeEach(() => {
+    restoreLayout = stubCutLayout(true);
+  });
+  afterEach(() => restoreLayout());
+
+  test('a truncating cell whose value is not cut has no tab stop and no tooltip', async () => {
+    restoreLayout();
+    restoreLayout = stubCutLayout(false);
+    const { default: ColumnsFixture } =
+      await import('../../test/fixtures/table-columns-fixture.svelte');
+    const { container } = render(ColumnsFixture, { values: ['short', 'brief'] });
+    const texts = Array.from(container.querySelectorAll<HTMLElement>('.cinder-table__cell-text'));
+    expect(texts).toHaveLength(2);
+    expect(texts.every((element) => !element.hasAttribute('tabindex'))).toBe(true);
+    await fireEvent.focus(texts[0] as HTMLElement);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  });
 
   test('converts table lengths relative to the document and cell font sizes', () => {
     const element = document.createElement('div');
@@ -1157,14 +1176,17 @@ describe('Table data display', () => {
     expect(container.querySelector('td[data-cinder-truncate]')?.getAttribute('title')).toBeNull();
   });
 
-  test('a truncating cell is reachable by focus inside a link in a row', async () => {
+  test('a truncating cell wrapping a link is one tab stop: the link opens the full text', async () => {
     const { default: Fixture } = await import('./table-cell-link.fixture.svelte');
     const { container } = render(Fixture, { value: longValue });
     const text = container.querySelector('.cinder-table__cell-text') as HTMLElement;
-    expect(text.querySelector('a')).not.toBeNull();
-    await fireEvent.focus(text);
+    const link = text.querySelector('a') as HTMLElement;
+    expect(link).not.toBeNull();
+    expect(text.hasAttribute('tabindex')).toBe(false);
+    await waitFor(() => expect(link.hasAttribute('aria-describedby')).toBe(true));
+    await fireEvent.focus(link);
     await waitFor(() => {
-      const tooltip = document.getElementById(text.getAttribute('aria-describedby') ?? '');
+      const tooltip = document.getElementById(link.getAttribute('aria-describedby') ?? '');
       expect(tooltip?.textContent?.trim()).toBe(longValue);
     });
   });
