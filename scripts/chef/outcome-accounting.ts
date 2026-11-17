@@ -336,6 +336,7 @@ if (import.meta.main) {
   main(Bun.argv.slice(2))
     .then((code) => {
       process.exitCode = code;
+      return undefined;
     })
     .catch((error: unknown) => {
       process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

@@ -170,18 +170,17 @@ export function usageProblems(text: string, provider: Provider): UsageProblem[] 
         message: 'Model call usage is not an object.',
       });
     else {
-      const fields = claimsClaudeCall
-        ? [
-            'input_tokens',
-            'output_tokens',
-            'cache_creation_input_tokens',
-            'cache_read_input_tokens',
-          ]
-        : ['input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens'];
-      for (const field of fields) {
+      const required = ['input_tokens', 'output_tokens'];
+      const optional = claimsClaudeCall
+        ? ['cache_creation_input_tokens', 'cache_read_input_tokens']
+        : ['cached_input_tokens', 'cache_write_input_tokens'];
+      for (const field of [...required, ...optional]) {
         const value = (usage as Record<string, unknown>)[field];
         // Cache fields are optional in both transcript formats; supplied values must be numeric.
-        if (value !== undefined && !hasNumber(value))
+        if (
+          (required.includes(field) && !hasNumber(value)) ||
+          (value !== undefined && !hasNumber(value))
+        )
           problems.push({
             kind: value === undefined ? 'missing-usage' : 'malformed-usage',
             line: index + 1,

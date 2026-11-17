@@ -298,6 +298,52 @@ describe('totalUsage', () => {
     );
   });
 
+  test('marks omitted required Codex and Claude fields incomplete while cache fields remain optional', () => {
+    const codexPath = write(join(sandbox, 'missing-input.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'turn_context', payload: { model: 'gpt-test' } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { total_tokens: 1 },
+            last_token_usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: { total_tokens: 2 }, last_token_usage: { output_tokens: 1 } },
+        },
+      },
+    ]);
+    const claudePath = write(join(sandbox, 'missing-output.jsonl'), [
+      {
+        type: 'assistant',
+        message: { id: 'bad', model: 'claude-test', usage: { input_tokens: 1 } },
+      },
+    ]);
+    expect(readTranscript(codexPath)!.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'missing-usage',
+          message: expect.stringContaining('input_tokens'),
+        }),
+      ]),
+    );
+    expect(readTranscript(claudePath)!.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'missing-usage',
+          message: expect.stringContaining('output_tokens'),
+        }),
+      ]),
+    );
+  });
+
   test('rejects a supplied malformed cache component while allowing an absent optional cache component', () => {
     const path = write(join(sandbox, 'bad-cache.jsonl'), [
       { type: 'session_meta', payload: {} },

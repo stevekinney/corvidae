@@ -30,7 +30,7 @@ test('two concurrent reservations cannot both exceed one persisted allowance', a
   const exits = await Promise.all([first.exited, second.exited]);
   const record = run('read', concurrentPath, 'concurrent');
   rmSync(concurrentDirectory, { recursive: true, force: true });
-  expect(exits.toSorted()).toEqual([0, 1]);
+  expect(exits.toSorted((left, right) => left - right)).toEqual([0, 1]);
   expect(new TextDecoder().decode(record.stdout)).toMatch(
     /"reservations":\{"(?:first|second)":6\}/,
   );
