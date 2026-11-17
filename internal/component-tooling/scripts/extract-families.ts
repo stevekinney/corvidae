@@ -13,7 +13,8 @@
  *
  * `--layer` counts the way `families.json` does: layer 0 is tokens, foundation and the tooling, so
  * the issues' "layer 0 families" are `--layer 1`, their "layer 1" is `--layer 2`, and so on.
- * `--core <dir>` names core's directory (default: `components/core`, else `components/cinder`);
+ * `--core <dir>` names core's directory (default: `components/core`, else the directory it had
+ * before COR-2082 renamed it);
  * `--no-install` skips `bun install`; `--dry-run` prints the plan and writes nothing.
  *
  * For each selected package it creates the workspace with `create-package`, moves the package's
@@ -1578,12 +1579,18 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
   return plan.result;
 }
 
-/** Core's directory: `components/core` once COR-2082 renames it, `components/cinder` until then. */
+/**
+ * Core's directory before COR-2082 renames it. Spelled in parts so the rename script, which
+ * rewrites every whole mention of the old path, leaves this fallback alone.
+ */
+const UNRENAMED_CORE = ['components', 'cinder'].join('/');
+
+/** Core's directory: `components/core` once COR-2082 renames it, the old directory until then. */
 export function defaultCore(root: string): string {
-  for (const candidate of ['components/core', 'components/cinder']) {
+  for (const candidate of ['components/core', UNRENAMED_CORE]) {
     if (existsSync(join(root, candidate, 'package.json'))) return candidate;
   }
-  throw new Error('Neither components/core nor components/cinder exists.');
+  throw new Error(`Neither components/core nor ${UNRENAMED_CORE} exists.`);
 }
 
 function trackedFiles(root: string, directory: string): string[] {

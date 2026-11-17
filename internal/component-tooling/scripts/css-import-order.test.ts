@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { cssImportOrder } from './css-import-order.ts';
+import { corePackagePath, cssImportOrder } from './css-import-order.ts';
 import { barrelDirectories, ROOT_EXPORT_ORDER_PATH } from './generate-root-registries.ts';
 
 const packageRoot = join(import.meta.dir, '../../../components/cinder');
@@ -25,8 +25,9 @@ describe('the root barrel’s CSS evaluation order', () => {
   // a stylesheet added since may appear anywhere, but the recorded ones never move.
   test('keeps every recorded stylesheet, in the recorded order', () => {
     const recorded = lines(join(import.meta.dir, 'fixtures', 'root-css-order.txt'));
+    // Read through the packages the split extracted, under the paths core gave their stylesheets.
     const current = cssImportOrder(join(packageRoot, 'src', 'index.ts')).map((path) =>
-      relative(packageRoot, path),
+      corePackagePath(path, packageRoot),
     );
     const recordedSet = new Set(recorded);
     expect(current.filter((path) => recordedSet.has(path))).toEqual(recorded);
@@ -37,15 +38,51 @@ describe('the root barrel’s CSS evaluation order', () => {
     const index = readFileSync(join(packageRoot, 'src', 'index.ts'), 'utf8');
     const evaluated = [
       ...new Set(
-        [...index.matchAll(/^export \{[^}]*\} from '\.\/components\/([^/]+)\/index\.ts';$/gm)].map(
-          (match) => match[1] ?? '',
-        ),
+        [
+          ...index.matchAll(
+            /^export \{[^}]*\} from '(?:\.\/components\/([^/]+)\/index\.ts|@lostgradient\/([^/']+))';$/gm,
+          ),
+        ].map((match) => match[1] ?? match[2] ?? ''),
       ),
     ];
     const recordedSet = new Set(recorded);
     expect(evaluated.filter((name) => recordedSet.has(name))).toEqual(
       recorded.filter((name) => evaluated.includes(name)),
     );
+  });
+});
+
+describe('cssImportOrder through an extracted package', () => {
+  test('follows a followed package to its stylesheets, and stops at any other package', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'css-order-package-')));
+    roots.push(root);
+    const family = join(root, 'node_modules', '@lostgradient', 'family');
+    mkdirSync(join(family, 'src'), { recursive: true });
+    writeFileSync(
+      join(family, 'package.json'),
+      JSON.stringify({
+        name: '@lostgradient/family',
+        exports: { '.': './src/index.ts', './part.css': './src/part.css' },
+      }),
+    );
+    writeFileSync(
+      join(family, 'src', 'index.ts'),
+      "import './family.css';\nimport '@lostgradient/family/part.css';\nexport const x = 1;\n",
+    );
+    writeFileSync(join(family, 'src', 'family.css'), '');
+    writeFileSync(join(family, 'src', 'part.css'), '');
+    writeFileSync(join(root, 'own.css'), '');
+    writeFileSync(
+      join(root, 'entry.ts'),
+      "import './own.css';\nexport { x } from '@lostgradient/family';\n",
+    );
+    const entry = join(root, 'entry.ts');
+    expect(cssImportOrder(entry, new Set(['@lostgradient/family']))).toEqual([
+      join(root, 'own.css'),
+      join(family, 'src', 'family.css'),
+      join(family, 'src', 'part.css'),
+    ]);
+    expect(cssImportOrder(entry, new Set())).toEqual([join(root, 'own.css')]);
   });
 });
 
