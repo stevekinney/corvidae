@@ -26,7 +26,7 @@
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 
-import * as prettier from 'prettier';
+import { prettier } from './lib/node-prettier.ts';
 
 import {
   buildComponentMetaSchema,

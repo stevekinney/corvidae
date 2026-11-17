@@ -137,7 +137,7 @@ export function buildComponentMetaSchema(): Record<string, unknown> {
   const componentId = { type: 'string', pattern: COMPONENT_ID_PATTERN };
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
-    $id: 'https://lostgradient.dev/schemas/component-meta.schema.json',
+    $id: 'component-meta.schema.json',
     title: 'Cinder component metadata',
     description:
       'Authored metadata for one component, in `<name>.meta.json` beside its `<name>.svelte`. Generated from `components/cinder/src/manifest.meta.ts` by `bun components/cinder/scripts/convert-component-metadata.ts`; do not edit.',

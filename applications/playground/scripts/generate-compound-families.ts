@@ -16,7 +16,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import * as prettier from 'prettier';
+import { prettier } from '../../../components/cinder/scripts/lib/node-prettier.ts';
 
 import {
   COMPONENT_PACKAGE_ROOTS,

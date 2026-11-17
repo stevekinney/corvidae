@@ -24,8 +24,8 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-import * as prettier from 'prettier';
 import ts from 'typescript';
+import { prettier } from './lib/node-prettier.ts';
 
 import { exportNames } from './export-names.ts';
 
