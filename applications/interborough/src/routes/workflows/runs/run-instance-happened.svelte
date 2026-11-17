@@ -17,6 +17,7 @@
   import { router } from '../../../lib/router.svelte.ts';
   import {
     failureHeading,
+    sentenceOf,
     triesTookWords,
     type InstanceEntry,
     type InstanceProgress,
@@ -105,7 +106,7 @@
   const said = $derived(
     failure === undefined || failure === ''
       ? undefined
-      : oneLine(failure, { keepParenthetical: true }) || failure,
+      : sentenceOf(oneLine(failure, { keepParenthetical: true }) || oneLine(failure) || failure),
   );
   const heading = $derived(progress === undefined ? undefined : failureHeading(progress));
   const stepNumber = $derived(progress?.at ?? undefined);
@@ -155,13 +156,7 @@
       <div class="weft-overview-tab__failure-title">
         <CircleX aria-hidden="true" size={18} />
         <span>{heading}</span>
-        {#if category !== undefined}
-          <Badge variant="danger">{failureCategoryLabel(category)}</Badge>
-        {/if}
       </div>
-      {#if category !== undefined}
-        <p class="weft-overview-tab__failure-explanation">{failureCategoryExplanation(category)}</p>
-      {/if}
       {#if said !== undefined}
         <p class="weft-overview-tab__failure-explanation">
           <strong>{copy.whyItFailed}.</strong>
@@ -230,9 +225,19 @@
           {/if}
         </div>
       {/if}
-      {#if errorStack !== undefined && errorStack.length > 0}
+      <!-- The engine's kind of failure and its operator sentence are details, with the stack, not
+           the block's headline (rows 14t, 55b). -->
+      {#if category !== undefined || (errorStack !== undefined && errorStack.length > 0)}
         <Collapsible variant="flat" trigger={copy.inBlock.errorDetails}>
-          <pre class="weft-send-tab__result">{errorStack}</pre>
+          {#if category !== undefined}
+            <p class="weft-overview-tab__failure-explanation" data-run-failure-category>
+              <Badge variant="danger">{failureCategoryLabel(category)}</Badge>
+              {failureCategoryExplanation(category)}
+            </p>
+          {/if}
+          {#if errorStack !== undefined && errorStack.length > 0}
+            <pre class="weft-send-tab__result">{errorStack}</pre>
+          {/if}
         </Collapsible>
       {/if}
     </div>

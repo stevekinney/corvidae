@@ -21,6 +21,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { createSerialQueue } from '../../../lib/serial-queue.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
+  import { editableRunTags } from './run-tags.ts';
 
   interface RunTagsProps {
     readonly client: Pick<HttpClient, 'addTags' | 'removeTags'>;
@@ -35,9 +36,8 @@
     tagGate = { disabled: false, title: undefined },
   }: RunTagsProps = $props();
 
-  function editableTags(values: readonly string[] | null | undefined): string[] {
-    return (values ?? []).filter((tag) => tag !== 'origin:agent-run');
-  }
+  // The system's own tags are counted in the rail, never edited by hand.
+  const editableTags = editableRunTags;
 
   const queryClient = useQueryClient();
 

@@ -34,16 +34,16 @@ While a full-page `ErrorState` shows under the header, pass `error` so the heade
 
 In a narrow header (a phone) the actions drop to a row of their own under the title and the status. Pass `narrowActions="beside-status"` to put them at the inline end of the status's row instead, which gives that row's height back to the page; it suits a few compact actions above content that needs the room, such as a chat's context ring and More menu. With no status they sit beside the title instead, so they never take a row alone. A wide header is the same either way.
 
-## Flush
+## Flush by default, inset on request
 
-The header draws no rule by default; pass `divider` for one. `flush` draws the header with no padding around it, so its title lines up with the content beneath. Use it where the page lays out its own column, such as a page of settings with a section navigation beside it.
+The header draws no rule by default; pass `divider` for one. It is flush with the content beneath it, with no padding around it, so its title lines up with that content. Pass `inset` to pad it in from the edge of its container.
 
 ```svelte
 <script lang="ts">
   import { PageHeader } from '@lostgradient/cinder';
 </script>
 
-<PageHeader flush title="Allowed models" description="Which models agents may use." />
+<PageHeader inset title="Allowed models" description="Which models agents may use." />
 ```
 
 ## Decisions are never hidden
@@ -189,15 +189,17 @@ Below 720px of the hero's own width the focal value comes first and the copy fol
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `actionsNote` | `string` | no | — | A short caption under the actions' row; the runtime API also accepts a template-only snippet. |
+| `actionsNoteId` | `string` | no | — | The id of the `actionsNote` element, for a button that points its `aria-describedby` at it. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-page-header`. |
 | `collapsed` | `boolean` | no | `false` | Whether a `large` title has scrolled away. Bind it to pair the header with an AppBar's `titleVisible`. |
 | `collapsedBar` | `boolean` | no | `true` | Whether a `large` header draws its own sticky bar with the title once the title scrolls away. Turn it off when an AppBar shows the title instead. |
 | `description` | `string` | no | — | Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet. |
-| `divider` | `boolean` | no | `false` | Draws a rule under the header. Off by default: space separates the header from the page, and the rule is opt-in. A flush header never draws one. |
+| `divider` | `boolean` | no | `false` | Draws a rule under the header. Off by default: space separates the header from the page, and the rule is opt-in. |
 | `error` | `boolean` | no | `false` | A full-page error state shows under this header, so its primary buttons draw as secondary. |
 | `eyebrow` | `string` | no | — | A short neutral line above a `hero` title, such as the section or the place. |
-| `flush` | `boolean` | no | `false` | Draws the header with no padding around it, so its title lines up with the content beneath it. A page that lays out its own column, such as a page of settings with a section navigation beside it, uses this. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `1` | Heading level for the title element. Defaults to `1`. |
+| `inset` | `boolean` | no | `false` | Insets the header with padding around it. Off by default: the header is flush with the content beneath it, so its title lines up with that content. Pass it where the header should sit in from the edge of its container. |
 | `narrowActions` | `"own-row"` \| `"beside-status"` | no | `"own-row"` | Where the actions go in a narrow header (a phone): `own-row` on a row of their own under the title and the status, or `beside-status` at the inline end of the status's row. |
 | `overflowLabel` | `string` | no | `"More actions"` | The accessible name of the overflow menu button. |
 | `statusPlacement` | `"inline"` \| `"below"` | no | `"below"` | Where `status` sits: `inline` beside the title on its first line, or `below` the title. |

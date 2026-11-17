@@ -60,7 +60,11 @@
     type StatusWord,
   } from '../../../lib/status.ts';
   import { getWorkflowFileRun } from '../../../lib/workflow-files.ts';
-  import { builtInWorkflowName, isBuiltInWorkflow } from '../../../lib/workflow-type-name.ts';
+  import {
+    builtInWorkflowName,
+    isBuiltInWorkflow,
+    workflowTypeName,
+  } from '../../../lib/workflow-type-name.ts';
   import { agentsOfSteps } from '../../schedules/schedule-row-model.ts';
   import '../detail/workflow-detail.css';
   import { isTerminalStatus } from '../detail/workflow-status.ts';
@@ -97,7 +101,7 @@
   import RunPanels from './run-panels.svelte';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
-  import { runStatusLine, startedAgoPhrases } from './run-status-line.ts';
+  import { howItRanOpensFirst, runStatusLine, startedAgoPhrases } from './run-status-line.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
@@ -430,17 +434,10 @@
   const attemptThreadId = $derived(
     attempt !== undefined && attempt.attempt.sessionId !== '' ? attempt.attempt.sessionId : null,
   );
+  // A goal's attempt offers Open goal and the menu only (row 55f): its session is the goal's to
+  // open, so the header has no link to it.
   const chatLink = $derived.by(() => {
-    if (goalTask) {
-      return attemptSession.isSuccess
-        ? { href: chatSessionPath(attemptSession.data.id), label: TASK_COPY.openSession }
-        : undefined;
-    }
-    if (task.data === undefined) {
-      return attempt !== undefined && attemptSession.isSuccess
-        ? { href: chatSessionPath(attemptSession.data.id), label: TASK_COPY.openSession }
-        : undefined;
-    }
+    if (goalTask || attempt !== undefined || task.data === undefined) return undefined;
     return chat.isSuccess
       ? {
           href: chatSessionPath(task.data.contextId),
@@ -586,7 +583,17 @@
   );
   // An instance of a workflow file is called by the file's name, "Release notes", as the breadcrumb
   // and the heading say it (rows 54y, 55d); any other engine run is shown by its type's identifier.
-  const displayTitle = $derived(runTitle ?? builtInName ?? instance.name);
+  // A run of a workflow type nothing else names (no file, no built-in name) is still called by its
+  // type in words, as the rail says it: "Order processing", never `order-processing` (row S68).
+  const typeName = $derived(
+    summary === undefined ||
+      summary.title === undefined ||
+      task.data !== undefined ||
+      attempt !== undefined
+      ? undefined
+      : workflowTypeName(summary.title),
+  );
+  const displayTitle = $derived(runTitle ?? builtInName ?? instance.name ?? typeName);
   // The label belongs to this run's own address, which is read once so that it never labels the next
   // page while a navigation is under way.
   const crumbPath = untrack(() => router.pathname);
@@ -731,17 +738,17 @@
     );
   });
 
-  // How it ran is closed for a finished run of the Bureau's, which a person reads for what happened,
-  // and open for any other: a run still going shows its approvals there, and a run only the engine
-  // holds has nothing else. The default is settled once, when the run is first known, so a run that
-  // finishes while it is watched does not fold up under the person watching it.
+  // How it ran is closed for a finished run, at every width, which a person reads for what happened
+  // (row 54a), and open for a run still going, which shows its approvals there. The default is
+  // settled once, when the run is first known, so a run that finishes while it is watched does not
+  // fold up under the person watching it, and a finished run never opens before it is known.
   let howDefault = $state<boolean | undefined>(undefined);
   let howOverride = $state<boolean | undefined>(undefined);
   $effect.pre(() => {
     if (howDefault !== undefined || summary === undefined) return;
-    howDefault = !(task.data !== undefined && summary.over);
+    howDefault = howItRanOpensFirst(summary.over);
   });
-  const howOpen = $derived(howOverride ?? howDefault ?? true);
+  const howOpen = $derived(howOverride ?? howDefault ?? false);
   /** The tab open in How it ran: Steps, unless the link under a reply opened Raw payloads. */
   let howTab = $state('steps');
   let restartOpen = $state(false);

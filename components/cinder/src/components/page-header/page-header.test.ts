@@ -134,7 +134,7 @@ describe('PageHeader', () => {
     expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
-  test('draws no rule by default; divider opts in, and a flush header never draws one', () => {
+  test('draws no rule by default; divider opts in', () => {
     const plain = render(PageHeader, { props: { title: 'Runs' } });
     const header = () => plain.container.querySelector('.cinder-page-header');
     expect(header()?.hasAttribute('data-cinder-divider')).toBe(false);
@@ -143,23 +143,24 @@ describe('PageHeader', () => {
     expect(
       ruled.container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-divider'),
     ).toBe('true');
-    cleanup();
-    const flush = render(PageHeader, { props: { title: 'Runs', divider: true, flush: true } });
-    expect(
-      flush.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-divider'),
-    ).toBe(false);
   });
 
-  test('flush marks the header so it draws no padding', () => {
-    const { container } = render(PageHeader, { props: { title: 'Allowed models', flush: true } });
-    expect(container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-flush')).toBe(
-      'true',
-    );
+  test('is flush with the content below by default, and insets only when asked (COR-2448)', () => {
+    const { container } = render(PageHeader, { props: { title: 'Allowed models' } });
+    const root = () => container.querySelector('.cinder-page-header');
+    expect(root()?.hasAttribute('data-cinder-inset')).toBe(false);
     cleanup();
-    const plain = render(PageHeader, { props: { title: 'Allowed models' } });
+    const inset = render(PageHeader, { props: { title: 'Allowed models', inset: true } });
     expect(
-      plain.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-flush'),
-    ).toBe(false);
+      inset.container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-inset'),
+    ).toBe('true');
+
+    // The base rules draw no padding; only the `inset` mark brings it back.
+    expect(stylesheet).toMatch(/\.cinder-page-header__row \{[^}]*padding: 0;/u);
+    expect(stylesheet).toMatch(
+      /\[data-cinder-inset='true'\] \.cinder-page-header__row \{[^}]*padding: var\(--cinder-space-3\) var\(--cinder-space-4\);/u,
+    );
+    expect(stylesheet).not.toContain('data-cinder-flush');
   });
 
   test('actions and the create button render at xs, the create button in a slot of its own', () => {
@@ -579,5 +580,61 @@ describe('PageHeader narrowActions (COR-2327 B2)', () => {
     expect(narrow).toContain(
       `${noStatus}\n      .cinder-page-header__description {\n      grid-row: 2;`,
     );
+  });
+});
+
+describe('PageHeader actionsNote', () => {
+  const actions = createRawSnippet(() => ({
+    render: () => `<button type="button">Run again</button>`,
+    setup: () => {},
+  }));
+
+  test('draws the caption under the actions and describes their group with it', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Release notes', actions, actionsNote: 'Run again runs on 1.3.0.' },
+    });
+    const note = container.querySelector('.cinder-page-header__actions-note');
+    expect(note?.textContent?.trim()).toBe('Run again runs on 1.3.0.');
+    const group = container.querySelector('.cinder-page-header__actions');
+    expect(group?.getAttribute('role')).toBe('group');
+    expect(group?.getAttribute('aria-describedby')).toBe(note?.id);
+    // A sibling of the actions in the header's row, after them.
+    expect(note?.parentElement?.classList.contains('cinder-page-header__row')).toBe(true);
+    expect(group?.nextElementSibling).toBe(note);
+  });
+
+  test('takes a snippet, and the id a button can point its own aria-describedby at', () => {
+    const link = createRawSnippet(() => ({
+      render: () => `<a href="/settings/models">Connect a provider</a>`,
+      setup: () => {},
+    }));
+    const { container } = render(PageHeader, {
+      props: { title: 'Run', actions, actionsNote: link, actionsNoteId: 'run-again-reason' },
+    });
+    const note = container.querySelector('#run-again-reason');
+    expect(note?.querySelector('a')?.textContent).toBe('Connect a provider');
+  });
+
+  test('draws no caption, and no group, without actions or without words', () => {
+    const bare = render(PageHeader, {
+      props: { title: 'Runs', actionsNote: 'Nothing to explain' },
+    });
+    expect(bare.container.querySelector('.cinder-page-header__actions-note')).toBeNull();
+    bare.unmount();
+    const empty = render(PageHeader, { props: { title: 'Runs', actions, actionsNote: '' } });
+    expect(empty.container.querySelector('.cinder-page-header__actions-note')).toBeNull();
+    expect(
+      empty.container.querySelector('.cinder-page-header__actions')?.hasAttribute('role'),
+    ).toBe(false);
+  });
+
+  test('sits at the inline end under the actions when wide, and starts the line below 640px', () => {
+    expect(stylesheet).toMatch(
+      /\.cinder-page-header__actions-note \{[^}]*grid-row: 2;[^}]*text-align: end;/,
+    );
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 40rem)'),
+    );
+    expect(narrow).toMatch(/\.cinder-page-header__actions-note \{[^}]*text-align: start;/);
   });
 });

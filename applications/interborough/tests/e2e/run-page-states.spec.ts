@@ -20,6 +20,8 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
+import { openHowItRan, openTab } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -46,8 +48,22 @@ for (const width of WIDTHS) {
       await expect(header).toContainText(/Failed\s*, at step 2 of 4/);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Release notes');
       // The failure is told once, on the step, and no banner repeats it.
-      await expect(page.getByTestId('run-step-failure')).toContainText('Step 2');
+      // The step is named by its title on the version the run ran (14t), never by its message.
+      await expect(page.getByTestId('run-step-failure')).toContainText(
+        'Step 2, Collect merged changes, failed',
+      );
       await expect(page.getByTestId('run-step-failure')).toContainText('Why it failed');
+      // The words on which version each button runs on are the header's caption, under the
+      // buttons, and the title keeps its line (54z).
+      const beside = page.locator('[data-run-beside]');
+      await expect(beside).toBeVisible();
+      const { title, caption, retry } = await readBoxes(page, {
+        title: page.getByRole('heading', { level: 1 }),
+        caption: beside,
+        retry: page.getByRole('button', { name: 'Retry from this step' }),
+      });
+      expect(caption.y).toBeGreaterThanOrEqual(retry.y + retry.height - 1);
+      expect(caption.y).toBeGreaterThan(title.y);
       await expect(page.locator('.weft-overview-tab__failure')).toHaveCount(1);
       await expect(page.locator('[data-version-state="older"]')).toBeVisible();
       await captureForDesignReview(page, {
@@ -93,15 +109,69 @@ for (const width of WIDTHS) {
         'aria-describedby',
         (await connect.getAttribute('id')) ?? '',
       );
-      await page.getByRole('button', { name: /^How it ran/ }).click();
-      // The Run inspector card is on How it ran's Inspector tab (row 54i).
-      await page.getByRole('tab', { name: 'Inspector' }).click();
+      // The page as it opens: How it ran closed (54a, 54e), the rail's facts (54j).
+      await expect(page.getByRole('button', { name: /^How it ran/ })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      await captureForDesignReview(page, {
+        route: '/runs/:run',
+        state: 'finished chat run',
+        source: SOURCE,
+      });
+      const howItRan = await openHowItRan(page);
+      // The Run inspector card is on How it ran's Inspector tab (row 54i), which a phone chooses
+      // from the select the tab bar folds into.
+      await openTab(howItRan, 'Inspector');
       await expect(page.locator('[data-section="run-inspector"]')).toContainText(
         'Finished; nothing left to do',
       );
       await captureForDesignReview(page, {
         route: '/runs/:run',
-        state: 'finished chat run',
+        state: 'finished chat run inspector',
+        source: SOURCE,
+      });
+      // A Bureau run's Raw payloads (28e): its input and output cards, internals in JSON only.
+      await openTab(howItRan, 'Raw payloads');
+      await expect(page.locator('[data-section="raw-payloads"]')).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/runs/:run',
+        state: 'raw payloads',
+        source: SOURCE,
+      });
+    });
+
+    test('a schedule’s run says its schedule and when it runs, offers Open schedule and Run again, and has no Tags row (55i, 55j, 55m)', async ({
+      page,
+      request,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      const listed = await request.post(`${E2E_SHOWCASE_URL}/bureau/jsonrpc`, {
+        data: {
+          jsonrpc: '2.0',
+          id: 'tasks',
+          method: 'bureau.tasks.list',
+          params: { origin: 'schedule', limit: 100 },
+        },
+      });
+      const { result } = (await listed.json()) as {
+        result: { tasks: Array<{ id: string; origin?: { scheduleId?: string } }> };
+      };
+      const fire = result.tasks.find(
+        (task) => task.origin?.scheduleId === world.schedules.dailySummary,
+      );
+      expect(fire, 'the sample world holds a Daily summary run').toBeDefined();
+      await openRun(page, `/runs/${encodeURIComponent(fire!.id)}`, width);
+
+      await expect(page.getByRole('link', { name: 'Open schedule' })).toBeVisible();
+      const lineage = page.getByTestId('run-lineage');
+      await expect(lineage).toContainText('Daily summary');
+      await expect(lineage).toContainText('every day at');
+      const rail = page.getByRole('complementary', { name: 'Details' });
+      await expect(rail.getByText('Tags', { exact: true })).toHaveCount(0);
+      await captureForDesignReview(page, {
+        route: '/runs/:run',
+        state: 'schedule run',
         source: SOURCE,
       });
     });
@@ -113,6 +183,8 @@ for (const width of WIDTHS) {
       await openRun(page, `/runs/${encodeURIComponent(world.runs.canceled)}`, width);
 
       await expect(page.getByRole('link', { name: 'Open goal' })).toBeVisible();
+      // Open goal and the menu only: the goal owns its session too (55f).
+      await expect(page.getByRole('link', { name: 'Open the session' })).toHaveCount(0);
       await expect(page.getByRole('link', { name: 'Run again' })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Run again' })).toHaveCount(0);
       await captureForDesignReview(page, {

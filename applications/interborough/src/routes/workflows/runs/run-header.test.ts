@@ -187,6 +187,16 @@ describe('the run page header', () => {
     expect(view.container.querySelector('[data-run-beside]')?.textContent).toBe(
       'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
     );
+    // The words are the header's caption under the actions, not a line among them (row 54z), and
+    // they describe the actions' group.
+    const note = view.container.querySelector('.cinder-page-header__actions-note');
+    expect(note?.contains(view.container.querySelector('[data-run-beside]'))).toBe(true);
+    expect(view.container.querySelector('.ib-run__actions [data-run-beside]')).toBeNull();
+    expect(
+      view.container
+        .querySelector('.cinder-page-header__actions')
+        ?.getAttribute('aria-describedby'),
+    ).toBe(note?.id);
     await fireEvent.click(view.getByRole('button', { name: 'Retry from this step' }));
     expect(retried).toBe(1);
   });

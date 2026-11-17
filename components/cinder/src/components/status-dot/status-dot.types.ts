@@ -56,7 +56,7 @@ export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   status?: StatusDotStatus;
   /** A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a comma ("Running, checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. */
   word?: StatusDotWordLabel;
-  /** A count or short phrase set after the `word` and a comma, so `word="Missed runs"` with `qualifier={4}` reads "Missed runs, 4" with no separator glyph of the caller's choosing. It does not change the word's tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`. */
+  /** A count or short phrase drawn as its own piece after the `word`, a space apart, in the muted text colour at the normal weight (tabular numerals for a count), with no separator in the visible text: `word="Missed runs"` with `qualifier={4}` shows "Missed runs" then a muted "4", and is named "Missed runs, 4". It does not change the word's tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`. */
   qualifier?: string | number;
   /** Realtime connection preset. Sets status, default label, and live-region semantics. */
   connectionState?: StatusDotConnectionState;
@@ -78,7 +78,7 @@ export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
 };
 
 export interface StatusDotSchemaProps {
-  /** A count or short phrase set after the `word` and a comma, so `word="Missed runs"` with `qualifier={4}` reads "Missed runs, 4". It does not change the word's tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`. */
+  /** A count or short phrase drawn as its own piece after the `word`, a space apart and muted, with no separator in the visible text: `word="Missed runs"` with `qualifier={4}` shows "Missed runs" then "4", and is named "Missed runs, 4". It does not change the word's tone, except that a qualified "Done" is neutral. A blank qualifier is ignored and `0` is shown. It has no effect without a `word`, or beside an explicit `label`. */
   qualifier?: string | number;
   /** Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-border-control`, the neutral dot; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. */
   status?: StatusDotStatus;

@@ -61,6 +61,7 @@
             href={router.href(workflowDetailPath(row.runId))}
             tooltip={row.title}
             metaTooltip={row.lineTwo}
+            wrapMeta
             data-attempt={row.id}
             data-run={row.runId}
             data-status-word={row.word}

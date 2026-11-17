@@ -74,14 +74,52 @@ export function canonicalSteps(steps: readonly unknown[]): unknown[] {
   return ordered;
 }
 
-/** What step `at` (counted from one, in the engine's order) is called: its title, else what it does in words. */
+/**
+ * What step `at` (counted from one, in the engine's order) is called: its title, else what it does
+ * in words. A name is set inside a sentence ("Step 2, Collect merged changes, failed"), so it never
+ * ends in a full stop of its own.
+ */
 export function instanceStepName(steps: readonly InstanceStep[], at: number): string | undefined {
   const step = canonicalSteps(steps)[at - 1];
   if (!isRecord(step)) return undefined;
   const title: unknown = step['title'];
-  if (typeof title === 'string' && title.trim() !== '') return title.trim();
+  if (typeof title === 'string' && title.trim() !== '') return withoutFullStop(title);
   const kind: unknown = step['kind'];
-  return typeof kind === 'string' ? stepLabel({ ...step, kind }) : undefined;
+  return typeof kind === 'string' ? withoutFullStop(stepLabel({ ...step, kind })) : undefined;
+}
+
+/**
+ * A reason as a sentence of its own, so the sentence after it starts cleanly (row 55b): "GitHub
+ * didn't answer (HTTP 503)." A reason that already ends in a stop, a question or an exclamation
+ * mark is left as it is.
+ */
+export function sentenceOf(reason: string): string {
+  const trimmed = reason.trim();
+  return trimmed === '' || /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function withoutFullStop(name: string): string {
+  return name.trim().replace(/\.+$/, '').trimEnd();
+}
+
+/**
+ * The steps of the version a run ran, as they were written. The Bureau's history of saved versions
+ * keeps each version's steps with their titles; the engine's revision of it has them stripped
+ * (titles do not change a revision), so a saved version of the run's revision is read first, and
+ * the revision's own steps only when no saved version names it (row 14t: "Collect merged changes").
+ */
+export function stepsOfVersion(
+  ran: string | undefined,
+  saved: readonly { readonly workflowVersion: string; readonly steps?: readonly InstanceStep[] }[],
+  revisions: readonly {
+    readonly workflowVersion: string;
+    readonly document: { readonly steps?: readonly InstanceStep[] };
+  }[],
+): readonly InstanceStep[] | undefined {
+  if (ran === undefined) return undefined;
+  const written = saved.find((entry) => entry.workflowVersion === ran && entry.steps !== undefined);
+  if (written?.steps !== undefined) return written.steps;
+  return revisions.find((revision) => revision.workflowVersion === ran)?.document.steps;
 }
 
 /** How far an instance got, and the step it was at. */

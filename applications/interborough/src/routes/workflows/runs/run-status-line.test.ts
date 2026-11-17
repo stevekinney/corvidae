@@ -6,9 +6,19 @@
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
-import { runStatusLine, startedAgoPhrases } from './run-status-line.ts';
+import { howItRanOpensFirst, runStatusLine, startedAgoPhrases } from './run-status-line.ts';
 
 const STARTED = Date.parse('2026-11-02T10:45:00-06:00');
+
+describe('howItRanOpensFirst (row 54a)', () => {
+  test('a finished run, a chat’s or a workflow file’s instance alike, opens with How it ran closed', () => {
+    expect(howItRanOpensFirst(true)).toBe(false);
+  });
+
+  test('a run still going opens with it open, where its approvals are answered', () => {
+    expect(howItRanOpensFirst(false)).toBe(true);
+  });
+});
 
 describe('startedAgoPhrases (row 54l)', () => {
   const running = {

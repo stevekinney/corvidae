@@ -8,6 +8,7 @@ import { agentPath } from '../../../lib/agent-paths.ts';
 import { chatSessionPath } from '../../../lib/identifier-paths.ts';
 import { workflowDetailPath } from '../../../lib/router.svelte.ts';
 import {
+  inputEnvelopeView,
   NO_LOOKUPS,
   ownRunIdKeys,
   payloadLinkFor,
@@ -18,6 +19,35 @@ import {
 } from './run-payload-links.ts';
 
 const field = (key: string, value: unknown, path: string[] = [key]) => ({ path, key, value });
+
+describe('inputEnvelopeView (rows 55c, S38, 28e)', () => {
+  test('shows an instance’s own input, and the envelope around it in JSON only', () => {
+    const envelope = {
+      kind: 'schedule',
+      scheduleId: 'release-notes-digest',
+      input: { branch: 'main' },
+      workspaceAuthority: { workspaceId: 'w', actorId: 'a' },
+    };
+    const view = inputEnvelopeView(envelope);
+    expect(view.value).toEqual({
+      branch: 'main',
+      kind: 'schedule',
+      scheduleId: 'release-notes-digest',
+      workspaceAuthority: { workspaceId: 'w', actorId: 'a' },
+    });
+    expect(view.jsonOnly).toEqual(['kind', 'scheduleId', 'workspaceAuthority']);
+  });
+
+  test('a key of the input wins over the envelope’s, and a value that is no envelope is left as it is', () => {
+    expect(inputEnvelopeView({ kind: 'manual', input: { kind: 'refund' } })).toEqual({
+      value: { kind: 'refund' },
+      jsonOnly: [],
+    });
+    for (const value of [{ branch: 'main' }, { kind: 'schedule', input: 'text' }, null, [1]]) {
+      expect(inputEnvelopeView(value)).toEqual({ value, jsonOnly: [] });
+    }
+  });
+});
 
 const known: PayloadLookups = {
   chats: new Map([['chat-1', 'Please refund order 4471…']]),

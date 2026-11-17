@@ -137,6 +137,12 @@ export type AttemptLineContext = {
    * goal's last write, so this is the goal's `updatedAt` while it is `evaluating`.
    */
   readonly agentEndedAt?: string | undefined;
+  /**
+   * How long each attempt's run took, in milliseconds, by run, as Runs says it (the run's own start
+   * to its end, row 53l). An attempt's `completedAt` is when its check answered, which can be
+   * minutes after its run ended, so a run's own duration is used wherever it is known.
+   */
+  readonly runDurations?: ReadonlyMap<string, number> | undefined;
 };
 
 /** Why the agent stopped, in words, for the finish reasons that are not the agent's normal end. */
@@ -147,14 +153,18 @@ function agentStopWords(finishReason: string | null): string | undefined {
 }
 
 /**
- * Line two of an attempt's row, agent first: "Assistant, took 8 s"; "Tool runner, canceled at
- * 10:08 AM after 1 min 12 s"; "Tool runner, Agent took 1 min 12 s" while its result is checked
- * (with "Agent stopped: …" when the agent did not end its own way); "Tool runner, Issue refund is
- * waiting for your approval, 4 min" while it waits on you.
+ * Line two of an attempt's row, agent first: "Assistant, took 8 s, Reply said hello"; "Tool runner,
+ * canceled at 10:08 AM after 1 min 12 s"; "Tool runner, Agent took 1 min 12 s" while its result is
+ * checked (with "Agent stopped: …" when the agent did not end its own way); "Tool runner, Issue
+ * refund is waiting for your approval, 4 min" while it waits on you (rows 67i, 67l, 67r, 67v).
  */
 export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext): string {
   const parts: string[] = [context.agent];
-  const took = between(attempt.startedAt, attempt.completedAt);
+  const runTook = context.runDurations?.get(attempt.runId);
+  const took =
+    runTook === undefined
+      ? between(attempt.startedAt, attempt.completedAt)
+      : durationWords(runTook);
   switch (attempt.status) {
     case 'running': {
       const { wait } = context;
@@ -190,10 +200,10 @@ export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext
     case 'passed':
     case 'failed': {
       if (took !== undefined) parts.push(copy.line.took(took));
-      // The owner's read carries what the check said; every other read leaves it out, and an
-      // attempt the check passed has nothing to say.
-      const said = attempt.status === 'failed' ? checkReason(attempt.feedback) : undefined;
-      if (said !== undefined) parts.push(copy.line.checkSaid(said));
+      // The owner's read carries what the check said, met or not ("Reply said hello", 67v); every
+      // other read leaves it out. The reason is said as it is, with no prefix (67l).
+      const said = checkReason(attempt.feedback);
+      if (said !== undefined) parts.push(said);
       break;
     }
   }

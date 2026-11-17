@@ -30,7 +30,10 @@
 
   import type { Attachment } from 'svelte/attachments';
 
+  import { createCutText } from '../../_internal/cut-text.svelte.ts';
+  import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
 
   import type { BadgeProps, BadgeSubscriptionState, BadgeVariant } from './badge.types.ts';
 
@@ -76,6 +79,12 @@
     observer.observe(element, { childList: true, characterData: true, subtree: true });
     return () => observer.disconnect();
   };
+
+  // The cut label is focusable and opens a tooltip with the whole label, so a keyboard or touch user
+  // reaches it too. Inside a page's own Tooltip the label is only that tooltip's trigger: the page's
+  // tooltip speaks, so the badge draws no second one and carries no `title`.
+  const insideTooltip = getTooltipTriggerContext() !== undefined;
+  const labelCut = createCutText();
 
   const subscriptionStateConfiguration = $derived(
     subscriptionState === undefined
@@ -127,9 +136,16 @@
       {subscriptionStateConfiguration.label}
     {/if}
   {:else if truncate}
-    <span class="cinder-badge__label" title={labelText} {@attach readLabelText}
-      >{@render children?.()}</span
-    >
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the label is cut, so focusing it opens the tooltip with the whole label. -->
+    <span
+      class="cinder-badge__label"
+      tabindex={labelCut.tabbable || insideTooltip ? 0 : undefined}
+      {@attach readLabelText}
+      {@attach labelCut.attach}>{@render children?.()}</span
+    >{#if !insideTooltip && labelCut.cut}<FullTextTooltip
+        text={labelText ?? ''}
+        triggerRef={labelCut.trigger}
+      />{/if}
   {:else}
     {@render children?.()}
   {/if}

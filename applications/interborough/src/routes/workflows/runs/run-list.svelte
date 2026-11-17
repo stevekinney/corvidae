@@ -157,6 +157,10 @@
 
   // A run a trigger started names its plugin by its title.
   const pluginTitle = usePluginTitle();
+  // A schedule's chat run says when its schedule runs (row 53l).
+  function scheduleCadence(scheduleId: string): string | undefined {
+    return schedules.data?.cadences?.get(scheduleId);
+  }
 
   const everyRun = $derived(
     runListRows(
@@ -479,6 +483,7 @@
                   {zone}
                   {agentLabel}
                   {pluginTitle}
+                  {scheduleCadence}
                   readable={entry.row.engineRun !== true || engineReadable}
                 />
               {:else}

@@ -318,9 +318,48 @@ describe('Skeleton list variant', () => {
     expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect(row.querySelectorAll('.cinder-skeleton-row-status .cinder-skeleton')).toHaveLength(1);
-      expect(row.querySelectorAll('.cinder-skeleton-row-text .cinder-skeleton')).toHaveLength(2);
+      // Title and line two, each its own StackedListItem cell holding one bar.
+      expect(
+        row.querySelectorAll(
+          '.cinder-skeleton-row-text > .cinder-stacked-list-item__title .cinder-skeleton',
+        ),
+      ).toHaveLength(1);
+      expect(
+        row.querySelectorAll(
+          '.cinder-skeleton-row-text > .cinder-stacked-list-item__line-two .cinder-skeleton',
+        ),
+      ).toHaveLength(1);
       expect(row.querySelectorAll('.cinder-skeleton-row-time .cinder-skeleton')).toHaveLength(1);
+      expect(row.querySelector('.cinder-stacked-list-item__detail')).toBeNull();
     }
+  });
+
+  test('a row is a StackedListItem row in its own classes, so it takes the real row layout', () => {
+    const { container } = render(Skeleton, { props: { variant: 'list', rows: 1 } });
+    const row = container.querySelector('.cinder-skeleton-row');
+    for (const name of [
+      'cinder-stacked-list-item',
+      'cinder-stacked-list-item--lines',
+      'cinder-stacked-list-item--status-leading',
+      'cinder-stacked-list-item--status-column',
+    ]) {
+      expect(row?.classList.contains(name)).toBe(true);
+    }
+    expect(row?.querySelector(':scope > .cinder-stacked-list-item__layout')).not.toBeNull();
+    expect(
+      row?.querySelector('.cinder-stacked-list-item__status .cinder-status-dot'),
+    ).not.toBeNull();
+  });
+
+  test('detailLine adds a third bar in the row detail line, and is off by default', () => {
+    const plain = render(Skeleton, { props: { variant: 'list', rows: 2 } });
+    expect(plain.container.querySelector('.cinder-stacked-list-item__detail')).toBeNull();
+    cleanup();
+    const three = render(Skeleton, { props: { variant: 'list', rows: 2, detailLine: true } });
+    const details = three.container.querySelectorAll('.cinder-stacked-list-item__detail');
+    expect(details).toHaveLength(2);
+    for (const detail of details)
+      expect(detail.querySelectorAll('.cinder-skeleton')).toHaveLength(1);
   });
 
   test('draws no leading circle, avatar or spinner', () => {
@@ -411,14 +450,21 @@ describe('Skeleton list variant', () => {
     for (const row of rows) expect(row.getAttribute('data-cinder-status-column')).toBe('none');
   });
 
-  test('framed keeps the list border by default, and drops it inside a card that frames its rows', () => {
-    const framed = render(Skeleton, { props: { variant: 'list', rows: 1 } });
-    expect(framed.container.querySelector('.cinder-skeleton-list[data-cinder-framed]')).toBeNull();
+  test('framed is off by default, as the loaded list draws none, and draws the frame when asked', () => {
+    const flat = render(Skeleton, { props: { variant: 'list', rows: 1 } });
+    expect(flat.container.querySelector('.cinder-skeleton-list[data-cinder-framed]')).toBeNull();
     cleanup();
-    const bare = render(Skeleton, { props: { variant: 'list', rows: 1, framed: false } });
+    const framed = render(Skeleton, { props: { variant: 'list', rows: 1, framed: true } });
     expect(
-      bare.container.querySelector('.cinder-skeleton-list')?.getAttribute('data-cinder-framed'),
-    ).toBe('false');
+      framed.container.querySelector('.cinder-skeleton-list[data-cinder-framed]'),
+    ).not.toBeNull();
+    // The border, radius and surface are the opt-in's alone: the bare list rule draws none.
+    expect(skeletonCss).toMatch(
+      /\.cinder-skeleton-list\[data-cinder-framed\]\s*\{[^}]*border: 1px solid[^}]*border-radius/,
+    );
+    expect(skeletonCss).not.toMatch(/\.cinder-skeleton-list\s*\{[^}]*border/);
+    // No divider between rows: the loaded rows have none.
+    expect(skeletonCss).not.toMatch(/\.cinder-skeleton-row \+ \.cinder-skeleton-row/);
   });
 
   test('statusMarker is a bar by default, and a dot in the same column when asked', () => {
@@ -429,7 +475,7 @@ describe('Skeleton list variant', () => {
     cleanup();
     const dotted = render(Skeleton, { props: { variant: 'list', rows: 2, statusMarker: 'dot' } });
     const dots = dotted.container.querySelectorAll(
-      '.cinder-skeleton-row-status > .cinder-skeleton-status-bar[data-cinder-marker="dot"]',
+      '.cinder-skeleton-row-status .cinder-status-dot > .cinder-skeleton-status-bar[data-cinder-marker="dot"]',
     );
     expect(dots).toHaveLength(2);
     const rule = declarationsFor(
@@ -467,12 +513,12 @@ describe('Skeleton list variant', () => {
     );
   });
 
-  test('the list is a size container and a phone moves the status under the text', () => {
-    expect(skeletonCss).toMatch(
-      /\[data-cinder-variant='list'\]\s*\{[^}]*container-type: inline-size/,
-    );
-    expect(skeletonCss).toMatch(/@container cinder-skeleton \(max-width: 448px\)/);
-    expect(skeletonCss).toMatch(/grid-template-columns: 8rem minmax\(0, 1fr\) auto/);
+  test('the phone form is the row own, from its StackedListItem classes, not a copy of it here', () => {
+    expect(skeletonCss).toContain("@import '../stacked-list-item/stacked-list-item.css';");
+    expect(skeletonCss).toContain("@import '../status-dot/status-dot.css';");
+    // No container query, grid or column of the placeholder's own is left to drift from the row's.
+    expect(skeletonCss).not.toMatch(/@container cinder-skeleton \(/);
+    expect(skeletonCss).not.toMatch(/\.cinder-skeleton-row\s*\{[^}]*grid-template/);
   });
 });
 

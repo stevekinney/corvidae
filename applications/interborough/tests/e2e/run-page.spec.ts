@@ -17,6 +17,7 @@ import {
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
 
@@ -42,8 +43,8 @@ test('a run is one header with one status, and only How it ran holds tabs', asyn
   await expect(page.locator('[data-run-header] [data-status-word]')).toHaveCount(1);
   await expect(page.locator('[data-status-word]')).toHaveCount(1);
   // COR-2424, row 54i: How it ran's tabs open on Steps; the run has search attributes, so it has
-  // that tab too.
-  const howItRan = page.locator('[data-section="how-it-ran"]');
+  // that tab too. How it ran is closed for a run that is over (row 54a), so it is opened first.
+  const howItRan = await openHowItRan(page);
   await expect(page.getByRole('tab')).toHaveCount(await howItRan.getByRole('tab').count());
   await expect(howItRan.getByRole('tab', { name: 'Steps' })).toHaveAttribute(
     'aria-selected',
@@ -110,6 +111,7 @@ test('a signal, an update and a query are sent from the section on the page, wit
 }) => {
   await page.goto(`/runs/${UPDATE_DESK_RUN_ID}`);
   // The section is in How it ran's Inspector tab (COR-2424, row 54i).
+  await openHowItRan(page);
   await page.getByRole('tab', { name: 'Inspector' }).click();
   const section = page.locator('[data-section="change"]');
   await expect(section).toBeVisible();

@@ -718,6 +718,9 @@ describe('a goal’s page', () => {
       .find((element) => element !== null);
     expect(again?.getAttribute('aria-disabled')).toBe('true');
     expect(again?.getAttribute('aria-describedby')).toContain(reason.id);
+    // Beneath the button, in the header's caption under the actions, not beside the status (67p).
+    expect(reason.closest('.cinder-page-header__actions-note')).not.toBeNull();
+    expect(reason.closest('.cinder-page-header__status')).toBeNull();
   });
 
   test('leaves Start again on for a model agent while the only provider is keyless (COR-2414)', async () => {

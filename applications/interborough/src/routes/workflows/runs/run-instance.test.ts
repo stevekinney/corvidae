@@ -14,12 +14,65 @@ import {
   instanceProgress,
   instanceStepName,
   progressPhrase,
+  sentenceOf,
   stepReached,
+  stepsOfVersion,
   triesAtStep,
   triesOfStep,
   triesTookWords,
   versionStanding,
 } from './run-instance.ts';
+
+describe('the failing step’s heading and reason (rows 14t, 55b)', () => {
+  const titled = [
+    { title: 'Find the last release', kind: 'activity', handler: 'agent' },
+    { title: 'Collect merged changes', kind: 'activity', handler: 'agent' },
+  ];
+  // The engine's revision of the same version: the Bureau strips titles before Weft sees it.
+  const stripped = [
+    { kind: 'activity', handler: 'agent', input: { agent: 'assistant', message: 'Find it.' } },
+    {
+      kind: 'activity',
+      handler: 'agent',
+      input: { agent: 'assistant', message: 'Collect the changes, or since the date given.' },
+    },
+  ];
+
+  test('the steps of the version a run ran are the saved version’s, with their titles', () => {
+    const steps = stepsOfVersion(
+      'rev-b',
+      [
+        { workflowVersion: 'rev-c', steps: [] },
+        { workflowVersion: 'rev-b', steps: titled },
+      ],
+      [{ workflowVersion: 'rev-b', document: { steps: stripped } }],
+    );
+    expect(steps).toBe(titled);
+    expect(instanceStepName(steps ?? [], 2)).toBe('Collect merged changes');
+  });
+
+  test('a revision no saved version names falls back to the revision’s own steps', () => {
+    expect(
+      stepsOfVersion(
+        'rev-a',
+        [{ workflowVersion: 'rev-b', steps: titled }],
+        [{ workflowVersion: 'rev-a', document: { steps: stripped } }],
+      ),
+    ).toBe(stripped);
+    expect(stepsOfVersion(undefined, [], [])).toBeUndefined();
+  });
+
+  test('a name from what the step does ends in no full stop before ", failed"', () => {
+    const name = instanceStepName(stripped, 2);
+    expect(name?.endsWith('.')).toBe(false);
+    expect(failureHeading({ at: 2, total: 2, name, tries: 1 })).not.toContain('., failed');
+  });
+
+  test('the reason is a sentence of its own before "It wasn’t anything you did."', () => {
+    expect(sentenceOf('GitHub didn’t answer (HTTP 503)')).toBe('GitHub didn’t answer (HTTP 503).');
+    expect(sentenceOf('The run was stopped.')).toBe('The run was stopped.');
+  });
+});
 
 const START = Date.parse('2026-10-30T11:00:00.000Z');
 

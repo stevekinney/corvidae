@@ -4,7 +4,7 @@
  * host's temporary home, so a spec that creates one removes it, and a later spec's list never sees
  * it. The files the specs read without changing are seeded by `e2e-server.ts`.
  */
-import type { APIRequestContext, Locator } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
 
@@ -121,19 +121,16 @@ export async function workflowRunStatus(
 }
 
 /**
- * The width below which Cinder's `Tabs` turns a horizontal tab bar into one select named Tab
- * (`PHONE_VIEWPORT_BREAKPOINT` in Cinder's `viewport-below.svelte.ts`, the `collapseBelow` default).
- * The workflow pages keep that default, so at the phone width a tab is chosen from the select's
- * options and the selected tab is the select's value.
+ * Cinder's `Tabs` turns a horizontal tab bar into one select named Tab only when the bar does not
+ * fit its container (`collapseOnOverflow`), so whether a tab is chosen from the select's options,
+ * with the selected tab as the select's value, is read from the page and not from the viewport.
  */
-const TABS_COLLAPSE_BELOW_PIXELS = 640;
 
 /** The accessible name Cinder gives the select a collapsed tab bar becomes (`collapseLabel`). */
 const COLLAPSED_TABS_LABEL = 'Tab';
 
-function tabsAreCollapsed(root: Locator): boolean {
-  const width = root.page().viewportSize()?.width;
-  return width !== undefined && width < TABS_COLLAPSE_BELOW_PIXELS;
+async function tabsAreCollapsed(root: Locator): Promise<boolean> {
+  return (await collapsedTabs(root).count()) > 0;
 }
 
 /** The control that shows which tab is open: the select when the bar is collapsed. */
@@ -141,9 +138,22 @@ function collapsedTabs(root: Locator): Locator {
   return root.getByRole('combobox', { name: COLLAPSED_TABS_LABEL });
 }
 
+/**
+ * Opens a run page's How it ran, which the page gives closed for a run that is over, at every
+ * width (row 54a), and open for one still going; returns the disclosure.
+ */
+export async function openHowItRan(page: Page): Promise<Locator> {
+  const section = page.locator('[data-section="how-it-ran"]');
+  const trigger = section.getByRole('button', { name: /^How it ran/ }).first();
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  return section;
+}
+
 /** Opens the tab `name` of the tab bar in `root`, from the select at the phone width. */
 export async function openTab(root: Locator, name: string): Promise<void> {
-  if (!tabsAreCollapsed(root)) {
+  if (!(await tabsAreCollapsed(root))) {
     await root.getByRole('tab', { name }).click();
     return;
   }
@@ -153,7 +163,7 @@ export async function openTab(root: Locator, name: string): Promise<void> {
 
 /** Expects the tab `name` of the bar in `root` to be the one that is open. */
 export async function expectTabOpen(root: Locator, name: string): Promise<void> {
-  if (tabsAreCollapsed(root)) {
+  if (await tabsAreCollapsed(root)) {
     await expect(collapsedTabs(root)).toContainText(name);
     return;
   }
@@ -176,7 +186,7 @@ export async function expectTabNames(
       ? name
       : new RegExp(`^\\s*${name.source.replace(/^\^/, '').replace(/\$$/, '')}\\s*$`, name.flags),
   );
-  if (!tabsAreCollapsed(root)) {
+  if (!(await tabsAreCollapsed(root))) {
     await expect(root.getByRole('tab')).toHaveText(expected);
     return;
   }

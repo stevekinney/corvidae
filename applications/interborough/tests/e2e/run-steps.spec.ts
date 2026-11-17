@@ -15,6 +15,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { RUN_STEPS_RUN_ID } from '../../fixtures/run-steps-ids.ts';
 import { expect, test } from './fixtures.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
 
@@ -44,6 +45,8 @@ test('each step has a waterfall bar placed by its start, and the open step shows
   expect(timeline.length).toBeGreaterThanOrEqual(3);
 
   await page.goto(`/runs/${RUN_STEPS_RUN_ID}`);
+  // The steps are in How it ran, closed for a run that is over (row 54a).
+  await openHowItRan(page);
   await expect(page.getByRole('heading', { level: 3, name: 'Steps' })).toBeVisible();
   const rows = page.locator('[data-step-row]');
   await expect(rows).toHaveCount(timeline.length);
@@ -93,6 +96,7 @@ test('each step shows the log lines placed under it, and the whole log is still 
   const timeline = await timelineOf(request, RUN_STEPS_RUN_ID);
   expect(timeline.length).toBe(4);
   await page.goto(`/runs/${RUN_STEPS_RUN_ID}`);
+  await openHowItRan(page);
 
   // A line goes under the entry with the greatest step index not past the line's own step, so the
   // run's four lines land under the first step, the first child, and the last step; the second
@@ -190,6 +194,7 @@ test('a checkpoint opens as a replay with an Alert and no colored edge', async (
 
   await page.goto(`/runs/${encodeURIComponent(withCheckpoints)}`);
   // Checkpoints are in How it ran's Events and logs tab (COR-2424).
+  await openHowItRan(page);
   await page.getByRole('tab', { name: 'Events and logs' }).click();
   await page.getByRole('button', { name: 'Checkpoints' }).click();
   const list = page.locator('.weft-checkpoints-tab__list');
@@ -226,6 +231,7 @@ test('the steps, logs and related runs do not scroll sideways at 375, 768 and 12
   for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/runs/${RUN_STEPS_RUN_ID}?step=${String(firstStep.step)}`);
+    await openHowItRan(page);
     await expect(page.locator('article[data-step]')).toBeVisible();
     await page.locator('[data-section="logs"]').getByRole('button', { name: /^Logs/ }).click();
     await expect(

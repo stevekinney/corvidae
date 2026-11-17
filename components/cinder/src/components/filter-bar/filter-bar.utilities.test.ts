@@ -154,15 +154,20 @@ describe('nextFilterBarFit', () => {
   });
 
   test('a drawn row that overflows steps down one form, and narrow is the floor', () => {
-    expect(nextFilterBarFit({ ...base, need: 1100 }).fitted).toBe('medium');
+    // Search folds before the segments do: wide goes to search-folded, and only then to medium.
+    expect(nextFilterBarFit({ ...base, need: 1100 }).fitted).toBe('search-folded');
+    expect(nextFilterBarFit({ ...base, drawn: 'search-folded', need: 1100 }).fitted).toBe('medium');
     expect(nextFilterBarFit({ ...base, drawn: 'medium', need: 1100 }).fitted).toBe('narrow');
     expect(nextFilterBarFit({ ...base, drawn: 'narrow', need: 1100 }).fitted).toBeUndefined();
   });
 
   test('a folded row steps up when the wider form, as measured, fits', () => {
     const folded = { ...base, drawn: 'medium' as const, need: 700 };
-    expect(nextFilterBarFit({ ...folded, widerNeed: 1000 }).fitted).toBe('wide');
+    expect(nextFilterBarFit({ ...folded, widerNeed: 1000 }).fitted).toBe('search-folded');
     expect(nextFilterBarFit({ ...folded, widerNeed: 1100 }).fitted).toBeUndefined();
+    expect(
+      nextFilterBarFit({ ...folded, drawn: 'search-folded', need: 900, widerNeed: 1000 }).fitted,
+    ).toBe('wide');
     expect(nextFilterBarFit({ ...folded, drawn: 'narrow', widerNeed: 700 }).fitted).toBe('medium');
   });
 
@@ -175,7 +180,7 @@ describe('nextFilterBarFit', () => {
 
   test('an unmeasured wider form is drawn to measure it, unless the bar is in use', () => {
     const folded = { ...base, drawn: 'medium' as const, need: 700 };
-    expect(nextFilterBarFit(folded)).toEqual({ fitted: 'wide', waiting: false });
+    expect(nextFilterBarFit(folded)).toEqual({ fitted: 'search-folded', waiting: false });
     expect(nextFilterBarFit({ ...folded, mayProbe: false })).toEqual({
       fitted: undefined,
       waiting: true,

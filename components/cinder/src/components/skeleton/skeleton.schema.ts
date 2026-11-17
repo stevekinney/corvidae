@@ -63,8 +63,14 @@ const schema = {
     framed: {
       type: 'boolean',
       description:
-        "Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside\na card that already frames its rows, so the placeholder does not draw a box within the box.\nIgnored by other variants.",
-      default: true,
+        "Draw the list's own border and rounded corners when `variant` is `'list'`. A placeholder draws\na frame only when the list it stands for does, so the default is none: a status-first list sits\nflat on its page, and a frame that vanished when the rows arrived would be a jump. Turn it on\nfor a list that draws its own frame. Ignored by other variants.",
+      default: false,
+    },
+    detailLine: {
+      type: 'boolean',
+      description:
+        "Draw a third bar under each row's two lines when `variant` is `'list'`, for a list whose rows\ncarry a `detail` line (a phone's Schedules rows say why a schedule will not run and what\nhappened last). Without it a row of three lines would load at half as much again as its\nplaceholder. Ignored by other variants.",
+      default: false,
     },
     dayBand: {
       type: 'boolean',

@@ -14,18 +14,18 @@
     border-bottom: 1px solid var(--cinder-border);
   }
 
-  /* Flush: the page lays out its own column, so the header draws no rule and no padding, and its
-     title lines up with what is under it. */
-  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__breadcrumbs {
-    padding-inline: 0;
+  /* Flush by default (COR-2448): the header draws no padding beside or around its row, so its title
+     lines up with what is under it. `inset` opts into the padding. */
+  .cinder-page-header[data-cinder-inset='true'] .cinder-page-header__breadcrumbs {
+    padding-inline: var(--cinder-space-4);
   }
 
-  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__row {
-    padding: 0;
+  .cinder-page-header[data-cinder-inset='true'] .cinder-page-header__row {
+    padding: var(--cinder-space-3) var(--cinder-space-4);
   }
 
   .cinder-page-header__breadcrumbs {
-    padding: var(--cinder-space-3) var(--cinder-space-4) 0;
+    padding: var(--cinder-space-3) 0 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-tight);
@@ -36,7 +36,7 @@
     align-items: flex-start;
     gap: var(--cinder-space-3);
     min-width: 0;
-    padding: var(--cinder-space-3) var(--cinder-space-4);
+    padding: 0;
   }
 
   .cinder-page-header__heading-group {
@@ -262,6 +262,104 @@
   /* The create "+" sits after the other actions, at their gap rather than the row's. */
   .cinder-page-header__actions + .cinder-page-header__create-slot {
     margin-inline-start: calc(var(--cinder-space-2) - var(--cinder-space-3));
+  }
+
+  /* The caption under the actions (`actionsNote`): the title keeps the whole first column, the
+     actions sit at the inline end of the first row, and the caption sits under them, as wide as
+     they are, so it never narrows the title. */
+  .cinder-page-header__row:has(> .cinder-page-header__actions-note) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+  }
+
+  .cinder-page-header__row:has(> .cinder-page-header__actions-note):has(
+      > .cinder-page-header__actions:not(.cinder-page-header__create-slot)
+    ):has(> .cinder-page-header__create-slot) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .cinder-page-header__row:has(> .cinder-page-header__actions-note)
+    > .cinder-page-header__heading-group {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .cinder-page-header__row:has(> .cinder-page-header__actions-note) > .cinder-page-header__actions {
+    grid-row: 1;
+    justify-self: end;
+    margin-inline-start: 0;
+  }
+
+  .cinder-page-header__row:has(> .cinder-page-header__actions-note)
+    > .cinder-page-header__create-slot {
+    grid-column: -2;
+  }
+
+  .cinder-page-header__actions-note {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    /* As wide as the actions above it, whatever its own length. */
+    inline-size: 0;
+    min-inline-size: 100%;
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    text-align: end;
+  }
+
+  /* Below 640px of header width the title takes the row, and the actions and their caption start
+     the lines under it. */
+  @container cinder-page-header (max-width: 40rem) {
+    .cinder-page-header__row:has(> .cinder-page-header__actions-note) {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .cinder-page-header__row:has(> .cinder-page-header__actions-note)
+      > .cinder-page-header__heading-group {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+
+    .cinder-page-header__row:has(> .cinder-page-header__actions-note)
+      > .cinder-page-header__actions:not(.cinder-page-header__create-slot) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-self: start;
+      flex-wrap: wrap;
+      margin-block: 0;
+    }
+
+    /* The create "+" stays beside the title. */
+    .cinder-page-header__row:has(> .cinder-page-header__actions-note)
+      > .cinder-page-header__create-slot {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .cinder-page-header__row:has(> .cinder-page-header__actions-note):has(
+        > .cinder-page-header__create-slot
+      )
+      > .cinder-page-header__heading-group {
+      grid-column: 1;
+    }
+
+    .cinder-page-header__actions-note {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      inline-size: auto;
+      min-inline-size: 0;
+      text-align: start;
+    }
+  }
+
+  /* A hero's caption sits under its actions, at the start like they are. */
+  .cinder-page-header__hero-copy > .cinder-page-header__actions-note {
+    inline-size: auto;
+    min-inline-size: 0;
+    text-align: start;
   }
 
   /* The decision action group (approve, deny, edit; Cancel for running or paused work) is drawn

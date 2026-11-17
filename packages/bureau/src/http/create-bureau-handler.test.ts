@@ -688,6 +688,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.workflows.runs.get',
         'bureau.workflows.runs.history',
         'bureau.workflows.runs.list',
+        'bureau.workflows.runs.retry',
         'bureau.workflows.signal',
         'bureau.workflows.start',
         'bureau.workflows.triggers.retry',

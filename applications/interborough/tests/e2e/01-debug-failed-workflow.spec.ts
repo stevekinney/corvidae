@@ -11,6 +11,7 @@
  * this spec locates by name (see `playwright.config.ts`'s module doc).
  */
 import { expect, test } from './fixtures.ts';
+import { openHowItRan } from './workflow-support.ts';
 
 test('operator finds, reads, and exports a failed workflow', async ({ page, checkA11y }) => {
   await page.goto('/workflows/payment-failing/runs');
@@ -31,10 +32,12 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(failedRow).toBeVisible();
   await failedRow.getByRole('link').click();
 
-  // A run only the engine knows has the workflow's type as its page's one level-1 heading. Only
-  // How it ran holds tabs, and it opens on Steps (COR-2424, row 54i).
-  await expect(page.getByRole('heading', { level: 1, name: 'payment-failing' })).toBeVisible();
+  // A run only the engine knows has the workflow's type, in words, as its page's one level-1
+  // heading (row S68). Only How it ran holds tabs, closed for a run that is over (row 54a), and it
+  // opens on Steps (COR-2424, row 54i).
+  await expect(page.getByRole('heading', { level: 1, name: 'Payment failing' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await openHowItRan(page);
   await expect(page.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
   await expect(
     page.getByText(

@@ -1469,6 +1469,15 @@ Two further options let an application publish MCP Apps beside the tools. `resou
 
 The inspector also follows a task through `bureau.tasks.events`. Both declare an empty content-security policy (no network origin, frame, or base URI) and no permissions, which a host reads as denied, and neither asks for a dedicated sandbox origin. The version is part of each URI: a changed contract is a new URI. Closing an app never cancels a run; abort is the explicit `bureau.tasks.cancel`. The MCP Apps contract Bureau uses for tracked surfaces, including the `mcp-app` representation, is [`documentation/interactive-surface.md`](./documentation/interactive-surface.md); the adapter's apps are plain tool-linked pages and do not create surfaces.
 
+#### Panels by host
+
+| Host | run-inspector | pending-review | Call outside the visibility allowlist | Evidence |
+| --- | --- | --- | --- | --- |
+| Claude Code | Page served and linked, rendering not checked | Page served and linked, rendering not checked | Visibility advertised in the tool listing | `smoke:claude-code-mcp` |
+| Claude Desktop | Not yet recorded | Not yet recorded | Not yet recorded | `smoke:claude-desktop-panels`, a by-hand run (COR-2220) |
+
+A Claude Desktop cell is filled only from a by-hand run of `smoke:claude-desktop-panels` against a real Claude Desktop, with its version and result recorded on the COR-2220 pull request. The script checks what needs no host (both pages served, each linked to its tool, every tool's visibility) and prints the steps that remain by hand. It is on demand and no part of `bun run validate`.
+
 ### Owner of record
 
 Every resource has one **owner**: the principal that owns it, stored once when the resource is created. The **actor** is whoever performed an action, and is recorded on the audit entry's `principal`. A service principal (`system:scheduler`, `system:recovery`, `system:expiry`) is only ever an actor: work the scheduler, recovery, or expiry starts or changes keeps the owner of the resource it acts on.

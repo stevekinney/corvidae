@@ -111,10 +111,48 @@ function routeRun(id: string, overrides: Record<string, unknown> = {}): void {
  * header of its own with a More menu that holds only Copy run ID, and the loaded page replaces it,
  * so the menu is opened only after the run's status is there.
  */
-/** Opens one of How it ran's tabs (COR-2424, row 54i). */
+/**
+ * Opens one of How it ran's tabs (COR-2424, row 54i), opening How it ran first: it is closed for a
+ * run that is over (row 54a).
+ */
 async function openTab(view: ReturnType<typeof mount>, name: string): Promise<void> {
+  await openHowItRan(view);
   await fireEvent.click(await view.findByRole('tab', { name }));
 }
+
+/** Opens How it ran, as a person does, when the page gives it closed. */
+async function openHowItRan(view: ReturnType<typeof mount>): Promise<void> {
+  const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+  if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+}
+
+describe('the Tags row of a run the engine holds (rows 54j, 55d)', () => {
+  test('lists a person’s tags, counts the system’s, and Add a tag opens the editor', async () => {
+    const id = 'wf-detail-tags-1';
+    routeRun(id, { tags: ['origin:goal', 'origin-parent:run-1', 'prod'] });
+
+    const view = mount(id, principalWith('workflows:read', 'workflows:write', 'tags:write'));
+
+    await waitFor(() => expect(fact(view, 'Tags')).toContain('prod'));
+    const tags = fact(view, 'Tags') ?? '';
+    expect(tags).toContain('2 system tags');
+    expect(tags).not.toContain('origin');
+    // No editor box until a person asks for one.
+    expect(view.container.querySelector('.ib-run-tags')).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Add a tag' }));
+    await waitFor(() => expect(view.container.querySelector('.ib-run-tags')).not.toBeNull());
+  });
+
+  test('offers no Add a tag to a caller without tags:write', async () => {
+    const id = 'wf-detail-tags-2';
+    routeRun(id, { tags: [] });
+
+    const view = mount(id);
+
+    await waitFor(() => expect(fact(view, 'Tags')).toBeDefined());
+    expect(view.queryByRole('button', { name: 'Add a tag' })).toBeNull();
+  });
+});
 
 async function openMoreActions(view: ReturnType<typeof mount>): Promise<void> {
   await waitFor(() =>
@@ -174,7 +212,8 @@ describe('a run of a workflow file the engine does not hold', () => {
 
     const view = mount(id);
 
-    expect(await view.findByRole('heading', { level: 1, name: 'e2e-approval' })).not.toBeNull();
+    // Headed by its type in words, as the rail names it (row S68).
+    expect(await view.findByRole('heading', { level: 1, name: 'E2e approval' })).not.toBeNull();
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
     expect(view.container.querySelector('[data-status-word]')?.textContent).toContain('Running');
     expect(view.queryAllByRole('tab').length).toBe(0);
@@ -297,7 +336,7 @@ describe('a run the engine holds', () => {
     const view = mount(id);
 
     expect(
-      await view.findByRole('heading', { level: 1, name: 'order-fulfillment' }),
+      await view.findByRole('heading', { level: 1, name: 'Order fulfillment' }),
     ).not.toBeNull();
     expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
@@ -672,7 +711,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('attributes:read', 'attributes:write'));
-    await view.findByRole('heading', { level: 1, name: 'order-fulfillment' });
+    await view.findByRole('heading', { level: 1, name: 'Order fulfillment' });
 
     expect(jsonRpcMethodsCalled()).not.toContain('weft.workflows.attributes.get');
   });

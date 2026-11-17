@@ -131,6 +131,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
+      title: 'Seeded goal',
       href: '/goals/seeded-goal',
       session: { title: 'Say hello.', href: '/chats/goal-seeded-goal-s0' },
     });
@@ -143,6 +144,7 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
+      title: 'Seeded goal',
       href: '/goals/seeded-goal',
       session: { title: '', href: '/chats/goal-seeded-goal-s0' },
     });
@@ -431,6 +433,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
     expect(rowOf(ORIGINS.goal)).toEqual({
       kind: 'goal',
       name: 'seeded-goal',
+      title: 'Seeded goal',
       href: '/goals/seeded-goal',
       session: null,
     });

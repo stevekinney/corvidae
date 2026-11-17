@@ -20,6 +20,7 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -172,10 +173,15 @@ for (const width of WIDTHS) {
 
       const again = page.getByRole('button', { name: 'Run again' });
       await expect(again).toHaveAttribute('aria-disabled', 'true');
-      await expect(page.getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(
-        'href',
-        '/settings/models',
+      const connect = page.getByRole('link', { name: 'Connect a provider' });
+      await expect(connect).toHaveAttribute('href', '/settings/models');
+      await expect(again).toHaveAttribute(
+        'aria-describedby',
+        (await connect.getAttribute('id')) ?? '',
       );
+      // Beneath the actions, in the header's caption, never beside or above them (54f, 54z).
+      const { button, link } = await readBoxes(page, { button: again, link: connect });
+      expect(link.y).toBeGreaterThanOrEqual(button.y + button.height - 1);
       await captureForDesignReview(page, {
         route: '/runs/:run',
         state: 'run again held, no provider',

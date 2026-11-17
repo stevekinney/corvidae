@@ -14,8 +14,9 @@
   import type { ChatContext } from '../../../lib/bureau-client.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
-  import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
+  import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import { goalPath } from '../../../lib/identifier-paths.ts';
+  import { oneLine } from '../../../lib/one-line.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
@@ -27,12 +28,13 @@
   import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
   import type { VersionStanding } from './run-instance.ts';
   import RunRelatedRuns from './run-related-runs.svelte';
-  import { scheduleRelatedSentence } from './run-related-lines.ts';
+  import { scheduleRailRules, scheduleRelatedSentence } from './run-related-lines.ts';
   import RunLineage from './run-lineage.svelte';
   import RunLogs from './run-logs.svelte';
   import RunRelated from './run-related.svelte';
-  import { durationWords, goalTitle } from './run-rows.ts';
+  import { durationWords, goalName } from './run-rows.ts';
   import RunTags from './run-tags.svelte';
+  import { runTagsFact } from './run-tags.ts';
   import type { RunEngine } from './run-engine.svelte.ts';
 
   interface RunDetailsProps {
@@ -138,12 +140,42 @@
     router.navigate(path);
   }
 
+  // A schedule's chat run (row 55m) keeps its Schedule row, has no Tags row and says whether it was
+  // the schedule's last run; a workflow file's instance a schedule started (row 55d) says the
+  // schedule once, in Started by, keeps its Tags, and says what came from it under Related runs.
+  const scheduleRules = $derived(
+    scheduleRailRules({ hasTask: task !== undefined, scheduled: schedule !== undefined }),
+  );
+  const relatedSchedule = $derived(scheduleRules.scheduleRelated ? schedule : undefined);
+
   // Whether the goal's other attempts or the schedule's last run have something to say under Related runs.
   const relatedHasExtra = $derived(
     goal !== undefined ||
-      (schedule !== undefined &&
+      (relatedSchedule !== undefined &&
         startedAt !== undefined &&
-        scheduleRelatedSentence(schedule, startedAt, missedSince) !== undefined),
+        scheduleRelatedSentence(relatedSchedule, startedAt, missedSince) !== undefined),
+  );
+
+  // A run the Bureau has a task for, or a goal's attempt, is said by what it is: its version, its
+  // engine revision and its finish reason are not facts of it (rows 54j, 55h). An instance of a
+  // workflow file names its version; any other run the engine holds names its version and revision.
+  const bureauRun = $derived(task !== undefined || goal !== undefined);
+  const showVersion = $derived(
+    versionStanding !== undefined || (workflow !== undefined && !bureauRun),
+  );
+  const showRevision = $derived(
+    workflow !== undefined && versionStanding === undefined && !bureauRun,
+  );
+  // The run's tags, as Cinder's tag list says them: a person's own, and the system's counted.
+  const tagsFact = $derived(runTagsFact(workflow?.tags));
+  let editingTags = $state(false);
+  const showTags = $derived(
+    engine !== undefined && workflow !== undefined && scheduleRules.tags && !editingTags,
+  );
+  // What the run said when it stopped, in one line: never an error's JSON. A canceled run's status
+  // line already says it was canceled, so the message says nothing more (row 55h).
+  const message = $derived(
+    task?.statusMessage && task.status !== 'canceled' ? oneLine(task.statusMessage) : '',
   );
 
   const items = $derived.by((): DescriptionListItem[] => {
@@ -165,7 +197,15 @@
     }
     // A goal's attempt names its goal and its agent; the workflow behind it is not a fact (row 55h).
     if (workflowType !== undefined && goal === undefined) {
-      list.push({ id: 'workflow', term: RUN_PAGE_COPY.facts.workflow, definition: workflowLink });
+      list.push({
+        id: 'workflow',
+        term: RUN_PAGE_COPY.facts.workflow,
+        definition: workflowLink,
+        // A built-in workflow's identifier and "(built in)" under its name (row 54j).
+        ...(isBuiltInWorkflow(workflowType)
+          ? { note: `${workflowType} ${RUN_DETAIL_COPY.builtIn}` }
+          : {}),
+      });
     }
     const agentName = task?.agentName ?? goal?.agentName;
     if (agentName !== undefined && agentName !== null) {
@@ -175,7 +215,7 @@
         definition: agentLabel(agentName, undefined),
       });
     }
-    if (schedule !== undefined) {
+    if (schedule !== undefined && scheduleRules.scheduleRow) {
       list.push({
         id: 'schedule',
         term: RUN_DETAIL_COPY.schedule,
@@ -199,29 +239,38 @@
             : RUN_PAGE_COPY.deadlinePassed,
       });
     }
-    if (workflow !== undefined || versionStanding !== undefined) {
-      list.push({ id: 'version', term: RUN_PAGE_COPY.facts.version, definition: version });
+    if (showVersion) {
+      list.push({
+        id: 'version',
+        term: RUN_PAGE_COPY.facts.version,
+        definition: version,
+        // Where an older version stands against the current one (row 55d), in the list's own note.
+        ...(versionStanding?.state === 'older' && versionStanding.current !== null
+          ? { note: RUN_DETAIL_COPY.instance.versionOlderNote(versionStanding.current) }
+          : {}),
+      });
     }
     // An instance of a workflow file names its version above, which is the whole of what the rail
     // says about it (rows 54p, 55d); the revision is for the runs that have no such version.
-    if (workflow !== undefined && versionStanding === undefined) {
+    if (showRevision) {
       list.push({ id: 'revision', term: RUN_PAGE_COPY.facts.revision, definition: revision });
     }
     if (finalizer?.tooltip !== undefined) {
       list.push({ id: 'cleanup', term: RUN_PAGE_COPY.facts.cleanup, definition: cleanup });
     }
-    if (task?.statusMessage) {
-      list.push({
-        id: 'message',
-        term: RUN_PAGE_COPY.facts.message,
-        definition: task.statusMessage,
-      });
+    if (message !== '') {
+      list.push({ id: 'message', term: RUN_PAGE_COPY.facts.message, definition: message });
     }
-    if (task?.finishReason && isTerminalState(task.status)) {
+    if (showTags) {
       list.push({
-        id: 'finish-reason',
-        term: RUN_PAGE_COPY.facts.finishReason,
-        definition: task.finishReason,
+        id: 'tags',
+        term: RUN_PAGE_COPY.facts.tags,
+        definition: {
+          type: 'tags',
+          tags: tagsFact.tags,
+          systemTagCount: tagsFact.systemTagCount,
+          ...(tagGate.disabled ? {} : { onAddTag: () => (editingTags = true) }),
+        },
       });
     }
     return list;
@@ -253,7 +302,14 @@
 {/snippet}
 
 {#snippet relatedExtra()}
-  <RunRelatedRuns {runId} {goal} {schedule} {missedSince} {startedAt} heading={false} />
+  <RunRelatedRuns
+    {runId}
+    {goal}
+    schedule={relatedSchedule}
+    {missedSince}
+    {startedAt}
+    heading={false}
+  />
 {/snippet}
 
 {#snippet scheduleLink()}
@@ -269,7 +325,7 @@
   {#if goal !== undefined}
     {@const path = goalPath(goal.goalRunId)}
     <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
-      >{goalTitle(goal.goalRunId)}</a
+      >{goalName(goal)}</a
     >
   {/if}
 {/snippet}
@@ -280,11 +336,6 @@
     <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
       >{workflowTypeName(workflowType)}</a
     >
-    {#if isBuiltInWorkflow(workflowType)}
-      <small class="ib-run-value"
-        ><code class="ib-identifier">{workflowType}</code> {RUN_DETAIL_COPY.builtIn}</small
-      >
-    {/if}
   {/if}
 {/snippet}
 
@@ -301,11 +352,6 @@
           : RUN_DETAIL_COPY.instance.versionOlder(versionStanding.ran)}
       />
     </span>
-    {#if versionStanding.state === 'older' && versionStanding.current !== null}
-      <small class="ib-run-value">
-        {RUN_DETAIL_COPY.instance.versionOlderNote(versionStanding.current)}
-      </small>
-    {/if}
   {:else}
     <code class="ib-identifier ib-run-value">{versionSummary}</code>
   {/if}
@@ -329,8 +375,8 @@
   <h2 id="ib-run-details" class="ib-run__heading-2">{RUN_PAGE_COPY.detailsHeading}</h2>
   <DescriptionList {items} variant="default" />
   {#if engine !== undefined && workflow !== undefined}
-    <!-- A run a schedule started has no Tags row (row 55m). -->
-    {#if schedule === undefined}
+    <!-- Add a tag opens the editor in place of the Tags row. -->
+    {#if editingTags && scheduleRules.tags}
       <RunTags client={engine.client} {workflow} {tagGate} />
     {/if}
     <!-- The goal's other attempts and the schedule's last run are said inside the engine's one Related runs. -->
@@ -343,7 +389,7 @@
     />
     <RunLogs client={engine.client} workflowId={workflow.id} />
   {:else}
-    <RunRelatedRuns {runId} {goal} {schedule} {missedSince} {startedAt} />
+    <RunRelatedRuns {runId} {goal} schedule={relatedSchedule} {missedSince} {startedAt} />
   {/if}
   {#if task !== undefined && workflow === undefined && task.kind === 'chat'}
     <RunChatRelated runId={task.id} contextId={task.contextId} title={chat?.title ?? undefined} />

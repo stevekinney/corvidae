@@ -118,6 +118,13 @@ const SHOWCASE_SPECIFICATIONS = [
   // An archived chat, the Archived chats row and view, and a refused archive.
   'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
+  // The Runs list and the run page in the states the sample world does not hold, and the run page
+  // in each state it does (COR-2423, COR-2424).
+  'tests/e2e/runs-states.spec.ts',
+  'tests/e2e/run-page-states.spec.ts',
+  'tests/e2e/run-page-live-states.spec.ts',
+  // A working goal, Start again held, and Start again pressed (COR-2425).
+  'tests/e2e/goal-page-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

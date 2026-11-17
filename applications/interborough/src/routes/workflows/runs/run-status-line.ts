@@ -51,6 +51,15 @@ export type RunStatusLine = {
 };
 
 /**
+ * Whether How it ran is open when a run's page first knows the run (row 54a): closed for a run that
+ * is over, whatever started it and at every width, and open for one still going, whose approvals a
+ * person answers there.
+ */
+export function howItRanOpensFirst(over: boolean): boolean {
+  return !over;
+}
+
+/**
  * The status line of an instance of a workflow file that is still going (row 54l): "Started 40 s
  * ago, step 2 of 4" in place of the day, the time and "so far". `undefined` for any other run,
  * which keeps its day, its time and its parts (a chat's run, row 06b).

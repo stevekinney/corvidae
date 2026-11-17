@@ -20,6 +20,7 @@ import {
 import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import {
   instanceProgress,
+  stepsOfVersion,
   versionStanding,
   type InstanceProgress,
   type VersionStanding,
@@ -100,11 +101,16 @@ export class RunInstance {
     });
   }
 
-  /** The steps of the version the run ran, when the workflow's revisions say. */
+  /**
+   * The steps of the version the run ran, as they were written (titles included), when the
+   * workflow's saved versions or its revisions say.
+   */
   get steps(): readonly Readonly<Record<string, unknown>>[] | undefined {
-    const ran = this.#source().ranVersion;
-    return this.#revisions.data?.find((revision) => revision.workflowVersion === ran)?.document
-      .steps;
+    return stepsOfVersion(
+      this.#source().ranVersion,
+      this.#labels.data ?? [],
+      this.#revisions.data ?? [],
+    );
   }
 
   /** The events of the run's history, once it has been read. */

@@ -296,7 +296,13 @@ export async function getLatestSavedSteps(
 
 const versionLabelsSchema = z.object({
   revisions: z.array(
-    z.object({ version: z.string(), current: z.boolean(), workflowVersion: z.string() }),
+    z.object({
+      version: z.string(),
+      current: z.boolean(),
+      workflowVersion: z.string(),
+      // The version's steps as written, titles included, which the engine's revision drops.
+      steps: z.array(z.record(z.string(), z.unknown())).optional(),
+    }),
   ),
 });
 

@@ -20,6 +20,7 @@
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import { isScheduleFire, isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { dayAndTime } from '../../../lib/format/clock.ts';
+  import { oneLine } from '../../../lib/one-line.ts';
   import type { WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
   import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { threadIdForTask } from './run-activity.ts';
@@ -234,7 +235,10 @@
           </p>
         {/if}
         {#if workflow.error}
-          <p class="weft-overview-tab__failure-explanation">{workflow.error}</p>
+          <!-- In its own words, never the error's JSON; the stack below says the rest. -->
+          <p class="weft-overview-tab__failure-explanation">
+            {oneLine(workflow.error, { keepParenthetical: true }) || workflow.error}
+          </p>
         {/if}
         {#if errorStack.length > 0}
           <Collapsible variant="flat" trigger="Show full stack trace">
@@ -244,7 +248,11 @@
       </div>
     {:else if record !== undefined && workflow === undefined && !failureOnStep}
       {#if record.error !== undefined && record.error !== null}
-        <Section level={3} title={TASK_COPY.runRecord.error} description={record.error} />
+        <Section
+          level={3}
+          title={TASK_COPY.runRecord.error}
+          description={oneLine(record.error, { keepParenthetical: true }) || record.error}
+        />
       {/if}
     {/if}
   </Stack>

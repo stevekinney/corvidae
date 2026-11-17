@@ -8,7 +8,7 @@
    */
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import { goalTitle, type RunAttempt, type RunOrigin } from './run-rows.ts';
+  import type { RunAttempt, RunOrigin } from './run-rows.ts';
   import { STARTED_BY_FILTER_LABELS, STARTED_BY_LABELS } from './started-by.ts';
 
   interface RunOriginProps {
@@ -63,7 +63,7 @@
         >{origin.agentName === '' ? origin.parentRunId : origin.agentName}</code
       >
     {:else if origin.kind === 'goal'}
-      {goalTitle(origin.name)}
+      {origin.title}
     {:else if origin.kind === 'parent'}
       <code class="ib-identifier">{origin.parentRunId}</code>
     {/if}
@@ -113,14 +113,16 @@
     An agent's tool call, {origin.agentName},
     <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}>Calling run</a>
   {:else if origin.kind === 'goal'}
+    <!-- A goal's session is named only when it has a title: the chain is the goal, the attempt and
+         this run (row 55f), and an untitled session adds nothing to it. -->
     <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.goal}</span>
     {@render link(origin.href)}{#if attempt !== null}, {TASK_COPY.list.attempt(
         attempt.number,
         attempt.of,
-      )}{/if}{#if origin.session}
+      )}{/if}{#if origin.session && origin.session.title !== ''}
       {@const session = origin.session},
       <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
-        >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
+        >{session.title}</a
       >{/if}
   {:else if origin.kind === 'parent'}
     {@render link(origin.href)} ({TASK_COPY.workflow})
