@@ -54,6 +54,10 @@ describe('Duplicate on an agent’s page', () => {
     // A secondary action is an icon: the name is the accessible name, never visible text.
     expect(duplicate.hasAttribute('data-cinder-icon-only')).toBe(true);
     expect(duplicate.textContent?.trim()).toBe('');
+    // The name shows in a Tooltip, not a native title, and the glyph is not CopyButton's "copy".
+    expect(duplicate.hasAttribute('title')).toBe(false);
+    expect(duplicate.closest('.cinder-tooltip-wrapper')).not.toBeNull();
+    expect(duplicate.querySelector('svg.lucide-copy-plus')).not.toBeNull();
     expect(queryByRole('link', { name: AGENT_EDITOR_COPY.editAction })).toBeNull();
 
     await fireEvent.click(duplicate);

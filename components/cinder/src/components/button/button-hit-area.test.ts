@@ -94,8 +94,9 @@ describe('adjacent compact icon-only header buttons on a coarse pointer (COR-238
     const next = declarationsFor(buttonCss, `${COMPACT} + ${COMPACT}`);
     // Header actions are spaced by space-2 (8px); the margin tops the pitch up so the two
     // extensions, (44 - 24) / 2 on each side of each button, do not overlap.
-    expect(next.get('margin-inline-start')).toBe(
-      'calc(var(--cinder-touch-target-min) - var(--_cinder-compact-control-height) - var(--cinder-space-2))',
+    // The formatter breaks the calc over lines, so compare it with its whitespace removed.
+    expect(next.get('margin-inline-start')?.replaceAll(/\s+/g, '')).toBe(
+      'calc(var(--cinder-touch-target-min)-var(--_cinder-compact-control-height)-var(--cinder-space-2))',
     );
     // Evaluate the margin with the real tokens: the gap and the margin together must hold both
     // extensions, (touch - drawn) / 2 past each button's face.
@@ -118,5 +119,33 @@ describe('adjacent compact icon-only header buttons on a coarse pointer (COR-238
     expect(declarationsFor(buttonCss, COMPACT).get('min-width')).toBe(
       'var(--_cinder-compact-control-height)',
     );
+  });
+
+  test('a compact icon-only button beside any other compact button steps away by 2px, in either order', () => {
+    const TEXT =
+      ".cinder-button[data-cinder-hit-target='44'][data-cinder-compact]:not([data-cinder-icon-only])";
+    const WRAPPER = '.cinder-tooltip-wrapper';
+    const selectors = [
+      `${COMPACT} + ${TEXT}`,
+      `${TEXT} + ${COMPACT}`,
+      `${WRAPPER}:has( > ${COMPACT} ) + ${WRAPPER} > ${TEXT}`,
+      // The formatter breaks the :not() inside :has() over lines.
+      `${WRAPPER}:has( > ${TEXT.replace(':not([data-cinder-icon-only])', ':not( [data-cinder-icon-only] )')} ) + ${WRAPPER} > ${COMPACT}`,
+    ];
+    for (const selector of selectors) {
+      const margin = declarationsFor(buttonCss, selector).get('margin-inline-start');
+      expect(margin?.replaceAll(/\s+/g, ''), selector).toBe(
+        'calc((var(--cinder-touch-target-min)-var(--_cinder-compact-control-height))/2-var(--cinder-space-2))',
+      );
+    }
+    // 44 and 24: the icon-only button reaches 10px past its face, the header gap is 8px.
+    const foundation = readFileSync(
+      new URL('../../styles/foundation.css', import.meta.url),
+      'utf8',
+    );
+    const drawn =
+      Number(/--_cinder-compact-control-height:\s*([\d.]+)rem;/.exec(foundation)?.[1]) * 16;
+    const touch = Number(/--cinder-touch-target-min:\s*(\d+)px/.exec(tokens)?.[1]);
+    expect((touch - drawn) / 2 - rem('2') * 16).toBe(2);
   });
 });

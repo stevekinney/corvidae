@@ -41,9 +41,13 @@
     text-overflow: ellipsis;
   }
 
+  /* The ring goes around the whole badge, not the label inside its pill. */
   .cinder-badge__label:focus-visible {
+    outline: none;
+  }
+
+  .cinder-badge:has(> .cinder-badge__label:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
-    border-radius: var(--cinder-radius-sm);
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 

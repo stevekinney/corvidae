@@ -643,6 +643,21 @@
     padding-block-end: var(--cinder-space-2);
   }
 
+  /* The select is a ghost one, as wide as its longest option and the chevron, and 36px tall even on
+     a touch screen, where a field is raised to 43px. This box adds the padding that makes its hit
+     area 44px. */
+  .cinder-table__stack-sort-hit {
+    display: flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding-block: var(--cinder-space-1);
+  }
+
+  .cinder-table__stack-sort-hit .cinder-select[data-cinder-variant='ghost'][data-cinder-size] {
+    min-block-size: 2.25rem;
+    max-block-size: 2.25rem;
+  }
+
   .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row {
     position: relative;
     display: grid;
@@ -687,7 +702,6 @@
     ~ .cinder-table__cell:not([data-cinder-controls]) {
     flex: 0 1 auto;
     text-align: start;
-    color: var(--cinder-text-default);
   }
 
   /* A labelled field: the header text, muted, in a column of its own, then the value. */
@@ -725,7 +739,7 @@
     order: 0;
     display: block;
     min-inline-size: 0;
-    font-size: var(--cinder-text-md);
+    font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
     overflow-wrap: break-word;
   }
@@ -736,8 +750,9 @@
     content: none;
   }
 
-  /* The name holds to two lines; its tooltip carries the whole of it. */
-  .cinder-table[data-cinder-stack-card] .cinder-table__cell-title {
+  /* The row header's name holds to two lines in any `fit` table, stacked or not, and ends with an
+     ellipsis; its tooltip, drawn only while the clamp cuts, carries the whole of it. */
+  .cinder-table[data-cinder-fit] .cinder-table__cell-title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -746,7 +761,7 @@
     overflow-wrap: break-word;
   }
 
-  .cinder-table[data-cinder-stack-card] .cinder-table__cell-title:focus-visible {
+  .cinder-table[data-cinder-fit] .cinder-table__cell-title:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     border-radius: var(--cinder-radius-sm);
     box-shadow: var(--_cinder-focus-ring-shadow);
@@ -774,7 +789,8 @@
     order: 0;
     display: block;
     margin-inline-start: var(--cinder-space-3);
-    color: var(--cinder-text-muted);
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }

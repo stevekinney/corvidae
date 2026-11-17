@@ -37,13 +37,18 @@ describe('the tables that hold long values', () => {
     expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*\bstackBelow=\{false\}/);
   });
 
-  test('the workflow table fits its box, above a floor, and keeps its Tags column', async () => {
-    expect(ruleOf(await read('./workflows.css'), '.weft-workflows-table')).toMatch(
-      /min-inline-size:\s*41rem/,
+  test('the workflow table fits its box above a floor no wider than 768px gives it, and its tags are Type’s second line', async () => {
+    const floor = /(?:^|\n)\s*min-inline-size:\s*(\d+(?:\.\d+)?)rem/.exec(
+      ruleOf(await read('./workflows.css'), '.weft-workflows-table'),
     );
+    // The 768px container is about 642px, 40.1rem: a wider floor makes the table scroll sideways.
+    expect(Number(floor?.[1])).toBeLessThanOrEqual(40);
     const table = await read('../routes/workflows/list/workflow-table.svelte');
     expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="weft-workflows-table"/);
-    expect(table).toMatch(/<Table\.HeaderCell>Tags<\/Table\.HeaderCell>/);
+    // No Tags column of its own, so Type takes what the fixed columns leave.
+    expect(table).not.toMatch(/<Table\.HeaderCell>Tags<\/Table\.HeaderCell>/);
+    expect(table).toMatch(/\{#snippet detail\(\)\}[\s\S]*weft-workflows-table__tags/);
+    expect(table).not.toContain('hover a time');
   });
 
   test('a model name ends each line with an ellipsis and keeps the whole of it reachable by focus', async () => {

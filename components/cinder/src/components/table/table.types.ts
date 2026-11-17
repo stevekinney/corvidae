@@ -48,6 +48,8 @@ export type TableContext = {
   registerControls?: (fill?: boolean) => () => void;
   /** True while the table draws its rows as cards (a stacked `fit` table). Cells read it. */
   readonly stackCard?: boolean;
+  /** True for a `fit` table. Its row header holds to two lines, stacked or not. */
+  readonly fit?: boolean;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
@@ -153,7 +155,10 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * is the container's (the scroll box, or the parent when `scrollable` is false), not the
    * window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as
    * `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit
-   * falls back to the viewport. `false` keeps the table layout at every width.
+   * falls back to the viewport. `false` keeps the table layout at every width. A `fit` table that
+   * stacks as flat rows (no cell holds a control that fills it) stacks only below `'26rem'`
+   * (416px) by default, because flat rows read well in a narrow column; the control layout keeps
+   * 640px.
    * @default "640px"
    */
   stackBelow?: string | false;

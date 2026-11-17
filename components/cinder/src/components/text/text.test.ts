@@ -17,6 +17,7 @@ beforeEach(() => {
 });
 
 const { default: Text } = await import('./text.svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 const { createRawSnippet } = await import('svelte');
 
 const textCss = await Bun.file(new URL('./text.css', import.meta.url)).text();
@@ -131,9 +132,9 @@ describe('Text clamp', () => {
     // the worker (a Drawer or Modal body would then measure as scrolling).
     const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
     if (scrollHeight) Object.defineProperty(prototype, 'scrollHeight', scrollHeight);
-    else delete prototype.scrollHeight;
+    else delete prototype['scrollHeight'];
     if (clientHeight) Object.defineProperty(prototype, 'clientHeight', clientHeight);
-    else delete prototype.clientHeight;
+    else delete prototype['clientHeight'];
   });
 
   test('holds the run to its lines through a custom property the stylesheet clamps with', () => {
@@ -362,6 +363,38 @@ describe('Text middle truncation fit', () => {
 
 describe('Text truncate="end"', () => {
   const longName = `responsive-model-${'m'.repeat(300)}`;
+  let restoreLayout: () => void = () => {};
+  beforeEach(() => {
+    restoreLayout = stubCutLayout(true);
+  });
+  afterEach(() => restoreLayout());
+
+  test('a value that is not cut has no tab stop and no tooltip', async () => {
+    restoreLayout();
+    restoreLayout = stubCutLayout(false);
+    const { container } = render(Text, { truncate: 'end', text: 'short' });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    expect(root.hasAttribute('tabindex')).toBe(false);
+    await fireEvent.focus(root);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(root.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  test('a value cut after it was measured whole takes the tab stop and the tooltip', async () => {
+    restoreLayout();
+    restoreLayout = stubCutLayout(false);
+    const { container, rerender } = render(Text, { truncate: 'end', text: 'short' });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    expect(root.hasAttribute('tabindex')).toBe(false);
+    restoreLayout();
+    restoreLayout = stubCutLayout(true);
+    await rerender({ truncate: 'end', text: longName });
+    await waitFor(() => expect(root.getAttribute('tabindex')).toBe('0'));
+    await fireEvent.focus(root);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longName),
+    );
+  });
 
   test('renders the whole text on one cut line, focusable, with no native title', () => {
     const { container } = render(Text, { as: 'span', truncate: 'end', text: longName });

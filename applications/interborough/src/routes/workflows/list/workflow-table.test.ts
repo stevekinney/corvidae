@@ -101,6 +101,31 @@ describe('WorkflowTable', () => {
     expect(getAllByText('nightly').length).toBeGreaterThan(0);
   });
 
+  test('the tags are the Type cell’s second line, and no column of their own', () => {
+    const { container } = render(WorkflowTable, {
+      props: { rows: [summary({ type: 'payments', tags: ['prod', 'nightly'] })] },
+    });
+
+    const headers = Array.from(container.querySelectorAll('thead th')).map((cell) =>
+      cell.textContent?.trim(),
+    );
+    expect(headers).not.toContain('Tags');
+    expect(headers).toContain('Updated');
+    expect(container.querySelector('thead th[title]')).toBeNull();
+    const row = container.querySelector('tbody tr') as HTMLElement;
+    const typeCell = Array.from(row.querySelectorAll('td')).find((cell) =>
+      cell.querySelector('.cinder-table__cell-text')?.textContent?.includes('payments'),
+    ) as HTMLElement;
+    const tags = Array.from(typeCell.querySelectorAll('.weft-workflows-table__tags .cinder-badge'));
+    expect(tags.map((tag) => tag.textContent?.trim())).toEqual(['prod', 'nightly']);
+    // The type text comes first, the tags after it.
+    expect(
+      typeCell
+        .querySelector('.cinder-table__cell-text')
+        ?.compareDocumentPosition(typeCell.querySelector('.weft-workflows-table__tags') as Node),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   test('renders agent-run provenance as a human link and hides its technical tag', () => {
     const row = summary({ id: 'agent-run-workflow', tags: ['origin:agent-run', 'prod'] });
     const { container, getByRole } = render(WorkflowTable, {

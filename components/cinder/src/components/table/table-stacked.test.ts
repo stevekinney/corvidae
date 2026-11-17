@@ -9,7 +9,8 @@ import { DEFAULT_TEST_VIEWPORT, setTestViewportWidth } from '../../test/viewport
 
 setupHappyDom();
 
-const { render } = await import('@testing-library/svelte');
+const { render, fireEvent } = await import('@testing-library/svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
 const { default: CardFixture } = await import('./table-card.fixture.svelte');
 const { default: DescriptionList } = await import('../description-list/description-list.svelte');
@@ -361,6 +362,28 @@ describe('Table fit stacks into cards', () => {
     ).toBe(false);
   });
 
+  test('a fit table that stacks as flat rows stacks only below 26rem; the control layout keeps 640px', () => {
+    setTestViewportWidth(500);
+    const flat = render(CardFixture, {});
+    flushSync();
+    expect(hasAttribute(flat.container.querySelector('table'), 'data-cinder-stacked')).toBe(false);
+    flat.unmount();
+
+    const control = render(CardFixture, { controls: true });
+    flushSync();
+    expect(hasAttribute(control.container.querySelector('table'), 'data-cinder-stacked')).toBe(
+      true,
+    );
+    control.unmount();
+
+    setTestViewportWidth(400);
+    const narrow = render(CardFixture, {});
+    flushSync();
+    expect(hasAttribute(narrow.container.querySelector('table'), 'data-cinder-stack-card')).toBe(
+      true,
+    );
+  });
+
   test('a fit table whose control keeps its size is a card', () => {
     setTestViewportWidth(375);
     const { container } = render(CardFixture, { controls: 'fit' });
@@ -409,22 +432,67 @@ describe('Table fit stacks into cards', () => {
     expect(container.querySelector('[data-cinder-stack-title]')?.textContent).toBe('Second');
   });
 
-  test('a clamped title opens a tooltip with its whole text', async () => {
-    setTestViewportWidth(375);
-    const { container } = render(CardFixture, {});
-    flushSync();
-    await waitUntil(() => container.querySelector('.cinder-table__cell-title') !== null);
-    const title = container.querySelector('.cinder-table__cell-title');
-    expect(title?.textContent).toContain('Claude Opus');
-    expect(title?.getAttribute('tabindex')).toBe('0');
+  test('a title the clamp cuts takes the tab stop and opens a tooltip with its whole text', async () => {
+    const restore = stubCutLayout(true);
+    try {
+      setTestViewportWidth(375);
+      const { container } = render(CardFixture, {});
+      flushSync();
+      await waitUntil(() => container.querySelector('.cinder-table__cell-title') !== null);
+      const title = container.querySelector('.cinder-table__cell-title') as HTMLElement;
+      expect(title.textContent).toContain('Claude Opus');
+      await waitUntil(() => title.getAttribute('tabindex') === '0');
+      await fireEvent.focus(title);
+      await waitUntil(() => document.querySelector('[role="tooltip"]') !== null);
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('Claude Opus');
+    } finally {
+      restore();
+    }
   });
 
-  test('a table that is not stacked draws the title cell without the clamp wrapper', () => {
-    setTestViewportWidth(768);
+  test('a title the clamp does not cut has no tab stop and no tooltip', async () => {
+    const restore = stubCutLayout(false);
+    try {
+      setTestViewportWidth(375);
+      const { container } = render(CardFixture, {});
+      flushSync();
+      await waitUntil(() => container.querySelector('.cinder-table__cell-title') !== null);
+      const title = container.querySelector('.cinder-table__cell-title') as HTMLElement;
+      expect(title.hasAttribute('tabindex')).toBe(false);
+      await fireEvent.focus(title);
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  test('a table that is not stacked clamps the row header too, with no card marks', () => {
+    setTestViewportWidth(1280);
     const { container } = render(CardFixture, {});
     flushSync();
-    expect(container.querySelector('.cinder-table__cell-title')).toBeNull();
+    expect(container.querySelector('.cinder-table__cell-title')).not.toBeNull();
     expect(container.querySelector('[data-cinder-stack-title]')).toBeNull();
+  });
+
+  test('a row header that opts out of the clamp is drawn bare', async () => {
+    const { default: RowHeader } = await import('./table-row-header.fixture.svelte');
+    const clamped = render(RowHeader, {});
+    flushSync();
+    expect(clamped.container.querySelector('th .cinder-table__cell-title')).not.toBeNull();
+    clamped.unmount();
+    const bare = render(RowHeader, { clamp: false });
+    flushSync();
+    expect(bare.container.querySelector('th')?.textContent?.trim()).toBe('Run 4471');
+    expect(bare.container.querySelector('.cinder-table__cell-title')).toBeNull();
+  });
+
+  test('the two-line clamp belongs to every fit table, not only the stacked one', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-table\[data-cinder-fit\] \.cinder-table__cell-title \{[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/,
+    );
   });
 
   test('a stacked sortable table offers one sort control and keeps the header buttons out of the tab order', async () => {
@@ -436,6 +504,73 @@ describe('Table fit stacks into cards', () => {
     expect(container.querySelector('.cinder-table__sort-button')?.getAttribute('tabindex')).toBe(
       '-1',
     );
+  });
+
+  test('the sort control is a compact ghost select that names its cue, with a 44px hit area', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    await waitUntil(() => container.querySelector('.cinder-table__stack-sort') !== null);
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
+    const labels = Array.from(select.options)
+      .map((option) => option.textContent?.trim() ?? '')
+      .filter((label) => label !== '' && label !== 'Sort by');
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.every((label) => label.startsWith('Sort: '))).toBe(true);
+    expect(labels.some((label) => /^Sort: \w.* ascending$/.test(label))).toBe(true);
+
+    // A press in the hit area outside the drawn select opens it; one on the select is left alone.
+    const picked: string[] = [];
+    select.showPicker = () => picked.push('open');
+    const hit = container.querySelector('.cinder-table__stack-sort-hit') as HTMLElement;
+    await fireEvent.click(hit);
+    expect(picked).toEqual(['open']);
+    await fireEvent.click(select);
+    expect(picked).toEqual(['open']);
+
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-table__stack-sort-hit \{[^}]*padding-block: var\(--cinder-space-1\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-table__stack-sort-hit \.cinder-select\[data-cinder-variant='ghost'\]\[data-cinder-size\] \{[^}]*min-block-size: 2\.25rem;[^}]*max-block-size: 2\.25rem;/,
+    );
+  });
+
+  test('the stacked description and end value are muted, in the phone row type of a stacked list item', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    ).replace(/\s+/g, ' ');
+    const body = (selector: string): string => {
+      const escaped = selector
+        .replace(/\s+/g, ' ')
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/ /g, '\\s+');
+      return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    };
+    // The sibling rule decides the layout only: a colour on it would outrank the muted parts.
+    const sibling = body(
+      '.cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell:not([data-cinder-controls])\n    ~ .cinder-table__cell:not([data-cinder-controls])',
+    );
+    expect(sibling).toContain('flex: 0 1 auto;');
+    expect(sibling).not.toMatch(/color:/);
+    const prose = body(
+      ".cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack='plain']",
+    );
+    expect(prose).toContain('color: var(--cinder-text-muted);');
+    const end = body(
+      ".cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack='end']",
+    );
+    expect(end).toContain('color: var(--cinder-text-subtle);');
+    expect(end).toContain('font-size: var(--cinder-text-xs);');
+    const title = body(
+      '.cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack-title]',
+    );
+    expect(title).toContain('font-size: var(--cinder-text-base);');
+    expect(title).toContain('font-weight: var(--cinder-font-semibold);');
   });
 
   test('the card styles are scoped to the card marker and draw no frame', async () => {
