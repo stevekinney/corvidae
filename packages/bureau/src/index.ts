@@ -136,6 +136,8 @@ export type {
   DefinitionSource,
   DefinitionSourceChange,
   DefinitionSourceHost,
+  GuardrailSource,
+  ValidatorSource,
   WorkflowSource,
 } from './sources/definition-source';
 export {
@@ -506,6 +508,8 @@ export {
   GoalLifecycleEvent,
   DecisionMadeEvent,
   MemoryGovernanceEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
   ScorerThresholdBreachedEvent,
@@ -912,6 +916,7 @@ export type {
   HookDelivery,
   HookDeliveryAttempt,
   HookDeliveryRequest,
+  HookDeliveryFailureOutcome,
   HookDeliveryStatus,
   HookDeliverySummary,
   HookDeliverySummaryAttempt,

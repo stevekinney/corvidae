@@ -15,6 +15,8 @@ export type {
   DefinitionSource,
   DefinitionSourceChange,
   DefinitionSourceHost,
+  GuardrailSource,
+  ValidatorSource,
   WorkflowSource,
 } from './definition-source';
 export { hashDefinitionBytes, SourceConflictError, SourceReadOnlyError } from './definition-source';
@@ -22,6 +24,7 @@ export { layeredAgentSource, layeredWorkflowSource } from './layered-source';
 export { pluginLayer } from './plugin-layer';
 export type { DirectorySourceOptions } from './directory-source';
 export type { DirectoryWatchMode } from './watched-directory';
+export { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
 export type {
   ListedObject,
   ListedPage,
@@ -36,3 +39,19 @@ export {
   type WorkflowFileDirectoryOptions,
 } from './workflow-file-directory';
 export { workflowObjectSource, type WorkflowObjectSourceOptions } from './workflow-object-source';
+export {
+  guardrailFileDirectory,
+  type GuardrailFileDirectoryOptions,
+} from './guardrail-file-directory';
+export {
+  guardrailObjectSource,
+  type GuardrailObjectSourceOptions,
+} from './guardrail-object-source';
+export {
+  validatorFileDirectory,
+  type ValidatorFileDirectoryOptions,
+} from './validator-file-directory';
+export {
+  validatorObjectSource,
+  type ValidatorObjectSourceOptions,
+} from './validator-object-source';

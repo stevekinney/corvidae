@@ -40,8 +40,8 @@
  * dark" (2026-11-15): a 0.976 surface on a 0.994 page reads as a grey slab. The default light
  * arm took the consumer ladder's shape: the surface is pure white like raised, the canvas drops
  * to a grey page at 0.976 (the focus ring reads 3.51:1 there; 0.970 would read 3.45:1), and the
- * well sits at 0.955, near-neutral (chroma 0.005, hue 265), so the faint hairline still reads
- * 1.1:1 on it. The order is inset < canvas < surface = raised: a white panel separates from the
+ * well sits at 0.955, neutral (chroma 0.002 since COR-2450, hue 265), so the faint hairline still
+ * reads 1.1:1 on it. The order is inset < canvas < surface = raised: a white panel separates from the
  * page by fill, and a well recedes inside it. The comfortable density keeps its deeper steps
  * (canvas 0.955, well 0.925).
  *
@@ -270,8 +270,8 @@ describe('light mode anchors at white', () => {
     // Chroma on the large light surfaces is most of what "drab" and "sad" actually
     // described: a 0.014-chroma canvas is not a neutral, it is a pale slate. Keep
     // the cast present but well under the threshold where it reads as a blue theme.
-    // The well may carry a faint tint (COR-2308 gave it chroma 0.011 at hue 275; it is 0.005
-    // since 2026-11-15) so it reads as a recess rather than a grey plate; it stays under 0.012.
+    // The well may carry a faint tint (COR-2308 gave it chroma 0.011 at hue 275; it was 0.005
+    // from 2026-11-15 and is a neutral 0.002 since COR-2450); it stays under 0.012.
     for (const [name, tier] of Object.entries(tiers)) {
       expect(tier.C, name).toBeLessThanOrEqual(name === 'inset' ? 0.012 : 0.008);
     }

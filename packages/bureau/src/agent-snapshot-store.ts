@@ -60,6 +60,8 @@ import {
   type AgentReferenceDocument,
   agentReferenceDocumentSchema,
 } from './agent-reference-documents';
+import { decodeStoredGuardrailDefinition, guardrailFileDigest } from './guardrail-file';
+import { type OwnerGuardrailCopy, ownerGuardrailCopySchema } from './owner-guardrails';
 
 export const AGENT_SNAPSHOT_KEY_PREFIX = 'bureau-agent-snapshot:v1:';
 export const AGENT_RUN_REFERENCE_KEY_PREFIX = 'bureau-agent-run:v1:';
@@ -79,6 +81,14 @@ export interface AgentSnapshot {
    * folds in each document's digest, so one key always means one set of documents.
    */
   readonly referenceDocuments?: readonly AgentReferenceDocument[];
+  /**
+   * COR-2120 — the owner guardrails the definition named when the run started: each one's id, digest
+   * and parsed definition, so a resumed run rebuilds the guardrails it began with and not what the
+   * owner's files say now. Absent for an agent that names none, and for a snapshot written before the
+   * field existed. The agent's identity hash folds each digest in, so one key always means one set.
+   * The snapshot stays at `schemaVersion` 1, as the field is additive.
+   */
+  readonly guardrailDefinitions?: readonly OwnerGuardrailCopy[];
 }
 
 /** The tie between one run and the snapshot it started on. */
@@ -121,6 +131,8 @@ export interface AgentSnapshotSource {
   readonly resolvedModel?: string | undefined;
   /** See {@link AgentSnapshot.referenceDocuments}. */
   readonly referenceDocuments?: readonly AgentReferenceDocument[] | undefined;
+  /** See {@link AgentSnapshot.guardrailDefinitions}. */
+  readonly guardrailDefinitions?: readonly OwnerGuardrailCopy[] | undefined;
   /** The definition revision the run starts at, kept on its reference. Not part of the snapshot. */
   readonly definitionRevision?: number | undefined;
 }
@@ -234,6 +246,23 @@ function parseSnapshot(text: string | null): ParsedSnapshot {
       ? undefined
       : agentReferenceDocumentSchema.array().safeParse(value['referenceDocuments']);
   if (documents !== undefined && !documents.success) return { kind: 'invalid' };
+  // COR-2120: absent from a snapshot of an agent naming no owner guardrail, and from an older one.
+  // A copy is checked as a file's definition is, so a snapshot holds nothing a file could not.
+  const guardrails =
+    value['guardrailDefinitions'] === undefined
+      ? undefined
+      : ownerGuardrailCopySchema.array().safeParse(value['guardrailDefinitions']);
+  if (
+    guardrails !== undefined &&
+    (!guardrails.success ||
+      guardrails.data.some(
+        (copy) =>
+          decodeStoredGuardrailDefinition(copy.definition) === undefined ||
+          guardrailFileDigest(copy.definition) !== copy.digest,
+      ))
+  ) {
+    return { kind: 'invalid' };
+  }
   return {
     kind: 'ok',
     snapshot: {
@@ -246,6 +275,9 @@ function parseSnapshot(text: string | null): ParsedSnapshot {
       ...(documents === undefined || documents.data.length === 0
         ? {}
         : { referenceDocuments: documents.data }),
+      ...(guardrails === undefined || guardrails.data.length === 0
+        ? {}
+        : { guardrailDefinitions: guardrails.data }),
     },
   };
 }
@@ -334,6 +366,10 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
             ...(source.referenceDocuments === undefined || source.referenceDocuments.length === 0
               ? {}
               : { referenceDocuments: source.referenceDocuments }),
+            ...(source.guardrailDefinitions === undefined ||
+            source.guardrailDefinitions.length === 0
+              ? {}
+              : { guardrailDefinitions: source.guardrailDefinitions }),
           } satisfies AgentSnapshot),
         );
       } catch (error) {
@@ -395,6 +431,10 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
               ...(source.referenceDocuments === undefined || source.referenceDocuments.length === 0
                 ? {}
                 : { referenceDocuments: source.referenceDocuments }),
+              ...(source.guardrailDefinitions === undefined ||
+              source.guardrailDefinitions.length === 0
+                ? {}
+                : { guardrailDefinitions: source.guardrailDefinitions }),
             };
             await store.set(key, JSON.stringify(snapshot));
           } finally {

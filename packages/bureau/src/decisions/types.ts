@@ -1,4 +1,9 @@
-import type { Decision, DecisionModel, DecisionRequest } from '@lostgradient/operative';
+import type {
+  Decision,
+  DecisionKind,
+  DecisionModel,
+  DecisionRequest,
+} from '@lostgradient/operative';
 
 /** The `decisions` option of `createBureau`. Every field is a code default a host may leave out. */
 export interface DecisionsOptions {
@@ -65,6 +70,22 @@ export interface BureauDecideOptions {
   readonly routingId?: string;
   /** Cancels the in-flight request. */
   readonly signal?: AbortSignal;
+  /**
+   * A catalog row to answer this decision, written `<provider>/<model-or-alias>`, in place of the
+   * one the `decisions.model` setting chooses (COR-2123: a validator file names the model that
+   * judges). The model policy still applies, the row must be able to return structured output, and
+   * a row that is not in the catalog, or cannot answer, refuses the decision rather than falling
+   * back to another model.
+   */
+  readonly model?: string;
+  /**
+   * The kinds a model that answers must serve natively. A call that names it is answered only by a
+   * registered model, or a catalog row the host builds a model for, whose own `kinds` include every
+   * one listed; it never falls back to the language-model fallback or to a row's `generate`. When no
+   * such model exists the call rejects `NOT_CONFIGURED` before any model is called, and its audit
+   * record is `refused` with the reason `NOT_CONFIGURED`.
+   */
+  readonly requireKinds?: readonly DecisionKind[];
 }
 
 /**

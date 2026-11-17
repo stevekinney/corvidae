@@ -114,8 +114,16 @@ describe('StackedListItem on a phone', () => {
     expect(container.querySelector('.cinder-stacked-list-item__actions')).toBeNull();
     const trigger = getByRole('button', { name: 'More actions' });
     expect(trigger.classList.contains('cinder-stacked-list-item__actions-trigger')).toBe(true);
+    // Drawn at the compact height of a small Button, not at the raised control height.
     expect(stylesheet).toMatch(
-      /__actions-trigger\s*\{[^}]*inline-size:\s*var\(--cinder-control-height-md\)/,
+      /__actions-trigger\.cinder-dropdown-trigger\s*\{[^}]*inline-size:\s*var\(--_cinder-painted-height-sm\)/,
+    );
+    expect(stylesheet).not.toMatch(
+      /__actions-trigger[^{]*\{[^}]*inline-size:\s*var\(--cinder-control-height-md\)/,
+    );
+    // Under a coarse pointer it reaches 44px through a positioned pseudo-element, taking no space.
+    expect(stylesheet).toMatch(
+      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
     );
 
     await fireEvent.click(trigger);
@@ -130,6 +138,51 @@ describe('StackedListItem on a phone', () => {
     expect(document.getElementById(reasonId)?.textContent).toContain('Connect a provider');
     cleanup();
     setPhone(false);
+  });
+
+  test('one action on a phone stays its own compact secondary button, not a menu of one', () => {
+    setPhone(true);
+    const { container, getByRole, queryByRole } = render(ExtrasFixture, {
+      props: { mode: 'actions', actions: [{ label: 'Verdict', href: '/verdict' }] },
+    });
+    expect(queryByRole('button', { name: 'More actions' })).toBeNull();
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--collapsed-actions')).toBe(false);
+    const action = getByRole('link', { name: 'Verdict' });
+    expect(action.getAttribute('href')).toBe('/verdict');
+    expect(action.getAttribute('data-cinder-size')).toBe('sm');
+    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    cleanup();
+    setPhone(false);
+  });
+
+  test('two actions on a phone are still one menu button', () => {
+    setPhone(true);
+    const { container, getByRole } = render(ExtrasFixture, {
+      props: {
+        mode: 'actions',
+        actions: [
+          { label: 'Verdict', href: '/verdict' },
+          { label: 'Run', href: '/run' },
+        ],
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--collapsed-actions')).toBe(true);
+    expect(getByRole('button', { name: 'More actions' })).toBeDefined();
+    cleanup();
+    setPhone(false);
+  });
+
+  test('a status-first row narrower than 448px takes the phone arrangement from the 640px container query', () => {
+    // Main's own-width 448px rule is a subset of the 640px one, so it has no block of its own.
+    const phoneBlock = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-stacked-list-item (max-width: 639.98px)'),
+    );
+    expect(phoneBlock).toContain("'leading title title time trailing'");
+    expect(phoneBlock).toContain("'leading status line line trailing'");
+    expect(phoneBlock).toMatch(/--_cinder-status-track:\s*auto;/);
+    expect(stylesheet).not.toMatch(/\[data-cinder-phone\]/);
   });
 
   test('phoneActions="buttons" keeps each action a button, stacked full width under the text', () => {
@@ -199,7 +252,13 @@ describe('StackedListItem on a phone', () => {
 
     setPhone(true);
     const narrow = render(ExtrasFixture, {
-      props: { mode: 'actions', actions: [{ label: 'Answer', href: '/a', changes: true }] },
+      props: {
+        mode: 'actions',
+        actions: [
+          { label: 'Answer', href: '/a', changes: true },
+          { label: 'Plain', href: '/b' },
+        ],
+      },
     });
     await fireEvent.click(narrow.getByRole('button', { name: 'More actions' }));
     const item = [...document.querySelectorAll('.cinder-dropdown-item')].find((element) =>

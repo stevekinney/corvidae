@@ -591,7 +591,7 @@
         aria-label={CHAT_COPY.list.archivedTitle}
       >
         {#snippet children()}
-          <StackedListItem href={router.href(viewPath(true))}>
+          <StackedListItem href={router.href(viewPath(true))} trailingGlyph>
             {#snippet leading()}<Archive aria-hidden="true" size={16} />{/snippet}
             {#snippet title()}{CHAT_COPY.list.archivedTitle}{/snippet}
             {#snippet trailing()}<ChevronRight aria-hidden="true" size={16} />{/snippet}

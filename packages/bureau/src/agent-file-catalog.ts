@@ -119,6 +119,12 @@ import {
   refusedGuardrailConfigurations,
   unresolvedContributions,
 } from './agent-contributions';
+import {
+  guardrailIdentity,
+  type OwnerGuardrailCopy,
+  ownerCopiesNamedBy,
+  withOwnerGuardrails,
+} from './owner-guardrails';
 import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
@@ -429,6 +435,12 @@ export interface FileAgentBinding {
   /** The documents the definition's `references` named, as the agent was given them. */
   readonly referenceDocuments?: readonly AgentReferenceDocument[];
   /**
+   * COR-2120 — the owner guardrails the definition named, as the agent was built with them: each
+   * one's id, digest and parsed definition. What a snapshot of a run keeps, so a resumed run
+   * rebuilds the guardrails it began with and not what the owner's files say now.
+   */
+  readonly guardrailDefinitions?: readonly OwnerGuardrailCopy[];
+  /**
    * The definition revision the agent was built at, which a run keeps on its reference. Absent
    * for an agent rebuilt from a snapshot for a run that recorded none, so that rebuilding does not
    * record a revision 1 the run never had.
@@ -541,6 +553,13 @@ export interface AgentFileCatalogOptions {
    * nothing is contributed, so a file that lists any is invalid.
    */
   readonly contributions?: AgentContributions | undefined;
+  /**
+   * COR-2120 — the owner's guardrail files, ready, as they are now: a file that lists one by its
+   * stem has it laid over the plugin guardrails. Read on every scan and every write, so an edit
+   * reaches the files that name it (the catalog is revalidated when the guardrail files change).
+   * Omitted, a file lists plugin guardrails only.
+   */
+  readonly ownerGuardrails?: (() => readonly OwnerGuardrailCopy[]) | undefined;
   /**
    * The executable skills a file’s `skills` draws on (COR-1975). Omitted, no skill can be
    * granted, and a file that lists one has no skills.
@@ -673,6 +692,11 @@ interface FileEntry {
   readonly identity?: string;
   /** The documents `agent` was given, for a file with references. */
   readonly documents?: readonly AgentReferenceDocument[];
+  /**
+   * COR-2120 — the owner guardrails the file names, as copied when it was evaluated: what `agent`
+   * was built with and what `identity` folds in. Empty or absent for a file that names none.
+   */
+  readonly guardrails?: readonly OwnerGuardrailCopy[];
   /** The revision `agent` was built at; this is not `revision`, which is the model catalog's. */
   readonly definitionRevision?: number;
   readonly problem?: AgentFileProblem;
@@ -790,6 +814,18 @@ function hasReferences(entry: FileEntry): boolean {
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const owner = ownerOrLocal(undefined);
+  /** COR-2120 — the owner's guardrail files as they are now, by the stem a file lists them by. */
+  const ownerGuardrailsNow = (): ReadonlyMap<string, OwnerGuardrailCopy> =>
+    new Map((options.ownerGuardrails?.() ?? []).map((copy) => [copy.id, copy]));
+  /**
+   * What a file's `guardrails` and `escalations` resolve against: the plugins' contributions with
+   * the owner's guardrails laid over them, which are `guardrails` (an agent built or checked from a
+   * snapshot) or, left out, the owner's files as they are now.
+   */
+  const contributionsFor = (guardrails?: readonly OwnerGuardrailCopy[]): AgentContributions =>
+    withOwnerGuardrails(options.contributions ?? NO_AGENT_CONTRIBUTIONS, [
+      ...(guardrails ?? ownerGuardrailsNow().values()),
+    ]);
   /** The documents read last, by path, so a reading that finds one unchanged does not fetch it. */
   const referenceCache: ReferenceCache = new Map();
   /**
@@ -998,6 +1034,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     acceptNeedsSetup = false,
     /** COR-2152 — the `<provider>/<model>` a snapshot pinned: it replaces what `definition.model` resolves to. */
     pinned?: string,
+    /**
+     * COR-2120 — the owner guardrails a snapshot copied, which replace the owner's files as they
+     * are now. Left out, the files as they are now.
+     */
+    guardrails?: readonly OwnerGuardrailCopy[],
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
     const descriptors = options.models.catalog().descriptors;
     const resolved =
@@ -1062,10 +1103,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
-    const unresolved = unresolvedContributions(
-      definition,
-      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
-    );
+    const contributions = contributionsFor(guardrails);
+    const unresolved = unresolvedContributions(definition, contributions);
     if (unresolved.length > 0) {
       return {
         problem: {
@@ -1075,10 +1114,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
-    const refusedConfigurations = refusedGuardrailConfigurations(
-      definition,
-      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
-    );
+    const refusedConfigurations = refusedGuardrailConfigurations(definition, contributions);
     if (refusedConfigurations.length > 0) {
       return {
         problem: {
@@ -1096,6 +1132,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     id: string,
     definition: AgentFileDefinition,
     acceptNeedsSetup = false,
+    /** COR-2120 — the owner guardrails to resolve against, as `checkResources` takes them. */
+    guardrails?: readonly OwnerGuardrailCopy[],
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
     if (options.reservedIdentifiers.has(id) || id === RESERVED_DEFAULT_AGENT_IDENTIFIER) {
       return {
@@ -1105,7 +1143,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
-    const resources = checkResources(definition, acceptNeedsSetup);
+    const resources = checkResources(definition, acceptNeedsSetup, undefined, guardrails);
     if ('problem' in resources) return resources;
     if (definition.compaction?.enabled === true && options.models.summarizer() === undefined) {
       const message =
@@ -1187,11 +1225,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
   function optionalGuardrailAdditions(
     definition: AgentFileDefinition,
+    guardrails: readonly OwnerGuardrailCopy[] | undefined,
   ): { readonly additionalGuardrails: GuardrailAdditions } | Record<string, never> {
-    const additions = guardrailAdditionsOf(
-      definition,
-      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
-    );
+    const additions = guardrailAdditionsOf(definition, contributionsFor(guardrails));
     return additions === undefined ? {} : { additionalGuardrails: additions };
   }
 
@@ -1210,6 +1246,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     revision: number | undefined,
     documents: readonly AgentReferenceDocument[] = [],
     bind = true,
+    /**
+     * COR-2120 — the owner guardrails the agent is built with: copies it took when it was
+     * evaluated, or a snapshot's. Left out, the owner's files as they are now.
+     */
+    guardrails?: readonly OwnerGuardrailCopy[],
   ): AnyRunnableAgent {
     const tools: Record<string, Tool> = {};
     for (const name of definition.tools) {
@@ -1288,7 +1329,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       // The default guardrail preset guards every agent; the plugin guardrails the file lists are
       // added to it (COR-1877), and so are the plugin interceptors to the agent's hook tier.
-      ...optionalGuardrailAdditions(definition),
+      ...optionalGuardrailAdditions(definition, guardrails),
       ...optionalInterceptors(definition),
       ...(definition.limits?.cost === undefined
         ? {}
@@ -1325,6 +1366,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         definition,
         resolvedModel: `${descriptor.provider}/${descriptor.model}`,
         ...(documents.length === 0 ? {} : { referenceDocuments: documents }),
+        ...(guardrails === undefined || guardrails.length === 0
+          ? {}
+          : { guardrailDefinitions: guardrails }),
         ...(revision === undefined ? {} : { definitionRevision: revision }),
       });
     }
@@ -1397,17 +1441,30 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const parsed = parseAgentFile(id, text);
     if (!parsed.ok) return invalid(parsed.problem);
     const { definition } = parsed.file;
-    const checked = checkDeployment(id, definition);
+    // COR-2120 — the owner guardrails the file names are read once, so what is checked, what the
+    // agent is built from and what its identity folds in are one reading of the files.
+    const guardrails = ownerCopiesNamedBy(definition, ownerGuardrailsNow());
+    const checked = checkDeployment(id, definition, false, guardrails);
     if ('problem' in checked) return { id, hash, revision, definition, problem: checked.problem };
     // The documents are read when the scan settles, which is async: the entry waits for them.
     if (definition.references !== undefined) {
-      return { id, hash, revision, definition, descriptor: checked.descriptor };
+      return { id, hash, revision, definition, descriptor: checked.descriptor, guardrails };
     }
     try {
       // Built at the last revision this catalog knows; a changed file is rebuilt at its new one
       // when the scan settles (`settle`), before anything reads it.
       const definitionRevision = recorded.get(id)?.revision ?? 1;
-      const agent = buildAgent(id, hash, definition, checked.descriptor, definitionRevision);
+      const identity = guardrailIdentity(hash, guardrails);
+      const agent = buildAgent(
+        id,
+        identity,
+        definition,
+        checked.descriptor,
+        definitionRevision,
+        [],
+        true,
+        guardrails,
+      );
       return {
         id,
         hash,
@@ -1416,6 +1473,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         descriptor: checked.descriptor,
         agent,
         definitionRevision,
+        ...(guardrails.length === 0 ? {} : { identity, guardrails }),
       };
     } catch (error) {
       return { id, hash, revision, definition, problem: modelSetupProblem(definition, error) };
@@ -1541,6 +1599,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           descriptor,
           revision,
           entry.documents,
+          true,
+          entry.guardrails,
         ),
         definitionRevision: revision,
       };
@@ -1574,7 +1634,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       id,
     );
     if (!loaded.ok) return { id, hash, revision, definition, descriptor, problem: loaded.problem };
-    const identity = referenceIdentity(hash, loaded.documents);
+    const guardrails = entry.guardrails ?? [];
+    const identity = guardrailIdentity(referenceIdentity(hash, loaded.documents), guardrails);
     if (entry.agent !== undefined && entry.identity === identity) return entry;
     const definitionRevision = recorded.get(id)?.revision ?? 1;
     try {
@@ -1586,6 +1647,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         descriptor,
         identity,
         documents: loaded.documents,
+        guardrails,
         agent: buildAgent(
           id,
           identity,
@@ -1593,6 +1655,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           descriptor,
           definitionRevision,
           loaded.documents,
+          true,
+          guardrails,
         ),
         definitionRevision,
       };
@@ -1660,6 +1724,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
                 descriptor,
                 definitionRevision,
                 entry.documents,
+                true,
+                entry.guardrails,
               ),
               definitionRevision,
             };
@@ -1966,7 +2032,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // since taken the name. Only what the agent needs to run is checked.
       // A run that pins a model (COR-2152) is rebuilt on it, whatever the authored `model` now
       // names; one written before the pin resolves the authored string against today's catalog.
-      const checked = checkResources(snapshot.definition, false, resolvedModel);
+      // COR-2120: the owner guardrails the run began with are the snapshot's copies, so a guardrail
+      // file edited, renamed or deleted since never reaches a resumed run. A snapshot written before
+      // the field copied none, which is the empty list and not the owner's files as they are now.
+      const guardrails = snapshot.guardrailDefinitions ?? [];
+      const checked = checkResources(snapshot.definition, false, resolvedModel, guardrails);
       if ('problem' in checked) {
         throw new AgentSnapshotError(
           'snapshot-unresolvable',
@@ -1982,6 +2052,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         checked.descriptor,
         revision,
         snapshot.referenceDocuments,
+        true,
+        guardrails,
       );
     },
 

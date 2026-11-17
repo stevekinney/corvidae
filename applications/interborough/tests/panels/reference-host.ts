@@ -7,6 +7,7 @@
 import {
   AppBridge,
   PostMessageTransport,
+  type McpUiHostContext,
   type McpUiResourceCsp,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 
@@ -20,9 +21,12 @@ type ReferenceHost = {
     csp: McpUiResourceCsp,
     toolInput: Record<string, unknown>,
     title?: string,
+    hostContext?: McpUiHostContext,
   ): Promise<void>;
   teardown(): Promise<void>;
   initialized: boolean;
+  /** Sent to the panel as the tool result that opened it, once it has initialized. */
+  toolResult?: Parameters<AppBridge['sendToolResult']>[0];
 };
 
 declare global {
@@ -54,7 +58,7 @@ const host: ReferenceHost = {
   calls: [],
   handlers: {},
   initialized: false,
-  async mount(html, csp, toolInput, title = 'Run inspector') {
+  async mount(html, csp, toolInput, title = 'Run inspector', hostContext) {
     frame = document.createElement('iframe');
     frame.title = title;
     frame.setAttribute('sandbox', 'allow-scripts');
@@ -67,10 +71,14 @@ const host: ReferenceHost = {
         serverTools: {},
         sandbox: { permissions: {}, csp },
       },
+      // The theme and style variables the host sends: what a panel follows (COR-2218).
+      hostContext === undefined ? undefined : { hostContext },
     );
     bridge.oninitialized = () => {
       host.initialized = true;
       void bridge?.sendToolInput({ arguments: toolInput });
+      // The result that opened the page, for a panel that starts from one (COR-2218).
+      if (host.toolResult !== undefined) void bridge?.sendToolResult(host.toolResult);
     };
     bridge.oncalltool = async (params): ReturnType<NonNullable<AppBridge['oncalltool']>> => {
       host.calls.push({ name: params.name, arguments: params.arguments ?? {} });

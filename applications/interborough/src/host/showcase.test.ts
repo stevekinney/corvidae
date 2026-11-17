@@ -171,13 +171,11 @@ describe('showcaseHostOptions', () => {
     expect(showcaseHostOptions().omitBuiltInPlugin).toBe(true);
   });
 
-  test('registers the goal checks as validators', () => {
+  test('registers the goal checks as one validator that takes the phrase it looks for', () => {
     const validators = showcaseHostOptions().extraAgents?.validators ?? [];
-    expect(validators.map((validator) => validator.identity.name)).toEqual([
-      'reply-says-hello',
-      'notes-mention-the-staging-fix',
-      'summary-lists-every-refund-waiting-for-approval',
-    ]);
+    expect(validators.map((validator) => validator.identity.name)).toEqual(['contains-phrase']);
+    expect(validators[0]?.configuration?.safeParse({ phrase: 'staging fix' }).success).toBe(true);
+    expect(validators[0]?.configuration?.safeParse({}).success).toBe(false);
   });
 
   test('fires a storage alert over 1 GB, with no periodic size report to resolve it', () => {

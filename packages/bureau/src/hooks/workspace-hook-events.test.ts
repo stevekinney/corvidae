@@ -107,6 +107,28 @@ test('a workspace hook is never given a version mismatch, which names no run, se
   expect(await project('owner-a', mismatch)).toBeUndefined();
 });
 
+test('[COR-2100, matrix 122] a skills definitions.changed passes its five fields to every member’s hook', async () => {
+  const project = workspaceHookEvents(workspace, async () => undefined);
+  const changed = await project(
+    'owner-b',
+    event('definitions.changed', {
+      catalog: 'skills',
+      added: ['alpha'],
+      changed: ['beta'],
+      removed: ['gamma'],
+      rejected: ['alpha'],
+      sessionId: 'PRIVATE-SENTINEL',
+    }),
+  );
+  expect(changed?.payload).toEqual({
+    catalog: 'skills',
+    added: ['alpha'],
+    changed: ['beta'],
+    removed: ['gamma'],
+    rejected: ['alpha'],
+  });
+});
+
 test('shared configuration hook events copy only their explicit metadata fields', async () => {
   const project = workspaceHookEvents(workspace, async () => undefined);
   const created = await project(

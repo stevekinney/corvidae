@@ -1,4 +1,11 @@
-import type { GoalBudget, GoalIdentity, ValidatorIdentity } from '@lostgradient/operative';
+import type {
+  Decision,
+  DecisionKind,
+  DecisionRequest,
+  GoalBudget,
+  GoalIdentity,
+  ValidatorIdentity,
+} from '@lostgradient/operative';
 import type { PaginatedResult, ScheduleFilter, ScheduleSummary } from '@lostgradient/weft';
 
 /** One agent as `PluginHost.agents.list` reports it. */
@@ -58,6 +65,25 @@ export interface PluginGoalRequest {
   readonly goalRunId?: string | undefined;
 }
 
+/** The options of one `PluginHost.decisions.decide` call. */
+export interface PluginDecideOptions {
+  /** Cancels the in-flight request. A call whose signal is already aborted rejects without asking a model. */
+  readonly signal?: AbortSignal;
+  /**
+   * The task the decision is made for: its `decision.made` audit record is filed under it, and the
+   * event it publishes names it. A non-empty string; the host does not check that the task exists
+   * or that the plugin started it. Without one the record is filed under `decision:<uuid>`.
+   */
+  readonly taskId?: string;
+  /**
+   * The kinds a model that answers must serve natively. With it set, a model that does not serve
+   * every listed kind, and a call the language-model fallback would answer, is refused with
+   * `NOT_CONFIGURED` before any model is called, instead of falling back. A non-empty list of
+   * decision kinds.
+   */
+  readonly requireKinds?: readonly DecisionKind[];
+}
+
 /**
  * What the host serves a plugin's `start`: a structural slice of Bureau, kept narrow so a
  * plugin cannot reach past the calls it is meant to make. `Bureau` satisfies it, and a type test
@@ -94,4 +120,21 @@ export interface PluginHost {
    * error while a secret it declared is not set. A rejected call publishes nothing.
    */
   publish: (name: string, payload: unknown) => Promise<void>;
+  /** The host's decisions: ask a model a question and get a typed answer back. */
+  readonly decisions: {
+    /**
+     * Answers `request` as the plugin: the host binds the principal `plugin:<name>`, which the
+     * `decision.made` audit record names and the model is handed, and no principal the caller
+     * passes is used. The call rejects `BAD_REQUEST` for a malformed request, a `taskId` that is not
+     * a non-empty string, a `signal` that is not an `AbortSignal`, or `requireKinds` that is not a
+     * non-empty list of decision kinds; `NOT_CONFIGURED` when no model can answer (or none that
+     * `requireKinds` accepts); the model policy's refusal when the policy forbids the model; and
+     * the provider's own error when the provider fails. It rejects with the signal's reason when the
+     * signal was already aborted, with a `PluginHostDisposedError` once the Bureau is disposed (a
+     * shutdown also aborts a call in flight), and with the plugin's needs-setup error while a secret
+     * it declared is not set. A rejected call before the model is asked records nothing. The host
+     * adds no deadline and no concurrency limit: a caller that needs one passes a `signal`.
+     */
+    decide: (request: DecisionRequest, options?: PluginDecideOptions) => Promise<Decision<unknown>>;
+  };
 }

@@ -52,10 +52,10 @@ describe('no accent stripe remains on the listed components', () => {
     expect(stripeRules(callout)).toEqual([]);
   });
 
-  test('a vertical NavigationItem marks the active row with a raised pill, never a stripe', () => {
+  test('a vertical NavigationItem marks the active row with a filled pill, never a stripe', () => {
     expect(stripeRules(navigationItem)).toEqual([]);
     expect(navigationItem).toMatch(
-      /\[data-variant='vertical'\]\[data-active='true'\]\s*\{[^}]*background-color:\s*var\(--cinder-surface-raised\)/s,
+      /\[data-variant='vertical'\]\[data-active='true'\]\s*\{[^}]*background-color:\s*var\(--cinder-selected-background\)/s,
     );
   });
 

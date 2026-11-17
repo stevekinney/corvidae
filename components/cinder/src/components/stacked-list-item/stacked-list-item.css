@@ -200,9 +200,13 @@
   }
 
   /* Narrow container query — trailing drops below body. A phone's one menu button (the collapsed
-     actions) is compact and stays beside the body. */
+     actions) and a non-interactive trailing glyph such as a chevron are compact and stay beside
+     the body. */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--has-trailing:not(.cinder-stacked-list-item--collapsed-actions)
+    .cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph
+      )
       .cinder-stacked-list-item__layout {
       grid-template-columns: 1fr;
       grid-template-areas:
@@ -211,7 +215,8 @@
     }
 
     .cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
-        .cinder-stacked-list-item--collapsed-actions
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph
       )
       .cinder-stacked-list-item__layout {
       grid-template-columns: auto 1fr;
@@ -654,13 +659,20 @@
  * The selected row (the one open in the detail beside the list) and the glyph tile
  * ---------------------------------------- */
 
+  /* The selected row takes `--cinder-selected-background`, the one selected fill the sidebar's
+   * current page shares, so a list and the navigation beside it read as one recipe. Hovering it
+   * deepens the same tint a step toward the accent. */
   .cinder-stacked-list-item.cinder-stacked-list-item--selected {
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+    background: var(--cinder-selected-background);
   }
 
   @media (hover: hover) {
     .cinder-stacked-list-item--linked.cinder-stacked-list-item--selected:hover {
-      background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+      background: color-mix(
+        in oklch,
+        var(--cinder-selected-background),
+        var(--cinder-accent-solid) 5%
+      );
     }
   }
 
@@ -814,11 +826,26 @@
     white-space: nowrap;
   }
 
-  /* The menu button is a square icon button with the shared control height (44px under a coarse
-     pointer), so it is a target as large as the buttons it replaces. */
-  .cinder-stacked-list-item__actions-trigger {
-    inline-size: var(--cinder-control-height-md);
-    min-inline-size: var(--cinder-control-height-md);
+  /* The menu button is a square icon button drawn at the compact height of a small Button, the
+     same as the secondary buttons it replaces beside the other rows. Under a coarse pointer it
+     reaches the 44px touch target through a positioned pseudo-element that takes no layout, as
+     Button does, so the row is never taller for it. */
+  .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger.cinder-dropdown-trigger {
+    position: relative;
+    inline-size: var(--_cinder-painted-height-sm);
+    min-inline-size: var(--_cinder-painted-height-sm);
+    block-size: var(--_cinder-painted-height-sm);
+    min-block-size: var(--_cinder-painted-height-sm);
     padding-inline: 0;
+    padding-block: 0;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
   }
 }

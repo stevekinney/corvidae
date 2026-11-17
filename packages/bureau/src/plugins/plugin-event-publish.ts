@@ -33,14 +33,17 @@ export interface PluginEventPublisherOptions {
   readonly isDisposed: () => boolean;
 }
 
-/** A plugin published after the Bureau was disposed, which no longer records or delivers events. */
+/**
+ * A plugin called its host after the Bureau was disposed: a `publish` could not record or deliver
+ * its event, and a `decisions.decide` would answer with no record.
+ */
 export class PluginHostDisposedError extends Error {
-  /** The plugin that published. */
+  /** The plugin that called the host. */
   readonly plugin: string;
 
-  /** The error for `plugin`'s publish after dispose. */
-  constructor(plugin: string) {
-    super(`Plugin "${plugin}" cannot publish: the Bureau is disposed.`);
+  /** The error for `plugin`'s `publish` (or, named, its `decide`) after dispose. */
+  constructor(plugin: string, action: 'publish' | 'decide' = 'publish') {
+    super(`Plugin "${plugin}" cannot ${action}: the Bureau is disposed.`);
     this.name = 'PluginHostDisposedError';
     this.plugin = plugin;
   }

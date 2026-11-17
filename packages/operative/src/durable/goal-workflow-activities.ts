@@ -40,6 +40,12 @@ export function toGoalWorkflowView(record: GoalWorkflowRecord): GoalWorkflowView
     status: record.status,
     transitionSeq: record.transitionSeq,
     validator: record.validator,
+    ...(record.validatorConfiguration === undefined
+      ? {}
+      : { validatorConfiguration: record.validatorConfiguration }),
+    ...(record.validatorDefinition === undefined
+      ? {}
+      : { validatorDefinition: record.validatorDefinition }),
     ...(record.validatorTimeoutMs === undefined
       ? {}
       : { validatorTimeoutMs: record.validatorTimeoutMs }),

@@ -50,6 +50,10 @@
       "type": "string",
       "description": "Text of the error's retry button. Default `Try again`."
     },
+    "trailingGlyph": {
+      "type": "boolean",
+      "description": "Marks `trailing` as a non-interactive glyph, such as a chevron. Below 448px of row width a\nglyph stays beside the body, as the phone menu button does, where trailing actions drop under\nit. Default `false`."
+    },
     "actionsLabel": {
       "type": "string",
       "description": "Accessible name of the phone menu button that holds `actions`. Default `More actions`."
@@ -115,7 +119,7 @@
       {
         "name": "actions",
         "reason": "unknown-shape",
-        "description": "Text actions at the end of the row. On a tablet or desktop each is a secondary small button;\non a phone (below 640px) they collapse into one menu button with the same actions, which is a\n44px target under a coarse pointer."
+        "description": "Text actions at the end of the row. On a tablet or desktop each is a secondary small button;\non a phone (below 640px) two or more collapse into one menu button with the same actions, and\na single action stays its own compact secondary button. Either is a 44px target under a coarse\npointer."
       },
       {
         "name": "description",

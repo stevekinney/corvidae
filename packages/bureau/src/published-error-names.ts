@@ -21,6 +21,7 @@ import type {
   SteeringCommandFailure,
 } from '@lostgradient/operative';
 
+import type { HookDeliveryFailureOutcome } from './hooks/hook-types';
 import { PLUGIN_PROBLEM_CODES, type PluginProblemCode } from './plugins/plugin-problem-codes';
 import type { PluginStatus } from './plugins/plugin-types';
 
@@ -128,6 +129,40 @@ const KNOWN_PLUGIN_STATUSES: ReadonlySet<string> = new Set(PLUGIN_STATUSES);
  * plugin's descriptor declares. No other shape is a key a host may report.
  */
 const SECRET_KEY = /^[a-z0-9][a-z0-9-]{0,127}$/;
+
+/** The members of `HookDeliveryFailureOutcome`, as a runtime list the type is checked against below. */
+const HOOK_DELIVERY_FAILURE_OUTCOMES = [
+  'response',
+  'network-error',
+  'refused',
+  'error',
+  'rejected',
+] as const satisfies readonly HookDeliveryFailureOutcome[];
+
+/** Fails to compile when `HookDeliveryFailureOutcome` gains a member this list lacks. */
+export const HOOK_DELIVERY_FAILURE_OUTCOMES_ARE_EXHAUSTIVE: Exclude<
+  HookDeliveryFailureOutcome,
+  (typeof HOOK_DELIVERY_FAILURE_OUTCOMES)[number]
+> extends never
+  ? true
+  : never = true;
+
+const KNOWN_HOOK_DELIVERY_FAILURE_OUTCOMES: ReadonlySet<string> = new Set(
+  HOOK_DELIVERY_FAILURE_OUTCOMES,
+);
+
+/**
+ * The outcome of a failed delivery attempt to publish (COR-2099): `outcome` when it is a member of
+ * the failure enum, otherwise `fallback`. An attempt's own error text never reaches an event.
+ */
+export function publishableDeliveryOutcome(
+  outcome: unknown,
+  fallback: HookDeliveryFailureOutcome,
+): HookDeliveryFailureOutcome {
+  return typeof outcome === 'string' && KNOWN_HOOK_DELIVERY_FAILURE_OUTCOMES.has(outcome)
+    ? (outcome as HookDeliveryFailureOutcome)
+    : fallback;
+}
 
 /** The error kind to publish: `kind` when it is a member of the error-kind enum, otherwise nothing. */
 export function publishableErrorKind(kind: unknown): string | undefined {
