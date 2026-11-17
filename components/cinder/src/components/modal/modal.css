@@ -379,8 +379,8 @@
  * full width, rounded top corners, a grabber, a height capped so the body scrolls inside the sheet
  * instead of the sheet outgrowing the screen, and a lift above the on-screen keyboard
  * (`--_cinder-keyboard-inset`, published while it is open). The footer's actions stack at full
- * width at the button's painted height (the hit area reaches 44px) with the last one, the
- * confirmation, on top; DOM order is unchanged, so the
+ * actions share one row at the button's painted height (the hit area reaches 44px), the last one,
+ * the confirmation, filling the rest; DOM order is unchanged, so the
  * first action keeps initial focus. Physical properties, as in drawer.css, because the sheet is
  * physically bottom anchored in every writing mode.
  * ---------------------------------------- */
@@ -417,13 +417,28 @@
     background: var(--cinder-border-contrast);
   }
 
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
-    flex-direction: column-reverse;
-    align-items: stretch;
+  /* One footer rule for every docked dialog (COR-2448 AC5): the actions share one row, the
+   * secondary actions at their own width and the last, the confirmation, filling the rest. When
+   * they do not fit one line the confirmation wraps above the others. ConfirmDialog's row of
+   * actions (inside its footer, under the failure region) takes the same rule. A lone action
+   * fills the row. */
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions) {
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    justify-content: stretch;
   }
 
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer > * {
-    inline-size: 100%;
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
+    > * {
+    flex: 1 1 auto;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
+    > :first-child:not(:only-child) {
+    flex: 0 0 auto;
   }
 
   /* The body's fields are full 44px targets in the sheet. The selector repeats the input's own class
