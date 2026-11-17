@@ -106,7 +106,11 @@ const LONG_FIELD = `longField${'f'.repeat(300)}`;
 const LONG_FIELD_DESCRIPTION = `What it holds ${'d'.repeat(300)}`;
 
 /** The state the frame is in once a route holds its seeded content; `ready` unless listed. */
-const EXPECTED_STATE: Readonly<Record<string, string>> = {};
+const EXPECTED_STATE: Readonly<Record<string, string>> = {
+  // The main host serves no plugin page, so its address is the not-found state of a page nobody
+  // serves (`responsive-routes.ts`); the pages themselves are `plugin-page.spec.ts`'s.
+  '/plugins/:plugin/*': 'not-found',
+};
 
 /** Text a route prints only once its seeded content has loaded. */
 const MARKERS: Readonly<Record<string, RegExp>> = {
