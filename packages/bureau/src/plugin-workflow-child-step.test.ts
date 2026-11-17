@@ -15,7 +15,7 @@ import { join } from 'node:path';
 
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
 import { MemoryStorage } from '@lostgradient/storage';
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Engine, workflow } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -31,6 +31,7 @@ import { listedPlugins } from './testing/plugin-listing.test-support';
 import { PluginNeedsSetupError, gatedContributions } from './plugins/plugin-secret-gate';
 import { createVersionedCatalog } from './versioned-catalog';
 import { NO_WORKFLOW_CONTRIBUTIONS } from './workflow-contributions';
+import { WorkflowRetryRefusedError } from './workflow-run-retry';
 import {
   createWorkflowDocumentHost,
   registerBureauWorkflowDocuments,
@@ -370,6 +371,21 @@ describe('running a workflow step (G1, G2, G3, G6, O6)', () => {
     expect(run.status).toBe('failed');
     expect(run.error).toContain('kit boom exploded');
     expect(harness.calls).toEqual([]);
+  });
+
+  it('refuses a retry of the step the run failed at, since its child would be found again and fail again (COR-2424)', async () => {
+    const harness = await started([kit([boom()])]);
+    await harness.put('pipeline.json', file([{ kind: 'workflow', workflow: 'kit:boom' }]));
+    await harness.bureau.workflows?.refresh();
+    const { runId } = await harness.bureau.workflows!.start('pipeline', {
+      owner: 'anonymous:local',
+    });
+    const run = await settled(harness, runId);
+    expect(run.status).toBe('failed');
+    const error = await rejectionOf(harness.bureau.workflows!.retryRun(runId, { step: 1 }));
+    expect(error).toBeInstanceOf(WorkflowRetryRefusedError);
+    expect((error as WorkflowRetryRefusedError).code).toBe('step-not-retryable');
+    expect((await harness.bureau.workflows!.getRun(runId))?.status).toBe('failed');
   });
 
   it('waits for a child that parks, and continues when it is signalled (G3)', async () => {
