@@ -2,6 +2,7 @@
  * What the composer says: the blocked row that replaces its text box, in the order the reasons
  * take precedence, and the line under it.
  */
+import type { ChatComposerStatus } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
 import { CHAT_COPY } from '../../app/copy/chat.ts';
@@ -21,7 +22,7 @@ const QUIET: ComposerFacts = {
 
 const facts = (overrides: Partial<ComposerFacts>): ComposerFacts => ({ ...QUIET, ...overrides });
 
-const HOST_DOWN = {
+const HOST_DOWN: ChatComposerStatus = {
   kind: 'drawer-notice',
   tone: 'warning',
   text: 'Can’t reach Interborough. Your draft is kept here.',

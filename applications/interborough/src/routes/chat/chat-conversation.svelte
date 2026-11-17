@@ -159,14 +159,13 @@
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
-  import type { GrantNotLoosened } from './run-wiring.ts';
+  import type { GrantNotLoosened, HumanRequest } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
   import { draftTime, forgetChatDraft, readChatDraft, writeChatDraft } from './chat-drafts.ts';
   import { lastAssistantId, turnStateOf } from './turn-states.ts';
-  import type { HumanRequest } from './run-wiring.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
