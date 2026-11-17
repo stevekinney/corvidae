@@ -26,6 +26,7 @@
   import Button from '../button/button.svelte';
   import Chip from '../chip/chip.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
   let {
     items,
@@ -76,6 +77,11 @@
     };
   }
 
+  /** The name of a row's link: its term, and its value when the value is plain text. */
+  function linkLabel(term: string, definition: unknown): string {
+    return typeof definition === 'string' && definition !== '' ? `${term}: ${definition}` : term;
+  }
+
   function systemTagLabel(count: number): string {
     return `${count} system ${count === 1 ? 'tag' : 'tags'}`;
   }
@@ -121,7 +127,11 @@
   data-cinder-framed={framed || undefined}
 >
   {#each items as item (item.id ?? item.term)}
-    <div class="cinder-description-list__row" data-cinder-wide={item.wide || undefined}>
+    <div
+      class="cinder-description-list__row"
+      data-cinder-wide={item.wide || undefined}
+      data-cinder-linked={item.href !== undefined || undefined}
+    >
       <dt class={variant === 'narrow' ? 'cinder-sr-only' : 'cinder-_label-text'}>{item.term}</dt>
       <dd class="cinder-_value-text">
         <div class="cinder-description-list__definition">
@@ -190,6 +200,15 @@
         </div>
         {#if actions}
           <div class="cinder-description-list__actions">{@render actions(item)}</div>
+        {/if}
+        {#if item.href !== undefined}
+          <a
+            class="cinder-description-list__link"
+            href={item.href}
+            aria-label={linkLabel(item.term, item.definition)}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+          </a>
         {/if}
       </dd>
     </div>

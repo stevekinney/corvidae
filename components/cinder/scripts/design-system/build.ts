@@ -29,7 +29,12 @@ import { parseArgs } from 'node:util';
 
 import { withHostSlots, withMemoryAdmission } from '../../../../scripts/host-slots.ts';
 import { readArchetypePreviews } from './archetypes.ts';
-import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
+import {
+  captureStaticSnapshots,
+  checkArchetypeRenders,
+  checkBundle,
+  checkRenders,
+} from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
 import {
   componentReadme,
@@ -299,6 +304,11 @@ async function main(): Promise<number> {
   withoutCard.length = 0;
   writeComponents(check.results);
 
+  step('render check: bundle.js under React, as a canvas loads it');
+  const bundleCheckProblems = await withHostSlots(1, () =>
+    checkBundle(projectDirectory, join(workDirectory, 'check-bundle')),
+  );
+
   step(`render check: ${archetypes.length} archetypes in light and dark, at phone and desktop`);
   const archetypeProblems = await withHostSlots(1, () =>
     checkArchetypeRenders(
@@ -315,6 +325,7 @@ async function main(): Promise<number> {
       snapshot.errors.map((error) => `snapshot ${id} ${error}`),
     ),
     ...check.problems.map((problem) => `render ${problem}`),
+    ...bundleCheckProblems.map((problem) => `bundle ${problem}`),
   ];
   const previewCount = live.length + staticNames.length;
   const note =
