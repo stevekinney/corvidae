@@ -5,7 +5,8 @@
  * at `./manifest`. The root barrel exports components and their API, and no metadata.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
@@ -19,8 +20,28 @@ function resolve(subpath: string): string {
 
 const manifest = JSON.parse(readFileSync(resolve('manifest'), 'utf8')) as Manifest;
 
-function camelCase(id: string): string {
-  return id.replaceAll(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
+/**
+ * Every module the root barrel re-exports from, followed through relative `export … from`
+ * statements. Read as text rather than imported: importing the barrel evaluates every component.
+ */
+function reExportedModules(entry: string): string[] {
+  const seen = new Set<string>();
+  const pending = [entry];
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    if (!file.endsWith('.ts')) continue;
+    for (const match of readFileSync(file, 'utf8').matchAll(
+      /^export\s[^;]*?from\s+'(\.[^']+)'/gm,
+    )) {
+      const base = resolvePath(dirname(file), match[1] ?? '');
+      const target = [base, `${base}.ts`, join(base, 'index.ts')].find(
+        (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
+      );
+      if (target !== undefined) pending.push(target);
+    }
+  }
+  return [...seen];
 }
 
 describe(`${PACKAGE} metadata exports`, () => {
@@ -40,14 +61,15 @@ describe(`${PACKAGE} metadata exports`, () => {
     expect(missing).toEqual([]);
   });
 
-  test('the root barrel exports no metadata', async () => {
-    const root: Record<string, unknown> = await import('./index.ts');
-    const metadataNames = new Set(['manifest']);
-    for (const { id } of manifest.components) {
-      for (const suffix of ['Schema', 'Variables', 'Examples', 'Constraints']) {
-        metadataNames.add(`${camelCase(id)}${suffix}`);
-      }
-    }
-    expect(Object.keys(root).filter((name) => metadataNames.has(name))).toEqual([]);
+  test('the root barrel re-exports no metadata module', () => {
+    const modules = reExportedModules(join(import.meta.dir, 'index.ts'));
+    expect(modules.length).toBeGreaterThan(1);
+    expect(
+      modules.filter((file) =>
+        /\.(?:schema|variables)\.ts$|\/\.metadata\/|(?:components|examples|constraints|schema|variables)\.json$|\/exports\/metadata-[^/]+\.ts$/.test(
+          file,
+        ),
+      ),
+    ).toEqual([]);
   });
 });

@@ -4,8 +4,9 @@
  * stay off a canvas until it uses them.
  */
 
-import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+
+import { buildManifest } from '../generate-manifest.ts';
 
 import type { BundleSource } from './bundle.ts';
 import type { ComponentManifest, ManifestSource } from './manifest.ts';
@@ -26,23 +27,25 @@ export function componentsDirectoryOf(source: ManifestSource, id: string): strin
   return dirname(join(dirname(dirname(source.entry)), located.packageRoot, located.directory));
 }
 
-function readManifest(workspace: string): ComponentManifest {
-  return JSON.parse(
-    readFileSync(join(workspace, '.metadata', 'components.json'), 'utf8'),
-  ) as ComponentManifest;
+/**
+ * A package's manifest, built from its authored `<name>.meta.json` files the way its `metadata`
+ * task builds `.metadata/components.json`, so the design system needs no task run first.
+ */
+async function readManifest(workspace: string): Promise<ComponentManifest> {
+  return buildManifest(workspace);
 }
 
 /** Reads Cinder's manifest and the editor's, Cinder first. */
-export function readManifestSources(): ManifestSource[] {
+export async function readManifestSources(): Promise<ManifestSource[]> {
   return [
     {
-      manifest: readManifest(cinderRoot),
+      manifest: await readManifest(cinderRoot),
       componentsDirectory: join(cinderRoot, 'src/components'),
       entry: join(cinderRoot, 'src/index.ts'),
       lazy: false,
     },
     {
-      manifest: readManifest(editorRoot),
+      manifest: await readManifest(editorRoot),
       componentsDirectory: join(editorRoot, 'src/lib/components'),
       entry: join(editorRoot, 'src/index.ts'),
       lazy: true,

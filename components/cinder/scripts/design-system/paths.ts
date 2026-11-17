@@ -27,10 +27,9 @@ export const sourcePaths = {
     'components/cinder/src/tokens/resolved/dark.json',
   ],
   styles: ['components/cinder/src/styles/all.css'],
-  components: [
-    'components/cinder/.metadata/components.json',
-    'components/editor/.metadata/components.json',
-  ],
+  // Each package's manifest is built from the authored `<name>.meta.json` under these: core's
+  // components, those of the packages the split moved them into (P-COR-101), and the editor's.
+  components: ['components/*/src/components', 'components/editor/src/lib/components'],
   examples: [
     // Core's components, and those of the packages the split moved them into (P-COR-101).
     'components/*/src/components/*/examples',
