@@ -4,7 +4,7 @@ import { parse } from 'postcss';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { readRootTokenValues } from '../test/token-introspection.ts';
+import { readRootTokenValues } from '@lostgradient/component-tooling/test/token-introspection.ts';
 
 setupHappyDom();
 
