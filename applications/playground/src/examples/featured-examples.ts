@@ -12,9 +12,9 @@
 
 /** A featured example the doc page mounts twice, with its pre-#399 hardcoded ids. */
 export type FeaturedExample = {
-  /** Kebab-case component id (the example directory name). */
+  /** Kebab-case component id (the component directory name). */
   readonly component: string;
-  /** Path to the `.example.svelte` file, relative to `src/examples/`. */
+  /** `<component>/<file>.example.svelte`: the file in that component's `examples/` directory. */
   readonly file: string;
   /**
    * The element ids this example hardcoded before the #399 fix. Recorded so the

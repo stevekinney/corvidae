@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -12,6 +11,8 @@ import {
 import {
   CHAT_COMPONENT_SOURCE,
   CINDER_COMPONENT_SOURCE,
+  componentDirectory,
+  componentRoots,
   EDITOR_COMPONENT_SOURCE,
 } from './component-sources.ts';
 
@@ -21,16 +22,14 @@ import {
  * per-test deadline already; running them in `test:slow`, serially after the fast phase, keeps
  * their contention out of the fast lane without changing any assertion.
  */
-const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
+// Cinder's components roots: core's own, and each family package's.
+const COMPONENTS_DIR = componentRoots(CINDER_COMPONENT_SOURCE);
 
-function componentPath(name: string): string {
-  // Migrated components live in `<name>/<name>.svelte`; legacy flat components
-  // live in `<name>.svelte`. Prefer the directory shape so the analyzer's
-  // component-side fallback to `<name>.types.ts` (next to the .svelte) finds
-  // the types file.
-  const directoryPath = join(COMPONENTS_DIR, name, `${name}.svelte`);
-  if (existsSync(directoryPath)) return directoryPath;
-  return join(COMPONENTS_DIR, `${name}.svelte`);
+function componentPath(name: string, source = CINDER_COMPONENT_SOURCE): string {
+  // Components live in `<name>/<name>.svelte`, where their package lists them,
+  // so the analyzer's component-side fallback to `<name>.types.ts` (next to the
+  // .svelte) finds the types file.
+  return join(componentDirectory(source, name), `${name}.svelte`);
 }
 
 describe('shared ts-morph project over the full inventory', () => {
@@ -61,7 +60,7 @@ describe('shared ts-morph project over the full inventory', () => {
     // dependency as a root of every later program in the same Project, so a
     // Project shared across packages made every Cinder analysis after the first
     // Chat one rebuild a program thousands of files larger.
-    await analyzeComponent(join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'), {
+    await analyzeComponent(componentPath('chat', CHAT_COMPONENT_SOURCE), {
       importPath: CHAT_COMPONENT_SOURCE.packageName,
     });
     await analyzeComponent(componentPath('alert'));
@@ -86,13 +85,12 @@ describe('shared ts-morph project over the full inventory', () => {
   it("builds each package's program without the test runner's ambient type declarations", async () => {
     resetProject();
     await analyzeComponent(componentPath('card'));
-    await analyzeComponent(join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'), {
+    await analyzeComponent(componentPath('chat', CHAT_COMPONENT_SOURCE), {
       importPath: CHAT_COMPONENT_SOURCE.packageName,
     });
-    await analyzeComponent(
-      join(EDITOR_COMPONENT_SOURCE.componentsRoot, 'markdown-editor', 'markdown-editor.svelte'),
-      { importPath: EDITOR_COMPONENT_SOURCE.packageName },
-    );
+    await analyzeComponent(componentPath('markdown-editor', EDITOR_COMPONENT_SOURCE), {
+      importPath: EDITOR_COMPONENT_SOURCE.packageName,
+    });
 
     const isAmbientTestRunnerDeclaration = (path: string): boolean =>
       /\/(?:bun-types|undici-types)\/|\/@types\/(?:bun|node)\//.test(path.replaceAll('\\', '/'));

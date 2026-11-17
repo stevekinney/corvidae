@@ -22,7 +22,7 @@
  *    treated every sidebar click as "outside" — discarding any unsent reply
  *    text sitting in CommentComposer's draft state.
  *
- * All four exercise `packages/playground/src/examples/review-editor/
+ * All four exercise `components/editor/src/lib/components/review-editor/examples/
  * scroll-and-sidebar.example.svelte`, mounted at
  * `#example-mount-scroll-and-sidebar` on the `?snapshot=1` page (bare
  * mounts, no documentation chrome — see component-page.svelte's snapshot

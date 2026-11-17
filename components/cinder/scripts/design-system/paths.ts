@@ -11,10 +11,8 @@ export const repositoryRoot = resolve(import.meta.dir, '../../../..');
 export const cinderRoot = join(repositoryRoot, 'components/cinder');
 /** The editor workspace, whose components the design system documents and bundles with Cinder's. */
 export const editorRoot = join(repositoryRoot, 'components/editor');
-/** The playground workspace, whose examples the previews mount. */
+/** The playground workspace, whose toolchain bundles the previews. */
 export const playgroundRoot = join(repositoryRoot, 'applications/playground');
-/** One directory per component id, holding its `*.example.svelte` files. */
-export const examplesRoot = join(playgroundRoot, 'src/examples');
 /** The design-system build's checked-in assets: the brand book, the recipe and the cover card. */
 export const assetsRoot = join(import.meta.dir, 'assets');
 /** The archetype pages and their shared layout, under the assets. */
@@ -33,5 +31,8 @@ export const sourcePaths = {
     'components/cinder/.metadata/components.json',
     'components/editor/.metadata/components.json',
   ],
-  examples: ['applications/playground/src/examples'],
+  examples: [
+    'components/cinder/src/components/*/examples',
+    'components/editor/src/lib/components/*/examples',
+  ],
 };

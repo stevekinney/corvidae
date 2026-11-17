@@ -10,7 +10,9 @@ import {
   scenarioArtifactByPath,
   scenarioBuildPromiseByKey,
 } from './build-artifacts-shared.ts';
-import { PLAYGROUND_ROOT, PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
+import { exampleFilePathIn } from './component-sources.ts';
+import { discoverComponentDefinition } from './discover.ts';
+import { PLAYGROUND_TEMP_ROOT, relativeImportSpecifier } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 /**
@@ -63,13 +65,9 @@ async function buildBundleUncached(
   scenario: string,
   cacheKey: string,
 ): Promise<string | null> {
-  const examplePath = join(
-    PLAYGROUND_ROOT,
-    'src',
-    'examples',
-    componentName,
-    `${scenario}.example.svelte`,
-  );
+  const componentDefinition = await discoverComponentDefinition(componentName);
+  if (componentDefinition === undefined) return null;
+  const examplePath = exampleFilePathIn(componentDefinition.source, componentName, scenario);
   const file = Bun.file(examplePath);
   const exists = await file.exists();
   if (!exists) return null;
@@ -89,7 +87,7 @@ async function buildBundleUncached(
   const entryBasename = `bundle-${componentName}-${scenario}`;
   const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
   const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
-  const shim = `export { default } from '../../src/examples/${componentName}/${scenario}.example.svelte';\n`;
+  const shim = `export { default } from ${JSON.stringify(relativeImportSpecifier(entryTempDir, examplePath))};\n`;
 
   try {
     // Bun.write auto-creates parent directories. We keep the write inside

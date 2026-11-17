@@ -15,7 +15,7 @@ import { expect, test } from './component-page-fixture.ts';
 type Rgb = { r: number; g: number; b: number };
 
 const authoredExampleUrl = new URL(
-  '../../../applications/playground/src/examples/image/basic.example.svelte',
+  '../../../components/cinder/src/components/image/examples/basic.example.svelte',
   import.meta.url,
 );
 const themes: Theme[] = ['light', 'dark'];

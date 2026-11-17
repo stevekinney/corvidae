@@ -15,8 +15,8 @@ export const SHARD_COUNT = 4;
 
 /** One example a preview mounts. */
 export type PlannedExample = { id: string; title: string };
-/** The examples one component's preview mounts, in order. */
-export type PreviewPlan = { id: string; examples: PlannedExample[] };
+/** The examples one component's preview mounts, in order, and the directory that holds them. */
+export type PreviewPlan = { id: string; directory: string; examples: PlannedExample[] };
 
 /** One entry of a component's `<id>.examples.json`. */
 export type ExampleMetadata = { id: string; title: string; featured?: boolean };
@@ -39,16 +39,12 @@ export function orderExamples(files: string[], metadata: ExampleMetadata[]): Pla
 }
 
 /**
- * Plans a component's preview from its playground examples, or returns nothing without any. The
- * examples' titles and order come from `<componentsDirectory>/<id>/<id>.examples.json`, the
- * component's folder in its own workspace.
+ * Plans a component's preview from its examples, or returns nothing without any. The examples
+ * live in `<componentsDirectory>/<id>/examples/`, and their titles and order come from
+ * `<componentsDirectory>/<id>/<id>.examples.json`, the component's folder in its own workspace.
  */
-export function planPreview(
-  id: string,
-  examplesRoot: string,
-  componentsDirectory: string,
-): PreviewPlan | undefined {
-  const directory = join(examplesRoot, id);
+export function planPreview(id: string, componentsDirectory: string): PreviewPlan | undefined {
+  const directory = join(componentsDirectory, id, 'examples');
   if (!existsSync(directory)) return undefined;
   const suffix = '.example.svelte';
   const files = readdirSync(directory)
@@ -59,15 +55,15 @@ export function planPreview(
     ? (JSON.parse(readFileSync(metadataPath, 'utf8')) as { examples: ExampleMetadata[] }).examples
     : [];
   const examples = orderExamples(files, metadata);
-  return examples.length > 0 ? { id, examples } : undefined;
+  return examples.length > 0 ? { id, directory, examples } : undefined;
 }
 
 /** The source of a preview's entry module, which mounts each example under its own heading. */
-export function previewEntrySource(plan: PreviewPlan, examplesRoot: string): string {
+export function previewEntrySource(plan: PreviewPlan): string {
   const imports = plan.examples
     .map(
       (example, index) =>
-        `import E${index} from ${JSON.stringify(join(examplesRoot, plan.id, `${example.id}.example.svelte`))};`,
+        `import E${index} from ${JSON.stringify(join(plan.directory, `${example.id}.example.svelte`))};`,
     )
     .join('\n');
   const list = plan.examples

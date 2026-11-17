@@ -1,9 +1,9 @@
 /**
  * The theme builder's preview scene manifest.
  *
- * Eight categories, each backed by real Cinder examples from
- * `applications/playground/src/examples/<component>/<scenario>.example.svelte`
- * (`examples: ['button/variants']` names that file). Foundations is a built-in specimen
+ * Eight categories, each backed by real Cinder examples, the
+ * `examples/<scenario>.example.svelte` files in each component's directory
+ * (`examples: ['button/variants']` names Button's `variants` example). Foundations is a built-in specimen
  * with no example references, and Application composes the Forms, Data, Feedback, and
  * Overlay examples. COR-259's accessibility checks consume `states`: it records, as data,
  * which component states a scene renders, which only an interaction reaches, and which do

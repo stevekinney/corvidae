@@ -11,6 +11,7 @@ import {
   TEST_FILE_PATTERN,
   type DependencyViolation,
 } from './check-virtual-list-dependency-free-policy.ts';
+import { isComponentExample } from './component-source-filter.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -36,13 +37,15 @@ export async function loadDeclaredDependencyNames(
 
 /**
  * Every `.ts`/`.svelte` file under `virtual-list/**`, plus the one shared
- * utility module the engine is allowed to depend on.
+ * utility module the engine is allowed to depend on. The examples in
+ * `virtual-list/examples/` import the package by name, as an application does,
+ * and are no part of the engine.
  */
 export async function collectScanTargets(): Promise<string[]> {
   const files: string[] = [];
   const glob = new Glob('**/*.{ts,svelte}');
   for await (const relativePath of glob.scan({ cwd: virtualListRoot })) {
-    if (relativePath === SELF_TEST_RELATIVE_PATH) continue;
+    if (relativePath === SELF_TEST_RELATIVE_PATH || isComponentExample(relativePath)) continue;
     files.push(join(virtualListRoot, relativePath));
   }
   files.push(fixedVirtualWindowFile);

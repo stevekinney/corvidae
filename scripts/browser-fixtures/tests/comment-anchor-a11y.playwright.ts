@@ -27,7 +27,7 @@ declare global {
 // The `with-comments` example seeds a text-anchored thread on "Architecture
 // Notes" (a top-level heading, so a unique quote in the document) and a
 // document-level thread — see
-// packages/playground/src/examples/review-editor/with-comments.example.svelte.
+// components/editor/src/lib/components/review-editor/examples/with-comments.example.svelte.
 const EXAMPLE_MOUNT = '#example-mount-with-comments';
 
 /**

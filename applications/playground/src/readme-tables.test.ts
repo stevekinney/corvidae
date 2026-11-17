@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import { CINDER_COMPONENT_SOURCE, componentDirectory } from './component-sources.ts';
 import { readmeTableNames, wrapReadmeTables } from './readme-tables.ts';
 
 describe('wrapReadmeTables', () => {
@@ -46,7 +46,7 @@ describe('wrapReadmeTables', () => {
     async (name) => {
       await initializeHighlighter();
       const markdown = await Bun.file(
-        join(CINDER_COMPONENT_SOURCE.componentsRoot, name, 'README.md'),
+        join(componentDirectory(CINDER_COMPONENT_SOURCE, name), 'README.md'),
       ).text();
       const names = readmeTableNames(renderMarkdown(markdown).html);
 

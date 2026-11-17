@@ -20,13 +20,12 @@
  * Usage: bun scripts/measure-playground-probe.ts <navigation|rebuild> --output <file> [--cycles 5] [--port 5610]
  */
 import { rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { chromium, type CDPSession, type Page } from '@playwright/test';
 
+import { exampleFilePath } from '../src/discover.ts';
 import { waitForPendingRebuild } from '../src/file-watcher.ts';
-import { PLAYGROUND_ROOT } from '../src/playground-paths.ts';
 import { startServer } from '../src/playground-server.ts';
 import { getRebuildGeneration } from '../src/rebuild-generation.ts';
 import {
@@ -345,13 +344,7 @@ async function waitForGenerationAfter(generation: number): Promise<number> {
 async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
   const component = 'button';
   const scenario = `measure-rebuild-${process.pid}`;
-  const fixturePath = join(
-    PLAYGROUND_ROOT,
-    'src',
-    'examples',
-    component,
-    `${scenario}.example.svelte`,
-  );
+  const fixturePath = await exampleFilePath(component, scenario);
   const server = await startServer(port);
   const origin = `http://localhost:${server.port}`;
   try {

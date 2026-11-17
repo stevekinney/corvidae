@@ -71,7 +71,7 @@ Do **not** use `autocomplete="new-password"` for the password field in a sign-in
 
 Skip these attributes and you've broken something that was working. Users who rely on autofill — including users with motor disabilities for whom typing a password is a significant barrier — lose access to saved credentials.
 
-For the auth-error message, use the `Alert` component (which already carries `role="alert"`, implying `aria-live="assertive"`) at the top of the form, and mount it conditionally on the error state so each new failure produces a fresh announcement. See `packages/playground/src/examples/input/sign-in.example.svelte` for a working composition.
+For the auth-error message, use the `Alert` component (which already carries `role="alert"`, implying `aria-live="assertive"`) at the top of the form, and mount it conditionally on the error state so each new failure produces a fresh announcement. See `examples/sign-in.example.svelte` beside this file for a working composition.
 
 Always set the `autocomplete` attribute when the input collects a value the browser or password manager can fill. Cinder's `Input` forwards arbitrary `HTMLInputAttributes` via rest props, so `autocomplete="email"`, `autocomplete="current-password"`, `autocomplete="one-time-code"`, `autocomplete="postal-code"`, etc., flow through unchanged.
 

@@ -77,6 +77,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { isComponentExample } from './component-source-filter.ts';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
 const componentsSource = join(componentsRoot, 'src');
@@ -552,6 +554,7 @@ export async function scan(globals: Set<string>, roots: ScanRoot[]): Promise<Tok
     const glob = new Glob('**/*.{css,svelte,ts}');
     for await (const relativePath of glob.scan({ cwd: dir })) {
       if (isTestPath(relativePath) || isExamplesJsonPath(relativePath)) continue;
+      if (isComponentExample(relativePath)) continue;
       const posix = `${reportPrefix}/${toPosixPath(relativePath)}`;
       const componentKey = componentDirKey(posix, componentsPrefix);
       if (!componentKey) continue;
@@ -569,6 +572,9 @@ export async function scan(globals: Set<string>, roots: ScanRoot[]): Promise<Tok
     const glob = new Glob('**/*.{css,svelte,examples.json}');
     for await (const relativePath of glob.scan({ cwd: dir })) {
       if (isTestPath(relativePath)) continue;
+      // A component's `examples/` directory (COR-2081) is documentation that consumes the
+      // package; its code reaches the audit through the generated `*.examples.json`, as before.
+      if (isComponentExample(relativePath)) continue;
       const posix = `${reportPrefix}/${toPosixPath(relativePath)}`;
       const ownedPrefixes =
         SHARED_PARTIAL_OWNED_PREFIXES[posix] ??

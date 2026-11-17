@@ -14,8 +14,9 @@ import {
   stableEntryModule,
   writeGeneratedEntries,
 } from './build-artifacts-shared.ts';
-import { componentExportNameFor } from './component-sources.ts';
+import { componentExportNameFor, exampleFilePathIn } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
+import { relativeImportSpecifier } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 /**
@@ -85,7 +86,12 @@ async function addPageEntry(
   const scenarioLoaders = scenarios
     .map(
       (scenario) =>
-        `  ${JSON.stringify(scenario)}: () => import('../../src/examples/${componentName}/${scenario}.example.svelte'),`,
+        `  ${JSON.stringify(scenario)}: () => import(${JSON.stringify(
+          relativeImportSpecifier(
+            GENERATED_ENTRY_DIRECTORY,
+            exampleFilePathIn(componentDefinition.source, componentName, scenario),
+          ),
+        )}),`,
     )
     .join('\n');
 

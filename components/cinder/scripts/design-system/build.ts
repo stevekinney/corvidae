@@ -45,7 +45,6 @@ import {
   assetsRoot,
   cinderRoot,
   defaultOutputRoot,
-  examplesRoot,
   playgroundRoot,
   repositoryRoot,
 } from './paths.ts';
@@ -199,11 +198,7 @@ async function main(): Promise<number> {
 
   const plans = new Map<string, PreviewPlan>();
   for (const component of manifest.components) {
-    const plan = planPreview(
-      component.id,
-      examplesRoot,
-      sourceOf(component.id).componentsDirectory,
-    );
+    const plan = planPreview(component.id, sourceOf(component.id).componentsDirectory);
     if (plan) plans.set(component.id, plan);
   }
   step(`previews: bundling ${plans.size} in ${SHARD_COUNT} shards`);
@@ -213,7 +208,7 @@ async function main(): Promise<number> {
   // A preview over the script cap was rebuilt with fewer examples; its card names only those.
   for (const [id, entry] of Object.entries(built.built)) {
     const plan = plans.get(id);
-    if (plan) plans.set(id, { id, examples: plan.examples.slice(0, entry.examples) });
+    if (plan) plans.set(id, { ...plan, examples: plan.examples.slice(0, entry.examples) });
   }
   const oversized = Object.entries(built.built)
     .filter(([, entry]) => entry.file === 'preview.full.js')

@@ -18,8 +18,30 @@ import {
   assertSitemapMatchesRoutes,
   type OutputDirectoryBoundaries,
   requireProductionBaseUrl,
+  resolveCssImport,
   runStaticExport,
 } from './static-export.ts';
+
+describe('resolveCssImport', () => {
+  test('follows relative and absolute imports, and leaves a URL with a scheme alone', () => {
+    expect(resolveCssImport('/styles/all.css', './tokens.css')).toBe('/styles/tokens.css');
+    expect(resolveCssImport('/styles/all.css', '../components/button/button.css')).toBe(
+      '/components/button/button.css',
+    );
+    expect(
+      resolveCssImport('/styles/all.css', '/package-styles/tokens/src/styles/tokens.css'),
+    ).toBe('/package-styles/tokens/src/styles/tokens.css');
+    expect(resolveCssImport('/styles/all.css', 'https://example.invalid/fonts.css')).toBeNull();
+  });
+
+  // The server rewrites every package specifier it can resolve; one left in a served stylesheet
+  // names a file no package serves, and an export that skipped it would publish a broken cascade.
+  test('stops on a package specifier the server did not rewrite', () => {
+    expect(() => resolveCssImport('/styles/all.css', '@lostgradient/tokens/tokens.css')).toThrow(
+      '/styles/all.css imports @lostgradient/tokens/tokens.css',
+    );
+  });
+});
 
 test('content-addresses static assets and rewrites HTML, JS, and CSS references', async () => {
   const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-assets-'));

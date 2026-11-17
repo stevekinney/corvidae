@@ -280,9 +280,11 @@ describe('workspace imports', () => {
             declaresImportSpecifier(name, importedRoot, internalWorkspaceExports.get(importedRoot)),
             `${directory}/${file} imports ${name}, which ${importedRoot} does not export`,
           ).toBe(true);
+          // A component's `examples/` (COR-2081) are documentation that import the package by its
+          // public name, the way an application does, so they may name their own barrel.
           if (
             file.startsWith('src/') &&
-            !/(^|\/)(?:test|tests|fixtures|__fixtures__|__test-helpers__)\/|(?:\.|-)(?:test|spec|fixture)(?:\.|-)/.test(
+            !/(^|\/)(?:test|tests|fixtures|__fixtures__|__test-helpers__|examples)\/|(?:\.|-)(?:test|spec|fixture)(?:\.|-)/.test(
               file,
             )
           ) {

@@ -9,20 +9,21 @@
  */
 
 import { existsSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 
 import Ajv from 'ajv/dist/2020.js';
 
 import type { CategoryId, StatusLevel } from '../src/manifest.meta.ts';
 import { categories, overlapFamilies, statusLevels } from '../src/manifest.meta.ts';
+import {
+  CORE_ROOT,
+  discoverComponentDirectories,
+  type DiscoveredComponent,
+} from './discover-component-directories.ts';
 import { discoverComponentEnhancements } from './lib/component-enhancements.ts';
 import type { A11yMetadata, AvoidWhenEntry, ComponentMetadata } from './lib/component-meta.ts';
 import { extractAllComponentMetadata } from './lib/component-meta.ts';
-import {
-  componentPackage,
-  packageRelative,
-  type ComponentPackage,
-} from './lib/component-package.ts';
+import { componentPackage, type ComponentPackage } from './lib/component-package.ts';
 import { componentMetadataPath, manifestMetadataPath } from './lib/metadata-files.ts';
 import { parseJsonFile, readJsonFile } from './lib/read-json-file.ts';
 import { readTokenNamespaces } from './token-namespaces.ts';
@@ -69,7 +70,15 @@ export type ManifestComponent = {
    * read by local component tooling.
    */
   hasExamples: boolean;
-  /** Package-relative paths for local machine-readable artifacts. */
+  /**
+   * Where the component's source lives (COR-2085): the package that owns it, that package's
+   * directory relative to this manifest's package, and the component's directory relative to the
+   * owning package. A component still in core reads `{ package: '@lostgradient/cinder',
+   * packageRoot: '.', directory: 'src/components/button' }`; one in a family package names the
+   * family and its directory beside core.
+   */
+  source: { package: string; packageRoot: string; directory: string };
+  /** Paths, relative to the owning package, for local machine-readable artifacts. */
   artifacts: {
     schema: string;
     variables: string;
@@ -103,8 +112,7 @@ export type Manifest = {
 // Filesystem roots (resolved relative to this script)
 // ---------------------------------------------------------------------------
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
-const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
+const PACKAGE_ROOT = CORE_ROOT;
 
 /** Every package's manifest validates against Cinder's manifest schema. */
 const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'manifest.schema.json');
@@ -145,13 +153,30 @@ function kebabToPascal(id: string): string {
     .join('');
 }
 
+/** POSIX `path` relative to `from`, `.` for the same directory. */
+function relativePosix(from: string, path: string): string {
+  return relative(from, path).split(sep).join('/') || '.';
+}
+
+/** Where one component's source lives, as the manifest records it. */
+export function componentSource(
+  component: Pick<DiscoveredComponent, 'directory' | 'packageName' | 'packageRoot'>,
+  manifestRoot: string = PACKAGE_ROOT,
+): ManifestComponent['source'] {
+  return {
+    package: component.packageName,
+    packageRoot: relativePosix(manifestRoot, component.packageRoot),
+    directory: relativePosix(component.packageRoot, component.directory),
+  };
+}
+
 /**
  * Check whether the committed examples artifact exists on disk for a
  * component. We base the manifest flag on the artifact's presence so the
  * manifest cannot advertise an artifact that is absent from the package.
  */
-function hasExamplesArtifact(pkg: ComponentPackage, id: string): boolean {
-  return existsSync(join(pkg.componentsRoot, id, `${id}.examples.json`));
+function hasExamplesArtifact(component: DiscoveredComponent): boolean {
+  return existsSync(join(component.directory, `${component.name}.examples.json`));
 }
 
 /**
@@ -159,36 +184,45 @@ function hasExamplesArtifact(pkg: ComponentPackage, id: string): boolean {
  * the manifest flag on the artifact, not the source sidecar, for the same
  * reason as `hasExamplesArtifact`.
  */
-function hasConstraintsArtifact(pkg: ComponentPackage, id: string): boolean {
-  return existsSync(join(pkg.componentsRoot, id, `${id}.constraints.json`));
+function hasConstraintsArtifact(component: DiscoveredComponent): boolean {
+  return existsSync(join(component.directory, `${component.name}.constraints.json`));
 }
 
 /**
- * Package-relative paths of a component's machine-readable files: the derived schema, variables
- * and examples copy in `.metadata/<id>/`, the authored constraints and enhancement beside the
- * component.
+ * Paths of a component's machine-readable files, relative to the package that owns the component:
+ * the derived schema, variables and examples copy in that package's `.metadata/<id>/`, the
+ * authored constraints and enhancement beside the component.
  */
 function artifactPath(
+  component: Pick<DiscoveredComponent, 'packageRoot'>,
+  source: ManifestComponent['source'],
   id: string,
   suffix: string,
-  pkg: ComponentPackage = componentPackage(),
 ): string {
   if (suffix === 'schema' || suffix === 'variables' || suffix === 'examples') {
-    return packageRelative(pkg, componentMetadataPath(pkg.root, id, suffix));
+    return relativePosix(
+      component.packageRoot,
+      componentMetadataPath(component.packageRoot, id, suffix),
+    );
   }
   const filename = suffix === 'enhancement' ? `${id}-enhancement.ts` : `${id}.${suffix}.json`;
-  return packageRelative(pkg, join(pkg.componentsRoot, id, filename));
+  return `${source.directory}/${filename}`;
 }
 
 /** Return the manifest subpath when this component owns a runtime enhancement. */
 export function enhancementArtifactPath(
   id: string,
-  componentsRoot: string = COMPONENTS_ROOT,
+  componentsRoot: string = join(PACKAGE_ROOT, 'src', 'components'),
+  source: ManifestComponent['source'] = {
+    package: '@lostgradient/cinder',
+    packageRoot: '.',
+    directory: `src/components/${id}`,
+  },
 ): string | undefined {
   const enhancement = discoverComponentEnhancements([{ name: id }], componentsRoot)[0];
   return enhancement === undefined
     ? undefined
-    : `${packageRelative(componentPackage(), componentsRoot)}/${id}/${id}-enhancement.ts`;
+    : artifactPath({ packageRoot: PACKAGE_ROOT }, source, id, 'enhancement');
 }
 
 // ---------------------------------------------------------------------------
@@ -273,25 +307,36 @@ export async function buildManifest(packageRoot: string = PACKAGE_ROOT): Promise
   );
   const frameworkVersionRange = rootPackage.catalog.svelte;
 
+  // 2. Every component's directory, in core or in a family package core depends on.
+  const discovered = await discoverComponentDirectories(pkg.root);
+  const directories = new Map(discovered.map((component) => [component.name, component]));
+
   // 3. Build per-component entries in parallel.
   const componentEntries = await Promise.all(
     metadata.map(async (meta: ComponentMetadata): Promise<ManifestComponent> => {
+      const component = directories.get(meta.id);
+      if (component === undefined) {
+        throw new Error(`Cannot build manifest — no component directory holds ${meta.id}`);
+      }
+      const source = componentSource(component, pkg.root);
       const exportName = kebabToPascal(meta.id);
-      const hasExamplesFlag = hasExamplesArtifact(pkg, meta.id);
-      const hasConstraintsFlag = hasConstraintsArtifact(pkg, meta.id);
+      const hasExamplesFlag = hasExamplesArtifact(component);
+      const hasConstraintsFlag = hasConstraintsArtifact(component);
 
       const artifacts: ManifestComponent['artifacts'] = {
-        schema: artifactPath(meta.id, 'schema', pkg),
-        variables: artifactPath(meta.id, 'variables', pkg),
+        schema: artifactPath(component, source, meta.id, 'schema'),
+        variables: artifactPath(component, source, meta.id, 'variables'),
       };
 
       if (hasExamplesFlag) {
-        artifacts.examples = artifactPath(meta.id, 'examples', pkg);
+        artifacts.examples = artifactPath(component, source, meta.id, 'examples');
       }
       if (hasConstraintsFlag) {
-        artifacts.constraints = artifactPath(meta.id, 'constraints', pkg);
+        artifacts.constraints = artifactPath(component, source, meta.id, 'constraints');
       }
-      const enhancementArtifact = pkg.isCinder ? enhancementArtifactPath(meta.id) : undefined;
+      const enhancementArtifact = pkg.isCinder
+        ? enhancementArtifactPath(meta.id, dirname(component.directory), source)
+        : undefined;
       if (enhancementArtifact !== undefined) {
         artifacts.enhancement = enhancementArtifact;
       }
@@ -310,6 +355,7 @@ export async function buildManifest(packageRoot: string = PACKAGE_ROOT): Promise
         related: meta.related,
         hasConstraints: hasConstraintsFlag,
         hasExamples: hasExamplesFlag,
+        source,
         artifacts,
         ...(meta.a11y !== undefined ? { a11y: meta.a11y } : {}),
       };

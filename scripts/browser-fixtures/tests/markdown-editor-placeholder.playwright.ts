@@ -32,7 +32,7 @@ import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './editor-fixture.ts';
 
 const ROUTE = fixtureRoute('markdown-editor');
-// packages/playground/src/examples/markdown-editor/empty.example.svelte
+// components/editor/src/lib/components/markdown-editor/examples/empty.example.svelte
 const EXAMPLE_MOUNT = '#example-mount-empty';
 
 test.describe('MarkdownEditor placeholder (cinder#1306)', () => {

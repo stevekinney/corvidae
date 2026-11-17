@@ -17,17 +17,18 @@ import { isAbsolute, join, relative as relativePath } from 'node:path';
  * does not call `fs.realpath`/`fs.lstat`. It does not detect a symlink
  * located inside `baseDir` whose target resolves outside `baseDir`; such a
  * symlink would pass this check and the subsequent `Bun.file().exists()`
- * read would follow it. As of this issue, none of the three roots this
- * function guards (`STYLES_ROOT` under `components/cinder/src/styles`, the
- * components-barrel CSS root, and each `componentSource.componentsRoot` in
- * `component-sources.ts`, which point directly at `components/<name>/src/...` —
- * not through `node_modules`) contain any symlinks (verified with `find
- * applications/playground/src components/cinder/src -type l`), so this gap is
- * not currently exploitable through these three call sites. If a future
- * caller serves a directory that may contain symlinks (e.g. anything
- * traversing through `node_modules`), it must add an `fs.realpathSync`
- * check on the resolved path before serving the file — this function alone
- * is not sufficient for that case.
+ * read would follow it. The roots it guards are the stylesheet roots of
+ * `package-stylesheets.ts` (core's `src/styles` and components roots, and the
+ * directory of each style package core depends on: the tokens, the foundation,
+ * every family) and each package's component roots in `component-sources.ts`.
+ * The style package roots are resolved with `realpathSync`, so a root reached
+ * through `node_modules` (where the isolated linker links core's dependencies)
+ * is the package's own directory, and none of these source trees contains a
+ * symlink (verified with `find components/*\/src applications/playground/src
+ * -type l`), so this gap is not currently exploitable through these call
+ * sites. If a future caller serves a directory that may contain symlinks, it
+ * must add an `fs.realpathSync` check on the resolved path before serving the
+ * file — this function alone is not sufficient for that case.
  */
 export function resolveSafePath(baseDir: string, requestedPath: string): string | null {
   // A NUL byte survives every string-level check here but makes Bun.file()

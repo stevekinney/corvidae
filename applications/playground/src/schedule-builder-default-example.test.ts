@@ -9,11 +9,15 @@ import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { exampleFilePath } from './discover.ts';
+
 setupHappyDom();
 
 const { cleanup, render } = await import('@testing-library/svelte');
-const { default: DefaultExample } =
-  await import('./examples/schedule-builder/default.example.svelte');
+// The example lives in ScheduleBuilder's own `examples/` directory (COR-2081).
+const { default: DefaultExample } = await import(
+  await exampleFilePath('schedule-builder', 'default')
+);
 
 afterEach(() => {
   cleanup();

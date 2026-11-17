@@ -15,7 +15,11 @@ import { dirname, join, relative } from 'node:path';
 
 import type { CategoryId, StatusLevel } from '../../src/manifest.meta.ts';
 import { categories, statusLevels } from '../../src/manifest.meta.ts';
-import { componentsRootOf } from '../discover-component-directories.ts';
+import {
+  componentsRootOf,
+  CORE_PACKAGE,
+  familyPackages,
+} from '../discover-component-directories.ts';
 
 export type { CategoryId, StatusLevel };
 
@@ -112,17 +116,32 @@ export { componentsRootOf };
  * and not underscore-prefixed, that holds `<name>.svelte`. Sorted by id.
  */
 export function discoverMetaComponents(packageRoot: string): MetaComponent[] {
-  const root = componentsRootOf(packageRoot);
-  if (!existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isDirectory() &&
-        !entry.name.startsWith('_') &&
-        entry.name !== 'icons' &&
-        existsSync(join(root, entry.name, `${entry.name}.svelte`)),
-    )
-    .map((entry) => ({ id: entry.name, directory: join(root, entry.name), packageRoot }))
+  // Core lists its family packages' components as its own (COR-2085); any other package, its own.
+  const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+    name?: unknown;
+  };
+  const roots =
+    manifest.name === CORE_PACKAGE
+      ? [packageRoot, ...familyPackages(packageRoot).map(([, root]) => root)]
+      : [packageRoot];
+  return roots
+    .flatMap((owner) => {
+      const root = componentsRootOf(owner);
+      if (!existsSync(root)) return [];
+      return readdirSync(root, { withFileTypes: true })
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            !entry.name.startsWith('_') &&
+            entry.name !== 'icons' &&
+            existsSync(join(root, entry.name, `${entry.name}.svelte`)),
+        )
+        .map((entry) => ({
+          id: entry.name,
+          directory: join(root, entry.name),
+          packageRoot: owner,
+        }));
+    })
     .toSorted((left, right) => (left.id < right.id ? -1 : 1));
 }
 

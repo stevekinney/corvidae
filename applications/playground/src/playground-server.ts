@@ -18,6 +18,8 @@
  *                         preview iframe AND by the outer shell, whose README prose
  *                         renders callouts and code blocks that shell.css omits)
  *   GET /package-components/:source/*.css → CSS owned by extracted component packages
+ *   GET /package-styles/:package/*.css → CSS of a style package core depends on (tokens,
+ *                         foundation, a family), the URL a package-specifier @import is rewritten to
  *   GET /example-src/:name/:scenario → raw .example.svelte source
  *   GET /theme-builder → the theme builder workbench (canonical, in the sitemap)
  *   GET /theme-builder/preview → the trusted preview frame the workbench embeds (noindex)
@@ -54,6 +56,7 @@ import { selectOverviewExample } from './component-page-overview-stage.ts';
 import {
   documentationComponentStylesheetUrl,
   documentationExampleStylesheetUrls,
+  exampleFilePathIn,
 } from './component-sources.ts';
 import {
   COMPOSE_ONLY_COMPONENTS,
@@ -62,6 +65,7 @@ import {
   discoverComponents,
   discoverExamples,
   discoverSidebarComponents,
+  exampleFilePath,
   type DiscoveredComponent,
 } from './discover.ts';
 import { readEnvironmentConfiguration } from './environment-configuration.ts';
@@ -138,6 +142,7 @@ import {
 import {
   handleComponentsStyleRoute,
   handlePackageComponentStyleRoute,
+  handlePackageStylesRoute,
   handlePlaygroundStylesRoute,
   handleStylesEntryRoute,
   handleStylesRoute,
@@ -371,9 +376,9 @@ async function renderComponentPage(
     componentDefinition === undefined
       ? null
       : documentationComponentStylesheetUrl(componentDefinition.source, componentName);
-  // Every example lives in the shared playground tree, including extracted
-  // Chat and Editor pages, so its Cinder imports need opt-in sidecars too.
-  // The documented package's own stylesheet remains additive.
+  // An example can import Cinder components from any package, including the
+  // extracted Chat and Editor pages, so its Cinder imports need opt-in sidecars
+  // too. The documented package's own stylesheet remains additive.
   const componentStylesheetUrls = [
     ...(componentDefinition === undefined
       ? []
@@ -383,16 +388,10 @@ async function renderComponentPage(
   const componentStylesheetLinks = componentStylesheetUrls
     .map((stylesheetUrl) => `\n    <link rel="stylesheet" href="${escapeHtml(stylesheetUrl)}" />`)
     .join('');
+  // A component no package discovers has no scenarios, so this maps nothing.
   const examples = await Promise.all(
     scenarios.map(async (scenario) => {
-      const filePath = join(
-        PLAYGROUND_ROOT,
-        'src',
-        'examples',
-        componentName,
-        `${scenario}.example.svelte`,
-      );
-      const meta = await readExampleMetadata(filePath);
+      const meta = await readExampleMetadata(await exampleFilePath(componentName, scenario));
       return { scenario, ...meta };
     }),
   );
@@ -634,7 +633,8 @@ async function renderFixturePageResponse(
   if (componentDefinition === undefined) {
     return notFound(`Component "${componentName}" not found`);
   }
-  const fixturesRoot = componentDefinition.source.componentsRoot;
+  // `<slug>/<slug>-fixtures.ts` under the directory that holds the component's own directory.
+  const fixturesRoot = dirname(dirname(componentDefinition.filePath));
   const fixtureFilePath = resolveFixtureFilePath(componentName, fixturesRoot);
   let fixtureFile;
   try {
@@ -843,14 +843,13 @@ async function handlePageRoute(url: URL, componentName: string): Promise<Respons
 
 async function handleExampleSrcRoute(componentName: string, scenario: string): Promise<Response> {
   if (!isSafeSegment(componentName) || !isSafeSegment(scenario)) return notFound();
-  const examplePath = join(
-    PLAYGROUND_ROOT,
-    'src',
-    'examples',
-    componentName,
-    `${scenario}.example.svelte`,
+  const componentDefinition = await discoverComponentDefinition(componentName);
+  if (componentDefinition === undefined) {
+    return notFound(`Example "${componentName}/${scenario}" not found`);
+  }
+  const exampleFile = Bun.file(
+    exampleFilePathIn(componentDefinition.source, componentName, scenario),
   );
-  const exampleFile = Bun.file(examplePath);
   if (!(await exampleFile.exists()))
     return notFound(`Example "${componentName}/${scenario}" not found`);
   const source = await exampleFile.text();
@@ -1004,6 +1003,11 @@ export const ROUTES: RouteDefinition[] = [
     method: 'GET',
     pattern: /^\/package-components\/([a-z0-9][a-z0-9-]*)\/(.+\.css)$/,
     handler: ({ match }) => handlePackageComponentStyleRoute(match[1]!, match[2]!),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/package-styles\/([a-z0-9][a-z0-9-]*)\/(.+\.css)$/,
+    handler: ({ match }) => handlePackageStylesRoute(match[1]!, match[2]!),
   },
   {
     method: 'GET',

@@ -322,11 +322,20 @@ async function renderJsBundleGraph(entryPath: string, context: StaticExportConte
 /**
  * Resolve a CSS `@import` specifier (relative, e.g. `./tokens.css` or
  * `./components/button.css`) against the importing stylesheet's URL into a
- * root-relative path. Returns null for non-relative/absolute specifiers (none
- * are emitted by the cinder stylesheets, but be defensive).
+ * root-relative path. An absolute path is kept, and a URL with a scheme
+ * returns null. A package specifier (`@lostgradient/tokens/tokens.css`) is the
+ * server's to rewrite to its file's URL (`package-stylesheets.ts`), so one that
+ * reaches the export names a stylesheet no package serves, and the export
+ * stops rather than publish a cascade with a hole in it.
  */
-function resolveCssImport(fromUrl: string, specifier: string): string | null {
-  if (!specifier.startsWith('.')) return specifier.startsWith('/') ? specifier : null;
+export function resolveCssImport(fromUrl: string, specifier: string): string | null {
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(specifier)) return null;
+  if (!specifier.startsWith('.') && !specifier.startsWith('/')) {
+    throw new Error(
+      `[static-export] ${fromUrl} imports ${specifier}, a package stylesheet the server did not resolve`,
+    );
+  }
+  if (!specifier.startsWith('.')) return specifier;
   // Strip query/fragment, resolve `./` and `../` against the importer's dir.
   const base = fromUrl.slice(0, fromUrl.lastIndexOf('/') + 1);
   const segments = `${base}${specifier}`.split('/');

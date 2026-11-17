@@ -135,6 +135,12 @@ test('allows importing the workspace root or a subpath its exports declare, and 
   expect(declaresImportSpecifier('armorer/protocol', 'armorer', { '.': './src/index.ts' })).toBe(
     false,
   );
+  // A subpath pattern declares every subpath its one `*` matches, as Node resolves `exports`.
+  const patterns = { './scripts/*': './scripts/*', './*.css': './src/*.css' };
+  expect(declaresImportSpecifier('@x/tools/scripts/a.ts', '@x/tools', patterns)).toBe(true);
+  expect(declaresImportSpecifier('@x/tools/button.css', '@x/tools', patterns)).toBe(true);
+  expect(declaresImportSpecifier('@x/tools/scripts/', '@x/tools', patterns)).toBe(false);
+  expect(declaresImportSpecifier('@x/tools/button.ts', '@x/tools', patterns)).toBe(false);
   expect(
     declaresImportSpecifier('@lostgradient/weft/server', '@lostgradient/weft', undefined),
   ).toBe(false);

@@ -4,7 +4,7 @@ import {
   readCompoundRelationships,
   renderCompoundFamiliesModule,
 } from '../../scripts/generate-compound-families.ts';
-import { CINDER_COMPONENT_SOURCE } from '../component-sources.ts';
+import { CINDER_COMPONENT_SOURCE, componentDirectory } from '../component-sources.ts';
 import {
   COMPOSE_ONLY_COMPONENTS,
   COMPOUND_COMPONENT_FAMILIES,
@@ -73,7 +73,7 @@ describe('CONTEXT_REQUIRED_PARTS', () => {
     const { join } = await import('node:path');
     for (const part of CONTEXT_REQUIRED_PARTS) {
       const source = await Bun.file(
-        join(CINDER_COMPONENT_SOURCE.componentsRoot, part, `${part}.svelte`),
+        join(componentDirectory(CINDER_COMPONENT_SOURCE, part), `${part}.svelte`),
       ).text();
       // Anchored on `Context(` so an unrelated `getBoundingClientRect(` cannot
       // satisfy the guard — the point is that the part still reads CONTEXT.
@@ -93,8 +93,10 @@ describe('LIST_ITEM_PARTS', () => {
     const { join } = await import('node:path');
     const listItemRoots: string[] = [];
     for (const part of Object.keys(COMPOUND_COMPONENT_PARENTS)) {
-      const file = Bun.file(join(CINDER_COMPONENT_SOURCE.componentsRoot, part, `${part}.svelte`));
-      if (CONTEXT_REQUIRED_PARTS.has(part) || !(await file.exists())) continue;
+      const directory = CINDER_COMPONENT_SOURCE.components().get(part)?.directory;
+      if (CONTEXT_REQUIRED_PARTS.has(part) || directory === undefined) continue;
+      const file = Bun.file(join(directory, `${part}.svelte`));
+      if (!(await file.exists())) continue;
       const source = await file.text();
       const markup = source
         .replace(/<script[\s\S]*?<\/script>/g, '')

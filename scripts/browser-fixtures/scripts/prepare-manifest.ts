@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 
 import { extractFixtures } from '@lostgradient/testing';
 
@@ -32,16 +33,39 @@ export type ManifestLayout = {
 };
 
 const browserFixturesRoot = resolve(import.meta.dirname, '..');
-const componentsRoot = resolve(
-  browserFixturesRoot,
-  '..',
-  '..',
-  'components',
-  'cinder',
-  'src',
-  'components',
-);
-const chatComponentsRoot = resolve(componentsRoot, '../../../chat/src/lib/components');
+const repositoryRoot = resolve(browserFixturesRoot, '..', '..');
+const chatComponentsRoot = resolve(repositoryRoot, 'components/chat/src/lib/components');
+
+/** Core's manifest, which lists every Cinder component and where its source lives (COR-2085). */
+export const CORE_MANIFEST = 'components/cinder/.metadata/components.json';
+
+type CoreManifest = {
+  components?: { source?: { packageRoot?: unknown; directory?: unknown } }[];
+};
+
+/**
+ * The directories that hold Cinder's component directories: the parent of every component
+ * directory core's manifest lists, so core's own `src/components` and each family package's. Each
+ * is scanned whole, as the single Cinder root was, so the fixtures beside the components and in
+ * underscore directories stay in.
+ */
+export function cinderComponentRoots(manifestPath: string): string[] {
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as CoreManifest;
+  // Source paths are relative to core's directory, the manifest's own or (COR-2078) its parent.
+  const manifestDirectory = dirname(manifestPath);
+  const coreRoot = manifestDirectory.endsWith(`${sep}.metadata`)
+    ? dirname(manifestDirectory)
+    : manifestDirectory;
+  const roots = new Set<string>();
+  for (const component of manifest.components ?? []) {
+    const { packageRoot, directory } = component.source ?? {};
+    if (typeof packageRoot !== 'string' || typeof directory !== 'string') {
+      throw new Error(`${manifestPath} lists a component without its source directory.`);
+    }
+    roots.add(dirname(resolve(coreRoot, packageRoot, directory)));
+  }
+  return [...roots].toSorted();
+}
 
 /**
  * What `prepareManifest` reads besides the fixture files: itself, the application declarations
@@ -57,6 +81,7 @@ export const manifestCodeInputs: string[] = [
   'scripts/browser-fixtures/src/app-fixture-declarations.ts',
   'scripts/browser-fixtures/src/manifest.ts',
   'scripts/browser-fixtures/src/fixtures/terminal/*.ts',
+  CORE_MANIFEST,
   'testing/testing/src/fixture-extraction/*.ts',
   'testing/testing/src/visual-fixtures.ts',
   'bun.lock',
@@ -64,8 +89,11 @@ export const manifestCodeInputs: string[] = [
 
 /** The layout of this repository. */
 export const defaultManifestLayout: ManifestLayout = {
-  repositoryRoot: resolve(browserFixturesRoot, '..', '..'),
-  fixtureRoots: [componentsRoot, chatComponentsRoot],
+  repositoryRoot,
+  fixtureRoots: [
+    ...cinderComponentRoots(resolve(repositoryRoot, CORE_MANIFEST)),
+    chatComponentsRoot,
+  ],
   sourceRoot: resolve(browserFixturesRoot, 'src'),
   appFixtureRoot: resolve(browserFixturesRoot, 'src', 'fixtures'),
   appFixtureDeclarations,

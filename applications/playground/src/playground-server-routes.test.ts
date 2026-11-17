@@ -28,6 +28,7 @@ const SAMPLE_PATHNAME_BY_ROW_INDEX: readonly string[] = [
   '/playground-styles/documentation.css',
   '/components/button/button.css',
   '/package-components/chat/chat/chat.css',
+  '/package-styles/tokens/src/styles/tokens.css',
   '/bundle/button/primary.js',
   '/page-bundle/button.js',
   '/fixture-bundle/fixture-button-basic-abc123.js',
@@ -45,8 +46,8 @@ const SAMPLE_PATHNAME_BY_ROW_INDEX: readonly string[] = [
 ];
 
 describe('ROUTES table', () => {
-  it('has exactly 23 entries (22 distinct URL patterns; /styles.css and /styles/* share one handler function)', () => {
-    expect(ROUTES).toHaveLength(23);
+  it('has exactly 24 entries (23 distinct URL patterns; /styles.css and /styles/* share one handler function)', () => {
+    expect(ROUTES).toHaveLength(24);
   });
 
   it.each(SAMPLE_PATHNAME_BY_ROW_INDEX.map((pathname, index) => [index, pathname] as const))(

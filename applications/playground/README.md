@@ -32,7 +32,7 @@ bun applications/playground/scripts/run-linux-lifecycle.ts
 
 ## What lives here
 
-- `src/` holds the server, the documentation page, the shell app, and every example under `src/examples/`.
+- `src/` holds the server, the documentation page, and the shell app. Examples live with the components they show, in each component's own `examples/` directory (`components/cinder/src/components/button/examples/primary.example.svelte`), so an example edit reaches only its package and the packages that depend on it. Discovery finds them through the component sources in `src/component-sources.ts`, and `scripts/move-examples-into-packages.ts` is the re-runnable script that moved them out of the playground.
 - `scripts/` holds the static exporter, the test runner, and the example audits.
 - `src/landing.md` is a copy of the public Cinder repository's README, which the home page renders. It is owner-maintained content and can drift from the README in `stevekinney/cinder`; refresh it from there when the public README changes.
 
@@ -41,6 +41,8 @@ bun applications/playground/scripts/run-linux-lifecycle.ts
 - Displayed package versions are the `workspace` sentinel, because Corvidae packages carry no version and the `components.json` files carry an absent or stale one.
 - Every component import goes through its package root (`@lostgradient/cinder`, `@lostgradient/chat`, `@lostgradient/editor`, `@lostgradient/markdown`), the single entry point each package exports. A dynamic import of a package root keeps every export, so `src/page-bundle.ts` writes a small per-page module that re-exports only the documented component, and the Playground tab loads that instead.
 - Filesystem roots resolve from the package name with `import.meta.resolve`, never from a spelled-out layout. The GitHub links the pages build point at the public mirror's layout (`packages/components`, `packages/chat`, `packages/editor` in `stevekinney/cinder`) on purpose, so those strings do not follow the move.
+- Cinder's components are the ones core's `components.json` lists, wherever each lives: in core, or in a family package core depends on. Each entry names its source directory, so discovery, the source links, the file watcher and the fingerprint follow a component into a family with no edit here (COR-2085).
+- Stylesheets are served from the package that owns them (`src/package-stylesheets.ts`): core's at `/styles/` and `/components/`, and every other style package core depends on (tokens, foundation, each family) at `/package-styles/<name>/<path>`. The server rewrites each package-specifier `@import` to its file's URL, resolving it through the package's `exports`, and the static export refuses one it could not rewrite. The playground depends on `@lostgradient/cinder` alone among Cinder's packages.
 - The playground keeps its own copies of the example-harness strip, the source fingerprint, the fixture loader wrapper, and the token introspection helpers rather than reaching into another workspace.
 - Process environment is read only through `src/environment-configuration.ts`.
 

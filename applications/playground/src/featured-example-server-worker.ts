@@ -4,7 +4,8 @@ import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { coordinatedBuild } from './build-artifacts-shared.ts';
-import { PLAYGROUND_ROOT, PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
+import { exampleFilePath } from './discover.ts';
+import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
 
 type RenderedFeaturedExample = {
@@ -43,13 +44,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const examplePath = join(
-    PLAYGROUND_ROOT,
-    'src',
-    'examples',
-    componentName,
-    `${scenario}.example.svelte`,
-  );
+  const examplePath = await exampleFilePath(componentName, scenario);
   if (!(await Bun.file(examplePath).exists())) {
     throw new Error(`[playground] featured example not found: ${componentName}/${scenario}`);
   }

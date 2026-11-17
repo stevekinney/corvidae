@@ -1,14 +1,21 @@
 /**
  * Discovery utilities for the cinder component playground.
  *
- * Scans every configured component package for public Svelte components and
- * `applications/playground/src/examples/` for their associated scenario files.
- * All scanning uses `Bun.Glob` with absolute paths derived from `import.meta.dirname`.
+ * Scans every configured component package for public Svelte components, and
+ * each component's own `examples/` directory for its scenario files. All
+ * scanning uses `Bun.Glob` with absolute paths.
  */
 
-import { basename, dirname, join } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import { COMPONENT_SOURCES, type ComponentSource } from './component-sources.ts';
+import {
+  COMPONENT_SOURCES,
+  type ComponentSource,
+  exampleFilePathIn,
+  examplesDirectoryIn,
+  resetComponentLocations,
+} from './component-sources.ts';
 /**
  * Compose-only leaf components (`composeOnly: true` in their `<name>.meta.json`) and the compound
  * families. Compose-only leaves are public components with no meaningful standalone usage: they
@@ -22,14 +29,21 @@ import {
 
 export { COMPOSE_ONLY_COMPONENTS, COMPOUND_COMPONENT_FAMILIES };
 
-// import.meta.dirname is applications/playground/src/
-const PLAYGROUND_ROOT = dirname(import.meta.dirname); // applications/playground/
-
 export type DiscoveredComponent = {
   name: string;
   filePath: string;
   importPath: string;
   source: ComponentSource;
+};
+
+/** One `*.example.svelte` file of a discovered component. */
+export type ExampleFile = {
+  component: string;
+  scenario: string;
+  /** Absolute path to the file. */
+  filePath: string;
+  /** `<component>/<scenario>.example.svelte`, the key reports and allowlists use. */
+  relativePath: string;
 };
 
 /**
@@ -108,6 +122,7 @@ let discoverAllCache: Promise<Array<{ name: string; exampleCount: number }>> | n
  */
 export function invalidateDiscoveryCache(): void {
   discoveryGeneration += 1;
+  resetComponentLocations();
   componentsCache = null;
   componentDefinitionsCache = null;
   discoverAllCache = null;
@@ -131,22 +146,20 @@ export function assertUniqueComponentSlugs(components: readonly DiscoveredCompon
   }
 }
 
+/**
+ * Every component each configured package lists. Cinder's come from core's manifest, which names
+ * the directory of each component wherever it lives, in core or in a family package (COR-2085);
+ * chat's and editor's come from their components roots.
+ */
 async function scanComponentDefinitions(): Promise<DiscoveredComponent[]> {
-  const definitionsBySource = await Promise.all(
-    COMPONENT_SOURCES.map(async (source) => {
-      const filePaths = await discoverComponentFilePaths(source.componentsRoot);
-      return filePaths.map((filePath): DiscoveredComponent => {
-        const name = basename(filePath, '.svelte');
-        return {
-          name,
-          filePath,
-          importPath: source.importPath(name),
-          source,
-        };
-      });
-    }),
+  const definitions = COMPONENT_SOURCES.flatMap((source) =>
+    [...source.components()].map(([name, location]): DiscoveredComponent => ({
+      name,
+      filePath: join(location.directory, `${name}.svelte`),
+      importPath: source.importPath(name),
+      source,
+    })),
   );
-  const definitions = definitionsBySource.flat();
 
   assertUniqueComponentSlugs(definitions);
   return definitions.toSorted((left, right) => left.name.localeCompare(right.name));
@@ -172,10 +185,10 @@ export async function discoverComponentDefinition(
 
 /**
  * Perform the actual scan for public component kebab names. Pure and uncached —
- * {@link discoverComponents} owns the memoization. Delegates the filesystem
- * walk to {@link discoverComponentFilePaths} (the single source of truth shared
- * with the analyzer), then derives sorted, deduplicated kebab names. Kept
- * separate so the cache layer and the scan logic stay independently testable.
+ * {@link discoverComponents} owns the memoization. Reads every package's
+ * component list through {@link discoverComponentDefinitions}, then derives
+ * sorted, deduplicated kebab names. Kept separate so the cache layer and the
+ * scan logic stay independently testable.
  */
 async function scanComponents(): Promise<string[]> {
   const definitions = await discoverComponentDefinitions();
@@ -207,21 +220,68 @@ export async function discoverComponents(): Promise<string[]> {
   }
 }
 
+async function scanExamples(definition: DiscoveredComponent): Promise<string[]> {
+  const glob = new Bun.Glob('*.example.svelte');
+  const scenarios: string[] = [];
+  const cwd = examplesDirectoryIn(definition.source, definition.name);
+  // A component without examples has no `examples/` directory, and a glob over a missing
+  // directory throws.
+  if (!(await directoryExists(cwd))) return [];
+  for await (const fileName of glob.scan({ cwd })) {
+    scenarios.push(fileName.replace(/\.example\.svelte$/, ''));
+  }
+  return scenarios.toSorted();
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    const stats = await stat(path);
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Returns a sorted array of scenario names (basename without `.example.svelte`)
- * for a given component name.
+ * for a given component name, read from the `examples/` directory beside the
+ * component's own source. A name no package discovers has none.
  */
 export async function discoverExamples(componentName: string): Promise<string[]> {
-  const glob = new Bun.Glob(`${componentName}/*.example.svelte`);
-  const scenarios: string[] = [];
+  const definition = await discoverComponentDefinition(componentName);
+  return definition === undefined ? [] : scanExamples(definition);
+}
 
-  for await (const file of glob.scan({ cwd: join(PLAYGROUND_ROOT, 'src', 'examples') })) {
-    const fileName = file.split('/').pop()!;
-    const scenario = fileName.replace(/\.example\.svelte$/, '');
-    scenarios.push(scenario);
+/**
+ * The file of one example scenario: `examples/<scenario>.example.svelte` in the
+ * component's directory, whether or not it exists. Throws for a component no
+ * package discovers, which has nowhere to keep examples.
+ */
+export async function exampleFilePath(componentName: string, scenario: string): Promise<string> {
+  const definition = await discoverComponentDefinition(componentName);
+  if (definition === undefined) {
+    throw new Error(`[playground] no package discovers a component named ${componentName}`);
   }
+  return exampleFilePathIn(definition.source, componentName, scenario);
+}
 
-  return scenarios.toSorted();
+/** Every example of every discovered component, sorted by `<component>/<file>`. */
+export async function discoverExampleFiles(): Promise<ExampleFile[]> {
+  const definitions = await discoverComponentDefinitions();
+  const files = await Promise.all(
+    definitions.map(async (definition) => {
+      const scenarios = await scanExamples(definition);
+      return scenarios.map((scenario): ExampleFile => ({
+        component: definition.name,
+        scenario,
+        filePath: exampleFilePathIn(definition.source, definition.name, scenario),
+        relativePath: `${definition.name}/${scenario}.example.svelte`,
+      }));
+    }),
+  );
+  return files
+    .flat()
+    .toSorted((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
 
 /**

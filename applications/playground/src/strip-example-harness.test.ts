@@ -17,16 +17,13 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { readdir } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
 
 import { compile } from 'svelte/compiler';
 
-import { FEATURED_EXAMPLES } from './examples/featured-examples.ts';
+import { discoverExampleFiles } from './discover.ts';
+import { FEATURED_EXAMPLES } from './featured-examples.ts';
 import { exampleSnippetResponse } from './playground-server.ts';
 import { stripExampleHarness } from './strip-example-harness.ts';
-
-const EXAMPLES_ROOT = join(import.meta.dir, 'examples');
 
 describe('exampleSnippetResponse — route glue', () => {
   it('returns a 200 text/plain stripped snippet on success', async () => {
@@ -67,33 +64,16 @@ describe('exampleSnippetResponse — route glue', () => {
   });
 });
 
-/** Recursively collect every `*.example.svelte` path under {@link EXAMPLES_ROOT}. */
-async function collectExampleFiles(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { withFileTypes: true });
-  const files: string[] = [];
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...(await collectExampleFiles(full)));
-    } else if (entry.name.endsWith('.example.svelte')) {
-      files.push(full);
-    }
-  }
-  return files;
-}
-
 describe('stripExampleHarness — every harnessed example stays valid Svelte', () => {
   it('strips and compiles all real example files cleanly', async () => {
-    const files = await collectExampleFiles(EXAMPLES_ROOT);
-    expect(files.length).toBeGreaterThan(0);
+    const examples = await discoverExampleFiles();
+    expect(examples.length).toBeGreaterThan(0);
 
     const harnessed: string[] = [];
-    for (const file of files) {
+    for (const { component: componentName, scenario, filePath: file } of examples) {
       const source = await Bun.file(file).text();
       if (!source.includes('mountIdPrefix')) continue;
 
-      const componentName = basename(dirname(file));
-      const scenario = basename(file, '.example.svelte');
       harnessed.push(`${componentName}/${scenario}`);
 
       const stripped = stripExampleHarness(source, `${componentName}/${scenario}`);

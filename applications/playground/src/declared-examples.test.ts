@@ -11,7 +11,7 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import { CINDER_COMPONENT_SOURCE, componentDirectory } from './component-sources.ts';
 
 const COMPONENTS_WITH_EVERY_DECLARED_EXAMPLE = [
   'approval-card',
@@ -22,21 +22,17 @@ const COMPONENTS_WITH_EVERY_DECLARED_EXAMPLE = [
   'tool-call-rail',
 ] as const;
 
-const EXAMPLES_ROOT = join(import.meta.dirname, 'examples');
-
 describe('declared examples', () => {
   for (const component of COMPONENTS_WITH_EVERY_DECLARED_EXAMPLE) {
     it(`${component} has a playground example for every id its examples.json declares`, () => {
+      const directory = componentDirectory(CINDER_COMPONENT_SOURCE, component);
       const artifact = JSON.parse(
-        readFileSync(
-          join(CINDER_COMPONENT_SOURCE.componentsRoot, component, `${component}.examples.json`),
-          'utf8',
-        ),
+        readFileSync(join(directory, `${component}.examples.json`), 'utf8'),
       ) as { examples: { id: string }[] };
 
       const missing = artifact.examples
         .map((example) => example.id)
-        .filter((id) => !existsSync(join(EXAMPLES_ROOT, component, `${id}.example.svelte`)));
+        .filter((id) => !existsSync(join(directory, 'examples', `${id}.example.svelte`)));
 
       expect(missing).toEqual([]);
     });

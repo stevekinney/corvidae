@@ -12,6 +12,8 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'svelte/compiler';
 
+import { isComponentExample } from './component-source-filter.ts';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const sourceRoot = resolve(scriptDirectory, '../../../components/cinder/src');
 
@@ -188,6 +190,8 @@ async function scan(): Promise<Array<StaticStyleAttributeViolation & { filePath:
   const glob = new Glob('**/*.svelte');
 
   for await (const relativePath of glob.scan({ cwd: sourceRoot })) {
+    // An example's markup is documentation a page renders, not the package's shipped source.
+    if (isComponentExample(relativePath)) continue;
     const absolutePath = resolve(sourceRoot, relativePath);
     const source = await Bun.file(absolutePath).text();
 

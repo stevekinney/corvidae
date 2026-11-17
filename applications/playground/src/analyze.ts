@@ -1455,32 +1455,39 @@ async function buildComponentTypeInfoMap(
 }
 
 /**
- * Discovers and analyzes every public component under `componentsDir`. Covers
- * both legacy flat components (`<name>.svelte` at the top level) and the
- * migrated per-directory layout (`<name>/<name>.svelte`). Underscore-prefixed
- * names are excluded as internal-only.
+ * Discovers and analyzes every public component under `componentsDirs`, one
+ * components root or several (Cinder's core and each family package keep their
+ * own). Covers both legacy flat components (`<name>.svelte` at the top level)
+ * and the migrated per-directory layout (`<name>/<name>.svelte`).
+ * Underscore-prefixed names are excluded as internal-only.
  *
- * The file-path scan is shared with `discover.discoverComponents` via
- * {@link discoverComponentFilePaths} so the two stay in lockstep.
+ * The file-path scan is {@link discoverComponentFilePaths}.
  */
-export async function analyzeAll(componentsDir: string): Promise<ComponentManifest[]> {
-  const cached = analyzeAllCache.get(componentsDir);
+export async function analyzeAll(
+  componentsDirs: string | readonly string[],
+): Promise<ComponentManifest[]> {
+  const roots = typeof componentsDirs === 'string' ? [componentsDirs] : componentsDirs;
+  const cacheKey = roots.join('\0');
+  const cached = analyzeAllCache.get(cacheKey);
   if (cached) return cached;
 
-  const promise = computeAnalyzeAll(componentsDir);
-  analyzeAllCache.set(componentsDir, promise);
+  const promise = computeAnalyzeAll(roots);
+  analyzeAllCache.set(cacheKey, promise);
   try {
     return await promise;
   } catch (error) {
-    if (analyzeAllCache.get(componentsDir) === promise) {
-      analyzeAllCache.delete(componentsDir);
+    if (analyzeAllCache.get(cacheKey) === promise) {
+      analyzeAllCache.delete(cacheKey);
     }
     throw error;
   }
 }
 
-async function computeAnalyzeAll(componentsDir: string): Promise<ComponentManifest[]> {
-  const filePaths = await discoverComponentFilePaths(componentsDir);
+async function computeAnalyzeAll(componentsDirs: readonly string[]): Promise<ComponentManifest[]> {
+  const filePathsByRoot = await Promise.all(
+    componentsDirs.map((root) => discoverComponentFilePaths(root)),
+  );
+  const filePaths = filePathsByRoot.flat();
 
   const manifests = await Promise.all(filePaths.map((filePath) => analyzeComponent(filePath)));
 

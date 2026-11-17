@@ -14,6 +14,11 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
     related: ['button-group', 'copy-button'],
     hasConstraints: false,
     hasExamples: false,
+    source: {
+      package: '@lostgradient/cinder',
+      packageRoot: '.',
+      directory: 'src/components/button',
+    },
     artifacts: {
       schema: '.metadata/button/schema.json',
       variables: '.metadata/button/variables.json',
@@ -38,6 +43,11 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
     related: ['drawer', 'popover'],
     hasConstraints: true,
     hasExamples: true,
+    source: {
+      package: '@lostgradient/cinder',
+      packageRoot: '.',
+      directory: 'src/components/modal',
+    },
     artifacts: {
       schema: '.metadata/modal/schema.json',
       variables: '.metadata/modal/variables.json',
@@ -59,6 +69,11 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
     related: ['feed'],
     hasConstraints: false,
     hasExamples: false,
+    source: {
+      package: '@lostgradient/fixture-family',
+      packageRoot: '../fixture-family',
+      directory: 'src/components/json-viewer',
+    },
     artifacts: {
       schema: '.metadata/json-viewer/schema.json',
       variables: '.metadata/json-viewer/variables.json',

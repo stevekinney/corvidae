@@ -1,5 +1,5 @@
-import { readdirSync, statSync, type Dirent } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync, type Dirent } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 /**
  * Directories whose newest file mtime feeds the playground server's startup
@@ -41,6 +41,43 @@ export const FINGERPRINT_SOURCE_FILES = [
   'components/editor/.metadata/components.json',
   // The documentation's displayed package versions.
 ] as const;
+
+/** Core's manifest, relative to the repository root: it names the family packages core lists. */
+export const CORE_MANIFEST_FILE = 'components/cinder/.metadata/components.json';
+
+/**
+ * The `src` directory and `package.json` of every family package core's manifest names
+ * (COR-2085), relative to the repository root. A component extracted from core into a family is
+ * fingerprinted where it now lives, with no edit here. Empty when the manifest is absent or
+ * unreadable, which the fixed lists above already fingerprint.
+ */
+export function familyPackageFingerprintPaths(repoRoot: string): {
+  directories: string[];
+  files: string[];
+} {
+  // Source paths are relative to core's directory, the parent of the manifest's `.metadata/`.
+  const coreRoot = dirname(dirname(join(repoRoot, CORE_MANIFEST_FILE)));
+  let manifest: { components?: { source?: { packageRoot?: unknown } }[] };
+  try {
+    manifest = JSON.parse(
+      readFileSync(join(repoRoot, CORE_MANIFEST_FILE), 'utf8'),
+    ) as typeof manifest;
+  } catch {
+    return { directories: [], files: [] };
+  }
+  const packageRoots = new Set<string>();
+  for (const component of manifest.components ?? []) {
+    const packageRoot = component.source?.packageRoot;
+    if (typeof packageRoot === 'string' && packageRoot !== '.') {
+      packageRoots.add(relative(repoRoot, resolve(coreRoot, packageRoot)).split(sep).join('/'));
+    }
+  }
+  const roots = [...packageRoots].toSorted();
+  return {
+    directories: roots.map((root) => `${root}/src`),
+    files: roots.map((root) => `${root}/package.json`),
+  };
+}
 
 /** The two filesystem reads a walk makes; the real ones in production, replaceable so a test can make a file or a directory vanish or fail. */
 export type FingerprintFilesystem = {
@@ -138,12 +175,13 @@ export function newestSourceMtimeMs(
   filesystem: Partial<FingerprintFilesystem> = {},
 ): number | null {
   const { statFile } = { ...REAL_FILESYSTEM, ...filesystem };
+  const families = familyPackageFingerprintPaths(repoRoot);
   let newest: number | null = null;
-  for (const relativeDirectory of FINGERPRINT_SOURCE_DIRECTORIES) {
+  for (const relativeDirectory of [...FINGERPRINT_SOURCE_DIRECTORIES, ...families.directories]) {
     const candidate = newestFileMtimeMs(join(repoRoot, relativeDirectory), filesystem);
     if (candidate !== null && (newest === null || candidate > newest)) newest = candidate;
   }
-  for (const relativeFile of FINGERPRINT_SOURCE_FILES) {
+  for (const relativeFile of [...FINGERPRINT_SOURCE_FILES, ...families.files]) {
     let candidate: number;
     try {
       candidate = statFile(join(repoRoot, relativeFile)).mtimeMs;
