@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../button/button.css';
-@import '../checkbox/checkbox.css';
-@import '../input/input.css';
+@import '@lostgradient/checkbox/checkbox.css';
+@import '@lostgradient/input/input.css';
 @import '../modal/modal.css';
 @import '../skeleton/skeleton.css';
 

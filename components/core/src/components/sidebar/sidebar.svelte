@@ -9,7 +9,7 @@
   import { isSimpleCssLength } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
-  import Drawer from '../drawer/drawer.svelte';
+  import Drawer from '@lostgradient/drawer/components/drawer/drawer.svelte';
   import { SIDEBAR_MOBILE_BREAKPOINT } from './sidebar.constants.ts';
 
   type SidebarRuntimeProps = SidebarProps & {

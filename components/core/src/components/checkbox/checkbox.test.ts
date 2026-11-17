@@ -11,15 +11,16 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
-const { default: Checkbox } = await import('./checkbox.svelte');
+const { default: Checkbox } =
+  await import('@lostgradient/checkbox/components/checkbox/checkbox.svelte');
 const { default: CheckboxIndeterminateFormResetFixture } =
   await import('../../test/fixtures/checkbox-indeterminate-form-reset-fixture.svelte');
 const { default: CheckboxFormResetFixture } =
-  await import('../../test/fixtures/checkbox-form-reset-fixture.svelte');
+  await import('@lostgradient/checkbox/test/fixtures/checkbox-form-reset-fixture.svelte');
 const { default: CheckboxExternalLabelFixture } =
-  await import('../../test/fixtures/checkbox-external-label-fixture.svelte');
+  await import('@lostgradient/checkbox/test/fixtures/checkbox-external-label-fixture.svelte');
 const { default: FormFieldCheckboxFixture } =
-  await import('../../test/fixtures/form-field-checkbox-fixture.svelte');
+  await import('@lostgradient/checkbox/test/fixtures/form-field-checkbox-fixture.svelte');
 
 afterEach(() => {
   cleanup();
@@ -28,7 +29,10 @@ afterEach(() => {
 
 describe('Checkbox', () => {
   test('keeps intrinsic layout when all component styles load FormField later', () => {
-    const checkboxStyles = readFileSync(new URL('./checkbox.css', import.meta.url), 'utf8');
+    const checkboxStyles = readFileSync(
+      new URL('../../../../checkbox/src/components/checkbox/checkbox.css', import.meta.url),
+      'utf8',
+    );
     const allStyles = readFileSync(new URL('../../styles/components.css', import.meta.url), 'utf8');
     const checkboxAt = allStyles.search(stylesheetImportPattern('checkbox/checkbox.css'));
     expect(checkboxAt).toBeGreaterThan(-1);
@@ -474,7 +478,10 @@ describe('Checkbox — error live region', () => {
   });
 
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
-    const checkboxCss = readFileSync(new URL('./checkbox.css', import.meta.url), 'utf8');
+    const checkboxCss = readFileSync(
+      new URL('../../../../checkbox/src/components/checkbox/checkbox.css', import.meta.url),
+      'utf8',
+    );
     const sharedErrorCss = readFileSync(
       new URL(
         '../../../../foundation/src/styles/components/_form-field-error.css',

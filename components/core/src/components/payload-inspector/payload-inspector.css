@@ -8,7 +8,7 @@
 @import '@lostgradient/segmented-control/segmented-control.css';
 @import '@lostgradient/source-diff-viewer/source-diff-viewer.css';
 @import '../table/table.css';
-@import '../tooltip/tooltip.css';
+@import '@lostgradient/tooltip/tooltip.css';
 
 @layer cinder.components {
   /* One card for every shape of payload: a header row (the Fields / JSON switch at the start, the

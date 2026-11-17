@@ -2,7 +2,7 @@
   import Button from '../../components/button/button.svelte';
   import ButtonGroup from '../../components/button-group/button-group.svelte';
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import Input from '../../components/input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
 
   let {
     id = 'api-key',

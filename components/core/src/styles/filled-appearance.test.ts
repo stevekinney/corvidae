@@ -26,7 +26,7 @@ import { NON_TEXT, type OklchColor } from '@lostgradient/tokens/tokens/runtime/c
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
-const { default: Input } = await import('../components/input/input.svelte');
+const { default: Input } = await import('@lostgradient/input/components/input/input.svelte');
 const { default: Textarea } =
   await import('@lostgradient/textarea/components/textarea/textarea.svelte');
 const { default: Select } = await import('../components/select/select.svelte');
@@ -39,7 +39,7 @@ function flatten(path: string): string {
     .replace(/\s+\)/g, ')');
 }
 
-const inputCss = flatten('../components/input/input.css');
+const inputCss = flatten('../../../input/src/components/input/input.css');
 const textareaCss = flatten('../../../textarea/src/components/textarea/textarea.css');
 const selectCss = flatten('../components/select/select.css');
 const fieldChevronCss = flatten('../../../foundation/src/styles/components/_field-chevron.css');

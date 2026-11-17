@@ -3,7 +3,7 @@
   Not part of the public API; SchemaFormBody renders it inside the field's fieldset.
 -->
 <script lang="ts">
-  import Chip from '../chip/chip.svelte';
+  import Chip from '@lostgradient/chip/components/chip/chip.svelte';
 
   import type { SchemaFormOption } from './schema-form-model.ts';
 

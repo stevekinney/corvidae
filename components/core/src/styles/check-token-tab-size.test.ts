@@ -21,7 +21,7 @@ describe('--cinder-type-tab-size (declaration, value, usage)', () => {
 
   it('is consumed by every surface it documents itself as backing', () => {
     const consumers = [
-      '../components/input/input.css',
+      '../../../input/src/components/input/input.css',
       '../../../textarea/src/components/textarea/textarea.css',
       '../components/code-block/code-block.css',
     ];

@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../input/input.css';
+@import '@lostgradient/input/input.css';
 @import '@lostgradient/textarea/textarea.css';
 @import '../duration-field/duration-field.css';
 @import '../setting-row/setting-row.css';

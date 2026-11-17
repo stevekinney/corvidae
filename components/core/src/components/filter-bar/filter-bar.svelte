@@ -24,8 +24,8 @@
   import { useViewportBelow } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
   import { default as Button } from '../button/index.ts';
-  import { default as Checkbox } from '../checkbox/index.ts';
-  import { default as Chip } from '../chip/index.ts';
+  import { default as Checkbox } from '@lostgradient/checkbox/components/checkbox/index.ts';
+  import { default as Chip } from '@lostgradient/chip/components/chip/index.ts';
   import { default as Popover } from '../popover/index.ts';
   import { default as Segment } from '@lostgradient/segmented-control/components/segment/index.ts';
   import { default as SegmentedControl } from '@lostgradient/segmented-control/components/segmented-control/index.ts';

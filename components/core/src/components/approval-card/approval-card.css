@@ -7,7 +7,7 @@
 @import '@lostgradient/badge/badge.css';
 @import '../button/button.css';
 @import '@lostgradient/card/card.css';
-@import '../checkbox/checkbox.css';
+@import '@lostgradient/checkbox/checkbox.css';
 @import '../code-block/code-block.css';
 @import '../copy-button/copy-button.css';
 @import '../description-list/description-list.css';
@@ -15,9 +15,9 @@
 @import '../json-viewer/json-viewer.css';
 @import '@lostgradient/link/link.css';
 @import '../payload-inspector/payload-inspector.css';
-@import '../status-dot/status-dot.css';
+@import '@lostgradient/status-dot/status-dot.css';
 @import '@lostgradient/textarea/textarea.css';
-@import '../tooltip/tooltip.css';
+@import '@lostgradient/tooltip/tooltip.css';
 
 @layer cinder.components {
   .cinder-approval-card {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
   import { formatClockTime, parseClockText } from './schedule-builder.utilities.ts';
 
   /**

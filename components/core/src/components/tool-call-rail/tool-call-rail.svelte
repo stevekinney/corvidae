@@ -28,7 +28,7 @@
   import Spinner from '@lostgradient/spinner/components/spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import type { ToolCallRailCall, ToolCallRailProps } from './tool-call-rail.types.ts';
 
   let {

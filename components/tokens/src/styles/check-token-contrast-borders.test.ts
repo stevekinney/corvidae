@@ -371,7 +371,7 @@ describe('field edges (COR-1814)', () => {
   // clear 3:1 against the page and the field's own fill once the person asks for more contrast.
   const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
   const fieldStylesheets = {
-    input: '../../../core/src/components/input/input.css',
+    input: '../../../input/src/components/input/input.css',
     select: '../../../core/src/components/select/select.css',
     combobox: '../../../core/src/components/combobox/combobox.css',
     multiSelect: '../../../core/src/components/multi-select/multi-select.css',

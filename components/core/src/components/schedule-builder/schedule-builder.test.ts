@@ -1139,7 +1139,10 @@ describe('ScheduleBuilder', () => {
       expect(css).toMatch(
         /__weekday-group > \.cinder-chip \{[^}]*box-sizing: border-box;[^}]*min-block-size: var\(--cinder-control-height-md\);/,
       );
-      const input = readFileSync(new URL('../input/input.css', import.meta.url), 'utf8');
+      const input = readFileSync(
+        new URL('../../../../input/src/components/input/input.css', import.meta.url),
+        'utf8',
+      );
       expect(input).toContain('--_cinder-input-height: var(--cinder-control-height-md);');
     });
 

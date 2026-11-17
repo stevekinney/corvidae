@@ -4,8 +4,8 @@ import type {
   NavigationItemLinkExtra,
   NavigationItemSharedHtmlAttributes,
 } from '@lostgradient/navigation-item/components/navigation-item/navigation-item.types.ts';
+import type { StatusDotStatus } from '@lostgradient/status-dot/components/status-dot/status-dot.types.ts';
 import type { Snippet } from 'svelte';
-import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 
 /**
  * Props for the SideNavigationItem component.

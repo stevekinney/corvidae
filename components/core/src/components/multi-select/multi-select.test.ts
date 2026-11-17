@@ -64,7 +64,7 @@ describe('MultiSelect', () => {
 
     expect(css).toContain('.cinder-checkbox-field__indicator');
     expect(css).not.toContain("@import '../_internal/checkbox-indicator-shell.css';");
-    expect(css).not.toContain("@import '../checkbox/checkbox.css';");
+    expect(css).not.toContain("@import '@lostgradient/checkbox/checkbox.css';");
   });
 
   test('sizes only its own indicator shell, never every Checkbox shell', async () => {

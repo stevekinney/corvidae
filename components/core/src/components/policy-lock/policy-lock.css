@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '@lostgradient/badge/badge.css';
-@import '../tooltip/tooltip.css';
+@import '@lostgradient/tooltip/tooltip.css';
 
 @layer cinder.components {
   .cinder-policy-lock {
