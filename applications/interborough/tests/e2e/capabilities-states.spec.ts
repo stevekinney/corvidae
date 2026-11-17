@@ -21,43 +21,6 @@ const WIDTHS = [1280, 375] as const;
 const copy = CAPABILITIES_COPY;
 const signInCopy = copy.source.connect.authentication.signIn;
 
-/** The listing time every remembered listing carries. */
-const LISTED_AT = '2026-11-16T08:00:00.000Z';
-
-/** The tools the GitHub source lists, as a failed source remembers them (rows 30n, 30o). */
-const GITHUB_LISTING = [
-  {
-    name: 'github__list_issues',
-    tool: 'list_issues',
-    acceptsSecrets: false,
-    savedAcceptsSecrets: false,
-    enabled: true,
-    savedEnabled: true,
-    tier: 'read-only',
-    approval: 'never',
-    approvalSaved: false,
-    title: 'List issues',
-    description: 'List the open issues of a repository.',
-    shortDescription: null,
-    inputSchema: null,
-  },
-  {
-    name: 'github__create_issue',
-    tool: 'create_issue',
-    acceptsSecrets: false,
-    savedAcceptsSecrets: false,
-    enabled: true,
-    savedEnabled: true,
-    tier: 'mutating',
-    approval: 'on-changes',
-    approvalSaved: true,
-    title: 'Create issue',
-    description: 'Opens an issue in a GitHub repository.',
-    shortDescription: null,
-    inputSchema: null,
-  },
-];
-
 type Json = Record<string, unknown>;
 
 /** Answers a read of `glob` with what `change` makes of the host's own answer; other methods go through. */
@@ -117,16 +80,7 @@ async function githubIs(
   await amendRead(page, '**/host/tool-sources', (body) => ({
     ...body,
     sources: (body['sources'] as Json[]).map((source) =>
-      source['id'] === 'github'
-        ? {
-            ...source,
-            state,
-            ...(message === undefined ? {} : { message }),
-            ...(state === 'needs-authorization' ? { authorized: false } : {}),
-            tools: [],
-            lastListing: { listedAt: LISTED_AT, truncated: false, tools: GITHUB_LISTING },
-          }
-        : source,
+      source['id'] === 'github' ? githubNotLoaded(source, state, message) : source,
     ),
   }));
   // A source that is not loaded offers its tools to no agent: the catalog no longer holds them.
@@ -220,45 +174,7 @@ for (const width of WIDTHS) {
     }) => {
       await amendRead(page, '**/host/plugins', (body) => ({
         ...body,
-        plugins: [
-          ...(body['plugins'] as Json[]),
-          {
-            descriptor: {
-              name: 'demo',
-              title: 'Demo',
-              version: '1.0.0',
-              description: 'A demonstration plugin.',
-              required: false,
-              enabledByDefault: false,
-            },
-            source: 'folder',
-            location: '/plugins/demo',
-            status: 'disabled',
-            problems: [],
-            contributions: [],
-            enabled: false,
-            configuration: null,
-            configurationSchema: null,
-            running: { enabled: false, configuration: null },
-            secrets: [],
-            restartRequired: false,
-            lastListing: {
-              listedAt: LISTED_AT,
-              truncated: false,
-              tools: [
-                {
-                  name: 'demo__draft-release-notes',
-                  tool: 'draft-release-notes',
-                  title: 'Draft release notes',
-                  description: 'Writes release notes from merged changes.',
-                  shortDescription: null,
-                  tier: 'mutating',
-                  inputSchema: null,
-                },
-              ],
-            },
-          },
-        ],
+        plugins: [...(body['plugins'] as Json[]), DEMO_PLUGIN],
       }));
       await open(page, width, '/capabilities?tool=demo__draft-release-notes');
       const detail = page.getByTestId('tool-detail');
@@ -284,46 +200,8 @@ for (const width of WIDTHS) {
     test('a skill’s detail shows the instructions rendered first and the raw file last, with the skill’s description in Used by (31m, 31n)', async ({
       page,
     }) => {
-      const description = 'Writes release notes from merged changes.';
-      await answerOperation(page, 'bureau.skills.list', {
-        revision: 1,
-        trustLocked: null,
-        sources: [{ id: 'built-in' }],
-        skills: [
-          {
-            name: 'release-notes',
-            description,
-            source: { id: 'built-in', kind: 'built-in', location: 'built-in', plugin: null },
-            trust: 'trusted',
-            trustReason: 'Built in.',
-            available: true,
-            unavailableReason: null,
-            allowedTools: [],
-            tools: [],
-          },
-        ],
-      });
-      await answerOperation(page, 'bureau.skills.get', {
-        name: 'release-notes',
-        unavailableReason: null,
-        instructions: {
-          size: 1229,
-          truncated: false,
-          text: [
-            '---',
-            'name: release-notes',
-            `description: ${description}`,
-            '---',
-            '',
-            'Group the merged pull requests by what changed for a customer.',
-            '',
-            '- Lead with the change, not the pull request number.',
-            '- Ask a person before you publish anything.',
-            '- Keep each entry to one sentence.',
-            '',
-          ].join('\n'),
-        },
-      });
+      await answerOperation(page, 'bureau.skills.list', RELEASE_NOTES_SKILLS);
+      await answerOperation(page, 'bureau.skills.get', RELEASE_NOTES_INSTRUCTIONS);
       await open(page, width, '/capabilities?tab=skills&skill=built-in%2Frelease-notes');
       const instructions = page.getByTestId('skill-instructions');
       await expect(instructions.getByTestId('skill-instructions-title')).toContainText(
@@ -342,31 +220,13 @@ for (const width of WIDTHS) {
   });
 }
 
-/** A saved HTTP source with a bearer token, as the edit read answers it. */
-const EDITING = {
-  id: 'ledger',
-  source: {
-    id: 'ledger',
-    kind: 'mcp',
-    transport: {
-      type: 'http',
-      url: 'https://mcp.ledger.example/mcp',
-      authentication: { type: 'bearer', credential: 'token' },
-    },
-  },
-  name: 'Ledger',
-  description: 'An MCP server for the ledger.',
-  credentials: ['token'],
-  configurationRevision: 'revision-read-by-the-page',
-};
-
 /** Routes the edit read of the source `ledger`, which the showcase host does not hold. */
 async function ledgerIsEditable(page: Page): Promise<void> {
   await page.route('**/host/tool-sources/ledger/editing', (route) =>
-    route.fulfill({ json: EDITING }),
+    route.fulfill({ json: LEDGER_EDITING }),
   );
   await page.route('**/host/tool-sources/ledger/probe', (route) =>
-    route.fulfill({ json: { outcome: 'listed', tools: [], skipped: [] } }),
+    route.fulfill({ json: LEDGER_PROBE }),
   );
 }
 
@@ -434,9 +294,7 @@ async function signInGoes(
   standing: { readonly outcome: string; readonly reason?: string },
 ): Promise<void> {
   await page.route('**/host/tool-source-sign-ins', (route: Route) =>
-    route.fulfill({
-      json: { authorized: false, signIn: 'sign-in-1', authorizationUrl: 'about:blank' },
-    }),
+    route.fulfill({ json: SIGN_IN_START }),
   );
   await page.route('**/host/tool-source-sign-ins/sign-in-1', (route: Route) =>
     route.fulfill({ json: { signIn: 'sign-in-1', ...standing } }),
