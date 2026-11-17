@@ -231,6 +231,7 @@ export async function readOwner(lockDirectory: string): Promise<OwnerRecord | un
   try {
     return JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8')) as OwnerRecord;
   } catch {
+    // Missing or half written: an ownerless lock, which callers judge by its age after a grace.
     return undefined;
   }
 }
@@ -245,14 +246,12 @@ async function lockState(
   ownerlessGraceMs: number,
 ): Promise<'released' | 'abandoned' | 'held'> {
   if (owner) return judgeByProcess()(owner) ? 'held' : 'abandoned';
-  try {
-    const { mtimeMs } = await stat(lockDirectory);
-    // Whole milliseconds on both sides: `mtimeMs` keeps a fraction `Date.now()` drops, so a
-    // directory written earlier in this millisecond would otherwise read as written in the future.
-    return Date.now() - Math.floor(mtimeMs) >= ownerlessGraceMs ? 'abandoned' : 'held';
-  } catch {
-    return 'released';
-  }
+  // Only a missing lock is released; any other failure to look at it is thrown, never read as free.
+  const status = await statIfPresent(lockDirectory);
+  if (status === undefined) return 'released';
+  // Whole milliseconds on both sides: `mtimeMs` keeps a fraction `Date.now()` drops, so a
+  // directory written earlier in this millisecond would otherwise read as written in the future.
+  return Date.now() - Math.floor(status.mtimeMs) >= ownerlessGraceMs ? 'abandoned' : 'held';
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -702,6 +701,7 @@ export async function readTicket(
   try {
     return JSON.parse(await readFile(join(queueDirectory, name), 'utf8')) as OwnerRecord;
   } catch {
+    // Gone (its waiter took its turn or gave up) or half written: no ticket to read yet.
     return undefined;
   }
 }
@@ -900,6 +900,7 @@ export function readMemory(): MemoryReading | undefined {
     );
     return result.exitCode === 0 ? parseDarwinMemory(result.stdout.toString()) : undefined;
   } catch {
+    // Memory pressure is advisory: when the platform cannot say, it is unknown, never a refusal.
     return undefined;
   }
 }
@@ -1145,6 +1146,7 @@ export async function terminateProcessGroup(processGroup: number): Promise<void>
       process.kill(-processGroup, signal);
       return true;
     } catch {
+      // The group has exited: a signal to our own child's group fails only with ESRCH.
       return false;
     }
   };

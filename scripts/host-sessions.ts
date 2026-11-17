@@ -116,6 +116,7 @@ async function readJson<T>(path: string): Promise<T | undefined> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as T;
   } catch {
+    // Missing or half written: every caller treats an absent record as not there yet.
     return undefined;
   }
 }
