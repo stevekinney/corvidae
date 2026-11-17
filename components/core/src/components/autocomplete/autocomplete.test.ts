@@ -9,7 +9,7 @@ setupHappyDom();
 // Source-package tests do not resolve the package's self-reference through Bun's
 // export map. Keep the component on its public subpath while mapping that entry
 // to the source implementation for this focused test process.
-const inputModule = await import('../input/index.ts');
+const inputModule = await import('@lostgradient/input/components/input/index.ts');
 mock.module('@lostgradient/cinder', () => inputModule);
 
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
@@ -66,7 +66,7 @@ afterEach(() => {
 describe('Autocomplete — rendering and ARIA', () => {
   test('sidecar imports the composed Input styles', async () => {
     const css = await Bun.file(new URL('./autocomplete.css', import.meta.url)).text();
-    expect(css).toContain("@import '../input/input.css';");
+    expect(css).toContain("@import '@lostgradient/input/input.css';");
   });
 
   test('imports the composed Input API through its public subpath', async () => {
@@ -75,10 +75,12 @@ describe('Autocomplete — rendering and ARIA', () => {
       Bun.file(new URL('./autocomplete.types.ts', import.meta.url)).text(),
     ]);
 
-    expect(componentSource).toContain("from '../input/index.ts';");
-    expect(typesSource).toContain("from '../input/index.ts';");
-    expect(componentSource).not.toContain("from '../input/input.svelte'");
-    expect(typesSource).not.toContain("from '../input/input.svelte'");
+    expect(componentSource).toContain("from '@lostgradient/input/components/input/index.ts';");
+    expect(typesSource).toContain("from '@lostgradient/input/components/input/index.ts';");
+    expect(componentSource).not.toContain(
+      "from '@lostgradient/input/components/input/input.svelte'",
+    );
+    expect(typesSource).not.toContain("from '@lostgradient/input/components/input/input.svelte'");
   });
 
   test('renders a combobox input with autocomplete=list semantics', () => {

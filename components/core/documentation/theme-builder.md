@@ -249,7 +249,7 @@ No published component is admitted for layout alone.
 | Builder control | Existing Cinder primitive or evidence | Required behavior |
 | --- | --- | --- |
 | Toolbar/actions | [`Button`](../src/components/button/README.md) with `variant`, `size`, `label`, and icon slots | Every icon-only action has an accessible name; loading exposes busy state. |
-| Text, numeric, search, name inputs | [`FormField`](../../form-field/src/components/form-field/README.md) plus [`Input`](../src/components/input/README.md) with `id`, `label`, `description`, `error`, `type`, and `value` | Stable ids, associated help/error, invalid state, native text undo. |
+| Text, numeric, search, name inputs | [`FormField`](../../form-field/src/components/form-field/README.md) plus [`Input`](../../input/src/components/input/README.md) with `id`, `label`, `description`, `error`, `type`, and `value` | Stable ids, associated help/error, invalid state, native text undo. |
 | Color value and picker | [`ColorPicker`](../src/components/color-picker/README.md) plus `Input` | Preserve authored color space; numeric/text entry remains available. |
 | Foundation parameter | [`ParameterField`](../src/components/parameter-field/README.md) | Typed value and constraint presentation for dimensions, opacity, duration, numeric profiles. |
 | Context/category choice | [`Select`](../src/components/select/README.md) and [`Dropdown`](../src/components/dropdown/README.md) | Keyboard selection, anchored trigger, explicit current value. |
@@ -259,7 +259,7 @@ No published component is admitted for layout alone.
 | Urgent blocking error | [`AlertDialog`](../src/components/alert-dialog/alert-dialog.types.ts) | Use only when Escape/backdrop dismissal must be disabled and explicit acknowledgement is required. |
 | Findings/import outcomes | [`Callout`](../../callout/src/components/callout/README.md) plus a separate native `aria-live` announcer | Callout is static status content; its implementation strips live-region attributes, so announcements are emitted by the dedicated announcer. |
 | Source/dependencies metadata | Existing disclosure and Lucide chevron | Rotating chevron; nested navigation uses lateral chevrons. |
-| Short explanations | [`Tooltip`](../src/components/tooltip/README.md) | Supplements an accessible name; never carries the only state. |
+| Short explanations | [`Tooltip`](../../tooltip/src/components/tooltip/README.md) | Supplements an accessible name; never carries the only state. |
 | Floating panels | cinder-\_floating-surface class | Bounded surface, visible focus, viewport-safe placement. |
 | Announcements | Dedicated native `aria-live` region and `cinder-sr-only` utility | Announce commits, checks, conflicts, and import results; not slider frames. |
 

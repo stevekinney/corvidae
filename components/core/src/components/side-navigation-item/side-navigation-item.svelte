@@ -8,8 +8,8 @@
   import { getSidebarContext } from '../../_internal/sidebar-context.ts';
   import Badge from '@lostgradient/badge/components/badge/badge.svelte';
   import NavigationItem from '@lostgradient/navigation-item/components/navigation-item/navigation-item.svelte';
-  import StatusDot from '../status-dot/status-dot.svelte';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import {
     tryGetSideNavigationGroupContext,
     type SideNavigationGroupRegistration,

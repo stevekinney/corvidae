@@ -4,8 +4,8 @@
  * verbatim-copied `dist/` because the layout mirrors. */
 @import '@lostgradient/badge/badge.css';
 @import '@lostgradient/navigation-item/navigation-item.css';
-@import '../status-dot/status-dot.css';
-@import '../tooltip/tooltip.css';
+@import '@lostgradient/status-dot/status-dot.css';
+@import '@lostgradient/tooltip/tooltip.css';
 
 @layer cinder.components {
   /* ========================================

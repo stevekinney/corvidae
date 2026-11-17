@@ -244,6 +244,25 @@
         "typescript": "catalog:",
       },
     },
+    "components/avatar": {
+      "name": "@lostgradient/avatar",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/visually-hidden": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/badge": {
       "name": "@lostgradient/badge",
       "dependencies": {
@@ -359,6 +378,64 @@
         "typescript": "catalog:",
       },
     },
+    "components/checkbox": {
+      "name": "@lostgradient/checkbox",
+      "dependencies": {
+        "@lostgradient/form-field": "workspace:*",
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/tokens": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/checkbox-group": {
+      "name": "@lostgradient/checkbox-group",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/checkbox": "workspace:*",
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/chip": {
+      "name": "@lostgradient/chip",
+      "dependencies": {
+        "@lostgradient/badge": "workspace:*",
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/code-location": {
       "name": "@lostgradient/code-location",
       "dependencies": {
@@ -450,10 +527,14 @@
         "@lostgradient/alert": "workspace:*",
         "@lostgradient/aspect-ratio": "workspace:*",
         "@lostgradient/attempts-indicator": "workspace:*",
+        "@lostgradient/avatar": "workspace:*",
         "@lostgradient/badge": "workspace:*",
         "@lostgradient/calendar": "workspace:*",
         "@lostgradient/callout": "workspace:*",
         "@lostgradient/card": "workspace:*",
+        "@lostgradient/checkbox": "workspace:*",
+        "@lostgradient/checkbox-group": "workspace:*",
+        "@lostgradient/chip": "workspace:*",
         "@lostgradient/code-location": "workspace:*",
         "@lostgradient/color-swatch-picker": "workspace:*",
         "@lostgradient/component-tooling": "workspace:*",
@@ -461,6 +542,7 @@
         "@lostgradient/container": "workspace:*",
         "@lostgradient/diff-statistics": "workspace:*",
         "@lostgradient/divider": "workspace:*",
+        "@lostgradient/drawer": "workspace:*",
         "@lostgradient/floating-action": "workspace:*",
         "@lostgradient/focus-trap": "workspace:*",
         "@lostgradient/footer": "workspace:*",
@@ -468,11 +550,16 @@
         "@lostgradient/form-section": "workspace:*",
         "@lostgradient/foundation": "workspace:*",
         "@lostgradient/grid": "workspace:*",
+        "@lostgradient/grid-list": "workspace:*",
         "@lostgradient/image": "workspace:*",
+        "@lostgradient/input": "workspace:*",
         "@lostgradient/kbd": "workspace:*",
+        "@lostgradient/key-facts": "workspace:*",
+        "@lostgradient/keyboard-shortcuts": "workspace:*",
         "@lostgradient/label": "workspace:*",
         "@lostgradient/link": "workspace:*",
         "@lostgradient/locale-provider": "workspace:*",
+        "@lostgradient/map-legend": "workspace:*",
         "@lostgradient/map-marker": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
         "@lostgradient/marquee": "workspace:*",
@@ -494,18 +581,26 @@
         "@lostgradient/scroll-area": "workspace:*",
         "@lostgradient/secret-value-field": "workspace:*",
         "@lostgradient/segmented-control": "workspace:*",
+        "@lostgradient/shortcut-field": "workspace:*",
+        "@lostgradient/shortcut-hint": "workspace:*",
+        "@lostgradient/skip-link": "workspace:*",
         "@lostgradient/slider": "workspace:*",
         "@lostgradient/source-diff-viewer": "workspace:*",
+        "@lostgradient/speed-dial": "workspace:*",
         "@lostgradient/spinner": "workspace:*",
+        "@lostgradient/spotlight": "workspace:*",
         "@lostgradient/stack": "workspace:*",
+        "@lostgradient/status-dot": "workspace:*",
         "@lostgradient/surface": "workspace:*",
         "@lostgradient/table-of-contents": "workspace:*",
         "@lostgradient/tag-input": "workspace:*",
+        "@lostgradient/terminal-frame": "workspace:*",
         "@lostgradient/terminal-output": "workspace:*",
         "@lostgradient/textarea": "workspace:*",
         "@lostgradient/theme-switch": "workspace:*",
         "@lostgradient/toggle": "workspace:*",
         "@lostgradient/tokens": "workspace:*",
+        "@lostgradient/tooltip": "workspace:*",
         "@lostgradient/transfer-list": "workspace:*",
         "@lostgradient/tree": "workspace:*",
         "@lostgradient/visually-hidden": "workspace:*",
@@ -589,6 +684,27 @@
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/drawer": {
+      "name": "@lostgradient/drawer",
+      "dependencies": {
+        "@lostgradient/focus-trap": "workspace:*",
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/portal": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "postcss": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -762,9 +878,47 @@
         "typescript": "catalog:",
       },
     },
+    "components/grid-list": {
+      "name": "@lostgradient/grid-list",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/grid": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/image": {
       "name": "@lostgradient/image",
       "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/input": {
+      "name": "@lostgradient/input",
+      "dependencies": {
+        "@lostgradient/form-field": "workspace:*",
         "@lostgradient/foundation": "workspace:*",
         "svelte": "catalog:",
       },
@@ -784,6 +938,45 @@
       "name": "@lostgradient/kbd",
       "dependencies": {
         "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/key-facts": {
+      "name": "@lostgradient/key-facts",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/link": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/keyboard-shortcuts": {
+      "name": "@lostgradient/keyboard-shortcuts",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/kbd": "workspace:*",
         "svelte": "catalog:",
       },
       "devDependencies": {
@@ -845,6 +1038,26 @@
         "@lostgradient/component-tooling": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/map-legend": {
+      "name": "@lostgradient/map-legend",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/link": "workspace:*",
+        "@lostgradient/map-marker": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
@@ -1221,6 +1434,64 @@
         "typescript": "catalog:",
       },
     },
+    "components/shortcut-field": {
+      "name": "@lostgradient/shortcut-field",
+      "dependencies": {
+        "@lostgradient/form-field": "workspace:*",
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/kbd": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/shortcut-hint": {
+      "name": "@lostgradient/shortcut-hint",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/kbd": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/skip-link": {
+      "name": "@lostgradient/skip-link",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/visually-hidden": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/slider": {
       "name": "@lostgradient/slider",
       "dependencies": {
@@ -1258,10 +1529,50 @@
         "typescript": "catalog:",
       },
     },
+    "components/speed-dial": {
+      "name": "@lostgradient/speed-dial",
+      "dependencies": {
+        "@floating-ui/dom": "catalog:",
+        "@lostgradient/floating-action": "workspace:*",
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/portal": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/spinner": {
       "name": "@lostgradient/spinner",
       "dependencies": {
         "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/spotlight": {
+      "name": "@lostgradient/spotlight",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/status-dot": "workspace:*",
         "svelte": "catalog:",
       },
       "devDependencies": {
@@ -1286,6 +1597,26 @@
         "@lostgradient/component-tooling": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/status-dot": {
+      "name": "@lostgradient/status-dot",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/chip": "workspace:*",
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/dom": "catalog:",
         "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
@@ -1366,6 +1697,25 @@
         "@types/bun": "catalog:",
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/terminal-frame": {
+      "name": "@lostgradient/terminal-frame",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/grid": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -1462,6 +1812,26 @@
         "oxlint-tsgolint": "catalog:",
         "postcss": "catalog:",
         "prettier": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/tooltip": {
+      "name": "@lostgradient/tooltip",
+      "dependencies": {
+        "@floating-ui/dom": "catalog:",
+        "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/portal": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -2603,6 +2973,8 @@
 
     "@lostgradient/attempts-indicator": ["@lostgradient/attempts-indicator@workspace:components/attempts-indicator"],
 
+    "@lostgradient/avatar": ["@lostgradient/avatar@workspace:components/avatar"],
+
     "@lostgradient/badge": ["@lostgradient/badge@workspace:components/badge"],
 
     "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
@@ -2618,6 +2990,12 @@
     "@lostgradient/card": ["@lostgradient/card@workspace:components/card"],
 
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
+
+    "@lostgradient/checkbox": ["@lostgradient/checkbox@workspace:components/checkbox"],
+
+    "@lostgradient/checkbox-group": ["@lostgradient/checkbox-group@workspace:components/checkbox-group"],
+
+    "@lostgradient/chip": ["@lostgradient/chip@workspace:components/chip"],
 
     "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/core"],
 
@@ -2636,6 +3014,8 @@
     "@lostgradient/diff-statistics": ["@lostgradient/diff-statistics@workspace:components/diff-statistics"],
 
     "@lostgradient/divider": ["@lostgradient/divider@workspace:components/divider"],
+
+    "@lostgradient/drawer": ["@lostgradient/drawer@workspace:components/drawer"],
 
     "@lostgradient/editor": ["@lostgradient/editor@workspace:components/editor"],
 
@@ -2657,15 +3037,23 @@
 
     "@lostgradient/grid": ["@lostgradient/grid@workspace:components/grid"],
 
+    "@lostgradient/grid-list": ["@lostgradient/grid-list@workspace:components/grid-list"],
+
     "@lostgradient/groom": ["@lostgradient/groom@workspace:scripts/groom"],
 
     "@lostgradient/image": ["@lostgradient/image@workspace:components/image"],
+
+    "@lostgradient/input": ["@lostgradient/input@workspace:components/input"],
 
     "@lostgradient/interborough": ["@lostgradient/interborough@workspace:applications/interborough"],
 
     "@lostgradient/interborough-plugin": ["@lostgradient/interborough-plugin@workspace:packages/interborough-plugin"],
 
     "@lostgradient/kbd": ["@lostgradient/kbd@workspace:components/kbd"],
+
+    "@lostgradient/key-facts": ["@lostgradient/key-facts@workspace:components/key-facts"],
+
+    "@lostgradient/keyboard-shortcuts": ["@lostgradient/keyboard-shortcuts@workspace:components/keyboard-shortcuts"],
 
     "@lostgradient/label": ["@lostgradient/label@workspace:components/label"],
 
@@ -2674,6 +3062,8 @@
     "@lostgradient/link": ["@lostgradient/link@workspace:components/link"],
 
     "@lostgradient/locale-provider": ["@lostgradient/locale-provider@workspace:components/locale-provider"],
+
+    "@lostgradient/map-legend": ["@lostgradient/map-legend@workspace:components/map-legend"],
 
     "@lostgradient/map-marker": ["@lostgradient/map-marker@workspace:components/map-marker"],
 
@@ -2753,13 +3143,25 @@
 
     "@lostgradient/segmented-control": ["@lostgradient/segmented-control@workspace:components/segmented-control"],
 
+    "@lostgradient/shortcut-field": ["@lostgradient/shortcut-field@workspace:components/shortcut-field"],
+
+    "@lostgradient/shortcut-hint": ["@lostgradient/shortcut-hint@workspace:components/shortcut-hint"],
+
+    "@lostgradient/skip-link": ["@lostgradient/skip-link@workspace:components/skip-link"],
+
     "@lostgradient/slider": ["@lostgradient/slider@workspace:components/slider"],
 
     "@lostgradient/source-diff-viewer": ["@lostgradient/source-diff-viewer@workspace:components/source-diff-viewer"],
 
+    "@lostgradient/speed-dial": ["@lostgradient/speed-dial@workspace:components/speed-dial"],
+
     "@lostgradient/spinner": ["@lostgradient/spinner@workspace:components/spinner"],
 
+    "@lostgradient/spotlight": ["@lostgradient/spotlight@workspace:components/spotlight"],
+
     "@lostgradient/stack": ["@lostgradient/stack@workspace:components/stack"],
+
+    "@lostgradient/status-dot": ["@lostgradient/status-dot@workspace:components/status-dot"],
 
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 
@@ -2791,6 +3193,8 @@
 
     "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
 
+    "@lostgradient/terminal-frame": ["@lostgradient/terminal-frame@workspace:components/terminal-frame"],
+
     "@lostgradient/terminal-output": ["@lostgradient/terminal-output@workspace:components/terminal-output"],
 
     "@lostgradient/testing": ["@lostgradient/testing@workspace:testing/testing"],
@@ -2802,6 +3206,8 @@
     "@lostgradient/toggle": ["@lostgradient/toggle@workspace:components/toggle"],
 
     "@lostgradient/tokens": ["@lostgradient/tokens@workspace:components/tokens"],
+
+    "@lostgradient/tooltip": ["@lostgradient/tooltip@workspace:components/tooltip"],
 
     "@lostgradient/transfer-list": ["@lostgradient/transfer-list@workspace:components/transfer-list"],
 

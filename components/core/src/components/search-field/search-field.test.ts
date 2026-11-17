@@ -10,7 +10,7 @@ setupHappyDom();
 // Source-package tests do not resolve the package's self-reference through Bun's
 // export map. Keep the component on its public subpath while mapping that entry
 // to the source implementation for this focused test process.
-const { default: Input } = await import('../input/index.ts');
+const { default: Input } = await import('@lostgradient/input/components/input/index.ts');
 mock.module('@lostgradient/cinder', () => ({ default: Input }));
 
 const { render, fireEvent, cleanup, waitFor } = await import('@testing-library/svelte');
@@ -29,7 +29,7 @@ const { default: FormFieldSearchFieldFixture } =
 describe('SearchField rendering', () => {
   test('sidecar imports the composed Input styles', () => {
     const styles = readFileSync(new URL('./search-field.css', import.meta.url), 'utf8');
-    expect(styles).toContain("@import '../input/input.css';");
+    expect(styles).toContain("@import '@lostgradient/input/input.css';");
   });
 
   test('type surface excludes inherited defaultValue', () => {
@@ -542,7 +542,10 @@ describe('SearchField as the top bar trigger', () => {
   });
 
   test('the shared quiet focus ring wraps the whole field, not the inner input', () => {
-    const inputStyles = readFileSync(new URL('../input/input.css', import.meta.url), 'utf8');
+    const inputStyles = readFileSync(
+      new URL('../../../../input/src/components/input/input.css', import.meta.url),
+      'utf8',
+    );
     const rule = inputStyles.match(/\.cinder-input-group:focus-within\s*\{([^}]*)\}/)?.[1] ?? '';
 
     // The same two-stop ring every control paints (2px, no offset, accent at 62% lightness)…

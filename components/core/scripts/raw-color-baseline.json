@@ -25,7 +25,7 @@
     "allowedCount": 2
   },
   {
-    "filePath": "src/components/input/input.css",
+    "filePath": "../input/src/components/input/input.css",
     "colorClass": "oklch",
     "allowedCount": 1
   },

@@ -6,6 +6,7 @@ import {
   formatTimeZoneLabel,
 } from '@lostgradient/foundation/utilities/format-date.ts';
 import { humanizeIdentifier } from '@lostgradient/foundation/utilities/humanize-identifier.ts';
+import type { StatusDotStatus } from '@lostgradient/status-dot/components/status-dot/status-dot.types.ts';
 import { readPayloadEntries } from '../payload-inspector/payload-inspector-fields.ts';
 import { describeContents, describeScalar } from '../payload-inspector/payload-inspector-model.ts';
 import {
@@ -13,7 +14,6 @@ import {
   maskSecrets,
   SECRET_MASK,
 } from '../payload-inspector/payload-inspector-secrets.ts';
-import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 import type { ApprovalState, ApprovalToolRisk } from './approval-card.types.ts';
 
 /** Character budget for the serialized arguments preview before truncation. */

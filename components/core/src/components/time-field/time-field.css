@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../input/input.css';
+@import '@lostgradient/input/input.css';
 
 @layer cinder.components {
   /* TimeField now composes FormFieldFrame itself, so its root also carries

@@ -243,7 +243,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       occurrences: 2,
     },
   ],
-  'components/core/src/components/chip/chip.css': [
+  'components/chip/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
   ],
   'components/core/src/components/color-field/color-field.css': [
@@ -275,7 +275,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/core/src/components/modal/modal.css': [
     { declaration: 'background: var(--cinder-border-contrast);', category: 'area', audit: 'modal' },
   ],
-  'components/core/src/components/drawer/drawer.css': [
+  'components/drawer/src/components/drawer/drawer.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
@@ -379,7 +379,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/core/src/components/statistic-group/statistic-group.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'occlusion' },
   ],
-  'components/core/src/components/status-dot/status-dot.css': [
+  'components/status-dot/src/components/status-dot/status-dot.css': [
     {
       declaration: '--cinder-status-dot-color: var(--cinder-border-contrast);',
       category: 'area',

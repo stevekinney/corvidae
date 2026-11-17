@@ -4,7 +4,7 @@
 @import '../collapsible/collapsible.css';
 @import '@lostgradient/link/link.css';
 @import '@lostgradient/progress/progress.css';
-@import '../status-dot/status-dot.css';
+@import '@lostgradient/status-dot/status-dot.css';
 
 @layer cinder.components {
   /* ========================================

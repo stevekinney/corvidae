@@ -35,7 +35,7 @@ Below `md`, Sidebar renders inside `<Drawer placement="left" size="md">`. The `c
 - `collapsed=false` → drawer open
 - `collapsed=true` → drawer closed
 
-Mobile drawer inherits Drawer's focus trap, ESC handling, body scroll lock, and backdrop click — see [`drawer.a11y.md`](../drawer/drawer.a11y.md).
+Mobile drawer inherits Drawer's focus trap, ESC handling, body scroll lock, and backdrop click — see [`drawer.a11y.md`](../../../../drawer/src/components/drawer/drawer.a11y.md).
 
 ### Wiring the mobile trigger
 

@@ -11,9 +11,9 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
   import Button from '../button/button.svelte';
-  import Checkbox from '../checkbox/checkbox.svelte';
+  import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
   import JsonEditor from '../json-editor/json-editor.svelte';
   import NumberInput from '../number-input/number-input.svelte';
   import Segment from '@lostgradient/segmented-control/components/segment/segment.svelte';

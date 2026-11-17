@@ -1,5 +1,8 @@
+import type {
+  AvatarShape,
+  AvatarSize,
+} from '@lostgradient/avatar/components/avatar/avatar.types.ts';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { AvatarShape, AvatarSize } from '../avatar/avatar.types.ts';
 
 type AvatarGroupRootAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'children'>;
 

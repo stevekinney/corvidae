@@ -9,8 +9,8 @@
 <script lang="ts">
   import type { AvatarGroupProps } from './avatar-group.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Avatar from '../avatar/avatar.svelte';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Avatar from '@lostgradient/avatar/components/avatar/avatar.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
 
   const defaultMaxVisible = 5;
 

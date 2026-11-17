@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Chip from '../chip/chip.svelte';
+  import Chip from '@lostgradient/chip/components/chip/chip.svelte';
   import Combobox from '../combobox/combobox.svelte';
   import type { ComboboxFooterContext, ComboboxOption } from '../combobox/combobox.types.ts';
   import NumberInput from '../number-input/number-input.svelte';

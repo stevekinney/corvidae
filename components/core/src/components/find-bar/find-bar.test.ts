@@ -216,6 +216,6 @@ describe('FindBar', () => {
 
     expect(css).toContain("@import '../button/button.css';");
     expect(css).toContain("@import '@lostgradient/form-field/form-field.css';");
-    expect(css).toContain("@import '../input/input.css';");
+    expect(css).toContain("@import '@lostgradient/input/input.css';");
   });
 });

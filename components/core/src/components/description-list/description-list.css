@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../button/button.css';
-@import '../chip/chip.css';
+@import '@lostgradient/chip/chip.css';
 @import '../copy-button/copy-button.css';
 
 @layer cinder.components {

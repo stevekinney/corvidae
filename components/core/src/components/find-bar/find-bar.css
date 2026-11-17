@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../button/button.css';
 @import '@lostgradient/form-field/form-field.css';
-@import '../input/input.css';
+@import '@lostgradient/input/input.css';
 
 @layer cinder.components {
   .cinder-find-bar {

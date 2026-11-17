@@ -6,7 +6,7 @@
   import type { ConfirmDialogProps } from './confirm-dialog.types.ts';
   import Button from '../button/button.svelte';
   import Callout from '@lostgradient/callout/components/callout/callout.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
   import Modal from '../modal/modal.svelte';
   import { PHONE_VIEWPORT_BREAKPOINT } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';

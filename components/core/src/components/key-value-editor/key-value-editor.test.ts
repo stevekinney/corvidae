@@ -7,7 +7,7 @@ import type { KeyValueEntry } from './key-value-editor.types.ts';
 setupHappyDom();
 const buttonModule = await import('../button/index.ts');
 const gridModule = await import('@lostgradient/grid/components/grid/index.ts');
-const inputModule = await import('../input/index.ts');
+const inputModule = await import('@lostgradient/input/components/input/index.ts');
 mock.module('@lostgradient/cinder', () => buttonModule);
 mock.module('@lostgradient/cinder', () => gridModule);
 mock.module('@lostgradient/cinder', () => inputModule);
@@ -222,7 +222,7 @@ describe('KeyValueEditor', () => {
 
   test('entry point imports only styles used by the rendered composition', () => {
     const entry = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-    expect(entry).toContain("import '../input/input.css';");
+    expect(entry).toContain("import '@lostgradient/input/input.css';");
     expect(entry).toContain("import '../button/button.css';");
     expect(entry).not.toContain('secret-value-field.css');
     expect(entry).not.toContain('grid.css');
@@ -243,9 +243,9 @@ describe('KeyValueEditor', () => {
 
   test('composes primitives through public component subpaths', async () => {
     const source = await Bun.file(new URL('./key-value-editor.svelte', import.meta.url)).text();
-    expect(source).toContain("from '../input/index.ts';");
+    expect(source).toContain("from '@lostgradient/input/components/input/index.ts';");
     expect(source).toContain("from '../button/index.ts';");
-    expect(source).not.toContain("from '../input/input.svelte'");
+    expect(source).not.toContain("from '@lostgradient/input/components/input/input.svelte'");
     expect(source).not.toContain("from '../button/button.svelte'");
   });
 
