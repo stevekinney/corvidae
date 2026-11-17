@@ -746,6 +746,13 @@
       : undefined,
   );
   /**
+   * The saved configuration of a plugin hook as a schema of read-only pairs, for when its action
+   * is not offered now and its own schema is unknown (row R10-08); `null` when there is nothing.
+   */
+  const storedSchema = $derived(
+    hook?.action.type === 'plugin' ? storedConfigurationSchema(hook.action.configuration) : null,
+  );
+  /**
    * Why Send a test event is off, in one sentence for each cause, or `undefined` when nothing is
    * said: it is on, or the answer that decides it has not come yet. A hook that is not saved can
    * send a webhook test and nothing else.
@@ -1010,14 +1017,14 @@
                     }}
                   />
                 </div>
-              {:else if contributed.isSuccess && Object.keys(hook.action.configuration).length > 0}
+              {:else if contributed.isSuccess && storedSchema !== null}
                 <!-- The action is not offered now, so its schema is unknown: the saved pairs are
                      shown as they are, read only, and nothing is lost or changed (row R10-08). -->
                 <div class="ib-hook-editor__contributed" data-testid="stored-configuration">
                   <p class="ib-hook-editor__plain">{copy.action.storedConfiguration}</p>
                   <HookConfiguration
                     kindId={`stored:${hook.id}`}
-                    schema={storedConfigurationSchema(hook.action.configuration)}
+                    schema={storedSchema}
                     value={hook.action.configuration}
                     readOnly
                     plugin={hook.action.plugin}

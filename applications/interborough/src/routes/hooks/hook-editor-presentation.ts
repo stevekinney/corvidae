@@ -316,16 +316,18 @@ export function configurationIssuesOf(
  * A schema that draws a stored configuration as read-only pairs when the action's own schema is not
  * listed (its plugin is off, dropped the action, or withdrew the hook; row R10-08). Each saved key is
  * a field in the order it was saved: a secret reference reads as its key, a string, number or
- * boolean as itself, and anything else as JSON. No value is invented and none is left out.
+ * boolean as itself, and anything else as JSON. No value is invented and none is left out. `null`
+ * when there is nothing to show: no saved key, or a configuration that is not an object.
  */
-export function storedConfigurationSchema(
-  configuration: Readonly<Record<string, unknown>>,
-): Record<string, unknown> {
+export function storedConfigurationSchema(configuration: unknown): Record<string, unknown> | null {
+  if (typeof configuration !== 'object' || configuration === null || Array.isArray(configuration)) {
+    return null;
+  }
   const properties: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(configuration)) {
     properties[key] = storedFieldSchema(value);
   }
-  return { type: 'object', properties };
+  return Object.keys(properties).length === 0 ? null : { type: 'object', properties };
 }
 
 function storedFieldSchema(value: unknown): Record<string, unknown> {

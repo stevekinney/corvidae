@@ -86,7 +86,11 @@ describe('a stored configuration with no schema to draw it (row R10-08)', () => 
         odd: {},
       },
     });
-    expect(Object.keys(schema['properties'] as object)).toEqual([
+    // Nothing to show is no schema at all.
+    expect(storedConfigurationSchema({})).toBeNull();
+    expect(storedConfigurationSchema(null)).toBeNull();
+    expect(storedConfigurationSchema(['a'])).toBeNull();
+    expect(Object.keys(schema?.['properties'] as object)).toEqual([
       'channel',
       'token',
       'limit',
