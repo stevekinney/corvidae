@@ -34,11 +34,11 @@
 import { Glob } from 'bun';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cinderSourceRoots, corePath } from './discover-component-directories.ts';
 import { DEFAULT_FILE_SCAN_CONCURRENCY, mapWithConcurrencyLimit } from './validation-utilities.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
-const componentsSource = join(componentsRoot, 'src');
 const defaultBaselinePath = join(
   scriptDirectory,
   '../../../components/cinder/scripts/platform-viewport-baseline.json',
@@ -197,8 +197,38 @@ export function findViewportMediaQueries(
   return results;
 }
 
+/**
+ * Every non-test source file the scan reads, with the name its baseline entries carry. By default
+ * that is core's source and each Cinder package's (P-COR-101), named relative to core so an entry
+ * follows its file when a package takes it; an explicit root's files are named `src/<path>`.
+ */
+export async function platformScanFiles(
+  sourceRoots?: readonly string[],
+): Promise<Array<{ filePath: string; relativePath: string; namedPath: string }>> {
+  const roots = sourceRoots ?? cinderSourceRoots(componentsRoot);
+  const sourceFiles: Array<{ filePath: string; relativePath: string; namedPath: string }> = [];
+  for (const sourceRoot of roots) {
+    const allFiles = new Glob('**/*.{css,svelte,ts}');
+    for await (const relativePath of allFiles.scan({ cwd: sourceRoot })) {
+      // The inventory reflects real component usage, not test fixtures: a probe like
+      // `inert` or `showPopover` matches strings/identifiers in test files and would
+      // overstate adoption. Skip test/spec sources.
+      if (isTestPath(relativePath)) continue;
+      const filePath = join(sourceRoot, relativePath);
+      // Build the key from the POSIX-style scan path (Glob yields forward slashes on every OS)
+      // so baseline keys are stable across platforms.
+      const namedPath =
+        sourceRoots === undefined
+          ? corePath(filePath, componentsRoot)
+          : `src/${toPosixPath(relativePath)}`;
+      sourceFiles.push({ filePath, relativePath, namedPath });
+    }
+  }
+  return sourceFiles;
+}
+
 export async function scan(
-  sourceRoots: readonly string[] = [componentsSource],
+  sourceRoots?: readonly string[],
 ): Promise<{ counts: FeatureCount[]; viewportFlags: Flag[] }> {
   const counts: FeatureCount[] = FEATURE_PROBES.map((probe) => ({
     feature: probe.feature,
@@ -206,23 +236,12 @@ export async function scan(
     count: 0,
   }));
 
-  const sourceFiles: Array<{ filePath: string; relativePath: string }> = [];
-  for (const sourceRoot of sourceRoots) {
-    const allFiles = new Glob('**/*.{css,svelte,ts}');
-    for await (const relativePath of allFiles.scan({ cwd: sourceRoot })) {
-      // The inventory reflects real component usage, not test fixtures: a probe like
-      // `inert` or `showPopover` matches strings/identifiers in test files and would
-      // overstate adoption. Skip test/spec sources.
-      if (!isTestPath(relativePath)) {
-        sourceFiles.push({ filePath: join(sourceRoot, relativePath), relativePath });
-      }
-    }
-  }
+  const sourceFiles = await platformScanFiles(sourceRoots);
 
   const scannedFiles = await mapWithConcurrencyLimit(
     sourceFiles,
     DEFAULT_FILE_SCAN_CONCURRENCY,
-    async ({ filePath, relativePath }) => {
+    async ({ filePath, relativePath, namedPath }) => {
       const content = await Bun.file(filePath).text();
       const fileCounts = Array.from({ length: FEATURE_PROBES.length }, () => 0);
       const viewportFlags: Flag[] = [];
@@ -236,10 +255,7 @@ export async function scan(
       if (relativePath.endsWith('.css') || relativePath.endsWith('.svelte')) {
         for (const hit of findViewportMediaQueries(content)) {
           viewportFlags.push({
-            // Build the key from the POSIX-style scan path (Glob yields forward
-            // slashes on every OS) so baseline keys are stable across platforms —
-            // path.relative() would emit backslashes on Windows and break the gate.
-            filePath: `src/${toPosixPath(relativePath)}`,
+            filePath: namedPath,
             lineNumber: hit.lineNumber,
             query: hit.query,
           });

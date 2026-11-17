@@ -3,6 +3,8 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
+import { cinderPackages, corePath } from './discover-component-directories.ts';
+
 const scriptDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
 const repositoryRoot = resolve(packageRoot, '..', '..');
@@ -125,10 +127,24 @@ export function findProseReferenceFailures(input: {
   return [...failures.values()];
 }
 
-async function componentNames(): Promise<Set<string>> {
+/** Core and every Cinder package it depends on (P-COR-101): where the components and prose live. */
+function cinderRoots(coreRoot: string): string[] {
+  return [coreRoot, ...cinderPackages(coreRoot).map(([, root]) => root)];
+}
+
+/** Every component name core lists, in core or in one of its packages. */
+export async function componentNames(coreRoot: string = packageRoot): Promise<Set<string>> {
+  const names = new Set<string>();
+  for (const root of cinderRoots(coreRoot)) {
+    for (const name of await packageComponentNames(root)) names.add(name);
+  }
+  return names;
+}
+
+async function packageComponentNames(root: string): Promise<Set<string>> {
   const names = new Set<string>();
   const components = new Glob('src/components/**/*.svelte');
-  for await (const filePath of components.scan({ cwd: packageRoot })) {
+  for await (const filePath of components.scan({ cwd: root })) {
     const segments = filePath.split('/');
     const sourceName = segments.at(-1)?.replace(/\.svelte$/, '');
     const componentSegments = segments.slice(2, -1);
@@ -148,14 +164,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function exampleIds(): Promise<Set<string>> {
+async function exampleIds(coreRoot: string = packageRoot): Promise<Set<string>> {
   const ids = new Set<string>();
   const examples = new Glob('src/components/**/*.examples.json');
-  for await (const filePath of examples.scan({ cwd: packageRoot })) {
-    const parsed: unknown = await Bun.file(join(packageRoot, filePath)).json();
-    if (!isRecord(parsed) || !Array.isArray(parsed['examples'])) continue;
-    for (const example of parsed['examples']) {
-      if (isRecord(example) && typeof example['id'] === 'string') ids.add(example['id']);
+  for (const root of cinderRoots(coreRoot)) {
+    for await (const filePath of examples.scan({ cwd: root })) {
+      const parsed: unknown = await Bun.file(join(root, filePath)).json();
+      if (!isRecord(parsed) || !Array.isArray(parsed['examples'])) continue;
+      for (const example of parsed['examples']) {
+        if (isRecord(example) && typeof example['id'] === 'string') ids.add(example['id']);
+      }
     }
   }
   return ids;
@@ -178,11 +196,16 @@ function publicExports(): Set<string> {
   return new Set(checker.getExportsOfModule(module).map((symbol) => symbol.getName()));
 }
 
-export async function proseSourcePaths(): Promise<string[]> {
+/** Every prose file the check reads, relative to core: core's and its packages'. */
+export async function proseSourcePaths(coreRoot: string = packageRoot): Promise<string[]> {
   const files = ['.metadata/components.json'];
-  for (const pattern of ['src/components/**/*.meta.json', 'src/components/**/*.md']) {
-    const sources = new Glob(pattern);
-    for await (const filePath of sources.scan({ cwd: packageRoot })) files.push(filePath);
+  for (const root of cinderRoots(coreRoot)) {
+    for (const pattern of ['src/components/**/*.meta.json', 'src/components/**/*.md']) {
+      const sources = new Glob(pattern);
+      for await (const filePath of sources.scan({ cwd: root })) {
+        files.push(corePath(join(root, filePath), coreRoot));
+      }
+    }
   }
   return files;
 }

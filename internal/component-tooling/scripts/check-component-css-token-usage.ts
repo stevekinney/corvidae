@@ -74,16 +74,24 @@
 
 import { Glob } from 'bun';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isComponentExample } from './component-source-filter.ts';
+import { cinderPackages, cinderSourceRoots, corePath } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
 const componentsSource = join(componentsRoot, 'src');
-/** Exported so the workspace-wide gate test can read the same registry the CLI does. */
-export const tokenRegistryPath = join(componentsSource, 'tokens', 'registry.generated.json');
+/**
+ * Exported so the workspace-wide gate test can read the same registry the CLI does: core's until
+ * the split moves it into `@lostgradient/tokens` (COR-2083).
+ */
+export const tokenRegistryPath =
+  [componentsRoot, join(componentsRoot, '..', 'tokens')]
+    .map((root) => join(root, 'src', 'tokens', 'registry.generated.json'))
+    .find((path) => existsSync(path)) ??
+  join(componentsSource, 'tokens', 'registry.generated.json');
 const defaultBaselinePath = join(
   scriptDirectory,
   '../../../components/cinder/scripts/token-usage-baseline.json',
@@ -457,25 +465,46 @@ export type ScanRoot = {
  * `token-usage-baseline.json` entry's `filePath` — and therefore its
  * identity — is unaffected by this function existing.
  */
-export function defaultScanRoots(sourceRoot?: string): ScanRoot[] {
-  const cinderSource = sourceRoot ?? componentsSource;
-  const roots: ScanRoot[] = [
-    {
-      dir: join(cinderSource, 'components'),
-      reportPrefix: 'src/components',
-      componentsPrefix: 'src/components',
-    },
+export function defaultScanRoots(
+  sourceRoot?: string,
+  coreRoot: string = componentsRoot,
+): ScanRoot[] {
+  if (sourceRoot) {
+    return cinderScanRoots(sourceRoot, (directory) =>
+      `src/${relative(sourceRoot, directory)}`.split(sep).join('/'),
+    );
+  }
+  // Core's source and each Cinder package's (P-COR-101), named relative to core so a baseline
+  // entry follows its file when a package takes it; then every other component workspace.
+  const roots = cinderSourceRoots(coreRoot).flatMap((root) =>
+    cinderScanRoots(root, (directory) => corePath(directory, coreRoot)),
+  );
+  const cinder = new Set([coreRoot, ...cinderPackages(coreRoot).map(([, root]) => root)]);
+  return [
+    ...roots,
+    ...workspaceScanRoots(resolve(coreRoot, '..', '..')).filter(
+      (root) => ![...cinder].some((directory) => root.dir.startsWith(`${directory}/`)),
+    ),
   ];
-  const sharedStylesRoot = join(cinderSource, 'styles', 'components');
+}
+
+/** One Cinder source root's two scan roots: its components and its shared style partials. */
+function cinderScanRoots(sourceRoot: string, nameOf: (directory: string) => string): ScanRoot[] {
+  const roots: ScanRoot[] = [];
+  const components = join(sourceRoot, 'components');
+  if (existsSync(components)) {
+    const prefix = nameOf(components);
+    roots.push({ dir: components, reportPrefix: prefix, componentsPrefix: prefix });
+  }
+  const sharedStylesRoot = join(sourceRoot, 'styles', 'components');
   if (existsSync(sharedStylesRoot)) {
     roots.push({
       dir: sharedStylesRoot,
-      reportPrefix: 'src/styles/components',
+      reportPrefix: nameOf(sharedStylesRoot),
       componentsPrefix: null,
     });
   }
-  if (sourceRoot) return roots;
-  return [...roots, ...workspaceScanRoots(resolve(componentsRoot, '..', '..'))];
+  return roots;
 }
 
 /** Where a component workspace keeps its components, in the order they are looked for. */

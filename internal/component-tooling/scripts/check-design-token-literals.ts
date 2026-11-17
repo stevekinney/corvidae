@@ -36,9 +36,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { cinderComponentRoots } from './discover-component-directories.ts';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
-const componentsSource = join(componentsRoot, 'src', 'components');
 
 // ── Matchers ─────────────────────────────────────────────────────────────────
 
@@ -312,15 +313,29 @@ function stripVarCalls(source: string): string {
   return stripped;
 }
 
+/**
+ * Every component style surface the scan reads, as `[components root, path within it]`: core's
+ * components root and each Cinder package's (P-COR-101).
+ */
+export async function tokenLiteralScanFiles(
+  roots: readonly string[] = cinderComponentRoots(componentsRoot),
+): Promise<[string, string][]> {
+  const glob = new Glob('**/*.{css,svelte}');
+  const files: [string, string][] = [];
+  for (const root of roots) {
+    for await (const relativePath of glob.scan({ cwd: root })) {
+      if (!isTestPath(relativePath)) files.push([root, relativePath]);
+    }
+  }
+  return files;
+}
+
 export async function scan(): Promise<LiteralViolation[]> {
   const violations: LiteralViolation[] = [];
-  const glob = new Glob('**/*.{css,svelte}');
 
-  for await (const relativePath of glob.scan({ cwd: componentsSource })) {
-    if (isTestPath(relativePath)) continue;
-
+  for (const [root, relativePath] of await tokenLiteralScanFiles()) {
     const isSvelte = relativePath.endsWith('.svelte');
-    const rawSource = await Bun.file(join(componentsSource, relativePath)).text();
+    const rawSource = await Bun.file(join(root, relativePath)).text();
     // Strip comments and var() fallbacks before checking for literals.
     // This prevents `var(--cinder-duration-fast, 150ms)` from being flagged
     // (the 150ms is a legitimate token fallback, not a raw literal bypass).

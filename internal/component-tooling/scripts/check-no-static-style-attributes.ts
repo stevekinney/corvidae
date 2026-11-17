@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'svelte/compiler';
 
 import { isComponentExample } from './component-source-filter.ts';
+import { cinderSourceRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const sourceRoot = resolve(scriptDirectory, '../../../components/cinder/src');
@@ -185,14 +186,25 @@ export function findStaticStyleAttributes(source: string): StaticStyleAttributeV
   return violations;
 }
 
+/** Every Svelte file the check reads: core's source and each Cinder package's (P-COR-101). */
+export async function staticStyleScanFiles(
+  sourceRoots: readonly string[] = cinderSourceRoots(),
+): Promise<string[]> {
+  const glob = new Glob('**/*.svelte');
+  const files: string[] = [];
+  for (const root of sourceRoots) {
+    for await (const relativePath of glob.scan({ cwd: root })) {
+      // An example's markup is documentation a page renders, not the package's shipped source.
+      if (!isComponentExample(relativePath)) files.push(resolve(root, relativePath));
+    }
+  }
+  return files;
+}
+
 async function scan(): Promise<Array<StaticStyleAttributeViolation & { filePath: string }>> {
   const violations: Array<StaticStyleAttributeViolation & { filePath: string }> = [];
-  const glob = new Glob('**/*.svelte');
 
-  for await (const relativePath of glob.scan({ cwd: sourceRoot })) {
-    // An example's markup is documentation a page renders, not the package's shipped source.
-    if (isComponentExample(relativePath)) continue;
-    const absolutePath = resolve(sourceRoot, relativePath);
+  for (const absolutePath of await staticStyleScanFiles()) {
     const source = await Bun.file(absolutePath).text();
 
     for (const violation of findStaticStyleAttributes(source)) {

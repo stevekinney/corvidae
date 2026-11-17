@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { cinderComponentRoots } from './discover-component-directories.ts';
 import { extractUsageFence, matchesComponentTag } from './extract-readme-usage-example.ts';
 import {
   COMPOSE_ONLY_LEAF_EXEMPTIONS,
@@ -9,19 +10,24 @@ import {
   toIdentifier,
 } from './readme-usage-contract.ts';
 
-const COMPONENTS_ROOT = join(import.meta.dir, '../../../components/cinder/src/components');
-
 export type ReadmeUsageFailure = {
   componentId: string;
   reason: 'no-heading' | 'no-fence' | 'no-matching-tag';
   readmePath: string;
 };
 
+/** Every README'd component core lists, in core's components root or in one of its packages'. */
+export function readmeComponents(roots: string | readonly string[] = cinderComponentRoots()) {
+  return (typeof roots === 'string' ? [roots] : roots).flatMap((root) =>
+    discoverReadmeComponents(root),
+  );
+}
+
 export function findReadmeUsageFailures(
-  rootDirectory = COMPONENTS_ROOT,
+  rootDirectory: string | readonly string[] = cinderComponentRoots(),
 ): ReadonlyArray<ReadmeUsageFailure> {
   const failures: ReadmeUsageFailure[] = [];
-  for (const { componentId, directory } of discoverReadmeComponents(rootDirectory)) {
+  for (const { componentId, directory } of readmeComponents(rootDirectory)) {
     if (COMPOSE_ONLY_LEAF_EXEMPTIONS.has(componentId)) continue;
     const readmePath = join(directory, 'README.md');
     const extracted = extractUsageFence(readFileSync(readmePath, 'utf8'));

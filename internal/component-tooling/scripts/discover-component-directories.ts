@@ -16,7 +16,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 export type DiscoveredComponent = {
   /** Absolute path to the component directory. */
@@ -96,6 +96,52 @@ export function familyPackages(coreRoot: string = CORE_ROOT): [string, string][]
 }
 
 /**
+ * Every Cinder package core depends on, `[name, root]`: each `workspace:` dependency that sits
+ * beside core under `components/` with a `src` of its own (tokens, foundation and every family).
+ * Empty until the split extracts one (P-COR-101).
+ */
+export function cinderPackages(coreRoot: string = CORE_ROOT): [string, string][] {
+  const { dependencies } = readManifest(join(coreRoot, 'package.json'));
+  if (dependencies === null || typeof dependencies !== 'object') return [];
+  const packages: [string, string][] = [];
+  for (const [name, specification] of Object.entries(dependencies)) {
+    if (typeof specification !== 'string' || !specification.startsWith('workspace:')) continue;
+    if (!name.startsWith('@lostgradient/')) continue;
+    const directory = join(coreRoot, '..', name.slice('@lostgradient/'.length));
+    const manifestPath = join(directory, 'package.json');
+    if (!existsSync(manifestPath) || !existsSync(join(directory, 'src'))) continue;
+    if (readManifest(manifestPath).name !== name) continue;
+    packages.push([name, directory]);
+  }
+  return packages.toSorted(([a], [b]) => a.localeCompare(b));
+}
+
+/** Every Cinder `src` directory: core's, then each Cinder package's. */
+export function cinderSourceRoots(coreRoot: string = CORE_ROOT): string[] {
+  return [coreRoot, ...cinderPackages(coreRoot).map(([, root]) => root)]
+    .map((root) => join(root, 'src'))
+    .filter((root) => existsSync(root));
+}
+
+/**
+ * Every directory that holds Cinder component directories: core's `src/components` and each
+ * Cinder package's (foundation's holds the shared internals; each family's, its components).
+ */
+export function cinderComponentRoots(coreRoot: string = CORE_ROOT): string[] {
+  return [coreRoot, ...cinderPackages(coreRoot).map(([, root]) => root)]
+    .map((root) => join(root, 'src', 'components'))
+    .filter((root) => existsSync(root));
+}
+
+/**
+ * A file's path the way core's checks and their baselines name it: relative to core, so `src/…`
+ * while core holds it and `../<package>/src/…` once a package does.
+ */
+export function corePath(path: string, coreRoot: string = CORE_ROOT): string {
+  return relative(coreRoot, path).split(sep).join('/');
+}
+
+/**
  * Every directory-shaped component under one package's `src/components/`. A directory qualifies
  * when it contains both `<name>.svelte` and `<name>.types.ts`. The presence of the `.types.ts`
  * file is the marker that the per-directory migration is complete; legacy flat or in-progress
@@ -139,9 +185,9 @@ export async function discoverComponentDirectories(
     ...(packageName === CORE_PACKAGE ? familyPackages(packageRoot) : []),
   ];
   const owners = new Map<string, DiscoveredComponent>();
-  for (const [packageName, packageRoot] of packages) {
-    if (!existsSync(componentsRootOf(packageRoot))) continue;
-    for (const component of await packageComponentDirectories(packageName, packageRoot)) {
+  for (const [ownerName, ownerRoot] of packages) {
+    if (!existsSync(componentsRootOf(ownerRoot))) continue;
+    for (const component of await packageComponentDirectories(ownerName, ownerRoot)) {
       const existing = owners.get(component.name);
       if (existing !== undefined) {
         throw new Error(

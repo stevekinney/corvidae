@@ -47,6 +47,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { collectPropConventionViolations } from './check-prop-conventions.ts';
+import { cinderComponentRoots } from './discover-component-directories.ts';
 
 const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
 const COMPONENTS_DIR = join(PACKAGE_ROOT, 'src', 'components');
@@ -393,6 +394,13 @@ export function planFiles(context: CreationContext): PlannedFile[] {
 export async function createOne(context: CreationContext): Promise<void> {
   const { directory } = context;
 
+  // A name core lists anywhere, in core or in one of its packages (P-COR-101), is taken.
+  const elsewhere = cinderComponentRoots(PACKAGE_ROOT)
+    .map((root) => join(root, context.name))
+    .find((candidate) => candidate !== directory && existsSync(candidate));
+  if (elsewhere !== undefined) {
+    throw new Error(`component '${context.name}' already exists at ${elsewhere}`);
+  }
   if (existsSync(directory)) {
     throw new Error(`component directory already exists: ${directory}`);
   }

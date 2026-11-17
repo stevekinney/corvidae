@@ -10,6 +10,8 @@ import { Glob } from 'bun';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { cinderComponentRoots } from './discover-component-directories.ts';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder/src/components');
 
@@ -326,6 +328,22 @@ export function hasRequiredAccessibilityRecord(content: string): boolean {
   return content.includes('generated:a11y-record:required');
 }
 
+/**
+ * Every README and accessibility record the check reads, as `[root, path within it]`: core's
+ * components root and each Cinder package's (P-COR-101).
+ */
+export async function placeholderDocumentFiles(
+  roots: readonly string[] = cinderComponentRoots(),
+): Promise<[string, string][]> {
+  const files: [string, string][] = [];
+  for (const root of roots) {
+    for (const glob of [new Glob('**/README.md'), new Glob('**/*.a11y.md')]) {
+      for await (const relative of glob.scan({ cwd: root })) files.push([root, relative]);
+    }
+  }
+  return files;
+}
+
 async function main(): Promise<void> {
   const violations: Violation[] = [];
   const inventory = await Bun.file(
@@ -340,12 +358,16 @@ async function main(): Promise<void> {
           typeof component.id === 'string',
       )
     : [];
-  const globs = [new Glob('**/README.md'), new Glob('**/*.a11y.md')];
   const readmes = new Map<string, string>();
   const contents = new Map<string, string>();
-  for (const glob of globs)
-    for await (const relative of glob.scan({ cwd: componentsRoot })) {
-      const filePath = join(componentsRoot, relative);
+  // READMEs first, as the per-pattern scan read them, so an a11y record finds its sibling README.
+  const documentFiles = await placeholderDocumentFiles();
+  const files = documentFiles.toSorted(
+    ([, a], [, b]) => Number(a.endsWith('.a11y.md')) - Number(b.endsWith('.a11y.md')),
+  );
+  for (const [root, relative] of files) {
+    {
+      const filePath = join(root, relative);
       const content = await Bun.file(filePath).text();
       contents.set(filePath, content);
       if (relative.endsWith('/README.md') || relative === 'README.md')
@@ -369,6 +391,7 @@ async function main(): Promise<void> {
         }
       }
     }
+  }
 
   for (const component of inventoryComponents) {
     if (!component.id || !component.a11y) continue;

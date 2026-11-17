@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, sep as pathSeparator, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Glob } from 'bun';
 import { parse, type Root } from 'postcss';
+
+import { cinderComponentRoots } from './discover-component-directories.ts';
 
 /**
  * Aggregator-completeness gate for `src/styles/components.css`.
@@ -77,7 +78,18 @@ function extractRelativeImportSpecifier(params: string): string | undefined {
     raw = quoted[2];
   }
 
-  return raw.startsWith('.') ? raw : undefined;
+  // A relative path, or (P-COR-101) a Cinder package's stylesheet named by specifier.
+  return raw.startsWith('.') || raw.startsWith('@lostgradient/') ? raw : undefined;
+}
+
+/** Where an honored `@import` written in `file` points: a relative path, or a package export. */
+function resolveImport(file: string, specifier: string): string | undefined {
+  if (specifier.startsWith('.')) return resolve(dirname(file), specifier);
+  try {
+    return realpathSync(Bun.resolveSync(specifier, dirname(file)));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -139,11 +151,26 @@ export function computeImportClosure(entryFile: string): Set<string> {
 
     const root = parse(readFileSync(file, 'utf8'), { from: file });
     for (const specifier of honoredImportSpecifiers(root)) {
-      stack.push(resolve(dirname(file), specifier));
+      const target = resolveImport(file, specifier);
+      if (target !== undefined) stack.push(target);
     }
   }
 
   return reachable;
+}
+
+/**
+ * Every component stylesheet under the given components roots (core's and each Cinder package's,
+ * P-COR-101), as `[root, absolute path]`. `**\/*.css` (not `*\/*.css`) so a deeper partial like
+ * `<component>/internal/<name>.css` can't ship unstyled by hiding below the first level.
+ */
+export function componentCssFiles(roots: string | readonly string[]): [string, string][] {
+  const glob = new Bun.Glob('**/*.css');
+  return (typeof roots === 'string' ? [roots] : roots).flatMap((root) =>
+    [...glob.scanSync({ cwd: root, absolute: true })]
+      .toSorted()
+      .map((path): [string, string] => [root, path]),
+  );
 }
 
 /**
@@ -153,22 +180,14 @@ export function computeImportClosure(entryFile: string): Set<string> {
  * file. An empty array means the aggregate bundle is complete.
  */
 export function checkAggregatorCompleteness(
-  componentsDirectory: string,
+  componentsDirectories: string | readonly string[],
   aggregatorFile: string,
 ): AggregatorViolation[] {
   const reachable = computeImportClosure(aggregatorFile);
   const excludedPaths = new Set(AGGREGATOR_EXCLUSIONS.map((exclusion) => exclusion.path));
 
-  // `**/*.css` (not `*/*.css`) so a deeper partial like
-  // `<component>/internal/<name>.css` can't ship unstyled by hiding below the
-  // first directory level.
-  const componentCssGlob = new Glob('**/*.css');
-  const componentCssFiles = [
-    ...componentCssGlob.scanSync({ cwd: componentsDirectory, absolute: true }),
-  ].toSorted();
-
   const violations: AggregatorViolation[] = [];
-  for (const absolutePath of componentCssFiles) {
+  for (const [componentsDirectory, absolutePath] of componentCssFiles(componentsDirectories)) {
     if (reachable.has(absolutePath)) continue;
     // Normalize to forward slashes so the comparison against the (POSIX-keyed)
     // exclusion list — and the reported path — are stable on Windows, where
@@ -193,10 +212,12 @@ export function checkAggregatorCompleteness(
 function main(): void {
   const scriptDirectory = dirname(fileURLToPath(import.meta.url));
   const componentsSource = join(resolve(scriptDirectory, '../../../components/cinder'), 'src');
-  const componentsDirectory = join(componentsSource, 'components');
   const aggregatorFile = join(componentsSource, 'styles', 'components.css');
 
-  const violations = checkAggregatorCompleteness(componentsDirectory, aggregatorFile);
+  const violations = checkAggregatorCompleteness(
+    cinderComponentRoots(dirname(componentsSource)),
+    aggregatorFile,
+  );
   if (violations.length === 0) {
     process.stdout.write('aggregator:check — styles/components.css imports every component CSS.\n');
     process.exitCode = 0;

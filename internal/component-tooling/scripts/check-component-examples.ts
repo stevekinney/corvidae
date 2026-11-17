@@ -5,6 +5,7 @@ import { join, relative } from 'node:path';
 
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 
+import { cinderComponentRoots, CORE_PACKAGE } from './discover-component-directories.ts';
 import type { Manifest } from './generate-manifest.ts';
 import {
   componentPackage,
@@ -53,19 +54,26 @@ function formatSchemaErrors(errors: ErrorObject[] | null | undefined): string {
     .join('; ');
 }
 
-async function componentLocations(): Promise<ComponentLocation[]> {
+/** Every component directory the active package lists; core's are its own and its packages'. */
+export async function componentLocations(): Promise<ComponentLocation[]> {
   const locations: ComponentLocation[] = [];
-  const entries = await readdir(COMPONENTS_ROOT, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('_') || entry.name === 'icons') continue;
-    locations.push({
-      directory: join(COMPONENTS_ROOT, entry.name),
-      id: entry.name,
-    });
+  const roots =
+    active.name === CORE_PACKAGE ? cinderComponentRoots(PACKAGE_ROOT) : [COMPONENTS_ROOT];
+  for (const root of roots) {
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('_') || entry.name === 'icons') continue;
+      locations.push({ directory: join(root, entry.name), id: entry.name });
+    }
   }
+  return locations.toSorted((a, b) => a.id.localeCompare(b.id));
+}
 
-  return locations.toSorted((a, b) => a.directory.localeCompare(b.directory));
+/** The component directories `checkCommittedExamples` reads for a package (core by default). */
+export async function exampleComponentLocations(
+  packageRoot?: string,
+): Promise<ComponentLocation[]> {
+  activate(componentPackage(packageRoot));
+  return componentLocations();
 }
 
 /** Where the manifest says the examples are: the `metadata` task's copy in `.metadata/`. */

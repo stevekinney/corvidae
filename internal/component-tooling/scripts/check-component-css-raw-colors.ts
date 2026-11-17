@@ -47,12 +47,13 @@
 
 import { Glob } from 'bun';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative as relativeTo, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { cinderSourceRoots, corePath } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
-const componentsSource = join(componentsRoot, 'src');
 const defaultBaselinePath = join(
   scriptDirectory,
   '../../../components/cinder/scripts/raw-color-baseline.json',
@@ -186,19 +187,30 @@ export function extractInlineReason(line: string): RawColorReason | null {
 }
 
 /**
+ * The style directories the scan reads, each with the prefix its baseline entries carry: every
+ * source root's `components/` and `styles/components/` (core's and each Cinder package's, named
+ * relative to core so an entry follows its file when a package takes it, P-COR-101).
+ */
+export function styleScanRoots(
+  sourceRoots: readonly string[],
+  prefixOf: (directory: string) => string,
+): { dir: string; prefix: string }[] {
+  return sourceRoots
+    .flatMap((root) => [join(root, 'components'), join(root, 'styles', 'components')])
+    .filter((dir) => existsSync(dir))
+    .map((dir) => ({ dir, prefix: prefixOf(dir) }));
+}
+
+/**
  * Scans all component style surfaces and returns every raw-color flag, each
  * classified by the inline reason marker on (or directly above) its line, or
  * `migration-debt` when unmarked.
  */
 export async function scan(sourceRoot?: string): Promise<RawColorFlag[]> {
   const flags: RawColorFlag[] = [];
-  const componentScanRoots = sourceRoot
-    ? [{ dir: join(sourceRoot, 'components'), prefix: 'src/components' }]
-    : [{ dir: join(componentsSource, 'components'), prefix: 'src/components' }];
-  const sharedStylesRoot = join(sourceRoot ?? componentsSource, 'styles', 'components');
-  const scanRoots = existsSync(sharedStylesRoot)
-    ? [...componentScanRoots, { dir: sharedStylesRoot, prefix: 'src/styles/components' }]
-    : componentScanRoots;
+  const scanRoots = sourceRoot
+    ? styleScanRoots([sourceRoot], (path) => `src/${toPosixPath(relativeTo(sourceRoot, path))}`)
+    : styleScanRoots(cinderSourceRoots(componentsRoot), (path) => corePath(path, componentsRoot));
 
   for (const { dir, prefix } of scanRoots) {
     const glob = new Glob('**/*.{css,svelte}');

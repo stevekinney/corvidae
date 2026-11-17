@@ -23,6 +23,8 @@
 import { Glob } from 'bun';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { cinderComponentRoots } from './discover-component-directories.ts';
 import { DEFAULT_FILE_SCAN_CONCURRENCY, mapWithConcurrencyLimit } from './validation-utilities.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -42,26 +44,39 @@ const CONSOLE_WARN_PATTERN = /\bconsole\s*\.\s*warn\s*\(/;
 
 export type BareConsoleWarnViolation = { filePath: string; lineNumber: number; line: string };
 
-export async function scanBareConsoleWarn(): Promise<BareConsoleWarnViolation[]> {
+/**
+ * Every component source file the check reads: under core's components root and each Cinder
+ * package's (P-COR-101), less the allowed ones.
+ */
+export async function consoleWarnScanFiles(
+  roots: readonly string[] = cinderComponentRoots(),
+): Promise<string[]> {
   const glob = new Glob('**/*.{svelte,ts}');
-  const relativePaths: string[] = [];
-  for await (const relativePath of glob.scan({ cwd: componentsRoot })) {
-    if (!ALLOWED_FILES.has(relativePath)) relativePaths.push(relativePath);
+  const files: string[] = [];
+  for (const root of roots) {
+    for await (const relativePath of glob.scan({ cwd: root })) {
+      if (!ALLOWED_FILES.has(relativePath)) files.push(resolve(root, relativePath));
+    }
   }
+  return files;
+}
+
+export async function scanBareConsoleWarn(): Promise<BareConsoleWarnViolation[]> {
+  const absolutePaths = await consoleWarnScanFiles();
+  const componentsDirectory = resolve(componentsRoot, '..', '..', '..');
 
   const violationGroups = await mapWithConcurrencyLimit(
-    relativePaths,
+    absolutePaths,
     DEFAULT_FILE_SCAN_CONCURRENCY,
-    async (relativePath): Promise<BareConsoleWarnViolation[]> => {
+    async (absolutePath): Promise<BareConsoleWarnViolation[]> => {
       const violations: BareConsoleWarnViolation[] = [];
-      const absolutePath = resolve(componentsRoot, relativePath);
       const source = await Bun.file(absolutePath).text();
       const lines = source.split('\n');
       for (let index = 0; index < lines.length; index++) {
         const line = lines[index]!;
         if (CONSOLE_WARN_PATTERN.test(line)) {
           violations.push({
-            filePath: relative(resolve(componentsRoot, '..', '..', '..'), absolutePath),
+            filePath: relative(componentsDirectory, absolutePath),
             lineNumber: index + 1,
             line: line.trim(),
           });
