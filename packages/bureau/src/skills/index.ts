@@ -40,6 +40,7 @@ export type {
   ValidatePortableFrontmatterOptions,
 } from './conformance';
 export type {
+  SkillCatalogChange,
   SkillCatalogRecord,
   SkillCatalogRevision,
   SkillCompatibility,
@@ -173,7 +174,12 @@ export {
   PORTABLE_FRONTMATTER_FIELDS,
 } from './conformance';
 export { createStorageSkillProvider } from './create-storage-skill-provider';
-export { availableRecords, findRecord, generalCatalogProjection } from './discovery/catalog';
+export {
+  availableRecords,
+  diffSkillCatalogs,
+  findRecord,
+  generalCatalogProjection,
+} from './discovery/catalog';
 export { createSkillCatalogService } from './discovery/catalog-service';
 export { discoverSkills } from './discovery/discover';
 export { materializeRemoteSource } from './discovery/remote';

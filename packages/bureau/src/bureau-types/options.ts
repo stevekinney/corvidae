@@ -587,6 +587,23 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentSkillCatalog?: () => SkillCatalogRevision | undefined;
   /**
+   * COR-2100 — where the host reports a change to the skills it discovers. Discovery stays the
+   * host's, so this is a subscription, not a watcher: each report is published as
+   * `definitions.changed` with `catalog: 'skills'`, `added`, `changed`, `removed` and `rejected`.
+   * The host calls the listener after it has replaced the catalog `agentSkillCatalog` reads, and
+   * never for the first discovery. The Bureau unsubscribes when it is disposed.
+   */
+  skillChanges?: {
+    onChange(
+      listener: (change: {
+        readonly added: readonly string[];
+        readonly changed: readonly string[];
+        readonly removed: readonly string[];
+        readonly rejected: readonly string[];
+      }) => void,
+    ): () => void;
+  };
+  /**
    * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
    * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON
    * workflow files (COR-1527): every `*.json` file in it is an agent-authored workflow
