@@ -89,7 +89,10 @@ describe('triggerStatus', () => {
 
   test('names the plugin of a trigger waiting for a secret by title, and "The plugin" before it is known', () => {
     expect(read({ state: 'waiting-for-secret' }, 'GitHub').text).toBe('. GitHub needs one: ');
-    expect(read({ state: 'waiting-for-secret' }, undefined).text).toBe('. The plugin needs one: ');
+    expect(
+      triggerStatus({ ...base, state: 'waiting-for-secret' }, { now: NOW, pluginTitle: undefined })
+        .text,
+    ).toBe('. The plugin needs one: ');
     expect(read({ state: 'waiting-for-secret' }).settings).toEqual({
       link: 'add it in Plugins settings',
       after: '.',
