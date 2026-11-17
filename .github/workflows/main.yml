@@ -58,15 +58,24 @@ jobs:
         if: ${{ !cancelled() }}
       - run: bun run audit
         if: ${{ !cancelled() }}
-      # A failed report upload must not fail the tests' job.
+      # A failed report upload must not fail the tests' job. The paths name each workspace root the
+      # root package.json lists: a `**` glob walks every node_modules, which ran past the job limit
+      # once the package split made 191 component workspaces (scripts/workflow-junit-paths.test.ts).
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         continue-on-error: true
         with:
           name: junit-root
           path: |
-            **/test-output/junit/*.xml
-            !**/node_modules/**
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
+            scripts/groom/test-output/junit/*.xml
           if-no-files-found: ignore
 
   workspaces:
@@ -139,8 +148,15 @@ jobs:
         with:
           name: junit-tests-${{ strategy.job-index }}
           path: |
-            **/test-output/junit/*.xml
-            !**/node_modules/**
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
+            scripts/groom/test-output/junit/*.xml
           if-no-files-found: ignore
 
   tests-slow:
