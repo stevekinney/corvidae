@@ -108,7 +108,7 @@ function numberAt(value: unknown): number {
 }
 
 function hasNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function parseLines(text: string): Record<string, unknown>[] {
@@ -272,17 +272,19 @@ export function codexCalls(entries: Record<string, unknown>[]): ModelCall[] {
     if (entry['type'] !== 'event_msg' || payload?.['type'] !== 'token_count') continue;
     const info = payload['info'] as Record<string, unknown> | null | undefined;
     const last = info?.['last_token_usage'] as Record<string, unknown> | undefined;
-    const total = numberAt(
-      (info?.['total_token_usage'] as Record<string, unknown> | undefined)?.['total_tokens'],
-    );
+    const total = (info?.['total_token_usage'] as Record<string, unknown> | undefined)?.[
+      'total_tokens'
+    ];
     if (
       last === undefined ||
       !hasNumber(last['input_tokens']) ||
       !hasNumber(last['output_tokens']) ||
+      !hasNumber(total) ||
       ['cached_input_tokens', 'cache_write_input_tokens'].some(
         (field) => last[field] !== undefined && !hasNumber(last[field]),
       ) ||
-      total <= lastTotal
+      total <= lastTotal ||
+      (hasNumber(last['cached_input_tokens']) && last['cached_input_tokens'] > last['input_tokens'])
     )
       continue;
     lastTotal = total;
