@@ -28,4 +28,16 @@ describe('workflow_dispatch concurrency', () => {
     expect(block).toContain('group: targeted-checks-${{ github.ref }}');
     expect(block).toContain("cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}");
   });
+
+  // Two faults reached main because a targeted run did no type-check.
+  test('targeted-checks.yml lints and type-checks the workspaces changed against main', () => {
+    const text = workflow('targeted-checks.yml');
+    const start = text.indexOf('\n  checks:\n');
+    expect(start).toBeGreaterThan(-1);
+    const job = text.slice(start, text.indexOf('\n  fixtures:\n'));
+    expect(job).toContain('TURBO_SCM_BASE: origin/main');
+    expect(job).toContain('fetch-depth: 0');
+    expect(job).toContain('turbo run lint typecheck --affected');
+    expect(job).not.toContain('if:');
+  });
 });
