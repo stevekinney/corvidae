@@ -713,6 +713,14 @@ test("the component tooling's tests read no component example and wait for no pa
   expect(task?.dependsOn).toEqual(['transit']);
   expect(task?.inputs).toContain('$TURBO_ROOT$/components/*/src/**');
   expect(task?.inputs).toContain('!$TURBO_ROOT$/components/*/src/**/examples/**');
+  // Every workspace's lint and test wait for `metadata`, whose inputs include core's source: the
+  // generators read a component's `<id>.examples.json`, never its `*.example.svelte`, so an example
+  // file is no input of it, or a core example edit would reach every workspace's tasks.
+  const metadata: string[] = configuration.tasks.metadata?.inputs ?? [];
+  for (const included of metadata.filter((input) => input.endsWith('/src/**'))) {
+    expect(metadata).toContain(`!${included}/*.example.svelte`);
+  }
+  expect(metadata).toContain('!**/*.example.svelte');
 });
 
 test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {
