@@ -66,11 +66,22 @@ describe('Drawer header and footer rules (COR-2448 AC4)', () => {
       OverflowFadeResizeObserver.instances[0]?.trigger();
       flushOverflowFadeAnimationFrames();
       expect(body.hasAttribute('data-cinder-scrollable')).toBe(false);
+      expect(body.hasAttribute('data-cinder-overflows')).toBe(false);
+      // The body is a tab stop only while it scrolls (a keyboard has no other way to scroll it).
+      expect(body.getAttribute('tabindex')).toBe('-1');
+
+      // A box with no size at all (0 and 0, as in happy-dom) does not scroll either.
+      setScrollMeasurements(body, { clientHeight: 0, scrollHeight: 0, scrollTop: 0 });
+      OverflowFadeResizeObserver.instances[0]?.trigger();
+      flushOverflowFadeAnimationFrames();
+      expect(body.hasAttribute('data-cinder-scrollable')).toBe(false);
+      expect(body.getAttribute('tabindex')).toBe('-1');
 
       setScrollMeasurements(body, { clientHeight: 100, scrollHeight: 400, scrollTop: 300 });
       OverflowFadeResizeObserver.instances[0]?.trigger();
       flushOverflowFadeAnimationFrames();
       expect(body.hasAttribute('data-cinder-scrollable')).toBe(true);
+      expect(body.getAttribute('tabindex')).toBe('0');
     } finally {
       cleanupOverflowFade();
     }

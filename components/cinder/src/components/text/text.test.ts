@@ -126,8 +126,14 @@ describe('Text clamp', () => {
   }
 
   afterEach(() => {
-    if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
-    if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight);
+    // happy-dom defines these on `Element.prototype`, so `HTMLElement.prototype` has no own
+    // descriptor to put back: the stub is removed instead, or it leaks into every later file in
+    // the worker (a Drawer or Modal body would then measure as scrolling).
+    const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+    if (scrollHeight) Object.defineProperty(prototype, 'scrollHeight', scrollHeight);
+    else delete prototype.scrollHeight;
+    if (clientHeight) Object.defineProperty(prototype, 'clientHeight', clientHeight);
+    else delete prototype.clientHeight;
   });
 
   test('holds the run to its lines through a custom property the stylesheet clamps with', () => {
