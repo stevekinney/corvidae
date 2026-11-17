@@ -106,6 +106,16 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* A long description holds to two lines, so a row keeps its height; `clampDescription={false}`
+     drops the attribute. */
+  .cinder-selectable-row__description[data-cinder-clamp] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
   .cinder-selectable-row__meta {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);

@@ -111,7 +111,7 @@ const schema = {
     clamp: {
       type: 'number',
       description:
-        'Holds the text to this many lines; a "Show all" button appears only while the text is cut off.',
+        'Holds the text to this many lines; a "Show more" button appears only while the text is cut off.',
     },
     expanded: {
       type: 'boolean',
@@ -141,7 +141,7 @@ const schema = {
         name: 'actions',
         reason: 'function-or-snippet',
         description:
-          'Content that sits beside the "Show all" button on the line under a clamped run, separated from\nit by a comma, such as a "Show raw payloads" link. Ignored without `clamp`.',
+          'Content that sits beside the "Show more" button on the line under a clamped run, separated from\nit by a space and a colour step, such as a "Show raw payloads" link. Ignored without `clamp`.',
       },
       {
         name: 'children',

@@ -453,16 +453,6 @@
 {#snippet steppers()}
   <button
     type="button"
-    class="cinder-number-input__stepper cinder-number-input__stepper--increment"
-    aria-label={`Increment${stepperLabelSuffix}`}
-    disabled={incrementDisabled}
-    tabindex="-1"
-    onclick={() => stepController.stepBy('increment')}
-  >
-    <Plus class="cinder-icon-sm" aria-hidden="true" />
-  </button>
-  <button
-    type="button"
     class="cinder-number-input__stepper cinder-number-input__stepper--decrement"
     aria-label={`Decrement${stepperLabelSuffix}`}
     disabled={decrementDisabled}
@@ -470,6 +460,16 @@
     onclick={() => stepController.stepBy('decrement')}
   >
     <Minus class="cinder-icon-sm" aria-hidden="true" />
+  </button>
+  <button
+    type="button"
+    class="cinder-number-input__stepper cinder-number-input__stepper--increment"
+    aria-label={`Increment${stepperLabelSuffix}`}
+    disabled={incrementDisabled}
+    tabindex="-1"
+    onclick={() => stepController.stepBy('increment')}
+  >
+    <Plus class="cinder-icon-sm" aria-hidden="true" />
   </button>
 {/snippet}
 
