@@ -377,7 +377,7 @@
   title={heading}
   description={summary}
   {actions}
-  actionsNote={besideButtons !== undefined || runAgain?.blocked === true ? actionsNote : undefined}
+  {...besideButtons !== undefined || runAgain?.blocked === true ? { actionsNote } : {}}
 />
 {#if task !== undefined && cancelInHeader}
   <RunCancelNote

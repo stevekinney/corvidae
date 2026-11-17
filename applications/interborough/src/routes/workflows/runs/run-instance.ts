@@ -110,7 +110,10 @@ function withoutFullStop(name: string): string {
  */
 export function stepsOfVersion(
   ran: string | undefined,
-  saved: readonly { readonly workflowVersion: string; readonly steps?: readonly InstanceStep[] }[],
+  saved: readonly {
+    readonly workflowVersion: string;
+    readonly steps?: readonly InstanceStep[] | undefined;
+  }[],
   revisions: readonly {
     readonly workflowVersion: string;
     readonly document: { readonly steps?: readonly InstanceStep[] };
