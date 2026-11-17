@@ -506,7 +506,18 @@ describe('ScheduleBuilder', () => {
   });
 
   describe('runs panel', () => {
-    test('one inset panel holds the sentence and the next runs', () => {
+    test('the default panel is flat: no inset fill, border or padding box', () => {
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      const rule = css.match(/\.cinder-schedule-builder__panel\s*\{([^}]*)\}/)?.[1] ?? '';
+
+      expect(rule).not.toBe('');
+      expect(rule).not.toMatch(/border\s*:/);
+      expect(rule).not.toMatch(/background/);
+      expect(rule).not.toMatch(/border-radius/);
+      expect(rule).toMatch(/padding:\s*0;/);
+    });
+
+    test('one panel holds the sentence and the next runs', () => {
       const { container } = render(ScheduleBuilder, {
         value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
         computeNextFires: stubComputeNextFires(),
