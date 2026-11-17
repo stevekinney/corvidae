@@ -3048,6 +3048,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     },
     async close() {
       closed = true;
+      // Sign-ins in progress end with the host: their tokens and their timer go.
+      pendingSignIns.dispose();
       // A source still connecting holds a child process or a socket nobody is waiting for.
       for (const controller of loading) controller.abort();
       await Promise.allSettled(startedSources().map((loaded) => loaded.close()));

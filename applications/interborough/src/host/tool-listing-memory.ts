@@ -100,6 +100,18 @@ export function pluginListingOwner(plugin: {
   return `plugin:${digest}`;
 }
 
+/**
+ * What a plugin's listing is made for: the plugin's identity, its name and where it comes from. A
+ * different plugin put at the same location reads as "no listing known"; a new version of the same
+ * plugin keeps its listing.
+ */
+export function pluginListingRevision(plugin: {
+  readonly descriptor: { readonly name: string };
+  readonly source: string;
+}): string {
+  return `${plugin.source}\u0000${plugin.descriptor.name}`;
+}
+
 function cut(value: string, limit: number): string {
   return value.length <= limit ? value : value.slice(0, limit);
 }
@@ -213,9 +225,18 @@ export async function rememberPluginListings(
       .filter((tool) => tool.source === 'plugin' && tool.plugin === plugin.descriptor.name)
       .map((tool) => ({ ...tool, tool: tool.name }));
     // A plugin that waits for setup may not have offered its tools: it replaces nothing until it does.
-    if (plugin.status === 'needs-setup' && contributed.length === 0) continue;
+    const owner = pluginListingOwner(plugin);
+    const revision = pluginListingRevision(plugin);
+    if (plugin.status === 'needs-setup' && contributed.length === 0) {
+      // It replaces nothing, but a record another plugin left at this location is not its own.
+      const held = await memory.read(owner).catch(() => undefined);
+      if (held !== undefined && held.revision !== revision) {
+        await memory.forget(owner).catch(() => undefined);
+      }
+      continue;
+    }
     try {
-      await memory.remember(pluginListingOwner(plugin), plugin.descriptor.version, contributed);
+      await memory.remember(owner, revision, contributed);
     } catch {
       warn(
         `Plugin "${plugin.descriptor.name}" listed its tools, but the listing could not be kept.`,

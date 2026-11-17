@@ -7,6 +7,7 @@
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import QueryPage from '../chat/chat-toasts.test-harness.svelte';
@@ -125,6 +126,40 @@ describe('signing in before the source is saved', () => {
     expect(probe?.body).toMatchObject({ signIn: 'sign-in-reference' });
     const put = host.requests.find((request) => request.method === 'PUT');
     expect(put?.body).toMatchObject({ signIn: 'sign-in-reference', credentials: {} });
+  });
+
+  test('reads a message only from the opened window and the host’s own origin', async () => {
+    serve({ outcome: 'waiting' });
+    landAt('/capabilities/connect');
+    const { getByRole, findByTestId } = render(QueryPage, {
+      props: { page: ConnectTools },
+    } as never);
+    await signIn(getByRole);
+    await findByTestId('connect-sign-in-waiting');
+
+    const message = (origin: string) =>
+      window.dispatchEvent(
+        Object.assign(new window.Event('message'), {
+          origin,
+          source: opened[0],
+          data: {
+            type: 'interborough:tool-source-sign-in',
+            signIn: 'sign-in-reference',
+            outcome: 'succeeded',
+          },
+        }),
+      );
+    // The right window and the right sign-in, from another origin: not read.
+    message('https://evil.example');
+    await tick();
+    await tick();
+    expect(document.body.querySelector('[data-testid="connect-signed-in"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="connect-sign-in-waiting"]')).not.toBeNull();
+
+    message(window.location.origin);
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="connect-signed-in"]')).not.toBeNull(),
+    );
   });
 
   test('says a closed window canceled the sign-in, in neutral words, with Try again', async () => {

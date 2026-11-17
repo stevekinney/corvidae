@@ -17,6 +17,7 @@ import {
   MAXIMUM_REMEMBERED_DESCRIPTION_LENGTH,
   MAXIMUM_REMEMBERED_TOOLS,
   pluginListingOwner,
+  pluginListingRevision,
   rememberPluginListings,
   sourceListingOwner,
   TOOL_LISTING_KEY_PREFIX,
@@ -196,6 +197,27 @@ describe('a plugin listing', () => {
     expect(record?.tools.map((tool) => [tool.name, tool.title, tool.tier])).toEqual([
       ['demo:draft-release-notes', 'Draft release notes', 'mutating'],
     ]);
+  });
+
+  test('belongs to the plugin that made it: another plugin at the same location reads as no listing', async () => {
+    const memory = createToolListingMemory(new MemoryStorage(), () => at);
+    const running = listingOf('running');
+    await rememberPluginListings(memory, [running], [draftReleaseNotes], () => {});
+    const owner = pluginListingOwner(running);
+    // The first plugin's own identity reads it back.
+    expect(await memory.read(owner, pluginListingRevision(running))).toBeDefined();
+
+    // Another plugin, a different name, is now at the same location and is not running.
+    const replacement = {
+      ...listingOf('disabled'),
+      descriptor: { ...listingOf('disabled').descriptor, name: 'other' },
+    };
+    expect(pluginListingRevision(replacement)).not.toBe(pluginListingRevision(running));
+    expect(await memory.read(owner, pluginListingRevision(replacement))).toBeUndefined();
+
+    // And a replacement that stays off without listing forgets the stale record outright.
+    await rememberPluginListings(memory, [{ ...replacement, status: 'needs-setup' }], [], () => {});
+    expect(await memory.read(owner)).toBeUndefined();
   });
 
   test('a plugin waiting for setup that lists no tool leaves the last listing as it was', async () => {

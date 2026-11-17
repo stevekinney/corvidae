@@ -15,6 +15,7 @@ import {
   type ToolSourceManager,
 } from './tool-source-manager.ts';
 import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import { createPendingSignIns } from './tool-source-pending-sign-ins.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { startOAuthMcpServer, type OAuthMcpServer } from './tool-source-servers.test-support.ts';
 import { localWorkspaceMembership } from './workspace-principal.ts';
@@ -339,5 +340,39 @@ describe('saving a source with a sign-in', () => {
       ),
     );
     expect((refusal as ToolSourceInputError).field).toBe('signIn');
+  });
+});
+
+describe('an abandoned sign-in', () => {
+  test('drops its tokens at expiry on the registry’s own timer, without waiting for the next use', () => {
+    let time = 0;
+    const timers: { expire: () => void; milliseconds: number; cancelled: boolean }[] = [];
+    const registry = createPendingSignIns(
+      () => time,
+      1_000,
+      (expire, milliseconds) => {
+        const timer = { expire, milliseconds, cancelled: false };
+        timers.push(timer);
+        return () => {
+          timer.cancelled = true;
+        };
+      },
+    );
+    registry.add({ id: 'abandoned', startedAt: 0, state: 's', sourceId: 'notes' } as never);
+    expect(registry.size).toBe(1);
+    expect(timers.at(-1)?.milliseconds).toBe(2_001);
+
+    time = 2_001;
+    timers.at(-1)?.expire();
+
+    // Nothing used the registry since: the record is gone all the same.
+    expect(registry.size).toBe(0);
+
+    // A shutdown cancels the timer that is waiting.
+    registry.add({ id: 'next', startedAt: 2_001, state: 't', sourceId: 'notes' } as never);
+    const waiting = timers.at(-1);
+    registry.dispose();
+    expect(waiting?.cancelled).toBe(true);
+    expect(registry.size).toBe(0);
   });
 });

@@ -112,8 +112,9 @@
     if (current.kind !== 'waiting') return;
     const { popup, signIn: reference } = current;
     const listen = (event: MessageEvent): void => {
-      // Only the window this page opened speaks for the sign-in, and only for this one.
-      if (event.source !== popup) return;
+      // Only the window this page opened, and only from the host's own origin, speaks for the
+      // sign-in, and only for this one.
+      if (event.source !== popup || event.origin !== window.location.origin) return;
       const standing = signInMessageOf(event.data);
       if (standing === undefined || standing.signIn !== reference) return;
       settle(standing);

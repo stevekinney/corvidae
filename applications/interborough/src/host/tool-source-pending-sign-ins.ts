@@ -180,6 +180,10 @@ export type PendingSignIns = {
   get(id: string): PendingSignIn | undefined;
   /** The record of source `sourceId` whose `state` is `state`, when one is kept. */
   byState(sourceId: string, state: string): PendingSignIn | undefined;
+  /** How many records are kept now, without pruning: the registry drops them on its own timer. */
+  readonly size: number;
+  /** Cancel the timer and drop every record: the host is shutting down. */
+  dispose(): void;
 };
 
 /**
@@ -187,15 +191,54 @@ export type PendingSignIns = {
  * twice the window has passed since it started, by then neither its callback nor its save is
  * taken.
  */
-export function createPendingSignIns(now: () => number, window: number): PendingSignIns {
+export function createPendingSignIns(
+  now: () => number,
+  window: number,
+  schedule: (expire: () => void, milliseconds: number) => () => void = (expire, milliseconds) => {
+    // poll-reason: timer
+    const timer = setTimeout(expire, milliseconds);
+    // An abandoned sign-in never keeps the host's process alive.
+    timer.unref();
+    return () => clearTimeout(timer);
+  },
+): PendingSignIns {
   const records = new Map<string, PendingSignIn>();
+  let cancelTimer: (() => void) | undefined;
+  let disposed = false;
   const prune = (): void => {
     const time = now();
     for (const [id, record] of records) {
       if (!(time - record.startedAt <= 2 * window)) records.delete(id);
     }
   };
+  // The registry's own timer, set for the oldest record's expiry: an abandoned sign-in's tokens
+  // are dropped then, not at the next use.
+  const arm = (): void => {
+    cancelTimer?.();
+    cancelTimer = undefined;
+    if (disposed) return;
+    let oldest: number | undefined;
+    for (const record of records.values()) {
+      if (oldest === undefined || record.startedAt < oldest) oldest = record.startedAt;
+    }
+    if (oldest === undefined) return;
+    const remaining = Math.max(0, oldest + 2 * window - now()) + 1;
+    cancelTimer = schedule(() => {
+      cancelTimer = undefined;
+      prune();
+      arm();
+    }, remaining);
+  };
   return {
+    get size() {
+      return records.size;
+    },
+    dispose() {
+      disposed = true;
+      cancelTimer?.();
+      cancelTimer = undefined;
+      records.clear();
+    },
     add(record) {
       prune();
       while (records.size >= MAXIMUM_PENDING_SIGN_INS) {
@@ -204,6 +247,7 @@ export function createPendingSignIns(now: () => number, window: number): Pending
         records.delete(oldest.value);
       }
       records.set(record.id, record);
+      arm();
     },
     get(id) {
       prune();

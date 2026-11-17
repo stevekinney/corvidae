@@ -55,6 +55,7 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseDocument, parseProviderConfiguration } from './providers.ts';
 import {
   pluginListingOwner,
+  pluginListingRevision,
   type RememberedTool,
   type ToolListingMemory,
 } from './tool-listing-memory.ts';
@@ -792,7 +793,10 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       ): Promise<Pick<PluginStanding, 'lastListing'>> => {
         if (options.listings === undefined) return {};
         if (plugin.status === 'running' || plugin.status === 'needs-setup') return {};
-        const record = await options.listings.read(pluginListingOwner(plugin));
+        const record = await options.listings.read(
+          pluginListingOwner(plugin),
+          pluginListingRevision(plugin),
+        );
         return record === undefined
           ? {}
           : {
