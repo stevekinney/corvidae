@@ -2,6 +2,14 @@
   import { Button, NavigationBar, NavigationItem } from '@lostgradient/cinder';
   let active = $state('home');
   let mobileMenuOpen = $state(false);
+  let phoneActive = $state('home');
+  const phoneTabs = [
+    { id: 'home', glyph: 'H', name: 'Home' },
+    { id: 'chats', glyph: 'C', name: 'Chats' },
+    { id: 'review', glyph: 'R', name: 'Review' },
+    { id: 'schedules', glyph: 'S', name: 'Schedules' },
+    { id: 'settings', glyph: 'G', name: 'Settings' },
+  ];
 </script>
 
 <section aria-label="Overview preview">
@@ -25,6 +33,28 @@
         <NavigationItem {variant} disabled onclick={() => {}}>Billing</NavigationItem>
       {/snippet}
       {#snippet actions()}<Button variant="primary" size="sm" label="Sign up" />{/snippet}
+    </NavigationBar>
+  </div>
+</section>
+
+<section aria-label="Five tabs on a phone preview">
+  <div
+    data-testid="navigation-bar-five-tabs"
+    style="inline-size: 20rem; border: 1px solid var(--cinder-border-muted);"
+  >
+    <NavigationBar placement="bottom" label="Phone primary navigation">
+      {#snippet items({ variant })}
+        {#each phoneTabs as tab (tab.id)}
+          <NavigationItem
+            {variant}
+            onclick={() => (phoneActive = tab.id)}
+            active={phoneActive === tab.id}
+          >
+            <span aria-hidden="true">{tab.glyph}</span>
+            <span data-cinder-navigation-label>{tab.name}</span>
+          </NavigationItem>
+        {/each}
+      {/snippet}
     </NavigationBar>
   </div>
 </section>
