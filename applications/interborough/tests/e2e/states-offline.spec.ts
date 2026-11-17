@@ -109,7 +109,8 @@ test.describe('the server stops answering while a page with data is open', () =>
     await expect(banner(page)).toContainText('Changes are off until it’s back.');
     await expect(banner(page)).toContainText('Showing what loaded as of');
     await expect(banner(page)).toContainText('Retrying in');
-    await expect(banner(page).getByRole('button', { name: 'Retry now' })).toBeVisible();
+    // The shell's banner says the app's one word for asking again (COR-2489).
+    await expect(banner(page).getByRole('button', { name: 'Try again' })).toBeVisible();
     await expect(frame).toHaveAttribute('data-stale', 'true');
     await expect(frame).toHaveAttribute('data-stale-since', /^\d{4}-\d{2}-\d{2}T/);
     await expect(frame).toHaveAttribute('data-state', 'ready');

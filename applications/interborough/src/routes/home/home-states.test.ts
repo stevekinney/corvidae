@@ -24,8 +24,8 @@ import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
 import { flushSync } from 'svelte';
 
-import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CONNECTION_COPY } from '../../app/copy/views.ts';
+import { CONNECTION_RETRY_LABEL, ConnectionMonitor } from '../../app/connection.svelte.ts';
+import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
 import { holdChangingActions } from '../../app/shell/changing-actions.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
@@ -302,6 +302,8 @@ describe('One card that cannot be read (01n, 01o)', () => {
       'Couldn’t load system problems. The rest of Home is live. Try again',
     );
     expect(within(card).getByRole('button', { name: 'Try again' })).not.toBeNull();
+    // The failed row's retry says what the banner and the full-page error say (COR-2489).
+    expect(within(card).getByRole('button', { name: CONNECTION_RETRY_LABEL })).not.toBeNull();
     // The failed card draws no link to Health and no row, and never claims all is well.
     expect(within(card).queryByRole('link')).toBeNull();
     expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
@@ -391,7 +393,10 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     expect(container.querySelector('[data-mode="unreachable"]')).not.toBeNull();
     expect(words(state)).toContain(CONNECTION_COPY.page.title);
     expect(words(state)).toContain(CONNECTION_COPY.page.description);
-    // In place, the button says Try again (a banner says Retry now).
+    // In place, the button says the app's one word for asking again, as the shell's connection
+    // banner and a card that could not be read do (COR-2489: the banner said Retry now).
+    expect(within(state).getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    expect(CONNECTION_RETRY_LABEL).toBe(RETRY_LABEL);
     expect(getByRole('button', { name: 'Try again' })).not.toBeNull();
     expect(container.querySelector('[data-home-card]')).toBeNull();
     expect(container.querySelector('[data-testid="home-counts"]')).toBeNull();

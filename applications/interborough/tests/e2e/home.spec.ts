@@ -907,7 +907,8 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     await expect(banner).toContainText(
       'Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Changes are off until it’s back. Retrying in 4 s (attempt 3 of 8).',
     );
-    await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    // One word for asking again in the banner, the failed row and the full-page error (COR-2489).
+    await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
     // The banner sits under the top bar, above the page.
     const bannerBox = await banner.boundingBox();
     const topBar = await page.getByRole('banner').boundingBox();
