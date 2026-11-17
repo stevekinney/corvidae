@@ -9,7 +9,7 @@
 </script>
 
 <div class="tabs-fixture">
-  <Tabs value={active}>
+  <Tabs value={active} collapseBelow="640px">
     <Tabs.List label="Project sections">
       <Tabs.Trigger value="overview">Overview</Tabs.Trigger>
       <Tabs.Trigger value="activity">Activity</Tabs.Trigger>
