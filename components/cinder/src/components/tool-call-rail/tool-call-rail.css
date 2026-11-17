@@ -532,16 +532,22 @@
       grid-row: 2;
       min-inline-size: 0;
       overflow: hidden;
-      color: var(--cinder-text-subtle);
+      color: var(--cinder-text-muted);
       font-size: var(--cinder-text-sm);
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
+    /* The result is the line's colour (muted, or the status colour); the key input steps back to
+     * subtle, so the two facts differ in colour as well as by a gap. */
     .cinder-tool-call-rail__input,
     .cinder-tool-call-rail__result {
       display: inline;
       color: inherit;
+    }
+
+    .cinder-tool-call-rail__input {
+      color: var(--cinder-text-subtle);
     }
 
     /* The key input and the result are two facts, not a sentence: a gap tells them apart. */

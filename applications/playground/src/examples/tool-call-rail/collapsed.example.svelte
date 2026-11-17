@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Collapsed to one line';
   export const description =
-    'Closed, the rail shows only the summary line "Used 30 tools", "1 failed" and "1 waiting on you" after coloured dots, and the subtle "18s", with no commas with its chevron pointing right. The call that failed and the call waiting on you stay under it, with the failure line, its links and the approval, so nothing that needs a person is ever folded away.';
+    'Closed, the rail shows only the summary line "Used 30 tools" with its counts "1 failed" and "1 waiting on you" after coloured dots and the subtle "18s", no commas between them, with its chevron pointing right. The call that failed and the call waiting on you stay under it, with the failure line, its links and the approval, so nothing that needs a person is ever folded away.';
 </script>
 
 <script lang="ts">

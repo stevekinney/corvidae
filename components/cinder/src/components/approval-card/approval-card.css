@@ -100,10 +100,22 @@
 
   /* The gap that stands where the comma was, beside the space the markup keeps for the reader. */
   .cinder-approval-card__keep + .cinder-approval-card__keep,
+  .cinder-approval-card__line-tool:has(*) + .cinder-approval-card__line-source,
   .cinder-approval-card__line-source > span + time,
-  .cinder-approval-card__eyebrow > span + time,
-  .cinder-approval-card__detail-ask > span + time {
+  .cinder-approval-card__eyebrow > * + *,
+  .cinder-approval-card__detail-ask > * + *,
+  .cinder-approval-card__risk-word + .cinder-approval-card__undone,
+  .cinder-approval-card__tool-identifier + .cinder-approval-card__risk-word,
+  .cinder-approval-card__outcome-word + .cinder-approval-card__outcome-time,
+  .cinder-approval-card__outcome-time + .cinder-approval-card__outcome-trailing,
+  .cinder-approval-card__outcome-word + .cinder-approval-card__outcome-trailing {
     margin-inline-start: var(--cinder-space-1-5);
+  }
+
+  /* "Can't be undone" is a step darker than the risk word beside it (the detail layout sets it
+   * in the body colour and semibold). */
+  .cinder-approval-card__risk-line .cinder-approval-card__undone {
+    color: var(--cinder-text-muted);
   }
 
   .cinder-approval-card__line time,
@@ -1578,6 +1590,10 @@
   @container (inline-size < 40rem) {
     .cinder-approval-card__line-source {
       display: block;
+    }
+
+    .cinder-approval-card__line-tool:has(*) + .cinder-approval-card__line-source {
+      margin-inline-start: 0;
     }
   }
 
