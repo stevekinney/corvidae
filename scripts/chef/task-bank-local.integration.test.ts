@@ -1,10 +1,15 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
-import { materializeTask, type TaskBank, type TaskControl } from './outcome-accounting.ts';
+import {
+  materializeTask,
+  verifyTaskBank,
+  type TaskBank,
+  type TaskControl,
+} from './outcome-accounting.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'task-bank-local-'));
 const bank = JSON.parse(
@@ -51,6 +56,17 @@ test('the materializer never allows an oracle replacement or filesystem escape',
   task.repairedFiles = {};
   task.files['../escape.ts'] = 'bad';
   expect(() => materializeTask(task, scratch, 'buggy')).toThrow('unsafe file path');
+});
+
+test('rejects an escaped task identifier before verification or materialization writes', () => {
+  const escapedId = `../${basename(scratch)}-outside`;
+  const invalid = structuredClone(bank);
+  invalid.tasks[0]!.id = escapedId;
+  const escapedRoot = join(scratch, escapedId, 'buggy');
+  expect(verifyTaskBank(invalid)).toContain(`${escapedId} has an invalid task id.`);
+  expect(existsSync(escapedRoot)).toBe(false);
+  expect(() => materializeTask(invalid.tasks[0]!, scratch, 'buggy')).toThrow('invalid task id');
+  expect(existsSync(escapedRoot)).toBe(false);
 });
 
 const constantsOutcome = await outcomeOf(async () => {

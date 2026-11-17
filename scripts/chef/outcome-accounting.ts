@@ -233,6 +233,7 @@ const POLICY_BASE_REVISION = '721367ba220dc2384c83ee1c33b3a38bdf702e5b';
 const POLICY_SOURCE_COUNT = 17;
 const SHA256 = /^[a-f0-9]{64}$/;
 const GIT_REVISION = /^[a-f0-9]{40}$/;
+const TASK_ID = /^[a-z]+-[0-9]{2}$/;
 
 function tokenArgument(value: string): number | 'unknown' {
   return value === 'unknown' ? value : Number(value);
@@ -350,6 +351,8 @@ export function verifyTaskBankProvenance(bank: TaskBank): string[] {
 
 function taskPathErrors(task: TaskSnapshot): string[] {
   const errors: string[] = [];
+  if (typeof task.id !== 'string' || !TASK_ID.test(task.id))
+    errors.push(`${task.id} has an invalid task id.`);
   const files = new Set<string>();
   for (const path of Object.keys(task.files)) {
     const normalized = normalizedTaskPath(path);
