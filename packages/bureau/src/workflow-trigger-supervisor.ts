@@ -37,7 +37,7 @@
  * without one, the listeners of one workflow never overlap in this process: no attempt calls
  * `start` until every earlier attempt's `start` has settled and every listener it produced has
  * finished `stop`. The lease fences fires, not a plugin's trigger storage: a listener another
- * process took over keeps running until its next tick or fence finds the record gone.
+ * process took over keeps running until its next tick or fence finds the record no longer names it.
  *
  * @module workflow-trigger-supervisor
  */
@@ -784,7 +784,8 @@ export function createWorkflowTriggerSupervisor(
     // COR-2167 — the one place `start` is reached, so every attempt, a reconcile's, a tick's, a
     // timer's and a retry's, obeys the invariant: nothing starts until every earlier listener of
     // this workflow is over. The wait comes before the lease, so this process holds no record it
-    // cannot use yet, and a close or a replacement during it starts nothing.
+    // cannot use yet, and a close during it starts nothing. Only `close` can land here: every
+    // attempt that waits holds the serialization lock, so no reconcile replaces it meanwhile.
     if (entry.predecessors !== undefined) {
       await entry.predecessors;
       if (!isCurrent(id, entry)) {

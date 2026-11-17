@@ -1977,6 +1977,44 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
+    row: 'M58a (added in review): a close that lands while an attempt waits for an earlier listener’s stop starts nothing and takes no record, and resolves once that stop has completed, on persistent and on memory storage',
+    run: async () => {
+      for (const memory of [false, true]) {
+        const shared = sharedStore();
+        const p = await peer(shared, { memory });
+        let stopping: { open: () => void };
+        let next: Promise<unknown>;
+        if (memory) {
+          // The listener is reported failed and its stop is held; a retry's attempt waits for it.
+          await p.reconcile({ a: {} });
+          const held = gate();
+          p.onStop = () => held.promise;
+          reportListener(p.starts[0]!, { state: 'failed', error: new Error('gone') });
+          await waitUntil(() => p.status()?.state === 'failed', { message: 'the failure' });
+          p.onStop = () => undefined;
+          stopping = held;
+          next = p.retry();
+        } else {
+          // The fenced listener's stop is held; the record is free, and a tick's attempt waits.
+          const taker = await peer(shared);
+          stopping = await fencedWithItsStopHeld(p, shared.kv, taker);
+          await shared.kv.delete(RECORD);
+          next = p.processLease.renew();
+        }
+        await quietFor(50);
+        let closed = false;
+        const closing = p.close().then(() => void (closed = true));
+        await quietFor(50);
+        expect(closed, `memory ${memory}`).toBe(false);
+        stopping.open();
+        await closing;
+        await next;
+        expect(p.starts, `memory ${memory}`).toHaveLength(1);
+        expect(await shared.kv.get(RECORD)).toBeNull();
+      }
+    },
+  },
+  {
     row: 'M59: a gated holder waiting for its secret keeps the record, peers stay standby, and a fenced gated fire reaches nothing',
     run: async () => {
       const shared = sharedStore();
