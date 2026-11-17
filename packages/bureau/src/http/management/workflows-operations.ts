@@ -40,12 +40,8 @@ import {
  * @module workflows-operations
  */
 
-import {
-  defineOperation,
-  type OperationFault,
-  type Principal,
-  type WorkflowCompatibilityReason,
-} from '@lostgradient/weft';
+import { type WorkflowCompatibilityReason } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';

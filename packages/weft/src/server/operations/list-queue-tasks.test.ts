@@ -6,9 +6,9 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   deadLetteredFixture,
   leasedFixture,

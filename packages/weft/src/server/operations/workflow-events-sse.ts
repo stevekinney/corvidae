@@ -1,27 +1,36 @@
 import { z } from 'zod';
 
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { isAuthenticated } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import type { ConnectionLease } from '../connection-lease.ts';
-import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
-import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
-import { type EventSelector } from '../event-selector.ts';
-import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
-import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
-import { workflowEventEnvelopeSchema, workflowEventParameterizedAccess } from './event-stream-contracts.ts';
-import { createReplayAwareClosableIterable, isClosableAsyncIterable, isReplayAwareClosableIterable, type ReplayAwareClosableIterable } from './closable-iterable.ts';
-import { shapeRestFault } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
+import {
+  createReplayAwareClosableIterable,
+  decodeCursor,
+  defineOperation,
+  type AuthorizationScope,
+  type Cursor,
+  type OperationFault,
+  type ReplayAwareClosableIterable,
+  type ReplayLiveSubscribeOptions,
+} from '@lostgradient/backchannel';
 import {
   createEventEnvelopeSSEStream,
+  invalidParamsFault,
+  isAuthenticated,
+  isClosableAsyncIterable,
+  isReplayAwareClosableIterable,
   readServerSentEventsCursor,
   requireServerSentEventsAccept,
   shapeServerSentEventsFault,
   SSE_RESPONSE_HEADERS,
-} from './sse-stream.ts';
+  type ConnectionLease,
+  type EventSelector,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
+import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
+import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
+import {
+  workflowEventEnvelopeSchema,
+  workflowEventParameterizedAccess,
+} from './event-stream-contracts.ts';
+import { shapeRestFault } from './operation-helpers.ts';
 
 export type WorkflowStreamConnectionAcquirer = (
   workflowId: string,

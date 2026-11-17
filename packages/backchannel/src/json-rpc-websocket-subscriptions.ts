@@ -1,7 +1,7 @@
 import { JSON_RPC_VERSION } from './json-rpc-protocol.ts';
 import { SubscriptionElementValidationError } from './operation-catalog.ts';
-import type { OperationFault } from './operation-fault.ts';
 import { isOperationFault } from './operation-fault-helpers.ts';
+import type { OperationFault } from './operation-fault.ts';
 
 export const SESSION_METHODS = {
   SUBSCRIBE: 'weft.workflows.subscribe',

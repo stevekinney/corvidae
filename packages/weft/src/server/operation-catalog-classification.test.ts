@@ -19,9 +19,9 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import type { OperationFault } from '@lostgradient/backchannel';
+import { classifyEngineError } from '@lostgradient/backchannel/internals';
 import { WorkflowNotRegisteredError } from '../core/engine/errors.ts';
-import { classifyEngineError } from './operation-catalog.ts';
-import type { OperationFault } from './operation-fault.ts';
 import { weftFaultPolicy } from './weft-fault-policy.ts';
 
 describe('classifyEngineError', () => {

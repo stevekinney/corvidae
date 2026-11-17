@@ -23,7 +23,7 @@ import {
   principalFromApiKey,
   type AuthConfig,
   type AuthenticatedPrincipal,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 /** The caller every request acts as. Bureau owns what an uncredentialed local caller creates as this. */
 export const LOCAL_SUBJECT = 'anonymous:local';

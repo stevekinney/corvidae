@@ -1,10 +1,12 @@
+import {
+  type Cursor,
+  type ReplayLiveFeed,
+  type ReplayLiveSubscribeOptions,
+  createReplayLiveFeed,
+} from '@lostgradient/backchannel';
+import type { EventSelector } from '@lostgradient/backchannel/internals';
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import type { WeftEventMap } from '../core/events.ts';
-import type { EventSelector } from './event-selector.ts';
-import type { ReplayLiveFeed, ReplayLiveSubscribeOptions } from './replay-live-feed-types.ts';
-import { createReplayLiveFeed } from './replay-live-feed.ts';
-import type { Cursor } from './sequence-cursor.ts';
-export { createReplayLiveFeed } from './replay-live-feed.ts';
 
 /** Discriminator string carried on every feed envelope. */
 export type FeedEventKind =

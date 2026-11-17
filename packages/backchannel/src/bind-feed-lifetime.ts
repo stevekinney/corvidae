@@ -8,8 +8,8 @@
  * @module server/bind-feed-lifetime
  */
 
-import type { SequencedEventEnvelope } from './sequence-cursor.ts';
 import type { ReplayLiveFeed } from './replay-live-feed-types.ts';
+import type { SequencedEventEnvelope } from './sequence-cursor.ts';
 
 /**
  * Binds every subscription a feed hands out to a lifetime signal.

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import { type UnknownRestBinding, invalidParamsFault } from '@lostgradient/backchannel/internals';
 import {
   IdempotencyKeyPurgedError,
   StartOrSignalConflictError,
@@ -17,12 +19,12 @@ import type {
   StartOrSignalOptions,
   StartOrSignalSignal,
 } from '../../core/types.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import { undeclaredMessageFault, workerStartOverrideRejectedFault, workerVersionRemovedFault } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
+import {
+  undeclaredMessageFault,
+  workerStartOverrideRejectedFault,
+  workerVersionRemovedFault,
+} from './operation-helpers.ts';
 import { buildStartOrSignalWorkflowOptions } from './start-workflow-options.ts';
 import {
   extractSharedStartWorkflowRestFields,

@@ -10,7 +10,7 @@
  * @module management-schemas
  */
 
-import type { OperationFault } from '@lostgradient/weft';
+import type { OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { TASK_PERSON_SURFACES } from '../../task-origin.ts';

@@ -1,13 +1,15 @@
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import {
+  type UnknownRestBinding,
+  createStoredChunkSSEStream,
+  invalidParamsFault,
+  parseOptionalSequenceCursor,
+  SSE_RESPONSE_HEADERS,
+} from '@lostgradient/backchannel/internals';
 import type { StoredStreamChunk } from '../../core/context.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { parseOptionalSequenceCursor } from '../sequence-cursor.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
-import { createStoredChunkSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.ts';
 
 const TOKENS_STREAM_KEY = 'tokens';
 

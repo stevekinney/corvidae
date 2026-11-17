@@ -1,10 +1,10 @@
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
+import { createOperationHandler } from '@lostgradient/backchannel';
 import { encode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from './index.ts';
-import { createOperationHandler } from './operation-handler.ts';
 
 /** MessagePack for `{ "status": "ok" }`: a one-entry map, the key `status`, the value `ok`. */
 const HEALTH_BYTES = Uint8Array.of(

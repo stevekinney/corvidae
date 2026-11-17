@@ -9,16 +9,16 @@
  * @module server/weft-operation-fault
  */
 
+import { type OperationFault } from '@lostgradient/backchannel';
+import {
+  faultToHttpResponse,
+  shapeOperationFaultAsJson,
+  shapeRestFaultAsJson,
+  type RestFaultResponseOptions,
+} from '@lostgradient/backchannel/internals';
 import type { WorkflowCompatibilityReason } from '../core/contract/compatibility.ts';
 import type { WorkflowSourceRejectionReason } from '../core/source/errors.ts';
 import { isWeftErrorCode, type WeftErrorCode } from '../core/weft-error.ts';
-import { faultToHttpResponse } from './fault-to-http.ts';
-import {
-  shapeOperationFaultAsJson,
-  shapeRestFaultAsJson,
-  type OperationFault,
-  type RestFaultResponseOptions,
-} from './operation-fault.ts';
 
 /** What Weft's errors add to the `data` of the faults they map onto. */
 type WeftFaultDataFields = {

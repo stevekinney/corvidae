@@ -21,14 +21,14 @@
  * @module server/engine-event-feed-backend
  */
 
+import { encodeCursor } from '@lostgradient/backchannel';
+import { type EventSelector } from '@lostgradient/backchannel/internals';
 import type {
   RegistryAgnosticEngine,
   WorkflowFeedRecord,
   WorkflowFeedSelector,
 } from '../core/engine.ts';
 import { type EventEnvelope, type WorkflowEventFeedBackend } from './workflow-event-feed.ts';
-import { type EventSelector } from './event-selector.ts';
-import { encodeCursor } from './sequence-cursor.ts';
 
 /**
  * Build the production `WorkflowEventFeedBackend`. Call once per

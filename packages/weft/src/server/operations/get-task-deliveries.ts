@@ -49,8 +49,9 @@
  * @module server/operations/get-task-deliveries
  */
 
+import { defineOperation, type FaultCode } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { Storage } from '@lostgradient/storage';
-import type { FaultCode } from '../fault-code.ts';
 import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
   decodeRemoteTaskRecord,
@@ -66,8 +67,6 @@ import {
 } from '../../core/task-ledger/task-result-delivery.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 import {
   getTaskDeadLetterInput,

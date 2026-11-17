@@ -8,8 +8,8 @@
 
 import { z } from 'zod';
 
+import type { AccessPolicy } from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
-import type { AccessPolicy } from '../authorization.ts';
 
 /**
  * Readable under `system:read` or `workflows:read`: the catalog describes what

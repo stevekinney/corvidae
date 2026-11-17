@@ -1,6 +1,9 @@
+import {
+  type UnknownRestBinding,
+  jsonResponse,
+  negotiatedJsonOrBinary,
+} from '@lostgradient/backchannel/internals';
 import { encode } from '../../core/codec.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { jsonResponse, negotiatedJsonOrBinary } from './json-responses.ts';
 
 export function negotiatedResponse(
   request: Request,

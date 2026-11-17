@@ -1,7 +1,7 @@
+import type { OperationFault } from '@lostgradient/backchannel';
 import type { WorkflowCompatibilityReason } from '../core/contract/compatibility.ts';
 import type { WorkflowSourceRejectionReason } from '../core/source/errors.ts';
 import type { WeftErrorCode } from '../core/weft-error.ts';
-import type { OperationFault } from './operation-fault.ts';
 import type { WeftOperationFault } from './weft-operation-fault.ts';
 
 type DataOf<Code extends OperationFault['code']> = Extract<

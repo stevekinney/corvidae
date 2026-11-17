@@ -8,7 +8,7 @@
  * transport-neutral fault model that produces it.
  */
 
-import type { FaultCode } from '../server/fault-code.ts';
+import type { FaultCode } from '@lostgradient/backchannel';
 import type { FailureCategory } from './types/identity.ts';
 
 /**

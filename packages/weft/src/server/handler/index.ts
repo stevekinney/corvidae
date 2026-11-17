@@ -10,11 +10,10 @@
  * @module server/handler
  */
 
+import { authContextToPrincipal } from '@lostgradient/backchannel';
+import { errorResponse, MalformedRouteParameterError } from '@lostgradient/backchannel/internals';
 import type { Engine, RegistryAgnosticEngine } from '../../core/engine.ts';
-import { MalformedRouteParameterError } from '../rest-binding.ts';
-import { authContextToPrincipal } from './auth-context-principal.ts';
 import { matchRestBinding } from './binding-dispatch.ts';
-import { errorResponse } from './json-responses.ts';
 import {
   defaultOperationRegistry,
   defaultRestBindings,
@@ -25,27 +24,6 @@ import {
 import { matchDirectRoute } from './route-matching.ts';
 import type { LiveEventStreamContext } from './sse-route-dispatch.ts';
 
-export {
-  authContextToPrincipal,
-  unauthenticatedLocalAuthContext,
-} from './auth-context-principal.ts';
-export {
-  createOperationHandlerAuthenticator,
-  type OperationHandlerAuthenticate,
-  type OperationHandlerAuthenticator,
-  type OperationHandlerAuthenticatorOptions,
-} from './operation-handler-authentication.ts';
-export type {
-  OperationHandlerMount,
-  OperationHandlerMountContext,
-  OperationHandlerMountDispatchOptions,
-  OperationHandlerMountOperation,
-} from './operation-handler-mounts.ts';
-export {
-  createOperationHandler,
-  type OperationHandler,
-  type OperationHandlerOptions,
-} from './operation-handler.ts';
 export { isOperationFaultLike, type HandlerOptions } from './route-dispatch.ts';
 export { extractRouteParameters, getRequiredRouteParameter } from './route-matching.ts';
 
@@ -67,8 +45,12 @@ export {
   type FleetEventInput,
   type FleetWorkflowEventInput,
 } from '../fleet-event-feed.ts';
-export { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeed, type WorkflowEventFeedBackend } from '../workflow-event-feed.ts';
-export { decodeCursor, encodeCursor, type Cursor } from '../sequence-cursor.ts';
+export {
+  createWorkflowEventFeed,
+  type EventEnvelope,
+  type WorkflowEventFeed,
+  type WorkflowEventFeedBackend,
+} from '../workflow-event-feed.ts';
 
 type RouteLookup<T> = { kind: 'matched'; value: T } | { kind: 'malformed'; response: Response };
 

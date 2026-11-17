@@ -9,8 +9,7 @@ import {
   AccessPolicyMetadataSchema,
   ParameterizedAccessMetadataSchema,
 } from './access-policy-metadata.ts';
-import { MCP_TOOLS_LIST_METHOD } from './mcp-discovery-names.ts';
-import { MCP_DISCOVERY_PATH } from './mcp-discovery-names.ts';
+import { MCP_DISCOVERY_PATH, MCP_TOOLS_LIST_METHOD } from './mcp-discovery-names.ts';
 
 export const ContentDescriptorSchema = z.strictObject({
   name: z.string(),

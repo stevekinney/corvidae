@@ -1,18 +1,27 @@
 import { z } from 'zod';
 
+import {
+  defineOperation,
+  type AuthorizationScope,
+  type OperationFault,
+  type SchemaOperationDefinition,
+} from '@lostgradient/backchannel';
+import {
+  isOperationFault,
+  readRestJsonBody,
+  type RestBinding,
+} from '@lostgradient/backchannel/internals';
 import type { Engine } from '../../core/engine.ts';
 import { WorkflowNotFoundError } from '../../core/engine/errors.ts';
 import {
   coerceStartWorkflowTags,
   StartWorkflowValidationError,
 } from '../../core/start-workflow-validation.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation, type SchemaOperationDefinition } from '../operation-registry.ts';
-import type { RestBinding } from '../rest-binding.ts';
-import { readRestJsonBody } from '../rest-body.ts';
-import { assertOperationEngineMethods, shapeRestFault, type OperationEngineMethodName } from './operation-helpers.ts';
-import { isOperationFault } from '../operation-fault-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  shapeRestFault,
+  type OperationEngineMethodName,
+} from './operation-helpers.ts';
 
 const singleWorkflowTagMutationInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow whose tags change.'),

@@ -8,8 +8,11 @@
  * @module server/replay-live-feed-internals
  */
 
+import type {
+  ReplayLiveFeedBackend,
+  ReplayLiveSubscribeOptions,
+} from './replay-live-feed-types.ts';
 import type { SequencedEventEnvelope } from './sequence-cursor.ts';
-import type { ReplayLiveFeedBackend, ReplayLiveSubscribeOptions } from './replay-live-feed-types.ts';
 
 export function createSerialOperationQueue(): <T>(operation: () => Promise<T>) => Promise<T> {
   let queue = Promise.resolve();

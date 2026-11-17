@@ -8,15 +8,14 @@ import {
   type McpRequestContext,
 } from '@modelcontextprotocol/server';
 
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
 import type {
+  OperationFault,
   OperationHandlerMount,
   OperationHandlerMountContext,
   OperationHandlerMountOperation,
-} from '../server/handler/operation-handler-mounts.ts';
-import type { DispatchResult } from '../server/operation-catalog.ts';
-import type { OperationFault } from '../server/operation-fault.ts';
-import { isAuthenticated } from '../server/principal.ts';
+} from '@lostgradient/backchannel';
+import { isAuthenticated, type DispatchResult } from '@lostgradient/backchannel/internals';
+import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
 import { VERSION } from '../version.ts';
 import { DEFAULT_MCP_MAX_BODY_BYTES } from './protocol.ts';
 

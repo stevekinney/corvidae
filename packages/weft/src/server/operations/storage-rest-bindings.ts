@@ -1,8 +1,12 @@
-import { copyBytesToArrayBuffer } from '../byte-arrays.ts';
-import type { RestInputContext } from '../rest-binding.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { readRestBodyBounded, readRestJsonBody } from '../rest-body.ts';
-import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
+import {
+  type RestInputContext,
+  type UnknownRestBinding,
+  copyBytesToArrayBuffer,
+  invalidParamsFault,
+  isOperationFault,
+  readRestBodyBounded,
+  readRestJsonBody,
+} from '@lostgradient/backchannel/internals';
 import type {
   StorageConditionalBatchOutput,
   StoragePreviewOutput,

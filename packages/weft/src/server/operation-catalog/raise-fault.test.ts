@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import type { FaultCode } from '../fault-code.ts';
-import type { OperationFault } from '../operation-fault.ts';
+import type { FaultCode, OperationFault } from '@lostgradient/backchannel';
 import { raiseFault } from './raise-fault.ts';
 
 const originalNodeEnvironment = Bun.env['NODE_ENV'];

@@ -3,7 +3,7 @@ import {
   type OperationHandlerAuthenticate,
   type WorkspaceIdentity,
   type Principal,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { z } from 'zod';
 import { ANONYMOUS_LOCAL_OWNER, isReservedOwnerSubject } from '../owner-of-record.ts';
 

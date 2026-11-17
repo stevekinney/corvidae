@@ -1,4 +1,4 @@
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { buildBureau } from './bureau-handler-fixtures.test-support.ts';

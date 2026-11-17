@@ -1,9 +1,9 @@
+import { decodeCursor, encodeCursor, type Cursor } from '@lostgradient/backchannel';
 import { type BatchOperation, type Storage } from '@lostgradient/storage';
 import { decode, encode } from '../core/codec.ts';
 import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
 import { KEYS } from '../storage/keys.ts';
 import { type FleetEventEnvelope, type FleetEventInput } from './workflow-event-feed.ts';
-import { decodeCursor, encodeCursor, type Cursor } from './sequence-cursor.ts';
 
 export const REPLAY_PAGE_SIZE = 128;
 export const DEFAULT_RETENTION_BATCH_SIZE = 100;

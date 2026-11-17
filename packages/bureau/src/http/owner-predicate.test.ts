@@ -3,7 +3,7 @@ import {
   anonymousPrincipal,
   principalFromApiKey,
   principalFromJwtClaims,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import {

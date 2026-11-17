@@ -1,3 +1,9 @@
+import { defineOperation, type Principal } from '@lostgradient/backchannel';
+import {
+  invalidParamsFault,
+  isAuthenticated,
+  type AccessPolicy,
+} from '@lostgradient/backchannel/internals';
 import {
   assertStorageBatchOperationCount,
   decodeBase64ToBytes,
@@ -9,12 +15,8 @@ import {
   type ScanOptions,
   type Storage,
 } from '@lostgradient/storage';
-import type { AccessPolicy } from '../authorization.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { isAuthenticated, type Principal } from '../principal.ts';
 import { requireOperationStorage, type OperationStorageMethodName } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import {
   emptyOutput,
   storageBatchInput,

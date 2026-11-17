@@ -12,6 +12,9 @@
   "exclude": ["node_modules", "coverage", "**/*.test.ts", "**/*.test-d.ts", "**/*.bench.ts"],
   "references": [
     {
+      "path": "../backchannel/tsconfig.source.json"
+    },
+    {
       "path": "../cryptography/tsconfig.source.json"
     },
     {

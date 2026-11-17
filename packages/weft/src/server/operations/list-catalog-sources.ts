@@ -2,10 +2,10 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { listWorkflowSources } from '../../core/engine/source-listing.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineObject } from './operation-helpers.ts';
 
 const listCatalogSourcesInput = z

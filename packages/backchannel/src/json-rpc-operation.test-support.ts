@@ -22,8 +22,7 @@ import type {
   TransportAvailability,
   UnknownKeyPolicy,
 } from './operation-catalog/types.ts';
-import type { SchemaOperationDefinition } from './operation-registry.ts';
-import { defineOperation } from './operation-registry.ts';
+import { type SchemaOperationDefinition, defineOperation } from './operation-registry.ts';
 
 type CommonOverrides<IS extends z.ZodObject, OS extends z.ZodType> = {
   readonly name: string;

@@ -11,7 +11,7 @@ import {
   createOperationHandler,
   principalFromApiKey,
   type AuthorizationScope,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

@@ -96,9 +96,10 @@ function nodeCryptoResolutions(evidence: NodeCryptoEvidence): NodeCryptoFinding[
 }
 // END node-crypto-predicate
 
-const packageRoot = join(import.meta.dir, '..', '..', '..');
+const packageRoot = join(import.meta.dir, '..', '..');
 const indexPath = join(packageRoot, 'src', 'index.ts');
-const externals = ['@opentelemetry/api', 'lmdb', '@libsql/client', '@neondatabase/serverless'];
+// The package depends on Zod alone, so nothing is left external.
+const externals: string[] = [];
 
 interface BundleOutcome {
   success: boolean;
@@ -194,9 +195,9 @@ describe('authentication browser bundle portability', () => {
 
   it('really includes the authentication path in the bundle', () => {
     const inputs = Object.keys(healthy.metafile?.inputs ?? {});
-    expect(
-      inputs.some((key) => key.endsWith('server/authentication/constant-time-api-key.ts')),
-    ).toBe(true);
+    expect(inputs.some((key) => key.endsWith('src/authentication/constant-time-api-key.ts'))).toBe(
+      true,
+    );
     const output = [...healthy.files.values()].join('\n');
     // A literal that only the authentication source holds (`api-key.ts`).
     expect(output).toContain('resolveApiKeyPrincipal threw:');

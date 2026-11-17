@@ -2,9 +2,12 @@ import { Glob } from 'bun';
 import { describe, expect, it } from 'bun:test';
 import { join, relative } from 'node:path';
 
-import { faultToHttpResponse } from './fault-to-http.ts';
-import type { OperationFault } from './operation-fault.ts';
-import { shapeOperationFaultAsJson, shapeRestFaultAsJson } from './operation-fault.ts';
+import type { OperationFault } from '@lostgradient/backchannel';
+import {
+  faultToHttpResponse,
+  shapeOperationFaultAsJson,
+  shapeRestFaultAsJson,
+} from '@lostgradient/backchannel/internals';
 import {
   shapeWeftOperationFaultAsJson,
   shapeWeftRestFaultAsJson,

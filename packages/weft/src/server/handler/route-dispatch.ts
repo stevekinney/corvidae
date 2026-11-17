@@ -1,3 +1,19 @@
+import type { DiscoveryInfo, OperationFault, Principal } from '@lostgradient/backchannel';
+import {
+  FAULT_CODE_TO_HTTP_STATUS,
+  errorResponse,
+  executeOperation,
+  generateAsyncApiDocument,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+  jsonResponse,
+  type AuthContext,
+  type ConnectionLease,
+  type OpenApiSecuritySchemeName,
+  type OperationRegistry,
+  type PipelineTrace,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
 import type { Engine } from '../../core/engine.ts';
 import { listMcpTools } from '../../mcp/tools.ts';
 import {
@@ -7,31 +23,15 @@ import {
 import { resolveServerEnvironment } from '../../runtime/environment-configuration.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import { generateApiCatalog, originFromRequest, warnIfPublicOriginUnset } from '../api-catalog.ts';
-import { generateAsyncApiDocument } from '../asyncapi.ts';
-import type { AuthContext } from '../authentication.ts';
-import type { DiscoveryInfo } from '../discovery-info.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import { generateMcpDiscovery } from '../mcp-discovery.ts';
-import { generateOpenApiDocument, type OpenApiSecuritySchemeName } from '../openapi.ts';
-import { generateOpenRpcDocument } from '../openrpc.ts';
-import {
-  executeOperation,
-  type OperationRegistry,
-  type PipelineTrace,
-} from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { FAULT_CODE_TO_HTTP_STATUS } from '../operation-fault.ts';
 import type { WorkflowStreamConnectionAcquirer } from '../operations/workflow-events-sse.ts';
-import type { Principal } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
-import type { ConnectionLease } from '../connection-lease.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import { weftDiscoveryInfo } from '../weft-documents.ts';
 import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 import { defaultShapeSuccess, negotiatedResponse } from './response-helpers.ts';
-import { errorResponse, jsonResponse } from './json-responses.ts';
 import type { DirectRouteHandlerName } from './route-matching.ts';
 import {
   dispatchServerSentEventsBinding,

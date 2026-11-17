@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 
+import { type OperationFault, anonymousPrincipal } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  faultToHttpResponse,
+  invalidParamsFault,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
-import { faultToHttpResponse } from '../fault-to-http.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { anonymousPrincipal } from '../principal.ts';
 import {
   bulkCancelWorkflowsOperation,
   bulkCancelWorkflowsRestBinding,
@@ -39,7 +40,6 @@ import { getUpdateResultRestBinding } from './get-update-result.ts';
 import { listCheckpointsRestBinding } from './list-checkpoints.ts';
 import { listReviewsRestBinding } from './list-reviews.ts';
 import { listWorkflowsOperation, listWorkflowsRestBinding } from './list-workflows.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import { purgeWorkflowsOperation } from './purge-workflows.ts';
 import { recoverAllRestBinding } from './recover-all.ts';
 import { resumeWorkflowRestBinding } from './resume-workflow.ts';

@@ -17,7 +17,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module plugin-kinds-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { type BureauEventFormatter, FORMATTED_EVENT_TIERS } from '../../bureau-event-formatting.ts';

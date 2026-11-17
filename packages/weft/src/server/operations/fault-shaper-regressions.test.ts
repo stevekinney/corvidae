@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
-import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
+import { type OperationFault } from '@lostgradient/backchannel';
+import { invalidParamsFault, shapeOperationFaultAsJson } from '@lostgradient/backchannel/internals';
 import { shapeRestFault } from './operation-helpers.ts';
 
 const operationsDirectory = new URL('.', import.meta.url);
@@ -307,7 +307,7 @@ describe('REST fault shaper regressions', () => {
     const source = await Bun.file(new URL('bulk-filter-body.ts', operationsDirectory)).text();
 
     expect(source).toMatch(
-      /import\s+\{[^}]*\binvalidParamsFault\b[^}]*\}\s+from\s+['"]\.\.\/operation-fault-helpers\.ts['"]/u,
+      /import\s+\{[^}]*\binvalidParamsFault\b[^}]*\}\s+from\s+['"]@lostgradient\/backchannel\/internals['"]/u,
     );
     expect(source).not.toContain('function invalidParamsFault');
     expect(source).not.toContain('export function invalidParamsFault');

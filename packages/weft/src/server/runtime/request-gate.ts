@@ -15,13 +15,14 @@
  * @internal
  */
 
-import type { AuthContext } from '../authentication.ts';
-import { DEFAULT_PUBLIC_PATHS, normalizeRequestPathname } from '../authentication/types.ts';
-import { unauthenticatedLocalAuthContext } from '../handler/auth-context-principal.ts';
+import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import {
+  type AuthContext,
   authContextFromAuthResult,
+  DEFAULT_PUBLIC_PATHS,
+  normalizeRequestPathname,
   unauthorizedResponse,
-} from '../handler/authentication-responses.ts';
+} from '@lostgradient/backchannel/internals';
 import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import type { ServerContext } from './context.ts';
 

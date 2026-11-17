@@ -14,17 +14,16 @@
  * pure session logic; these cover the wiring.
  */
 
-import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 
+import { runStdioSession } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
+import { workflow, type WorkflowContext } from '../core/types.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
-import { runStdioSession } from './stdio-session.ts';
 import { collectingWritable, readableFromLines } from './stdio-stream.test-support.ts';
 import { createWorkflowEventFeed, type WorkflowEventFeed } from './workflow-event-feed.ts';
 import {
@@ -204,7 +203,7 @@ describe('runStdioSession — engine-backed integration', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
-discoverDocument: createWeftDiscoverDocument(registry, engine),
+      discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 
@@ -238,7 +237,7 @@ discoverDocument: createWeftDiscoverDocument(registry, engine),
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
-discoverDocument: createWeftDiscoverDocument(registry, engine),
+      discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 
@@ -269,7 +268,7 @@ discoverDocument: createWeftDiscoverDocument(registry, engine),
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
-discoverDocument: createWeftDiscoverDocument(registry, engine),
+      discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 

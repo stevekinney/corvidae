@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { principalFromApiKey, type OperationFault } from '@lostgradient/weft';
+import { principalFromApiKey, type OperationFault } from '@lostgradient/backchannel';
 
 import { buildBureau } from './bureau-handler-fixtures.test-support.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';

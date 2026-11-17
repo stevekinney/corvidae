@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
+import { readRestTextBody, type UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { type Storage } from '@lostgradient/storage';
 import { decode } from '../../core/codec.ts';
 import type { WorkflowState } from '../../core/types.ts';
@@ -14,11 +16,7 @@ import {
   resolveWorkflowWorkerStartBinding,
   type WorkflowWorkerBinding,
 } from '../../worker/versioning-policy.ts';
-import { type OperationFault } from '../operation-fault.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { readRestTextBody } from '../rest-body.ts';
 import {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,

@@ -3,6 +3,7 @@ import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts
 import type { AttributeFilter, ListFilter } from '../../core/types.ts';
 import { parseOptionalFailureCategoryFilter } from './failure-category-filter.ts';
 
+import { invalidParamsFault } from '@lostgradient/backchannel/internals';
 import {
   isJsonSearchAttributeValue,
   normalizeBulkListFilter,
@@ -10,7 +11,6 @@ import {
   type BulkListFilterDraft,
 } from './bulk-filter-input.ts';
 import { faultMessage } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 function parseAttributeFiltersFromBody(value: unknown): AttributeFilter[] {
   if (!Array.isArray(value)) {

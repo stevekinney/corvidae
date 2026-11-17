@@ -19,6 +19,8 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { decodeWorkflowState, isTerminalWorkflowStatus } from '../../core/engine/validation.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
 import {
@@ -33,8 +35,6 @@ import {
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { recordTaskRequeueMetric, recordTaskRetryMetric } from '../runtime/task-metrics.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 import { parseOptionalScheduleRestBodyRecord } from './schedule-rest-body.ts';

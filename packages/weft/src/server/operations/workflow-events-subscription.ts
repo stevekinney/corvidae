@@ -1,14 +1,19 @@
 import { z } from 'zod';
 
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { isAuthenticated } from '../principal.ts';
+import {
+  createReplayAwareClosableIterable,
+  decodeCursor,
+  defineOperation,
+  type AuthorizationScope,
+  type Cursor,
+  type ReplayLiveSubscribeOptions,
+} from '@lostgradient/backchannel';
+import { invalidParamsFault, isAuthenticated } from '@lostgradient/backchannel/internals';
 import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
-import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
-import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
-import { workflowEventEnvelopeSchema, workflowEventParameterizedAccess } from './event-stream-contracts.ts';
-import { createReplayAwareClosableIterable } from './closable-iterable.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
+import {
+  workflowEventEnvelopeSchema,
+  workflowEventParameterizedAccess,
+} from './event-stream-contracts.ts';
 
 const INITIAL_SUBSCRIPTION_CURSOR: Cursor = '-1';
 const MAX_WORKFLOW_SUBSCRIPTION_REPLAY_EVENTS = 1_000;

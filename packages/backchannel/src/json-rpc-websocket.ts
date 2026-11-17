@@ -15,6 +15,7 @@
  *     (or socket disconnect at the transport layer).
  */
 
+import type { ConnectionLease } from './connection-lease.ts';
 import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
 import { parseJsonRpcRequest } from './json-rpc-parse.ts';
@@ -39,7 +40,6 @@ import {
   type DispatchResult,
   type SubscriptionStartEnvelope,
 } from './operation-catalog.ts';
-import type { ConnectionLease } from './connection-lease.ts';
 
 export type {
   JsonRpcWebSocketEmitter,

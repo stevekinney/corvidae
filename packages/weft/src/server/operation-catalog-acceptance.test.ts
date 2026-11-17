@@ -1,29 +1,32 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
-import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 
+import {
+  anonymousPrincipal,
+  defineOperation,
+  type OperationFault,
+} from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  dispatchJsonRpc,
+  faultToHttpResponse,
+  faultToJsonRpcError,
+  runStdioSession,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
+import { workflow, type WorkflowContext } from '../core/types.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
-import { faultToHttpResponse } from './fault-to-http.ts';
-import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { serve, type WeftServer } from './index.ts';
-import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
 import {
   collectWebSocketDeliveredEnvelopes,
   openWebSocket,
   waitForMessage,
 } from './json-rpc-websocket-client.test-support.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
-import type { OperationFault } from './operation-fault.ts';
-import { defineOperation } from './operation-registry.ts';
-import { anonymousPrincipal } from './principal.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
-import { runStdioSession } from './stdio-session.ts';
 import { createWorkflowEventFeed, type EventEnvelope } from './workflow-event-feed.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (
@@ -520,7 +523,7 @@ describe('Operation-catalog acceptance coverage', () => {
         admission: { kind: 'allow-unauthenticated-local-admin' },
         registry,
         engine,
-discoverDocument: createWeftDiscoverDocument(registry, engine),
+        discoverDocument: createWeftDiscoverDocument(registry, engine),
         feed,
       });
     } finally {
@@ -679,7 +682,12 @@ discoverDocument: createWeftDiscoverDocument(registry, engine),
     ] as const;
 
     for (const [fileName, criterionText] of fileExpectations) {
-      const content = await Bun.file(`${import.meta.dir}/${fileName}`).text();
+      // A test of the operation layer lives in `@lostgradient/backchannel`, beside what it tests.
+      const weftPath = `${import.meta.dir}/${fileName}`;
+      const path = (await Bun.file(weftPath).exists())
+        ? weftPath
+        : `${import.meta.dir}/../../../backchannel/src/${fileName}`;
+      const content = await Bun.file(path).text();
       expect(content).toContain(criterionText);
     }
   });

@@ -1,25 +1,26 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
-import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 
+import { runStdioSession } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
-import type {
-  BulkCancelResult,
-  BulkDeleteResult,
-  BulkOperationCommitOptions,
-  BulkOperationDryRunOptions,
-  BulkOperationDryRunResult,
-  BulkOperationOptions,
-  BulkRetryFailedResult,
-  BulkSignalResult,
-  BulkTagResult,
-  ListFilter,
-  WorkflowContext,
+import {
+  workflow,
+  type BulkCancelResult,
+  type BulkDeleteResult,
+  type BulkOperationCommitOptions,
+  type BulkOperationDryRunOptions,
+  type BulkOperationDryRunResult,
+  type BulkOperationOptions,
+  type BulkRetryFailedResult,
+  type BulkSignalResult,
+  type BulkTagResult,
+  type ListFilter,
+  type WorkflowContext,
 } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { serve, type WeftServer } from './index.ts';
 import {
@@ -29,7 +30,6 @@ import {
   type ParityInvariants,
 } from './operation-catalog-parity-invariants.test-support.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
-import { runStdioSession } from './stdio-session.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
@@ -256,7 +256,7 @@ async function invokeStdioJsonRpcEnvelope(
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
-discoverDocument: createWeftDiscoverDocument(registry, engine),
+      discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 

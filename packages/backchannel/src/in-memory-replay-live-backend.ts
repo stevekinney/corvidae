@@ -22,8 +22,8 @@
  * @module server/in-memory-replay-live-backend
  */
 
-import type { Cursor, SequencedEventEnvelope } from './sequence-cursor.ts';
 import type { ReplayLiveFeedBackend } from './replay-live-feed-types.ts';
+import type { Cursor, SequencedEventEnvelope } from './sequence-cursor.ts';
 
 const INCARNATION_PATTERN =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):(-1|\d+)$/i;

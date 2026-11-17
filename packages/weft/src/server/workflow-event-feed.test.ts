@@ -25,11 +25,15 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { describe, expect, it } from 'bun:test';
 
+import { decodeCursor, encodeCursor } from '@lostgradient/backchannel';
+import { ReplayWindowExceededError, compareCursor } from '@lostgradient/backchannel/internals';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
-import { ReplayWindowExceededError } from './replay-live-feed-internals.ts';
-import { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeedBackend } from './workflow-event-feed.ts';
-import { compareCursor, decodeCursor, encodeCursor } from './sequence-cursor.ts';
+import {
+  createWorkflowEventFeed,
+  type EventEnvelope,
+  type WorkflowEventFeedBackend,
+} from './workflow-event-feed.ts';
 
 function makeEnvelope(overrides: Partial<EventEnvelope> & { sequence: number }): EventEnvelope {
   // Spread overrides FIRST so the explicit `sequence` + derived

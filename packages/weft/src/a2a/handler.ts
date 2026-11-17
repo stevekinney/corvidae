@@ -30,8 +30,11 @@ import {
   type User,
 } from '@a2a-js/sdk/server';
 
-import { isOperationFault } from '../server/operation-fault-helpers.ts';
-import { DEFAULT_REST_MAX_BODY_BYTES, readRestTextBody } from '../server/rest-body.ts';
+import {
+  DEFAULT_REST_MAX_BODY_BYTES,
+  isOperationFault,
+  readRestTextBody,
+} from '@lostgradient/backchannel/internals';
 import {
   type A2AAgentCardInput,
   type A2ASigningOptions,

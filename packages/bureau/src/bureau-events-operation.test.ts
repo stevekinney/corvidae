@@ -1,5 +1,5 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createOperationHandler, principalFromApiKey } from '@lostgradient/weft';
+import { createOperationHandler, principalFromApiKey } from '@lostgradient/backchannel';
 import Ajv2020 from 'ajv/dist/2020.js';
 import {
   createAgentRunEventFeed,

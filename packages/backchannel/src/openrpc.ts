@@ -41,8 +41,7 @@ import {
   type DiscoveryInfo,
 } from './discovery-info.ts';
 import { asPlainObject, compareStrings } from './json-schema-utilities.ts';
-import { MCP_TOOLS_LIST_METHOD } from './mcp-discovery-names.ts';
-import { MCP_DISCOVERY_PATH } from './mcp-discovery-names.ts';
+import { MCP_DISCOVERY_PATH, MCP_TOOLS_LIST_METHOD } from './mcp-discovery-names.ts';
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
 import { buildOpenRpcComponentsErrors } from './openrpc-errors.ts';
 import type { ErasedOperation, OperationRegistry } from './operation-catalog.ts';

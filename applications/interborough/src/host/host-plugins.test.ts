@@ -1,5 +1,5 @@
+import type { WorkspaceIdentity } from '@lostgradient/backchannel';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { WorkspaceIdentity } from '@lostgradient/weft';
 import { createHash } from 'node:crypto';
 import { createHostMutationContext } from './host-mutation-context.ts';
 import { initializeWorkspaceHome } from './workspace-home.test-support.ts';

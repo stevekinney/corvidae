@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { isValidOperationName } from './operation-registry.ts';
+import { isValidOperationName } from '@lostgradient/backchannel';
 import { REST_BINDINGS, createLiveOperationRegistry } from './rest-bindings.ts';
 
 describe('REST_BINDINGS', () => {

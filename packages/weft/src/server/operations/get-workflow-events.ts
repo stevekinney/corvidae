@@ -1,10 +1,9 @@
 import { z } from 'zod';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { WorkflowEvent } from '../../core/types.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const getWorkflowEventsInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow whose recorded events are listed.'),

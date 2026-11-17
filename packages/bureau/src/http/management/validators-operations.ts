@@ -15,7 +15,7 @@
  * @module validators-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { Bureau } from '../../bureau-types/facade.ts';

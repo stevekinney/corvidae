@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import { type AuthorizationScope, principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { clearTaskDeadLetterOperation } from './clear-task-dead-letter.ts';
 import {
   createEngine,

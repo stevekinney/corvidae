@@ -8,10 +8,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { bindFeedLifetime } from './bind-feed-lifetime.ts';
-import { createReplayLiveFeed } from './workflow-event-feed.ts';
-import { encodeCursor, type SequencedEventEnvelope } from './sequence-cursor.ts';
-import { type ReplayLiveFeedBackend } from './replay-live-feed-types.ts';
+import {
+  bindFeedLifetime,
+  createReplayLiveFeed,
+  encodeCursor,
+  type ReplayLiveFeedBackend,
+  type SequencedEventEnvelope,
+} from '@lostgradient/backchannel';
 
 type GapAwareEnvelope = SequencedEventEnvelope & { readonly kind: 'event' | 'gap' };
 

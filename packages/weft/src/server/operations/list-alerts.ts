@@ -8,10 +8,10 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { ALERT_METRICS } from '../../alerting/types.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 const alertMetricSchema = z.enum(ALERT_METRICS);

@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import { resumeWorkflowOperation, resumeWorkflowRestBinding } from './resume-workflow.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (

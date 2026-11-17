@@ -5,14 +5,17 @@
  */
 
 import {
+  externalApiPath,
+  MCP_STREAMABLE_HTTP_PATH,
+  MCP_TOOLS_LIST_METHOD,
+} from '@lostgradient/backchannel/internals';
+import {
   MCP_LEGACY_PROTOCOL_VERSION,
   MCP_PROTOCOL_VERSION,
   MCP_RESOURCE_TEMPLATES_LIST_METHOD,
   MCP_RESOURCES_LIST_METHOD,
-  MCP_TOOLS_LIST_METHOD,
 } from '../mcp/protocol.ts';
 import { VERSION } from '../version.ts';
-import { externalApiPath, MCP_STREAMABLE_HTTP_PATH } from './route-model.ts';
 
 export {
   MCP_LEGACY_PROTOCOL_VERSION,

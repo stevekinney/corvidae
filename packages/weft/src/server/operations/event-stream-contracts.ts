@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
+import type { ParameterizedAccessHint } from '@lostgradient/backchannel/internals';
 import type { FleetEventEnvelope, FleetEventGapEnvelope } from '../fleet-event-feed.ts';
-import type { ParameterizedAccessHint } from '../operation-catalog/types.ts';
 import type { EventEnvelope } from '../workflow-event-feed.ts';
 
 const committedFleetEventEnvelopeSchema = z.object({

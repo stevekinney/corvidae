@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  invalidParamsFault,
+  isOperationFault,
+  readRestJsonBody,
+  type AccessPolicy,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
 import { AsyncActivityTokenNotFoundError, type Engine } from '../../core/engine.ts';
 import {
   DEFAULT_PENDING_ASYNC_ACTIVITY_LIMIT,
@@ -10,13 +18,8 @@ import {
 } from '../../core/engine/async-activity-records.ts';
 import { PayloadSizeExceededError } from '../../core/payload-size.ts';
 import type { PendingAsyncActivityPage } from '../../core/types.ts';
-import type { AccessPolicy } from '../authorization.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { readRestJsonBody } from '../rest-body.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
-import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
 
 /**
  * Async ("out-of-band") activity completion, exposed across every transport.

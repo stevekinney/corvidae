@@ -11,9 +11,9 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { EngineLeaseHealth } from '../../core/engine.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 const getSystemLeaseInput = z.object({});

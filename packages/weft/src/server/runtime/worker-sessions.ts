@@ -1,3 +1,4 @@
+import type { Principal } from '@lostgradient/backchannel';
 import {
   digestCanonicalWorkerManifest,
   parseWorkerManifest,
@@ -8,19 +9,18 @@ import {
   type RemoteWorkerCapabilities,
 } from '../../worker/protocol.ts';
 import type { ServeOptions } from '../index.ts';
-import type { Principal } from '../principal.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
 import {
   applyRecordedVersionState,
   recordDeploymentVersion,
 } from './deployment-version-registration.ts';
-import type { LongPollClaim } from './task-polling.ts';
 import {
   DEFAULT_POLL_TIMEOUT,
   handleTaskHeartbeatRequest,
   markTaskClaimedByLongPollWorker,
   MAX_POLL_TIMEOUT,
+  type LongPollClaim,
 } from './task-polling.ts';
 import {
   authorizeWorkerPrincipal,

@@ -6,7 +6,7 @@
  * `data.reason`, and the history is left as it was.
  */
 import { createAgent } from '@lostgradient/operative';
-import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauShuttingDownError } from '../../bureau-errors.ts';

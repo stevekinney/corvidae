@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'bun:test';
 
+import {
+  anonymousPrincipal,
+  principalFromApiKey,
+  type ReplayLiveSubscribeOptions,
+} from '@lostgradient/backchannel';
+import { createOperationRegistry, type EventSelector } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { workflow, type WorkflowContext } from '../../core/types.ts';
 import { handleRequest, type HandlerOptions } from '../handler.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
-import { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
-import { type EventSelector } from '../event-selector.ts';
-import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
+import {
+  createWorkflowEventFeed,
+  type EventEnvelope,
+  type WorkflowEventFeed,
+} from '../workflow-event-feed.ts';
 import { workflowEventsSseOperation, workflowEventsSseRestBinding } from './workflow-events-sse.ts';
 
 const registry = createOperationRegistry([workflowEventsSseOperation]);

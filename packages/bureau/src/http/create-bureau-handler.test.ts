@@ -8,7 +8,7 @@ import {
   AUTHORIZATION_SCOPES,
   type OperationHandlerMount,
   principalFromApiKey,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from '../assets/storage';

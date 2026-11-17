@@ -1,3 +1,9 @@
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import {
+  type UnknownRestBinding,
+  invalidParamsFault,
+  readRestTextBody,
+} from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
 import type {
   WorkerDeploymentCatalog,
@@ -6,11 +12,6 @@ import type {
   WorkerDeploymentRoutingWrite,
 } from '../../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
-import { type OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { readRestTextBody } from '../rest-body.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
@@ -165,8 +166,7 @@ async function moveToBuild(
     currentBuildId: input.buildId,
     rampBasisPoints: 10_000,
   });
-  // Without an `expectedGeneration` the move is conditional on the generation just read, which
-  // still refuses a pointer that moves between the read and the write.
+  // Without an `expectedGeneration` the move is conditional on the generation just read.
   const expectedGeneration =
     input.expectedGeneration ?? (await currentGenerationOf(catalog, input.deploymentName));
   const routing = await setRoutingOrThrow(catalog, { ...target, expectedGeneration });

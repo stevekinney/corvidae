@@ -1,14 +1,19 @@
+import { invalidParamsFault, type UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { bulkDeleteOutputSchema } from './bulk-output-schemas.ts';
-import { assertOperationEngineMethods, engineFailureFault, faultMessage, readOptionalJsonBody, unprocessableFault } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  engineFailureFault,
+  faultMessage,
+  readOptionalJsonBody,
+  unprocessableFault,
+} from './operation-helpers.ts';
 
+import { defineOperation } from '@lostgradient/backchannel';
 import {
   BulkDeleteRequiresTerminalWorkflowsError,
   BulkOperationConfirmationError,
 } from '../../core/engine.ts';
 import type { BulkDeleteResult, BulkOperationDryRunResult } from '../../core/types.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { parseBulkListFilterFromBody } from './bulk-filter-body.ts';
 import { bulkListFilterInputSchema, type BulkListFilterInput } from './bulk-filter-input.ts';
 import {

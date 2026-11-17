@@ -14,13 +14,11 @@
 
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import { type UnknownRestBinding, invalidParamsFault } from '@lostgradient/backchannel/internals';
 import type { WorkflowReplay } from '../../core/types.ts';
 import { negotiatedResponse } from '../handler/response-helpers.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
-import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 const replayWorkflowInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow to replay.'),

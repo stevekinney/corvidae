@@ -23,7 +23,7 @@ import {
   type InMemoryReplayLiveBackend,
   type ReplayLiveFeed,
   type SequencedEventEnvelope,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 import { eventSourceOf } from './event-source.ts';
 import { PluginPublishedEvent } from './plugin-published-event.ts';

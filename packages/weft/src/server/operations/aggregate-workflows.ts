@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import {
   AggregateDistinctKeyCapExceededError,
   AggregateOptionsValidationError,
@@ -13,9 +15,6 @@ import {
 import { WorkflowListScanCapExceededError } from '../../core/engine/workflow-indexes.ts';
 import { ListFilterValidationError } from '../../core/list-filter-validation-error.ts';
 import { listFilterObjectSchema, normalizeListFilter } from '../../core/list-filter-validation.ts';
-import { type OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { extractListFilterFromQuery } from './list-filter-query-extractor.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
 

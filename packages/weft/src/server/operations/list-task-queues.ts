@@ -22,12 +22,12 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { WorkerRegistry, WorkerSummary } from '../../worker/registry.ts';
-import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import type { SchedulingPolicy, TaskQueueSummary } from '../task-queue-types.ts';
 import type { TaskQueue } from '../task-queue.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 
 const listTaskQueuesInput = z.object({});
 

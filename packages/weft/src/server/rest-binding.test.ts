@@ -9,17 +9,17 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { faultToHttpResponse } from './fault-to-http.ts';
-import { defaultShapeSuccess } from './handler/response-helpers.ts';
-import { defineOperation } from './operation-registry.ts';
+import { defineOperation } from '@lostgradient/backchannel';
 import {
   bindingPathMatches,
+  faultToHttpResponse,
   isRestBindingCompatibleWithOperation,
   MalformedRouteParameterError,
   type ParamSource,
   type ResponseShape,
   type RestBinding,
-} from './rest-binding.ts';
+} from '@lostgradient/backchannel/internals';
+import { defaultShapeSuccess } from './handler/response-helpers.ts';
 
 // A minimal operation used as the lookup target for most binding tests.
 const startWorkflowOperation = defineOperation({

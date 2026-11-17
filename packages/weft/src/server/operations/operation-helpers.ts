@@ -1,10 +1,14 @@
+import type { OperationFault } from '@lostgradient/backchannel';
+import {
+  invalidParamsFault,
+  isOperationFault,
+  readRestTextBody,
+  type RestFaultResponseOptions,
+  type RestInputContext,
+} from '@lostgradient/backchannel/internals';
 import type { Storage } from '@lostgradient/storage';
 import { UndeclaredWorkflowMessageError, type Engine } from '../../core/engine.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
-import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
-import type { OperationFault, RestFaultResponseOptions } from '../operation-fault.ts';
-import type { RestInputContext } from '../rest-binding.ts';
-import { readRestTextBody } from '../rest-body.ts';
 import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 

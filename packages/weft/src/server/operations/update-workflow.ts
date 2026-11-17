@@ -1,17 +1,18 @@
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import {
+  type UnknownRestBinding,
+  isOperationFault,
+  readRestJsonBody,
+} from '@lostgradient/backchannel/internals';
 import {
   UpdateTimeoutError,
   UpdateValidationError,
   WorkflowTerminalError,
 } from '../../core/updates.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import { readRestJsonBody } from '../rest-body.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import { assertOperationEngineMethods, undeclaredMessageFault } from './operation-helpers.ts';
-import { isOperationFault } from '../operation-fault-helpers.ts';
 
 const DEFAULT_UPDATE_TIMEOUT_MS = 30_000;
 

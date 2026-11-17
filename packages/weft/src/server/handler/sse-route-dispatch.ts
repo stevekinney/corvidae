@@ -1,19 +1,23 @@
-import type { FleetEventFeed } from '../fleet-event-feed.ts';
-import type { OpenApiSecuritySchemeName } from '../openapi.ts';
+import {
+  principalFromStdioLocal,
+  type OperationFault,
+  type Principal,
+} from '@lostgradient/backchannel';
 import {
   executeOperation,
+  isAuthenticated,
+  type ConnectionLease,
+  type OpenApiSecuritySchemeName,
   type OperationRegistry,
   type PipelineTrace,
-} from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
+import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import { fleetEventsSseOperation } from '../operations/fleet-events-sse.ts';
 import {
   workflowEventsSseOperation,
   type WorkflowStreamConnectionAcquirer,
 } from '../operations/workflow-events-sse.ts';
-import { isAuthenticated, principalFromStdioLocal, type Principal } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
-import type { ConnectionLease } from '../connection-lease.ts';
 import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 

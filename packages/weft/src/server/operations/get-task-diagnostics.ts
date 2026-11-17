@@ -40,9 +40,9 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { WorkerRegistry } from '../../worker/registry.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 import { collectTaskDiagnostics } from './task-diagnostics-collector.ts';

@@ -15,22 +15,21 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { anonymousPrincipal, encodeCursor, principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  createJsonRpcWebSocketSession,
+  createOperationRegistry,
+  type JsonRpcWebSocketEmitter,
+} from '@lostgradient/backchannel/internals';
+import { makeOperation as makeOp } from '@lostgradient/backchannel/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
-import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
-import {
-  createJsonRpcWebSocketSession,
-  type JsonRpcWebSocketEmitter,
-} from './json-rpc-websocket.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
 import { fleetEventsSubscriptionOperation } from './operations/fleet-events-subscription.ts';
 import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
-import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
 import { createWorkflowEventFeed, type WorkflowEventFeed } from './workflow-event-feed.ts';
-import { encodeCursor } from './sequence-cursor.ts';
 
 const fakeEngine = {} as unknown;
 

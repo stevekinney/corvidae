@@ -5,6 +5,7 @@
  * @module server/weft-fault-policy
  */
 
+import type { FaultPolicy, OperationFault } from '@lostgradient/backchannel';
 import {
   WorkflowAlreadyExistsError,
   WorkflowNotFoundError,
@@ -12,8 +13,6 @@ import {
 } from '../core/engine/errors.ts';
 import { isWeftErrorCode } from '../core/weft-error.ts';
 import { resolveServerEnvironment } from '../runtime/environment-configuration.ts';
-import type { FaultPolicy } from './operation-catalog/types.ts';
-import type { OperationFault } from './operation-fault.ts';
 
 function classifyWeftError(error: unknown): OperationFault | undefined {
   if (error instanceof WorkflowAlreadyExistsError) {

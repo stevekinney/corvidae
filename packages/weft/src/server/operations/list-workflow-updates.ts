@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import {
   DEFAULT_UPDATE_HISTORY_LIMIT,
   isUpdateHistoryCursor,
   MAX_UPDATE_HISTORY_LIMIT,
   type UpdateHistoryPage,
 } from '../../core/update-history.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 /**

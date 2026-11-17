@@ -14,15 +14,14 @@ import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-ti
 
 import { describe, expect, it } from 'bun:test';
 
+import { encodeCursor } from '@lostgradient/backchannel';
 import { MemoryStorage, type ScanOptions } from '@lostgradient/storage';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
+import { workflow, type WorkflowContext } from '../core/types.ts';
 import { KEYS } from '../storage/keys.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createWorkflowEventFeed, type EventEnvelope } from './workflow-event-feed.ts';
-import { encodeCursor } from './sequence-cursor.ts';
 
 class ScanCountingMemoryStorage extends MemoryStorage {
   readonly scanPrefixes: string[] = [];

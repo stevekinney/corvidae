@@ -27,6 +27,8 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type {
   ConformanceTargetReport,
   ConformanceTargetRunner,
@@ -34,8 +36,6 @@ import type {
 } from '../../conformance/targets.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const conformanceTargetSummarySchema = z
   .object({

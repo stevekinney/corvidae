@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { WorkflowSuspendNotSupportedError } from '../../core/engine/errors.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import {
   createSingleWorkflowControlOperation,
   extractWorkflowIdFromPath,

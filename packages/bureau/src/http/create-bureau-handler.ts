@@ -32,24 +32,21 @@ import {
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
+import { encode, type Outbox, VERSION as WEFT_VERSION, weftFaultPolicy } from '@lostgradient/weft';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
   createOperationHandler,
   createOperationHandlerAuthenticator,
-  encode,
   getPrincipalOperation,
   type OperationHandler,
   type OperationHandlerMount,
   type OperationHandlerAuthenticate,
-  type Outbox,
   type AuthenticatedPrincipal,
   type Principal,
   unauthenticatedLocalAuthContext,
-  VERSION as WEFT_VERSION,
-  weftFaultPolicy,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -103,12 +100,14 @@ import type { BureauContexts } from '../bureau-types/contexts.ts';
 import type { BureauSchedules } from '../bureau-types/schedules.ts';
 import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
-import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
+import {
+  bureauReviewsOperations,
+  type BureauReviewsOperationHost,
+} from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
 import { createAssetsMount } from './assets-mount.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
-import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
 import { createReviewContinuation } from './review-continuation.ts';
 import {
   type BureauAgentModelsOperationHost,

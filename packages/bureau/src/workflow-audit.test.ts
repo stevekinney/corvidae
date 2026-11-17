@@ -4,7 +4,7 @@
  * and the calling principal for HTTP, an entry that changed nothing is not written, and the entry
  * belongs to the deployment's owner, so it is visible to the owner and hidden from anyone else.
  */
-import { principalFromApiKey, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { principalFromApiKey, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AUDIT_WORKFLOW_OWNER_PREFIX, auditTrailWorkflowOwnerId } from './audit-trail';

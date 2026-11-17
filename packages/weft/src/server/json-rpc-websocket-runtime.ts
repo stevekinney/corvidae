@@ -1,14 +1,15 @@
 import type { ServerWebSocket } from 'bun';
 
-import type { ConnectionLease } from './connection-lease.ts';
-import type { FleetEventFeed } from './fleet-event-feed.ts';
-import { workspaceEmitter, type JsonRpcSocketData } from './json-rpc-session-runtime.ts';
+import { anonymousPrincipal } from '@lostgradient/backchannel';
 import {
   createJsonRpcWebSocketSession,
+  workspaceEmitter,
+  type ConnectionLease,
+  type JsonRpcSocketData,
   type JsonRpcWebSocketSession,
-} from './json-rpc-websocket.ts';
-import type { OperationRegistry } from './operation-catalog.ts';
-import { anonymousPrincipal } from './principal.ts';
+  type OperationRegistry,
+} from '@lostgradient/backchannel/internals';
+import type { FleetEventFeed } from './fleet-event-feed.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
 import type { WorkflowEventFeed } from './workflow-event-feed.ts';
 

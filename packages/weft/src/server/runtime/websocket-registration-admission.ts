@@ -10,8 +10,8 @@
 
 import type { ServerWebSocket } from 'bun';
 
+import { isAuthenticated } from '@lostgradient/backchannel/internals';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
-import { isAuthenticated } from '../principal.ts';
 import type {
   WorkerAdmissionDecision,
   WorkerAdmissionPolicy,

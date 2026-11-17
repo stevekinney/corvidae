@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { UnknownRestBinding } from '../rest-binding.ts';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import {
   createSingleWorkflowControlOperation,
   extractWorkflowIdFromPath,

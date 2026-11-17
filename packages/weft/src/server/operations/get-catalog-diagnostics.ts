@@ -19,10 +19,10 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { Engine, getWorkflowRevisionDiagnostics } from '../../core/engine.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const workflowRevisionReferenceCountsSchema = z
   .object({

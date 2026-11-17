@@ -7,7 +7,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { FAULT_CODE_TO_FAILURE_CATEGORY } from '../core/fault-code.ts';
+import { FAULT_CODES } from './fault-code.ts';
 import {
   buildFaultEnvelopes,
   FAULT_ENVELOPE_GOLDEN_DIRECTORY,
@@ -16,7 +16,7 @@ import {
 } from './fault-envelope-golden.test-support.ts';
 import { assertGoldenDirectory, formatGoldenJson } from './golden-files.test-support.ts';
 
-const UPDATE_COMMAND = '(cd packages/weft && bun scripts/update-wire-golden.ts)';
+const UPDATE_COMMAND = '(cd packages/backchannel && bun scripts/update-wire-golden.ts)';
 
 async function expectedFiles() {
   return { 'fault-envelopes.json': formatGoldenJson(await buildFaultEnvelopes()) };
@@ -24,9 +24,7 @@ async function expectedFiles() {
 
 describe('Weft fault envelope golden', () => {
   it('has one literal fault for each of the fault codes, keyed by its own code', () => {
-    expect(Object.keys(GOLDEN_FAULTS).toSorted()).toEqual(
-      Object.keys(FAULT_CODE_TO_FAILURE_CATEGORY).toSorted(),
-    );
+    expect(Object.keys(GOLDEN_FAULTS).toSorted()).toEqual([...FAULT_CODES].toSorted());
     for (const [key, fault] of Object.entries(GOLDEN_FAULTS)) expect<string>(fault.code).toBe(key);
   });
 

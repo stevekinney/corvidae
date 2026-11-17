@@ -13,12 +13,10 @@
 
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import type { AccessPolicy, UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { WorkerRegistry } from '../../worker/registry.ts';
-import type { AccessPolicy } from '../authorization.ts';
-import { type OperationFault } from '../operation-fault.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-binding.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 const forgetWorkerInput = z.object({

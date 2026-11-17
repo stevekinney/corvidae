@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import type { OperationFault } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
@@ -15,7 +16,6 @@ import {
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import { testWorkerManifest } from '../../worker/registry-fixtures.test-support.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
-import type { OperationFault } from '../operation-fault.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import {
   createPreviewWorkerDeploymentRoutingOperation,

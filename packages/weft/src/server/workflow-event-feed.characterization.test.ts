@@ -18,9 +18,9 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { describe, expect, it } from 'bun:test';
 
+import { decodeCursor, encodeCursor } from '@lostgradient/backchannel';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { createWorkflowEventFeed, type EventEnvelope } from './workflow-event-feed.ts';
-import { decodeCursor, encodeCursor } from './sequence-cursor.ts';
 
 function makeEnvelope(overrides: Partial<EventEnvelope> & { sequence: number }): EventEnvelope {
   return {
