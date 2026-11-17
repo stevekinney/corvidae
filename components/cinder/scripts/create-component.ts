@@ -31,8 +31,9 @@
  *
  * This script does NOT regenerate schemas, the manifest, the package root
  * `src/index.ts` barrel, or `src/styles/components.css`. Run the component
- * artifact generator and hand-edit the barrel and CSS aggregator afterward,
- * exactly as the manual flow requires.
+ * artifact generator afterward: it writes all of them, the root barrel's
+ * component exports and the CSS aggregator's imports included, so neither is
+ * edited by hand.
  *
  * Usage:
  *   bun scripts/create-component.ts <name>
@@ -428,10 +429,9 @@ async function main(): Promise<void> {
     `  3. Complete ${context.name}.a11y.md with the required human review outcomes.\n`,
   );
   process.stdout.write(
-    `  4. Add 'export ... from ./components/${context.relativeDirectory}/index.ts' to src/index.ts.\n`,
+    '  4. Run: bun run --filter=@lostgradient/cinder components:generate (it also writes the src/index.ts exports and the src/styles/components.css import)\n',
   );
-  process.stdout.write('  5. Run: bun run --filter=@lostgradient/cinder components:generate\n');
-  process.stdout.write('  6. Verify: bun run --filter=@lostgradient/cinder components:check\n');
+  process.stdout.write('  5. Verify: bun run --filter=@lostgradient/cinder components:check\n');
 }
 
 if (import.meta.main) {

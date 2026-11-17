@@ -1,5 +1,9 @@
 import './styles/index.css';
 
+// `bun scripts/generate-component-artifacts.ts` writes the region below from every
+// `src/components/<name>/index.ts`, and its `--check` fails when the region is stale. Do not edit
+// the region by hand; its rules are in `scripts/generate-root-registries.ts`.
+// <generated:component-exports>
 export { default as AccessGate } from './components/access-gate/index.ts';
 export type {
   AccessGateLayout,
@@ -20,11 +24,11 @@ export type {
   ActionRowSelectedState,
 } from './components/action-row/index.ts';
 
-export { default as Alert } from './components/alert/index.ts';
-export type { AlertProps, AlertVariant } from './components/alert/index.ts';
-
 export { default as AlertDialog } from './components/alert-dialog/index.ts';
 export type { AlertDialogProps } from './components/alert-dialog/index.ts';
+
+export { default as Alert } from './components/alert/index.ts';
+export type { AlertProps, AlertVariant } from './components/alert/index.ts';
 
 export { default as AppBar } from './components/app-bar/index.ts';
 export type {
@@ -61,12 +65,22 @@ export type {
   AreaChartSchemaProps,
 } from './components/area-chart/index.ts';
 
+export { default as AspectRatio } from './components/aspect-ratio/index.ts';
+export type {
+  AspectRatioElement,
+  AspectRatioOverflow,
+  AspectRatioProps,
+} from './components/aspect-ratio/index.ts';
+
 export { default as AttemptsIndicator } from './components/attempts-indicator/index.ts';
 export type {
   AttemptsIndicatorLayout,
   AttemptsIndicatorProps,
   AttemptsIndicatorTone,
 } from './components/attempts-indicator/index.ts';
+
+export { default as AudioPlayer } from './components/audio-player/index.ts';
+export type { AudioPlayerProps } from './components/audio-player/index.ts';
 
 export { default as Autocomplete } from './components/autocomplete/index.ts';
 export type {
@@ -77,25 +91,18 @@ export type {
   AutocompleteSuggestionSourceContext,
 } from './components/autocomplete/index.ts';
 
-export { default as AspectRatio } from './components/aspect-ratio/index.ts';
-export type {
-  AspectRatioElement,
-  AspectRatioOverflow,
-  AspectRatioProps,
-} from './components/aspect-ratio/index.ts';
-
-export { default as AudioPlayer } from './components/audio-player/index.ts';
-export type { AudioPlayerProps } from './components/audio-player/index.ts';
-
-export { default as Avatar } from './components/avatar/index.ts';
-export type { AvatarProps, AvatarShape, AvatarSize } from './components/avatar/index.ts';
-
 export { default as AvatarGroup } from './components/avatar-group/index.ts';
 export type {
   AvatarGroupItem,
   AvatarGroupProps,
   AvatarGroupZOrder,
 } from './components/avatar-group/index.ts';
+
+export { default as Avatar } from './components/avatar/index.ts';
+export type { AvatarProps, AvatarShape, AvatarSize } from './components/avatar/index.ts';
+
+export { default as Backdrop } from './components/backdrop/index.ts';
+export type { BackdropProps } from './components/backdrop/index.ts';
 
 export { default as Badge } from './components/badge/index.ts';
 export type {
@@ -105,9 +112,6 @@ export type {
   BadgeSubscriptionState,
   BadgeVariant,
 } from './components/badge/index.ts';
-
-export { default as Backdrop } from './components/backdrop/index.ts';
-export type { BackdropProps } from './components/backdrop/index.ts';
 
 export {
   BANNER_BACK_ONLINE_COPY,
@@ -131,54 +135,28 @@ export type {
   BarChartProps,
   BarChartSchemaProps,
 } from './components/bar-chart/index.ts';
-export type {
-  AreaChartMode,
-  BarChartDatum,
-  BarChartMode,
-  BarChartOrientation,
-  BarChartPlacedBar,
-  BarChartSchemaDatum,
-  BarChartSchemaSeries,
-  BarChartSeries,
-  ChartAxisConfiguration,
-  ChartAxisSchemaConfiguration,
-  ChartCartesianSchemaSeries,
-  ChartCartesianSeries,
-  ChartDataTableVisibility,
-  ChartFormatterContext,
-  ChartGeometry,
-  ChartJsonValue,
-  ChartJsonXValue,
-  ChartLegendPosition,
-  ChartMarkContext,
-  ChartNumericValue,
-  ChartPoint,
-  ChartSchemaPoint,
-  ChartSharedProps,
-  ChartTarget,
-  ChartTheme,
-  ChartTickFormatter,
-  ChartValueFormatter,
-  ChartXAxisConfiguration,
-  ChartXValue,
-  NormalizedXValue,
-  PlacedPoint,
-} from './components/chart.types.ts';
 
 export { default as Breadcrumbs } from './components/breadcrumbs/index.ts';
 export type { BreadcrumbItem, BreadcrumbsProps } from './components/breadcrumbs/index.ts';
 
+export { default as ButtonGroup } from './components/button-group/index.ts';
+export type { ButtonGroupOrientation, ButtonGroupProps } from './components/button-group/index.ts';
+
 export { default as Button } from './components/button/index.ts';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './components/button/index.ts';
 
-export { default as ButtonGroup } from './components/button-group/index.ts';
-export type { ButtonGroupOrientation, ButtonGroupProps } from './components/button-group/index.ts';
+export { default as Calendar } from './components/calendar/index.ts';
+export type { CalendarProps } from './components/calendar/index.ts';
 
 export { default as Callout } from './components/callout/index.ts';
 export type { CalloutProps, CalloutSemantic, CalloutVariant } from './components/callout/index.ts';
 
-export { default as Calendar } from './components/calendar/index.ts';
-export type { CalendarProps } from './components/calendar/index.ts';
+export { default as CapabilityGate } from './components/capability-gate/index.ts';
+export type {
+  CapabilityGateProps,
+  CapabilityGateState,
+  CapabilityGateVariant,
+} from './components/capability-gate/index.ts';
 
 export { default as Card } from './components/card/index.ts';
 export type {
@@ -197,20 +175,14 @@ export type {
   CarouselProps,
   CarouselSlide,
   CarouselSlideContent,
+  CarouselSlideContext,
 } from './components/carousel/index.ts';
 
-export { default as ChoiceGrid } from './components/choice-grid/index.ts';
-export type {
-  ChoiceGridColumns,
-  ChoiceGridContext,
-  ChoiceGridItemState,
-  ChoiceGridProps,
-  ChoiceGridSize,
-  ChoiceGridVariant,
-} from './components/choice-grid/index.ts';
+export { default as CheckboxGroup } from './components/checkbox-group/index.ts';
+export type { CheckboxGroupProps } from './components/checkbox-group/index.ts';
 
-export { default as ChoiceGridItem } from './components/choice-grid-item/index.ts';
-export type { ChoiceGridItemProps } from './components/choice-grid-item/index.ts';
+export { default as Checkbox } from './components/checkbox/index.ts';
+export type { CheckboxProps } from './components/checkbox/index.ts';
 
 export { default as Chip } from './components/chip/index.ts';
 export type {
@@ -224,11 +196,28 @@ export type {
   ChipVariant,
 } from './components/chip/index.ts';
 
-export { default as Checkbox } from './components/checkbox/index.ts';
-export type { CheckboxProps } from './components/checkbox/index.ts';
+export { default as ChoiceGridItem } from './components/choice-grid-item/index.ts';
+export type {
+  ChoiceGridItemProps,
+  ChoiceGridItemState,
+} from './components/choice-grid-item/index.ts';
 
-export { default as CheckboxGroup } from './components/checkbox-group/index.ts';
-export type { CheckboxGroupProps } from './components/checkbox-group/index.ts';
+export { default as ChoiceGrid } from './components/choice-grid/index.ts';
+export type {
+  ChoiceGridColumns,
+  ChoiceGridContext,
+  ChoiceGridProps,
+  ChoiceGridSize,
+  ChoiceGridVariant,
+} from './components/choice-grid/index.ts';
+
+export { default as Citation, resolveCitationLink } from './components/citation/index.ts';
+export type {
+  CitationLabels,
+  CitationLink,
+  CitationProps,
+  CitationSource,
+} from './components/citation/index.ts';
 
 export { default as ClickAwayListener } from './components/click-away-listener/index.ts';
 export type { ClickAwayListenerProps } from './components/click-away-listener/index.ts';
@@ -239,6 +228,9 @@ export type {
   CodeBlockAnnotationTone,
   CodeBlockProps,
 } from './components/code-block/index.ts';
+
+export { default as CodeLocation } from './components/code-location/index.ts';
+export type { CodeLocationProps } from './components/code-location/index.ts';
 
 export { default as Collapsible } from './components/collapsible/index.ts';
 export type {
@@ -293,6 +285,7 @@ export type { ConfirmDialogProps } from './components/confirm-dialog/index.ts';
 export { default as ConnectionIndicator } from './components/connection-indicator/index.ts';
 export type {
   ConnectionIndicatorProps,
+  ConnectionIndicatorSchemaProps,
   ConnectionIndicatorStatus,
 } from './components/connection-indicator/index.ts';
 
@@ -303,49 +296,20 @@ export type {
   ContainerProps,
 } from './components/container/index.ts';
 
-export { default as ContextMenu } from './components/context-menu/index.ts';
-export type { ContextMenuProps } from './components/context-menu/index.ts';
-
 export { default as ContextMenuTrigger } from './components/context-menu-trigger/index.ts';
 export type { ContextMenuTriggerProps } from './components/context-menu-trigger/index.ts';
+
+export { default as ContextMenu } from './components/context-menu/index.ts';
+export type { ContextMenuProps } from './components/context-menu/index.ts';
 
 export { default as CopyButton } from './components/copy-button/index.ts';
 export type { CopyButtonProps } from './components/copy-button/index.ts';
 
-export { copyToClipboard } from './utilities/clipboard.ts';
-
 export {
-  formatCompactAge,
-  formatDate,
-  formatDateTime,
-  formatDayAndTime,
-  formatDayHeading,
-  formatRelativeTime,
-  formatScheduleTime,
-  formatTimeOfDay,
-  formatTimeZoneLabel,
-  formatTimestamp,
-} from './utilities/format-date.ts';
-export type {
-  DateFormatOptions,
-  DateInput,
-  DayHeadingOptions,
-  RelativeTimeFormatOptions,
-  TimeZoneLabelOptions,
-} from './utilities/format-date.ts';
-
-export { formatDuration } from './utilities/format-duration.ts';
-
-export {
-  THEME_CHANGING_ATTRIBUTE,
-  guardThemeTransitions,
-} from './utilities/theme-transition-guard.ts';
-export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
-
-export { default as DataList } from './components/data-list/index.ts';
-export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
-
-export { default as DataGrid } from './components/data-grid/index.ts';
+  default as DataGrid,
+  parseDelimitedText,
+  resolveDelimitedTextColumnKeys,
+} from './components/data-grid/index.ts';
 export type {
   DataGridCellContext,
   DataGridColumnDef,
@@ -354,16 +318,15 @@ export type {
   DataGridColumnSizing,
   DataGridDensity,
   DataGridProps,
-} from './components/data-grid/index.ts';
-export {
-  parseDelimitedText,
-  resolveDelimitedTextColumnKeys,
-} from './components/data-grid/parse-delimited-text.ts';
-export type {
+  DataGridSelectionMode,
+  DataGridSelectionModel,
   DelimitedTextRow,
   ParseDelimitedTextOptions,
   ParsedDelimitedText,
-} from './components/data-grid/parse-delimited-text.ts';
+} from './components/data-grid/index.ts';
+
+export { default as DataList } from './components/data-list/index.ts';
+export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 
 export { default as DataTable } from './components/data-table/index.ts';
 export type {
@@ -396,8 +359,13 @@ export type {
 
 export { default as DescriptionList } from './components/description-list/index.ts';
 export type {
+  DescriptionListDefinition,
+  DescriptionListFormattedValue,
+  DescriptionListIdentifier,
   DescriptionListItem,
   DescriptionListProps,
+  DescriptionListTags,
+  DescriptionListTimestamp,
   DescriptionListVariant,
 } from './components/description-list/index.ts';
 
@@ -417,6 +385,9 @@ export type {
   DockedActionBarVariant,
 } from './components/docked-action-bar/index.ts';
 
+export { default as DonutChart } from './components/donut-chart/index.ts';
+export type { DonutChartDatum, DonutChartProps } from './components/donut-chart/index.ts';
+
 export { default as Drawer } from './components/drawer/index.ts';
 export type {
   DrawerDetent,
@@ -425,12 +396,8 @@ export type {
   DrawerSize,
 } from './components/drawer/index.ts';
 
-export { default as Dropdown } from './components/dropdown/index.ts';
-export type {
-  DropdownContext,
-  DropdownPlacement,
-  DropdownProps,
-} from './components/dropdown/index.ts';
+export { default as DropdownGroup } from './components/dropdown-group/index.ts';
+export type { DropdownGroupProps } from './components/dropdown-group/index.ts';
 
 export { default as DropdownItem } from './components/dropdown-item/index.ts';
 export type {
@@ -439,9 +406,6 @@ export type {
   DropdownItemProps,
   DropdownItemVariant,
 } from './components/dropdown-item/index.ts';
-
-export { default as DropdownGroup } from './components/dropdown-group/index.ts';
-export type { DropdownGroupProps } from './components/dropdown-group/index.ts';
 
 export { default as DropdownLabel } from './components/dropdown-label/index.ts';
 export type { DropdownLabelProps } from './components/dropdown-label/index.ts';
@@ -454,6 +418,13 @@ export type { DropdownSeparatorProps } from './components/dropdown-separator/ind
 
 export { default as DropdownTrigger } from './components/dropdown-trigger/index.ts';
 export type { DropdownTriggerProps } from './components/dropdown-trigger/index.ts';
+
+export { default as Dropdown } from './components/dropdown/index.ts';
+export type {
+  DropdownContext,
+  DropdownPlacement,
+  DropdownProps,
+} from './components/dropdown/index.ts';
 
 export {
   DURATION_UNITS,
@@ -482,21 +453,6 @@ export type {
   ErrorStateVariant,
 } from './components/error-state/index.ts';
 
-export { default as FilterBar } from './components/filter-bar/index.ts';
-export type {
-  AppliedFilter,
-  ChoiceFacet,
-  CustomFacet,
-  FacetDefinition,
-  FacetOption,
-  FilterBarLayout,
-  FilterBarProps,
-  FilterSegment,
-  SelectFacet,
-  ToggleFacet,
-  ToggleFacetTone,
-} from './components/filter-bar/index.ts';
-
 export { default as FeedBoundary } from './components/feed-boundary/index.ts';
 export type { FeedBoundaryProps } from './components/feed-boundary/index.ts';
 
@@ -515,14 +471,6 @@ export type {
   FeedProps,
 } from './components/feed/index.ts';
 
-export { default as FloatingAction } from './components/floating-action/index.ts';
-export type {
-  FloatingActionProps,
-  FloatingActionShape,
-  FloatingActionSize,
-  FloatingActionVariant,
-} from './components/floating-action/index.ts';
-
 export { default as FileUpload } from './components/file-upload/index.ts';
 export type {
   FileUploadEntry,
@@ -534,13 +482,40 @@ export type {
   RejectedFile,
 } from './components/file-upload/index.ts';
 
+export { default as FilterBar } from './components/filter-bar/index.ts';
+export type {
+  AppliedFilter,
+  ChoiceFacet,
+  CustomFacet,
+  FacetDefinition,
+  FacetOption,
+  FilterBarLayout,
+  FilterBarProps,
+  FilterSegment,
+  SelectFacet,
+  ToggleFacet,
+  ToggleFacetTone,
+} from './components/filter-bar/index.ts';
+
+export { default as FindBar } from './components/find-bar/index.ts';
+export type { FindBarProps } from './components/find-bar/index.ts';
+
+export { default as FloatingAction } from './components/floating-action/index.ts';
+export type {
+  FloatingActionProps,
+  FloatingActionShape,
+  FloatingActionSize,
+  FloatingActionVariant,
+} from './components/floating-action/index.ts';
+
 export { default as FocusTrap, createFocusTrap } from './components/focus-trap/index.ts';
 export type { FocusTrapOptions, FocusTrapProps } from './components/focus-trap/index.ts';
 
+export { default as Footer } from './components/footer/index.ts';
+export type { FooterGroup, FooterLink, FooterProps } from './components/footer/index.ts';
+
 export { default as FormActions } from './components/form-actions/index.ts';
 export type { FormActionsProps } from './components/form-actions/index.ts';
-export { default as Form, focusFirstProblem } from './components/form/index.ts';
-export type { FormProps, FormSubmitContext } from './components/form/index.ts';
 
 export { default as FormField } from './components/form-field/index.ts';
 export type { FormFieldManaged, FormFieldProps } from './components/form-field/index.ts';
@@ -548,19 +523,20 @@ export type { FormFieldManaged, FormFieldProps } from './components/form-field/i
 export { default as FormSection } from './components/form-section/index.ts';
 export type { FormSectionHeadingLevel, FormSectionProps } from './components/form-section/index.ts';
 
-export type { FormFieldContext } from './_internal/form-field-context.ts';
-
-export { default as Footer } from './components/footer/index.ts';
-export type { FooterGroup, FooterLink, FooterProps } from './components/footer/index.ts';
-
-export { default as Grid } from './components/grid/index.ts';
-export type { GridColumns, GridProps } from './components/grid/index.ts';
+export { default as Form, focusFirstProblem } from './components/form/index.ts';
+export type { FormProps, FormSubmitContext } from './components/form/index.ts';
 
 export { default as GridItem } from './components/grid-item/index.ts';
 export type { GridItemProps } from './components/grid-item/index.ts';
 
-export { default as GroupedList } from './components/grouped-list/index.ts';
-export type { GroupedListProps } from './components/grouped-list/index.ts';
+export { default as GridListItem } from './components/grid-list-item/index.ts';
+export type { GridListItemProps } from './components/grid-list-item/index.ts';
+
+export { default as GridList } from './components/grid-list/index.ts';
+export type { GridListProps } from './components/grid-list/index.ts';
+
+export { default as Grid } from './components/grid/index.ts';
+export type { GridColumns, GridProps } from './components/grid/index.ts';
 
 export { default as GroupedListItem } from './components/grouped-list-item/index.ts';
 export type {
@@ -571,11 +547,16 @@ export type {
   GroupedListItemUrgency,
 } from './components/grouped-list-item/index.ts';
 
-export { default as GridList } from './components/grid-list/index.ts';
-export type { GridListProps } from './components/grid-list/index.ts';
+export { default as GroupedList } from './components/grouped-list/index.ts';
+export type { GroupedListProps } from './components/grouped-list/index.ts';
 
-export { default as GridListItem } from './components/grid-list-item/index.ts';
-export type { GridListItemProps } from './components/grid-list-item/index.ts';
+export { default as GuidanceRegion, useGuidance } from './components/guidance-region/index.ts';
+export type {
+  GuidanceApi,
+  GuidanceClaim,
+  GuidanceRegionProps,
+  GuidanceStorage,
+} from './components/guidance-region/index.ts';
 
 export { default as HoverCard } from './components/hover-card/index.ts';
 export type { HoverCardPlacement, HoverCardProps } from './components/hover-card/index.ts';
@@ -583,11 +564,14 @@ export type { HoverCardPlacement, HoverCardProps } from './components/hover-card
 export { default as Image } from './components/image/index.ts';
 export type { ImageFit, ImageProps, ImageSize } from './components/image/index.ts';
 
+export { default as InlineConfirm } from './components/inline-confirm/index.ts';
+export type { InlineConfirmProps } from './components/inline-confirm/index.ts';
+
+export { default as InlineLoading } from './components/inline-loading/index.ts';
+export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
+
 export { default as Input } from './components/input/index.ts';
 export type { InputProps, InputType, InputVariant } from './components/input/index.ts';
-
-export { default as Inspector } from './components/inspector/index.ts';
-export type { InspectorProps } from './components/inspector/index.ts';
 
 export { default as InspectorRow } from './components/inspector-row/index.ts';
 export type {
@@ -598,8 +582,24 @@ export type {
   InspectorRowValue,
 } from './components/inspector-row/index.ts';
 
-export { default as InlineLoading } from './components/inline-loading/index.ts';
-export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
+export { default as Inspector } from './components/inspector/index.ts';
+export type { InspectorProps } from './components/inspector/index.ts';
+
+export { default as InvocationRuleBuilder } from './components/invocation-rule-builder/index.ts';
+export type {
+  InvocationRule,
+  InvocationRuleAction,
+  InvocationRuleBuilderMode,
+  InvocationRuleBuilderProps,
+  InvocationRuleBuilderSchemaProps,
+  InvocationRuleChange,
+  InvocationRuleCondition,
+  InvocationRuleConditionChange,
+  InvocationRuleConditionsOnlyOperator,
+  InvocationRuleFieldType,
+  InvocationRuleOption,
+  InvocationRuleValueChoice,
+} from './components/invocation-rule-builder/index.ts';
 
 export { default as JsonEditor } from './components/json-editor/index.ts';
 export type {
@@ -624,30 +624,8 @@ export type {
   JsonSchemaValue,
 } from './components/json-schema-editor/index.ts';
 
-export { default as InvocationRuleBuilder } from './components/invocation-rule-builder/index.ts';
-export type {
-  InvocationRule,
-  InvocationRuleAction,
-  InvocationRuleBuilderMode,
-  InvocationRuleBuilderProps,
-  InvocationRuleChange,
-  InvocationRuleCondition,
-  InvocationRuleConditionChange,
-  InvocationRuleConditionsOnlyOperator,
-  InvocationRuleFieldType,
-  InvocationRuleOption,
-  InvocationRuleValueChoice,
-} from './components/invocation-rule-builder/index.ts';
-
 export { default as JsonViewer } from './components/json-viewer/index.ts';
 export type { JsonViewerProps } from './components/json-viewer/index.ts';
-
-export { default as CapabilityGate } from './components/capability-gate/index.ts';
-export type {
-  CapabilityGateProps,
-  CapabilityGateState,
-  CapabilityGateVariant,
-} from './components/capability-gate/index.ts';
 
 export { default as KanbanBoard } from './components/kanban-board/index.ts';
 export type {
@@ -661,20 +639,14 @@ export type {
   KanbanBoardProps,
 } from './components/kanban-board/index.ts';
 
+export { default as Kbd } from './components/kbd/index.ts';
+export type { KbdProps, KbdSize } from './components/kbd/index.ts';
+
 export { default as KeyFacts } from './components/key-facts/index.ts';
 export type { KeyFact, KeyFactsProps } from './components/key-facts/index.ts';
 
-export { default as WeekSchedule } from './components/week-schedule/index.ts';
-export type { WeekScheduleDay, WeekScheduleProps } from './components/week-schedule/index.ts';
-
-export { default as MapMarker } from './components/map-marker/index.ts';
-export type { MapMarkerProps, MapMarkerState } from './components/map-marker/index.ts';
-
-export { default as MapLegend } from './components/map-legend/index.ts';
-export type { MapLegendItem, MapLegendProps } from './components/map-legend/index.ts';
-
-export { default as Kbd } from './components/kbd/index.ts';
-export type { KbdProps } from './components/kbd/index.ts';
+export { default as KeyValueEditor } from './components/key-value-editor/index.ts';
+export type { KeyValueEditorProps, KeyValueEntry } from './components/key-value-editor/index.ts';
 
 export { default as KeyboardShortcuts } from './components/keyboard-shortcuts/index.ts';
 export type {
@@ -686,9 +658,6 @@ export type {
 export { default as Label } from './components/label/index.ts';
 export type { LabelProps } from './components/label/index.ts';
 
-export { default as Link } from './components/link/index.ts';
-export type { LinkColor, LinkProps, LinkUnderline, LinkVariant } from './components/link/index.ts';
-
 export { default as LineChart } from './components/line-chart/index.ts';
 export type {
   ChartDataTableVisibility as LineChartDataTableVisibility,
@@ -696,8 +665,8 @@ export type {
   LineChartSchemaProps,
 } from './components/line-chart/index.ts';
 
-export { default as LocaleProvider } from './components/locale-provider/index.ts';
-export type { LocaleProviderProps, TextDirection } from './components/locale-provider/index.ts';
+export { default as Link } from './components/link/index.ts';
+export type { LinkColor, LinkProps, LinkUnderline, LinkVariant } from './components/link/index.ts';
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
@@ -713,8 +682,28 @@ export type {
 export { default as LoadMore } from './components/load-more/index.ts';
 export type { LoadMoreProps, LoadMoreVariant } from './components/load-more/index.ts';
 
+export { default as LocaleProvider } from './components/locale-provider/index.ts';
+export type { LocaleProviderProps, TextDirection } from './components/locale-provider/index.ts';
+
+export { default as MapLegend } from './components/map-legend/index.ts';
+export type { MapLegendItem, MapLegendProps } from './components/map-legend/index.ts';
+
+export { default as MapMarker } from './components/map-marker/index.ts';
+export type { MapMarkerProps, MapMarkerState } from './components/map-marker/index.ts';
+
 export { default as Marquee } from './components/marquee/index.ts';
 export type { MarqueeDirection, MarqueeProps } from './components/marquee/index.ts';
+
+export { default as Masonry } from './components/masonry/index.ts';
+export type { MasonryProps } from './components/masonry/index.ts';
+
+export { default as MatrixChart } from './components/matrix-chart/index.ts';
+export type {
+  ChartDataTableVisibility as MatrixChartDataTableVisibility,
+  MatrixChartProps,
+  MatrixChartSchemaProps,
+  MatrixColorScale,
+} from './components/matrix-chart/index.ts';
 
 export { default as MegaMenu } from './components/mega-menu/index.ts';
 export type {
@@ -751,16 +740,13 @@ export type {
   MeterVerdictLevel,
 } from './components/meter/index.ts';
 
-export { default as MatrixChart } from './components/matrix-chart/index.ts';
+export { default as ModalRegion, useModal } from './components/modal-region/index.ts';
 export type {
-  ChartDataTableVisibility as MatrixChartDataTableVisibility,
-  MatrixChartProps,
-  MatrixChartSchemaProps,
-} from './components/matrix-chart/index.ts';
-export type { MatrixColorScale } from './components/matrix-chart/matrix-chart.types.ts';
-
-export { default as Masonry } from './components/masonry/index.ts';
-export type { MasonryProps } from './components/masonry/index.ts';
+  ModalApi,
+  ModalContentControls,
+  ModalRegionProps,
+  OpenModalOptions,
+} from './components/modal-region/index.ts';
 
 export { default as Modal } from './components/modal/index.ts';
 export type { ModalProps } from './components/modal/index.ts';
@@ -783,21 +769,12 @@ export type {
   NavigationBarToggleAttributes,
   NavigationVariant,
 } from './components/navigation-bar/index.ts';
-export {
-  default as Portal,
-  createPortalAttachment,
-  invalidatePortalDirection,
-} from './components/portal/index.ts';
-export type { PortalAttachmentOptions, PortalProps } from './components/portal/index.ts';
 
 export { default as NavigationItem } from './components/navigation-item/index.ts';
 export type { NavigationItemProps } from './components/navigation-item/index.ts';
 
 export { default as NumberInput } from './components/number-input/index.ts';
 export type { NumberInputProps } from './components/number-input/index.ts';
-
-export { default as Pagination } from './components/pagination/index.ts';
-export type { PaginationProps } from './components/pagination/index.ts';
 
 export { default as PageHeader } from './components/page-header/index.ts';
 export type {
@@ -808,6 +785,15 @@ export type {
   PageHeaderVariant,
 } from './components/page-header/index.ts';
 
+export { default as Pagination } from './components/pagination/index.ts';
+export type { PaginationProps } from './components/pagination/index.ts';
+
+export { default as ParameterField } from './components/parameter-field/index.ts';
+export type {
+  ParameterFieldEditorState,
+  ParameterFieldProps,
+} from './components/parameter-field/index.ts';
+
 export {
   default as PayloadInspector,
   readSecretPaths,
@@ -815,6 +801,8 @@ export {
 export type {
   PayloadInspectorField,
   PayloadInspectorProps,
+  PayloadInspectorSchemaProps,
+  PayloadInspectorSchemaValue,
   PayloadInspectorView,
 } from './components/payload-inspector/index.ts';
 
@@ -851,17 +839,19 @@ export type {
   PopoverWidthMode,
 } from './components/popover/index.ts';
 
-export { default as PricingCard } from './components/pricing-card/index.ts';
-export type { PricingCardProps } from './components/pricing-card/index.ts';
+export {
+  default as Portal,
+  createPortalAttachment,
+  invalidatePortalDirection,
+  isRedispatchedPortaledEvent,
+} from './components/portal/index.ts';
+export type { PortalAttachmentOptions, PortalProps } from './components/portal/index.ts';
 
 export { default as PreviewPanel } from './components/preview-panel/index.ts';
 export type { PreviewPanelProps, PreviewPanelStatus } from './components/preview-panel/index.ts';
 
-export { default as ParameterField } from './components/parameter-field/index.ts';
-export type {
-  ParameterFieldEditorState,
-  ParameterFieldProps,
-} from './components/parameter-field/index.ts';
+export { default as PricingCard } from './components/pricing-card/index.ts';
+export type { PricingCardProps } from './components/pricing-card/index.ts';
 
 export { default as Progress } from './components/progress/index.ts';
 export type { ProgressProps, ProgressSize, ProgressVariant } from './components/progress/index.ts';
@@ -869,9 +859,10 @@ export type { ProgressProps, ProgressSize, ProgressVariant } from './components/
 export { default as QrCode } from './components/qr-code/index.ts';
 export type { QrCodeErrorCorrectionLevel, QrCodeProps } from './components/qr-code/index.ts';
 
+export { default as QuotaMeter } from './components/quota-meter/index.ts';
+export type { QuotaMeterProps } from './components/quota-meter/index.ts';
+
 export { default as RadioGroup } from './components/radio-group/index.ts';
-// RadioProps is re-exported here (from radio-group) so root-barrel consumers keep
-// access to the type after the standalone Radio/cinder/radio subpath was removed.
 export type {
   RadioGroupContext,
   RadioGroupProps,
@@ -881,21 +872,8 @@ export type {
 export { default as Rating } from './components/rating/index.ts';
 export type { RatingPrecision, RatingProps } from './components/rating/index.ts';
 
-export { default as RunStepTimeline } from './components/run-step-timeline/index.ts';
-export type {
-  RunStep,
-  RunStepBranchGroup,
-  RunStepBranchLane,
-  RunStepBranchLaneOutcome,
-  RunStepDetail,
-  RunStepLink,
-  RunStepNote,
-  RunStepStatus,
-  RunStepTimelineEntry,
-  RunStepTimelineFold,
-  RunStepTimelineProps,
-  RunStepTimelineVariant,
-} from './components/run-step-timeline/index.ts';
+export { default as RelativeTime } from './components/relative-time/index.ts';
+export type { RelativeTimeProps } from './components/relative-time/index.ts';
 
 export { default as ResizablePanels } from './components/resizable-panels/index.ts';
 export type {
@@ -918,12 +896,38 @@ export {
 } from './components/restart-state/index.ts';
 export type { RestartStatePhase, RestartStateProps } from './components/restart-state/index.ts';
 
+export { default as RunStepTimeline } from './components/run-step-timeline/index.ts';
+export type {
+  RunStep,
+  RunStepBranchGroup,
+  RunStepBranchLane,
+  RunStepBranchLaneOutcome,
+  RunStepDetail,
+  RunStepLink,
+  RunStepNote,
+  RunStepStatus,
+  RunStepTimelineEntry,
+  RunStepTimelineFold,
+  RunStepTimelineProps,
+  RunStepTimelineSchemaBranchGroup,
+  RunStepTimelineSchemaBranchLane,
+  RunStepTimelineSchemaChildStep,
+  RunStepTimelineSchemaEntry,
+  RunStepTimelineSchemaGrandchildStep,
+  RunStepTimelineSchemaGreatGrandchildStep,
+  RunStepTimelineSchemaLaneStep,
+  RunStepTimelineSchemaProps,
+  RunStepTimelineSchemaStep,
+  RunStepTimelineVariant,
+} from './components/run-step-timeline/index.ts';
+
 export {
   default as ScheduleBuilder,
   describeScheduleFields,
 } from './components/schedule-builder/index.ts';
 export type {
   ScheduleBuilderProps,
+  ScheduleBuilderSchemaProps,
   ScheduleBuilderVariant,
   ScheduleFieldSummary,
   ScheduleFire,
@@ -931,6 +935,7 @@ export type {
   SchedulePolicyOption,
   ScheduleRepeats,
   ScheduleValue,
+  ScheduleValueSchema,
 } from './components/schedule-builder/index.ts';
 
 export {
@@ -959,20 +964,21 @@ export type {
   ScrollAreaElement,
   ScrollAreaProps,
 } from './components/scroll-area/index.ts';
+
 export { default as SearchField } from './components/search-field/index.ts';
 export type { SearchFieldProps } from './components/search-field/index.ts';
 
 export { default as SecretValueField } from './components/secret-value-field/index.ts';
 export type { SecretValueFieldProps } from './components/secret-value-field/index.ts';
 
-export { default as Section } from './components/section/index.ts';
-export type { SectionLevel, SectionProps } from './components/section/index.ts';
-
 export { default as SectionHeading } from './components/section-heading/index.ts';
 export type {
   SectionHeadingLevel,
   SectionHeadingProps,
 } from './components/section-heading/index.ts';
+
+export { default as Section } from './components/section/index.ts';
+export type { SectionLevel, SectionProps } from './components/section/index.ts';
 
 export { default as Segment } from './components/segment/index.ts';
 export type { SegmentCurrentToken, SegmentProps } from './components/segment/index.ts';
@@ -1011,14 +1017,11 @@ export type { SettingRowProps, SettingRowStatus } from './components/setting-row
 export { default as ShareCard } from './components/share-card/index.ts';
 export type { ShareCardAction, ShareCardProps } from './components/share-card/index.ts';
 
-export { default as ShortcutHint } from './components/shortcut-hint/index.ts';
-export type { ShortcutHintProps } from './components/shortcut-hint/index.ts';
-
 export { default as ShortcutField } from './components/shortcut-field/index.ts';
 export type { ShortcutFieldProps } from './components/shortcut-field/index.ts';
 
-export { default as SideNavigation } from './components/side-navigation/index.ts';
-export type { SideNavigationProps } from './components/side-navigation/index.ts';
+export { default as ShortcutHint } from './components/shortcut-hint/index.ts';
+export type { ShortcutHintProps } from './components/shortcut-hint/index.ts';
 
 export { default as SideNavigationGroup } from './components/side-navigation-group/index.ts';
 export type { SideNavigationGroupProps } from './components/side-navigation-group/index.ts';
@@ -1026,20 +1029,15 @@ export type { SideNavigationGroupProps } from './components/side-navigation-grou
 export { default as SideNavigationItem } from './components/side-navigation-item/index.ts';
 export type { SideNavigationItemProps } from './components/side-navigation-item/index.ts';
 
+export { default as SideNavigation } from './components/side-navigation/index.ts';
+export type { SideNavigationProps } from './components/side-navigation/index.ts';
+
 export {
   SIDEBAR_MOBILE_BREAKPOINT,
   SIDEBAR_MOBILE_MEDIA_QUERY,
   default as Sidebar,
 } from './components/sidebar/index.ts';
 export type { SidebarProps } from './components/sidebar/index.ts';
-
-export { default as SortableList } from './components/sortable-list/index.ts';
-export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
-export type {
-  SortableAnnouncements,
-  SortableItemContext,
-  SortableReorderChange,
-} from './utilities/sortable-controller.types.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
 export type {
@@ -1052,7 +1050,16 @@ export { default as SkipLink } from './components/skip-link/index.ts';
 export type { SkipLinkProps, SkipLinkSchemaProps } from './components/skip-link/index.ts';
 
 export { default as Slider } from './components/slider/index.ts';
-export type { SliderMode, SliderProps, SliderValue } from './components/slider/index.ts';
+export type {
+  SliderMode,
+  SliderProps,
+  SliderRangeProps,
+  SliderSingleProps,
+  SliderValue,
+} from './components/slider/index.ts';
+
+export { default as SortableList } from './components/sortable-list/index.ts';
+export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
 
 export {
   default as SourceDiffViewer,
@@ -1079,29 +1086,14 @@ export type {
   SourceDiffViewerVariant,
 } from './components/source-diff-viewer/index.ts';
 
-export { default as StackedListItem } from './components/stacked-list-item/index.ts';
-
+export { default as Sparkbar } from './components/sparkbar/index.ts';
 export type {
-  StackedListItemAction,
-  StackedListItemDensity,
-  StackedListItemGroupLayout,
-  StackedListItemLeadingTone,
-  StackedListItemPhoneActions,
-  StackedListItemProps,
-  StackedListItemStatusPlacement,
-  StackedListItemTitleLines,
-  StackedListItemTone,
-} from './components/stacked-list-item/index.ts';
-export { default as StaleRegion } from './components/stale-region/index.ts';
-export type { StaleRegionProps } from './components/stale-region/index.ts';
-
-export { default as Stack } from './components/stack/index.ts';
-export type {
-  StackAlign,
-  StackDirection,
-  StackJustify,
-  StackProps,
-} from './components/stack/index.ts';
+  SparkbarBarProps,
+  SparkbarLineProps,
+  SparkbarProps,
+  SparkbarSize,
+  SparkbarVariant,
+} from './components/sparkbar/index.ts';
 
 export { default as Spectrogram } from './components/spectrogram/index.ts';
 export type {
@@ -1119,49 +1111,49 @@ export type {
   SpectrumChartSchemaProps,
 } from './components/spectrum-chart/index.ts';
 
-export { default as Spinner } from './components/spinner/index.ts';
-export type { SpinnerProps, SpinnerSize, SpinnerVariant } from './components/spinner/index.ts';
-
-export { default as Spotlight } from './components/spotlight/index.ts';
-export type { SpotlightProps } from './components/spotlight/index.ts';
-
-export { default as SpeedDial } from './components/speed-dial/index.ts';
-export type {
-  SpeedDialContext,
-  SpeedDialDirection,
-  SpeedDialProps,
-} from './components/speed-dial/index.ts';
-
 export { default as SpeedDialAction } from './components/speed-dial-action/index.ts';
 export type {
   SpeedDialActionLabelPlacement,
   SpeedDialActionProps,
 } from './components/speed-dial-action/index.ts';
 
-export { default as Sparkbar } from './components/sparkbar/index.ts';
+export { default as SpeedDial } from './components/speed-dial/index.ts';
 export type {
-  SparkbarBarProps,
-  SparkbarLineProps,
-  SparkbarProps,
-  SparkbarSize,
-  SparkbarVariant,
-} from './components/sparkbar/index.ts';
+  SpeedDialContext,
+  SpeedDialDirection,
+  SpeedDialProps,
+  SpeedDialSchemaProps,
+} from './components/speed-dial/index.ts';
 
-export { default as Steps } from './components/steps/index.ts';
-export type {
-  StepItem,
-  StepItemState,
-  StepsOrientation,
-  StepsProps,
-  StepsVariant,
-} from './components/steps/index.ts';
+export { default as Spinner } from './components/spinner/index.ts';
+export type { SpinnerProps, SpinnerSize, SpinnerVariant } from './components/spinner/index.ts';
 
-export { default as Statistic } from './components/statistic/index.ts';
+export { default as Spotlight } from './components/spotlight/index.ts';
+export type { SpotlightProps } from './components/spotlight/index.ts';
+
+export { default as Stack } from './components/stack/index.ts';
 export type {
-  StatisticChange,
-  StatisticChangeDirection,
-  StatisticProps,
-} from './components/statistic/index.ts';
+  StackAlign,
+  StackDirection,
+  StackJustify,
+  StackProps,
+} from './components/stack/index.ts';
+
+export { default as StackedListItem } from './components/stacked-list-item/index.ts';
+export type {
+  StackedListItemAction,
+  StackedListItemDensity,
+  StackedListItemGroupLayout,
+  StackedListItemLeadingTone,
+  StackedListItemPhoneActions,
+  StackedListItemProps,
+  StackedListItemStatusPlacement,
+  StackedListItemTitleLines,
+  StackedListItemTone,
+} from './components/stacked-list-item/index.ts';
+
+export { default as StaleRegion } from './components/stale-region/index.ts';
+export type { StaleRegionProps } from './components/stale-region/index.ts';
 
 export { default as StatisticGroup } from './components/statistic-group/index.ts';
 export type {
@@ -1170,6 +1162,13 @@ export type {
   StatisticGroupProps,
   StatisticGroupVariant,
 } from './components/statistic-group/index.ts';
+
+export { default as Statistic } from './components/statistic/index.ts';
+export type {
+  StatisticChange,
+  StatisticChangeDirection,
+  StatisticProps,
+} from './components/statistic/index.ts';
 
 export {
   default as StatusDot,
@@ -1186,17 +1185,47 @@ export type {
   StatusDotWordTone,
 } from './components/status-dot/index.ts';
 
+export { default as Steps } from './components/steps/index.ts';
+export type {
+  StepItem,
+  StepItemState,
+  StepsOrientation,
+  StepsProps,
+  StepsVariant,
+} from './components/steps/index.ts';
+
 export { default as Surface } from './components/surface/index.ts';
 export type { SurfaceProps, SurfaceTone } from './components/surface/index.ts';
-
-export { default as Tab } from './components/tab/index.ts';
-export type { TabProps } from './components/tab/index.ts';
 
 export { default as TabList } from './components/tab-list/index.ts';
 export type { TabListProps } from './components/tab-list/index.ts';
 
 export { default as TabPanel } from './components/tab-panel/index.ts';
 export type { TabPanelProps } from './components/tab-panel/index.ts';
+
+export { default as Tab } from './components/tab/index.ts';
+export type { TabProps } from './components/tab/index.ts';
+
+export { default as TableBody } from './components/table-body/index.ts';
+export type { TableBodyProps } from './components/table-body/index.ts';
+
+export { default as TableCell } from './components/table-cell/index.ts';
+export type { TableCellProps } from './components/table-cell/index.ts';
+
+export { default as TableHeaderCell } from './components/table-header-cell/index.ts';
+export type { TableHeaderCellProps } from './components/table-header-cell/index.ts';
+
+export { default as TableHeader } from './components/table-header/index.ts';
+export type { TableHeaderProps } from './components/table-header/index.ts';
+
+export { default as TableOfContents } from './components/table-of-contents/index.ts';
+export type {
+  TableOfContentsItem,
+  TableOfContentsProps,
+} from './components/table-of-contents/index.ts';
+
+export { default as TableRow } from './components/table-row/index.ts';
+export type { TableRowProps, TableRowSelectionProps } from './components/table-row/index.ts';
 
 export { default as Table } from './components/table/index.ts';
 export type {
@@ -1209,32 +1238,29 @@ export type {
   TableSort,
 } from './components/table/index.ts';
 
-export { default as TableBody } from './components/table-body/index.ts';
-export type { TableBodyProps } from './components/table-body/index.ts';
-
-export { default as TableCell } from './components/table-cell/index.ts';
-export type { TableCellProps } from './components/table-cell/index.ts';
+export { default as Tabs } from './components/tabs/index.ts';
+export type { TabsContext, TabsOrientation, TabsProps } from './components/tabs/index.ts';
 
 export { default as TagInput } from './components/tag-input/index.ts';
 export type { TagInputProps } from './components/tag-input/index.ts';
 
-export { default as TableHeader } from './components/table-header/index.ts';
-export type { TableHeaderProps } from './components/table-header/index.ts';
-
-export { default as TableHeaderCell } from './components/table-header-cell/index.ts';
-export type { TableHeaderCellProps } from './components/table-header-cell/index.ts';
-
-export { default as TableRow } from './components/table-row/index.ts';
-export type { TableRowProps, TableRowSelectionProps } from './components/table-row/index.ts';
-
-export { default as TableOfContents } from './components/table-of-contents/index.ts';
+export { default as TerminalFrame } from './components/terminal-frame/index.ts';
 export type {
-  TableOfContentsItem,
-  TableOfContentsProps,
-} from './components/table-of-contents/index.ts';
+  TerminalFrameDimensions,
+  TerminalFrameProps,
+  TerminalFrameStatus,
+} from './components/terminal-frame/index.ts';
 
-export { default as Tabs } from './components/tabs/index.ts';
-export type { TabsContext, TabsOrientation, TabsProps } from './components/tabs/index.ts';
+export {
+  default as TerminalOutput,
+  parseTerminalOutput,
+} from './components/terminal-output/index.ts';
+export type {
+  TerminalForeground,
+  TerminalLine,
+  TerminalOutputProps,
+  TerminalTextRun,
+} from './components/terminal-output/index.ts';
 
 export { default as Text } from './components/text/index.ts';
 export type { TextElement, TextProps, TextVariant } from './components/text/index.ts';
@@ -1242,12 +1268,28 @@ export type { TextElement, TextProps, TextVariant } from './components/text/inde
 export { default as Textarea } from './components/textarea/index.ts';
 export type { TextareaProps, TextareaVariant } from './components/textarea/index.ts';
 
+export { default as ThemeSwitch } from './components/theme-switch/index.ts';
+export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-switch/index.ts';
+
 export { default as TimeField } from './components/time-field/index.ts';
 export type {
   TimeFieldChange,
   TimeFieldGranularity,
   TimeFieldProps,
 } from './components/time-field/index.ts';
+
+export { default as Timeline } from './components/timeline/index.ts';
+export type {
+  TimelineEntry,
+  TimelineEntryKind,
+  TimelineGroupBy,
+  TimelineHeadingLevel,
+  TimelineOrientation,
+  TimelineProps,
+  TimelineTone,
+  TimelineVariant,
+  TimelineWeekStartsOn,
+} from './components/timeline/index.ts';
 
 export { default as ToastRegion } from './components/toast-region/index.ts';
 export type {
@@ -1258,19 +1300,6 @@ export type {
   ToastRegionProps,
   ToastVariant,
 } from './components/toast-region/index.ts';
-
-export { default as TransferList } from './components/transfer-list/index.ts';
-export type {
-  TransferListItem,
-  TransferListProps,
-  TransferListSchemaProps,
-} from './components/transfer-list/index.ts';
-
-export { default as Timeline } from './components/timeline/index.ts';
-export type { TimelineProps } from './components/timeline/index.ts';
-
-export { default as ThemeSwitch } from './components/theme-switch/index.ts';
-export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-switch/index.ts';
 
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
@@ -1301,7 +1330,7 @@ export type {
   ToolPickerProps,
 } from './components/tool-picker/index.ts';
 
-export { default as Toolbar } from './components/toolbar/index.ts';
+export { default as Toolbar, ToolbarGroup, ToolbarSpacer } from './components/toolbar/index.ts';
 export type {
   ToolbarGroupProps,
   ToolbarOrientation,
@@ -1309,13 +1338,15 @@ export type {
   ToolbarSpacerProps,
 } from './components/toolbar/index.ts';
 
-export { default as Tree } from './components/tree/index.ts';
+export { default as Tooltip } from './components/tooltip/index.ts';
+export type { TooltipPlacement, TooltipProps } from './components/tooltip/index.ts';
+
+export { default as TransferList } from './components/transfer-list/index.ts';
 export type {
-  TreeProps,
-  TreeReorderTarget,
-  TreeSelectionBehavior,
-  TreeSelectionMode,
-} from './components/tree/index.ts';
+  TransferListItem,
+  TransferListProps,
+  TransferListSchemaProps,
+} from './components/transfer-list/index.ts';
 
 export { default as TreeItem } from './components/tree-item/index.ts';
 export type {
@@ -1324,8 +1355,23 @@ export type {
   TreeItemSelectionState,
 } from './components/tree-item/index.ts';
 
-export { default as Tooltip } from './components/tooltip/index.ts';
-export type { TooltipPlacement, TooltipProps } from './components/tooltip/index.ts';
+export { default as Tree } from './components/tree/index.ts';
+export type {
+  FlattenedTreeDataItem,
+  TreeDataItem,
+  TreeExpandAllProps,
+  TreeFilterPredicate,
+  TreeProps,
+  TreeRef,
+  TreeReorderTarget,
+  TreeSelectAllProps,
+  TreeSelectionBehavior,
+  TreeSelectionMode,
+  TreeVirtualizedItemRenderState,
+} from './components/tree/index.ts';
+
+export { default as VideoPlayer } from './components/video-player/index.ts';
+export type { VideoPlayerProps } from './components/video-player/index.ts';
 
 export {
   default as VirtualList,
@@ -1344,9 +1390,6 @@ export type {
   VirtualListScrollToIndexOptions,
 } from './components/virtual-list/index.ts';
 
-export { default as VideoPlayer } from './components/video-player/index.ts';
-export type { VideoPlayerProps } from './components/video-player/index.ts';
-
 export { default as VisuallyHidden } from './components/visually-hidden/index.ts';
 export type {
   VisuallyHiddenElement,
@@ -1361,71 +1404,49 @@ export type {
   WaveformSchemaProps,
 } from './components/waveform/index.ts';
 
-export { default as Citation, resolveCitationLink } from './components/citation/index.ts';
-export type {
-  CitationLabels,
-  CitationLink,
-  CitationProps,
-  CitationSource,
-} from './components/citation/index.ts';
-
-export { default as CodeLocation } from './components/code-location/index.ts';
-export type { CodeLocationProps } from './components/code-location/index.ts';
-
-export { default as DonutChart } from './components/donut-chart/index.ts';
-export type { DonutChartDatum, DonutChartProps } from './components/donut-chart/index.ts';
-
-export { default as FindBar } from './components/find-bar/index.ts';
-export type { FindBarProps } from './components/find-bar/index.ts';
-
-export { default as GuidanceRegion, useGuidance } from './components/guidance-region/index.ts';
-export type {
-  GuidanceApi,
-  GuidanceClaim,
-  GuidanceRegionProps,
-  GuidanceStorage,
-} from './components/guidance-region/index.ts';
-
-export { default as InlineConfirm } from './components/inline-confirm/index.ts';
-export type { InlineConfirmProps } from './components/inline-confirm/index.ts';
-
-export { default as KeyValueEditor } from './components/key-value-editor/index.ts';
-export type { KeyValueEditorProps, KeyValueEntry } from './components/key-value-editor/index.ts';
-
-export { default as ModalRegion, useModal } from './components/modal-region/index.ts';
-export type {
-  ModalApi,
-  ModalContentControls,
-  ModalRegionProps,
-  OpenModalOptions,
-} from './components/modal-region/index.ts';
-
-export { default as QuotaMeter } from './components/quota-meter/index.ts';
-export type { QuotaMeterProps } from './components/quota-meter/index.ts';
-
-export { default as RelativeTime } from './components/relative-time/index.ts';
-export type { RelativeTimeProps } from './components/relative-time/index.ts';
-
-export { default as TerminalFrame } from './components/terminal-frame/index.ts';
-export type {
-  TerminalFrameDimensions,
-  TerminalFrameProps,
-  TerminalFrameStatus,
-} from './components/terminal-frame/index.ts';
-
-export {
-  default as TerminalOutput,
-  parseTerminalOutput,
-} from './components/terminal-output/index.ts';
-export type {
-  TerminalForeground,
-  TerminalLine,
-  TerminalOutputProps,
-  TerminalTextRun,
-} from './components/terminal-output/index.ts';
+export { default as WeekSchedule } from './components/week-schedule/index.ts';
+export type { WeekScheduleDay, WeekScheduleProps } from './components/week-schedule/index.ts';
 
 export { default as ZoomPanViewer } from './components/zoom-pan-viewer/index.ts';
 export type { ZoomPanViewerProps } from './components/zoom-pan-viewer/index.ts';
+// </generated:component-exports>
+
+// Hand-authored root exports: everything that is not a component barrel.
+export { setCodeHighlighterContext } from './_internal/code-highlighter-context.ts';
+export type { FormFieldContext } from './_internal/form-field-context.ts';
+export type {
+  AreaChartMode,
+  BarChartDatum,
+  BarChartMode,
+  BarChartOrientation,
+  BarChartPlacedBar,
+  BarChartSchemaDatum,
+  BarChartSchemaSeries,
+  BarChartSeries,
+  ChartAxisConfiguration,
+  ChartAxisSchemaConfiguration,
+  ChartCartesianSchemaSeries,
+  ChartCartesianSeries,
+  ChartDataTableVisibility,
+  ChartFormatterContext,
+  ChartGeometry,
+  ChartJsonValue,
+  ChartJsonXValue,
+  ChartLegendPosition,
+  ChartMarkContext,
+  ChartNumericValue,
+  ChartPoint,
+  ChartSchemaPoint,
+  ChartSharedProps,
+  ChartTarget,
+  ChartTheme,
+  ChartTickFormatter,
+  ChartValueFormatter,
+  ChartXAxisConfiguration,
+  ChartXValue,
+  NormalizedXValue,
+  PlacedPoint,
+} from './components/chart.types.ts';
 export * from './exports/icons.ts';
 export * from './exports/metadata-constraints.ts';
 export * from './exports/metadata-examples-a-m.ts';
@@ -1434,14 +1455,42 @@ export * from './exports/metadata-manifest.ts';
 export * from './exports/metadata-schemas.ts';
 export * from './exports/metadata-variables.ts';
 export * from './exports/utilities.ts';
-
-export { setCodeHighlighterContext } from './_internal/code-highlighter-context.ts';
 export * from './highlighters/shiki/index.ts';
+export { copyToClipboard } from './utilities/clipboard.ts';
+export {
+  formatCompactAge,
+  formatDate,
+  formatDateTime,
+  formatDayAndTime,
+  formatDayHeading,
+  formatRelativeTime,
+  formatScheduleTime,
+  formatTimeOfDay,
+  formatTimeZoneLabel,
+  formatTimestamp,
+} from './utilities/format-date.ts';
+export type {
+  DateFormatOptions,
+  DateInput,
+  DayHeadingOptions,
+  RelativeTimeFormatOptions,
+  TimeZoneLabelOptions,
+} from './utilities/format-date.ts';
+export { formatDuration } from './utilities/format-duration.ts';
+export type {
+  SortableAnnouncements,
+  SortableItemContext,
+  SortableReorderChange,
+} from './utilities/sortable-controller.types.ts';
+export {
+  THEME_CHANGING_ATTRIBUTE,
+  guardThemeTransitions,
+} from './utilities/theme-transition-guard.ts';
+export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
 // The full-registry adapter keeps its own module so that only a consumer that
 // imports `fullShikiHighlighter` bundles Shiki's complete grammar and theme
 // registries. Nothing else in cinder imports `default.ts`.
 export { shikiHighlighter as fullShikiHighlighter } from './highlighters/shiki/default.ts';
-
 export { default as tokenResolver } from './tokens/cinder.resolver.json' with { type: 'json' };
 export { default as tokenIndex } from './tokens/index.json' with { type: 'json' };
 export { default as motionDefaultTokens } from './tokens/modes/motion-default.tokens.json' with { type: 'json' };
@@ -1462,62 +1511,4 @@ export { default as foundationTokens } from './tokens/sets/foundation.tokens.jso
 export { default as semanticTokens } from './tokens/sets/semantic.tokens.json' with { type: 'json' };
 export { default as darkThemeTokens } from './tokens/themes/dark.tokens.json' with { type: 'json' };
 export { default as lightThemeTokens } from './tokens/themes/light.tokens.json' with { type: 'json' };
-
-export type { CarouselSlideContext } from './components/carousel/index.ts';
-export type { ConnectionIndicatorSchemaProps } from './components/connection-indicator/index.ts';
-export type {
-  DataGridSelectionMode,
-  DataGridSelectionModel,
-} from './components/data-grid/index.ts';
-export type {
-  DescriptionListDefinition,
-  DescriptionListFormattedValue,
-  DescriptionListIdentifier,
-  DescriptionListTags,
-  DescriptionListTimestamp,
-} from './components/description-list/index.ts';
-export type { InvocationRuleBuilderSchemaProps } from './components/invocation-rule-builder/index.ts';
-export type { KbdSize } from './components/kbd/index.ts';
-export type {
-  PayloadInspectorSchemaProps,
-  PayloadInspectorSchemaValue,
-} from './components/payload-inspector/index.ts';
-export { isRedispatchedPortaledEvent } from './components/portal/index.ts';
-export type {
-  RunStepTimelineSchemaBranchGroup,
-  RunStepTimelineSchemaBranchLane,
-  RunStepTimelineSchemaChildStep,
-  RunStepTimelineSchemaEntry,
-  RunStepTimelineSchemaGrandchildStep,
-  RunStepTimelineSchemaGreatGrandchildStep,
-  RunStepTimelineSchemaLaneStep,
-  RunStepTimelineSchemaProps,
-  RunStepTimelineSchemaStep,
-} from './components/run-step-timeline/index.ts';
-export type {
-  ScheduleBuilderSchemaProps,
-  ScheduleValueSchema,
-} from './components/schedule-builder/index.ts';
-export type { SliderRangeProps, SliderSingleProps } from './components/slider/index.ts';
-export type { SpeedDialSchemaProps } from './components/speed-dial/index.ts';
-export type {
-  TimelineEntry,
-  TimelineEntryKind,
-  TimelineGroupBy,
-  TimelineHeadingLevel,
-  TimelineOrientation,
-  TimelineTone,
-  TimelineVariant,
-  TimelineWeekStartsOn,
-} from './components/timeline/index.ts';
-export { ToolbarGroup, ToolbarSpacer } from './components/toolbar/index.ts';
-export type {
-  FlattenedTreeDataItem,
-  TreeDataItem,
-  TreeExpandAllProps,
-  TreeFilterPredicate,
-  TreeRef,
-  TreeSelectAllProps,
-  TreeVirtualizedItemRenderState,
-} from './components/tree/index.ts';
 export { createBodyScrollLock, scrollEdgeFade } from './utilities/attachments.ts';

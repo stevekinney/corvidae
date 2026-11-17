@@ -1,4 +1,8 @@
-/** Generate or check component-local artifacts, constraints, and manifest. */
+/**
+ * Generate or check component-local artifacts, constraints, the manifest, and the package-root
+ * registries (`src/index.ts` component exports and `src/styles/components.css` imports, written by
+ * `generate-root-registries.ts`).
+ */
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -85,7 +89,21 @@ async function runRootMetadataExportCheck(manifest: Manifest): Promise<CheckStag
   }
 }
 
+async function runRootRegistriesCheck(): Promise<CheckStage> {
+  try {
+    const { checkRootRegistries } = await import('./generate-root-registries.ts');
+    const issues = await checkRootRegistries();
+    return { issues: issues.map((issue) => `root registries: ${issue.file} (${issue.reason})`) };
+  } catch (error) {
+    process.stderr.write(
+      `components:check — root registries stage failed: ${errorMessage(error)}\n`,
+    );
+    return { issues: ['root registries: stage threw — see error above'] };
+  }
+}
+
 async function runCheckMode(): Promise<void> {
+  const registries = await runRootRegistriesCheck();
   const artifacts = await runArtifactCheck();
   const constraints = await runConstraintCheck();
   const examples = await runExampleCheck();
@@ -94,6 +112,7 @@ async function runCheckMode(): Promise<void> {
     ? await runRootMetadataExportCheck(manifest.manifest)
     : { issues: ['root metadata exports: manifest unavailable'] };
   const issues = [
+    ...registries.issues,
     ...artifacts.issues,
     ...constraints.issues,
     ...examples.issues,
@@ -133,6 +152,8 @@ async function runGenerateMode(args: string[]): Promise<void> {
     await writeArtifacts(await generateArtifactsForComponent(component));
     process.stdout.write(`generated ${component.name}\n`);
   }
+  const { writeRootRegistries } = await import('./generate-root-registries.ts');
+  for (const file of await writeRootRegistries()) process.stdout.write(`generated ${file}\n`);
   if (targetName !== undefined) return;
   const { generateAllConstraints } = await import('./generate-component-constraints.ts');
   const { writeManifest } = await import('./generate-manifest.ts');
