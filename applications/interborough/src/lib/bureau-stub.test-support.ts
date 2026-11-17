@@ -79,6 +79,9 @@ export const STUB_REMOTE_PROVIDERS: { name: string; secretFile: string }[] = [
 export const STUB_A2A_DIRECTORY_URL =
   'http://127.0.0.1:4310/bureau/a2a/.well-known/agent-card.json';
 
+/** Where the stubbed host says a trigger that receives is sent its deliveries (COR-2171). */
+export const STUB_TRIGGERS_URL = 'http://127.0.0.1:4310/triggers/';
+
 /** The body `/host/paths` answers with for a host that keeps its state in Postgres and a bucket. */
 export function stubRemoteHostPaths() {
   return {
@@ -90,6 +93,7 @@ export function stubRemoteHostPaths() {
     locked: { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_REMOTE_PROVIDERS,
     a2aDirectoryUrl: STUB_A2A_DIRECTORY_URL,
+    triggersUrl: STUB_TRIGGERS_URL,
   };
 }
 
@@ -114,6 +118,7 @@ export function stubHostPaths(
         : { configuration: 'deployment' as const, providerKeys: 'deployment' as const },
     providers: STUB_PROVIDERS,
     a2aDirectoryUrl: STUB_A2A_DIRECTORY_URL,
+    triggersUrl: STUB_TRIGGERS_URL,
   };
 }
 

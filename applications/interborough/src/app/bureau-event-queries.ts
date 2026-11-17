@@ -34,12 +34,14 @@ import {
   BUREAU_RESYNC_KIND,
   type BureauEventFrame,
 } from '../lib/live-source/bureau-event-frame.ts';
+import { queryKeys } from '../lib/query.ts';
 import { invalidateReviewQueries } from '../lib/review-queries.ts';
 
 const BUREAU_TASKS_KEY_PREFIX = ['bureau-tasks'] as const;
 const CONTEXTS_KEY_PREFIX = ['contexts'] as const;
 const GOALS_KEY_PREFIX = ['goals'] as const;
 const NOTIFICATIONS_KEY_PREFIX = ['bureau-notifications'] as const;
+const WORKFLOW_DETAIL_KEY_PREFIX = ['workflow-catalog', 'detail'] as const;
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
   'run.registered',
@@ -91,13 +93,34 @@ export function invalidateBureauDrivenQueries(queryClient: QueryClient): void {
 }
 
 /**
+ * COR-2171: a workflow file's plugin trigger started, stopped, failed or fired, so its page's
+ * status line, and on a fire its runs, are read again. The event names the file.
+ */
+function invalidateTriggerQueries(queryClient: QueryClient, payload: unknown): void {
+  const workflowId: unknown =
+    payload !== null && typeof payload === 'object' && Object.hasOwn(payload, 'workflowId')
+      ? Reflect.get(payload, 'workflowId')
+      : undefined;
+  if (typeof workflowId !== 'string') {
+    void queryClient.invalidateQueries({ queryKey: WORKFLOW_DETAIL_KEY_PREFIX });
+    return;
+  }
+  void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.detail(workflowId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.headline(workflowId) });
+}
+
+/**
  * Invalidates the entries one frame makes stale. Returns whether the frame was one the feed drives
  * a view from, so a caller can tell a handled frame from one it should leave alone.
  */
 export function invalidateForBureauEvent(
   queryClient: QueryClient,
-  frame: Pick<BureauEventFrame, 'kind'>,
+  frame: Pick<BureauEventFrame, 'kind'> & { readonly payload?: unknown },
 ): boolean {
+  if (frame.kind.startsWith('trigger.')) {
+    invalidateTriggerQueries(queryClient, frame.payload);
+    return true;
+  }
   if (RECOVERY_EVENT_KINDS.has(frame.kind)) {
     invalidateBureauDrivenQueries(queryClient);
     return true;

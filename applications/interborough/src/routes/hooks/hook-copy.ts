@@ -451,9 +451,8 @@ export const HOOKS_COPY = {
       /** The buttons that send a delivery again. */
       retry: 'Retry delivery',
       retryNow: 'Retry now',
-      /** The line beside Retry now: when the next try is due, from `nextTryWords`. */
+      /** The line beside Retry now: when the next try is due, from `nextTryWords` (`lib/format/next-try.ts`). */
       nextTry: (when: string): string => `Next try in ${when}`,
-      nextTryDue: 'a moment',
       retried: {
         delivered: 'Retried. The delivery went through.',
         waiting: 'Retried. It will try again soon.',

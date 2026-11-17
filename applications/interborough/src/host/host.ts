@@ -261,7 +261,7 @@ import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
-import { triggerRoutes } from './trigger-routes.ts';
+import { TRIGGER_ROUTE, triggerRoutes } from './trigger-routes.ts';
 import { createWorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
@@ -718,6 +718,21 @@ async function delegationSecret(bungalow: Bungalow): Promise<string> {
  * one, a guard that also admits that origin's `Host` for the paths of its own surface only, so no
  * allowlist decides for a route that did not ask for an entry.
  */
+/**
+ * The addresses `/host/paths` reports under `origin`, the one a caller reaches: the A2A directory
+ * card, and where a trigger that receives is sent its deliveries (`/triggers/`, then the workflow's
+ * identifier; COR-2171).
+ */
+function reachableAddresses(origin: string): {
+  readonly a2aDirectoryUrl: string;
+  readonly triggersUrl: string;
+} {
+  return {
+    a2aDirectoryUrl: `${origin}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
+    triggersUrl: `${origin}${TRIGGER_ROUTE.slice(0, TRIGGER_ROUTE.indexOf(':'))}`,
+  };
+}
+
 function publicOriginGuards(
   port: () => number,
   publicOrigin: URL | undefined,
@@ -1605,9 +1620,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
                 .providers.flatMap(({ name, secretKey }) =>
                   secretKey === undefined ? [] : [{ name, secretKey }],
                 ),
-              // The directory of the agents shared over A2A, at the address a caller reaches: the
-              // public origin when one is set (COR-1904), else this host's own.
-              `${a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
+              // The directory of the agents shared over A2A, and the trigger route (COR-2171), at
+              // the address a caller reaches: the public origin when one is set (COR-1904,
+              // COR-2169), else this host's own.
+              reachableAddresses(
+                a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
+              ),
               { database: databaseKinds, content: contentKinds },
             ),
           ),

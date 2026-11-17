@@ -124,6 +124,7 @@ export const appFixtureDeclarations = {
   container: ['assertion'],
   'context-menu': ['assertion'],
   'copy-button': ['assertion'],
+  'copyable-value': ['assertion'],
   'data-list': ['assertion'],
   'decision-deck': ['assertion'],
   'description-list': ['assertion'],

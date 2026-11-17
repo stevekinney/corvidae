@@ -15,6 +15,9 @@
       "path": "../armorer/tsconfig.source.json"
     },
     {
+      "path": "../conversationalist/tsconfig.source.json"
+    },
+    {
       "path": "../operative/tsconfig.source.json"
     },
     {
