@@ -660,6 +660,20 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
       return `${packageDirectory(plan, owner)}/${virtual}`;
     });
   }
+  // The same path inside a regular expression literal, written with `\/`.
+  const escapedCore = core.replaceAll('/', '\\/');
+  if (next.includes(escapedCore)) {
+    const pattern = new RegExp(
+      `${escapeRegExp(escapedCore)}\\\\/((?:src|scripts|documentation)(?:\\\\/[\\w.@-]+)*)`,
+      'g',
+    );
+    next = next.replace(pattern, (whole, escaped: string) => {
+      const virtual = escaped.replaceAll('\\/', '/');
+      const owner = ownerOfPath(plan, virtual);
+      if (owner === undefined || packageDirectory(plan, owner) === core) return whole;
+      return `${packageDirectory(plan, owner)}/${virtual}`.replaceAll('/', '\\/');
+    });
+  }
   for (const fixup of fixups(core)) {
     if (plan.extracted.has(fixup.package) && !next.includes(fixup.to)) {
       next = next.replaceAll(fixup.from, fixup.to);
