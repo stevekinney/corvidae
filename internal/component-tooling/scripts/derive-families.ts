@@ -39,7 +39,11 @@ export interface FamilyRule {
 }
 
 export type MoveCondition =
-  'names-sibling-package' | 'names-component-stylesheet' | 'component-free' | 'companion-test';
+  | 'names-sibling-package'
+  | 'names-component-stylesheet'
+  | 'reads-component-metadata'
+  | 'component-free'
+  | 'companion-test';
 
 export interface MoveRule {
   patterns: string[];
@@ -123,9 +127,18 @@ const SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?)(['"])([^'"\n]+)\1/g;
 const SIBLING_PACKAGE_PATH =
   /components\/(?:chat|editor|terminal)\/(?:src|components\.json)|['"]\.\.['"],\s*['"](?:chat|editor|terminal)['"],\s*['"]src['"]/;
-// The last alternative is the same path once the split names it by package (`split-layout.ts`).
+// The `@lostgradient/` alternative is the same path once the split names it by package
+// (`split-layout.ts`); the last reads a component's files through the tooling's discovery, which
+// finds them in whichever package holds them.
 const COMPONENT_STYLESHEET_PATH =
-  /src\/components\/|components\.css|\.\.\/components\/|['"]components['"]\s*[,)]|@lostgradient\/(?!tokens\/|foundation\/|cinder\/)[\w-]+\/(?:components\/|[\w-]+\.css['"]|styles['"])/;
+  /src\/components\/|components\.css|\.\.\/components\/|['"]components['"]\s*[,)]|@lostgradient\/(?!tokens\/|foundation\/|cinder\/)[\w-]+\/(?:components\/|[\w-]+\.css['"]|styles['"])|\b(?:cinderComponentFile|cinderComponentRoots|discoverComponents)\b/;
+
+/**
+ * A test that reads the components' generated metadata (`.metadata/`, through the tooling's
+ * `metadata-files` readers): core's `metadata` task writes it, so the test waits for that task,
+ * which only a package that depends on core, or core itself, can.
+ */
+const COMPONENT_METADATA_READ = /metadata-files|\.metadata\//;
 
 export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path);
@@ -273,6 +286,7 @@ function placeByRows(context: Context, path: string, allowCompanion: boolean): P
     if (row.when === 'names-sibling-package' && !SIBLING_PACKAGE_PATH.test(content)) continue;
     if (row.when === 'names-component-stylesheet' && !COMPONENT_STYLESHEET_PATH.test(content))
       continue;
+    if (row.when === 'reads-component-metadata' && !COMPONENT_METADATA_READ.test(content)) continue;
     if (row.when === 'component-free' && reachesComponent(context, path, true) !== undefined)
       continue;
     if (row.when === 'companion-test') {

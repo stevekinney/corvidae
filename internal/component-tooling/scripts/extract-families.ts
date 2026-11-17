@@ -1748,10 +1748,14 @@ function writeManifests(plan: Plan): void {
     scripts['test'] = (scripts['test'] ?? '')
       .replace(/ src$/, ` ${sources}`)
       .replace(' --pass-with-no-tests', '');
-    // A package whose every test the map gives to core has none of its own, and `bun test` fails
-    // on a run that finds no test file.
+    // A package whose every test the map gives to core, or the isolated lane (`*.slow.test.ts`,
+    // `*.integration.test.ts`), has none in this lane, and `bun test` fails on a run that finds
+    // no test file.
     const tested = [...plan.owner].some(
-      ([file, owner]) => owner === name && /\.test\.[cm]?[jt]s$/.test(file),
+      ([file, owner]) =>
+        owner === name &&
+        /\.test\.[cm]?[jt]s$/.test(file) &&
+        !/\.(?:slow|integration)\.test\./.test(file),
     );
     if (!tested) {
       scripts['test'] = scripts['test'].replace(

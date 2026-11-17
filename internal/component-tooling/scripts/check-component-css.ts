@@ -116,9 +116,12 @@ function isLayerOrderPreludeNode(node: { type: string }): boolean {
  * the only `@import` shape a compound-parent sidecar may carry — it resolves
  * identically in `src/components/<parent>/` and the verbatim-copied
  * `dist/components/<parent>/` because the leaf lives at the sibling
- * `<leaf>/<leaf>.css`.
+ * `<leaf>/<leaf>.css`. Once the package split moves the leaf into a package of its own, the
+ * sidecar names it by that package's specifier, `'@lostgradient/<package>/<leaf>.css'`, which the
+ * package's `./*.css` export resolves to its `src/components/<leaf>/<leaf>.css` (P-COR-101).
  */
-const SIBLING_LEAF_IMPORT_PARAMS = /^(['"])\.\.\/([a-z][a-z0-9-]*)\/\2\.css\1$/;
+const SIBLING_LEAF_IMPORT_PARAMS =
+  /^(['"])(?:\.\.\/([a-z][a-z0-9-]*)\/\2|@lostgradient\/[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*)\.css\1$/;
 const PRIVATE_COMPONENT_IMPORT_PARAMS = /^(['"])\.\.\/_internal\/[a-z][a-z0-9-]*\.css\1$/;
 
 function isOneLevelComponentSidecar(file: string | undefined): boolean {

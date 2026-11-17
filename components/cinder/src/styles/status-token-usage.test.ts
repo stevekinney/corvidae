@@ -3,11 +3,13 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+import {
+  cinderComponentFile,
+  cinderSourceFile,
+} from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 /** A component's file, in whichever Cinder package holds the component. */
 const componentFile = (...segments: string[]) => cinderComponentFile(join(...segments));
-const STYLES_DIR = join(import.meta.dir, 'components');
 
 // diff-viewer and review-editor moved to @lostgradient/editor (see
 // documentation/decisions/package-boundaries.md); their audit entries moved with them
@@ -17,7 +19,7 @@ const auditedFiles = [
   componentFile('button', 'button.css'),
   componentFile('chip', 'chip.css'),
   componentFile('dropdown', 'dropdown.css'),
-  join(STYLES_DIR, 'json-highlight.css'),
+  cinderSourceFile('styles/components/json-highlight.css'),
 ];
 
 const forbiddenStatusMixPattern =

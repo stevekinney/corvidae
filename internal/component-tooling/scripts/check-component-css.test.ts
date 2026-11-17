@@ -177,6 +177,13 @@ describe('checkComponentCssSource', () => {
     expect(checkComponentCssSource(source, fakePath)).toEqual([]);
   });
 
+  it('allows a leading leaf import by the specifier of the package that holds it', () => {
+    const source = `${LAYER_ORDER_PRELUDE}\n@import '@lostgradient/tabs/tab.css';\n@import '@lostgradient/popover/popover.css';\n@layer cinder.components { .cinder-tabs { display: flex; } }`;
+    expect(checkComponentCssSource(source, fakePath)).toEqual([]);
+    const nested = `${LAYER_ORDER_PRELUDE}\n@import '@lostgradient/tabs/styles/tab.css';\n@layer cinder.components { .cinder-tabs {} }`;
+    expect(checkComponentCssSource(nested, fakePath).length).toBeGreaterThan(0);
+  });
+
   it('allows leading private component imports', () => {
     // Synthetic tree: no shipped component imports an `_internal/*.css`
     // partial today, but the allowance is still part of the contract.

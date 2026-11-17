@@ -262,6 +262,17 @@
       "note": "A test under src/styles that names a path under src/components or components.css."
     },
     {
+      "patterns": [
+        "src/styles/**/*.test.ts",
+        "src/_internal/**/*.test.ts",
+        "src/utilities/**/*.test.ts",
+        "src/tokens/**/*.test.ts"
+      ],
+      "when": "reads-component-metadata",
+      "target": "core",
+      "note": "A shared module's test that reads the components' generated metadata waits for core's metadata task, which a package core depends on cannot."
+    },
+    {
       "patterns": ["src/test/*.test.ts"],
       "when": "component-free",
       "target": "tooling",
