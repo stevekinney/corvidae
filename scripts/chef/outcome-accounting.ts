@@ -227,6 +227,10 @@ export interface TaskBank {
   tasks: TaskSnapshot[];
 }
 
+function tokenArgument(value: string): number | 'unknown' {
+  return value === 'unknown' ? value : Number(value);
+}
+
 function normalizedTaskPath(path: string): string | undefined {
   if (!path || isAbsolute(path)) return undefined;
   const normalized = normalize(path);
@@ -327,13 +331,13 @@ async function main(argv: string[]): Promise<number> {
   }
   if (argv[0] === 'reserve' && argv.length === 5) {
     process.stdout.write(
-      `${JSON.stringify(await reserve(argv[1]!, argv[2]!, argv[3]!, Number(argv[4])))}\n`,
+      `${JSON.stringify(await reserve(argv[1]!, argv[2]!, argv[3]!, tokenArgument(argv[4]!)))}\n`,
     );
     return 0;
   }
   if (argv[0] === 'settle' && argv.length === 5) {
     process.stdout.write(
-      `${JSON.stringify(await settle(argv[1]!, argv[2]!, argv[3]!, Number(argv[4])))}\n`,
+      `${JSON.stringify(await settle(argv[1]!, argv[2]!, argv[3]!, tokenArgument(argv[4]!)))}\n`,
     );
     return 0;
   }
