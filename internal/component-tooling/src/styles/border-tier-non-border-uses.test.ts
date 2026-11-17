@@ -401,6 +401,9 @@ function styleFiles(directory: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(directory)) {
     if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue;
+    // A component's `examples/` (COR-2081) is documentation a page renders, not authored styles;
+    // its placeholder hatches are the documentation page's, as they were in the playground.
+    if (entry === 'examples') continue;
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) {
       found.push(...styleFiles(path));
