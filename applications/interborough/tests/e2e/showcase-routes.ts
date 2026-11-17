@@ -111,6 +111,9 @@ export function showcaseVariants(world: SampleWorldRecords): Readonly<Record<str
     '/workflows/:workflow (runs tab)': `${workflow}?tab=runs`,
     '/workflows/:workflow (history tab)': `${workflow}?tab=history`,
     '/workflows/:workflow (can’t load)': `/workflows/${encodeURIComponent(world.workflows.orderRefund)}`,
+    // The Runs list narrowed (COR-2423, rows 05x, 52t, 52x): failed runs, and the runs goals made.
+    '/runs (failed)': '/runs?status=failed',
+    '/runs (started by goals)': '/runs?startedBy=goal',
     '/runs/:run (failed)': run(world.runs.failed),
     '/runs/:run (waiting on you)': run(world.runs.waiting),
     '/runs/:run (canceled)': run(world.runs.canceled),

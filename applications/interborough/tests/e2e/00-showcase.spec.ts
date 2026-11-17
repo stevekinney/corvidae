@@ -85,7 +85,9 @@ for (const name of NAMES) {
       );
       await captureForDesignReview(page, {
         route: name,
-        state: 'ready',
+        // `responsive.spec.ts` writes `runs--ready--…` for the stress seed's list, so the sample
+        // world's list has its own state name and the two captures never overwrite each other.
+        state: name === '/runs' ? 'sample world' : 'ready',
         source: '00-showcase.spec.ts',
       });
 
@@ -119,6 +121,42 @@ for (const name of NAMES) {
         await expect(staging).toHaveAttribute('aria-checked', 'false');
       }
     }
+  });
+}
+
+/** The Runs list's open Workflow menu and its full list after Load more, on the sample world (COR-2423, rows 10h, 53l, S68). */
+for (const width of WIDTHS) {
+  test(`/runs shows the Workflow menu open and the whole list after Load more, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: HEIGHT });
+    await page.goto(`${E2E_SHOWCASE_URL}${addresses['/runs']}`);
+    const frame = page.locator('main.weft-shell-outlet [data-view]').first();
+    await expect(frame).toHaveAttribute('data-state', 'ready');
+    await untilQuiet(page);
+
+    const more = page.getByRole('button', { name: 'Load more' });
+    while ((await more.count()) > 0) {
+      const before = await page.locator('main li[data-run]').count();
+      await more.first().click();
+      await expect(async () => {
+        expect(await page.locator('main li[data-run]').count()).toBeGreaterThan(before);
+      }).toPass();
+    }
+    await untilQuiet(page);
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'load more pressed',
+      source: '00-showcase.spec.ts',
+    });
+
+    await page.getByRole('button', { name: 'Workflow', exact: true }).click();
+    await expect(page.locator('.cinder-filter-bar__options')).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs',
+      state: 'workflow menu open',
+      source: '00-showcase.spec.ts',
+    });
   });
 }
 
