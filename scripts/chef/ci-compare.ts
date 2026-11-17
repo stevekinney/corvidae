@@ -31,6 +31,8 @@ export { UsageError };
 export interface FailedJob {
   name: string;
   tests: string[];
+  /** Independently failed workflow steps, retained even when the job also names a failed test. */
+  steps?: string[];
 }
 
 export interface RunFailures {
@@ -57,6 +59,7 @@ export interface JudgedJob {
   name: string;
   seenIn: string[];
   tests: JudgedTest[];
+  steps: JudgedTest[];
   /** True when the job, or any of its failing tests, never failed in the compared main runs. */
   isNew: boolean;
   /** A test job whose log named no failing test: judge it by reading the log, never as known. */
@@ -93,6 +96,12 @@ const BUN_TEST_FILE = /^([^\t]+)\t.*?##\[group\](.+?\.test\.ts):\s*$/;
 const BUN_ASSERTION = /^([^\t]+)\t.*?error: (expect\(.+\))\s*$/;
 /** The assertion's specific expected value, which makes its file-qualified identity stable. */
 const BUN_EXPECTED = /^([^\t]+)\t.*?Expected to contain: (.+)\s*$/;
+/** Turbo's per-workspace task heading in a failed GitHub Actions log. */
+const TURBO_TASK = /^([^\t]+)\t.*?##\[group\](@lostgradient\/[^\s:]+):[^\s]+\s*$/;
+/** A GitHub Actions step boundary. */
+const RUN_STEP = /^([^\t]+)\t.*?##\[group\]Run (.+)\s*$/;
+/** GitHub's final nonzero marker for a failed workflow step. */
+const STEP_FAILURE = /^([^\t]+)\t.*?##\[error\]Process completed with exit code \d+\./;
 /** A Playwright failure heading, `  1) [chromium] › tests/e2e/x.spec.ts:69:3 › title`. */
 const PLAYWRIGHT_FAILURE = /^([^\t]+)\t.*?\s\d+\) \[[\w-]+\] › (.+?)\s*$/;
 
@@ -101,7 +110,13 @@ export function failingTests(log: string): Map<string, string[]> {
   const byJob = new Map<string, Set<string>>();
   const fileByJob = new Map<string, string>();
   const assertionByJob = new Map<string, { file: string; assertion: string }>();
+  const taskByJob = new Map<string, string>();
   for (const line of log.split('\n')) {
+    const task = TURBO_TASK.exec(line);
+    if (task !== null) {
+      taskByJob.set(task[1] ?? '', task[2] ?? '');
+      continue;
+    }
     const file = BUN_TEST_FILE.exec(line);
     if (file !== null) {
       const [, job = '', path = ''] = file;
@@ -125,7 +140,9 @@ export function failingTests(log: string): Map<string, string[]> {
       if (currentAssertion !== undefined) {
         let tests = byJob.get(job);
         if (tests === undefined) byJob.set(job, (tests = new Set()));
-        tests.add(`${currentAssertion.file} › ${currentAssertion.assertion} › ${value}`);
+        tests.add(
+          `${taskByJob.get(job) === undefined ? '' : `${taskByJob.get(job)} › `}${currentAssertion.file} › ${currentAssertion.assertion} › ${value}`,
+        );
         assertionByJob.delete(job);
       }
       continue;
@@ -134,13 +151,35 @@ export function failingTests(log: string): Map<string, string[]> {
     if (match === null) continue;
     const [, job = '', rawTest = ''] = match;
     const test = BUN_FAILURE.test(line)
-      ? `${fileByJob.get(job) ?? '<unknown test file>'} › ${rawTest}`
+      ? `${taskByJob.get(job) === undefined ? '' : `${taskByJob.get(job)} › `}${fileByJob.get(job) ?? '<unknown test file>'} › ${rawTest}`
       : rawTest;
     let tests = byJob.get(job);
     if (tests === undefined) byJob.set(job, (tests = new Set()));
     tests.add(test);
   }
   return new Map([...byJob].map(([job, tests]) => [job, [...tests].toSorted()]));
+}
+
+/** Non-test failures retain their GitHub step identity even when their job also reports tests. */
+export function failingSteps(log: string): Map<string, string[]> {
+  const byJob = new Map<string, Set<string>>();
+  const stepByJob = new Map<string, string>();
+  for (const line of log.split('\n')) {
+    const step = RUN_STEP.exec(line);
+    if (step !== null) {
+      stepByJob.set(step[1] ?? '', step[2] ?? '');
+      continue;
+    }
+    const failed = STEP_FAILURE.exec(line);
+    if (failed === null) continue;
+    const job = failed[1] ?? '';
+    const current = stepByJob.get(job);
+    if (current === undefined) continue;
+    let steps = byJob.get(job);
+    if (steps === undefined) byJob.set(job, (steps = new Set()));
+    steps.add(current);
+  }
+  return new Map([...byJob].map(([job, steps]) => [job, [...steps].toSorted()]));
 }
 
 /** A run's failed jobs and their failing tests, read from GitHub. */
@@ -152,15 +191,21 @@ export function readFailures(runner: Runner, repository: string, id: string): Ru
     .filter((job) => job.conclusion === 'failure' || job.conclusion === 'timed_out')
     .map((job) => job.name ?? '');
   // GitHub serves `--log-failed` only for a finished run; an unfinished one is judged NOT COMPLETE.
-  const tests =
+  const log =
     failed.length === 0 || view.status !== 'completed'
-      ? new Map<string, string[]>()
-      : failingTests(gh(runner, ['run', 'view', id, '--repo', repository, '--log-failed']));
+      ? ''
+      : gh(runner, ['run', 'view', id, '--repo', repository, '--log-failed']);
+  const tests = failingTests(log);
+  const steps = failingSteps(log);
   return {
     id,
     status: view.status ?? '',
     conclusion: view.conclusion ?? '',
-    jobs: failed.map((name) => ({ name, tests: tests.get(name) ?? [] })),
+    jobs: failed.map((name) => ({
+      name,
+      tests: tests.get(name) ?? [],
+      steps: steps.get(name) ?? [],
+    })),
   };
 }
 
@@ -226,15 +271,25 @@ export function compare(target: RunFailures, main: RunFailures[]): Comparison {
         )
         .map((m) => m.id),
     }));
+    const steps = (job.steps ?? []).map((name): JudgedTest => ({
+      name,
+      seenIn: main
+        .filter((m) => m.jobs.some((j) => j.name === job.name && (j.steps ?? []).includes(name)))
+        .map((m) => m.id),
+    }));
     // A test job whose log names no failing test cannot be judged by its name alone: a new failure
     // in a shard that is already red on main would read as known.
-    const unknown = tests.length === 0 && TEST_JOB.test(job.name);
+    const unknown = tests.length === 0 && steps.length === 0 && TEST_JOB.test(job.name);
     const seenIn =
-      tests.length === 0 ? sameJobRuns : [...new Set(tests.flatMap((test) => test.seenIn))];
+      tests.length === 0 && steps.length === 0
+        ? sameJobRuns
+        : [...new Set([...tests, ...steps].flatMap((failure) => failure.seenIn))];
     const isNew =
       unknown ||
-      (tests.length === 0 ? seenIn.length === 0 : tests.some((test) => test.seenIn.length === 0));
-    return { name: job.name, seenIn, tests, isNew, unknown };
+      (tests.length === 0 && steps.length === 0
+        ? seenIn.length === 0
+        : [...tests, ...steps].some((failure) => failure.seenIn.length === 0));
+    return { name: job.name, seenIn, tests, steps, isNew, unknown };
   });
   const complete = target.status === 'completed';
   // A run that did not succeed yet names no failed job (a startup failure, a cancellation) gives no
@@ -268,6 +323,10 @@ export function renderComparison(comparison: Comparison): string {
     for (const test of job.tests)
       lines.push(
         `  ${test.seenIn.length === 0 ? 'NEW' : 'known'} test ${test.name}${test.seenIn.length === 0 ? '' : ` (main ${test.seenIn.join(', ')})`}${test.flakes === undefined ? '' : test.flakes.map((flake) => ` (${flake.identifier}${flake.recursAfter === undefined ? '' : ` recurs after ${flake.recursAfter} Done`})`).join('')}`,
+      );
+    for (const step of job.steps)
+      lines.push(
+        `  ${step.seenIn.length === 0 ? 'NEW' : 'known'} step ${step.name}${step.seenIn.length === 0 ? '' : ` (main ${step.seenIn.join(', ')})`}`,
       );
   }
   if (comparison.flakeLookupProblem !== undefined)

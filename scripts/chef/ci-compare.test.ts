@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   compare,
+  failingSteps,
   failingTests,
   matchFlakeIssues,
   renderComparison,
@@ -71,6 +72,37 @@ describe('failingTests', () => {
     ].join('\n');
     expect(failingTests(log)).toEqual(new Map());
   });
+
+  test('qualifies identical Bun tests by their Turbo workspace across changed job topology', () => {
+    const log = [
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:19Z ##[group]@lostgradient/storage-lmdb:test',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:20Z ##[group]src/index.test.ts:',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:21Z (fail) package entry > exports the adapter [1ms]',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:22Z ##[group]@lostgradient/storage-postgres:test',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:23Z ##[group]src/index.test.ts:',
+      'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:24Z (fail) package entry > exports the adapter [1ms]',
+    ].join('\n');
+    expect(failingTests(log)).toEqual(
+      new Map([
+        [
+          'Affected fast-lane tests',
+          [
+            '@lostgradient/storage-lmdb › src/index.test.ts › package entry > exports the adapter',
+            '@lostgradient/storage-postgres › src/index.test.ts › package entry > exports the adapter',
+          ],
+        ],
+      ]),
+    );
+  });
+
+  test('retains each failed GitHub step independently from test evidence', () => {
+    const log = [
+      'Root checks\tUNKNOWN STEP\t2026-11-17T19:11:27Z ##[group]Run bun run lint:root',
+      'Root checks\tUNKNOWN STEP\t2026-11-17T19:18:57Z error: script "audit" exited with code 1',
+      'Root checks\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    expect(failingSteps(log)).toEqual(new Map([['Root checks', ['bun run lint:root']]]));
+  });
 });
 
 describe('compare', () => {
@@ -119,6 +151,48 @@ describe('compare', () => {
     expect(result.jobs[0]?.tests.map((t) => t.seenIn.length)).toEqual([1, 0]);
   });
 
+  test('a new non-test step beside a known test remains new', () => {
+    const result = compare(
+      {
+        id: '1',
+        status: 'completed',
+        conclusion: 'failure',
+        jobs: [{ name: 'Unit', tests: ['known'], steps: ['lint'] }],
+      },
+      [
+        {
+          id: '2',
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Unit', tests: ['known'], steps: [] }],
+        },
+      ],
+    );
+    expect(result.hasNew).toBe(true);
+    expect(result.jobs[0]?.steps[0]?.seenIn).toEqual([]);
+  });
+
+  test('a known failed step beside a new test remains new', () => {
+    const result = compare(
+      {
+        id: '1',
+        status: 'completed',
+        conclusion: 'failure',
+        jobs: [{ name: 'Unit', tests: ['new'], steps: ['lint'] }],
+      },
+      [
+        {
+          id: '2',
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Unit', tests: ['known'], steps: ['lint'] }],
+        },
+      ],
+    );
+    expect(result.hasNew).toBe(true);
+    expect(result.jobs[0]?.steps[0]?.seenIn).toEqual(['2']);
+  });
+
   test('a file-qualified test seen under a different control topology is known', () => {
     const result = compare(failures('1', [['E2E (4/4)', ['src/chat.test.ts › chat layout']]]), [
       failures('10', [['E2E (2/4)', ['src/chat.test.ts › chat layout']]]),
@@ -128,6 +202,29 @@ describe('compare', () => {
     expect(result.jobs[0]?.tests[0]?.seenIn).toEqual(['10']);
     expect(result.jobs[0]?.seenIn).toEqual(['10']);
     expect(result.hasNew).toBe(false);
+  });
+
+  test('a same-title test from a different Turbo workspace remains new', () => {
+    const result = compare(
+      failures('1', [
+        ['Tests (new)', ['@lostgradient/storage-lmdb › src/index.test.ts › package entry']],
+      ]),
+      [
+        failures('2', [
+          ['Tests (main)', ['@lostgradient/storage-postgres › src/index.test.ts › package entry']],
+        ]),
+      ],
+    );
+    expect(result.hasNew).toBe(true);
+  });
+
+  test('a same workspace, file and title remains known when its display job changes', () => {
+    const identity = '@lostgradient/storage-lmdb › src/index.test.ts › package entry';
+    const result = compare(failures('1', [['Affected fast-lane tests', [identity]]]), [
+      failures('2', [['Tests (components)', [identity]]]),
+    ]);
+    expect(result.hasNew).toBe(false);
+    expect(result.jobs[0]?.tests[0]?.seenIn).toEqual(['2']);
   });
 
   test('a bare title under a different job remains new', () => {
