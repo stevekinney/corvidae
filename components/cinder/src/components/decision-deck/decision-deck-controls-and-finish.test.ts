@@ -136,10 +136,11 @@ describe('DecisionDeck stamps', () => {
       /\.cinder-decision-card__stamp \{[^}]*inset-block-end: var\(--cinder-space-3\);[^}]*block-size: var\(--_cinder-decision-stamp-band\)/,
     );
     expect(css).not.toMatch(/\.cinder-decision-card__stamp \{[^}]*inset-block-start/);
-    expect(css).toMatch(/\[data-stamp='accept'\] \{[^}]*inset-inline-end: var\(--cinder-space-4\)/);
+    // The trailing corner, which stays on screen as the card slides off.
     expect(css).toMatch(
-      /\[data-stamp='reject'\] \{[^}]*inset-inline-start: var\(--cinder-space-4\)/,
+      /\[data-stamp='accept'\] \{[^}]*inset-inline-start: var\(--cinder-space-4\)/,
     );
+    expect(css).toMatch(/\[data-stamp='reject'\] \{[^}]*inset-inline-end: var\(--cinder-space-4\)/);
   });
 });
 

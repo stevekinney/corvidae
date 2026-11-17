@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 /**
  * DecisionDeck layout that happy-dom cannot measure (COR-2441). Mid-drag, the stamp of the outcome
- * sits in the corner the card is travelling toward, inside the card, and never covers the card's
- * text; the progress phrase keeps its order ("1 of 3") under right to left. Measured in a browser
+ * sits in the trailing corner (the one the card moves away from), inside the card and inside the
+ * viewport, and never covers the card's text; the progress phrase keeps its order ("1 of 3") under right to left. Measured in a browser
  * on the `drag-accept`, `drag-reject` and `drag-rtl` fixtures, in both themes, on a phone.
  */
 
@@ -43,9 +43,11 @@ async function open(
 
 for (const theme of ['light', 'dark'] as const) {
   for (const [fixtureName, outcome, corner] of [
-    ['drag-accept', 'accept', 'right'],
-    ['drag-reject', 'reject', 'left'],
-    ['drag-rtl', 'accept', 'left'],
+    // The trailing corner: the one the card is moving away from, which stays on screen as the card
+    // slides off. Accept is at the inline-start corner and reject at the inline-end corner.
+    ['drag-accept', 'accept', 'left'],
+    ['drag-reject', 'reject', 'right'],
+    ['drag-rtl', 'accept', 'right'],
   ] as const) {
     test(`the ${outcome} stamp sits in the ${corner} corner and covers no text (${fixtureName}, ${theme})`, async ({
       componentPage,
@@ -64,18 +66,47 @@ for (const theme of ['light', 'dark'] as const) {
       // Inside the card (the card is rotated a little, so allow the tilt's few pixels).
       expect(stampBox.bottom).toBeLessThanOrEqual(cardBox.bottom + 6);
       expect(stampBox.top).toBeGreaterThanOrEqual(cardBox.top);
-      // In the corner the card is travelling toward: the half of the card on that side.
+      // In the trailing corner: the half of the card on that side.
       const middle = (cardBox.left + cardBox.right) / 2;
       if (corner === 'right') expect(stampBox.left).toBeGreaterThan(middle - 20);
       else expect(stampBox.right).toBeLessThan(middle + 20);
 
-      // No line of the card's text is under the stamp.
+      // The stamp is whole inside the viewport at the fixture's drag offset (it was clipped off the
+      // screen when it sat in the leading corner), and the card is still mostly on screen, so a
+      // capture shows the stamp, the card's text and the direction of travel.
+      const viewportWidth = page.viewportSize()?.width ?? 375;
+      expect(stampBox.left).toBeGreaterThanOrEqual(0);
+      expect(stampBox.right).toBeLessThanOrEqual(viewportWidth);
+      const visible = Math.min(cardBox.right, viewportWidth) - Math.max(cardBox.left, 0);
+      expect(visible / (cardBox.right - cardBox.left)).toBeGreaterThan(0.6);
+
+      // No line of the card's text is under the stamp. Compared in the card's own coordinates (its
+      // layout boxes, which ignore the drag's tilt): the tilted bounding box of a wide paragraph
+      // grows by tens of pixels and would report an overlap that is not on the page. The stamp's
+      // own few degrees of tilt are covered by a 4px margin.
+      const local = (locator: Locator) =>
+        locator.evaluate((element) => {
+          const target = element as HTMLElement;
+          return {
+            left: target.offsetLeft,
+            right: target.offsetLeft + target.offsetWidth,
+            top: target.offsetTop,
+            bottom: target.offsetTop + target.offsetHeight,
+          };
+        });
+      const stampLocal = await local(stamp);
+      const padded = {
+        left: stampLocal.left - 4,
+        right: stampLocal.right + 4,
+        top: stampLocal.top - 4,
+        bottom: stampLocal.bottom + 4,
+      };
       const texts = card.locator(
         '.cinder-decision-card__eyebrow, .cinder-decision-card__title, .cinder-decision-card__description',
       );
       for (let index = 0; index < (await texts.count()); index += 1) {
-        const textBox = await box(texts.nth(index));
-        expect(overlaps(stampBox, textBox), `text ${index} is under the stamp`).toBe(false);
+        const textLocal = await local(texts.nth(index));
+        expect(overlaps(padded, textLocal), `text ${index} is under the stamp`).toBe(false);
       }
     });
   }

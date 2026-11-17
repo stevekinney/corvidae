@@ -54,7 +54,11 @@ describe('suggested Chip visible cue', () => {
 
   test('the glyph takes the accent text colour, sits inline and adds no line height', () => {
     expect(chipCss).toMatch(
-      /\.cinder-chip__suggested-mark \{[^}]*display: inline-block;[^}]*vertical-align: -0\.2em;[^}]*line-height: 0;[^}]*color: var\(--cinder-accent-text\)/,
+      /\.cinder-chip__suggested-mark \{[^}]*display: inline-block;[^}]*block-size: 0;[^}]*vertical-align: baseline;[^}]*color: var\(--cinder-accent-text\)/,
+    );
+    // The glyph hangs from the zero-height box and takes no part in the line box.
+    expect(chipCss).toMatch(
+      /\.cinder-chip__suggested-mark > svg \{[^}]*position: absolute;[^}]*inset-block-end: -0\.2em/,
     );
   });
 });

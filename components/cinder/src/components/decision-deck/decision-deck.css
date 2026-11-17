@@ -175,9 +175,10 @@
 
   /* The stamps fade in with the drag (their opacity is set from the card's offset). Each carries
      its word, so the outcome is never colour alone. A stamp sits in a band the card keeps free at
-     its block end (the card's padding grows by the band), in the corner the card is travelling
-     toward: accept at the inline-end corner, reject at the inline-start corner. It never covers
-     the card's text, whatever the text holds. */
+     its block end (the card's padding grows by the band), in the trailing corner, the one the
+     card moves away from, so it stays on screen as the card slides off: accept at the
+     inline-start corner, reject at the inline-end corner. It never covers the card's text,
+     whatever the text holds. */
   .cinder-decision-card {
     --_cinder-decision-stamp-band: 2.5rem;
     padding-block-end: calc(
@@ -204,13 +205,13 @@
   }
 
   .cinder-decision-card__stamp[data-stamp='accept'] {
-    inset-inline-end: var(--cinder-space-4);
+    inset-inline-start: var(--cinder-space-4);
     color: var(--cinder-accent-text);
     transform: rotate(-8deg);
   }
 
   .cinder-decision-card__stamp[data-stamp='reject'] {
-    inset-inline-start: var(--cinder-space-4);
+    inset-inline-end: var(--cinder-space-4);
     color: var(--cinder-status-warning-text);
     transform: rotate(8deg);
   }

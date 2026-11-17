@@ -3,7 +3,11 @@
  * A suggested Chip is the same height as a plain one, and its label sits on the same baseline
  * (COR-2441): the sparkle glyph that tells a sighted person apart from colour alone must not
  * lengthen the chip's line. Measured in a browser on the `suggested` fixture, in both themes, for
- * the display chip and the toggle chip.
+ * the display chip and the toggle chip. Heights, baselines and positions hold within 0.5px.
+ *
+ * A pass on a developer machine is not enough: the glyph once grew the chip by 0.6px only on
+ * Linux's font (the fixtures' renderer), where the line's ascent and descent differ from macOS's,
+ * so this has to pass in CI.
  */
 
 import { loadManifest } from '@lostgradient/testing';
@@ -59,9 +63,18 @@ for (const theme of ['light', 'dark'] as const) {
           });
       const suggested = await measure(suggestedId);
       const plain = await measure(plainId);
-      expect(suggested.height, `${suggestedId} height`).toBeCloseTo(plain.height, 1);
-      expect(suggested.baseline, `${suggestedId} baseline`).toBeCloseTo(plain.baseline, 1);
-      expect(suggested.onLine, `${suggestedId} position on a line`).toBeCloseTo(plain.onLine, 1);
+      const within = (a: number, b: number) => Math.abs(a - b);
+      expect(within(suggested.height, plain.height), `${suggestedId} height`).toBeLessThanOrEqual(
+        0.5,
+      );
+      expect(
+        within(suggested.baseline, plain.baseline),
+        `${suggestedId} baseline`,
+      ).toBeLessThanOrEqual(0.5);
+      expect(
+        within(suggested.onLine, plain.onLine),
+        `${suggestedId} position on a line`,
+      ).toBeLessThanOrEqual(0.5);
     }
   });
 }
