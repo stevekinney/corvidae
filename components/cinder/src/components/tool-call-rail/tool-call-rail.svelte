@@ -458,11 +458,9 @@
         <span class="cinder-tool-call-rail__summary-marker" aria-hidden="true">
           <Spinner size="sm" variant="arc" />
         </span>
-        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, true)}</span
-        >{#if runningPosition > 0}<span
-            class="cinder-tool-call-rail__summary-separator"
-            aria-hidden="true">,</span
-          >
+        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, true)}</span>
+        <!-- A piece of its own a gap apart, in the subtle colour: no comma between pieces. -->
+        {#if runningPosition > 0}
           <span class="cinder-tool-call-rail__summary-step" data-cinder-step-position=""
             >{words.stepPosition(runningPosition, calls.length)}</span
           >
