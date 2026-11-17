@@ -212,7 +212,12 @@ describe('Codex session logs', () => {
 
 describe('prices', () => {
   test('costs every call from the supplied table', () => {
-    const usage = readTranscript(write(join(sandbox, 'parent.jsonl'), claudeTranscript()))!;
+    const usage = readTranscript(
+      write(
+        join(sandbox, 'parent.jsonl'),
+        claudeTranscript().filter((entry) => typeof entry !== 'string'),
+      ),
+    )!;
     const price = { asOf: '2026-11-17', input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 };
     const result = report(usage, { 'claude-opus-5-5': price });
     const expected =
@@ -393,7 +398,10 @@ describe('the command line', () => {
   });
 
   test('emits parseable JSON and a priced total', () => {
-    write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    write(
+      join(sandbox, 'coordinator.jsonl'),
+      claudeTranscript().filter((entry) => typeof entry !== 'string'),
+    );
     const pricesPath = join(sandbox, 'prices.json');
     writeFileSync(
       pricesPath,
