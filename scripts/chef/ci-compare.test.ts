@@ -145,6 +145,30 @@ describe('run', () => {
     expect(result.output).toContain('NEW test brand new');
     expect(result.output).toContain('compared with 1 main run(s)');
     expect(calls.some((c) => c.includes('5'))).toBe(false);
+    // Most completed main runs are replaced ones, so the listing reads well past the count.
+    const list = calls.find((c) => c.includes('list')) ?? [];
+    expect(list[list.indexOf('--limit') + 1]).toBe('100');
+  });
+
+  test('a run still in progress is judged not complete without asking for its failed logs', () => {
+    const runner: Runner = (command) => {
+      const joined = command.join(' ');
+      if (joined.includes('--log-failed'))
+        return { code: 1, stderr: 'run 1 is still in progress', stdout: '' };
+      if (joined.includes('run list')) return { code: 0, stderr: '', stdout: '[]' };
+      return {
+        code: 0,
+        stderr: '',
+        stdout: JSON.stringify({
+          status: 'in_progress',
+          conclusion: '',
+          jobs: [{ name: 'Chromium fixtures (1/4)', conclusion: 'failure' }],
+        }),
+      };
+    };
+    const result = run(['1'], runner);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('NOT COMPLETE');
   });
 
   test('a run ID that is not a number is a usage error', () => {

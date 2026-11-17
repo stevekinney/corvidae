@@ -101,8 +101,9 @@ export function readFailures(runner: Runner, repository: string, id: string): Ru
   const failed = (view.jobs ?? [])
     .filter((job) => job.conclusion === 'failure' || job.conclusion === 'timed_out')
     .map((job) => job.name ?? '');
+  // GitHub serves `--log-failed` only for a finished run; an unfinished one is judged NOT COMPLETE.
   const tests =
-    failed.length === 0
+    failed.length === 0 || view.status !== 'completed'
       ? new Map<string, string[]>()
       : failingTests(gh(runner, ['run', 'view', id, '--repo', repository, '--log-failed']));
   return {
@@ -133,8 +134,9 @@ export function recentMainRuns(
       defaultBranch,
       '--status',
       'completed',
+      // A newer push replaces each pending run, so most completed runs are cancelled: read deep.
       '--limit',
-      String(count * 2),
+      String(Math.max(count * 10, 100)),
       '--json',
       'databaseId,conclusion',
     ]),
