@@ -786,6 +786,54 @@ function retargetPath(plan: Plan, path: string, logical: string, text: string): 
   return replacement;
 }
 
+/** Core's package name, which a family's tests may not name: it is no dependency of a family. */
+const CORE_PACKAGE_NAME = '@lostgradient/cinder';
+const CORE_MOCK =
+  /\bmock\.module\(\s*(['"])@lostgradient\/cinder\1\s*,\s*(?:async\s*)?\(\)\s*=>\s*([^\n]+?)\)\s*;/g;
+
+/** Each `mock.module('@lostgradient/cinder', () => …)` in `text`: where the name starts, the factory. */
+function coreMocks(text: string): { start: number; factory: string }[] {
+  return [...text.matchAll(CORE_MOCK)].map((match) => ({
+    start: (match.index ?? 0) + match[0].indexOf(CORE_PACKAGE_NAME),
+    factory: match[2] ?? '',
+  }));
+}
+
+/**
+ * The specifier a moved test should mock instead of core's barrel: the one it imports the module
+ * its mock factory returns from (`const inputModule = await import('../input/index.ts')`, or a
+ * destructured `const { default: Input } = await import(…)`), as the package that holds that
+ * module names it, or as written when the test's own package holds it.
+ */
+function mockedModuleSpecifier(
+  plan: Plan,
+  home: { name: string; virtual: string },
+  text: string,
+  factory: string,
+): string | undefined {
+  const identifiers = [...factory.matchAll(/[A-Za-z_$][\w$]*/g)]
+    .map((match) => match[0])
+    .filter((name) => name !== 'default');
+  for (const identifier of identifiers) {
+    const name = identifier.replaceAll('$', '\\$');
+    const binding = new RegExp(
+      String.raw`(?:\bconst\s+(?:${name}|\{[^}]*\b${name}\b[^}]*\})\s*=\s*await\s+import\(\s*|\bimport\s+(?:${name}|\{[^}]*\b${name}\b[^}]*\})\s+from\s+)(['"])([^'"\n]+)\1`,
+    ).exec(text);
+    const specifier = binding?.[2];
+    if (specifier === undefined) continue;
+    if (!specifier.startsWith('.')) return specifier;
+    const target = resolveVirtual(plan, home.virtual, specifier);
+    if (target === undefined) return undefined;
+    const owner = plan.owner.get(target) as string;
+    if (owner === home.name) return specifier;
+    if (owner === 'core') return undefined;
+    const named = specifierFor(owner, target, plan.components.get(owner));
+    addExportKey(plan, owner, named.exportKey);
+    return named.specifier;
+  }
+  return undefined;
+}
+
 function rewriteFile(plan: Plan, path: string): void {
   const home = packageOf(plan, path);
   if (home === undefined || !(CODE_FILE.test(path) || MARKDOWN_FILE.test(path))) return;
@@ -842,6 +890,20 @@ function rewriteFile(plan: Plan, path: string): void {
         length: statement.end - statement.start,
         text: replacement,
       });
+    }
+  }
+  // A moved test that mocks core's barrel mocks the module it hands the mock instead: the one its
+  // component now imports from the package that holds it (core's name is no dependency of it).
+  if (home.name !== 'core') {
+    for (const mock of coreMocks(original)) {
+      const replacement = mockedModuleSpecifier(plan, home, original, mock.factory);
+      if (replacement === undefined) {
+        plan.result.warnings.push(
+          `${path} mocks @lostgradient/cinder with a module it names nowhere.`,
+        );
+        continue;
+      }
+      rewritten.set(mock.start, { length: CORE_PACKAGE_NAME.length, text: replacement });
     }
   }
   for (const { start, text } of relativePaths(path, original)) {

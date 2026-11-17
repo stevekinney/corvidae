@@ -173,6 +173,17 @@ const TREE: Record<string, string> = {
     "import ButtonView from './button.svelte';",
     '',
   ].join('\n'),
+  // A card test that mocks core's barrel with the modules it hands over: once card moves, each mock
+  // names the module as card's own imports reach it, and core's name, no dependency of card, goes.
+  [`${CORE}/src/components/card/card-mocks.test.ts`]: [
+    "const buttonModule = await import('../button/index.ts');",
+    "const { focus } = await import('../../utilities/focus.ts');",
+    "const { default: Card } = await import('./card.svelte');",
+    "mock.module('@lostgradient/cinder', () => buttonModule);",
+    "mock.module('@lostgradient/cinder', () => ({ focus }));",
+    "mock.module('@lostgradient/cinder', () => ({ default: Card }));",
+    '',
+  ].join('\n'),
   [`${CORE}/src/components/card/index.ts`]:
     "import './card.css';\nimport Card from './card.svelte';\n\nexport default Card;\n",
   [`${CORE}/src/components/card/card.css`]: '.card { color: green; }\n',
@@ -454,6 +465,17 @@ describe('extract-families', () => {
     );
     expect(read(root, 'components/card/src/components/card/card.svelte')).toContain(
       "from '@lostgradient/button/components/button/button.svelte'",
+    );
+    expect(read(root, 'components/card/src/components/card/card-mocks.test.ts')).toBe(
+      [
+        "const buttonModule = await import('@lostgradient/button/components/button/index.ts');",
+        "const { focus } = await import('@lostgradient/foundation/utilities/focus.ts');",
+        "const { default: Card } = await import('./card.svelte');",
+        "mock.module('@lostgradient/button/components/button/index.ts', () => buttonModule);",
+        "mock.module('@lostgradient/foundation/utilities/focus.ts', () => ({ focus }));",
+        "mock.module('./card.svelte', () => ({ default: Card }));",
+        '',
+      ].join('\n'),
     );
     expect(read(root, 'components/button/src/components/button/button.test.ts')).toContain(
       "'../../../../core/src/styles/components.css'",
