@@ -14,7 +14,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
-import { initialize, release, reserve, settle } from './outcome-budget.ts';
+import { initialize, read, release, reserve, settle } from './outcome-budget.ts';
 import {
   costOf,
   readTranscript,
@@ -322,7 +322,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (argv[0] === 'read' && argv.length === 3) {
-    process.stdout.write(`${JSON.stringify(await initialize(argv[1]!, argv[2]!))}\n`);
+    process.stdout.write(`${JSON.stringify(await read(argv[1]!, argv[2]!))}\n`);
     return 0;
   }
   if (argv[0] === 'reserve' && argv.length === 5) {
