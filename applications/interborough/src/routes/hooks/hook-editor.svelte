@@ -172,15 +172,22 @@
     }),
     undefined,
   );
-  /** A home that keeps hooks off answers the list as it answers every hook call; the new-hook page asks it. */
+  /**
+   * The list of hooks. A home that keeps hooks off answers it as it answers every hook call, so the
+   * new-hook page asks it for that; a saved hook reads its own `problems` from it (COR-2182), which
+   * `bureau.hooks.get` does not carry, so its header says what its list row says.
+   */
   const availability = createQuery(
     () => ({
       queryKey: queryKeys.hooks.list(),
       queryFn: ({ signal }: { signal: AbortSignal }) => listHooks(undefined, { signal }),
-      enabled: isNew,
       retry: false,
     }),
     undefined,
+  );
+  /** The problems the Bureau lists for this hook, or none until the list is read. */
+  const listedProblems = $derived(
+    availability.data?.find((listed) => listed.id === hookId)?.problems ?? [],
   );
   const kinds = createQuery(
     () => ({
@@ -331,10 +338,13 @@
   const standing = $derived(
     hook === undefined
       ? undefined
-      : hookStanding(hook, {
-          plugins: plugins.data?.plugins,
-          reactions: contributed.isSuccess ? contributed.data.reactions : undefined,
-        }),
+      : hookStanding(
+          { ...hook, problems: listedProblems },
+          {
+            plugins: plugins.data?.plugins,
+            reactions: contributed.isSuccess ? contributed.data.reactions : undefined,
+          },
+        ),
   );
   /** The title of the plugin a default hook came from, for the note above its steps. */
   const declaringTitle = $derived(

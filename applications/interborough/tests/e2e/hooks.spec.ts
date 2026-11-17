@@ -1267,6 +1267,12 @@ for (const [state, record, problem, word] of [
     await expect(row.locator('.cinder-status-dot')).toHaveCount(1);
     await expect(row.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
     await captureForDesignReview(page, { route: '/hooks', state, source: SOURCE });
+
+    // The hook's own page says the same word in its header.
+    await page.goto(`/hooks/${record.id}`);
+    const head = page.getByTestId('hook-header');
+    await expect(head.locator('[data-status-word]')).toHaveAttribute('data-status-word', word);
+    await captureForDesignReview(page, { route: '/hooks/:hook', state, source: SOURCE });
   });
 }
 

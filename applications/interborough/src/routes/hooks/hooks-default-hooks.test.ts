@@ -252,6 +252,36 @@ describe('the list (rows R10-01 to R10-03)', () => {
     expect(wordOf('owned-unavailable')).toBe('Unavailable');
   });
 
+  test('says Needs attention in the header of a hook the Bureau lists as configuration-invalid, as its row does (COR-2182)', async () => {
+    const invalid = hook('owned-invalid', { name: 'My broken post', declaredBy: null });
+    const view = open('/hooks/owned-invalid', [invalid], {
+      'bureau.hooks.list': () => ({
+        hooks: [
+          {
+            ...invalid,
+            lastDelivery: null,
+            problems: [
+              {
+                code: 'configuration-invalid',
+                issues: [{ path: ['channel'], code: 'invalid_type' }],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const header = await view.findByTestId('hook-header');
+    await waitFor(() => {
+      expect(header.querySelector('[data-status-word]')?.getAttribute('data-status-word')).toBe(
+        'Needs attention',
+      );
+    });
+    expect(within(header).getByTestId('hook-standing-sentence').textContent).toBe(
+      HOOKS_COPY.standing.configurationInvalid('Slack', 'Post message'),
+    );
+  });
+
   test('holds the switch of a hook its plugin withdrew, off, with the reason as a tooltip', async () => {
     const view = open('/hooks', [WITHDRAWN]);
 
