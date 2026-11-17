@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Responsive SVG bar chart for grouped or stacked category comparisons.
-   * @tag chart
-   * @tag bar
-   * @tag analytics
-   * @useWhen Comparing discrete category totals or grouped category breakdowns.
-   * @useWhen Showing stacked contribution across known categories.
-   * @avoidWhen Showing a continuous ordered trend — use line-chart instead.
-   * @avoidWhen Showing magnitude under a trend — use area-chart instead.
-   * @related line-chart, area-chart, table, statistic
-   */
   export type { BarChartProps, BarChartSchemaProps } from './bar-chart.types.ts';
 </script>
 

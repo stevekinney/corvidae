@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category domain
-   * @status alpha
-   * @purpose Durable human-in-the-loop approval surface for reviewing risky tool operations before they execute.
-   * @tag approval
-   * @tag human-in-the-loop
-   * @tag tool
-   * @useWhen A tool call, command, file write, or patch needs explicit human approval before execution.
-   * @useWhen Showing policy, sandbox, idempotency, environment-name, and argument context for an approval request.
-   * @avoidWhen The action has already completed and only needs historical display — use feed or run-step-timeline instead.
-   * @avoidWhen Collecting arbitrary form input for a workflow — compose form controls directly instead.
-   * @related card, badge, status-dot, payload-inspector, code-block, collapsible
-   * @a11yNote Renders as an article with native button controls so approval actions are discoverable without polluting the landmark list.
-   * @a11yNote Expiration changes update the visible state but do not fire approval callbacks automatically.
-   */
   export type {
     ApprovalCardCallbacks,
     ApprovalCardHeadingLevel,

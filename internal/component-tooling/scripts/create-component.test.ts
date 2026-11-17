@@ -3,8 +3,8 @@
  *
  * These exercise the pure render functions used by the component scaffold:
  *
- *   - The rendered `.svelte` `@cinder` block must pass `extractFromSource`
- *     (the metadata extractor) with all required tags present.
+ *   - The rendered `<name>.meta.json` must pass `parseComponentMeta` (the
+ *     metadata reader) with all required fields present.
  *   - The rendered `<Pascal>Props` stub must be the type name the schema
  *     generator resolves.
  */
@@ -26,13 +26,14 @@ import {
   planFiles,
   renderAccessibilityReview,
   renderIndex,
+  renderMeta,
   renderReadme,
   renderSvelte,
   renderTest,
   renderTypes,
   type CreationContext,
 } from './create-component.ts';
-import { extractFromSource } from './generate-component-metadata.ts';
+import { parseComponentMeta } from './lib/component-meta.ts';
 
 describe('buildContext', () => {
   it('derives the pascal name and stable import path from a kebab id', () => {
@@ -57,17 +58,27 @@ describe('buildContext', () => {
   });
 });
 
-describe('renderSvelte @cinder block', () => {
+describe('renderMeta', () => {
+  const read = (context: CreationContext) =>
+    parseComponentMeta(
+      JSON.parse(renderMeta(context)),
+      'my-widget',
+      '/virtual/my-widget.meta.json',
+    );
+
   it('scaffolds neighbour metadata for the inventory convention', () => {
-    const source = renderSvelte(buildContext('my-widget'));
-    expect(source).not.toContain('@related button');
-    expect(source).toContain('@rationale Nearest alternative: TODO');
+    const result = read(buildContext('my-widget'));
+    if (!result.ok) throw new Error(result.error.reason);
+    expect(result.metadata.related).toEqual([]);
+    expect(result.metadata.rationale).toStartWith('Nearest alternative: TODO');
   });
 
-  it('produces a block that the metadata extractor accepts (stable component)', () => {
-    const context = buildContext('my-widget');
-    const source = renderSvelte(context);
-    const result = extractFromSource(source, 'my-widget', '/virtual/my-widget.svelte');
+  it('carries no metadata in the module script', () => {
+    expect(renderSvelte(buildContext('my-widget'))).not.toContain('@cinder');
+  });
+
+  it('produces metadata the reader accepts (stable component)', () => {
+    const result = read(buildContext('my-widget'));
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.reason);
@@ -82,8 +93,7 @@ describe('renderSvelte @cinder block', () => {
     // fails manifest generation's dangling-alternative cross-check the moment the
     // scaffolded component is added to the tree. The template must therefore emit
     // a reason-only entry; an author opts into an alternative deliberately.
-    const source = renderSvelte(buildContext('my-widget'));
-    const result = extractFromSource(source, 'my-widget', '/virtual/my-widget.svelte');
+    const result = read(buildContext('my-widget'));
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.reason);
@@ -92,7 +102,9 @@ describe('renderSvelte @cinder block', () => {
     expect(entry?.reason.length).toBeGreaterThan(0);
     expect(entry?.alternative).toBeUndefined();
   });
+});
 
+describe('renderSvelte', () => {
   it('imports class-names two levels up for a stable component (src/components/<name>/)', () => {
     const source = renderSvelte(buildContext('my-widget'));
     expect(source).toContain("import { classNames } from '../../utilities/class-names.ts';");
@@ -227,6 +239,7 @@ describe('planFiles', () => {
     const paths = planFiles(buildContext('my-widget')).map((file) => file.path);
     for (const suffix of [
       'my-widget.svelte',
+      'my-widget.meta.json',
       'my-widget.types.ts',
       'index.ts',
       'my-widget.test.ts',

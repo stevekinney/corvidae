@@ -9,10 +9,9 @@ import {
 import type { Manifest } from './generate-manifest.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
-const TOOLING_ROOT = `${import.meta.dir}/..`;
-const PACKAGE_ROOT = `${TOOLING_ROOT}/../../components/cinder`;
-const COMPONENT_SCHEMA_PATH = `${TOOLING_ROOT}/src/schemas/examples.schema.json`;
-const MANIFEST_PATH = `${PACKAGE_ROOT}/components.json`;
+const PACKAGE_ROOT = `${import.meta.dir}/../../../components/cinder`;
+const COMPONENT_SCHEMA_PATH = `${import.meta.dir}/../src/schemas/examples.schema.json`;
+const MANIFEST_PATH = `${PACKAGE_ROOT}/.metadata/components.json`;
 
 const validArtifact = {
   $schema: '../../schemas/examples.schema.json',

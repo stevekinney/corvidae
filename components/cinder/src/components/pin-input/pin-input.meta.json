@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Segmented one-time-code input with auto-advance, paste distribution, and masking support for entering short security codes.",
+  "tags": ["form", "otp"],
+  "useWhen": [
+    "Collecting a short security code such as a one-time password or SMS verification code.",
+    "Letting the browser autofill a one-time-code into a visually segmented control."
+  ],
+  "avoidWhen": [
+    { "reason": "Collecting a free-form string of any length — use input instead." },
+    {
+      "reason": "Collecting a numeric value that participates in arithmetic — use number-input instead."
+    }
+  ],
+  "related": ["input", "number-input", "form-field"]
+}

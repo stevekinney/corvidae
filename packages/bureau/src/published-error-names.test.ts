@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  publishableDeliveryOutcome,
   publishableErrorCode,
   publishableErrorKind,
   publishableFinishReason,
@@ -197,5 +198,28 @@ describe('what a pushed event may name of a child run, a steering command and a 
     9,
   ])('omits the token %j', (name) => {
     expect(publishableToken(name)).toBeUndefined();
+  });
+});
+
+describe('publishableDeliveryOutcome (COR-2099)', () => {
+  it.each(['response', 'network-error', 'refused', 'error', 'rejected'] as const)(
+    'publishes the outcome %s as it is',
+    (outcome) => {
+      expect(publishableDeliveryOutcome(outcome, 'error')).toBe(outcome);
+    },
+  );
+
+  it.each([
+    'Unable to connect to https://receiver.example/hook?token=abc123',
+    'completed',
+    'interrupted',
+    'sending',
+    '',
+    undefined,
+    null,
+    500,
+  ])('publishes the fallback for %j', (outcome) => {
+    expect(publishableDeliveryOutcome(outcome, 'error')).toBe('error');
+    expect(publishableDeliveryOutcome(outcome, 'rejected')).toBe('rejected');
   });
 });

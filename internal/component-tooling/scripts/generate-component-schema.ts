@@ -60,6 +60,7 @@ export interface PropertySchema {
   anyOf?: PropertySchema[];
   not?: PropertySchema;
   minimum?: number;
+  maximum?: number;
   minItems?: number;
   // Added for Modal's `describedById` restriction (PR #1422 review): the
   // `title`/`aria-label` conditional restrictions elsewhere in this file
@@ -89,9 +90,7 @@ export interface ComponentSchemaOutput {
 export interface GenerateResult {
   /** The schema object suitable for JSON serialization. */
   schema: ComponentSchemaOutput;
-  /** Rendered TypeScript module text (the `.schema.ts` file content). */
-  schemaModule: string;
-  /** Rendered JSON text (the `.schema.json` file content). */
+  /** Rendered JSON text (`.metadata/<id>/schema.json`). */
   schemaJson: string;
 }
 
@@ -227,7 +226,7 @@ export function generateSchemaForComponent(options: GenerateOptions): GenerateRe
 
     const description = readJsDocDescription(symbol);
     const defaultValue = readJsDocDefault(symbol);
-    const schemaEntry: PropertySchema = { ...converted.schema };
+    const schemaEntry: PropertySchema = applyNumericTags(symbol, { ...converted.schema });
     if (description) schemaEntry.description = description;
     if (defaultValue !== undefined) schemaEntry.default = defaultValue;
     properties[propName] = schemaEntry;
@@ -290,9 +289,8 @@ export function generateSchemaForComponent(options: GenerateOptions): GenerateRe
   applyComponentSchemaRules(componentName, schema);
 
   const schemaJson = JSON.stringify(schema, null, 2) + '\n';
-  const schemaModule = renderSchemaModule(schema);
 
-  return { schema, schemaJson, schemaModule };
+  return { schema, schemaJson };
 }
 
 /**
@@ -381,7 +379,7 @@ function applyComponentSchemaRules(componentName: string, schema: ComponentSchem
   // WHEN provided it must reference a real id — the constraints sidecar's
   // `described-by-non-empty` rule already rejects an empty OR
   // whitespace-only value (`nonEmpty`, which trims) — see
-  // modal.constraints.ts. `type: 'string'` alone lets a schema-driven
+  // modal.constraints.json. `type: 'string'` alone lets a schema-driven
   // consumer (CLI/MCP) pass `describedById: '   '` right past validation,
   // even though modal.svelte's own runtime guard rejects it too (see that
   // file's `isNonEmptyString` comment). `minLength: 1` + `pattern: '\S'`
@@ -1041,7 +1039,7 @@ function convertSingleType(type: Type, depth = 0, expandObjectShapes = false): C
           );
       if (converted.kind === 'unsupported') return converted;
 
-      const schemaEntry: PropertySchema = { ...converted.schema };
+      const schemaEntry: PropertySchema = applyNumericTags(property, { ...converted.schema });
       const description = readJsDocDescription(property);
       const defaultValue = readJsDocDefault(property);
       if (description) schemaEntry.description = description;
@@ -1088,8 +1086,11 @@ function isDeclaredInComponentTypesFile(type: Type): boolean {
 
   return declarations.some((declaration) => {
     const filePath = declaration.getSourceFile().getFilePath();
+    // A component types file of any component package: cinder keeps its components in
+    // `src/components/`, chat, editor and terminal in `src/lib/components/`.
     return (
-      filePath.includes('/components/cinder/src/components/') && filePath.endsWith('.types.ts')
+      /\/components\/[^/]+\/src\/(?:lib\/)?components\//.test(filePath) &&
+      filePath.endsWith('.types.ts')
     );
   });
 }
@@ -1350,6 +1351,37 @@ function readJsDocDefault(symbol: MorphSymbol): unknown {
   return undefined;
 }
 
+function readJsDocTagNumber(symbol: MorphSymbol, tagName: string): number | undefined {
+  for (const decl of symbol.getDeclarations()) {
+    if (!Node.isJSDocable(decl)) continue;
+    for (const doc of decl.getJsDocs()) {
+      for (const tag of doc.getTags()) {
+        if (tag.getTagName() !== tagName) continue;
+        const value = Number(tag.getCommentText()?.trim());
+        if (Number.isFinite(value)) return value;
+        throw new Error(`@${tagName} on ${symbol.getName()} needs a finite number`);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Narrow a number prop with `@integer`, `@minimum <n>` and `@maximum <n>` JSDoc tags, the bounds
+ * a TypeScript `number` cannot state.
+ */
+function applyNumericTags(symbol: MorphSymbol, schema: PropertySchema): PropertySchema {
+  if (schema.type !== 'number') return schema;
+  const minimum = readJsDocTagNumber(symbol, 'minimum');
+  const maximum = readJsDocTagNumber(symbol, 'maximum');
+  return {
+    ...schema,
+    ...(hasJsDocTag(symbol, 'integer') ? { type: 'integer' as const } : {}),
+    ...(minimum === undefined ? {} : { minimum }),
+    ...(maximum === undefined ? {} : { maximum }),
+  };
+}
+
 function hasJsDocTag(symbol: MorphSymbol, tagName: string): boolean {
   for (const decl of symbol.getDeclarations()) {
     if (!Node.isJSDocable(decl)) continue;
@@ -1389,57 +1421,7 @@ function toPascalCase(kebab: string): string {
     .join('');
 }
 
-/** Documents the generated default export, which every package export of a schema resolves to. */
-const SCHEMA_DOCUMENTATION = '/** JSON Schema describing the props of this component. */';
-
-function renderSchemaModule(schema: ComponentSchemaOutput): string {
-  const relativePath = '../../schema-types';
-  const literal = JSON.stringify(schema, null, 2);
-  if (schema.allOf) {
-    // `allOf` schemas carry a JSON Schema `then` keyword. Emitting them as an
-    // object literal would (a) make the `then` key trip `unicorn/no-thenable`
-    // and (b) force `tsc` to deep-check a large literal. Parsing a JSON string
-    // sidesteps both; the value is a build-time-generated schema, so the single
-    // assertion on `JSON.parse`'s `any` result is safe and documented.
-    return [
-      `import type { ComponentSchema } from '${relativePath}';`,
-      ``,
-      `// eslint-disable-next-line no-unsafe-type-assertion -- generated schema parsed from a build-validated JSON string; see generate-component-schema.ts.`,
-      `const schema = JSON.parse(${JSON.stringify(literal)}) as ComponentSchema;`,
-      ``,
-      SCHEMA_DOCUMENTATION,
-      `export default schema;`,
-      ``,
-    ].join('\n');
-  }
-
-  return [
-    `import type { ComponentSchema } from '${relativePath}';`,
-    ``,
-    `const schema = ${literal} satisfies ComponentSchema;`,
-    ``,
-    SCHEMA_DOCUMENTATION,
-    `export default schema as ComponentSchema;`,
-    ``,
-  ].join('\n');
-}
-
 export function resetSchemaProjectCache(): void {
   activeProject = null;
   cachedHtmlAttributeDeclarationSites = null;
-}
-
-if (import.meta.main) {
-  // CLI entry: `bun scripts/generate-component-schema.ts <component-dir>`
-  const dir = process.argv[2];
-  if (!dir) {
-    console.error('Usage: generate-component-schema.ts <component-dir>');
-    process.exit(1);
-  }
-  const componentName = basename(dir);
-  const typesFilePath = join(dir, `${componentName}.types.ts`);
-  const result = generateSchemaForComponent({ typesFilePath, componentName });
-  await Bun.write(join(dir, `${componentName}.schema.json`), result.schemaJson);
-  await Bun.write(join(dir, `${componentName}.schema.ts`), result.schemaModule);
-  console.log(`wrote ${componentName}.schema.{json,ts}`);
 }

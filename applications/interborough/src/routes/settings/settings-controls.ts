@@ -7,7 +7,8 @@
  * Plain values are controls of their own: a boolean is a switch, a string with an `enum` a select,
  * a string a text field, a number a number field. A key that names a model-catalog row
  * (`decisions.fallbackModel`, `context.summarizerModel`) or a decision model (`decisions.model`) is
- * a select of those rows, never a typed `provider/model`. Every object, and every union with one
+ * a select of those rows, never a typed `provider/model`; the embedder memory uses
+ * (`memory.embedder`) is a select of the embedders, never a typed identifier. Every object, and every union with one
  * (`retention.audit`, `engine.history`), is a Cinder `SchemaForm` over the node, except an object
  * that declares no field a form can edit (a record of answer schemas), which is free-form JSON. A
  * union of `false` and an object (`tools.humanInput`) is a switch, and the object's own control
@@ -18,8 +19,11 @@ import { A2A_COPY } from '../../app/copy/a2a.ts';
 import { DATA_RETENTION_COPY } from '../../app/copy/settings.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
-/** What a select of rows offers: the agent catalog's models, or the rows that can answer decisions (the Bureau's list). */
-export type ChoiceSource = 'catalog-rows' | 'decision-rows';
+/**
+ * What a select of rows offers: the agent catalog's models, the rows that can answer decisions (the
+ * Bureau's list), or the embedders memory can use (`memory.embedder`, which has a row of its own).
+ */
+export type ChoiceSource = 'catalog-rows' | 'decision-rows' | 'embedders';
 
 /** The control of one setting, by the shape of its schema node. */
 export type Control =
@@ -50,6 +54,9 @@ const DECISION_ROW_KEYS: ReadonlySet<string> = new Set([
   'decisions.model',
   'decisions.fallbackModel',
 ]);
+
+/** The key that names the embedder memory uses, as `hashing` or `<plugin>:<name>`; never typed. */
+const EMBEDDER_KEY = 'memory.embedder';
 
 function isNumeric(node: SchemaNode): boolean {
   return node.type === 'integer' || node.type === 'number';
@@ -114,6 +121,7 @@ export function controlFor(key: string, node: SchemaNode): Control {
     }
     if (CATALOG_ROW_KEYS.has(key)) return { kind: 'choice', source: 'catalog-rows' };
     if (DECISION_ROW_KEYS.has(key)) return { kind: 'choice', source: 'decision-rows' };
+    if (key === EMBEDDER_KEY) return { kind: 'choice', source: 'embedders' };
     return { kind: 'text', pattern: node.pattern };
   }
   if (isNumeric(node)) {

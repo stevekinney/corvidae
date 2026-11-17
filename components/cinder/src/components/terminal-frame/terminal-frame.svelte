@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status alpha
-   * @purpose Frame a consumer-owned real PTY with terminal chrome, connection status, reload handling, and character-cell resize reporting.
-   * @tag terminal
-   * @tag pty
-   * @tag shell
-   * @useWhen Hosting a real interactive terminal implementation that needs consistent chrome and resize dimensions.
-   * @avoidWhen Rendering a read-only stream — use TerminalOutput.
-   * @related terminal-output, preview-panel
-   */
   export type {
     TerminalFrameDimensions,
     TerminalFrameProps,

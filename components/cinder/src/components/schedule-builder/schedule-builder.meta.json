@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "beta",
+  "purpose": "Recurrence control: Repeats, At and Time zone emit a cron or counted interval with its IANA zone, read back with its next runs, with optional overlap and catch-up selects.",
+  "tags": ["schedule", "recurrence", "cron", "form"],
+  "useWhen": [
+    "Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.",
+    "You want plain repeat choices that still round-trip to a portable cron or interval value, with custom cron one choice away."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "You need jitter or backfill-window controls — those belong to the consumer's surrounding form.",
+      "alternative": "invocation-rule-builder"
+    },
+    {
+      "reason": "You only need to pick a single point in time, not a recurrence — use date-picker instead.",
+      "alternative": "date-picker"
+    }
+  ],
+  "related": ["date-picker", "combobox", "input", "time-field"],
+  "a11y": {
+    "pattern": "Form group",
+    "notes": [
+      "Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable picker; each custom cron field reports validity via aria-invalid and one associated error."
+    ]
+  }
+}

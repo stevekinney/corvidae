@@ -114,6 +114,8 @@
    * The padding, not the global `li` margin, sets the pitch, so the first row under a heading
    * and the last above the next get the same space. */
   .cinder-list-detail__row {
+    /* Sets the row's own padding variable for this placement; not a theming API of ListDetail. */
+    /* @runtime-state */
     --cinder-selectable-row-padding-inline: var(--cinder-space-2);
     margin: 0;
     padding: var(--cinder-space-0-5) var(--cinder-space-2);

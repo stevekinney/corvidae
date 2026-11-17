@@ -11,9 +11,9 @@ const KEYS: readonly string[] = SETTING_KEYS;
 const none = () => false;
 
 describe('generalSections', () => {
-  test('draws Tools, Runs and Storage, and leaves out what other sections hold', () => {
+  test('draws Tools, Runs, Memory and Storage, and leaves out what other sections hold', () => {
     const sections = generalSections(KEYS, none, false);
-    expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'storage']);
+    expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'memory', 'storage']);
     const shown = sections.flatMap((section) => section.keys);
     expect(shown.filter((key) => key.startsWith('retention.'))).toEqual([]);
     expect(shown.filter((key) => key.startsWith('decisions.'))).toEqual([]);
@@ -38,10 +38,20 @@ describe('generalSections', () => {
     expect(runs?.keys.filter((key) => key.startsWith('engine.')).length).toBeGreaterThan(2);
   });
 
+  test('holds every memory setting under Memory, after Runs, and none of them under Runs (EM6-01)', () => {
+    const sections = generalSections(KEYS, none, false);
+    const memory = sections.find((section) => section.id === 'memory');
+    expect(memory?.keys).toEqual(KEYS.filter((key) => key.startsWith('memory.')));
+    expect(memory?.keys).toContain('memory.embedder');
+    expect(sections.find((section) => section.id === 'runs')?.keys).not.toContain(
+      'memory.embedder',
+    );
+  });
+
   test('moves what the deployment locks into the Remote deployment card in remote mode', () => {
     const locked = (key: string) => key === 'engine.maxConcurrentRuns' || key === 'durable';
     const sections = generalSections(KEYS, locked, true);
-    expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'remote']);
+    expect(sections.map((section) => section.id)).toEqual(['tools', 'runs', 'memory', 'remote']);
     const remote = sections.find((section) => section.id === 'remote');
     expect([...(remote?.keys ?? [])].sort()).toEqual(['durable', 'engine.maxConcurrentRuns']);
     const runs = sections.find((section) => section.id === 'runs');

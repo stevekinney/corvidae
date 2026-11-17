@@ -13,7 +13,7 @@ import {
   workspaceChildDirectoryNames,
   workspaceParentDirectories,
 } from './workspace-directories.ts';
-import { sourceExportViolations } from './workspace-exports';
+import { isMetadataExport, sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
@@ -629,6 +629,7 @@ describe('internal workspace architecture', () => {
       if (isComponentLibrary) {
         expect(Object.keys(manifest.exports ?? {}).length, library).toBeGreaterThan(0);
         for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+          if (isMetadataExport(subpath, target)) continue;
           expect(typeof target, `${library} ${subpath}`).toBe('object');
         }
         expect(manifest.scripts?.['types'], library).toMatch(/emit-declarations\.ts$/);

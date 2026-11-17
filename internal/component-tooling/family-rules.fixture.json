@@ -230,6 +230,7 @@
         "src/ambient.d.ts",
         "src/inherited-key-reads.test.ts",
         "src/token-root-exports.test.ts",
+        "src/exports-surface.test.ts",
         "src/components/svg-data-uri-color-literals.test.ts",
         "src/panel/**"
       ],

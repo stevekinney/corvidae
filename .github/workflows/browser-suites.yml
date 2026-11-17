@@ -61,6 +61,9 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
+      # committed: the steps below run tests and servers outside Turborepo, so make it first.
+      - run: bunx turbo run metadata
       - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
       # Four workers on the four processors the renderer container gets locally (`CONTAINER_CPUS`).
       # A shard takes whole files, and one file holds about half the cases, so its shard runs about

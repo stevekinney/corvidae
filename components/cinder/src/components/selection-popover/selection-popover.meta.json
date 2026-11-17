@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Floating toolbar anchored to a text selection that exposes a comment-on-selection action with an inline composer.",
+  "tags": ["overlay", "selection"],
+  "useWhen": [
+    "Letting readers annotate or comment on a highlighted range of text in a document or article surface.",
+    "Surfacing selection-scoped actions such as quote, share, or comment near the user's pointer."
+  ],
+  "avoidWhen": [
+    { "reason": "Anchoring generic non-selection content to a trigger — use popover." },
+    {
+      "reason": "Building a general-purpose floating toolbar unrelated to text selection — compose a popover with custom controls."
+    }
+  ],
+  "related": ["popover"]
+}

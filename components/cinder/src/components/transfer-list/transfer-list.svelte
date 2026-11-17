@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Compact multi-select assignment control for choosing a subset from a fixed item pool.
-   * @tag form
-   * @tag selection
-   * @useWhen Letting users choose permissions, tags, or visible columns from a fixed pool.
-   * @avoidWhen The pool needs inline search or filtering — compose search controls around the list instead.
-   * @avoidWhen The user only needs independent checkbox choices — use checkbox-group instead. | checkbox-group
-   * @related checkbox-group, selection-popover, sortable-list
-   */
   export type { TransferListItem, TransferListProps } from './transfer-list.types.ts';
 </script>
 

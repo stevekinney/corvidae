@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 
-import { imageExamples } from '@lostgradient/cinder';
+import { readFileSync } from 'node:fs';
+
+// Cinder's examples for Image, as its `metadata` task copies them to `.metadata/image/examples.json`.
+const imageExamples = JSON.parse(
+  readFileSync(Bun.resolveSync('@lostgradient/cinder/image/examples', import.meta.dir), 'utf8'),
+) as { examples: Array<{ id: string; code: string }> };
 
 // An `<img>` renders its SVG as a separate document, so `currentColor` there never
 // follows the host theme: the illustration went near-black on the dark theme (CIN-61).

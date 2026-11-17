@@ -1,14 +1,4 @@
-import {
-  Button,
-  Modal,
-  buttonConstraints,
-  buttonExamples,
-  buttonSchema,
-  buttonVariables,
-  manifest,
-  schemaFormSchema,
-  type ButtonProps,
-} from '@lostgradient/cinder';
+import { Button, Modal, type ButtonProps } from '@lostgradient/cinder';
 import { describe, expect, it } from 'bun:test';
 
 describe('@lostgradient/cinder root API', () => {
@@ -17,15 +7,6 @@ describe('@lostgradient/cinder root API', () => {
     expect(Button).toBeDefined();
     expect(Modal).toBeDefined();
     expect(props.variant).toBe('primary');
-  });
-
-  it('exposes component metadata from the same package entrypoint', () => {
-    expect(manifest.components).toHaveLength(227);
-    expect(buttonSchema.type).toBe('object');
-    expect(buttonVariables).toContain('--cinder-button-background');
-    expect(buttonConstraints.component).toBe('button');
-    expect(buttonExamples.component).toBe('button');
-    expect(schemaFormSchema.type).toBe('object');
   });
 
   it('loads the root stylesheet side effect with the root API', async () => {

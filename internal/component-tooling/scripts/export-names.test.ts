@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -103,4 +111,42 @@ export interface Merged {}
   expect(formatExportNames(names)).toBe(
     '# runtime\nMerged\nbeta\n# types\nAlpha\nFromTypes\nalsoType\n',
   );
+});
+
+/**
+ * `fixtures/root-export-names.txt` is the package root's export list: recorded before the root
+ * barrel's component exports were generated (COR-2393), and rewritten when the root metadata
+ * exports moved to `./<component>/schema`-style subpaths (COR-2078). The generated barrel may add
+ * the names a new component's `index.ts` exports, but it never drops a recorded name or moves one
+ * between the runtime and type lists. A change that removes a root export on purpose rewrites the
+ * snapshot: `bun scripts/export-names.ts src/index.ts > scripts/fixtures/root-export-names.txt`.
+ */
+test('the package root still exports every recorded name, each of the same kind', () => {
+  const packageRoot = join(import.meta.dir, '..');
+  const recorded = readFileSync(join(import.meta.dir, 'fixtures', 'root-export-names.txt'), 'utf8');
+  const [runtimeText = '', typesText = ''] = recorded.split('# types\n');
+  const recordedRuntime = runtimeText.replace('# runtime\n', '').split('\n').filter(Boolean);
+  const recordedTypes = typesText.split('\n').filter(Boolean);
+  const current = exportNames(join(packageRoot, 'src', 'index.ts'));
+  const runtime = new Set(current.runtime);
+  const types = new Set(current.types);
+  expect(recordedRuntime.filter((name) => !runtime.has(name))).toEqual([]);
+  expect(recordedTypes.filter((name) => !types.has(name))).toEqual([]);
+  // A name the snapshot lacks must come from a component added since, through its barrel.
+  const componentNames = new Set<string>();
+  const componentsRoot = join(packageRoot, 'src', 'components');
+  for (const directory of readdirSync(componentsRoot)) {
+    const barrel = join(componentsRoot, directory, 'index.ts');
+    if (!existsSync(barrel)) continue;
+    const names = exportNames(barrel);
+    componentNames.add(
+      directory.replaceAll(/(?:^|-)(\w)/g, (_, letter: string) => letter.toUpperCase()),
+    );
+    for (const name of [...names.runtime, ...names.types]) componentNames.add(name);
+  }
+  const recordedNames = new Set([...recordedRuntime, ...recordedTypes]);
+  const added = [...current.runtime, ...current.types].filter(
+    (name) => !recordedNames.has(name) && !componentNames.has(name),
+  );
+  expect(added).toEqual([]);
 });

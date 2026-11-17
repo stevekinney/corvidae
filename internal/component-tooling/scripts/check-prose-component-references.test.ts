@@ -193,8 +193,11 @@ describe('check-prose-component-references', () => {
   test('only scans component guidance rather than implementation or API documentation', () => {
     expect(
       componentDocumentationProse(
-        'button.svelte',
-        '<script>const label = `aria-label`;</script>\n<script module>/** @cinder @avoidWhen Use missing-component instead. */</script>',
+        'button.meta.json',
+        JSON.stringify({
+          $schema: '../../schemas/component-meta.schema.json',
+          avoidWhen: [{ reason: 'Use missing-component instead.' }],
+        }),
       ),
     ).toContain('missing-component');
     expect(
@@ -208,13 +211,18 @@ describe('check-prose-component-references', () => {
     );
   });
 
-  test('finds the @cinder JSDoc after preceding module-script statements', () => {
-    expect(
-      componentDocumentationProse(
-        'button.svelte',
-        "<script module>\nimport type { Snippet } from 'svelte';\n/** @cinder @avoidWhen Use `missing-component` instead. */\n</script>",
-      ),
-    ).toContain('missing-component');
+  test('reads every authored string of a meta.json, nested ones included, but not its $schema', () => {
+    const prose = componentDocumentationProse(
+      'button.meta.json',
+      JSON.stringify({
+        $schema: '../../schemas/missing-component.schema.json',
+        rationale: 'The nearest alternative is `other-component`.',
+        a11y: { notes: ['Pair it with `third-component`.'] },
+      }),
+    );
+    expect(prose).toContain('other-component');
+    expect(prose).toContain('third-component');
+    expect(prose).not.toContain('missing-component');
   });
 
   test('checks prose in generated manifest metadata and package imports', () => {
@@ -277,8 +285,8 @@ describe('check-prose-component-references', () => {
 
   test('enumerates component prose files and the generated manifest', async () => {
     const files = await proseSourcePaths();
-    expect(files).toContain('components.json');
-    expect(files.some((filePath) => filePath.endsWith('/button.svelte'))).toBe(true);
+    expect(files).toContain('.metadata/components.json');
+    expect(files.some((filePath) => filePath.endsWith('/button.meta.json'))).toBe(true);
     expect(files.some((filePath) => filePath.endsWith('/button/README.md'))).toBe(true);
   });
 });

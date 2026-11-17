@@ -2,8 +2,8 @@
  * Constraints DSL — types, authoring helper, and reference evaluator.
  *
  * Components with discriminated-union or cross-prop rules that JSON Schema
- * cannot cleanly represent author a `{name}.constraints.ts` sidecar calling
- * `defineConstraints`. The generator serializes it to `{name}.constraints.json`.
+ * cannot cleanly represent author a `{name}.constraints.json` sidecar, which
+ * `scripts/check-component-constraints.ts` checks against the component's props.
  * The evaluator (`evaluateConstraints`) is the reference implementation agents
  * and tooling use to verify attribute sets against the rules.
  *
@@ -71,8 +71,7 @@ export type ConstraintExample = {
 };
 
 /**
- * The top-level document authored per-component in `{name}.constraints.ts`
- * and serialized to `{name}.constraints.json` by the generator.
+ * The top-level document authored per-component in `{name}.constraints.json`.
  */
 export type ConstraintsDocument = {
   /** Kebab-case component id matching the directory name. */

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Multi-line text input with label, description, and error wiring plus an optional live character counter against maxlength.",
+  "tags": ["form", "field"],
+  "useWhen": [
+    "Collecting multi-line prose such as comments, descriptions, or messages.",
+    "Surfacing a remaining-character counter as the user types against a maxlength."
+  ],
+  "avoidWhen": [{ "reason": "Collecting a single short line of text — use input instead." }],
+  "related": ["input"]
+}

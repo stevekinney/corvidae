@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status alpha
-   * @purpose Native video element with its own controls for play, pause, replay, seeking, elapsed and total time, mute, and full screen.
-   * @tag media
-   * @tag video
-   * @useWhen Playing a single video from an https, http, or blob URL with accessible controls.
-   * @useWhen Showing a poster image until the viewer starts playback.
-   * @avoidWhen You need streaming protocols, caption authoring, or playlists — wire those separately.
-   * @related audio-player, image
-   */
   export type { VideoPlayerProps } from './video-player.types.ts';
 </script>
 

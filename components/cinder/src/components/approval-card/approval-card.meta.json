@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "domain",
+  "status": "alpha",
+  "purpose": "Durable human-in-the-loop approval surface for reviewing risky tool operations before they execute.",
+  "tags": ["approval", "human-in-the-loop", "tool"],
+  "useWhen": [
+    "A tool call, command, file write, or patch needs explicit human approval before execution.",
+    "Showing policy, sandbox, idempotency, environment-name, and argument context for an approval request."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "The action has already completed and only needs historical display — use feed or run-step-timeline instead."
+    },
+    {
+      "reason": "Collecting arbitrary form input for a workflow — compose form controls directly instead."
+    }
+  ],
+  "related": ["card", "badge", "status-dot", "payload-inspector", "code-block", "collapsible"],
+  "a11y": {
+    "notes": [
+      "Renders as an article with native button controls so approval actions are discoverable without polluting the landmark list.",
+      "Expiration changes update the visible state but do not fire approval callbacks automatically."
+    ]
+  }
+}

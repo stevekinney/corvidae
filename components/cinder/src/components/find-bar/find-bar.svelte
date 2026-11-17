@@ -1,13 +1,4 @@
 <script lang="ts" module>
-  /** @cinder
-   * @category navigation
-   * @status beta
-   * @purpose Docked, backend-agnostic find controls with debounced query notifications and match navigation.
-   * @tag find-bar
-   * @useWhen Providing find-in-document controls backed by a host search implementation.
-   * @avoidWhen Building a general search field with suggestions — use SearchField or Combobox.
-   * @related input, form-field, button
-   */
   export type { FindBarProps } from './find-bar.types.ts';
 </script>
 

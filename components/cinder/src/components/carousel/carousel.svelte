@@ -1,21 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status beta
-   * @purpose Rotating content viewport with previous/next controls, picker dots, and optional autoplay.
-   * @tag navigation
-   * @tag carousel
-   * @tag media
-   * @useWhen Presenting a finite set of visual highlights with sequential browsing controls.
-   * @useWhen Cycling between promotional or tutorial panels inside a single region.
-   * @avoidWhen Content should remain simultaneously visible and scannable. | grid
-   * @avoidWhen You only need one static hero panel with no sequence controls.
-   * @related image, aspect-ratio, masonry
-   * @a11yPattern WAI-ARIA Carousel
-   * @keyboardShortcut ArrowLeft / ArrowRight / Home / End | Moves between slides.
-   * @a11yNote Auto-advance pauses on hover and focus, and is disabled under reduced motion.
-   */
   export type {
     CarouselControlLabel,
     CarouselProps,

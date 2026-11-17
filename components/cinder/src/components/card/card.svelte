@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status stable
-   * @purpose Surface container that groups related content with optional header, title, description, and footer regions.
-   * @tag layout
-   * @tag container
-   * @useWhen Grouping a self-contained unit of content such as a summary, preview, or settings panel.
-   * @useWhen Composing a list of comparable items where each needs its own framed region.
-   * @avoidWhen Rendering a bare visual surface without slotted regions — use surface instead.
-   * @avoidWhen Presenting a single key metric — use statistic or statistic-group instead.
-   * @related surface, statistic, stacked-list-item, section-heading
-   */
   export type {
     CardHeadingLevel,
     CardMediaPosition,

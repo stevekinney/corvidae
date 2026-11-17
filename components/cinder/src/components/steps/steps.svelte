@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Ordered progress indicator that visualizes a fixed sequence of steps with completed, current, skipped, and upcoming states.
-   * @tag navigation
-   * @tag progress
-   * @useWhen Walking the user through a multi-step wizard or checkout flow with strict ordering.
-   * @useWhen Showing how far the user has advanced through a known number of stages.
-   * @useWhen Showing a first-run checklist whose steps complete in any order, each with its own action, with the checklist variant.
-   * @useWhen Reporting the progress of a short job, such as a restart, as a list of what is done, running and waiting, with the status variant.
-   * @avoidWhen Switching between independent peer views with no order — use tabs instead.
-   * @avoidWhen Showing ancestor hierarchy of the current page — use breadcrumbs instead.
-   * @related tabs, breadcrumbs, pagination
-   */
   export type {
     StepItem,
     StepItemState,

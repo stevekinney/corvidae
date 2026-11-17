@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "alpha",
+  "purpose": "Render a read-only terminal stream with a bounded subset of ANSI SGR color and line-rewrite behavior.",
+  "tags": ["terminal", "ansi", "output"],
+  "useWhen": [
+    "Showing command output or logs that include basic ANSI styling and carriage-return progress updates."
+  ],
+  "avoidWhen": [{ "reason": "Hosting an interactive real PTY — use terminal-frame." }],
+  "related": ["terminal-frame", "code-block"]
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Standalone label primitive that associates text with a custom control via for and matches the visual treatment of built-in inputs.",
+  "tags": ["form", "primitive"],
+  "useWhen": [
+    "Building a hand-rolled field that wraps multiple inputs needing one shared label.",
+    "Matching the disabled or required visual treatment of cinder inputs on a custom control."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Labelling a built-in input that already renders its own label prop — pass label instead."
+    }
+  ],
+  "related": ["form-field", "input", "checkbox", "radio-group"]
+}

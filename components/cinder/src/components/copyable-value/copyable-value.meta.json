@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "A value in monospace, such as an address or an identifier, that breaks anywhere when its place is narrow, with a copy control that stays on the value's last line.",
+  "tags": ["copy", "clipboard", "identifier"],
+  "useWhen": [
+    "Showing an address or identifier a person copies, in a place that can be narrow, so its copy control never sits alone on a row."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a snippet or several lines of code — use code-block." },
+    { "reason": "Offering a copy control with no value beside it — use copy-button." }
+  ],
+  "related": ["copy-button", "code-block"],
+  "rationale": "Nearest alternative: CopyButton beside a code element — that pair wraps as two parts, and the button can land alone on a line while the value breaks above it."
+}

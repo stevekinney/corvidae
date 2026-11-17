@@ -16,6 +16,8 @@ test-results/
 *.tsbuildinfo
 # Declarations a library emits for its consumers' type-checks (`types` task).
 .types/
+# Component metadata the `metadata` task writes, deliberately with no Prettier pass.
+.metadata/
 # Agent worktrees are separate checkouts with their own formatting state.
 .claude/worktrees/
 # The playground's build scratch directories hold generated entry files.

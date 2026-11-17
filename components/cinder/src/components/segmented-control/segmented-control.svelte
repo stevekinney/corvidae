@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Compact segmented selector that surfaces a small fixed set of options as a connected bar, including bindable selections and route-backed links.
-   * @tag form
-   * @tag selection
-   * @useWhen Choosing one of two to five mutually exclusive options that all fit on screen at once.
-   * @useWhen Picking a view filter where seeing every option beats hiding them inside a toggle or tabs control.
-   * @useWhen Rendering route-backed filters as real links with `variant="navigation"` and `Segment href`.
-   * @avoidWhen Toggling a single binary on or off — use toggle or checkbox instead.
-   * @avoidWhen Switching between panels of associated content — use tabs instead.
-   * @related toggle, checkbox, tabs, button-group
-   */
   export type { SegmentedControlProps } from './segmented-control.types.ts';
 </script>
 

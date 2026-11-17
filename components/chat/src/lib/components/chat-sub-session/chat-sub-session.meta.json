@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Renders a reduced nested conversation transcript inside a parent chat turn.",
+  "tags": ["chat", "transcript"],
+  "useWhen": ["A tool or delegated session needs to expose its child transcript inline."],
+  "avoidWhen": [
+    { "reason": "The child conversation should be a separate full-size Chat surface." }
+  ],
+  "related": ["chat"]
+}

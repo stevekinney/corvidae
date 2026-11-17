@@ -4,18 +4,23 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * `bureau.skills.list`, refuses an untrusted skill, and changes a source's trust through the
  * configuration queue with an audit record. Every skill is a fixture written for the test.
  */
-import { ANONYMOUS_LOCAL_OWNER, auditTrailSkillSourceOwnerId } from '@lostgradient/bureau';
+import {
+  ANONYMOUS_LOCAL_OWNER,
+  auditTrailSkillSourceOwnerId,
+  createManualRuntimeServices,
+} from '@lostgradient/bureau';
 import {
   createFilesystemArtifactLoader,
   createSkillClient,
   type SkillCatalogRevision,
 } from '@lostgradient/bureau/skills';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { startHost, type Host } from './host.ts';
+import { startHost, type Host, type HostOptions } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { discoverFirstSkills, SkillInputError } from './skill-manager.ts';
 import { writeProviderHome } from './stub-provider.ts';
@@ -82,8 +87,8 @@ async function layout(extra: Record<string, unknown> = {}): Promise<Layout> {
   return { home, userSkills, projectSkills };
 }
 
-async function startAt(home: string): Promise<Host> {
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+async function startAt(home: string, options: HostOptions = {}): Promise<Host> {
+  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, ...options });
   hosts.push(host);
   return host;
 }
@@ -496,7 +501,8 @@ describe('changing the trust of a source', () => {
 
   test('refreshes the catalog when a person adds a skill by hand', async () => {
     const { home, userSkills } = await layout();
-    const host = await startAt(home);
+    // Not watched: a watcher's rescan could number the revision before the refresh does.
+    const host = await startAt(home, { directoryWatch: false });
     await writeSkill(userSkills, 'translate');
 
     const refreshed = await host.skills.refresh();
@@ -504,6 +510,108 @@ describe('changing the trust of a source', () => {
     expect(refreshed.revision).toBe(2);
     const names = await skillsOf(host);
     expect(names.map((skill) => skill['name'])).toContain('translate');
+  });
+});
+
+/** The `definitions.changed` events for skills the host's Bureau has published, in order. */
+async function skillChangeEvents(host: Host) {
+  const found: Array<{
+    readonly catalog: 'skills';
+    readonly added: string[];
+    readonly changed: string[];
+    readonly removed: string[];
+    readonly rejected: string[];
+  }> = [];
+  for await (const envelope of host.bureau.internals.eventFeed.feed.replay()) {
+    if (envelope.kind === 'definitions.changed' && envelope.payload['catalog'] === 'skills') {
+      found.push({
+        catalog: 'skills',
+        added: envelope.payload['added'] as string[],
+        changed: envelope.payload['changed'] as string[],
+        removed: envelope.payload['removed'] as string[],
+        rejected: envelope.payload['rejected'] as string[],
+      });
+    }
+  }
+  return found;
+}
+
+describe('a skill file that changes while the host runs (COR-2100)', () => {
+  test('[matrix 121, 125, AC1, AC3] publishes definitions.changed with catalog skills, and a run started after it binds the new revision', async () => {
+    const { home, userSkills } = await layout();
+    const runtime = createManualRuntimeServices({ origin: '2026-11-09T00:00:00.000Z' });
+    const host = await startAt(home, { directoryWatch: 'poll', runtime });
+    await host.skills.setTrust({ source: 'home', trusted: true });
+    // The trust change is announced too: the skills it moved are changed.
+    const before = host.skills.standing().catalog;
+    // A run that started now is bound to this revision.
+    const earlier = createSkillClient({
+      catalog: before,
+      loadArtifact: createFilesystemArtifactLoader(),
+    });
+
+    await writeSkill(userSkills, 'translate');
+    await writeFile(
+      join(userSkills, 'summarize', 'SKILL.md'),
+      '---\nname: summarize\ndescription: Summarizes, now.\n---\n\nBody.\n',
+    );
+    await runtime.advance(1000);
+    await waitUntil(
+      async () => {
+        const heard = await skillChangeEvents(host);
+        const names = heard.flatMap((event) => [...event.added, ...event.changed]);
+        return names.includes('translate') && names.includes('summarize');
+      },
+      { message: 'the skills’ change to be published' },
+    );
+
+    const events = await skillChangeEvents(host);
+    const rescanned = events.filter((event) => event.added.includes('translate'));
+    expect(rescanned).toHaveLength(1);
+    expect(rescanned[0]).toMatchObject({
+      catalog: 'skills',
+      added: ['translate'],
+      removed: [],
+      rejected: [],
+    });
+    // A run started after the event reads the host's catalog as it is now.
+    const after = host.skills.standing().catalog;
+    expect(after.revision).toBeGreaterThan(before.revision);
+    const later = createSkillClient({
+      catalog: after,
+      loadArtifact: createFilesystemArtifactLoader(),
+    });
+    expect(await later.activate('translate')).toMatchObject({ activated: true });
+    expect(after.records.find((record) => record.name === 'summarize')?.description).toBe(
+      'Summarizes, now.',
+    );
+    // The run that started before it keeps what it was bound to.
+    expect(await earlier.activate('translate')).toMatchObject({ activated: false });
+  });
+
+  test('[matrix 92, AC2] a malformed SKILL.md is published under rejected', async () => {
+    const { home, userSkills } = await layout();
+    const runtime = createManualRuntimeServices({ origin: '2026-11-09T00:00:00.000Z' });
+    const host = await startAt(home, { directoryWatch: 'poll', runtime });
+    // A skill from a source that is not trusted is unavailable for that reason, not rejected.
+    await host.skills.setTrust({ source: 'home', trusted: true });
+    const announcedBefore = await skillChangeEvents(host);
+    await mkdir(join(userSkills, 'broken'), { recursive: true });
+    await writeFile(join(userSkills, 'broken', 'SKILL.md'), '---\nname: broken\n---\n\nBody.\n');
+    await runtime.advance(1000);
+    await waitUntil(
+      async () => {
+        const heard = await skillChangeEvents(host);
+        return heard.length > announcedBefore.length;
+      },
+      { message: 'the malformed skill to be published' },
+    );
+    const announced = await skillChangeEvents(host);
+    expect(announced.at(-1)).toMatchObject({
+      catalog: 'skills',
+      added: ['broken'],
+      rejected: ['broken'],
+    });
   });
 });
 

@@ -16,7 +16,7 @@ import {
   A2UI_LABEL_PROPERTY,
   type A2uiCatalog,
   buildA2uiCatalog,
-  CATALOG_PATH,
+  BUREAU_CATALOG_PATH,
   type CatalogInputs,
   CINDER_A2UI_CATALOG_ID,
   createA2uiMessageValidator,
@@ -287,14 +287,13 @@ describe('vendored A2UI schemas', () => {
   });
 });
 
-// The tests run under the `browser` export condition, where `prettier` resolves
-// to its standalone build, so they compare the catalog's content and leave its
-// formatting to `format:check`. `bun run a2ui-catalog:check` compares the bytes.
-describe('a2ui-catalog.json', () => {
+// Bureau vendors the catalog. These compare its content; Cinder's lint
+// (`generate-component-artifacts.ts --check`) compares its bytes and its recorded digest.
+describe("Bureau's copy of the catalog", () => {
   const committed = (): A2uiCatalog =>
-    parseJsonFile<A2uiCatalog>(readFileSync(CATALOG_PATH, 'utf8'));
+    parseJsonFile<A2uiCatalog>(readFileSync(BUREAU_CATALOG_PATH, 'utf8'));
 
-  it('is current with the Cinder schemas (run `bun run a2ui-catalog:generate` to fix)', () => {
+  it('is current with the Cinder schemas (`bun scripts/generate-a2ui-catalog.ts --write-bureau` fixes it)', () => {
     expect(buildA2uiCatalog(inputs)).toEqual(committed());
   });
 

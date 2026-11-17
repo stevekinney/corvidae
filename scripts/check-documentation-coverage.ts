@@ -33,7 +33,7 @@ import { existsSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
-import { exportSourceTarget } from './workspace-exports.ts';
+import { exportSourceTarget, isMetadataExport } from './workspace-exports.ts';
 
 export const ALLOWLIST_FILE = 'documentation-coverage-allowlist.json';
 export const MEMBER_ALLOWLIST_FILE = 'documentation-member-allowlist.json';
@@ -115,7 +115,11 @@ export function parseArguments(argv: readonly string[]): Arguments | string {
 export function readEntryPoints(directory: string, exports: unknown): EntryPoint[] {
   const map: Record<string, unknown> =
     typeof exports === 'string' ? { '.': exports } : ((exports ?? {}) as Record<string, unknown>);
-  return Object.entries(map).map(([subpath, entry]) => {
+  // A component library's `.metadata/` JSON exports document nothing: they are generated data.
+  const sourceEntries = Object.entries(map).filter(
+    ([subpath, entry]) => !isMetadataExport(subpath, entry),
+  );
+  return sourceEntries.map(([subpath, entry]) => {
     const target = exportSourceTarget(entry);
     if (target === null || !/\.tsx?$/.test(target)) {
       throw new Error(

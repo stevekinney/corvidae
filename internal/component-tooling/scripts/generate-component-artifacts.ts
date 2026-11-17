@@ -1,9 +1,32 @@
-/** Generate or check component-local artifacts, constraints, and manifest. */
+/**
+ * The derived metadata of a component package (cinder, chat, editor or terminal).
+ *
+ * ```sh
+ * bun scripts/generate-component-artifacts.ts                 # the `metadata` task: write .metadata/
+ * bun scripts/generate-component-artifacts.ts --check         # in lint: check what is committed
+ * bun scripts/generate-component-artifacts.ts --fix           # rewrite the committed generated regions
+ * bun ../cinder/scripts/generate-component-artifacts.ts --package-root .   # another package
+ * ```
+ *
+ * The default mode is each package's `metadata` Turborepo task. It writes only the ignored
+ * `.metadata/` directory (see `lib/metadata-files.ts`): each component's schema and variables, a
+ * copy of its authored examples, the package's `components.json`, and Cinder's A2UI catalog, as
+ * plain JSON with no Prettier pass. It never writes a committed file, so its outputs cannot
+ * invalidate its own cache.
+ *
+ * `--check` runs in each package's `lint`, which depends on `metadata`: every README's generated
+ * regions match `.metadata/`, every component has its README and accessibility review, the
+ * authored constraints and examples are valid, and, in cinder, the root registries are current
+ * and Bureau's copy of the A2UI catalog matches byte for byte.
+ *
+ * `--fix` rewrites what `--check` compares: the README regions (and, in cinder, the root
+ * registries). It generates in memory, so it needs no `metadata` run first.
+ */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
-import type { Manifest } from './generate-manifest.ts';
+import { componentPackage, type ComponentPackage } from './lib/component-package.ts';
 
 type CheckStage = { issues: string[] };
 
@@ -11,147 +34,157 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function runArtifactCheck(): Promise<CheckStage> {
+async function runStage(name: string, stage: () => Promise<string[]>): Promise<CheckStage> {
   try {
-    const { checkComponentArtifacts } = await import('./component-artifact-operations.ts');
-    const issues = await checkComponentArtifacts();
-    return {
-      issues: issues.map((issue) => `${issue.component}/${issue.file} (${issue.reason})`),
-    };
+    return { issues: await stage() };
   } catch (error) {
-    process.stderr.write(`components:check — artifacts stage failed: ${errorMessage(error)}\n`);
-    return { issues: ['artifacts: stage threw — see error above'] };
+    process.stderr.write(`components:check — ${name} stage failed: ${errorMessage(error)}\n`);
+    return { issues: [`${name}: stage threw — see error above`] };
   }
 }
 
-async function runConstraintCheck(): Promise<CheckStage> {
-  try {
-    const { checkConstraintsDrift } = await import('./generate-component-constraints.ts');
-    const issues = await checkConstraintsDrift();
-    return {
-      issues: issues.map((issue) => `constraints: ${issue.name}/${issue.file} (${issue.reason})`),
-    };
-  } catch (error) {
-    process.stderr.write(`components:check — constraints stage failed: ${errorMessage(error)}\n`);
-    return { issues: ['constraints: stage threw — see error above'] };
-  }
+function writeJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function runExampleCheck(): Promise<CheckStage> {
-  try {
-    const { checkCommittedExamples } = await import('./check-component-examples.ts');
-    const issues = await checkCommittedExamples();
-    for (const issue of issues) process.stderr.write(`components:check — examples: ${issue}\n`);
-    return { issues: issues.map((issue) => `examples: ${issue}`) };
-  } catch (error) {
-    process.stderr.write(`components:check — examples stage failed: ${errorMessage(error)}\n`);
-    return { issues: ['examples: stage threw — see error above'] };
-  }
-}
-
-async function runManifestCheck(): Promise<{ stage: CheckStage; manifest?: Manifest }> {
-  try {
-    const { buildManifest } = await import('./generate-manifest.ts');
-    const { formatGenerated } = await import('./component-artifact-operations.ts');
-    const manifest = await buildManifest();
-    const manifestPath = join(import.meta.dir, '../../../components/cinder/components.json');
-    const generated = await formatGenerated(JSON.stringify(manifest, null, 2) + '\n', manifestPath);
-    const committed = existsSync(manifestPath) ? await Bun.file(manifestPath).text() : undefined;
-    const drift = committed === undefined || generated !== committed;
-    if (drift) {
-      process.stderr.write(
-        `components:check — components.json is ${committed === undefined ? 'missing' : 'stale'}\n`,
-      );
+/** The `metadata` task: regenerate the package's `.metadata/` from scratch. */
+async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
+  const { discoverComponentDirectories } = await import('./discover-component-directories.ts');
+  const { generateSchemaForComponent } = await import('./generate-component-schema.ts');
+  const { generateVariablesForComponent } = await import('./generate-component-variables.ts');
+  const { componentMetadataPath, metadataRoot } = await import('./lib/metadata-files.ts');
+  rmSync(metadataRoot(pkg.root), { recursive: true, force: true });
+  const components = await discoverComponentDirectories(pkg.root);
+  if (components.length === 0) throw new Error(`${pkg.name} has no component directories`);
+  // Sequential on purpose: the schema generator shares one module-cached ts-morph Project, whose
+  // accumulated state makes concurrent calls order intersection members differently.
+  for (const { directory, name } of components) {
+    const schema = generateSchemaForComponent({
+      typesFilePath: join(directory, `${name}.types.ts`),
+      componentName: name,
+    });
+    writeJson(componentMetadataPath(pkg.root, name, 'schema'), schema.schema);
+    const variables = await generateVariablesForComponent({
+      componentDirectory: directory,
+      componentName: name,
+    });
+    writeJson(componentMetadataPath(pkg.root, name, 'variables'), variables.variables);
+    const examples = join(directory, `${name}.examples.json`);
+    if (existsSync(examples)) {
+      const target = componentMetadataPath(pkg.root, name, 'examples');
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(examples, target);
     }
-    return {
-      stage: { issues: drift ? ['manifest: components.json is missing or stale'] : [] },
-      manifest,
-    };
-  } catch (error) {
-    process.stderr.write(`components:check — manifest stage failed: ${errorMessage(error)}\n`);
-    return { stage: { issues: ['manifest: components.json is missing or stale'] } };
   }
+  const { writeManifest } = await import('./generate-manifest.ts');
+  await writeManifest(pkg.root);
+  if (pkg.isCinder) {
+    const { writeA2uiCatalogMetadata } = await import('./generate-a2ui-catalog.ts');
+    await writeA2uiCatalogMetadata();
+  }
+  process.stdout.write(`metadata — ${pkg.name}: ${components.length} component(s)\n`);
 }
 
-async function runRootMetadataExportCheck(manifest: Manifest): Promise<CheckStage> {
-  try {
-    const { checkRootMetadataExports } = await import('./generate-root-metadata-exports.ts');
-    return { issues: await checkRootMetadataExports(manifest) };
-  } catch (error) {
-    process.stderr.write(
-      `components:check — root metadata export stage failed: ${errorMessage(error)}\n`,
+/** The commands that make what `--check` compares current again. */
+function fixCommand(pkg: ComponentPackage): string {
+  const script = pkg.isCinder
+    ? 'bun scripts/generate-component-artifacts.ts'
+    : 'bun ../cinder/scripts/generate-component-artifacts.ts --package-root .';
+  return `cd ${pkg.root.slice(pkg.root.indexOf('components/'))} && ${script} --fix`;
+}
+
+async function runCheckMode(pkg: ComponentPackage): Promise<void> {
+  const stages: CheckStage[] = [];
+  if (pkg.isCinder) {
+    stages.push(
+      await runStage('root registries', async () => {
+        const { checkRootRegistries } = await import('./generate-root-registries.ts');
+        const issues = await checkRootRegistries();
+        return issues.map((issue) => `root registries: ${issue.file} (${issue.reason})`);
+      }),
+      await runStage('Bureau catalog copy', async () => {
+        const { checkBureauCatalogCopy } = await import('./generate-a2ui-catalog.ts');
+        const issues = await checkBureauCatalogCopy();
+        return issues.map((issue) => `a2ui catalog: ${issue}`);
+      }),
     );
-    return { issues: ['root metadata exports: stage threw — see error above'] };
   }
-}
-
-async function runCheckMode(): Promise<void> {
-  const artifacts = await runArtifactCheck();
-  const constraints = await runConstraintCheck();
-  const examples = await runExampleCheck();
-  const manifest = await runManifestCheck();
-  const rootMetadata = manifest.manifest
-    ? await runRootMetadataExportCheck(manifest.manifest)
-    : { issues: ['root metadata exports: manifest unavailable'] };
-  const issues = [
-    ...artifacts.issues,
-    ...constraints.issues,
-    ...examples.issues,
-    ...manifest.stage.issues,
-    ...rootMetadata.issues,
-  ];
+  stages.push(
+    await runStage('artifacts', async () => {
+      const { checkComponentArtifacts } = await import('./component-artifact-operations.ts');
+      const issues = await checkComponentArtifacts(pkg.root);
+      return issues.map((issue) => `${issue.component}/${issue.file} (${issue.reason})`);
+    }),
+    await runStage('constraints', async () => {
+      const { checkComponentConstraints } = await import('./check-component-constraints.ts');
+      const issues = await checkComponentConstraints(pkg.root);
+      return issues.map((issue) => `constraints: ${issue.name}/${issue.file} (${issue.reason})`);
+    }),
+    await runStage('examples', async () => {
+      const { checkCommittedExamples } = await import('./check-component-examples.ts');
+      const issues = await checkCommittedExamples(pkg.root);
+      return issues.map((issue) => `examples: ${issue}`);
+    }),
+  );
+  const issues = stages.flatMap((stage) => stage.issues);
   if (issues.length === 0) {
-    process.stdout.write('components:check — OK\n');
+    process.stdout.write(`components:check — ${pkg.name} OK\n`);
     return;
   }
   process.stderr.write(
-    'components:check — drift detected. Run `bun run components:generate` to fix:\n',
+    `components:check — ${pkg.name}: stale or invalid. \`${fixCommand(pkg)}\` rewrites README regions${pkg.isCinder ? ' and the root registries' : ''}:\n`,
   );
   for (const issue of issues) process.stderr.write(`  • ${issue}\n`);
   process.exitCode = 1;
 }
 
-async function runGenerateMode(args: string[]): Promise<void> {
+async function runFixMode(pkg: ComponentPackage, targetName: string | undefined): Promise<void> {
   const { discoverComponentDirectories } = await import('./discover-component-directories.ts');
-  const { generateArtifactsForComponent, writeArtifacts } =
+  const { generateArtifactsForComponent, writeReadme } =
     await import('./component-artifact-operations.ts');
-  const targetName = args.find((arg) => !arg.startsWith('-'));
-  const components = await discoverComponentDirectories();
+  const components = await discoverComponentDirectories(pkg.root);
   const filtered = targetName
     ? components.filter((component) => component.name === targetName)
     : components;
   if (filtered.length === 0) {
     process.stderr.write(
-      targetName
-        ? `No component named "${targetName}"\n`
-        : 'No directory-shaped components found\n',
+      targetName ? `No component named "${targetName}"\n` : 'No component directories found\n',
     );
     process.exitCode = 1;
     return;
   }
   for (const component of filtered) {
-    await writeArtifacts(await generateArtifactsForComponent(component));
-    process.stdout.write(`generated ${component.name}\n`);
+    if (await writeReadme(await generateArtifactsForComponent(component))) {
+      process.stdout.write(`rewrote ${component.name}/README.md\n`);
+    }
   }
-  if (targetName !== undefined) return;
-  const { generateAllConstraints } = await import('./generate-component-constraints.ts');
-  const { writeManifest } = await import('./generate-manifest.ts');
-  const constraintsCount = await generateAllConstraints();
-  if (constraintsCount > 0) {
-    process.stdout.write(`generated ${constraintsCount} constraints sidecar(s)\n`);
+  if (pkg.isCinder) {
+    const { writeRootRegistries } = await import('./generate-root-registries.ts');
+    for (const file of await writeRootRegistries()) process.stdout.write(`generated ${file}\n`);
   }
-  await writeManifest();
-  process.stdout.write('generated components.json\n');
-  const { buildManifest } = await import('./generate-manifest.ts');
-  const { writeRootMetadataExports } = await import('./generate-root-metadata-exports.ts');
-  await writeRootMetadataExports(await buildManifest());
-  process.stdout.write('generated root metadata exports\n');
+}
+
+/** The `--package-root <dir>` argument, resolved against the working directory. */
+function packageRootArgument(args: string[]): string | undefined {
+  const index = args.indexOf('--package-root');
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (value === undefined) throw new Error('--package-root needs a directory');
+  return resolve(value);
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--check')) return runCheckMode();
-  return runGenerateMode(args);
+  const pkg = componentPackage(packageRootArgument(args));
+  if (args.includes('--check')) return runCheckMode(pkg);
+  if (args.includes('--fix')) {
+    const names = args.filter(
+      (arg, index) => !arg.startsWith('-') && args[index - 1] !== '--package-root',
+    );
+    return runFixMode(pkg, names[0]);
+  }
+  return runMetadataMode(pkg);
 }
 
 if (import.meta.main) await main();

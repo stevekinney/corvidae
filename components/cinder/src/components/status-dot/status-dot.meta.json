@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "Colored dot indicator that communicates static entity state or live realtime connection state with an accessible text label.",
+  "tags": ["connection", "feedback", "realtime", "status"],
+  "useWhen": [
+    "Indicating the current state of a list row, user, deployment, or other entity alongside its name.",
+    "Communicating status compactly when many indicators appear together without triggering live-region announcements.",
+    "Surfacing whether a realtime channel is connected, connecting, disconnected, or errored on a dashboard or app chrome.",
+    "Giving operators an at-a-glance health signal for a long-lived transport."
+  ],
+  "avoidWhen": [
+    { "reason": "Counting items or showing a numeric value — use badge instead." },
+    {
+      "reason": "Announcing a transient status change — use toast-region or alert so assistive tech reads it."
+    }
+  ],
+  "related": ["badge"]
+}

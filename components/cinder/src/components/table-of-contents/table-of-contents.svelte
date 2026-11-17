@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status beta
-   * @purpose On-page heading outline that renders nested anchor links and highlights the active section while scrolling.
-   * @tag navigation
-   * @tag docs
-   * @tag toc
-   * @useWhen Adding an "On this page" rail for long-form docs or settings screens.
-   * @useWhen Letting users jump between headings while keeping context via active-section highlighting.
-   * @avoidWhen Navigating between routes or top-level app areas — use navigation-bar or side-navigation.
-   * @avoidWhen The page has too few headings to justify a secondary navigation rail.
-   * @avoidWhen Rendering expandable hierarchical data with selection state. | tree
-   * @related side-navigation, tree, breadcrumbs, section-heading
-   * @a11yPattern WAI-ARIA Navigation Landmark
-   */
   export type { TableOfContentsItem, TableOfContentsProps } from './table-of-contents.types.ts';
 </script>
 

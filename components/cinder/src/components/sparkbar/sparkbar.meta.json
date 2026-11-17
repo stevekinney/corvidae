@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Compact labeled meter with a thin fill bar for inline cost, token, or quota breakdowns, or, given points, a thin trend line with an end dot.",
+  "tags": ["sparkbar", "meter", "cost", "sparkline", "trend"],
+  "useWhen": [
+    "Comparing several bounded values in dense rows, such as per-step spend, token usage, or budget consumption.",
+    "Showing the shape of one metric over a recent window inside a metric card, with its latest value marked and the window named at each end."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing task completion or loading progress.", "alternative": "progress" },
+    {
+      "reason": "Rendering a full cartesian chart with axes, scales, or multiple series.",
+      "alternative": "line-chart"
+    }
+  ],
+  "related": ["meter", "progress", "bar-chart"]
+}

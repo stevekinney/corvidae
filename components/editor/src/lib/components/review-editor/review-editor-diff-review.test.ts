@@ -14,7 +14,6 @@ import {
   diffReviewStatesEqual,
   projectReviewEditorDocumentThreads,
 } from './review-editor-diff-review.ts';
-import reviewEditorSchema from './review-editor.schema.ts';
 
 describe('ReviewEditor diff comments: buildReviewEditorDiffReviewTarget', () => {
   test('builds a single markdown target keyed by the editor id', () => {
@@ -153,8 +152,13 @@ describe('ReviewEditor diff comments: projectReviewEditorDocumentThreads', () =>
 });
 
 test('ReviewEditor schema artifacts include the public diff-review props', async () => {
-  const jsonSchema = await Bun.file(new URL('./review-editor.schema.json', import.meta.url)).json();
-  expect(jsonSchema).toEqual(reviewEditorSchema);
+  // The schema the `metadata` task generated (`.metadata/review-editor/schema.json`).
+  const reviewEditorSchema = (await Bun.file(
+    Bun.resolveSync('@lostgradient/editor/review-editor/schema', import.meta.dir),
+  ).json()) as {
+    properties: Record<string, unknown>;
+    metadata?: { unsupportedProps?: Array<{ name: string }> };
+  };
   const documentedProps = new Set([
     ...Object.keys(reviewEditorSchema.properties),
     ...(reviewEditorSchema.metadata?.unsupportedProps?.map(({ name }) => name) ?? []),

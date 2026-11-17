@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Semantic list container for like rows: empty state, density, day groups, a shared status column, and announced live insertion.
-   * @tag list
-   * @tag iterator
-   * @useWhen Rendering a vertical list of like records where each row shares the same layout.
-   * @useWhen Pairing with StackedListItem rows for leading/title/description/meta/trailing content.
-   * @useWhen Showing a dedicated empty state when the collection has no items.
-   * @useWhen Grouping rows under day headers, or announcing rows that arrive while the list is on screen.
-   * @avoidWhen Presenting key-value metadata for a single entity — use description-list instead.
-   * @avoidWhen Rendering tabular data with rows and columns — use table instead.
-   * @related stacked-list-item, description-list, table
-   */
   export type { DataListGroup, DataListProps } from './data-list.types.ts';
 </script>
 

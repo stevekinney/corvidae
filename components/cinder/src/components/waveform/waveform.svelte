@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Responsive SVG rendering of time-domain audio amplitude data as a waveform path or bar display.
-   * @tag chart
-   * @tag waveform
-   * @tag signal
-   * @tag audio
-   * @useWhen Visualizing pre-recorded or pre-processed audio amplitude samples in a static display.
-   * @useWhen Showing an audio waveform thumbnail or preview with mocked or pre-computed sample data.
-   * @avoidWhen Real-time live audio capture is needed — wire AudioContext / AnalyserNode yourself and feed samples as props.
-   * @avoidWhen Frequency-domain data — use spectrum-chart or spectrogram instead.
-   * @related spectrum-chart, spectrogram, bar-chart, line-chart
-   */
   export type { WaveformProps, WaveformSchemaProps } from './waveform.types.ts';
 </script>
 

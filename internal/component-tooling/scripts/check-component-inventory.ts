@@ -1,24 +1,22 @@
 /**
  * Enforces a written neighbour rationale for every canonical component.
  *
- * This guard validates authored metadata only. It deliberately does not try to
- * infer whether two components should be consolidated.
+ * This guard validates authored metadata only (`<name>.meta.json`). It deliberately does not try
+ * to infer whether two components should be consolidated.
  */
-
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 
 import {
   discoverComponentDirectories,
   type DiscoveredComponent,
 } from './discover-component-directories.ts';
-import { extractFromSource, type AvoidWhenEntry } from './generate-component-metadata.ts';
+import { readComponentMeta, type AvoidWhenEntry } from './lib/component-meta.ts';
 
 export type InventoryEntry = {
   id: string;
   related: readonly string[];
   avoidWhen: readonly AvoidWhenEntry[];
-  source: string;
+  /** The `rationale` field of `<name>.meta.json`, when one is authored. */
+  rationale?: string;
 };
 
 export type InventoryViolation = {
@@ -26,49 +24,6 @@ export type InventoryViolation = {
   reason: string;
 };
 
-const MODULE_SCRIPT_REGEX =
-  /<script\b(?:[^>]*\bmodule\b[^>]*|[^>]*\bcontext\s*=\s*["']module["'][^>]*)>([\s\S]*?)<\/script>/gi;
-
-function findCinderMetadataBlock(source: string): string {
-  for (const moduleMatch of source.matchAll(MODULE_SCRIPT_REGEX)) {
-    const moduleSource = moduleMatch[1] ?? '';
-    for (const jsdocMatch of moduleSource.matchAll(/\/\*\*([\s\S]*?)\*\//g)) {
-      const block = jsdocMatch[1] ?? '';
-      if (/^\s*(?:\*\s*)?@cinder\b/m.test(block)) return block;
-    }
-  }
-  return '';
-}
-
-function findExplicitRationale(source: string): string {
-  const metadataBlock = findCinderMetadataBlock(source);
-  const rationaleLines: string[] = [];
-  let collecting = false;
-  let sawCinderMarker = false;
-  for (const line of metadataBlock.split('\n')) {
-    const content = line.replace(/^\s*\*\s?/, '').trim();
-    if (/^@cinder\b/.test(content)) {
-      sawCinderMarker = true;
-      continue;
-    }
-    if (!sawCinderMarker) continue;
-    if (/^@rationale\b/i.test(content)) {
-      rationaleLines.push(content.replace(/^@rationale\s*/i, '').trim());
-      collecting = true;
-    } else if (collecting && /^@\S+/.test(content)) {
-      break;
-    } else if (collecting && content) {
-      rationaleLines.push(content);
-    }
-  }
-  return rationaleLines.join(' ').trim();
-}
-
-/**
- * The component id a name written in prose refers to. A rationale names its alternative the way
- * the component is exported (`DescriptionList`), and a component id is that name in kebab-case
- * (`description-list`), so lowercasing alone only ever matched one-word names.
- */
 function toComponentId(name: string): string {
   return name
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
@@ -89,15 +44,12 @@ function findNamedAlternative(rationale: string): string | null {
   return null;
 }
 
-/** Matches the `components:create` scaffold's unedited `@avoidWhen TODO: …` placeholder. */
 const AVOID_WHEN_PLACEHOLDER = /^todo\b/i;
 
-/** Whether at least one `@avoidWhen` entry has authored content rather than the scaffold placeholder. */
 function hasAuthoredAvoidWhen(avoidWhen: readonly AvoidWhenEntry[]): boolean {
   return avoidWhen.some((item) => !AVOID_WHEN_PLACEHOLDER.test(item.reason.trim()));
 }
 
-/** Return violations for one authored component metadata block. */
 export function findNeighbourRationaleViolations(
   entry: InventoryEntry,
   knownComponentIds: ReadonlySet<string>,
@@ -106,7 +58,7 @@ export function findNeighbourRationaleViolations(
     (relatedId) => relatedId !== entry.id && knownComponentIds.has(relatedId),
   );
   const hasRelatedAndAvoidWhen = hasKnownRelated && hasAuthoredAvoidWhen(entry.avoidWhen);
-  const namedAlternative = findNamedAlternative(findExplicitRationale(entry.source));
+  const namedAlternative = findNamedAlternative(entry.rationale ?? '');
   const hasExplicitRationale =
     namedAlternative !== null &&
     namedAlternative !== entry.id &&
@@ -117,23 +69,20 @@ export function findNeighbourRationaleViolations(
     {
       id: entry.id,
       reason:
-        'component metadata must provide @related and @avoidWhen, or an explicit @rationale naming the nearest alternative',
+        'component metadata must provide related and avoidWhen, or a rationale naming the nearest alternative (in <name>.meta.json)',
     },
   ];
 }
 
-async function readInventoryEntry(
-  component: DiscoveredComponent,
-): Promise<InventoryEntry | InventoryViolation> {
-  const sourcePath = join(component.directory, `${component.name}.svelte`);
-  const source = await readFile(sourcePath, 'utf8');
-  const result = extractFromSource(source, component.name, sourcePath);
+function readInventoryEntry(component: DiscoveredComponent): InventoryEntry | InventoryViolation {
+  const result = readComponentMeta(component.directory, component.name);
   if (!result.ok) return { id: component.name, reason: result.error.reason };
+  const { related, avoidWhen, rationale } = result.metadata;
   return {
     id: component.name,
-    related: result.metadata.related,
-    avoidWhen: result.metadata.avoidWhen,
-    source,
+    related,
+    avoidWhen,
+    ...(rationale === undefined ? {} : { rationale }),
   };
 }
 
@@ -142,7 +91,7 @@ export async function checkComponentInventory(): Promise<InventoryViolation[]> {
   const components = await discoverComponentDirectories();
   const knownComponentIds = new Set(components.map((component) => component.name));
   for (const component of components) {
-    const entry = await readInventoryEntry(component);
+    const entry = readInventoryEntry(component);
     if ('reason' in entry) {
       violations.push(entry);
       continue;

@@ -6,7 +6,7 @@
  * consumption are correctly excluded.
  */
 
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 
 import { readdir } from 'node:fs/promises';
 import { parse, type AtRule, type Declaration } from 'postcss';
@@ -61,7 +61,6 @@ export async function readCorpusVariables(
 export interface VariablesResult {
   variables: readonly string[];
   variablesJson: string;
-  variablesModule: string;
 }
 
 export interface GenerateVariablesOptions {
@@ -106,40 +105,11 @@ export async function generateVariablesForComponent(
 
   const variables = [...collected].toSorted();
   const variablesJson = JSON.stringify(variables, null, 2) + '\n';
-  const variablesModule = renderVariablesModule(variables);
-
-  return { variables, variablesJson, variablesModule };
+  return { variables, variablesJson };
 }
 
 /** Runtime-state variables are implementation details, not theme overrides. */
 function isRuntimeStateDeclaration(declaration: Declaration): boolean {
   const previous = declaration.prev();
   return previous?.type === 'comment' && previous.text.trim() === '@runtime-state';
-}
-
-function renderVariablesModule(variables: readonly string[]): string {
-  const literal = JSON.stringify(variables, null, 2);
-  return [
-    `/** CSS custom properties this component reads, which a consumer can override. */`,
-    `const variables: readonly string[] = ${literal};`,
-    ``,
-    `export default variables;`,
-    ``,
-  ].join('\n');
-}
-
-if (import.meta.main) {
-  const dir = process.argv[2];
-  if (!dir) {
-    process.stderr.write('Usage: generate-component-variables.ts <component-dir>\n');
-    process.exit(1);
-  }
-  const componentName = basename(dir);
-  const result = await generateVariablesForComponent({
-    componentDirectory: dir,
-    componentName,
-  });
-  await Bun.write(join(dir, `${componentName}.variables.json`), result.variablesJson);
-  await Bun.write(join(dir, `${componentName}.variables.ts`), result.variablesModule);
-  process.stdout.write(`wrote ${componentName}.variables.{json,ts}\n`);
 }

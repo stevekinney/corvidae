@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "alpha",
+  "purpose": "Controlled date picker that combines a text field, calendar-trigger button, floating calendar grid, and optional time controls.",
+  "tags": ["form", "date", "calendar"],
+  "useWhen": [
+    "Collecting a date with consistent cross-browser UI and keyboard support.",
+    "Collecting local datetime values while keeping ISO strings as the controlled model."
+  ],
+  "avoidWhen": [
+    { "reason": "Browser-native date controls are acceptable and custom styling is unnecessary." }
+  ],
+  "related": ["calendar", "date-range-field", "popover"]
+}

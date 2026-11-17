@@ -6,16 +6,34 @@ import { join, relative } from 'node:path';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 
 import type { Manifest } from './generate-manifest.ts';
+import {
+  componentPackage,
+  packageRelative,
+  type ComponentPackage,
+} from './lib/component-package.ts';
+import { componentMetadataPath, manifestMetadataPath } from './lib/metadata-files.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
-const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
-const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
-const SCHEMA_PATH = join(
-  PACKAGE_ROOT,
-  '../../internal/component-tooling/src/schemas/examples.schema.json',
-);
-const PUBLIC_ROOT_IMPORT = '@lostgradient/cinder';
+/** Every package's examples validate against Cinder's examples schema. */
+const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'examples.schema.json');
+
+/**
+ * The package `checkCommittedExamples` is checking (cinder unless it was given another root). The
+ * check runs one package at a time, so the helpers below read it instead of threading it through.
+ */
+let active: ComponentPackage = componentPackage();
+let PACKAGE_ROOT = active.root;
+let COMPONENTS_ROOT = active.componentsRoot;
+let MANIFEST_PATH = manifestMetadataPath(PACKAGE_ROOT);
+let PUBLIC_ROOT_IMPORT = active.name;
+
+function activate(pkg: ComponentPackage): void {
+  active = pkg;
+  PACKAGE_ROOT = pkg.root;
+  COMPONENTS_ROOT = pkg.componentsRoot;
+  MANIFEST_PATH = manifestMetadataPath(PACKAGE_ROOT);
+  PUBLIC_ROOT_IMPORT = pkg.name;
+}
 
 export type ExampleArtifact = {
   component: string;
@@ -50,8 +68,9 @@ async function componentLocations(): Promise<ComponentLocation[]> {
   return locations.toSorted((a, b) => a.directory.localeCompare(b.directory));
 }
 
+/** Where the manifest says the examples are: the `metadata` task's copy in `.metadata/`. */
 function artifactPath(location: ComponentLocation): string {
-  return `src/components/${location.id}/${location.id}.examples.json`;
+  return packageRelative(active, componentMetadataPath(PACKAGE_ROOT, location.id, 'examples'));
 }
 
 function readManifest(): Promise<Manifest> {
@@ -129,7 +148,9 @@ function validateArtifactMetadata(
   }
   if (
     value.examples.some((example) =>
-      /(?:from|import)\s+['"]@lostgradient\/cinder\//.test(example.code),
+      new RegExp(`(?:from|import)\\s+['"]${PUBLIC_ROOT_IMPORT.replaceAll('/', '\\/')}\\/`).test(
+        example.code,
+      ),
     )
   ) {
     issues.push(
@@ -171,14 +192,15 @@ async function validateLocation(
   const paths: string[] = [];
   for (const entry of await readdir(location.directory, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith('.examples.json')) continue;
-    paths.push(relative(PACKAGE_ROOT, join(location.directory, entry.name)));
+    if (entry.name === `${location.id}.examples.json`) paths.push(artifactPath(location));
     issues.push(...(await validateArtifact(location, entry.name, validator, manifestById)));
   }
   return { issues, paths };
 }
 
 /** Return every committed example-sidecar issue; an empty array means valid. */
-export async function checkCommittedExamples(): Promise<string[]> {
+export async function checkCommittedExamples(packageRoot?: string): Promise<string[]> {
+  activate(componentPackage(packageRoot));
   const [locations, manifest, schema] = await Promise.all([
     componentLocations(),
     readManifest(),

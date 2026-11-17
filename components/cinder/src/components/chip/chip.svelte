@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Compact pill for short tags, applied filters, and selected entities, with optional removal or toggle interactions via its mode prop.
-   * @tag tag
-   * @tag filter
-   * @useWhen Representing issue labels, free-form tags, applied filters, or selected entities.
-   * @useWhen Offering a small toggleable option inside a group of choices.
-   * @avoidWhen Showing a numeric count, short status, or compact category annotation next to another element — use badge instead.
-   * @avoidWhen Picking one of a small fixed set — use segmented-control instead.
-   * @avoidWhen Showing label and value metadata for a record, such as an owner, a date or a price — use description-list instead.
-   * @related badge, status-dot
-   */
   export type {
     ChipDensity,
     ChipDisplayProps,

@@ -15,8 +15,8 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
     hasConstraints: false,
     hasExamples: false,
     artifacts: {
-      schema: 'src/components/button/button.schema.json',
-      variables: 'src/components/button/button.variables.json',
+      schema: '.metadata/button/schema.json',
+      variables: '.metadata/button/variables.json',
     },
     a11y: {
       pattern: 'WAI-ARIA Button',
@@ -39,9 +39,9 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
     hasConstraints: true,
     hasExamples: true,
     artifacts: {
-      schema: 'src/components/modal/modal.schema.json',
-      variables: 'src/components/modal/modal.variables.json',
-      examples: 'src/components/modal/modal.examples.json',
+      schema: '.metadata/modal/schema.json',
+      variables: '.metadata/modal/variables.json',
+      examples: '.metadata/modal/examples.json',
       constraints: 'src/components/modal/modal.constraints.json',
     },
   },
@@ -60,8 +60,8 @@ export const SYNTHETIC_COMPONENTS: ManifestComponent[] = [
     hasConstraints: false,
     hasExamples: false,
     artifacts: {
-      schema: 'src/components/json-viewer/json-viewer.schema.json',
-      variables: 'src/components/json-viewer/json-viewer.variables.json',
+      schema: '.metadata/json-viewer/schema.json',
+      variables: '.metadata/json-viewer/variables.json',
     },
   },
 ];

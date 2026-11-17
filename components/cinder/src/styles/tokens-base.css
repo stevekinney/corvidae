@@ -238,8 +238,8 @@
     color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 12%),
     color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 6%)
   );
-  /* Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole. */
-  --cinder-surface-inset: light-dark(oklch(95.5% 0.005 265), oklch(21% 0.012 265));
+  /* Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The light arm is a neutral grey (chroma 0.002), so a well never reads blue. The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole. */
+  --cinder-surface-inset: light-dark(oklch(95.5% 0.002 265), oklch(21% 0.012 265));
   /* Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp. */
   --cinder-surface-hover: light-dark(
     color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%),
@@ -339,8 +339,8 @@
   --cinder-scrollbar-thumb: color-mix(in oklch, var(--cinder-polarity-ink), transparent 55%);
   /* Scrollbar thumb hover color. */
   --cinder-scrollbar-thumb-hover: color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%);
-  /* Overlay backdrop scrim color. */
-  --cinder-overlay-backdrop: light-dark(oklch(20% 0.03 245 / 0.5), oklch(8% 0.02 245 / 0.65));
+  /* Overlay backdrop scrim color. The light arm dims the page by a quarter, so the page behind a modal stays readable and the scene stays bright. */
+  --cinder-overlay-backdrop: light-dark(oklch(20% 0.03 245 / 0.25), oklch(8% 0.02 245 / 0.65));
   /* Overlay backdrop blur radius. */
   --cinder-overlay-blur: 4px;
   /* Overlay panel padding. */
@@ -379,6 +379,8 @@
   --cinder-gap-inline: var(--cinder-space-2);
   /* Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card. */
   --cinder-skeleton-background: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
+  /* Fill of the one selected row in a list or a navigation column: the current page in a vertical NavigationItem (the sidebar and the settings sub-navigation) and the selected StackedListItem (the row open in the detail beside it). The soft accent tint, so every selected row in the app reads as one recipe; its label stays the default text colour, because accent text is for actions and links. */
+  --cinder-selected-background: var(--cinder-accent-background);
   /* Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`. */
   --cinder-list-row-min-height: 0px;
   /* Default control padding. */
@@ -661,13 +663,10 @@
   --cinder-carousel-aspect-ratio: 16 / 9;
   /* Pagination dot painted size (the current dot is two and a half times as wide); its 24px hit area, 44px on a coarse pointer, is a pseudo-element. */
   --cinder-carousel-dot-size: 0.5rem;
-  /* Code surface background. Light arm MUST stay pure `surface-raised` (not `surface-inset`) -- Shiki's github-light token colors measure their AA contrast against that surface with almost no margin; darkening it fails the axe sweep. See code-block.css for the full rationale. Dark arm uses `surface-inset` for the deeper github-dark ground. */
-  --cinder-code-block-background: light-dark(
-    var(--cinder-surface-raised),
-    var(--cinder-surface-inset)
-  );
-  /* The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues. */
-  --cinder-code-block-edge: light-dark(var(--cinder-border-muted), transparent);
+  /* Code surface background: the recessed inset well in both themes (owner, 2026-11-16), so a code block inside a white card or panel reads as sunk into it rather than as a second white box. Shiki's github-light colors that fall under AA on the light inset are lifted to Cinder text roles in code-block.css; see check-token-contrast-code-block.test.ts. */
+  --cinder-code-block-background: var(--cinder-surface-inset);
+  /* The block's edge against the page. Transparent in both themes: the inset field sets the block apart by its fill alone, so the block never carries two cues and never draws a box inside a card. A consumer can set it to draw a hairline. */
+  --cinder-code-block-edge: transparent;
   /* Code text font size. */
   --cinder-code-block-font-size: var(--cinder-text-sm);
   /* Block height. Real value is CSS `auto` (intrinsic content height); DTCG's dimension type has no keyword form, so `$value` is a non-authoritative placeholder and `cssRecipe` governs emission. Flagged in the CIN-472 PR body as a type-system limitation, not a design decision. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer applying `$value` literally does not collapse the block to zero height. */
@@ -1002,7 +1001,7 @@
     var(--cinder-surface-raised),
     var(--cinder-accent-solid) 12%
   );
-  --cinder-surface-inset: oklch(95.5% 0.005 265);
+  --cinder-surface-inset: oklch(95.5% 0.002 265);
   --cinder-surface-hover: color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%);
   --cinder-surface-pressed: color-mix(
     in oklch,
@@ -1048,7 +1047,7 @@
   --cinder-scrollbar-track: color-mix(in oklch, var(--cinder-polarity-ink), transparent 96%);
   --cinder-scrollbar-thumb: color-mix(in oklch, var(--cinder-polarity-ink), transparent 55%);
   --cinder-scrollbar-thumb-hover: color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%);
-  --cinder-overlay-backdrop: oklch(20% 0.03 245 / 0.5);
+  --cinder-overlay-backdrop: oklch(20% 0.03 245 / 0.25);
   --cinder-shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.1), 0 1px 1px oklch(0% 0 0 / 0.06);
   --cinder-shadow-md: 0 4px 6px -1px oklch(0% 0 0 / 0.12), 0 2px 4px -2px oklch(0% 0 0 / 0.1);
   --cinder-shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.14), 0 4px 6px -4px oklch(0% 0 0 / 0.12);
@@ -1173,10 +1172,7 @@
   --cinder-terminal-ansi-bright-magenta: light-dark(oklch(54% 0.18 325), oklch(82% 0.15 325));
   --cinder-terminal-ansi-bright-cyan: light-dark(oklch(45% 0.13 205), oklch(82% 0.13 205));
   --cinder-terminal-ansi-bright-white: light-dark(oklch(10% 0 0), oklch(98% 0 0));
-  --cinder-code-block-background: light-dark(
-    var(--cinder-surface-raised),
-    var(--cinder-surface-inset)
-  );
+  --cinder-code-block-background: var(--cinder-surface-inset);
 }
 
 @media (prefers-contrast: more) {

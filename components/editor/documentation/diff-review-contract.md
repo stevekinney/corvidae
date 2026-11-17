@@ -143,7 +143,7 @@ bun run --filter=@lostgradient/editor test --test-name-pattern 'DiffReview state
 bun run --filter=@lostgradient/editor test --test-name-pattern 'DiffReview export'
 bun run --filter=@lostgradient/editor test --test-name-pattern 'ReviewEditor diff comments'
 bun run --filter=@lostgradient/editor typecheck
-bun run --filter=@lostgradient/cinder components:check
+bunx turbo run lint --filter=@lostgradient/cinder
 bun run test:browser -- --grep 'Diff review'
 bunx prettier --check components/editor/documentation/diff-review-contract.md
 ```

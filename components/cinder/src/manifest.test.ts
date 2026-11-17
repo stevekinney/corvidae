@@ -19,8 +19,8 @@ import {
 import type {
   ComponentMetadata,
   ExtractError,
-} from '@lostgradient/component-tooling/scripts/generate-component-metadata.ts';
-import { extractAllComponentMetadata } from '@lostgradient/component-tooling/scripts/generate-component-metadata.ts';
+} from '@lostgradient/component-tooling/scripts/lib/component-meta.ts';
+import { extractAllComponentMetadata } from '@lostgradient/component-tooling/scripts/lib/component-meta.ts';
 import { discoverComponents } from '@lostgradient/component-tooling/scripts/lib/discover-components.ts';
 
 // State populated in beforeAll — shared across all describe blocks.
@@ -320,7 +320,7 @@ describe('required constraints', () => {
     expect(violations).toEqual([]);
   });
 
-  test('every id in requiredConstraints ships a {name}.constraints.ts sidecar', async () => {
+  test('every id in requiredConstraints ships a {name}.constraints.json sidecar', async () => {
     const { existsSync } = await import('node:fs');
     const { join } = await import('node:path');
     const componentsRoot = join(import.meta.dir, 'components');
@@ -331,7 +331,7 @@ describe('required constraints', () => {
     for (const id of requiredConstraints) {
       const component = byId.get(id);
       if (!component) continue; // Already reported by the previous test.
-      const sidecarPath = join(componentsRoot, id, `${id}.constraints.ts`);
+      const sidecarPath = join(componentsRoot, id, `${id}.constraints.json`);
       if (!existsSync(sidecarPath)) missing.push(id);
     }
     expect(missing).toEqual([]);

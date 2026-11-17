@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Sticky alert dialog for urgent acknowledgement that cannot be dismissed by backdrop click or Escape.
-   * @tag overlay
-   * @tag dialog
-   * @useWhen Requiring acknowledgement of a blocking warning before the user can continue.
-   * @useWhen A system-initiated or out-of-band condition requires explicit acknowledgement before continuing.
-   * @avoidWhen Asking a reversible yes/no question — use confirm-dialog.
-   * @avoidWhen Collecting rich form input — compose modal instead.
-   * @related modal, confirm-dialog, drawer
-   */
   export type { AlertDialogProps } from './alert-dialog.types.ts';
 </script>
 

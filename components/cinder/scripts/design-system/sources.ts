@@ -12,7 +12,9 @@ import type { ComponentManifest, ManifestSource } from './manifest.ts';
 import { cinderRoot, editorRoot } from './paths.ts';
 
 function readManifest(workspace: string): ComponentManifest {
-  return JSON.parse(readFileSync(join(workspace, 'components.json'), 'utf8')) as ComponentManifest;
+  return JSON.parse(
+    readFileSync(join(workspace, '.metadata', 'components.json'), 'utf8'),
+  ) as ComponentManifest;
 }
 
 /** Reads Cinder's manifest and the editor's, Cinder first. */

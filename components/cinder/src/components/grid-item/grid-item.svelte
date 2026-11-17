@@ -1,15 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status beta
-   * @purpose Optional placement child for Grid that controls column and row spans or explicit track placement.
-   * @tag layout
-   * @tag grid
-   * @useWhen A child in a grid needs to span tracks or start at a specific track.
-   * @avoidWhen Every child can use default grid auto-placement - render plain children inside Grid instead. | grid
-   * @related grid
-   */
   export type { GridItemProps } from './grid-item.types.ts';
 </script>
 

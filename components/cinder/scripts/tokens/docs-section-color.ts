@@ -59,6 +59,7 @@ export const COLOR_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-status-neutral-text',
       '--cinder-status-neutral-border',
       '--cinder-accent-background',
+      '--cinder-selected-background',
       // `--cinder-accent-text` is documented in the Accent section. The soft
       // family's foreground was a pure alias of it and folded into it during the
       // CIN-33 rename, so it is no longer a separate token to list here.

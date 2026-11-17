@@ -26,14 +26,13 @@ describe('the vendored A2UI basic catalog', () => {
   });
 });
 
+// Bureau's copy of Cinder's generated catalog, cinder-catalog.schema.json, is checked by Cinder's
+// lint (`generate-component-artifacts.ts --check`), which can read the catalog its `metadata` task
+// generates.
 describe("Bureau's other vendored A2UI schemas", () => {
   const copies: readonly [string, string][] = [
-    ['common-types.schema.json', 'internal/component-tooling/scripts/a2ui/common_types.json'],
-    [
-      'server-to-client.schema.json',
-      'internal/component-tooling/scripts/a2ui/server_to_client.json',
-    ],
-    ['cinder-catalog.schema.json', 'components/cinder/a2ui-catalog.json'],
+    ['common-types.schema.json', 'components/cinder/scripts/a2ui/common_types.json'],
+    ['server-to-client.schema.json', 'components/cinder/scripts/a2ui/server_to_client.json'],
   ];
 
   for (const [name, source] of copies) {

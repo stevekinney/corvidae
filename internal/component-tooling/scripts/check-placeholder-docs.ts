@@ -329,7 +329,7 @@ export function hasRequiredAccessibilityRecord(content: string): boolean {
 async function main(): Promise<void> {
   const violations: Violation[] = [];
   const inventory = await Bun.file(
-    resolve(scriptDirectory, '../../../components/cinder/components.json'),
+    resolve(scriptDirectory, '../../../components/cinder/.metadata/components.json'),
   ).json();
   const inventoryComponents = Array.isArray(inventory?.components)
     ? inventory.components.filter(

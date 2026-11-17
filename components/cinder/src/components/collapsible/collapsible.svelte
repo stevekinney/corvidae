@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Single-panel disclosure that toggles one region with an animated height.
-   * @tag disclosure
-   * @tag collapsible
-   * @useWhen Hiding a single optional region behind a labeled trigger.
-   * @useWhen You need controlled or uncontrolled show/hide with an accessible toggle.
-   * @avoidWhen Coordinating multiple sections where opening one may close others — use accordion.
-   * @related accordion
-   * @related accordion-item
-   */
   export type {
     CollapsibleProps,
     CollapsibleTriggerState,

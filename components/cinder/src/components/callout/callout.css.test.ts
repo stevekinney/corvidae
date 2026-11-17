@@ -240,6 +240,9 @@ describe('callout — one edge, no stripe', () => {
       // single-class selector here would regress to a source-order tie.
       const selectors: string[] = [];
       statusSurfaceRoot.walkRules((rule) => {
+        // A rule that only resets a private input (COR-2450's ground reset) paints nothing and
+        // is zero-specificity on purpose, so a composer's variant rule sets the input over it.
+        if (rule.nodes.every((node) => node.type === 'decl' && node.prop.startsWith('--'))) return;
         for (const selector of rule.selectors) {
           if (/cinder-_status-surface/.test(selector)) selectors.push(selector);
         }

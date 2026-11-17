@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status alpha
-   * @purpose Controlled date picker that combines a text field, calendar-trigger button, floating calendar grid, and optional time controls.
-   * @tag form
-   * @tag date
-   * @tag calendar
-   * @useWhen Collecting a date with consistent cross-browser UI and keyboard support.
-   * @useWhen Collecting local datetime values while keeping ISO strings as the controlled model.
-   * @avoidWhen Browser-native date controls are acceptable and custom styling is unnecessary.
-   * @related calendar, date-range-field, popover
-   */
   export type { DatePickerGranularity, DatePickerProps } from './date-picker.types.ts';
 </script>
 

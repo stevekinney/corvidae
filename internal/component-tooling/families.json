@@ -212,7 +212,7 @@
       "kind": "family",
       "layer": 1,
       "components": ["access-gate"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/test/fixtures/access-gate-dynamic-fixture.svelte",
         "src/test/fixtures/access-gate-focus-fixture.svelte",
@@ -224,35 +224,35 @@
       "kind": "family",
       "layer": 1,
       "components": ["accordion", "accordion-item"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "action-row": {
       "kind": "family",
       "layer": 1,
       "components": ["action-row"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "alert": {
       "kind": "family",
       "layer": 1,
       "components": ["alert"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "alert-dialog": {
       "kind": "family",
       "layer": 4,
       "components": ["alert-dialog"],
-      "dependencies": ["button", "foundation", "modal", "tooling"],
+      "dependencies": ["button", "foundation", "modal"],
       "modules": []
     },
     "app-bar": {
       "kind": "family",
       "layer": 4,
       "components": ["app-bar"],
-      "dependencies": ["button", "foundation", "tooling", "tooltip"],
+      "dependencies": ["button", "foundation", "tooltip"],
       "modules": []
     },
     "approval-card": {
@@ -275,7 +275,6 @@
         "payload-inspector",
         "status-dot",
         "textarea",
-        "tooling",
         "tooltip"
       ],
       "modules": []
@@ -284,70 +283,70 @@
       "kind": "family",
       "layer": 1,
       "components": ["aspect-ratio"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "attempts-indicator": {
       "kind": "family",
       "layer": 1,
       "components": ["attempts-indicator"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "autocomplete": {
       "kind": "family",
       "layer": 4,
       "components": ["autocomplete"],
-      "dependencies": ["foundation", "input", "popover", "tooling"],
+      "dependencies": ["foundation", "input", "popover"],
       "modules": ["src/test/fixtures/form-field-autocomplete-fixture.svelte"]
     },
     "avatar": {
       "kind": "family",
       "layer": 2,
       "components": ["avatar"],
-      "dependencies": ["foundation", "tooling", "visually-hidden"],
+      "dependencies": ["foundation", "visually-hidden"],
       "modules": []
     },
     "avatar-group": {
       "kind": "family",
       "layer": 3,
       "components": ["avatar-group"],
-      "dependencies": ["avatar", "foundation", "tooling", "tooltip"],
+      "dependencies": ["avatar", "foundation", "tooltip"],
       "modules": []
     },
     "backdrop": {
       "kind": "family",
       "layer": 1,
       "components": ["backdrop"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "badge": {
       "kind": "family",
       "layer": 1,
       "components": ["badge"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "banner": {
       "kind": "family",
       "layer": 4,
       "components": ["banner"],
-      "dependencies": ["button", "foundation", "relative-time", "tooling"],
+      "dependencies": ["button", "foundation", "relative-time"],
       "modules": []
     },
     "breadcrumbs": {
       "kind": "family",
       "layer": 4,
       "components": ["breadcrumbs"],
-      "dependencies": ["foundation", "popover", "tooling"],
+      "dependencies": ["foundation", "popover"],
       "modules": []
     },
     "button": {
       "kind": "family",
       "layer": 3,
       "components": ["button", "button-group"],
-      "dependencies": ["foundation", "shortcut-hint", "tooling"],
+      "dependencies": ["foundation", "shortcut-hint"],
       "modules": [
         "src/_internal/button-group-context.ts",
         "src/test/fixtures/button-group-buttons-fixture.svelte"
@@ -357,35 +356,35 @@
       "kind": "family",
       "layer": 1,
       "components": ["calendar"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "callout": {
       "kind": "family",
       "layer": 1,
       "components": ["callout"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "capability-gate": {
       "kind": "family",
       "layer": 1,
       "components": ["capability-gate"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "card": {
       "kind": "family",
       "layer": 1,
       "components": ["card"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "carousel": {
       "kind": "family",
       "layer": 3,
       "components": ["carousel"],
-      "dependencies": ["foundation", "tooling", "tooltip"],
+      "dependencies": ["foundation", "tooltip"],
       "modules": ["src/test/fixtures/carousel-slide-snippet-fixture.svelte"]
     },
     "chart": {
@@ -402,7 +401,7 @@
         "spectrum-chart",
         "waveform"
       ],
-      "dependencies": ["foundation", "popover", "table", "tokens", "tooling"],
+      "dependencies": ["foundation", "popover", "table", "tokens"],
       "modules": [
         "src/_internal/chart/chart-bar-data.ts",
         "src/_internal/chart/chart-bar-layout.test.ts",
@@ -448,7 +447,7 @@
       "kind": "family",
       "layer": 2,
       "components": ["checkbox"],
-      "dependencies": ["form-field", "foundation", "tooling"],
+      "dependencies": ["form-field", "foundation"],
       "modules": [
         "src/test/fixtures/checkbox-external-label-fixture.svelte",
         "src/test/fixtures/checkbox-form-reset-fixture.svelte",
@@ -459,42 +458,42 @@
       "kind": "family",
       "layer": 1,
       "components": ["checkbox-group"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "chip": {
       "kind": "family",
       "layer": 2,
       "components": ["chip"],
-      "dependencies": ["badge", "foundation", "tooling"],
+      "dependencies": ["badge", "foundation"],
       "modules": []
     },
     "choice-grid": {
       "kind": "family",
       "layer": 2,
       "components": ["choice-grid", "choice-grid-item"],
-      "dependencies": ["foundation", "grid", "tooling"],
+      "dependencies": ["foundation", "grid"],
       "modules": ["src/test/fixtures/choice-grid-fixture.svelte"]
     },
     "citation": {
       "kind": "family",
       "layer": 4,
       "components": ["citation"],
-      "dependencies": ["foundation", "popover", "tooling"],
+      "dependencies": ["foundation", "popover"],
       "modules": []
     },
     "click-away-listener": {
       "kind": "family",
       "layer": 1,
       "components": ["click-away-listener"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "code-block": {
       "kind": "family",
       "layer": 4,
       "components": ["code-block"],
-      "dependencies": ["copy-button", "foundation", "tooling"],
+      "dependencies": ["copy-button", "foundation"],
       "modules": [
         "src/_internal/code-highlighter-context.ts",
         "src/highlighters/shiki/default.ts",
@@ -507,21 +506,21 @@
       "kind": "family",
       "layer": 1,
       "components": ["code-location"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "collapsible": {
       "kind": "family",
       "layer": 1,
       "components": ["collapsible"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "color-field": {
       "kind": "family",
       "layer": 5,
       "components": ["color-field"],
-      "dependencies": ["color-picker", "foundation", "input", "popover", "tooling"],
+      "dependencies": ["color-picker", "foundation", "input", "popover"],
       "modules": [
         "src/test/fixtures/color-field-form-field-fixture.svelte",
         "src/test/fixtures/color-field-form-fixture.svelte",
@@ -532,28 +531,28 @@
       "kind": "family",
       "layer": 4,
       "components": ["color-picker"],
-      "dependencies": ["color-swatch-picker", "copy-button", "foundation", "tooling"],
+      "dependencies": ["color-swatch-picker", "copy-button", "foundation"],
       "modules": []
     },
     "color-swatch-picker": {
       "kind": "family",
       "layer": 1,
       "components": ["color-swatch-picker"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "combobox": {
       "kind": "family",
       "layer": 5,
       "components": ["combobox"],
-      "dependencies": ["button", "foundation", "popover", "search-field", "skeleton", "tooling"],
+      "dependencies": ["button", "foundation", "popover", "search-field", "skeleton"],
       "modules": []
     },
     "command-menu": {
       "kind": "family",
       "layer": 4,
       "components": ["command-item", "command-menu"],
-      "dependencies": ["foundation", "kbd", "popover", "portal", "tooling"],
+      "dependencies": ["foundation", "kbd", "popover", "portal"],
       "modules": [
         "src/test/fixtures/command-menu-fixture.svelte",
         "src/test/fixtures/command-menu-host-fixture.svelte"
@@ -563,7 +562,7 @@
       "kind": "family",
       "layer": 5,
       "components": ["command-palette"],
-      "dependencies": ["button", "command-menu", "foundation", "kbd", "tooling"],
+      "dependencies": ["button", "command-menu", "foundation", "kbd"],
       "modules": [
         "src/test/fixtures/command-palette-attach-fixture.svelte",
         "src/test/fixtures/command-palette-rich-item-fixture.svelte"
@@ -573,42 +572,42 @@
       "kind": "family",
       "layer": 4,
       "components": ["confirm-dialog"],
-      "dependencies": ["button", "callout", "foundation", "input", "modal", "tooling"],
+      "dependencies": ["button", "callout", "foundation", "input", "modal"],
       "modules": []
     },
     "connection-indicator": {
       "kind": "family",
       "layer": 1,
       "components": ["connection-indicator"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "container": {
       "kind": "family",
       "layer": 1,
       "components": ["container"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "context-menu": {
       "kind": "family",
       "layer": 5,
       "components": ["context-menu", "context-menu-trigger"],
-      "dependencies": ["dropdown", "foundation", "tooling"],
+      "dependencies": ["dropdown", "foundation"],
       "modules": []
     },
     "copy-button": {
       "kind": "family",
       "layer": 3,
       "components": ["copy-button"],
-      "dependencies": ["foundation", "tooling", "tooltip"],
+      "dependencies": ["foundation", "tooltip"],
       "modules": ["src/test/fixtures/copy-button-in-tooltip-fixture.svelte"]
     },
     "copyable-value": {
       "kind": "family",
       "layer": 4,
       "components": ["copyable-value"],
-      "dependencies": ["copy-button", "foundation", "tooling"],
+      "dependencies": ["copy-button", "foundation"],
       "modules": []
     },
     "core": {
@@ -822,13 +821,8 @@
         "src/convention-substantive.test.ts",
         "src/convention.test.ts",
         "src/domain-suite.test.ts",
+        "src/exports-surface.test.ts",
         "src/exports/icons.ts",
-        "src/exports/metadata-constraints.ts",
-        "src/exports/metadata-examples-a-m.ts",
-        "src/exports/metadata-examples-n-z.ts",
-        "src/exports/metadata-manifest.ts",
-        "src/exports/metadata-schemas.ts",
-        "src/exports/metadata-variables.ts",
         "src/exports/utilities.ts",
         "src/index.test.ts",
         "src/index.ts",
@@ -848,7 +842,6 @@
         "src/styles/coarse-hit-area-layout.test.ts",
         "src/styles/comfortable-density.test.ts",
         "src/styles/component-css-layer-invariant.test.ts",
-        "src/styles/component-variables-contract.test.ts",
         "src/styles/components.css",
         "src/styles/components/_form-field-error.test.ts",
         "src/styles/filled-appearance.test.ts",
@@ -910,22 +903,14 @@
       "kind": "family",
       "layer": 4,
       "components": ["data-grid"],
-      "dependencies": [
-        "button",
-        "foundation",
-        "input",
-        "search-field",
-        "tokens",
-        "toolbar",
-        "tooling"
-      ],
+      "dependencies": ["button", "foundation", "input", "search-field", "tokens", "toolbar"],
       "modules": []
     },
     "data-list": {
       "kind": "family",
       "layer": 5,
       "components": ["data-list", "stacked-list-item"],
-      "dependencies": ["button", "dropdown", "foundation", "tooling"],
+      "dependencies": ["button", "dropdown", "foundation"],
       "modules": [
         "src/_internal/data-list-context.ts",
         "src/_internal/scroll-anchor.ts",
@@ -936,63 +921,63 @@
       "kind": "family",
       "layer": 6,
       "components": ["data-table"],
-      "dependencies": ["checkbox", "data-list", "foundation", "table", "tooling"],
+      "dependencies": ["checkbox", "data-list", "foundation", "table"],
       "modules": []
     },
     "date-picker": {
       "kind": "family",
       "layer": 4,
       "components": ["date-picker"],
-      "dependencies": ["calendar", "foundation", "popover", "tooling"],
+      "dependencies": ["calendar", "foundation", "popover"],
       "modules": []
     },
     "date-range-field": {
       "kind": "family",
       "layer": 4,
       "components": ["date-range-field"],
-      "dependencies": ["calendar", "foundation", "grid", "input", "popover", "tooling"],
+      "dependencies": ["calendar", "foundation", "grid", "input", "popover"],
       "modules": ["src/test/fixtures/date-range-field-bindable-fixture.svelte"]
     },
     "decision-deck": {
       "kind": "family",
       "layer": 4,
       "components": ["decision-deck"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     },
     "description-list": {
       "kind": "family",
       "layer": 4,
       "components": ["description-list"],
-      "dependencies": ["button", "chip", "copy-button", "foundation", "tooling"],
+      "dependencies": ["button", "chip", "copy-button", "foundation"],
       "modules": []
     },
     "diff-statistics": {
       "kind": "family",
       "layer": 1,
       "components": ["diff-statistics"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "divider": {
       "kind": "family",
       "layer": 1,
       "components": ["divider"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "docked-action-bar": {
       "kind": "family",
       "layer": 2,
       "components": ["docked-action-bar"],
-      "dependencies": ["foundation", "stale-region", "tooling"],
+      "dependencies": ["foundation", "stale-region"],
       "modules": []
     },
     "drawer": {
       "kind": "family",
       "layer": 2,
       "components": ["drawer"],
-      "dependencies": ["focus-trap", "foundation", "tooling"],
+      "dependencies": ["focus-trap", "foundation"],
       "modules": []
     },
     "dropdown": {
@@ -1007,7 +992,7 @@
         "dropdown-separator",
         "dropdown-trigger"
       ],
-      "dependencies": ["button", "foundation", "portal", "tooling"],
+      "dependencies": ["button", "foundation", "portal"],
       "modules": [
         "src/test/fixtures/dropdown-item-polymorphic-fixture.svelte",
         "src/test/fixtures/dropdown-item-radio-fixture.svelte",
@@ -1021,21 +1006,21 @@
       "kind": "family",
       "layer": 5,
       "components": ["duration-field"],
-      "dependencies": ["foundation", "number-input", "select", "tooling"],
+      "dependencies": ["foundation", "number-input", "select"],
       "modules": []
     },
     "empty-state": {
       "kind": "family",
       "layer": 4,
       "components": ["empty-state"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     },
     "error-state": {
       "kind": "family",
       "layer": 4,
       "components": ["error-state"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": [
         "src/test/fixtures/error-state-retry-icon-fixture.svelte",
         "src/test/fixtures/error-state-secondary-action-fixture.svelte"
@@ -1045,14 +1030,14 @@
       "kind": "family",
       "layer": 2,
       "components": ["feed", "feed-boundary", "feed-event"],
-      "dependencies": ["foundation", "status-dot", "tooling"],
+      "dependencies": ["foundation", "status-dot"],
       "modules": []
     },
     "file-upload": {
       "kind": "family",
       "layer": 4,
       "components": ["file-upload"],
-      "dependencies": ["alert", "button", "foundation", "progress", "tokens", "tooling"],
+      "dependencies": ["alert", "button", "foundation", "progress", "tokens"],
       "modules": ["src/test/fixtures/file-upload-form-fixture.svelte"]
     },
     "filter-bar": {
@@ -1068,8 +1053,7 @@
         "radio-group",
         "search-field",
         "segmented-control",
-        "select",
-        "tooling"
+        "select"
       ],
       "modules": []
     },
@@ -1077,49 +1061,49 @@
       "kind": "family",
       "layer": 4,
       "components": ["find-bar"],
-      "dependencies": ["button", "form-field", "foundation", "input", "tooling"],
+      "dependencies": ["button", "form-field", "foundation", "input"],
       "modules": []
     },
     "floating-action": {
       "kind": "family",
       "layer": 1,
       "components": ["floating-action"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "focus-trap": {
       "kind": "family",
       "layer": 1,
       "components": ["focus-trap"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "footer": {
       "kind": "family",
       "layer": 1,
       "components": ["footer"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "form": {
       "kind": "family",
       "layer": 1,
       "components": ["form"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "form-actions": {
       "kind": "family",
       "layer": 4,
       "components": ["form-actions"],
-      "dependencies": ["alert", "button", "foundation", "tooling"],
+      "dependencies": ["alert", "button", "foundation"],
       "modules": []
     },
     "form-field": {
       "kind": "family",
       "layer": 1,
       "components": ["form-field"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/test/fixtures/form-field-context-probe.svelte",
         "src/test/fixtures/form-field-probe.svelte"
@@ -1129,7 +1113,7 @@
       "kind": "family",
       "layer": 1,
       "components": ["form-section"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "foundation": {
@@ -1245,6 +1229,7 @@
         "src/styles/base-guard.test.ts",
         "src/styles/base-guard.ts",
         "src/styles/border-tier-corpus-audit.test.ts",
+        "src/styles/component-variables-contract.test.ts",
         "src/styles/components/_control-item.css",
         "src/styles/components/_dismiss-button.css",
         "src/styles/components/_field-chevron.css",
@@ -1398,63 +1383,63 @@
       "kind": "family",
       "layer": 1,
       "components": ["grid", "grid-item"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": ["src/test/fixtures/nested-grid-item-fixture.svelte"]
     },
     "grid-list": {
       "kind": "family",
       "layer": 2,
       "components": ["grid-list", "grid-list-item"],
-      "dependencies": ["foundation", "grid", "tooling"],
+      "dependencies": ["foundation", "grid"],
       "modules": []
     },
     "grouped-list": {
       "kind": "family",
       "layer": 4,
       "components": ["grouped-list", "grouped-list-item"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     },
     "guidance-region": {
       "kind": "family",
       "layer": 4,
       "components": ["guidance-region"],
-      "dependencies": ["button", "foundation", "popover", "tooling"],
+      "dependencies": ["button", "foundation", "popover"],
       "modules": []
     },
     "hover-card": {
       "kind": "family",
       "layer": 2,
       "components": ["hover-card"],
-      "dependencies": ["foundation", "portal", "tooling"],
+      "dependencies": ["foundation", "portal"],
       "modules": []
     },
     "image": {
       "kind": "family",
       "layer": 1,
       "components": ["image"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": ["src/test/fixtures/image-fallback-fixture.svelte"]
     },
     "inline-confirm": {
       "kind": "family",
       "layer": 4,
       "components": ["inline-confirm"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     },
     "inline-loading": {
       "kind": "family",
       "layer": 2,
       "components": ["inline-loading"],
-      "dependencies": ["foundation", "spinner", "tooling"],
+      "dependencies": ["foundation", "spinner"],
       "modules": []
     },
     "input": {
       "kind": "family",
       "layer": 2,
       "components": ["input"],
-      "dependencies": ["form-field", "foundation", "tooling"],
+      "dependencies": ["form-field", "foundation"],
       "modules": [
         "src/test/fixtures/form-field-id-mismatch-fixture.svelte",
         "src/test/fixtures/form-field-input-fixture.svelte",
@@ -1467,21 +1452,21 @@
       "kind": "family",
       "layer": 4,
       "components": ["inspector", "inspector-row"],
-      "dependencies": ["foundation", "popover", "tooling"],
+      "dependencies": ["foundation", "popover"],
       "modules": []
     },
     "invocation-rule-builder": {
       "kind": "family",
       "layer": 6,
       "components": ["invocation-rule-builder"],
-      "dependencies": ["combobox", "foundation", "tooling"],
+      "dependencies": ["combobox", "foundation"],
       "modules": []
     },
     "json-editor": {
       "kind": "family",
       "layer": 4,
       "components": ["json-editor"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     },
     "json-schema-editor": {
@@ -1504,8 +1489,7 @@
         "table",
         "tabs",
         "textarea",
-        "tokens",
-        "tooling"
+        "tokens"
       ],
       "modules": []
     },
@@ -1513,56 +1497,56 @@
       "kind": "family",
       "layer": 1,
       "components": ["json-viewer"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "kanban-board": {
       "kind": "family",
       "layer": 5,
       "components": ["kanban-board"],
-      "dependencies": ["button", "foundation", "sortable-list", "tooling"],
+      "dependencies": ["button", "foundation", "sortable-list"],
       "modules": []
     },
     "kbd": {
       "kind": "family",
       "layer": 1,
       "components": ["kbd"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "key-facts": {
       "kind": "family",
       "layer": 2,
       "components": ["key-facts"],
-      "dependencies": ["foundation", "link", "tooling"],
+      "dependencies": ["foundation", "link"],
       "modules": []
     },
     "key-value-editor": {
       "kind": "family",
       "layer": 4,
       "components": ["key-value-editor"],
-      "dependencies": ["button", "foundation", "input", "tooling"],
+      "dependencies": ["button", "foundation", "input"],
       "modules": []
     },
     "keyboard-shortcuts": {
       "kind": "family",
       "layer": 2,
       "components": ["keyboard-shortcuts"],
-      "dependencies": ["foundation", "kbd", "tooling"],
+      "dependencies": ["foundation", "kbd"],
       "modules": []
     },
     "label": {
       "kind": "family",
       "layer": 1,
       "components": ["label"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "link": {
       "kind": "family",
       "layer": 1,
       "components": ["link"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "list-detail": {
@@ -1576,7 +1560,6 @@
         "foundation",
         "resizable-panels",
         "skeleton",
-        "tooling",
         "tooltip"
       ],
       "modules": []
@@ -1585,49 +1568,49 @@
       "kind": "family",
       "layer": 1,
       "components": ["load-more"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "locale-provider": {
       "kind": "family",
       "layer": 1,
       "components": ["locale-provider"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "map-legend": {
       "kind": "family",
       "layer": 2,
       "components": ["map-legend"],
-      "dependencies": ["foundation", "link", "map-marker", "tooling"],
+      "dependencies": ["foundation", "link", "map-marker"],
       "modules": []
     },
     "map-marker": {
       "kind": "family",
       "layer": 1,
       "components": ["map-marker"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "marquee": {
       "kind": "family",
       "layer": 1,
       "components": ["marquee"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "masonry": {
       "kind": "family",
       "layer": 1,
       "components": ["masonry"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "media-player": {
       "kind": "family",
       "layer": 1,
       "components": ["audio-player", "video-player"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/components/_internal/media-controls.css",
         "src/components/_internal/media-controls.svelte",
@@ -1643,91 +1626,91 @@
       "kind": "family",
       "layer": 1,
       "components": ["mega-menu"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "menu-bar": {
       "kind": "family",
       "layer": 5,
       "components": ["menu-bar"],
-      "dependencies": ["dropdown", "foundation", "tooling"],
+      "dependencies": ["dropdown", "foundation"],
       "modules": []
     },
     "message": {
       "kind": "family",
       "layer": 1,
       "components": ["message"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "meter": {
       "kind": "family",
       "layer": 1,
       "components": ["meter"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "modal": {
       "kind": "family",
       "layer": 3,
       "components": ["modal"],
-      "dependencies": ["focus-trap", "foundation", "tooling", "tooltip"],
+      "dependencies": ["focus-trap", "foundation", "tooltip"],
       "modules": []
     },
     "modal-region": {
       "kind": "family",
       "layer": 5,
       "components": ["modal-region"],
-      "dependencies": ["button", "confirm-dialog", "foundation", "modal", "tooling"],
+      "dependencies": ["button", "confirm-dialog", "foundation", "modal"],
       "modules": []
     },
     "multi-select": {
       "kind": "family",
       "layer": 3,
       "components": ["multi-select"],
-      "dependencies": ["foundation", "portal", "tooling", "tooltip"],
+      "dependencies": ["foundation", "portal", "tooltip"],
       "modules": []
     },
     "navigation-bar": {
       "kind": "family",
       "layer": 2,
       "components": ["navigation-bar"],
-      "dependencies": ["foundation", "portal", "tooling"],
+      "dependencies": ["foundation", "portal"],
       "modules": []
     },
     "navigation-item": {
       "kind": "family",
       "layer": 1,
       "components": ["navigation-item"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "number-input": {
       "kind": "family",
       "layer": 3,
       "components": ["number-input"],
-      "dependencies": ["foundation", "input", "tokens", "tooling"],
+      "dependencies": ["foundation", "input", "tokens"],
       "modules": []
     },
     "page-header": {
       "kind": "family",
       "layer": 5,
       "components": ["page-header"],
-      "dependencies": ["button", "dropdown", "foundation", "tooling", "tooltip"],
+      "dependencies": ["button", "dropdown", "foundation", "tooltip"],
       "modules": []
     },
     "pagination": {
       "kind": "family",
       "layer": 1,
       "components": ["pagination"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "parameter-field": {
       "kind": "family",
       "layer": 3,
       "components": ["parameter-field"],
-      "dependencies": ["badge", "foundation", "grid", "tooling", "tooltip"],
+      "dependencies": ["badge", "foundation", "grid", "tooltip"],
       "modules": []
     },
     "payload-inspector": {
@@ -1745,7 +1728,6 @@
         "segmented-control",
         "source-diff-viewer",
         "table",
-        "tooling",
         "tooltip"
       ],
       "modules": []
@@ -1754,120 +1736,112 @@
       "kind": "family",
       "layer": 1,
       "components": ["permission-matrix"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "phone-input": {
       "kind": "family",
       "layer": 5,
       "components": ["phone-input"],
-      "dependencies": ["foundation", "input", "select", "tooling"],
+      "dependencies": ["foundation", "input", "select"],
       "modules": ["src/test/fixtures/form-field-phone-input-fixture.svelte"]
     },
     "pin-input": {
       "kind": "family",
       "layer": 1,
       "components": ["pin-input"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "policy-lock": {
       "kind": "family",
       "layer": 3,
       "components": ["policy-lock"],
-      "dependencies": ["badge", "foundation", "tooling", "tooltip"],
+      "dependencies": ["badge", "foundation", "tooltip"],
       "modules": []
     },
     "popover": {
       "kind": "family",
       "layer": 3,
       "components": ["popover"],
-      "dependencies": ["drawer", "foundation", "portal", "tooling"],
+      "dependencies": ["drawer", "foundation", "portal"],
       "modules": ["src/test/fixtures/popover-bindable-fixture.svelte"]
     },
     "portal": {
       "kind": "family",
       "layer": 1,
       "components": ["portal"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "preview-panel": {
       "kind": "family",
       "layer": 1,
       "components": ["preview-panel"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "pricing-card": {
       "kind": "family",
       "layer": 4,
       "components": ["pricing-card"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     },
     "progress": {
       "kind": "family",
       "layer": 1,
       "components": ["progress"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "qr-code": {
       "kind": "family",
       "layer": 1,
       "components": ["qr-code"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "quota-meter": {
       "kind": "family",
       "layer": 2,
       "components": ["quota-meter"],
-      "dependencies": ["foundation", "meter", "tooling"],
+      "dependencies": ["foundation", "meter"],
       "modules": []
     },
     "radio-group": {
       "kind": "family",
       "layer": 1,
       "components": ["_radio", "radio-group"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": ["src/test/fixtures/radio-group-fixture.svelte"]
     },
     "rating": {
       "kind": "family",
       "layer": 1,
       "components": ["rating"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "relative-time": {
       "kind": "family",
       "layer": 1,
       "components": ["relative-time"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "resizable-panels": {
       "kind": "family",
       "layer": 1,
       "components": ["resizable-panels"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "restart-state": {
       "kind": "family",
       "layer": 5,
       "components": ["restart-state"],
-      "dependencies": [
-        "banner",
-        "button",
-        "copy-button",
-        "foundation",
-        "modal",
-        "steps",
-        "tooling"
-      ],
+      "dependencies": ["banner", "button", "copy-button", "foundation", "modal", "steps"],
       "modules": []
     },
     "run-step-timeline": {
@@ -1881,8 +1855,7 @@
         "foundation",
         "link",
         "progress",
-        "status-dot",
-        "tooling"
+        "status-dot"
       ],
       "modules": []
     },
@@ -1897,8 +1870,7 @@
         "foundation",
         "input",
         "number-input",
-        "select",
-        "tooling"
+        "select"
       ],
       "modules": []
     },
@@ -1925,8 +1897,7 @@
         "tag-input",
         "textarea",
         "toggle",
-        "tokens",
-        "tooling"
+        "tokens"
       ],
       "modules": []
     },
@@ -1934,70 +1905,70 @@
       "kind": "family",
       "layer": 2,
       "components": ["schema-view"],
-      "dependencies": ["collapsible", "foundation", "json-viewer", "tooling"],
+      "dependencies": ["collapsible", "foundation", "json-viewer"],
       "modules": []
     },
     "scroll-area": {
       "kind": "family",
       "layer": 1,
       "components": ["scroll-area"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "search-field": {
       "kind": "family",
       "layer": 3,
       "components": ["search-field"],
-      "dependencies": ["foundation", "input", "tooling"],
+      "dependencies": ["foundation", "input"],
       "modules": ["src/test/fixtures/form-field-search-field-fixture.svelte"]
     },
     "secret-value-field": {
       "kind": "family",
       "layer": 1,
       "components": ["secret-value-field"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "section": {
       "kind": "family",
       "layer": 1,
       "components": ["section"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "section-heading": {
       "kind": "family",
       "layer": 1,
       "components": ["section-heading"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "segmented-control": {
       "kind": "family",
       "layer": 1,
       "components": ["segment", "segmented-control"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": ["src/test/fixtures/segmented-control-fixture.svelte"]
     },
     "select": {
       "kind": "family",
       "layer": 4,
       "components": ["select"],
-      "dependencies": ["foundation", "popover", "tooling"],
+      "dependencies": ["foundation", "popover"],
       "modules": []
     },
     "selectable-row": {
       "kind": "family",
       "layer": 1,
       "components": ["selectable-row"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "selection-popover": {
       "kind": "family",
       "layer": 2,
       "components": ["selection-popover"],
-      "dependencies": ["foundation", "portal", "tooling"],
+      "dependencies": ["foundation", "portal"],
       "modules": [
         "src/test/fixtures/selection-popover-open-fixture.svelte",
         "src/test/fixtures/virtual-keyboard-dismissal-fixture.svelte"
@@ -2007,42 +1978,35 @@
       "kind": "family",
       "layer": 4,
       "components": ["setting-row"],
-      "dependencies": ["button", "form-field", "foundation", "tooling"],
+      "dependencies": ["button", "form-field", "foundation"],
       "modules": []
     },
     "share-card": {
       "kind": "family",
       "layer": 3,
       "components": ["share-card"],
-      "dependencies": ["foundation", "input", "tooling"],
+      "dependencies": ["foundation", "input"],
       "modules": []
     },
     "shortcut-field": {
       "kind": "family",
       "layer": 2,
       "components": ["shortcut-field"],
-      "dependencies": ["form-field", "foundation", "kbd", "tooling"],
+      "dependencies": ["form-field", "foundation", "kbd"],
       "modules": []
     },
     "shortcut-hint": {
       "kind": "family",
       "layer": 2,
       "components": ["shortcut-hint"],
-      "dependencies": ["foundation", "kbd", "tooling"],
+      "dependencies": ["foundation", "kbd"],
       "modules": []
     },
     "side-navigation": {
       "kind": "family",
       "layer": 3,
       "components": ["side-navigation", "side-navigation-group", "side-navigation-item", "sidebar"],
-      "dependencies": [
-        "drawer",
-        "foundation",
-        "navigation-item",
-        "status-dot",
-        "tooling",
-        "tooltip"
-      ],
+      "dependencies": ["drawer", "foundation", "navigation-item", "status-dot", "tooltip"],
       "modules": [
         "src/_internal/sidebar-context.ts",
         "src/components/_internal/side-navigation-group-context.ts",
@@ -2056,98 +2020,98 @@
       "kind": "family",
       "layer": 4,
       "components": ["skeleton"],
-      "dependencies": ["button", "foundation", "tooling", "visually-hidden"],
+      "dependencies": ["button", "foundation", "visually-hidden"],
       "modules": []
     },
     "skip-link": {
       "kind": "family",
       "layer": 2,
       "components": ["skip-link"],
-      "dependencies": ["foundation", "tooling", "visually-hidden"],
+      "dependencies": ["foundation", "visually-hidden"],
       "modules": []
     },
     "slider": {
       "kind": "family",
       "layer": 1,
       "components": ["slider"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "sortable-list": {
       "kind": "family",
       "layer": 4,
       "components": ["sortable-list"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": ["src/components/_sortable-item.svelte"]
     },
     "source-diff-viewer": {
       "kind": "family",
       "layer": 1,
       "components": ["source-diff-viewer"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "speed-dial": {
       "kind": "family",
       "layer": 2,
       "components": ["speed-dial", "speed-dial-action"],
-      "dependencies": ["floating-action", "foundation", "portal", "tooling"],
+      "dependencies": ["floating-action", "foundation", "portal"],
       "modules": []
     },
     "spinner": {
       "kind": "family",
       "layer": 1,
       "components": ["spinner"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "spotlight": {
       "kind": "family",
       "layer": 2,
       "components": ["spotlight"],
-      "dependencies": ["foundation", "status-dot", "tooling"],
+      "dependencies": ["foundation", "status-dot"],
       "modules": []
     },
     "stack": {
       "kind": "family",
       "layer": 1,
       "components": ["stack"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "stale-region": {
       "kind": "family",
       "layer": 1,
       "components": ["stale-region"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "statistic": {
       "kind": "family",
       "layer": 5,
       "components": ["statistic", "statistic-group"],
-      "dependencies": ["chart", "foundation", "skeleton", "tooling"],
+      "dependencies": ["chart", "foundation", "skeleton"],
       "modules": []
     },
     "status-dot": {
       "kind": "family",
       "layer": 1,
       "components": ["status-dot"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "steps": {
       "kind": "family",
       "layer": 1,
       "components": ["steps"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "surface": {
       "kind": "family",
       "layer": 1,
       "components": ["surface"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/test/fixtures/nested-surfaces-fixture.svelte",
         "src/test/fixtures/surface-context-probe.svelte",
@@ -2166,7 +2130,7 @@
         "table-header-cell",
         "table-row"
       ],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/test/fixtures/empty-table-cell-fixture.svelte",
         "src/test/fixtures/table-cell-detail-fixture.svelte",
@@ -2180,14 +2144,14 @@
       "kind": "family",
       "layer": 1,
       "components": ["table-of-contents"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "tabs": {
       "kind": "family",
       "layer": 5,
       "components": ["tab", "tab-list", "tab-panel", "tabs"],
-      "dependencies": ["badge", "foundation", "select", "tooling"],
+      "dependencies": ["badge", "foundation", "select"],
       "modules": [
         "src/test/fixtures/tabs-controls-fallback-fixture.svelte",
         "src/test/fixtures/tabs-count-fixture.svelte",
@@ -2201,7 +2165,7 @@
       "kind": "family",
       "layer": 1,
       "components": ["tag-input"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/test/fixtures/tag-input-controlled-form-fixture.svelte",
         "src/test/fixtures/tag-input-form-fixture.svelte"
@@ -2211,42 +2175,42 @@
       "kind": "family",
       "layer": 2,
       "components": ["terminal-frame"],
-      "dependencies": ["foundation", "grid", "tooling"],
+      "dependencies": ["foundation", "grid"],
       "modules": []
     },
     "terminal-output": {
       "kind": "family",
       "layer": 1,
       "components": ["terminal-output"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "text": {
       "kind": "family",
       "layer": 3,
       "components": ["text"],
-      "dependencies": ["foundation", "tooling", "tooltip"],
+      "dependencies": ["foundation", "tooltip"],
       "modules": []
     },
     "textarea": {
       "kind": "family",
       "layer": 1,
       "components": ["textarea"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": ["src/components/textarea-count.ts"]
     },
     "theme-switch": {
       "kind": "family",
       "layer": 1,
       "components": ["theme-switch"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "time-field": {
       "kind": "family",
       "layer": 3,
       "components": ["time-field"],
-      "dependencies": ["foundation", "input", "tooling"],
+      "dependencies": ["foundation", "input"],
       "modules": [
         "src/_internal/time-parts.test.ts",
         "src/_internal/time-parts.ts",
@@ -2258,7 +2222,7 @@
       "kind": "family",
       "layer": 6,
       "components": ["_timeline-item", "timeline"],
-      "dependencies": ["data-list", "foundation", "status-dot", "tooling"],
+      "dependencies": ["data-list", "foundation", "status-dot"],
       "modules": [
         "src/test/fixtures/timeline-band-fixture.svelte",
         "src/test/fixtures/timeline-fixture.svelte",
@@ -2270,7 +2234,7 @@
       "kind": "family",
       "layer": 1,
       "components": ["toast-region"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/components/toast-region.md",
         "src/test/fixtures/toast-fixture.svelte",
@@ -2281,7 +2245,7 @@
       "kind": "family",
       "layer": 1,
       "components": ["toggle"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "tokens": {
@@ -2411,8 +2375,7 @@
         "payload-inspector",
         "spinner",
         "textarea",
-        "tool-call-rail",
-        "tooling"
+        "tool-call-rail"
       ],
       "modules": []
     },
@@ -2420,21 +2383,21 @@
       "kind": "family",
       "layer": 7,
       "components": ["tool-call-rail"],
-      "dependencies": ["foundation", "spinner", "timeline", "tooling", "tooltip"],
+      "dependencies": ["foundation", "spinner", "timeline", "tooltip"],
       "modules": []
     },
     "tool-picker": {
       "kind": "family",
       "layer": 5,
       "components": ["tool-picker"],
-      "dependencies": ["button", "checkbox", "foundation", "input", "modal", "skeleton", "tooling"],
+      "dependencies": ["button", "checkbox", "foundation", "input", "modal", "skeleton"],
       "modules": []
     },
     "toolbar": {
       "kind": "family",
       "layer": 1,
       "components": ["toolbar"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "tooling": {
@@ -2448,21 +2411,21 @@
       "kind": "family",
       "layer": 2,
       "components": ["tooltip"],
-      "dependencies": ["foundation", "portal", "tooling"],
+      "dependencies": ["foundation", "portal"],
       "modules": []
     },
     "transfer-list": {
       "kind": "family",
       "layer": 1,
       "components": ["transfer-list"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "tree": {
       "kind": "family",
       "layer": 1,
       "components": ["_tree-expand-all", "_tree-select-all", "tree", "tree-item"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": [
         "src/_internal/tree-autoscroll.svelte.ts",
         "src/_internal/tree-autoscroll.test.ts",
@@ -2486,28 +2449,28 @@
       "kind": "family",
       "layer": 1,
       "components": ["virtual-list"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "visually-hidden": {
       "kind": "family",
       "layer": 1,
       "components": ["visually-hidden"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "week-schedule": {
       "kind": "family",
       "layer": 1,
       "components": ["week-schedule"],
-      "dependencies": ["foundation", "tooling"],
+      "dependencies": ["foundation"],
       "modules": []
     },
     "zoom-pan-viewer": {
       "kind": "family",
       "layer": 4,
       "components": ["zoom-pan-viewer"],
-      "dependencies": ["button", "foundation", "tooling"],
+      "dependencies": ["button", "foundation"],
       "modules": []
     }
   },

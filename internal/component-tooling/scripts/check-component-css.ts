@@ -382,7 +382,7 @@ export function checkComponentCssSource(
       file,
       line: target.source?.start?.line ?? 1,
       column: target.source?.start?.column ?? 1,
-      message: `Component CSS sidecar must begin with the cascade-layer order prelude \`${LAYER_ORDER_PRELUDE}\` as its first line, so a sidecar loaded before \`@lostgradient/cinder\` does not invert the cascade. Run \`bun run components:generate\` (or the sidecar-prelude rewrite) to add it.`,
+      message: `Component CSS sidecar must begin with the cascade-layer order prelude \`${LAYER_ORDER_PRELUDE}\` as its first line, so a sidecar loaded before \`@lostgradient/cinder\` does not invert the cascade. Add it by hand, or with the sidecar-prelude rewrite.`,
     });
   } else if (!isLayerOrderPreludeNode(topLevel[0]!)) {
     const target = topLevel[0]!;
