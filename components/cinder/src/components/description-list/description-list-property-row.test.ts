@@ -80,17 +80,62 @@ describe('DescriptionList fields: the PropertyRow trailing chevron', () => {
       /\.cinder-description-list__row\[data-cinder-linked\]\s*\{[^}]*position: relative/s,
     );
     expect(css).toMatch(
-      /\.cinder-description-list__link::after\s*\{[^}]*position: absolute;[^}]*inset: 0/s,
+      /\.cinder-description-list__link::before\s*\{[^}]*position: absolute;[^}]*inset: 0/s,
     );
     expect(css).toMatch(
       /\.cinder-description-list__row\[data-cinder-linked\]\s*:is\(button, input, select, textarea, a\[href\]:not\(\.cinder-description-list__link\)\)\s*\{[^}]*z-index: 1/s,
     );
   });
+
+  test('the tint and the ring sit behind the text on the link ::after, past the row start', () => {
+    // Flat: 12px past the row's start, rounded like a control.
+    expect(css).toMatch(
+      /\.cinder-description-list__link::after\s*\{[^}]*inset-inline: calc\(var\(--cinder-space-3\) \* -1\) 0;[^}]*z-index: -1;[^}]*border-radius: var\(--cinder-radius-control\)/s,
+    );
+    // Framed: to the group's start edge, past its 16px start padding.
+    expect(css).toMatch(
+      /\[data-cinder-framed\] \.cinder-description-list__link::after\s*\{[^}]*inset-inline-start: calc\(var\(--cinder-space-4\) \* -1\)/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-description-list__row\[data-cinder-linked\]\s*\{[^}]*isolation: isolate/s,
+    );
+    expect(css).toMatch(
+      /:hover \.cinder-description-list__link::after\s*\{[^}]*background: var\(--cinder-surface-hover\)/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-description-list__link:focus-visible::after\s*\{[^}]*box-shadow: inset 0 0 0 var\(--cinder-ring-width\)/s,
+    );
+  });
+
+  test("a linked row keeps InspectorRow's end inset and the value is set in the body size", () => {
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\]\s+\.cinder-description-list__row\[data-cinder-linked\]\s*\{[^}]*padding-inline-end: var\(--cinder-space-2\)/s,
+    );
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\] dd\s*\{[^}]*font-size: var\(--cinder-text-base\)/s,
+    );
+  });
+
+  test("a framed group takes an Inspector's raised phone surface below 700px", () => {
+    expect(css).toMatch(
+      /@media \(width < 700px\)\s*\{\s*\.cinder-description-list\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-raised\)/s,
+    );
+  });
 });
 
-describe('DescriptionList fields: stacking below 700px', () => {
-  test('a container query on the list stacks each row to one column below 700px', () => {
-    const block = containerBlock('(width < 700px)');
+describe('DescriptionList fields: stacking below 23rem of its own width', () => {
+  test('the threshold stacks a 357px list (a 375 phone) and keeps a 386px one beside', () => {
+    const match =
+      /@container \(width < ([\d.]+)rem\) \{\s*\.cinder-description-list\[data-cinder-variant='fields'\]/.exec(
+        css,
+      );
+    const threshold = Number(match?.[1]) * 16;
+    expect(threshold).toBeGreaterThan(357);
+    expect(threshold).toBeLessThanOrEqual(386);
+  });
+
+  test('a container query on the list stacks each row to one column below 23rem', () => {
+    const block = containerBlock('(width < 23rem)');
     expect(block).toMatch(
       /\.cinder-description-list\[data-cinder-variant='fields'\] \.cinder-description-list__row\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/s,
     );
@@ -101,7 +146,8 @@ describe('DescriptionList fields: stacking below 700px', () => {
     );
   });
 
-  test('the fields variant keeps no narrower stacking threshold', () => {
+  test('the fields variant keeps no other stacking threshold', () => {
     expect(containerBlock('(max-width: 28rem)')).not.toContain("[data-cinder-variant='fields']");
+    expect(containerBlock('(width < 700px)')).toBe('');
   });
 });
