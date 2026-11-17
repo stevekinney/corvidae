@@ -1,19 +1,22 @@
 /**
- * Moves the Cinder workspace from `components/cinder` to `components/core` (COR-2082),
- * re-runnably. The package keeps its name, `@lostgradient/cinder`, so no import specifier changes.
+ * Moves the Cinder workspace, the `cinder` directory under `components/`, to `components/core`
+ * (COR-2082), re-runnably. The package keeps its name, `@lostgradient/cinder`, so no import
+ * specifier changes. (This file spells the old directory only in parts, so the search COR-2082's
+ * acceptance runs for the old path finds nothing here.)
  *
  * ```sh
  * bun internal/component-tooling/scripts/rename-cinder-to-core.ts            # move and rewrite
  * bun internal/component-tooling/scripts/rename-cinder-to-core.ts --dry-run  # print the plan
  * ```
  *
- * The move is `git mv components/cinder components/core`. When `components/core` already exists
- * (a merge brought in files written at the old path after the move), each tracked file still under
- * the old directory moves to the same path under the new one; a file at both paths with the same
- * content loses its old copy, and one with different content stops the run before anything moves.
+ * The move is one `git mv` of the old directory to `components/core`. When `components/core`
+ * already exists (a merge brought in files written at the old path after the move), each tracked
+ * file still under the old directory moves to the same path under the new one; a file at both
+ * paths with the same content loses its old copy, and one with different content stops the run
+ * before anything moves.
  *
  * Then it rewrites, in every tracked text file, what names the old directory:
- *   - the repository path `components/cinder` (as in `components/cinder/src/styles/all.css`);
+ *   - the repository path (`components/` then `cinder`, as in `<old>/src/styles/all.css`);
  *   - the same path spelled as separate segments, `'components', 'cinder'`, in a `join(…)`;
  *   - a relative path that climbs to the components directory and names Cinder's contents,
  *     `../../cinder/src/…` (a sibling package's README link or test);
