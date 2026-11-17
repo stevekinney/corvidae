@@ -16,6 +16,7 @@ import { HOOKS_COPY } from '../../src/routes/hooks/hook-copy.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { bureauCall } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
@@ -735,10 +736,16 @@ test('[default-hook-phone] at 320 by 640 the switch and Duplicate share one row 
     source: SOURCE,
   });
 
-  const title = await heading.boundingBox();
-  const toggle = await head.locator('.ib-hook-identity__actions > *').first().boundingBox();
-  const button = await duplicate.boundingBox();
-  if (title === null || toggle === null || button === null) throw new Error('not drawn');
+  // Read together, from one layout.
+  const {
+    title,
+    toggle,
+    duplicate: button,
+  } = await readBoxes(page, {
+    title: heading,
+    toggle: head.locator('.ib-hook-identity__actions > *').first(),
+    duplicate,
+  });
   // R10-05: one row: the switch and Duplicate share a centre line.
   expect(
     Math.abs(toggle.y + toggle.height / 2 - (button.y + button.height / 2)),
