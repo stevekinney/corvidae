@@ -225,6 +225,14 @@
     if (sort) chosenSort = { value, column: sort.column, direction: sort.direction };
   }
 
+  // A press on the sort control's hit area, outside the drawn select, opens the select.
+  function openSortPicker(event: MouseEvent): void {
+    const { target, currentTarget } = event;
+    if (!(target instanceof HTMLElement) || !(currentTarget instanceof HTMLElement)) return;
+    if (target.closest('select, .cinder-select-field__chevron')) return;
+    currentTarget.querySelector('select')?.showPicker?.();
+  }
+
   function sameOptions(a: StackSortOption[], b: StackSortOption[]): boolean {
     return (
       a.length === b.length &&
@@ -377,17 +385,23 @@
 
 {#if stackCard && sortOptions.length > 0}
   <div class="cinder-table__stack-sort">
-    <Select
-      id={sortSelectId}
-      label="Sort by"
-      labelVisible={false}
-      placeholder="Sort by"
-      size="sm"
-      presentation="native"
-      options={sortOptions}
-      {...selectedSort ? { value: selectedSort } : {}}
-      onValueChange={chooseSort}
-    />
+    <!-- The select is drawn compact, so this box carries its 44px hit area: a press that lands in
+         the padding above or below it opens the select too. The keyboard uses the select itself. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="cinder-table__stack-sort-hit" onclick={openSortPicker}>
+      <Select
+        id={sortSelectId}
+        label="Sort by"
+        labelVisible={false}
+        placeholder="Sort by"
+        size="sm"
+        variant="ghost"
+        presentation="native"
+        options={sortOptions.map((option) => ({ ...option, label: `Sort: ${option.label}` }))}
+        {...selectedSort ? { value: selectedSort } : {}}
+        onValueChange={chooseSort}
+      />
+    </div>
   </div>
 {/if}
 

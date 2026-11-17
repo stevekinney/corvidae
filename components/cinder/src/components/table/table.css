@@ -631,6 +631,21 @@
     padding-block-end: var(--cinder-space-2);
   }
 
+  /* The select is a ghost one, as wide as its longest option and the chevron, and 36px tall even on
+     a touch screen, where a field is raised to 43px. This box adds the padding that makes its hit
+     area 44px. */
+  .cinder-table__stack-sort-hit {
+    display: flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding-block: var(--cinder-space-1);
+  }
+
+  .cinder-table__stack-sort-hit .cinder-select[data-cinder-variant='ghost'][data-cinder-size] {
+    min-block-size: 2.25rem;
+    max-block-size: 2.25rem;
+  }
+
   .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row {
     position: relative;
     display: grid;

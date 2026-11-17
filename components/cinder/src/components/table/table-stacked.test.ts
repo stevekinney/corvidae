@@ -494,6 +494,40 @@ describe('Table fit stacks into cards', () => {
     );
   });
 
+  test('the sort control is a compact ghost select that names its cue, with a 44px hit area', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    await waitUntil(() => container.querySelector('.cinder-table__stack-sort') !== null);
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    expect(select.getAttribute('data-cinder-variant')).toBe('ghost');
+    const labels = Array.from(select.options)
+      .map((option) => option.textContent?.trim() ?? '')
+      .filter((label) => label !== '' && label !== 'Sort by');
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.every((label) => label.startsWith('Sort: '))).toBe(true);
+    expect(labels.some((label) => /^Sort: \w.* ascending$/.test(label))).toBe(true);
+
+    // A press in the hit area outside the drawn select opens it; one on the select is left alone.
+    const picked: string[] = [];
+    select.showPicker = () => picked.push('open');
+    const hit = container.querySelector('.cinder-table__stack-sort-hit') as HTMLElement;
+    await fireEvent.click(hit);
+    expect(picked).toEqual(['open']);
+    await fireEvent.click(select);
+    expect(picked).toEqual(['open']);
+
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-table__stack-sort-hit \{[^}]*padding-block: var\(--cinder-space-1\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-table__stack-sort-hit \.cinder-select\[data-cinder-variant='ghost'\]\[data-cinder-size\] \{[^}]*min-block-size: 2\.25rem;[^}]*max-block-size: 2\.25rem;/,
+    );
+  });
+
   test('the card styles are scoped to the card marker and draw no frame', async () => {
     const css = stripCinderComponentsLayer(
       await Bun.file(new URL('./table.css', import.meta.url)).text(),
