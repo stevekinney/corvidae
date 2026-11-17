@@ -27,6 +27,7 @@
   import {
     Alert,
     Button,
+    Callout,
     FormSection,
     Input,
     JsonEditor,
@@ -53,7 +54,9 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import { browserTimeZone } from '../schedules/cadence.ts';
   import { loadModelAgents } from '../schedules/schedule-row-context.ts';
+  import ScheduleWhen from '../schedules/schedule-when.svelte';
   import { ROOT_ADDRESS } from './workflow-builder-addresses.ts';
   import {
     provideBuilderHost,
@@ -70,12 +73,14 @@
     setDescription,
     setName,
     setSchema,
+    setScheduleFields,
     setTitle,
     setTitleDerivingName,
     setTrigger,
     type BuilderSchema,
     type SchemaKey,
   } from './workflow-builder-model.ts';
+  import { scheduleFieldsOf, scheduleValueOf } from './workflow-schedule-value.ts';
   import {
     problemSummary,
     workflowProblems,
@@ -160,6 +165,10 @@
 
   /** The footer's sentence, which a disabled Builder tab points at as its reason. */
   const READ_BACK_ID = 'workflow-builder-read-back';
+  /** A new schedule's cadence: weekdays at 9:00 AM (row 65d). */
+  const DEFAULT_SCHEDULE_SPEC = '0 9 * * 1-5';
+  /** A fire that comes while a run is going is skipped, unless the file says otherwise. */
+  const DEFAULT_OVERLAP = 'skip';
 
   // Text the builder cannot read opens on the JSON tab, where it is fixed.
   let tab = $state<'builder' | 'json'>(
@@ -413,8 +422,23 @@
     return trigger.kind === 'contributed' ? trigger.id : trigger.kind;
   });
 
+  /** The cadence the When block shows, or `undefined` for a spec it cannot draw, which stays a field. */
+  const scheduleValue = $derived(
+    view?.trigger?.kind === 'schedule' ? scheduleValueOf(view.trigger) : undefined,
+  );
+
   function changeTriggerKind(kind: string): void {
-    if (kind === 'manual' || kind === 'schedule' || kind === 'signal') {
+    if (kind === 'schedule' && view?.trigger?.kind !== 'schedule') {
+      // A new schedule starts on weekdays at 9:00 AM in the viewer's zone, skips a fire that comes
+      // while a run is going, and does not catch up: every field the builder writes (row 65d).
+      write(
+        setScheduleFields(setTrigger(text, 'schedule', DEFAULT_SCHEDULE_SPEC), {
+          timezone: browserTimeZone(),
+          overlap: DEFAULT_OVERLAP,
+          catchUp: false,
+        }),
+      );
+    } else if (kind === 'manual' || kind === 'schedule' || kind === 'signal') {
       write(setTrigger(text, kind, ''));
     } else if (triggers.some((candidate) => candidate.id === kind)) {
       write(setContributedTrigger(text, kind, {}));
@@ -751,6 +775,25 @@
               </p>
             {:else if view.trigger?.kind === 'other'}
               <p class="weft-workflow-builder__note">{view.trigger.label}. {copy.otherTrigger}</p>
+            {:else if view.trigger?.kind === 'schedule' && scheduleValue !== undefined}
+              <!-- Repeats, At, Time zone, the next runs and the two policy selects (row 65q); what
+                   they write is the file's spec, timezone, overlap and catchUp (row 65d). -->
+              {@const trigger = view.trigger}
+              <ScheduleWhen
+                value={scheduleValue}
+                onValueChange={(next) => write(setScheduleFields(text, scheduleFieldsOf(next)))}
+                label={copy.scheduleLabel}
+                overlap={trigger.overlap ?? DEFAULT_OVERLAP}
+                onOverlapChange={(next) => write(setScheduleFields(text, { overlap: next }))}
+                catchUp={trigger.catchUp ?? false}
+                onCatchUpChange={(next) => write(setScheduleFields(text, { catchUp: next }))}
+                catchUpLabel={WORKFLOW_COPY.runSetup.catchUpLabel}
+              />
+              {#if mode === 'edit' && trigger.name !== null && trigger.name.trim() !== ''}
+                <div data-testid="workflow-builder-schedule-note">
+                  <Callout variant="info">{copy.scheduleDefinedNote(trigger.name.trim())}</Callout>
+                </div>
+              {/if}
             {:else if view.trigger?.kind === 'schedule'}
               <Input
                 id="workflow-builder-trigger-field"

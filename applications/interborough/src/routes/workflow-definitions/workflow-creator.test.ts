@@ -815,10 +815,30 @@ describe('the builder', () => {
     await ready(container);
     expect(field(container, 'workflow-builder-name').value).toBe('from-json');
     expect(start(container, 'schedule').getAttribute('aria-checked')).toBe('true');
-    expect(field(container, 'workflow-builder-trigger-field').value).toBe('5m');
+    // Every 5 minutes is the When block's own interval (row 65q).
+    expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull();
     expect(field(container, 'workflow-builder-step-1-duration').value).toBe('30');
     expect(field(container, 'workflow-builder-step-1-duration-unit').value).toBe('seconds');
     expect(container.querySelector('#workflow-builder-step-1-agent')).toBeNull();
+  });
+
+  test('COR-2432: On a schedule opens the When block and writes every field it holds: weekdays at 9:00 AM, the zone, skip and no catch-up (rows 65d, 65q)', async () => {
+    const { container } = open();
+    await ready(container);
+    await fireEvent.click(start(container, 'schedule'));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull(),
+    );
+    await openJson(container);
+    const trigger = (JSON.parse(textarea(container).value) as { trigger: Record<string, unknown> })
+      .trigger;
+    expect(trigger).toEqual({
+      kind: 'schedule',
+      spec: '0 9 * * 1-5',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      overlap: 'skip',
+      catchUp: false,
+    });
   });
 
   test('keeps the keys the builder has no control for through its edits', async () => {
@@ -842,17 +862,18 @@ describe('the builder', () => {
     );
     await fireEvent.click(builderTab(container));
     await ready(container);
-    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
-      target: { value: '0 7 * * *' },
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Keeps its keys.' },
     });
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/workflows/keeps-keys'));
     expect(created()?.definition).toEqual({
+      description: 'Keeps its keys.',
       paused: true,
       agent: 'writer',
       trigger: {
         kind: 'schedule',
-        spec: '0 7 * * *',
+        spec: '0 6 * * *',
         timezone: 'America/Chicago',
         overlap: 'skip',
       },

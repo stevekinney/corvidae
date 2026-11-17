@@ -654,6 +654,9 @@ export const WORKFLOW_COPY = {
     retryTriggers: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
+    /** Under the When block of a file that names its schedule, on Edit (row 65q). */
+    scheduleDefinedNote: (name: string): string =>
+      `This file defines the ${name} schedule, so saving changes that schedule. You can also start the workflow yourself.`,
     signalNameLabel: 'Signal name',
     /** Under the signal a "When a signal arrives" start waits for (board PageWorkflowBuilder, "Signal start"). */
     signalNameDescription:

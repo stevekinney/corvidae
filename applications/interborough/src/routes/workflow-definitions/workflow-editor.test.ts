@@ -905,17 +905,51 @@ describe('the step builder in the editor', () => {
     expect(idLine?.textContent).toContain(WORKFLOW_COPY.builder.idFixed);
     expect(idLine?.querySelector('input, button')).toBeNull();
 
-    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
-      target: { value: '3h' },
+    // A schedule the builder can draw is its When block, not a field to type a spec in (row 65q).
+    expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull();
+    expect(container.querySelector('#workflow-builder-trigger-field')).toBeNull();
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Writes the digest.' },
     });
     await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
     const call = stub?.callsTo('bureau.workflows.update')[0];
     expect(call?.params['expectedHash']).toBe('hash-1');
     const definition = call?.params['definition'] as Record<string, unknown>;
-    expect(definition['trigger']).toEqual({ kind: 'schedule', spec: '3h' });
+    expect(definition['trigger']).toEqual({ kind: 'schedule', spec: '0 6 * * *' });
+    expect(definition['description']).toBe('Writes the digest.');
     expect(definition['agent']).toBe('writer');
     expect(definition).not.toHaveProperty('name');
+  });
+
+  test('COR-2432: a file that names its schedule says saving changes that schedule, under its When block (row 65q)', async () => {
+    const text = JSON.stringify(
+      {
+        name: 'digest',
+        title: 'Release notes',
+        trigger: {
+          kind: 'schedule',
+          name: 'Release notes digest',
+          spec: '0 11 * * 5',
+          timezone: 'America/Chicago',
+          overlap: 'skip',
+          catchUp: false,
+        },
+        steps: [{ kind: 'sleep', duration: '1m' }],
+      },
+      null,
+      2,
+    );
+    const { container } = open('/workflows/digest/edit', {
+      files: [readyFile('digest', { text })],
+    });
+    await builderReady(container);
+    expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid="workflow-builder-schedule-note"]')
+        ?.textContent?.trim(),
+    ).toBe(WORKFLOW_COPY.builder.scheduleDefinedNote('Release notes digest'));
   });
 
   test('COR-2432: Cancel on a changed form asks to discard, Keep editing stays, and an untouched form leaves at once (row 66h)', async () => {
@@ -961,12 +995,12 @@ describe('the step builder in the editor', () => {
     if (file === undefined) throw new Error('The file is missing.');
     file.hash = 'hash-by-hand';
 
-    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
-      target: { value: '4h' },
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Mine.' },
     });
     await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
     await findByRole('button', { name: EDITOR.changedOnDisk.reload });
-    expect(field(container, 'workflow-builder-trigger-field').value).toBe('4h');
+    expect(field(container, 'workflow-builder-description').value).toBe('Mine.');
     expect(stub?.file('digest')?.hash).toBe('hash-by-hand');
   });
 

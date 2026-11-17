@@ -140,7 +140,18 @@ export type BuilderStep = (
 /** The trigger as the builder shows it: its kind, and the field of that kind. */
 export type BuilderTrigger =
   | { readonly kind: 'manual' }
-  | { readonly kind: 'schedule'; readonly spec: string }
+  | {
+      readonly kind: 'schedule';
+      readonly spec: string;
+      /** The IANA zone a cron `spec` is read in, or `null` when the file names none (COR-2432). */
+      readonly timezone: string | null;
+      /** What happens when a fire comes while a run is going, or `null` when the file says nothing. */
+      readonly overlap: string | null;
+      /** Whether the fires missed while the host was off run, or `null` when the file says nothing. */
+      readonly catchUp: boolean | null;
+      /** The schedule's display name, such as "Release notes digest", or `null`. */
+      readonly name: string | null;
+    }
   | { readonly kind: 'signal'; readonly name: string }
   /** A trigger kind a plugin contributes (`plugin:name`), with the rest of the trigger as its configuration. */
   | {
@@ -429,7 +440,20 @@ function triggerOf(trigger: unknown): BuilderTrigger | null {
   if (!isRecord(trigger)) return { kind: 'other', label: WORKFLOW_COPY.builder.notAnObject };
   const kind = asText(trigger['kind']);
   if (kind === 'manual') return { kind };
-  if (kind === 'schedule') return { kind, spec: asText(trigger['spec']) };
+  if (kind === 'schedule') {
+    const timezone = trigger['timezone'];
+    const overlap = trigger['overlap'];
+    const catchUp = trigger['catchUp'];
+    const name = trigger['name'];
+    return {
+      kind,
+      spec: asText(trigger['spec']),
+      timezone: typeof timezone === 'string' ? timezone : null,
+      overlap: typeof overlap === 'string' ? overlap : null,
+      catchUp: typeof catchUp === 'boolean' ? catchUp : null,
+      name: typeof name === 'string' ? name : null,
+    };
+  }
   if (kind === 'signal') return { kind, name: asText(trigger['name']) };
   if (isContributedTriggerId(kind)) {
     const { kind: _kind, ...configuration } = trigger;
@@ -563,6 +587,32 @@ export function setTrigger(text: string, kind: BuilderTriggerKind, value = ''): 
       'trigger',
       current['kind'] === kind ? { ...current, [field]: value } : { kind, [field]: value },
     );
+  });
+}
+
+/** What the When block of a schedule trigger writes (COR-2432, row 65q); a key left out is kept. */
+export type ScheduleFields = {
+  readonly spec?: string;
+  /** The zone a cron spec is read in; `null` removes it, as an interval must not have one. */
+  readonly timezone?: string | null;
+  readonly overlap?: string;
+  readonly catchUp?: boolean;
+};
+
+/**
+ * `text` with the fields of its schedule trigger set, every other key of the trigger kept where it
+ * is. Text whose trigger is not a schedule is returned as it is.
+ */
+export function setScheduleFields(text: string, fields: ScheduleFields): string {
+  return edit(text, (document) => {
+    const current = document['trigger'];
+    if (!isRecord(current) || current['kind'] !== 'schedule') return undefined;
+    let next: Json = { ...current };
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+      next = value === null ? withoutKey(next, key) : { ...next, [key]: value };
+    }
+    return withKey(document, 'trigger', next);
   });
 }
 
