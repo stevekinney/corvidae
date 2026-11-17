@@ -70,6 +70,17 @@ describe('the run page header', () => {
     ).toContain('notes-approved');
   });
 
+  test('leaves out the day and time when the phrases say how long ago the run started (row 54l)', () => {
+    const view = renderHeader({
+      startedAt: Date.parse('2026-11-02T10:45:00-06:00'),
+      showStamp: false,
+      phrases: ['Started 40 s ago', 'step 2 of 4'],
+    });
+
+    expect(view.container.querySelector('time')).toBeNull();
+    expect(view.container.textContent).toMatch(/Running\s*, Started 40 s ago, step 2 of 4/);
+  });
+
   test('a status word with a qualifier is one status, drawn once', () => {
     const view = renderHeader({ status: 'Running, checking the result' });
 

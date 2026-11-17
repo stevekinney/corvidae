@@ -56,6 +56,8 @@
     status: StatusDotWordLabel | undefined;
     /** When the run started, in milliseconds, and how long it took once it is over. */
     startedAt?: number | undefined;
+    /** Whether the day and time are said; off when `phrases` say how long ago the run started (row 54l). */
+    showStamp?: boolean;
     tookMilliseconds?: number | undefined;
     /** What the duration is called: "took" for a run that finished, "ran" for one that was canceled. */
     tookWord?: 'took' | 'ran';
@@ -130,6 +132,7 @@
     fallbackTitle,
     status,
     startedAt,
+    showStamp = true,
     tookMilliseconds,
     tookWord = 'took',
     task,
@@ -225,9 +228,9 @@
 {#snippet summary()}
   {#if status !== undefined}<StatusLabel
       word={status}
-    />{/if}{#if stepNote !== undefined}{`, ${stepNote}`}{/if}{#if startedAt !== undefined}, <time
-      datetime={new Date(startedAt).toISOString()}
-      title={utcStamp(startedAt)}>{dayStamp(startedAt)}</time
+    />{/if}{#if stepNote !== undefined}{`, ${stepNote}`}{/if}{#if startedAt !== undefined && showStamp},
+    <time datetime={new Date(startedAt).toISOString()} title={utcStamp(startedAt)}
+      >{dayStamp(startedAt)}</time
     >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${phrase}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
       class="ib-identifier">{signal}</code
     >{/each}{#if note !== undefined}{`, ${note}`}{/if}

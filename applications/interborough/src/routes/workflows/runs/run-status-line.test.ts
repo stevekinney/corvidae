@@ -6,9 +6,32 @@
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
-import { runStatusLine } from './run-status-line.ts';
+import { runStatusLine, startedAgoPhrases } from './run-status-line.ts';
 
 const STARTED = Date.parse('2026-11-02T10:45:00-06:00');
+
+describe('startedAgoPhrases (row 54l)', () => {
+  const running = {
+    status: 'Running',
+    over: false,
+    failed: false,
+    stepPhrase: 'step 2 of 4',
+    signals: [],
+    startedAt: STARTED,
+    now: STARTED + 40_000,
+  } as const;
+
+  test('an instance going on says how long ago it started, then the step', () => {
+    expect(startedAgoPhrases(running)).toEqual(['Started 40 s ago', 'step 2 of 4']);
+  });
+
+  test('a run with no step, one that ended, failed or waits for a signal keeps its own line', () => {
+    expect(startedAgoPhrases({ ...running, stepPhrase: undefined })).toBeUndefined();
+    expect(startedAgoPhrases({ ...running, over: true })).toBeUndefined();
+    expect(startedAgoPhrases({ ...running, failed: true })).toBeUndefined();
+    expect(startedAgoPhrases({ ...running, signals: ['notes-approved'] })).toBeUndefined();
+  });
+});
 
 describe('runStatusLine', () => {
   test('a run still going says how long it has run so far (54l, 06b)', () => {

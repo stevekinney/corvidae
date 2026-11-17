@@ -376,6 +376,11 @@ export const RUN_DETAIL_COPY = {
    * and the steps of the version it ran: how far it got, the step that failed, and which version.
    */
   instance: {
+    /**
+     * The status line of an instance of a workflow file that is still going (row 54l): how long ago
+     * it started, in place of the day, the time and "so far", then the step.
+     */
+    startedAgo: (duration: string): string => `Started ${duration} ago`,
     /** After the time of a run still going: "step 2 of 4". */
     stepOf: (at: number, total: number): string => `step ${String(at)} of ${String(total)}`,
     /** After the word Failed: "at step 2 of 4". */

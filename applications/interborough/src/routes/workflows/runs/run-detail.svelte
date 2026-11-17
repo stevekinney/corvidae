@@ -97,7 +97,7 @@
   import RunPanels from './run-panels.svelte';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
-  import { runStatusLine } from './run-status-line.ts';
+  import { runStatusLine, startedAgoPhrases } from './run-status-line.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
@@ -394,10 +394,27 @@
   );
   // A failed run says where it failed right after the word; a run going on says it after how long.
   const stepNote = $derived(instanceFailed ? stepPhrase : undefined);
+  // An instance of a workflow file that is going on says "Started 40 s ago, step 2 of 4" in place of
+  // the day, the time and "so far" (row 54l); a chat's run keeps its day, time and "so far" (06b).
+  const startedAgo = $derived(
+    summary === undefined
+      ? undefined
+      : startedAgoPhrases({
+          status: summary.status,
+          over: summary.over,
+          failed: instanceFailed,
+          stepPhrase,
+          signals: statusLine?.signals ?? [],
+          startedAt: summary.startedAt,
+          now: engine.clock.now,
+        }),
+  );
+  const startedAgoLine = $derived(startedAgo !== undefined);
   const statusPhrases = $derived(
-    stepPhrase === undefined || instanceFailed || summary?.over === true
-      ? statusLine?.phrases
-      : [...(statusLine?.phrases ?? []), stepPhrase],
+    startedAgo ??
+      (stepPhrase === undefined || instanceFailed || summary?.over === true
+        ? statusLine?.phrases
+        : [...(statusLine?.phrases ?? []), stepPhrase]),
   );
   const instanceEntryList = $derived(
     progress === undefined || progress.at === null || summary === undefined
@@ -813,6 +830,7 @@
         fallbackTitle={TASK_COPY.runTitle}
         status={statusLine?.word ?? summary.status}
         startedAt={summary.startedAt}
+        showStamp={!startedAgoLine}
         tookMilliseconds={summary.over && attemptLine?.checking !== true
           ? Math.max(0, summary.updatedAt - summary.startedAt)
           : undefined}

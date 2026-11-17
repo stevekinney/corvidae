@@ -50,6 +50,35 @@ export type RunStatusLine = {
   readonly signals: readonly string[];
 };
 
+/**
+ * The status line of an instance of a workflow file that is still going (row 54l): "Started 40 s
+ * ago, step 2 of 4" in place of the day, the time and "so far". `undefined` for any other run,
+ * which keeps its day, its time and its parts (a chat's run, row 06b).
+ */
+export function startedAgoPhrases(input: {
+  readonly status: StatusWord;
+  readonly over: boolean;
+  readonly failed: boolean;
+  readonly stepPhrase: string | undefined;
+  readonly signals: readonly string[];
+  readonly startedAt: number;
+  readonly now: number;
+}): readonly string[] | undefined {
+  if (
+    input.stepPhrase === undefined ||
+    input.over ||
+    input.failed ||
+    input.status !== 'Running' ||
+    input.signals.length > 0
+  ) {
+    return undefined;
+  }
+  return [
+    RUN_DETAIL_COPY.instance.startedAgo(durationWords(input.now - input.startedAt)),
+    input.stepPhrase,
+  ];
+}
+
 /** The milliseconds of the agent's work inside an attempt: its task's, or the time so far. */
 function agentMilliseconds(input: RunStatusLineInput): number {
   const { task } = input;
