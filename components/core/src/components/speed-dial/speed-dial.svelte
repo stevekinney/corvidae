@@ -16,7 +16,7 @@
   import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import FloatingAction from '@lostgradient/floating-action/components/floating-action/floating-action.svelte';
-  import { createPortalAttachment } from '../portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
   import {
     createInheritedPortalStyle,
     findNearestOpenTopLayer,
@@ -24,7 +24,7 @@
     isRedispatchedPortaledEvent,
     observePortalSourceAvailability,
     redispatchPortaledEvent,
-  } from '../portal/portal.utilities.svelte.ts';
+  } from '@lostgradient/portal/components/portal/portal.utilities.svelte.ts';
   import { setSpeedDialContext } from './speed-dial.context.ts';
   import { waitForSpeedDialExit } from './speed-dial-exit.ts';
   import {

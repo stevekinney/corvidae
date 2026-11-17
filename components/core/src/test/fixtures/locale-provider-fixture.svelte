@@ -2,7 +2,7 @@
   import { LocaleProvider } from '@lostgradient/locale-provider/components/locale-provider/index.ts';
   import { NumberInput } from '../../components/number-input/index.ts';
   import { PhoneInput } from '../../components/phone-input/index.ts';
-  import { Slider } from '../../components/slider/index.ts';
+  import { Slider } from '@lostgradient/slider/components/slider/index.ts';
   import { Statistic } from '../../components/statistic/index.ts';
   import type { TextDirection } from '@lostgradient/locale-provider/components/locale-provider/index.ts';
 

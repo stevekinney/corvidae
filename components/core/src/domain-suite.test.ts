@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-const domainSuiteModules = [['surface', './components/surface/index.ts']] as const;
+const domainSuiteModules = [['surface', '../../surface/src/components/surface/index.ts']] as const;
 
 describe('domain-suite public components', () => {
   for (const [name, importPath] of domainSuiteModules) {

@@ -24,14 +24,16 @@ function loadCss(relativePath: string): string {
 }
 
 const dropdownCss = loadCss('../components/dropdown/dropdown.css');
-const navigationItemCss = loadCss('../components/navigation-item/navigation-item.css');
+const navigationItemCss = loadCss(
+  '../../../navigation-item/src/components/navigation-item/navigation-item.css',
+);
 const numberInputCss = loadCss('../components/number-input/number-input.css');
 const selectionPopoverCss = loadCss('../components/selection-popover/selection-popover.css');
 const sideNavigationCss = loadCss('../components/side-navigation/side-navigation.css');
 const sideNavigationGroupCss = loadCss(
   '../components/side-navigation-group/side-navigation-group.css',
 );
-const sliderCss = loadCss('../components/slider/slider.css');
+const sliderCss = loadCss('../../../slider/src/components/slider/slider.css');
 const tabsCss = loadCss('../components/tabs/tabs.css');
 const areaChartCss = loadCss('../components/area-chart/area-chart.css');
 const barChartCss = loadCss('../components/bar-chart/bar-chart.css');
@@ -50,9 +52,13 @@ const tokensBaseCss = loadCss('../../../tokens/src/styles/tokens-base.css');
 const mediaControlsCss = loadCss(
   '../../../media-player/src/components/_internal/media-controls.css',
 );
-const permissionMatrixCss = loadCss('../components/permission-matrix/permission-matrix.css');
+const permissionMatrixCss = loadCss(
+  '../../../permission-matrix/src/components/permission-matrix/permission-matrix.css',
+);
 const shareCardCss = loadCss('../components/share-card/share-card.css');
-const transferListCss = loadCss('../components/transfer-list/transfer-list.css');
+const transferListCss = loadCss(
+  '../../../transfer-list/src/components/transfer-list/transfer-list.css',
+);
 const tableCss = loadCss('../components/table/table.css');
 const menuBarCss = loadCss('../components/menu-bar/menu-bar.css');
 
@@ -67,10 +73,10 @@ const jsonSchemaEditorCss = loadCss('../components/json-schema-editor/json-schem
 const jsonViewerCss = loadCss('../components/json-viewer/json-viewer.css');
 const modalCss = loadCss('../components/modal/modal.css');
 const popoverCss = loadCss('../components/popover/popover.css');
-const ratingCss = loadCss('../components/rating/rating.css');
+const ratingCss = loadCss('../../../rating/src/components/rating/rating.css');
 const searchFieldCss = loadCss('../components/search-field/search-field.css');
 const toastRegionCss = loadCss('../components/toast-region/toast-region.css');
-const treeCss = loadCss('../components/tree/tree.css');
+const treeCss = loadCss('../../../tree/src/components/tree/tree.css');
 
 // Svelte component <style> blocks converted in the same sweep. markdown-editor,
 // diff-viewer, and review-editor moved to @lostgradient/editor (see
@@ -951,7 +957,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'Switch on',
-      source: css('../components/toggle/toggle.css'),
+      source: css('../../../toggle/src/components/toggle/toggle.css'),
       selector: '.cinder-toggle[data-cinder-checked]:focus-visible',
       expected: gapRecipe('var(--cinder-toggle-ring, var(--cinder-ring-color))'),
     },
@@ -964,7 +970,7 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     },
     {
       name: 'Pagination current page',
-      source: css('../components/pagination/pagination.css'),
+      source: css('../../../pagination/src/components/pagination/pagination.css'),
       selector: '.cinder-pagination__page[data-cinder-current]:focus-visible',
       expected: FILLED_BOX_SHADOW,
     },

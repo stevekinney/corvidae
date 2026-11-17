@@ -6,7 +6,7 @@
   import { onMount, untrack } from 'svelte';
 
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import TagInput from '../tag-input/tag-input.svelte';
+  import TagInput from '@lostgradient/tag-input/components/tag-input/tag-input.svelte';
 
   let {
     id,

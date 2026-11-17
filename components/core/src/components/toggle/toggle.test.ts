@@ -12,7 +12,7 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render, fireEvent, screen, cleanup } = await import('@testing-library/svelte');
-const { default: Toggle } = await import('./toggle.svelte');
+const { default: Toggle } = await import('@lostgradient/toggle/components/toggle/toggle.svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {
@@ -721,7 +721,10 @@ describe('Toggle — standalone and label position', () => {
 // `scripts/browser-fixtures/tests/toggle-size.playwright.ts`. These cases read the stylesheet and
 // assert only the values that hold whatever mechanism draws the track inside the hit area.
 describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
-  const css = readFileSync(join(import.meta.dirname, 'toggle.css'), 'utf8');
+  const css = readFileSync(
+    join(import.meta.dirname, '../../../../toggle/src/components/toggle/toggle.css'),
+    'utf8',
+  );
 
   function declaration(selector: string, property: string): string | undefined {
     const rule = css.match(new RegExp(`${selector.replace(/[.[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`));

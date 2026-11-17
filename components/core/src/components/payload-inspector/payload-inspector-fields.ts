@@ -1,4 +1,4 @@
-import { parseUnifiedPatch } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
+import { parseUnifiedPatch } from '@lostgradient/source-diff-viewer/components/source-diff-viewer/source-diff-viewer.utilities.ts';
 import { SecretValue } from './payload-inspector-secrets.ts';
 
 /** One entry of an object or array, ready for the Fields view. */

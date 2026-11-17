@@ -3,7 +3,7 @@
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import { default as JsonEditor } from '../json-editor/index.ts';
-  import Textarea from '../textarea/textarea.svelte';
+  import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import { formatEditableArguments, parseJsonText } from './approval-card-state.ts';
   import type {

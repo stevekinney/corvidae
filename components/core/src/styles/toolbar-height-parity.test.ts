@@ -136,7 +136,7 @@ const multiSelect: ControlRow = {
 };
 /** An attached SegmentedControl wraps its options in 1px of padding and no border (COR-2311). */
 const segmentedControl: ControlRow = {
-  path: '../components/segmented-control/segmented-control.css',
+  path: '../../../segmented-control/src/components/segmented-control/segmented-control.css',
   base: '.cinder-segmented-control',
   part: '.cinder-segmented-control-option',
   property: 'min-block-size',

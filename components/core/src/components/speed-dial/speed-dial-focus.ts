@@ -7,7 +7,7 @@ import {
   getSequentialFocusTargets,
   getTabIndexValue,
 } from '@lostgradient/foundation/utilities/focus.ts';
-import { getShadowHost } from '../portal/portal.utilities.svelte.ts';
+import { getShadowHost } from '@lostgradient/portal/components/portal/portal.utilities.svelte.ts';
 
 export interface QueuedFocusRestoration {
   invalidate: () => void;
