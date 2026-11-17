@@ -163,6 +163,11 @@ export const AUDIT_EVENT_TYPES = [
   // COR-1912 — a validate-mode guardrail that blocked or redacted and let the run go on: the
   // counterpart of `run.tripwire`, which only a halting guardrail writes.
   'run.guardrail',
+  // COR-2097 — a hook of a run's plan that threw, with its registration, hook point, who registered
+  // it and the error as the run recorded it, so a settled run's failed hooks can be read. The
+  // published `hook-plan.failed` event carries none of the error's text; this record does, for an
+  // authorized read.
+  'hook-plan.failed',
   // COR-625 — the terminal-run checkpoint-retention step's own
   // acknowledgement, written out-of-band by `create-bureau.ts`'s
   // `runTerminalCheckpointCleanup` once per durable run. Distinct from the
@@ -1196,6 +1201,10 @@ export const AUDIT_REDACTION_KEPT_DETAIL_FIELDS: readonly string[] = [
   'inputForm',
   // COR-2420: the supervisor routing step a `decision.made` record was asked for, an id.
   'routingId',
+  // COR-2097: which registration of a run's hook plan threw, on which hook point and who registered it.
+  'hookId',
+  'hookName',
+  'source',
 ];
 
 /** The fields of a review snapshot (`detail.review`) a redacted entry keeps: ids, kind and status. */
@@ -1588,23 +1597,30 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   // COR-2096: a guardrail's trip reaches this trail from its own event, which a run in the store
   // raises and so does a child, a goal attempt or a workflow step (none of which is on the store,
   // so `'action'` never carries their actions). A run in the store raises both, so the `'action'`
-  // listener leaves these two kinds to the event and each is recorded once. A schedule fire and a
-  // catalog run resumed after a restart raise neither.
-  const RECORDED_FROM_THEIR_OWN_EVENT = new Set<string>(['run.guardrail', 'run.tripwire']);
+  // listener leaves these kinds to the event and each is recorded once. A schedule fire and a
+  // catalog run resumed after a restart raise neither. COR-2097 adds a hook of the run's plan that threw.
+  const RECORDED_FROM_THEIR_OWN_EVENT = new Set<string>([
+    'run.guardrail',
+    'run.tripwire',
+    'hook-plan.failed',
+  ]);
   const listener = (event: import('./events').ActionEvent) => {
     if (RECORDED_FROM_THEIR_OWN_EVENT.has(event.action.type)) return;
     recordAction(event.action);
   };
-  const guardrailListener = (
+  const ownEventListener = (
     event:
-      import('./events').RunGuardrailRecordedEvent | import('./events').RunTripwireRecordedEvent,
+      | import('./events').RunGuardrailRecordedEvent
+      | import('./events').RunTripwireRecordedEvent
+      | import('./events').HookPlanFailedRecordedEvent,
   ) => {
     recordAction(event.action);
   };
 
   bureau.addEventListener('action', listener);
-  bureau.addEventListener('run.guardrail', guardrailListener);
-  bureau.addEventListener('run.tripwire', guardrailListener);
+  bureau.addEventListener('run.guardrail', ownEventListener);
+  bureau.addEventListener('run.tripwire', ownEventListener);
+  bureau.addEventListener('hook-plan.failed', ownEventListener);
 
   // Shared write path behind both the public out-of-band `record()` below
   // and the schedule-definition listeners further down (AB-228) — the same
@@ -3025,8 +3041,9 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
 
     async dispose(): Promise<void> {
       bureau.removeEventListener('action', listener);
-      bureau.removeEventListener('run.guardrail', guardrailListener);
-      bureau.removeEventListener('run.tripwire', guardrailListener);
+      bureau.removeEventListener('run.guardrail', ownEventListener);
+      bureau.removeEventListener('run.tripwire', ownEventListener);
+      bureau.removeEventListener('hook-plan.failed', ownEventListener);
       bureau.removeEventListener('schedule.created', scheduleCreatedListener);
       bureau.removeEventListener('schedule.paused', scheduleTransitionListener);
       bureau.removeEventListener('schedule.resumed', scheduleTransitionListener);

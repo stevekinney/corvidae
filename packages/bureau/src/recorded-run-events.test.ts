@@ -2,9 +2,16 @@ import {
   type ActiveRun,
   AgentRunError,
   BudgetThresholdEvent,
+  ChildWorkflowAbortedEvent,
+  ChildWorkflowCompletedEvent,
+  ChildWorkflowFailedEvent,
+  ChildWorkflowStartedEvent,
+  HandoffOccurredEvent,
+  HookPlanFailedEvent,
   RunErrorEvent,
   RunGuardrailEvent,
   RunTripwireEvent,
+  SteeringAppliedEvent,
   ToolErrorBubbleEvent,
   ToolPolicyDeniedBubbleEvent,
 } from '@lostgradient/operative';
@@ -12,6 +19,12 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   BudgetThresholdRecordedEvent,
+  ChildWorkflowAbortedRecordedEvent,
+  ChildWorkflowCompletedRecordedEvent,
+  ChildWorkflowFailedRecordedEvent,
+  ChildWorkflowStartedRecordedEvent,
+  HandoffOccurredRecordedEvent,
+  HookPlanFailedRecordedEvent,
   RunGuardrailRecordedEvent,
   RunTripwireRecordedEvent,
   ToolErrorRecordedEvent,
@@ -32,6 +45,12 @@ describe('recordedRunEvent (COR-2096)', () => {
     ['budget.threshold', BudgetThresholdRecordedEvent],
     ['tool.policy-denied', ToolPolicyDeniedRecordedEvent],
     ['tool.error', ToolErrorRecordedEvent],
+    ['multiagent.child-workflow.started', ChildWorkflowStartedRecordedEvent],
+    ['multiagent.child-workflow.completed', ChildWorkflowCompletedRecordedEvent],
+    ['multiagent.child-workflow.failed', ChildWorkflowFailedRecordedEvent],
+    ['multiagent.child-workflow.aborted', ChildWorkflowAbortedRecordedEvent],
+    ['multiagent.handoff.occurred', HandoffOccurredRecordedEvent],
+    ['hook-plan.failed', HookPlanFailedRecordedEvent],
   ] as const)('wraps a recorded %s action in its Bureau event', (type, event) => {
     const action = { sequence: 1, runId: 'run-1', type, detail: null, timestamp: 1 };
 
@@ -43,20 +62,34 @@ describe('recordedRunEvent (COR-2096)', () => {
   });
 
   it('wraps no other action', () => {
-    for (const type of ['action', 'run.completed', 'run.error', 'step.completed', 'tool.started']) {
+    // `steering.applied` is published by the steering log's append, never from what a run records.
+    for (const type of [
+      'action',
+      'run.completed',
+      'run.error',
+      'step.completed',
+      'tool.started',
+      'steering.applied',
+    ]) {
       expect(
         recordedRunEvent({ sequence: 1, runId: 'run-1', type, detail: null, timestamp: 1 }),
       ).toBeUndefined();
     }
   });
 
-  it('names exactly the five types', () => {
+  it('names exactly the twelve types', () => {
     expect([...RECORDED_RUN_EVENT_TYPES]).toEqual([
       'run.tripwire',
       'run.guardrail',
       'budget.threshold',
       'tool.policy-denied',
       'tool.error',
+      'multiagent.child-workflow.started',
+      'multiagent.child-workflow.completed',
+      'multiagent.child-workflow.failed',
+      'multiagent.child-workflow.aborted',
+      'multiagent.handoff.occurred',
+      'hook-plan.failed',
     ]);
   });
 });
@@ -125,6 +158,43 @@ describe('observeRecordedRunEvents (COR-2096)', () => {
     expect(seen[0]?.action).toMatchObject({
       timestamp: 1234,
       detail: { step: 0, guardrailName: 'sentinel', phase: 'input' },
+    });
+  });
+
+  // COR-2097: the same seam carries what a run that is not in the store records of its children,
+  // its handoffs and its hook plan, each once, as the run fires it.
+  it('wraps a child, a handoff and a hook-plan event the run fires, once each, in order', () => {
+    const { run, fire } = fakeRun('attempt-2');
+    const seen: RecordedRunEvent[] = [];
+    observeRecordedRunEvents(run, { dispatch: (event) => seen.push(event), now: () => 99 });
+    const correlation = {
+      parentAgentName: 'planner',
+      parentRunId: 'attempt-2',
+      childAgentName: 'worker',
+      childRunId: 'child-1',
+    };
+
+    fire(new ChildWorkflowStartedEvent({ ...correlation, input: 'the prompt', durable: false }));
+    fire(new ChildWorkflowCompletedEvent(correlation));
+    fire(new ChildWorkflowFailedEvent({ ...correlation, reason: 'error' }));
+    fire(new ChildWorkflowAbortedEvent({ ...correlation, reason: 'parent aborted' }));
+    fire(new HandoffOccurredEvent({ sourceAgentName: 'planner', targetAgentName: 'worker' }));
+    // Fired, and not wrapped: the steering log's append publishes `steering.applied`.
+    fire(new SteeringAppliedEvent('session-1', {} as never));
+    fire(new HookPlanFailedEvent('onStep', 'agent:boom', 3, new Error('x'), 'attempt-2', 'agent'));
+
+    expect(seen.map((event) => [event.type, event.action.sequence, event.action.runId])).toEqual([
+      ['multiagent.child-workflow.started', 0, 'attempt-2'],
+      ['multiagent.child-workflow.completed', 1, 'attempt-2'],
+      ['multiagent.child-workflow.failed', 2, 'attempt-2'],
+      ['multiagent.child-workflow.aborted', 3, 'attempt-2'],
+      ['multiagent.handoff.occurred', 4, 'attempt-2'],
+      ['hook-plan.failed', 5, 'attempt-2'],
+    ]);
+    expect(seen[5]?.action.detail).toMatchObject({
+      hookName: 'onStep',
+      hookId: 'agent:boom',
+      source: 'agent',
     });
   });
 

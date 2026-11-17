@@ -67,6 +67,7 @@ export type {
   PluginProviderContribution,
   PluginStatus,
 } from './plugins/plugin-types';
+export type { PluginProblemCode } from './plugins/plugin-problem-codes';
 export { pluginLoadOrder } from './plugins/compose-plugins';
 export {
   BUREAU_PLUGIN_ENTRY,
@@ -476,6 +477,7 @@ export type {
   RecoveryRejectionReason,
   RunFailureDetail,
   RunSettledStatus,
+  SteeringOutcomeDetail,
   TriggerEventKind,
   TriggerFireOutcome,
 } from './events';
@@ -484,6 +486,20 @@ export {
   AssetLifecycleEvent,
   BUREAU_ASSET_EVENT_KINDS,
   BureauDisposedEvent,
+  ChildWorkflowAbortedRecordedEvent,
+  ChildWorkflowCompletedRecordedEvent,
+  ChildWorkflowFailedRecordedEvent,
+  ChildWorkflowStartedRecordedEvent,
+  HandoffOccurredRecordedEvent,
+  HookPlanFailedRecordedEvent,
+  PluginSecretRemovedEvent,
+  PluginSecretSetEvent,
+  PluginSettingsChangedEvent,
+  PluginStatusChangedEvent,
+  SteeringAppliedRecordedEvent,
+  SteeringCommandFailedEvent,
+  SteeringCommandRejectedEvent,
+  SteeringCommandSupersededEvent,
   DefinitionsChangedEvent,
   DiagnosticEvent,
   GOAL_EVENT_KINDS,
@@ -683,6 +699,7 @@ export type {
   SteeringCommandConflict,
   SteeringCommandRequest,
   SteeringCommandSnapshot,
+  SteeringGateTransition,
 } from './steering';
 export { createSteeringGate } from './steering';
 export type {
@@ -753,6 +770,8 @@ export type {
 export type {
   BureauChildrenOptions,
   BureauEventType,
+  BureauHostEvent,
+  BureauHostEvents,
   BureauMemoryAuthorityOptions,
   BureauOptions,
   BureauLogsOptions,

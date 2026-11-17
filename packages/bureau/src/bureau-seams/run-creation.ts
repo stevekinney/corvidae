@@ -94,6 +94,7 @@ import { copyAgentOwnedRunOptions, sessionExecuteOptions } from '../session-agen
 import { createPendingApprovalPersistHook } from '../approval-state-records';
 import { humanInputSchemasOf } from '../human-input-option';
 import { isTryAgentName } from '../agent-try';
+import { announceSteeringTransitions } from '../steering-transition-events';
 import { normalizeRunRequestContext, persistedRequestAuthority } from '../session-request-context';
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record';
 import { chatRunAttribution, serializeRunState, serializeUnknownError } from '../serialization';
@@ -230,6 +231,7 @@ export function createRunCreation<D extends AgentDefinitions>(
     workspace,
     runtimeServices,
     store,
+    emitter,
     runEventFeeds,
     runOutcomeDetails,
     lateDecisions,
@@ -719,9 +721,10 @@ export function createRunCreation<D extends AgentDefinitions>(
         steeringRunIncarnations.set(runId, steeringSession.incarnation);
         peers.pollSessionSteering(sessionId, steeringSession.incarnation, runId);
       } else {
-        peers
-          .getSessionSteeringGate(sessionId)
-          .promoteForNewRun(runId, runtimeServices.clock.nowISO());
+        const promotedGate = peers.getSessionSteeringGate(sessionId);
+        promotedGate.promoteForNewRun(runId, runtimeServices.clock.nowISO());
+        // COR-2097: a pending identity whose deadline passed before this run could take it.
+        announceSteeringTransitions(promotedGate, (announced) => emitter.dispatch(announced));
       }
       const steeringGate = peers.getSessionSteeringGate(sessionId);
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see

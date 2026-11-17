@@ -1,6 +1,10 @@
 /**
  * The run events a Bureau publishes from what a run records (COR-2096): `run.tripwire`,
- * `run.guardrail`, `budget.threshold`, `tool.policy-denied` and `tool.error`.
+ * `run.guardrail`, `budget.threshold`, `tool.policy-denied` and `tool.error`; and (COR-2097) the
+ * four `multiagent.child-workflow.*` events, `multiagent.handoff.occurred` and `hook-plan.failed`.
+ * `steering.applied` is not among them: a run observes the version it applied, but the steering log
+ * decides whether the command was applied at all, so the event is published by the append that
+ * recorded it (`bureau-seams/steering-log.ts`).
  *
  * The operative store records every event of a run as an `Action` whose `type` is the event's type
  * and whose `detail` is the event's own fields, so one function turns a recorded action into the
@@ -19,6 +23,12 @@ import type { Action, ActiveRun } from '@lostgradient/operative';
 
 import {
   BudgetThresholdRecordedEvent,
+  ChildWorkflowAbortedRecordedEvent,
+  ChildWorkflowCompletedRecordedEvent,
+  ChildWorkflowFailedRecordedEvent,
+  ChildWorkflowStartedRecordedEvent,
+  HandoffOccurredRecordedEvent,
+  HookPlanFailedRecordedEvent,
   RunGuardrailRecordedEvent,
   RunTripwireRecordedEvent,
   ToolErrorRecordedEvent,
@@ -29,6 +39,12 @@ import type { RunOutcomeDetailRecorder } from './run-outcome-details.ts';
 /** The Bureau event that wraps a recorded run event. */
 export type RecordedRunEvent =
   | BudgetThresholdRecordedEvent
+  | ChildWorkflowAbortedRecordedEvent
+  | ChildWorkflowCompletedRecordedEvent
+  | ChildWorkflowFailedRecordedEvent
+  | ChildWorkflowStartedRecordedEvent
+  | HandoffOccurredRecordedEvent
+  | HookPlanFailedRecordedEvent
   | RunGuardrailRecordedEvent
   | RunTripwireRecordedEvent
   | ToolErrorRecordedEvent
@@ -41,11 +57,29 @@ export const RECORDED_RUN_EVENT_TYPES = [
   BudgetThresholdRecordedEvent.type,
   ToolPolicyDeniedRecordedEvent.type,
   ToolErrorRecordedEvent.type,
+  ChildWorkflowStartedRecordedEvent.type,
+  ChildWorkflowCompletedRecordedEvent.type,
+  ChildWorkflowFailedRecordedEvent.type,
+  ChildWorkflowAbortedRecordedEvent.type,
+  HandoffOccurredRecordedEvent.type,
+  HookPlanFailedRecordedEvent.type,
 ] as const;
 
-/** The Bureau event for `action`, or `undefined` for an action that is not one of the five. */
+/** The Bureau event for `action`, or `undefined` for an action that is not one of these. */
 export function recordedRunEvent(action: Action): RecordedRunEvent | undefined {
   switch (action.type) {
+    case ChildWorkflowStartedRecordedEvent.type:
+      return new ChildWorkflowStartedRecordedEvent(action);
+    case ChildWorkflowCompletedRecordedEvent.type:
+      return new ChildWorkflowCompletedRecordedEvent(action);
+    case ChildWorkflowFailedRecordedEvent.type:
+      return new ChildWorkflowFailedRecordedEvent(action);
+    case ChildWorkflowAbortedRecordedEvent.type:
+      return new ChildWorkflowAbortedRecordedEvent(action);
+    case HandoffOccurredRecordedEvent.type:
+      return new HandoffOccurredRecordedEvent(action);
+    case HookPlanFailedRecordedEvent.type:
+      return new HookPlanFailedRecordedEvent(action);
     case RunTripwireRecordedEvent.type:
       return new RunTripwireRecordedEvent(action);
     case RunGuardrailRecordedEvent.type:
@@ -74,7 +108,7 @@ export interface RecordedRunEventObserver {
 }
 
 /**
- * Publishes the five recorded events of a run that is not in the store, as it fires them, and
+ * Publishes the recorded events of a run that is not in the store, as it fires them, and
  * records what its `run.error` says for the outcome event that follows (COR-2095).
  *
  * The action is built the way the store builds one: the event's own enumerable fields are the

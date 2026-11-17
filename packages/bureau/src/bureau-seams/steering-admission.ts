@@ -35,6 +35,11 @@ import {
   isConfigurationTarget,
   steersIdleSession,
 } from '../steering';
+import {
+  announceSteeringApplied,
+  announceSteeringRefusal,
+  announceSteeringTransitions,
+} from '../steering-transition-events';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import {
   type SteeringKeyBinding,
@@ -221,7 +226,12 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
       resolvedFromSelector?: ImplementedSteeringCommand['requestedValue'],
     ): Promise<SteeringCommandAdmissionOutcome> => {
       const kv = peers.durableSteeringStore();
-      if (kv === undefined || request.id === undefined) return outcome;
+      if (kv === undefined || request.id === undefined) {
+        // COR-2097: nothing is logged for this refusal, so there is no log to answer a retry
+        // from: it is decided now and announced now.
+        announceSteeringRefusal(sessionId, request.id, outcome, (event) => emitter.dispatch(event));
+        return outcome;
+      }
       const refused: ImplementedSteeringCommand = {
         id: request.id,
         idOrigin: 'caller',
@@ -535,6 +545,9 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
     const kv = peers.durableSteeringStore();
     if (kv === undefined) {
       const gate = peers.getSessionSteeringGate(sessionId);
+      // A key the ledger already holds is a retry: answered from the ledger, decided earlier.
+      const retried =
+        getSteeringLedgerEntry(steeringCommandLedger, command.principal, command.id) !== undefined;
       const outcome = gate.admit(command, { liveRunIds, now });
       if (
         outcome.outcome === 'accepted' &&
@@ -548,7 +561,12 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
         }
         peers.nestedSet(submitted, request.principal, id, request.requestedValue);
       }
-      if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
+      // COR-2097: the in-memory gate's decision is the commit. A refusal is announced, and so is
+      // each earlier command an accepted one replaced, ahead of the replacement's own
+      // `steering.accepted`, which is the order a durable session announces them in.
+      announceSteeringRefusal(sessionId, command.id, outcome, (event) => emitter.dispatch(event));
+      announceSteeringTransitions(gate, (event) => emitter.dispatch(event));
+      if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome, !retried);
       return outcome;
     }
     const outcome = await peers.enqueueSteering(sessionId, () =>
@@ -563,7 +581,9 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
           : undefined,
       ),
     );
-    if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
+    if (outcome.outcome === 'accepted') {
+      dispatchSteeringAccepted(sessionId, outcome, decidedByAppend.has(outcome));
+    }
     return outcome;
   }
 
@@ -848,21 +868,40 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
     return liveAndNotEnded();
   }
 
-  // AB-68: give `steering.accepted` its first production dispatch site.
-  // Only the `accepted` transition is dispatched here, and deliberately:
-  // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
-  // are documented as `accepted → X` transitions, so a PRE-admission
-  // rejection (an unknown agent name, an ambiguous run) never reached
-  // `accepted` and must not be reported as having left it. Those three
-  // belong to the gate's own post-admission transitions.
+  // AB-68: give `steering.accepted` its first production dispatch site. Only the `accepted`
+  // transition is dispatched here. COR-2097 publishes the other three kinds under Bureau's own
+  // event classes (`steering-transition-events.ts`), because the class Operative defines for a
+  // refusal is narrowed to a command that had been accepted and a refusal at admission never was:
+  // `steering.rejected` is announced where the refusal is decided (`refuseSteering`, the gate's
+  // in-memory answer and the log append that records one), and `steering.superseded` and
+  // `steering.failed` where the gate moves an accepted command, once the change is committed.
+  //
+  // COR-2097 (revision 2026-11-16): a command the gate recorded applied the moment it was admitted
+  // (a duplicate pause after the boundary applied the first, a resume of a run that is not paused,
+  // a re-request of the value in force) has no boundary left to announce it, so the admission that
+  // decided it publishes `steering.applied` right after its `steering.accepted`, once the decision
+  // is committed (`decided`: the `admit` append, or the in-memory gate). A retry answered from what
+  // was decided earlier publishes no second terminal event.
   function dispatchSteeringAccepted(
     sessionId: string,
     outcome: Extract<SteeringCommandAdmissionOutcome, { outcome: 'accepted' }>,
+    decided: boolean,
   ): void {
     emitter.dispatch(
       new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
     );
+    if (decided && outcome.command.state === 'applied') {
+      announceSteeringApplied(
+        sessionId,
+        outcome.command.runId,
+        outcome.command.requestedAt,
+        (event) => emitter.dispatch(event),
+      );
+    }
   }
+
+  /** The accepted outcomes an `admit` append decided, as against a retry answered from the log. */
+  const decidedByAppend = new WeakSet<SteeringCommandAdmissionOutcome>();
 
   /**
    * Durable admission, serialized per session in this process and against
@@ -1132,6 +1171,14 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
         cursor.applied += 1;
         cursor.head = appended.head;
         if (outcome === undefined) throw new Error('an admit event always yields an outcome');
+        // COR-2097: this append is the decision, so a refusal it logged and each command an
+        // accepted one replaced are announced here and nowhere else. A key answered from the log
+        // returned above and never gets here, so a retry announces nothing again.
+        announceSteeringRefusal(sessionId, command.id, outcome, (announced) =>
+          emitter.dispatch(announced),
+        );
+        announceSteeringTransitions(cursor.gate, (announced) => emitter.dispatch(announced));
+        decidedByAppend.add(outcome);
         return outcome;
       }
     }

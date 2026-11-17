@@ -93,6 +93,7 @@ export function observeHookPlan(
               observation.durationMilliseconds,
               observation.error,
               runId,
+              observation.source,
             ),
           );
           return;

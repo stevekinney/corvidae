@@ -83,7 +83,7 @@ import { createToolbox, type ToolRequestContext } from 'armorer';
 import { describeDefinitionDrift, pinOf } from './agent-definition-pin';
 import { isTryAgentName } from './agent-try';
 import { type GoalAttemptTarget, registerGoalAttemptFence } from './goal-attempt-fence';
-import { bufferMissedFires } from './bureau-event-forwarders';
+import { bufferMissedFires, bufferWorkflowVersionMismatches } from './bureau-event-forwarders';
 import { ownerOrLocal } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import { createSessionTaintSeam, type SessionTaintSeam } from './session-taint-seam';
@@ -197,6 +197,9 @@ async function buildRuntimeComposition(
     string,
     { storedVersion: string; registeredVersion: string }
   >();
+
+  // COR-2097: the same observations, held for the Bureau's event feed — see DurableComposition.versionMismatches.
+  const versionMismatchEvents = bufferWorkflowVersionMismatches();
 
   // COR-1916: see RuntimeComposition.unrebuildableRecoveredRuns.
   const unrebuildableRecoveredRuns = new Set<string>();
@@ -381,6 +384,7 @@ async function buildRuntimeComposition(
           storedVersion: event.storedVersion,
           registeredVersion: event.registeredVersion,
         });
+        versionMismatchEvents.push(event);
         diagnose({
           level: 'warn',
           scope: 'recovery',
@@ -397,6 +401,7 @@ async function buildRuntimeComposition(
     durable = {
       ...createdEngine,
       missedFires: bufferMissedFires(createdEngine.engine),
+      versionMismatches: versionMismatchEvents,
       workflowLogs: logStore,
     };
 

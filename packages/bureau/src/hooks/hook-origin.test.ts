@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createHookOriginLookup, hookOfTags, hookOriginTag } from './hook-origin.ts';
+import { createHookOriginLookup, hookOfTags, hookOriginTag, runOfPayload } from './hook-origin.ts';
 import { scheduleOfInstanceInput } from './schedule-hook-origins.ts';
 
 function lookupOver(
@@ -24,6 +24,31 @@ function lookupOver(
   });
   return { lookup, reads };
 }
+
+describe('the run an event is about (COR-2097)', () => {
+  it('is the run, the goal or the task the payload names, in that order', () => {
+    expect(runOfPayload({ runId: 'r', goalRunId: 'g', taskId: 't' })).toBe('r');
+    expect(runOfPayload({ goalRunId: 'g', taskId: 't' })).toBe('g');
+    expect(runOfPayload({ taskId: 't' })).toBe('t');
+  });
+
+  it('is the parent run for a child run’s event, which names no run of its own', () => {
+    expect(
+      runOfPayload({
+        parentRunId: 'parent-run',
+        childRunId: 'child-run',
+        childAgentName: 'worker',
+      }),
+    ).toBe('parent-run');
+  });
+
+  it('is nothing for a payload that names none, or one it only inherits', () => {
+    expect(runOfPayload({ childRunId: 'child-run' })).toBeUndefined();
+    expect(
+      runOfPayload(Object.create({ parentRunId: 'inherited' }) as Record<string, unknown>),
+    ).toBe(undefined);
+  });
+});
 
 describe('the tag of a run a hook started', () => {
   it('names the hook and is read back from among other tags', () => {

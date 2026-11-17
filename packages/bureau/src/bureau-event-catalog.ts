@@ -123,6 +123,18 @@ const TOOL_CALL: FieldList = [
   ['toolName', 'string'],
   ['toolCallId', 'string'],
 ];
+// COR-2097: the parent run, the child run and its agent; the child's prompt never crosses.
+const CHILD: FieldList = [
+  ['parentRunId', 'string'],
+  ['childRunId', 'string'],
+  ['childAgentName', 'string'],
+];
+// COR-2097: the session a steering command was sent to, the command when it has an id, and why it did not run.
+const STEERING_OUTCOME: FieldList = [
+  ['sessionId', 'string'],
+  ['commandId?', 'string'],
+  ['failureReason', 'string'],
+];
 // `dedupeKey` and `committedAtMs` are set only when an outbox carried the transition.
 const SCHEDULE_CHANGE: FieldList = [
   ['scheduleId', 'string'],
@@ -256,6 +268,93 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     'A tool call failed. It names the tool and the call and the error’s code when it is an identifier (`INTERNAL_ERROR` when the error names none or names anything else), never the error’s message, cause or stack.',
     [...TOOL_CALL, ['errorCode', 'string']],
     EVERY_SCOPE,
+  ),
+  'multiagent.child-workflow.started': entry(
+    'multiagent.child-workflow.started',
+    'run',
+    'A run dispatched a child run. It names the parent run, the child run and the child’s agent, never the prompt the child was given. A hook or a workspace reads the parent run it names.',
+    CHILD,
+    EVERY_SCOPE,
+  ),
+  'multiagent.child-workflow.completed': entry(
+    'multiagent.child-workflow.completed',
+    'run',
+    'A child run ended without failing and without being aborted.',
+    CHILD,
+    EVERY_SCOPE,
+  ),
+  'multiagent.child-workflow.failed': entry(
+    'multiagent.child-workflow.failed',
+    'run',
+    'A child run failed. `finishReason` is the child’s finish reason when it is a member of the finish-reason list (`stop-condition`, `maximum-steps`, `aborted`, `error`, `elicitation-denied`, `budget-exceeded`, `tripwire`), and `error` otherwise (a child that was rejected records the rejection’s message where its finish reason would be); the message and the child’s error text are never published.',
+    [...CHILD, ['finishReason', 'string']],
+    EVERY_SCOPE,
+  ),
+  'multiagent.child-workflow.aborted': entry(
+    'multiagent.child-workflow.aborted',
+    'run',
+    'A child run was aborted, by its own abort or its parent’s. The abort reason is never published.',
+    CHILD,
+    EVERY_SCOPE,
+  ),
+  'multiagent.handoff.occurred': entry(
+    'multiagent.handoff.occurred',
+    'run',
+    'A handoff tool transferred a run to another agent. It names the run and the two agents.',
+    [
+      ['runId', 'string'],
+      ['sourceAgentName', 'string'],
+      ['targetAgentName', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  // unattributed: a steering command is sent to a session, and nothing on the event leads back to a run.
+  'steering.applied': entry(
+    'steering.applied',
+    'unattributed',
+    'Accepted steering commands were applied: a step observed their configuration at its boundary, or a command was already in force when it was admitted. One event covers every command one boundary applied. It names the session, never the configuration the step was stamped with.',
+    [['sessionId', 'string']],
+  ),
+  'steering.rejected': entry(
+    'steering.rejected',
+    'unattributed',
+    'A steering command was refused at admission. `failureReason` is the gate’s reason (`policy-denied`, `model-not-allowed`, `stale-revision`, `deadline-passed`, and the rest of the steering failure reasons). `commandId` is the command’s id when it has one. The requested value is never published.',
+    STEERING_OUTCOME,
+  ),
+  'steering.superseded': entry(
+    'steering.superseded',
+    'unattributed',
+    'An accepted steering command was replaced by a later one for the same target. `failureReason` is `superseded-by`; the successor’s id is never published.',
+    STEERING_OUTCOME,
+  ),
+  'steering.failed': entry(
+    'steering.failed',
+    'unattributed',
+    'An accepted steering command could not be applied: its deadline passed (`deadline-passed`) or its run or session ended (`run-terminal`, `session-terminal`).',
+    STEERING_OUTCOME,
+  ),
+  'hook-plan.failed': entry(
+    'hook-plan.failed',
+    'run',
+    'A hook of a run’s plan threw. It names the registration (`hookId`), the hook point (`hookName`), who registered it (`source`, when one said) and the error’s code (`INTERNAL_ERROR` when the error names none that is an identifier), never the error’s message, cause or stack: those stay on the audit record.',
+    [
+      ['runId', 'string'],
+      ['hookId', 'string'],
+      ['hookName', 'string'],
+      ['source?', 'string'],
+      ['errorCode', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'workflow.version-mismatch': entry(
+    'workflow.version-mismatch',
+    'unattributed',
+    'A recovered workflow was checkpointed under a version other than the one registered now. It resumes against the registered code (pin and warn). `workflowId` is the workflow’s id, `storedVersion` the version it was checkpointed under and `registeredVersion` the one registered now.',
+    [
+      ['workflowId', 'string'],
+      ['storedVersion', 'string'],
+      ['registeredVersion', 'string'],
+    ],
   ),
   'run.registered': entry(
     'run.registered',
@@ -600,6 +699,28 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     ],
     AGENT_SCOPE,
   ),
+  'goal.feedback.recorded': entry(
+    'goal.feedback.recorded',
+    'run',
+    'A goal’s validator failed an attempt and its feedback was recorded for the next one. It carries a digest of the feedback, as `goal.attempt.validated` does, never the feedback. Published live only, never in a goal’s recorded history.',
+    [
+      ['goalRunId', 'string'],
+      ['attemptId', 'string'],
+      ['feedbackDigest', 'string'],
+    ],
+    AGENT_SCOPE,
+  ),
+  'goal.retrying': entry(
+    'goal.retrying',
+    'run',
+    'A goal’s attempt did not pass and the goal will start another. `attemptIndex` is the failed attempt’s and `retryReason` its status (`failed` or `aborted`). Published live only, never in a goal’s recorded history.',
+    [
+      ['goalRunId', 'string'],
+      ['attemptIndex', 'number'],
+      ['retryReason', 'string'],
+    ],
+    AGENT_SCOPE,
+  ),
   'goal.succeeded': entry('goal.succeeded', 'run', 'A goal succeeded.', GOAL_TERMINAL, AGENT_SCOPE),
   'goal.exhausted': entry(
     'goal.exhausted',
@@ -754,6 +875,47 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['at', 'number'],
       ['recordIds', 'string[]'],
       ['operationId?', 'string'],
+    ],
+  ),
+  // unattributed, with no scope: a plugin and its secrets belong to the deployment, not to a run,
+  // a session or an owner, so no event of these kinds leads back to any of them (COR-2098).
+  'secret.set': entry(
+    'secret.set',
+    'unattributed',
+    'A secret a plugin declared was stored through the host. It names the plugin and the key the plugin declares, never the value, its length, a digest of it or a prefix of it.',
+    [
+      ['plugin', 'string'],
+      ['key', 'string'],
+    ],
+  ),
+  'secret.removed': entry(
+    'secret.removed',
+    'unattributed',
+    'A secret a plugin declared was removed through the host. It names the plugin and the key the plugin declares.',
+    [
+      ['plugin', 'string'],
+      ['key', 'string'],
+    ],
+  ),
+  'plugin.settings-changed': entry(
+    'plugin.settings-changed',
+    'unattributed',
+    'A plugin’s persisted choices were written through the host. `enabled` is whether the plugin is enabled in them and `restartRequired` whether a restart applies what is stored. No configuration value is published.',
+    [
+      ['plugin', 'string'],
+      ['enabled', 'boolean'],
+      ['restartRequired', 'boolean'],
+    ],
+  ),
+  'plugin.status-changed': entry(
+    'plugin.status-changed',
+    'unattributed',
+    'A write through the host changed a plugin’s status. `previousStatus` is the status last published and `status` the one now (`running`, `needs-setup`, `disabled` or `skipped`); `problemCodes` are the distinct codes of the problems the plugin lists, in the order it lists them, such as `secret-missing`. A problem’s message, key and path are never published. Starting the host publishes none.',
+    [
+      ['plugin', 'string'],
+      ['previousStatus', 'string'],
+      ['status', 'string'],
+      ['problemCodes', 'string[]'],
     ],
   ),
   // unattributed, with no scope: a decision names a task only when it was asked for one, so no
