@@ -4,8 +4,9 @@ import type { HTMLTdAttributes } from 'svelte/elements';
 export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'> & {
   /**
    * Keeps the cell's text on one line and ends it with an ellipsis. The full
-   * text is a tooltip on hover and focus, and the cut text takes focus, so a
-   * keyboard or touch user reaches it too. The text may grow to a maximum
+   * text is a tooltip on hover and focus, and the text takes focus only while
+   * it is actually cut (a link inside it takes the stop instead), so a keyboard
+   * or touch user reaches it and a value that fits adds no tab stop. The text may grow to a maximum
    * inline size and no further, so one very long value (a storage key, a hash,
    * a URL) cannot widen the table. Set it on every cell in the column.
    * Unless you pass `title`, the tooltip is read from the rendered text.

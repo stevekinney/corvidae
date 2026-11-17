@@ -7,7 +7,7 @@ const schema = {
     truncate: {
       type: 'boolean',
       description:
-        "Keeps the cell's text on one line and ends it with an ellipsis. The full\ntext is a tooltip on hover and focus, and the cut text takes focus, so a\nkeyboard or touch user reaches it too. The text may grow to a maximum\ninline size and no further, so one very long value (a storage key, a hash,\na URL) cannot widen the table. Set it on every cell in the column.\nUnless you pass `title`, the tooltip is read from the rendered text.",
+        "Keeps the cell's text on one line and ends it with an ellipsis. The full\ntext is a tooltip on hover and focus, and the text takes focus only while\nit is actually cut (a link inside it takes the stop instead), so a keyboard\nor touch user reaches it and a value that fits adds no tab stop. The text may grow to a maximum\ninline size and no further, so one very long value (a storage key, a hash,\na URL) cannot widen the table. Set it on every cell in the column.\nUnless you pass `title`, the tooltip is read from the rendered text.",
       default: false,
     },
     controls: {

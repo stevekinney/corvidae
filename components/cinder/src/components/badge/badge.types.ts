@@ -70,7 +70,8 @@ export interface BadgeSchemaProps {
   monospace?: boolean;
   /**
    * Keeps the badge within the width it is given and ends a long label with an ellipsis, with the
-   * full label in a tooltip on hover and focus.
+   * full label in a tooltip on hover and focus. Only a label that is actually cut takes a tab stop
+   * and a tooltip; a link inside it takes the stop instead.
    * @default false
    */
   truncate?: boolean;

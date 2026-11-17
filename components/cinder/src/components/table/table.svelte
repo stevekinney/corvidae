@@ -48,6 +48,8 @@
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
 
+  const FIT_STACK_BREAKPOINT = '26rem';
+
   let {
     sort = $bindable(),
     caption,
@@ -58,13 +60,22 @@
     frameless = false,
     fit = false,
     scrollContainerProps,
-    stackBelow = PHONE_VIEWPORT_BREAKPOINT,
+    stackBelow,
     class: className,
     children,
     ...rest
   }: TableProps = $props();
 
-  const stackBreakpoint = $derived(readViewportBreakpoint(stackBelow, 'Table', 'stackBelow'));
+  let hasFillControls = $state(false);
+  // A `fit` table that stacks as flat rows (no control fills its cell) reads well down to a narrow
+  // column, so it stacks only below 26rem (416px); the control layout keeps a phone's 640px.
+  const stackBreakpoint = $derived(
+    readViewportBreakpoint(
+      stackBelow ?? (fit && !hasFillControls ? FIT_STACK_BREAKPOINT : PHONE_VIEWPORT_BREAKPOINT),
+      'Table',
+      'stackBelow',
+    ),
+  );
   const narrowViewport = useViewportBelow(() => stackBreakpoint);
 
   // A table stacks only while one of its cells holds a control, and by the width of the box it sits
@@ -75,7 +86,6 @@
   let controlRegistrations = 0;
   let fillRegistrations = 0;
   let hasControls = $state(false);
-  let hasFillControls = $state(false);
   let containerNarrow = $state<boolean | undefined>(undefined);
   // A `fit` table stacks too, as cards, unless a control that fills its cell asks for the control
   // layout (a table of form fields, where each control keeps a line of its own).

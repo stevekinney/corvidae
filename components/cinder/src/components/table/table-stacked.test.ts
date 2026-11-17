@@ -362,6 +362,28 @@ describe('Table fit stacks into cards', () => {
     ).toBe(false);
   });
 
+  test('a fit table that stacks as flat rows stacks only below 26rem; the control layout keeps 640px', () => {
+    setTestViewportWidth(500);
+    const flat = render(CardFixture, {});
+    flushSync();
+    expect(hasAttribute(flat.container.querySelector('table'), 'data-cinder-stacked')).toBe(false);
+    flat.unmount();
+
+    const control = render(CardFixture, { controls: true });
+    flushSync();
+    expect(hasAttribute(control.container.querySelector('table'), 'data-cinder-stacked')).toBe(
+      true,
+    );
+    control.unmount();
+
+    setTestViewportWidth(400);
+    const narrow = render(CardFixture, {});
+    flushSync();
+    expect(hasAttribute(narrow.container.querySelector('table'), 'data-cinder-stack-card')).toBe(
+      true,
+    );
+  });
+
   test('a fit table whose control keeps its size is a card', () => {
     setTestViewportWidth(375);
     const { container } = render(CardFixture, { controls: 'fit' });
