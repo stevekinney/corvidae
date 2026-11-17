@@ -50,7 +50,7 @@ import {
 
 import type { AgentDefinitions, CodeAgentDetails, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
-import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
+import { isPublishedEventKind } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
 import {
   assertInterceptorHooks,
@@ -563,9 +563,18 @@ function planOf(
     if (app.opensFromTool !== undefined)
       claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
+  // A formatter may list a kind its plugin declares (COR-2225). The declaration holds that kind in
+  // `event-kind`, so the formatter's own claim on it is kept apart and still catches a repeat.
+  const ownKinds = new Set(
+    (contributions.events ?? []).map((event) =>
+      formatToolId({ namespace: plugin, name: event.name }),
+    ),
+  );
   for (const formatter of contributions.formatters ?? []) {
     contribute('formatter', formatter.name);
-    for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
+    for (const kind of formatter.eventKinds) {
+      claims.push({ space: ownKinds.has(kind) ? 'declared-event-kind' : 'event-kind', name: kind });
+    }
   }
   for (const declaration of contributions.events ?? []) {
     // The kind is `plugin:name`, so a plugin holds only kinds of its own: a clash is a name this
@@ -1269,16 +1278,30 @@ function providerSecretProblems(
 }
 
 /**
- * The `formatter-unknown-kind` problems of a plugin whose formatters list an event kind Bureau
- * never publishes, so a formatter cannot wait on an event that never fires (COR-2101).
+ * The `formatter-foreign-kind` and `formatter-unknown-kind` problems of a plugin whose formatters
+ * list a kind it may not format: only the publisher formats its own kinds (COR-2101, COR-2225). A
+ * kind is fine when the core catalog or this plugin's own `events` publish it, so a formatter
+ * never waits on an event that never fires. A kind another plugin declared names that owner; any
+ * other kind is unknown. `declaredBy` holds the kinds of the plugins set up before this one.
  */
-function formatterUnknownKinds(contributions: PluginContributions): PluginProblem[] {
+function formatterKindProblems(
+  plugin: string,
+  contributions: PluginContributions,
+  declaredBy: ReadonlyMap<string, string>,
+): PluginProblem[] {
+  const own = (contributions.events ?? []).map((event) =>
+    formatToolId({ namespace: plugin, name: event.name }),
+  );
   const problems: PluginProblem[] = [];
   for (const formatter of contributions.formatters ?? []) {
     for (const kind of formatter.eventKinds) {
-      if (!Object.hasOwn(BUREAU_EVENT_CATALOG, kind)) {
-        problems.push({ code: 'formatter-unknown-kind', formatter: formatter.name, kind });
-      }
+      if (isPublishedEventKind(kind, own)) continue;
+      const owner = declaredBy.get(kind);
+      problems.push(
+        owner === undefined
+          ? { code: 'formatter-unknown-kind', formatter: formatter.name, kind }
+          : { code: 'formatter-foreign-kind', formatter: formatter.name, kind, owner },
+      );
     }
   }
   return problems;
@@ -1410,6 +1433,8 @@ export async function composePlugins<O extends ComposableOptions>(
   const unavailableAgents: UnavailableCodeAgent[] = [];
   const unavailableTools: string[] = [];
   const claims = heldByHost(options);
+  // Each kind a running plugin declares, to its plugin, so a later plugin's formatter is refused it.
+  const declaredBy = new Map<string, string>();
   const storage = options.storage ?? new MemoryStorage();
   for (const entry of pluginLoadOrder(options.plugins ?? [])) {
     const party: PluginClashParty = { source: entry.source, location: entry.location };
@@ -1439,7 +1464,7 @@ export async function composePlugins<O extends ComposableOptions>(
     const refusals = [
       ...activityFieldProblems(outcome.result),
       ...workflowFieldProblems(outcome.result),
-      ...formatterUnknownKinds(outcome.result),
+      ...formatterKindProblems(entry.descriptor.name, outcome.result, declaredBy),
       ...eventPayloadProblems(outcome.result, outcome.redact),
       ...providerSecretProblems(entry, outcome.result),
     ];
@@ -1470,6 +1495,12 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     for (const claim of plan.claims) claims.hold(claim, party);
+    for (const { name } of outcome.result.events ?? []) {
+      declaredBy.set(
+        formatToolId({ namespace: entry.descriptor.name, name }),
+        entry.descriptor.name,
+      );
+    }
     contributed.add(
       entry.descriptor.name,
       entry.descriptor.version,
@@ -1488,6 +1519,19 @@ export async function composePlugins<O extends ComposableOptions>(
       },
       ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
     });
+  }
+  // A plugin that loaded before the owner of a kind its formatter lists had no owner to name yet, so
+  // it was skipped as `formatter-unknown-kind`; now every owner is known, name it (COR-2225).
+  for (const [index, record] of records.entries()) {
+    if (record.status !== 'skipped') continue;
+    const problems = record.problems.map((problem): PluginProblem => {
+      if (problem.code !== 'formatter-unknown-kind') return problem;
+      const owner = declaredBy.get(problem.kind);
+      if (owner === undefined) return problem;
+      const { formatter, kind } = problem;
+      return { code: 'formatter-foreign-kind', formatter, kind, owner };
+    });
+    records[index] = { ...record, problems };
   }
   const gates = records.flatMap(({ gate }) => (gate === undefined ? [] : [gate]));
   return {
