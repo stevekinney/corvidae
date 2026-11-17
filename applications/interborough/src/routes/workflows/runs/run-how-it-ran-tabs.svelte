@@ -53,15 +53,20 @@
   const chosen = $derived(tabs.some((tab) => tab.value === active) ? active : 'steps');
 </script>
 
-<Tabs bind:value={() => chosen, (value) => (active = value)}>
-  <Tabs.List label={copy.label}>
+{#if tabs.length === 1}
+  <!-- Only Steps has something in it (a run only the Bureau's record holds): no tab bar of one. -->
+  {@render steps()}
+{:else}
+  <Tabs bind:value={() => chosen, (value) => (active = value)}>
+    <Tabs.List label={copy.label}>
+      {#each tabs as tab (tab.value)}
+        <Tabs.Trigger value={tab.value}>{tab.label}</Tabs.Trigger>
+      {/each}
+    </Tabs.List>
     {#each tabs as tab (tab.value)}
-      <Tabs.Trigger value={tab.value}>{tab.label}</Tabs.Trigger>
+      <Tabs.Panel value={tab.value}>
+        {@render tab.content()}
+      </Tabs.Panel>
     {/each}
-  </Tabs.List>
-  {#each tabs as tab (tab.value)}
-    <Tabs.Panel value={tab.value}>
-      {@render tab.content()}
-    </Tabs.Panel>
-  {/each}
-</Tabs>
+  </Tabs>
+{/if}

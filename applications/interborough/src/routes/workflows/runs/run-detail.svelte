@@ -89,6 +89,10 @@
   import RunEngineHistory from './run-engine-history.svelte';
   import { attributesClientOf, hasVersioning } from './run-engine-attributes.ts';
   import { attributesQueryKey, readAttributes } from '../detail/attributes/attributes-data.ts';
+  import {
+    getScheduleProvenance,
+    scheduleProvenanceQueryKey,
+  } from '../detail/workflow-observability.ts';
   import RunPanels from './run-panels.svelte';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
@@ -634,6 +638,22 @@
     undefined,
   );
   const hasAttributes = $derived(attributes.data?.kind === 'present');
+  // A run a schedule launched has the schedule in its lineage, on the Versioning tab with its worker
+  // binding and the runs it replaced or was forked from. The lineage panel reads the same key.
+  const scheduleProvenance = createQuery(
+    () => ({
+      queryKey: scheduleProvenanceQueryKey(initialRunId),
+      queryFn: () => getScheduleProvenance(engine.client, initialRunId),
+      enabled: workflow !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+  const versioningShown = $derived(
+    workflow !== undefined &&
+      (hasVersioning(workflow) ||
+        (scheduleProvenance.data !== undefined && scheduleProvenance.data !== null)),
+  );
 
   // How many times the failed step was tried, and how long that took: the engine's timeline keeps
   // one entry per try, which the Bureau's history does not (row 55b). The Timeline section reads the
@@ -670,7 +690,9 @@
       task.data === undefined &&
       attempt === undefined &&
       instance.name !== undefined &&
-      !readOnlyRun,
+      !readOnlyRun &&
+      // A run whose input or result broke the schema failed outside a step: nothing to retry.
+      (record?.finishReason === null || record?.finishReason === undefined),
   }));
   const retryAction = $derived(
     runRetry.step === undefined
@@ -948,9 +970,7 @@
                 ? rawTab
                 : undefined}
               events={workflow === undefined ? undefined : eventsTab}
-              versioning={workflow !== undefined && hasVersioning(workflow)
-                ? versioningTab
-                : undefined}
+              versioning={versioningShown ? versioningTab : undefined}
               attributes={hasAttributes ? attributesTab : undefined}
             />
           </RunHowItRan>

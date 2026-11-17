@@ -5,6 +5,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
@@ -80,6 +81,24 @@ describe('the Send a message bar', () => {
     const view = mount();
 
     expect(view.getByRole('button', { name: 'Send' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  test('holds Cancel run beside Send, and pressing it sends no message (rows 06b, 54l)', async () => {
+    stub = installBureauWorld(emptyBureauWorld({ tasks: [] }));
+    const view = render(RunSendMessageHarness, {
+      props: {
+        contextId: 'session-1',
+        runId: 'run-1',
+        task: taskFixture({ id: 'run-1', kind: 'chat', status: 'working' }),
+      },
+    } as never);
+    await fireEvent.input(view.getByPlaceholderText('Send a message'), {
+      target: { value: 'Words typed but not sent' },
+    });
+    const cancel = view.getByRole('button', { name: 'Cancel run' });
+    expect(cancel.getAttribute('type')).toBe('button');
+    await fireEvent.click(cancel);
+    expect(inputsSent()).toHaveLength(0);
   });
 
   test('sends the same words again, after a failure, as the same input, and other words as another', async () => {

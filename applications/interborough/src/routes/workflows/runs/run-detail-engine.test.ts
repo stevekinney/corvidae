@@ -593,6 +593,8 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT());
+    // The run has search attributes, so How it ran has their tab (row 54i).
+    await openTab(view, 'Search attributes');
 
     expect(await view.findByText('us-east')).not.toBeNull();
     expect(view.getByRole('button', { name: 'Edit region' })).not.toBeNull();
@@ -604,6 +606,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('attributes:write'));
+    await openTab(view, 'Search attributes');
 
     expect(await view.findByText('us-east')).not.toBeNull();
     expect(view.queryByRole('button', { name: /^Edit/ })).toBeNull();

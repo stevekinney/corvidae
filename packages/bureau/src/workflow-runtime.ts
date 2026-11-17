@@ -1601,10 +1601,21 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       pending: request,
       applied: receipt?.applied ?? null,
     });
+    // A refusal after the receipt was written leaves no request pending, so a later repeat of this
+    // `retryId` is never answered as if it had reactivated the instance.
+    const clearPending = (): Promise<void> =>
+      retryReceipts.put({
+        schemaVersion: 1,
+        runId,
+        generation,
+        pending: null,
+        applied: receipt?.applied ?? null,
+      });
     let outcome: RetryFailedWorkflowResult;
     try {
       outcome = await engine.retryFailed(runId);
     } catch (error) {
+      await clearPending();
       if (error instanceof WorkflowRevisionUnavailableError) {
         throw new WorkflowRetryRefusedError(
           'version-unavailable',
@@ -1614,6 +1625,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       throw error;
     }
+    if (outcome.status !== 'retried') await clearPending();
     if (outcome.status === 'not-found') {
       throw options.createError(`Workflow run "${runId}" does not exist`, 'NOT_FOUND');
     }

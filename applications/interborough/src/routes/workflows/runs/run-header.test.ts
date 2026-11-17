@@ -169,10 +169,10 @@ describe('the run page header', () => {
         'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
     });
 
-    const buttons = view.getAllByRole('button').map((button) => button.textContent?.trim());
-    expect(buttons.indexOf('Retry from this step')).toBeLessThan(
-      buttons.findIndex((text) => text?.includes('Run again') ?? false),
-    );
+    // Retry from this step comes before Run again, which is a link to set up another run.
+    const retry = view.getByRole('button', { name: 'Retry from this step' });
+    const again = view.getByRole('link', { name: 'Run again' });
+    expect(retry.compareDocumentPosition(again) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(view.container.querySelector('[data-run-beside]')?.textContent).toBe(
       'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
     );

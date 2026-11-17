@@ -29,10 +29,10 @@ describe('the tabs of How it ran', () => {
     expect(view.container.querySelector('[data-section="run-inspector"]')).toBeNull();
   });
 
-  test('draws Versioning and Search attributes only when given them', () => {
+  test('draws Versioning and Search attributes only when given them, and no bar for Steps alone', () => {
     const without = render(RunHowItRanTabs, { props: { steps: panel('activity') } });
-    expect(without.queryByRole('tab', { name: 'Versioning' })).toBeNull();
-    expect(without.queryByRole('tab', { name: 'Search attributes' })).toBeNull();
+    expect(without.queryAllByRole('tab')).toHaveLength(0);
+    expect(without.container.querySelector('[data-section="activity"]')).not.toBeNull();
     cleanup();
 
     const withBoth = render(RunHowItRanTabs, {

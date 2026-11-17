@@ -83,12 +83,20 @@ export const WORKFLOW_RETRY_ID_MAXIMUM_LENGTH = 128;
 
 /**
  * The step a failed instance failed at, counted from 0 in the canonical order, read from the last
- * entry of its timeline that failed: its own document step, or, for an operation that ran
- * branches, its last rejected branch's. `undefined` when no failed entry names a step: the
- * instance failed outside one.
+ * entry of its timeline that failed and that no later entry of the same step completed: its own
+ * document step, or, for an operation that ran branches, its last rejected branch's. A try of a
+ * step that failed and was then tried again and succeeded is not where the instance failed.
+ * `undefined` when no such entry names a step: the instance failed outside one.
  */
 export function failedStepIndexOf(timeline: readonly WorkflowTimelineEntry[]): number | undefined {
-  const failed = timeline.findLast((entry) => entry.status === 'failed');
+  const position = timeline.findLastIndex(
+    (entry, index) =>
+      entry.status === 'failed' &&
+      !timeline
+        .slice(index + 1)
+        .some((later) => later.status === 'completed' && later.documentStep === entry.documentStep),
+  );
+  const failed = position === -1 ? undefined : timeline[position];
   if (failed === undefined) return undefined;
   if (failed.documentStep !== undefined) return failed.documentStep;
   const branch = (failed.branches ?? []).findLast(
