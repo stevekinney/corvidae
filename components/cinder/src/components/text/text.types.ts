@@ -16,14 +16,14 @@ type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
   /** Additional classes merged onto the root element. */
   class?: string;
   /**
-   * Holds the text to this many lines, so a long reply keeps the shape of the page. A "Show all"
+   * Holds the text to this many lines, so a long reply keeps the shape of the page. A "Show more"
    * button appears under it only while the text is actually cut off, and opens the rest in place.
    */
   clamp?: number;
   /** Whether a clamped run is open to its full length. Bindable; ignored without `clamp`. @default false */
   expanded?: boolean;
   /**
-   * Content that sits beside the "Show all" button on the line under a clamped run, separated from
+   * Content that sits beside the "Show more" button on the line under a clamped run, separated from
    * it by a comma, such as a "Show raw payloads" link. Ignored without `clamp`.
    */
   actions?: Snippet;
@@ -73,7 +73,7 @@ export interface TextSchemaProps {
   as?: TextElement;
   /** Additional classes merged onto the root element. */
   class?: string;
-  /** Holds the text to this many lines; a "Show all" button appears only while the text is cut off. */
+  /** Holds the text to this many lines; a "Show more" button appears only while the text is cut off. */
   clamp?: number;
   /** Whether a clamped run is open to its full length. @default false */
   expanded?: boolean;

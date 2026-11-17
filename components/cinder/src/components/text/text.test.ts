@@ -142,7 +142,7 @@ describe('Text clamp', () => {
     );
   });
 
-  test('offers Show all only while the run is cut off', () => {
+  test('offers Show more only while the run is cut off', () => {
     measure({ scroll: 100, client: 100 });
     const { container } = render(Text, { clamp: 5, children: textSnippet('short reply') });
 
@@ -155,7 +155,7 @@ describe('Text clamp', () => {
     const root = container.querySelector('.cinder-text') as HTMLElement;
     const toggle = container.querySelector('.cinder-text__toggle') as HTMLButtonElement;
 
-    expect(toggle.textContent?.trim()).toBe('Show all');
+    expect(toggle.textContent?.trim()).toBe('Show more');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.getAttribute('aria-controls')).toBe(root.id);
 
@@ -176,7 +176,7 @@ describe('Text clamp', () => {
     expect(root.querySelector('button')).toBeNull();
   });
 
-  test("puts the page's own action beside Show all, after a comma in the stylesheet", () => {
+  test("puts the page's own action beside Show more, after a comma in the stylesheet", () => {
     measure({ scroll: 140, client: 100 });
     const { container } = render(Text, {
       clamp: 5,
@@ -185,7 +185,7 @@ describe('Text clamp', () => {
     });
     const footer = container.querySelector('.cinder-text__footer');
 
-    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show all Show raw payloads');
+    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show more Show raw payloads');
     expect(footer?.querySelector('.cinder-text__toggle + .cinder-text__actions')).not.toBeNull();
     expect(textCss).toContain('.cinder-text__toggle + .cinder-text__actions::before');
   });
