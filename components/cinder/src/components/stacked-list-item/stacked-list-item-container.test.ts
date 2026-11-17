@@ -110,7 +110,11 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
   });
 
   test('the actions collapse into one menu button in a narrow pane and are buttons in a wide one', () => {
-    const actions = [{ label: 'Memory', href: '/memory' }];
+    // Two or more collapse; a single action stays its own compact button (never a menu of one).
+    const actions = [
+      { label: 'Memory', href: '/memory' },
+      { label: 'New chat', href: '/chat' },
+    ];
     const { container } = render(ExtrasFixture, { props: { mode: 'actions', actions } });
     const row = container.querySelector('.cinder-stacked-list-item');
     if (!row) throw new Error('no row');
@@ -118,6 +122,16 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
     resizeRow(row, 360);
     expect(container.querySelector('.cinder-stacked-list-item__actions')).toBeNull();
     expect(container.querySelector('.cinder-stacked-list-item__actions-trigger')).not.toBeNull();
+  });
+
+  test('a single action stays its own compact button in a narrow pane', () => {
+    const actions = [{ label: 'Memory', href: '/memory' }];
+    const { container } = render(ExtrasFixture, { props: { mode: 'actions', actions } });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    if (!row) throw new Error('no row');
+    resizeRow(row, 360);
+    expect(container.querySelector('.cinder-stacked-list-item__actions')).not.toBeNull();
+    expect(container.querySelector('.cinder-stacked-list-item__actions-trigger')).toBeNull();
   });
 
   test('every phone rule is a container query on the row, and none reads the viewport', () => {
