@@ -333,6 +333,15 @@ async function main(): Promise<number> {
       1,
     ),
   );
+  // Which cards are live and which static, so a reader of the published system does not have to
+  // open each card; the editors are named because they are the ones that bundle the most.
+  const report = previewReport(live, staticNames, withoutCard);
+  writeFileSync(join(projectDirectory, 'previews.json'), JSON.stringify(report, null, 2));
+  console.log(
+    `Editor previews: ${Object.entries(report.watched)
+      .map(([name, mode]) => `${name} ${mode}`)
+      .join(', ')}.`,
+  );
   const files = listFiles(projectDirectory, outputRoot);
   // The artifact service refuses a text file holding U+FFFD; every published file is text.
   for (const file of files) {
