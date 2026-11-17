@@ -99,7 +99,8 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full
    * width, so the action never reads as the filter's submit button. The toggle that hides the list
-   * (`listCollapsible`) is not part of it: it stays on the rail at the start edge.
+   * (`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and a
+   * `SectionHeading` title starts after it.
    */
   header?: Snippet;
   /**
@@ -167,9 +168,9 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   /**
    * Offers a toggle that hides the list pane while an item is open and the panes sit side by side
    * or one above the other, so the detail takes the whole width. The toggle is one control in one
-   * place, the narrow rail at the start edge, whether the list shows or is hidden, so it is
-   * always on screen and never beside the header's own actions, and focus stays on it as it
-   * flips. With no item open the list shows
+   * place, the start corner of the list's header, which is also where a narrow rail holds it once
+   * the list is hidden (no rail is drawn while the list shows), so it is always on screen, never
+   * beside the header's own actions, and does not move or lose focus as it flips. With no item open the list shows
    * and there is no toggle, and below `pushBelow`, where one pane shows at a time, there is
    * nothing to hide.
    * @default false

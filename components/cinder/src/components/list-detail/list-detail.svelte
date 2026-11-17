@@ -360,13 +360,21 @@
     onkeydown={handleKeydown}
   >
     {#if header}
-      <!-- The list toggle is on the rail, so the header keeps its width for its own title, search
-           and filter. -->
+      <!-- The list toggle stands in the header's start corner (drawn once, outside the pane), and
+           the heading starts after it, so the header keeps its full width for its own search and
+           filter. -->
       <header class="cinder-list-detail__header">
         <CompactActions>
           {@render header()}
         </CompactActions>
       </header>
+    {:else if toggleShown}
+      <!-- No header of its own: an empty one holds the toggle's place at the top of the list. -->
+      <header
+        class="cinder-list-detail__header"
+        data-cinder-toggle-space=""
+        aria-hidden="true"
+      ></header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}
@@ -435,6 +443,13 @@
   </Tooltip>
 {/snippet}
 
+{#snippet toggleAnchor()}
+  <!-- One button, mounted while the list shows and while it is hidden, at one place: the start
+       corner of the list's header, which is also where the rail's top is, so the control does not
+       move when it is pressed and focus stays on it. -->
+  <div class="cinder-list-detail__toggle">{@render listToggle()}</div>
+{/snippet}
+
 {#snippet detailPane()}
   <!-- Without a Back button the region is where focus lands when an item opens, so it takes a
        programmatic tab stop of -1 (never a stop of the tab order). -->
@@ -480,6 +495,7 @@
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
+  data-cinder-toggle-shown={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}
@@ -490,7 +506,10 @@
   {:else if below}
     <div class="cinder-list-detail__below">
       {#if toggleShown}
-        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+        {@render toggleAnchor()}
+      {/if}
+      {#if collapsed}
+        <div class="cinder-list-detail__rail"></div>
       {/if}
       {#if !collapsed}
         {@render listPane()}
@@ -504,7 +523,10 @@
          would read its data again and could take focus for itself. -->
     <div class="cinder-list-detail__split">
       {#if toggleShown}
-        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+        {@render toggleAnchor()}
+      {/if}
+      {#if collapsed}
+        <div class="cinder-list-detail__rail"></div>
       {/if}
       <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
         {#snippet children(pane)}

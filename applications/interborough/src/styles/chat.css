@@ -373,6 +373,12 @@
   margin-inline-start: calc(-1 * var(--cinder-space-2));
 }
 
+/* While the list's toggle stands in the header's start corner, the way back starts after it too,
+ * its chevron still lined up with the title's start. */
+.cinder-list-detail[data-cinder-toggle-shown] .ib-chats__back-row {
+  margin-inline-start: calc(var(--cinder-button-height-sm) - var(--cinder-space-2));
+}
+
 /* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */
 .ib-chat-row__agent {
   color: var(--cinder-text-muted);
