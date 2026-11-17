@@ -83,6 +83,15 @@ export class HookFormState {
   /** What the form held when it was last loaded from a hook, to tell whether anything was typed since. */
   private baseline = $state('');
 
+  /**
+   * The plugin action's configuration exactly as the loaded hook stored it, which may be a value the
+   * editor cannot draw (a string, an array, or nothing): it is sent back unchanged unless the
+   * configuration was edited. `null` until a plugin hook is loaded.
+   */
+  private storedConfiguration: { readonly value: unknown } | null = null;
+  /** The editable configuration as it was loaded, to tell whether it was edited since. */
+  private configurationBaseline = '';
+
   /** Whether the hook is not yet written. */
   readonly isNew: boolean;
 
@@ -119,6 +128,8 @@ export class HookFormState {
     this.events = [...hook.events];
     this.scopeKind = hook.scope?.kind ?? '';
     this.scopeId = hook.scope?.id ?? '';
+    this.storedConfiguration = null;
+    this.configurationBaseline = '';
     switch (hook.action.type) {
       case 'webhook':
         this.actionType = 'webhook';
@@ -139,11 +150,21 @@ export class HookFormState {
         // (COR-2181): a secret field in it holds `{ "$secret": key }`, never a value.
         this.contributedKind = { plugin: hook.action.plugin, kind: hook.action.kind };
         const configuration = hook.action.configuration;
+        this.storedConfiguration = { value: configuration };
         this.contributedConfiguration = isPlainObject(configuration) ? { ...configuration } : {};
+        this.configurationBaseline = stableText(this.contributedConfiguration);
         break;
       }
     }
     this.baseline = this.fingerprint();
+  }
+
+  /** Whether the plugin action's configuration differs from the one the form was loaded with. */
+  private get configurationEdited(): boolean {
+    return (
+      this.storedConfiguration === null ||
+      stableText(this.contributedConfiguration) !== this.configurationBaseline
+    );
   }
 
   /** The scope as the hook's sentence reads it: `null` until both of its fields are chosen. */
@@ -233,12 +254,18 @@ export class HookFormState {
   /** The action as the Bureau takes it. */
   private action(): HookInput['action'] {
     if (this.contributedKind !== null) {
-      return {
+      const action = {
         type: 'plugin',
         plugin: this.contributedKind.plugin,
         kind: this.contributedKind.kind,
-        configuration: { ...this.contributedConfiguration },
-      };
+      } as const;
+      // An unedited configuration goes back as it was stored, never as the `{}` the editor drew
+      // for a value it cannot draw.
+      if (!this.configurationEdited && this.storedConfiguration !== null) {
+        const stored = this.storedConfiguration.value;
+        return stored === undefined ? action : { ...action, configuration: stored };
+      }
+      return { ...action, configuration: { ...this.contributedConfiguration } };
     }
     switch (this.actionType) {
       case 'webhook':
@@ -280,12 +307,14 @@ export class HookFormState {
       case 'notify':
         return current.type !== 'notify' || (draft.title ?? null) !== current.title;
       case 'plugin':
-        // The kind is fixed; only its configuration can differ.
+        // The kind is fixed; only its configuration can differ, and only by an edit: a
+        // configuration nobody edited is not sent, so a rename never replaces it.
         return (
           current.type !== 'plugin' ||
           draft.plugin !== current.plugin ||
           draft.kind !== current.kind ||
-          stableText(draft.configuration) !== stableText(current.configuration ?? {})
+          (this.configurationEdited &&
+            stableText(draft.configuration) !== stableText(current.configuration ?? {}))
         );
     }
   }

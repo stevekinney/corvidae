@@ -292,7 +292,8 @@ export type HookInput = {
         readonly type: 'plugin';
         readonly plugin: string;
         readonly kind: string;
-        readonly configuration: Readonly<Record<string, unknown>>;
+        /** An object the editor drew, or, unedited, whatever the hook stored (which may be no object). */
+        readonly configuration?: unknown;
       };
   /**
    * The secret a webhook is signed with, 16 to 256 characters. Sealed on arrival and never

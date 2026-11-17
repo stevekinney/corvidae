@@ -236,6 +236,34 @@ describe('a saved hook that runs a plugin’s action (COR-2181)', () => {
     expect(form.contributedConfiguration).toEqual({});
     expect(form.toChange(loaded)).toEqual({ name: 'Kept' });
   });
+
+  test.each([
+    ['a string', 'ops-channel'],
+    ['an array', ['ops', 'platform']],
+  ])(
+    'keeps a configuration that is %s, which the editor cannot draw: a rename sends no action, and only an edit replaces it',
+    (_name, stored) => {
+      const form = new HookFormState(false);
+      const loaded = hook({ type: 'plugin', plugin: 'acme', kind: 'page', configuration: stored });
+      form.load(loaded);
+      expect(form.contributedConfiguration).toEqual({});
+      expect(form.dirty).toBe(false);
+
+      // A rename leaves the stored configuration as it is: no action is sent to replace it.
+      form.name = 'Renamed';
+      expect(form.toChange(loaded)).toEqual({ name: 'Renamed' });
+      // Nor against a newer revision whose configuration another client changed.
+      const newer = hook({ type: 'plugin', plugin: 'acme', kind: 'page', configuration: 'other' });
+      expect(form.toChange(newer)).toEqual({ name: 'Renamed' });
+
+      // An edit of the configuration is what replaces it.
+      form.contributedConfiguration = { channel: 'ops' };
+      expect(form.toChange(loaded)).toEqual({
+        name: 'Renamed',
+        action: { type: 'plugin', plugin: 'acme', kind: 'page', configuration: { channel: 'ops' } },
+      });
+    },
+  );
 });
 
 describe('the other actions', () => {
