@@ -127,8 +127,8 @@
     background: transparent !important;
   }
 
-  /* github-light's one token colour under AA: its orange (parameters, attributes and other
-   * variables) measures 3.48:1 on the white field. It takes Cinder's warning text, the same hue at
+  /* github-light's orange (parameters, attributes and other variables) is under AA on any ground
+   * this field has had: 3.49:1 on white and 3.06:1 on the inset. It takes Cinder's warning text, the same hue at
    * a contrast-safe lightness. Shiki writes the colour inline, so the override needs `!important`;
    * the dark-theme swap below is more specific and still wins in a dark theme. A dual-theme span
    * carries the colour before its `--shiki-dark` (`E36209;`); a single-theme span ends with it. */
@@ -137,10 +137,12 @@
     color: var(--cinder-status-warning-text) !important;
   }
 
-  /* On the light inset field (oklch(95.5% 0.005 265)) three more github-light colours fall under
-   * AA: the keyword red #d73a49 (4.01:1), the tag and inserted-line green #22863a (4.06:1) and the
-   * comment grey #6a737d (4.22:1). Each takes the Cinder text role of its hue, which clears AA on
-   * the inset. The selector anchors on the inline `color:` so it never matches a `--shiki-dark`
+  /* On the light inset field (`--cinder-surface-inset`, oklch(95.5% 0.002 265)) three more
+   * github-light colours fall under AA: the keyword red #d73a49 (4.01:1), the tag and
+   * inserted-line green #22863a (4.06:1) and the comment grey #6a737d (4.22:1). Each takes the
+   * Cinder text role of its hue, which clears AA on the inset; `check-token-contrast-code-block.test.ts`
+   * measures every github-light colour against the resolved inset, so a ground change that breaks
+   * AA fails there. The selector anchors on the inline `color:` so it never matches a `--shiki-dark`
    * value, and the dark-theme swap below is more specific, so a dark theme is unchanged. */
   /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#d73a49' i] {
