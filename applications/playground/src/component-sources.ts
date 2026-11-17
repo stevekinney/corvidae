@@ -327,10 +327,14 @@ const RELATIVE_IMPLEMENTATION_IMPORT = /from\s+['"](\.{1,2}\/[^'"]+\.(?:svelte|t
 const PACKAGE_IMPLEMENTATION_IMPORT =
   /from\s+['"](@lostgradient\/[\w-]+\/[^'"]+\.(?:svelte|ts))['"]/gu;
 
-/** The file a package subpath specifier resolves to through the package's exports, or undefined. */
-function packageImplementationPath(specifier: string): string | undefined {
+/**
+ * The file a package subpath specifier resolves to through the package's exports, resolved from the
+ * importing file's directory (its package declares the dependency; the playground may not), or
+ * undefined.
+ */
+function packageImplementationPath(specifier: string, importer: string): string | undefined {
   try {
-    return fileURLToPath(import.meta.resolve(specifier));
+    return Bun.resolveSync(specifier, dirname(importer));
   } catch {
     return undefined;
   }
@@ -531,7 +535,7 @@ function implementationDependencies(
   }
   // After the package split, a family reaches another's implementation by package subpath.
   for (const match of source.matchAll(PACKAGE_IMPLEMENTATION_IMPORT)) {
-    const path = packageImplementationPath(match[1]!);
+    const path = packageImplementationPath(match[1]!, resolvedPath);
     if (path !== undefined) {
       implementationDependencies(componentSource, path, dependencies, visitedPaths);
     }
