@@ -5,9 +5,9 @@ import { acquireHostLock } from '../run-exclusively.ts';
 
 export type OperationState = 'reserved' | 'settled' | 'released';
 export interface BudgetOperation {
-  amount: number;
+  amount: number | 'unknown';
   state: OperationState;
-  actual?: number;
+  actual?: number | 'unknown';
 }
 export interface BudgetRecord {
   version: 1;
@@ -31,7 +31,10 @@ function valid(value: unknown): value is number {
 function own(object: object, key: string): boolean {
   return Object.hasOwn(object, key);
 }
-function validate(record: unknown, outcomeId: string): asserts record is BudgetRecord {
+export function validateBudgetRecord(
+  record: unknown,
+  outcomeId: string,
+): asserts record is BudgetRecord {
   const value = record as BudgetRecord;
   if (
     !value ||
@@ -58,16 +61,16 @@ function validate(record: unknown, outcomeId: string): asserts record is BudgetR
     if (
       identity === '' ||
       !operation ||
-      !valid(operation.amount) ||
+      (operation.amount !== 'unknown' && !valid(operation.amount)) ||
       !['reserved', 'settled', 'released'].includes(operation.state) ||
-      (operation.actual !== undefined && !valid(operation.actual))
+      (operation.actual !== undefined && operation.actual !== 'unknown' && !valid(operation.actual))
     )
       throw new Error('Malformed budget record.');
 }
 async function readExisting(path: string, outcomeId: string): Promise<BudgetRecord> {
   if (!existsSync(path)) throw new Error('Budget record does not exist.');
   const record: unknown = JSON.parse(await readFile(path, 'utf8'));
-  validate(record, outcomeId);
+  validateBudgetRecord(record, outcomeId);
   return record;
 }
 async function mutate(
@@ -99,6 +102,7 @@ export async function initialize(
   path: string,
   outcomeId: string,
   allowance?: { amount: number; provenance: string },
+  dependencies: BudgetDependencies = {},
 ): Promise<BudgetRecord> {
   if (!outcomeId || (allowance && (!valid(allowance.amount) || allowance.provenance === '')))
     throw new Error('Invalid allowance.');
@@ -122,7 +126,9 @@ export async function initialize(
       operations: Object.create(null),
       hardLimitEnforced: false,
     };
-    await writeFile(path, JSON.stringify(record));
+    const temporary = `${path}.${process.pid}.complete`;
+    await writeFile(temporary, JSON.stringify(record));
+    await (dependencies.replace ?? rename)(temporary, path);
     return record;
   } finally {
     await lock.release();
@@ -133,10 +139,11 @@ export async function reserve(
   path: string,
   outcomeId: string,
   operation: string,
-  amount: number,
+  amount: number | 'unknown',
   dependencies: BudgetDependencies = {},
 ): Promise<ReserveResult> {
-  if (!operation || !valid(amount)) throw new Error('Invalid reservation amount.');
+  if (!operation || (amount !== 'unknown' && !valid(amount)))
+    throw new Error('Invalid reservation amount.');
   let admission: Admission = 'admitted';
   const record = await mutate(
     path,
@@ -150,11 +157,13 @@ export async function reserve(
       }
       if (current.spentTokens === 'unknown' && current.allowanceTokens)
         throw new Error('Actual usage is unresolved.');
+      if (amount === 'unknown' && current.allowanceTokens)
+        throw new Error('Unknown reservation cannot use an allowance.');
       const committed =
         (current.spentTokens === 'unknown' ? 0 : current.spentTokens) +
         Object.values(current.operations)
-          .filter((item) => item.state === 'reserved')
-          .reduce((sum, item) => sum + item.amount, 0);
+          .filter((item) => item.state === 'reserved' && item.amount !== 'unknown')
+          .reduce<number>((sum, item) => sum + (item.amount as number), 0);
       if (current.allowanceTokens && committed + amount > current.allowanceTokens.amount)
         throw new Error('Allowance exceeded.');
       return {
@@ -198,7 +207,7 @@ export async function settle(
     path,
     outcomeId,
     (record) => {
-      const prior = record.operations[operation];
+      const prior = own(record.operations, operation) ? record.operations[operation] : undefined;
       if (!prior) throw new Error('No reservation to settle.');
       if (prior.state === 'settled') {
         if (prior.actual !== actual) throw new Error('Settlement amount changed.');
@@ -209,7 +218,10 @@ export async function settle(
         return {
           ...record,
           spentTokens: 'unknown',
-          operations: { ...record.operations, [operation]: { ...prior, state: 'settled' } },
+          operations: {
+            ...record.operations,
+            [operation]: { ...prior, state: 'settled', actual: 'unknown' },
+          },
         };
       if (record.spentTokens === 'unknown') throw new Error('Actual usage is unresolved.');
       return {
