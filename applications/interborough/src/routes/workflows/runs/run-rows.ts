@@ -656,7 +656,15 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
     }
   }
   for (const [parentRunId, instanceSteps] of steps) {
-    if (!listed.has(parentRunId)) listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
+    const instance = listed.get(parentRunId);
+    if (instance === undefined) {
+      listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
+    } else if (instance.agentName === null) {
+      // The engine's record of an instance names no agent; its steps say which one ran them, which
+      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant").
+      const agentName = instanceSteps.find((step) => step.agentName !== null)?.agentName ?? null;
+      if (agentName !== null) listed.set(parentRunId, { ...instance, agentName });
+    }
   }
   return [...listed.values()].toSorted(
     (left, right) => right.startedAt - left.startedAt || left.id.localeCompare(right.id),
@@ -851,7 +859,9 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
         ? copy.interboroughStarted
         : null
       : instance
-        ? row.agentName === null
+        ? // A failed instance gives the room to where and why it failed (rows 09r, 52i: "Schedule,
+          // Release notes digest, failed at step 2 of 4, …"); any other names its agent (53l).
+          row.agentName === null || row.status === 'failed'
           ? null
           : context.agentLabel(row.agentName)
         : row.agentName !== null

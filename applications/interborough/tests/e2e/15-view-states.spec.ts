@@ -1061,7 +1061,8 @@ for (const width of WIDTHS) {
     });
   }
 
-  test(`goal check: the verdict drawer while the verdict loads, at ${width} pixels`, async ({
+  // The address in the title lets a design review's route grep (`--grep '/goals'`) reach it.
+  test(`goal check (/goals/:goal): the verdict drawer while the verdict loads, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -1299,7 +1300,7 @@ for (const width of WIDTHS) {
     await capturePicker(page, checkA11y, '/goals/new', 'catalog-failed');
   });
 
-  test(`goal check: the catalog of checks while it loads, at ${width} pixels`, async ({
+  test(`goal check (/goals/new): the catalog of checks while it loads, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {

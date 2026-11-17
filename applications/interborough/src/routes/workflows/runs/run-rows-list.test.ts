@@ -589,9 +589,21 @@ describe('the Bureau’s own runs (COR-2423)', () => {
   });
 
   test('an instance a schedule fired names the schedule and then its agent (row 53l, Triage inbox)', () => {
-    const [row] = runListRows(
+    // The engine's record of the instance names no agent; its step, a task of its own, does.
+    const [instance] = runListRows(
       buildRunRows({
         tasks: [
+          taskFixture({
+            id: 'triage-run',
+            contextId: 'triage-run',
+            kind: 'catalog',
+            agentName: null,
+            status: 'completed',
+            origin: { kind: 'schedule', scheduleId: 'inbox-triage', fireId: '' },
+            createdAt: '2026-10-24T08:00:00-05:00',
+            updatedAt: '2026-10-24T08:00:41-05:00',
+            workflow: workflowOf('triage-inbox', { scheduleId: 'inbox-triage' }),
+          }),
           taskFixture({
             id: 'triage-step-1',
             kind: 'catalog',
@@ -604,22 +616,11 @@ describe('the Bureau’s own runs (COR-2423)', () => {
         ],
         goals: [],
         chats: [],
+        scheduleNames: new Map([['inbox-triage', 'Inbox triage']]),
       }),
     );
-    const instance = {
-      ...row!,
-      origin: {
-        kind: 'schedule' as const,
-        title: '',
-        href: null,
-        scheduleId: 'inbox-triage',
-        schedulePath: null,
-        manual: false,
-      },
-      workflow: workflowOf('triage-inbox', { scheduleId: 'inbox-triage' }),
-      scheduleName: 'Inbox triage',
-    };
-    expect(runLineTwo(instance, context)).toBe('Schedule, Inbox triage, Assistant, 41 s');
+    expect(instance?.id).toBe('triage-run');
+    expect(runLineTwo(instance!, context)).toBe('Schedule, Inbox triage, Assistant, 41 s');
   });
 
   test('an instance is named by its workflow and its schedule, and reads "failed at step 2 of 4" (rows 09r, 52i, 52t)', () => {

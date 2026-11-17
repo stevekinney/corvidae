@@ -13,6 +13,7 @@ import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal, type GoalStatus } from '../../lib/bureau-goals.ts';
 import { checkText } from '../../lib/check-text.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
+import { goalName } from '../workflows/runs/run-rows.ts';
 
 /** The segments of the filter bar. `all` holds every goal. */
 export type GoalSegment = 'all' | 'running' | 'done' | 'gave-up' | 'stopped';
@@ -107,10 +108,10 @@ export type GoalRow = {
 /** One goal as a row. */
 export function goalRow(goal: Goal): GoalRow {
   const started = Date.parse(goal.createdAt);
-  const name = goal.identity.name.trim();
   return {
     id: goal.goalRunId,
-    title: name === '' ? goal.goalRunId : name,
+    // The one helper every page names a goal with (rows 55f, 55h).
+    title: goalName(goal),
     agentName: goal.agentName,
     status: goal.status,
     segment: goalSegmentOf(goal.status),

@@ -59,6 +59,7 @@
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import GoalAsked from './goal-asked.svelte';
+  import { goalName } from '../workflows/runs/run-rows.ts';
   import GoalAttempts from './goal-attempts.svelte';
   import GoalVerdictPanel from './goal-verdict-panel.svelte';
   import {
@@ -204,8 +205,8 @@
   const name = $derived.by(() => {
     const found = goal.data;
     if (found === undefined) return undefined;
-    const trimmed = found.identity.name.trim();
-    return trimmed === '' ? found.goalRunId : trimmed;
+    // The one helper every page names a goal with (rows 55f, 55h).
+    return goalName(found);
   });
   usePageLabel(() => ({ path: router.pathname, label: name }));
 
@@ -343,28 +344,28 @@
         label=""
         aria-hidden="true"
       />{/snippet}
+    <!-- Why Start again is held sits beneath it, in the header's caption under the actions
+         (row 67p), tied to the button by its own aria-describedby. -->
+    {#snippet providerReason()}
+      <a
+        class="ib-goal__reason"
+        id={providerReasonId}
+        data-testid="goal-provider-reason"
+        href={router.href(copy.connectProviderPath)}
+        onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
+      >
+    {/snippet}
     <StaleRegion
       stale={connection.unreachable}
       describedBy={connection.unreachable ? offlineReasonId : undefined}
     >
-      <!-- Why Start again is held sits beneath it, in the header's caption under the actions
-           (row 67p), tied to the button by its own aria-describedby. -->
-      {#snippet providerReason()}
-        <a
-          class="ib-goal__reason"
-          id={providerReasonId}
-          data-testid="goal-provider-reason"
-          href={router.href(copy.connectProviderPath)}
-          onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
-        >
-      {/snippet}
       <PageHeader
         title={name ?? copy.loadingTitle}
         headingLevel={1}
         {status}
         statusPlacement="inline"
         actions={headerActions}
-        actionsNote={actions.startAgain && needsProvider ? providerReason : undefined}
+        {...actions.startAgain && needsProvider ? { actionsNote: providerReason } : {}}
       />
 
       {#if found.prompt !== undefined && found.prompt.trim() !== ''}
