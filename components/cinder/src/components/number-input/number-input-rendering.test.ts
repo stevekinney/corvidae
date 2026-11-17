@@ -21,6 +21,29 @@ test('renders a custom adornment before the steppers', () => {
   expect(container.querySelector('.cinder-number-input__adornment')?.textContent).toBe('USD');
 });
 
+describe('NumberInput unit and stepper order', () => {
+  test('orders the steppers minus then plus', () => {
+    const { container } = render(NumberInput, { props: { id: 'n', value: 2 } });
+    const steppers = [...container.querySelectorAll('.cinder-number-input__stepper')];
+
+    expect(steppers).toEqual([getDecrement(container), getIncrement(container)]);
+  });
+
+  test('places the unit right after the number, before the steppers, with the number set against it', async () => {
+    const css = await Bun.file(new URL('./number-input.css', import.meta.url)).text();
+    const { container } = render(NumberInput, {
+      props: { id: 'n', value: 90, adornment: 'minutes' },
+    });
+    const adornment = container.querySelector('.cinder-number-input__adornment');
+
+    expect(adornment?.nextElementSibling).toBe(getDecrement(container));
+    expect(adornment?.parentElement?.previousElementSibling).toBe(getInput(container));
+    expect(css).toMatch(
+      /:has\(\.cinder-number-input__adornment\)\s*>\s*\.cinder-number-input__input\s*\{[^}]*text-align:\s*end;/,
+    );
+  });
+});
+
 describe('NumberInput basics', () => {
   test('sidecar includes Input styles and preserves the full stepper width', async () => {
     const [css, componentSource] = await Promise.all([

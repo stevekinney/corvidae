@@ -31,6 +31,13 @@
     padding-inline: 0;
   }
 
+  /* With a unit, the number is set against the end of its text area so the unit that follows sits
+   * right beside it ("90 minutes"), not a field's width away. */
+  .cinder-input-group:has(.cinder-number-input__adornment) > .cinder-number-input__input {
+    text-align: end;
+    padding-inline-end: var(--cinder-space-1);
+  }
+
   .cinder-number-input[data-invalid] .cinder-number-input__stepper {
     border-inline-start-color: var(--cinder-control-border-invalid);
   }
@@ -57,7 +64,7 @@
   .cinder-number-input__adornment {
     display: inline-flex;
     align-items: center;
-    padding-inline: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-1) var(--cinder-space-2);
     color: var(--cinder-text-muted);
     white-space: nowrap;
   }
