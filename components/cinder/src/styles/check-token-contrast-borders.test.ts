@@ -265,28 +265,23 @@ describe('border-on-surface contrast', () => {
     }
   });
 
-  // COR-2440 AC14: in the dark arm a control edge, and the edge of a card, the drawer and the code
-  // block, clears WCAG 1.4.11's 3:1 on the surface it is drawn over, resting and on hover. The
-  // surfaces: the composer field and the secondary button paint `surface.raised` (hover:
-  // `surface.raised.hover`, pressed: `surface.raised.pressed`); a card paints `surface.raised`; the
-  // drawer paints `surface` and the code block `surface.inset`.
-  describe('COR-2440 AC14: dark control and structural edges clear 3:1', () => {
-    const rest = { surface, raised: surfaceRaised, inset: surfaceInset, canvas: bg };
-    const hoverSurfaces = {
-      'raised hover': readOklchToken('--cinder-surface-raised-hover'),
-      'raised pressed': readOklchToken('--cinder-surface-raised-pressed'),
+  // COR-2440 AC14, owner decision of 2026-11-17 ("which dark borders reach 3:1": controls only): in
+  // the dark arm the control edges (inputs, the composer, secondary buttons) clear WCAG 1.4.11's
+  // 3:1 on the surface they are drawn over, resting and on hover. The composer field and the
+  // secondary button paint `surface.raised` (hover `surface.raised.hover`, pressed
+  // `surface.raised.pressed`). The structural border is deliberately NOT held to 3:1: it stays
+  // quiet (pinned in retuned-theme-values.test.ts).
+  describe('COR-2440 AC14: dark control edges clear 3:1', () => {
+    const grounds = {
+      raised: surfaceRaised.dark,
+      'raised hover': readOklchToken('--cinder-surface-raised-hover').dark,
+      'raised pressed': readOklchToken('--cinder-surface-raised-pressed').dark,
     };
-    const dark = (token: { dark: OklchColor }): OklchColor => token.dark;
 
-    for (const [name, ground] of [
-      ...Object.entries(rest).map(([key, value]) => [key, value.dark] as const),
-      ...Object.entries(hoverSurfaces).map(([key, value]) => [key, dark(value)] as const),
-    ]) {
+    for (const [name, ground] of Object.entries(grounds)) {
       for (const [tierName, tier] of Object.entries({
         'border.control': borderControl,
         'border.control.hover': borderControlHover,
-        border,
-        'border.strong': borderStrong,
       })) {
         it(`dark: ${tierName} is at least 3:1 on ${name}`, () => {
           expect(translucentContrastOn(tier.dark, ground)).toBeGreaterThanOrEqual(NON_TEXT);
@@ -300,11 +295,11 @@ describe('border-on-surface contrast', () => {
     });
   });
 
-  it('the dark structural tiers are 8% (muted), 35% (border) and 36% (strong) of a white ink (COR-2440)', () => {
+  it('the dark structural tiers are 8% (muted), 12% (border) and 15% (strong) of a white ink', () => {
     expect(borderInk.dark).toEqual({ l: 1, c: 0, h: 0 });
     expect(borderMuted.dark.alpha).toBe(0.08);
-    expect(border.dark.alpha).toBe(0.35);
-    expect(borderStrong.dark.alpha).toBe(0.36);
+    expect(border.dark.alpha).toBe(0.12);
+    expect(borderStrong.dark.alpha).toBe(0.15);
     expect(borderMuted.light.alpha).toBe(0.05);
     expect(border.light.alpha).toBe(0.09);
   });

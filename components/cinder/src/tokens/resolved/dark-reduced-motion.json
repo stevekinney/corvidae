@@ -560,7 +560,7 @@
   },
   "control.border.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.35 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.12 },
     "$description": "Disabled control edge: the structural tier, since a disabled control is not an interactive boundary.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1539,10 +1539,10 @@
     "$type": "color"
   },
   "border": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.35 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.12 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 65%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 88%)",
         "cssProperty": "--cinder-border",
         "public": true,
         "category": "color"
@@ -1645,10 +1645,10 @@
     "$type": "color"
   },
   "border.strong": {
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.36 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.15 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 64%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)",
         "cssProperty": "--cinder-border-strong",
         "public": true,
         "category": "color"
@@ -2954,7 +2954,7 @@
   },
   "status.neutral.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.35 },
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.12 },
     "$description": "Border color on the soft neutral surface.",
     "$extensions": {
       "com.lostgradient.cinder": {

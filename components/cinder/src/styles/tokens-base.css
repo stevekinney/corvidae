@@ -261,7 +261,7 @@
   /* Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink` in light mode and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead. */
   --cinder-border: light-dark(
     color-mix(in oklch, var(--cinder-border-ink), transparent 91%),
-    color-mix(in oklch, var(--cinder-border-ink), transparent 65%)
+    color-mix(in oklch, var(--cinder-border-ink), transparent 88%)
   );
   /* The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do three different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 32%, `border.control.hover` 42%) are the resting edge of an input or bordered button: heavier than every structural tier, and quiet by owner decision rather than 3:1. CONTRAST tiers (`border.contrast` 48%, `border.contrast.hover` 58%) clear 3:1 against every surface; they are what the control tiers become under `prefers-contrast: more`, and what draws an unchecked checkbox, an unselected radio, and a neutral indicator with no other boundary. All seven are alpha steps over this ink (the dark arm of `border.contrast` is the one opaque literal), so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives them there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. */
   --cinder-border-ink: light-dark(oklch(20% 0.02 255), oklch(100% 0 0));
@@ -290,10 +290,7 @@
     color-mix(in oklch, var(--cinder-border-ink), transparent 92%)
   );
   /* Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead. */
-  --cinder-border-strong: light-dark(
-    color-mix(in oklch, var(--cinder-border-ink), transparent 85%),
-    color-mix(in oklch, var(--cinder-border-ink), transparent 64%)
-  );
+  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 85%);
   /* Border for surfaces using `surface.inverse` (Tooltip). Transparent in both themes: the inverse chip separates from its surroundings by lightness alone (a dark chip on light surfaces, a light chip on dark ones). */
   --cinder-border-inverse: transparent;
   /* Muted (secondary) text color. */
@@ -815,7 +812,7 @@
   --cinder-surface-upcoming-marker: var(--cinder-surface);
   --cinder-surface-canvas: oklch(14.5% 0.012 265);
   --cinder-polarity-ink: oklch(100% 0 0);
-  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 65%);
+  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
   --cinder-border-ink: oklch(100% 0 0);
   --cinder-border-faint: oklch(33% 0.03 265);
   --cinder-border-control: color-mix(in oklch, var(--cinder-border-ink), transparent 62%);
@@ -823,7 +820,7 @@
   --cinder-border-contrast: oklch(64% 0.03 265);
   --cinder-border-contrast-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 42%);
   --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 92%);
-  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 64%);
+  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 85%);
   --cinder-text-muted: oklch(78% 0.01 265);
   --cinder-text-subtle: oklch(68% 0.01 265);
   --cinder-text-disabled: oklch(64% 0.02 265);

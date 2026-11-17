@@ -105,8 +105,8 @@ const LIGHT_VALUES: readonly ExpectedColor[] = [
  */
 const INK_TIERS = [
   ['--cinder-border-muted', { light: 0.05, dark: 0.08 }],
-  ['--cinder-border', { light: 0.09, dark: 0.35 }],
-  ['--cinder-border-strong', { light: 0.15, dark: 0.36 }],
+  ['--cinder-border', { light: 0.09, dark: 0.12 }],
+  ['--cinder-border-strong', { light: 0.15, dark: 0.15 }],
   ['--cinder-border-control', { light: 0.32, dark: 0.38 }],
   ['--cinder-border-control-hover', { light: 0.42, dark: 0.44 }],
   ['--cinder-border-contrast', { light: 0.48, dark: 0.48 }],
@@ -292,7 +292,7 @@ describe('COR-2308: the dark arm ships the neutral ladder', () => {
   });
 
   test('the neutral status border follows the structural border tier in each arm', () => {
-    expect(contexts.dark.get('--cinder-status-neutral-border')?.alpha).toBe(0.35);
+    expect(contexts.dark.get('--cinder-status-neutral-border')?.alpha).toBe(0.12);
     expect(contexts.light.get('--cinder-status-neutral-border')?.alpha).toBe(0.09);
   });
 });
@@ -341,16 +341,20 @@ describe('COR-2441: no dark neutral keeps hue 245', () => {
   });
 });
 
-// COR-2440 AC15: the dark ladder (muted, border, strong, control, hover) moved so the structural
-// edge and the control edge both clear 3:1 (check-token-contrast-borders.test.ts). The contrast
-// tier, which `prefers-contrast: more` aliases the control edge to, stays heavier than the
-// resting control edge it replaces.
+// COR-2440 AC15. Owner decision of 2026-11-17 ("which dark borders reach 3:1": controls only): the
+// dark control edges (control, control hover, the button border) clear 3:1
+// (check-token-contrast-borders.test.ts), while the structural edges stay quiet at 8%, 12% and
+// 15% of the ink. The contrast tier, which `prefers-contrast: more` aliases the control edge to,
+// stays heavier than the resting control edge it replaces.
 describe('COR-2440 AC15: the retuned dark border ladder and prefers-contrast: more', () => {
-  test('the dark ladder is pinned', () => {
-    const alphas = ['--cinder-border-muted', '--cinder-border', '--cinder-border-strong'].map(
-      (property) => contexts.dark.get(property)?.alpha,
-    );
-    expect(alphas).toEqual([0.08, 0.35, 0.36]);
+  test('the dark structural tiers stay quiet (owner decision, 2026-11-17)', () => {
+    const alphas = [
+      '--cinder-border-muted',
+      '--cinder-border',
+      '--cinder-border-strong',
+      '--cinder-status-neutral-border',
+    ].map((property) => contexts.dark.get(property)?.alpha);
+    expect(alphas).toEqual([0.08, 0.12, 0.15, 0.12]);
   });
 
   test('more contrast keeps a stronger border than the resting control edge', async () => {
