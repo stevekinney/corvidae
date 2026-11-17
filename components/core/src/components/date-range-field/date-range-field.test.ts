@@ -1094,7 +1094,7 @@ describe('DateRangeField', () => {
       const css = readFileSync(new URL('./date-range-field.css', import.meta.url), 'utf8');
       expect(css).toContain('cinder-date-range-field');
       expect(css).toContain("@import '@lostgradient/calendar/calendar.css'");
-      expect(css).toContain("@import '../input/input.css'");
+      expect(css).toContain("@import '@lostgradient/input/input.css'");
       expect(css).toContain("@import '../popover/popover.css'");
       expect(css).toContain('@layer cinder.components');
     });

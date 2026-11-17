@@ -11,7 +11,7 @@
   import { copyToClipboard } from '@lostgradient/foundation/utilities/clipboard.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
 
   let {

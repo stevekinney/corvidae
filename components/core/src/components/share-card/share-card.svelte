@@ -9,7 +9,7 @@
   import Copy from '@lucide/svelte/icons/copy';
   import Share2 from '@lucide/svelte/icons/share-2';
 
-  import { default as Input } from '../input/index.ts';
+  import { default as Input } from '@lostgradient/input/components/input/index.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { copyToClipboard } from '@lostgradient/foundation/utilities/clipboard.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';

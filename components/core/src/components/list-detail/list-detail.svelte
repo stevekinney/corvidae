@@ -39,7 +39,7 @@
     writeStoredListCollapsed,
     writeStoredListWidth,
   } from './list-detail-state.ts';
-  import { Tooltip } from '../tooltip/index.ts';
+  import { Tooltip } from '@lostgradient/tooltip/components/tooltip/index.ts';
   import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
   import type { ListDetailProps } from './list-detail.types.ts';
 

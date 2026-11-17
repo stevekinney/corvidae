@@ -81,7 +81,7 @@ describe('moveTreeNode', () => {
       '../../../../pagination/src/components/pagination/pagination.svelte',
       '../../../../slider/src/components/slider/slider.svelte',
       '../../../../core/src/components/spectrogram/spectrogram.svelte',
-      '../../../../core/src/components/speed-dial/speed-dial.svelte',
+      '../../../../speed-dial/src/components/speed-dial/speed-dial.svelte',
       '../../../../table-of-contents/src/components/table-of-contents/table-of-contents-active-heading.svelte.ts',
       '../../../../core/src/components/table/table.fixture.svelte',
       '../../../../core/src/components/virtual-list/_internal/sticky-items.ts',

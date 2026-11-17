@@ -7,8 +7,8 @@
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import StackedListItem from '../stacked-list-item/stacked-list-item.svelte';
-  import StatusDot from '../status-dot/status-dot.svelte';
-  import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
+  import type { StatusDotStatus } from '@lostgradient/status-dot/components/status-dot/status-dot.types.ts';
   import type { TimelineHeadingLevel, TimelineTone } from '../timeline/timeline.types.ts';
   import type { TimelineItemProps } from './timeline-item.types.ts';
 

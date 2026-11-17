@@ -26,7 +26,7 @@
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import type { AppBarProps } from './app-bar.types.ts';
 
   let {

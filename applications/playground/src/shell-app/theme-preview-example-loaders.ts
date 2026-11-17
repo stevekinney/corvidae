@@ -21,15 +21,15 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'link/basic': () =>
       import('../../../../components/link/src/components/link/examples/basic.example.svelte'),
     'input/basic': () =>
-      import('../../../../components/core/src/components/input/examples/basic.example.svelte'),
+      import('../../../../components/input/src/components/input/examples/basic.example.svelte'),
     'input/with-error': () =>
-      import('../../../../components/core/src/components/input/examples/with-error.example.svelte'),
+      import('../../../../components/input/src/components/input/examples/with-error.example.svelte'),
     'select/basic': () =>
       import('../../../../components/core/src/components/select/examples/basic.example.svelte'),
     'select/with-error': () =>
       import('../../../../components/core/src/components/select/examples/with-error.example.svelte'),
     'checkbox/basic': () =>
-      import('../../../../components/core/src/components/checkbox/examples/basic.example.svelte'),
+      import('../../../../components/checkbox/src/components/checkbox/examples/basic.example.svelte'),
     'checkbox/with-error': () =>
       import('../../../../components/core/src/components/checkbox/examples/with-error.example.svelte'),
     'tabs/basic': () =>

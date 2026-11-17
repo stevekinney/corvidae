@@ -1,6 +1,6 @@
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
 
   let { error, description, note }: { error?: string; description?: string; note?: string } =
     $props();

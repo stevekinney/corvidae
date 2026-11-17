@@ -1,6 +1,6 @@
 <script lang="ts">
   import Button from '../button/button.svelte';
-  import Checkbox from '../checkbox/checkbox.svelte';
+  import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
   import Dropdown from '../dropdown/dropdown.svelte';
   import DropdownItem from '../dropdown-item/dropdown-item.svelte';
   import DropdownMenu from '../dropdown-menu/dropdown-menu.svelte';

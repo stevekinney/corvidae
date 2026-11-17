@@ -60,7 +60,7 @@ function lightDarkArms(value: string): [string, string] {
 const tokensCss = loadCss('../../../../tokens/src/styles/tokens-base.css');
 const colorPickerCss = loadCss('./color-picker.css');
 const colorFieldCss = loadCss('../color-field/color-field.css');
-const inputCss = loadCss('../input/input.css');
+const inputCss = loadCss('../../../../input/src/components/input/input.css');
 
 test('format controls keep their intended styling after copy-button styles load', () => {
   expect(colorPickerCss).toContain('.cinder-color-picker .cinder-color-picker__format');

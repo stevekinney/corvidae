@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { StatusDotWord } from '../status-dot/status-dot.words.ts';
+import type { StatusDotWord } from '@lostgradient/status-dot/components/status-dot/status-dot.words.ts';
 import type {
   TimelineEntryKind,
   TimelineHeadingLevel,

@@ -77,7 +77,7 @@
   import RunStepMarker from './_run-step-marker.svelte';
   import Link from '@lostgradient/link/components/link/link.svelte';
   import Progress from '@lostgradient/progress/components/progress/progress.svelte';
-  import StatusDot from '../status-dot/status-dot.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
   import type { Attachment } from 'svelte/attachments';
   import type {
     RunStepBranchLane,

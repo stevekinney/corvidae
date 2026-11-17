@@ -81,9 +81,13 @@ describe('JsonSchemaEditor — Diff tab source contract', () => {
     expect(constraintsSource).toContain(
       "import { default as Collapsible } from '../collapsible/index.ts'",
     );
-    expect(constraintsSource).toContain("import { default as Input } from '../input/index.ts'");
+    expect(constraintsSource).toContain(
+      "import { default as Input } from '@lostgradient/input/components/input/index.ts'",
+    );
     expect(constraintsSource).not.toContain("from '../collapsible/collapsible.svelte'");
-    expect(constraintsSource).not.toContain("from '../input/input.svelte'");
+    expect(constraintsSource).not.toContain(
+      "from '@lostgradient/input/components/input/input.svelte'",
+    );
     expect(source).toContain("import { default as Collapsible } from '../collapsible/index.ts'");
     expect(source).not.toContain("from '../collapsible/collapsible.svelte'");
     expect(disclosureSource).not.toContain('<details');

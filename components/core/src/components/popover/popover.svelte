@@ -26,7 +26,7 @@
   import { restoreFocusTo } from '@lostgradient/foundation/utilities/focus.ts';
   import { createClickOutside } from '@lostgradient/foundation/utilities/attachments.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
-  import Drawer from '../drawer/drawer.svelte';
+  import Drawer from '@lostgradient/drawer/components/drawer/drawer.svelte';
   import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
   import {
     createInheritedPortalStyle,

@@ -2,7 +2,7 @@
 /* A band entry renders a StackedListItem band group row with a StatusDot, so the styles they need
  * travel with it. */
 @import '../stacked-list-item/stacked-list-item.css';
-@import '../status-dot/status-dot.css';
+@import '@lostgradient/status-dot/status-dot.css';
 @layer cinder.components {
   /* ========================================
  * TIMELINE

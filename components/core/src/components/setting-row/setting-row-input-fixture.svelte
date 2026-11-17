@@ -1,6 +1,6 @@
 <script lang="ts">
   import SettingRow from './setting-row.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
 </script>
 
 <SettingRow id="setting" label="Setting" managed={{ by: 'Admin', reason: 'Organization policy' }}>

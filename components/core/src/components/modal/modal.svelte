@@ -16,7 +16,7 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import { createFocusTrap } from '@lostgradient/focus-trap/components/focus-trap/index.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import {
     createSlidingDialogState,
     focusDialogBodyUnlessAutofocused,

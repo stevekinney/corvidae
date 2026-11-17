@@ -4,7 +4,7 @@
   import { DropdownItem } from '../dropdown-item/index.ts';
   import { DropdownMenu } from '../dropdown-menu/index.ts';
   import { DropdownTrigger } from '../dropdown-trigger/index.ts';
-  import { Tooltip } from '../tooltip/index.ts';
+  import { Tooltip } from '@lostgradient/tooltip/components/tooltip/index.ts';
   import { ButtonGroup } from './index.ts';
   import type { ButtonVariant } from '../button/button.types.ts';
 

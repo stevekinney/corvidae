@@ -2103,7 +2103,7 @@ describe('CSS snapshot', () => {
     expect(css).toContain("@import '../collapsible/collapsible.css';");
     expect(css).toContain("@import '@lostgradient/link/link.css';");
     expect(css).toContain("@import '@lostgradient/progress/progress.css';");
-    expect(css).toContain("@import '../status-dot/status-dot.css';");
+    expect(css).toContain("@import '@lostgradient/status-dot/status-dot.css';");
   });
 });
 

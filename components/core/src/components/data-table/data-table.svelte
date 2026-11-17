@@ -13,7 +13,7 @@
   import { onDestroy, tick, untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
-  import Checkbox from '../checkbox/checkbox.svelte';
+  import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
   import TableBody from '../table-body/table-body.svelte';
   import TableCell from '../table-cell/table-cell.svelte';
   import TableHeaderCell from '../table-header-cell/table-header-cell.svelte';
