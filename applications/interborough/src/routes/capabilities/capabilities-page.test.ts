@@ -1208,7 +1208,7 @@ describe('a skill’s page', () => {
       return found;
     });
     expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
-      'From the demo plugin',
+      'From the Demo plugin',
     );
     expect(detail.querySelector('[data-testid="tool-lost-text"]')?.textContent).toBe(
       'The Demo plugin is disabled. Enabling it restarts the server.',

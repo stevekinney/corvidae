@@ -69,6 +69,33 @@ describe('a test fills in what the server says of itself', () => {
     });
   });
 
+  test('a server name that reads differently from the address keeps the id the test ran under', async () => {
+    const host = serve();
+    host.probe = {
+      outcome: 'listed',
+      tools: [sourceTool('github', 'list_issues')],
+      skipped: [],
+      server: { name: 'Acme Tracker', instructions: 'Tracks\tissues.' },
+    };
+    landAt('/capabilities/connect');
+    const { getByRole } = render(QueryPage, { props: { page: ConnectTools } } as never);
+    await fireEvent.input(field('connect-url'), {
+      target: { value: 'https://mcp.github.example/mcp' },
+    });
+    await fireEvent.click(getByRole('button', { name: copy.probe.action }));
+    await waitFor(() => expect(field('connect-name').value).toBe('Acme Tracker'));
+
+    await fireEvent.submit(document.body.querySelector('[data-testid="connect-form"]')!);
+    await waitFor(() =>
+      expect(host.requests.some((request) => request.method === 'PUT')).toBe(true),
+    );
+    const put = host.requests.find((request) => request.method === 'PUT');
+    // Saved under the id the test ran under, with the server's name and a one-line sentence.
+    expect(put?.path).toBe('/host/tool-sources/github');
+    expect(put?.body).toMatchObject({ name: 'Acme Tracker', description: 'Tracks issues.' });
+    expect(host.requests.filter((request) => request.path.endsWith('/probe'))).toHaveLength(1);
+  });
+
   test('keeps a name a person typed', async () => {
     serve();
     landAt('/capabilities/connect');

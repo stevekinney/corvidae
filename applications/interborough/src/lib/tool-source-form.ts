@@ -323,6 +323,21 @@ export function buildToolSourceRequest(
   };
 }
 
+/** The longest description a saved source may hold, in characters (the host's limit). */
+const MAXIMUM_DESCRIPTION_LENGTH = 500;
+
+/**
+ * The sentence a source is saved with from what an MCP server's instructions say (rows 31o, 33f,
+ * COR-2436): their first line, every control character a space, cut to what a saved description
+ * may hold, so the host never refuses a field the page does not show. Empty for none.
+ */
+export function descriptionOfInstructions(instructions: string | null | undefined): string {
+  const firstLine = (instructions ?? '').split(/\r?\n/, 1)[0] ?? '';
+  // eslint-disable-next-line no-control-regex -- a control character is what this removes.
+  const controls = /[\u0000-\u001f\u007f]+/g;
+  return firstLine.replace(controls, ' ').trim().slice(0, MAXIMUM_DESCRIPTION_LENGTH).trim();
+}
+
 /**
  * The form a saved source fills in for Edit connection (COR-2436), from the description the host
  * sent (`GET /host/tool-sources/<id>/editing`): its kind, address and sign-in, its name (its `id`

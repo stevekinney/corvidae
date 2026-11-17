@@ -84,9 +84,11 @@ function serverOf(tool: Pick<CatalogTool, 'name'>): string | undefined {
 }
 
 /** The words of the source chip: "Built in", "From notes", "From the Demo plugin". */
-export function toolSourceChip(tool: CatalogTool): string {
+export function toolSourceChip(tool: ShownTool): string {
   const chip = TOOL.chips.source;
   if (tool.source === 'bureau') return chip.bureau;
+  // A plugin that is off is named by its title, which its last listing kept (row 30p).
+  if (tool.lost?.kind === 'plugin') return chip.plugin(tool.lost.title);
   if (tool.source === 'plugin') return chip.plugin(tool.plugin ?? '');
   if (tool.source === 'skill') return chip.skill(tool.skill ?? '');
   return chip.host(serverOf(tool));

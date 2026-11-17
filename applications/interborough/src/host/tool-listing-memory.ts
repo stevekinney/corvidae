@@ -212,6 +212,8 @@ export async function rememberPluginListings(
     const contributed = tools
       .filter((tool) => tool.source === 'plugin' && tool.plugin === plugin.descriptor.name)
       .map((tool) => ({ ...tool, tool: tool.name }));
+    // A plugin that waits for setup may not have offered its tools: it replaces nothing until it does.
+    if (plugin.status === 'needs-setup' && contributed.length === 0) continue;
     try {
       await memory.remember(pluginListingOwner(plugin), plugin.descriptor.version, contributed);
     } catch {

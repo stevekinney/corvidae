@@ -85,6 +85,7 @@
     authenticationChoices,
     BEARER_CREDENTIAL,
     buildToolSourceRequest,
+    descriptionOfInstructions,
     editingForm,
     chosenToolCount,
     connectedTools,
@@ -200,6 +201,8 @@
    * first line, cut to what a saved description may hold. Empty until a test has listed it.
    */
   let serverDescription = $state('');
+  /** The name a test filled Name in with from what the server said of itself, or empty. */
+  let serverName = $state('');
   /** The host's reference to an OAuth sign-in made before the source is saved (COR-2436). */
   let signIn = $state<string | undefined>();
 
@@ -226,7 +229,11 @@
     // in Name (row 33f); Connect still asks for a name.
     id:
       editId ??
-      (name.trim() === '' && kind !== 'openapi' && transport !== 'stdio'
+      // While Name is empty, or still holds what the server said of itself, the source keeps the
+      // name its address gave it: a test that fills Name in never moves the id a sign-in is for.
+      ((name.trim() === '' || (serverName !== '' && name === serverName)) &&
+      kind !== 'openapi' &&
+      transport !== 'stdio'
         ? toolSourceIdentifier(serverLabelOf(url))
         : toolSourceIdentifier(name)),
     name,
@@ -369,11 +376,12 @@
     if (server === undefined || editId !== undefined) return;
     untrack(() => {
       if (server.name !== null && (name.trim() === '' || name === prefilledName)) {
+        // Named after the test only when no name made the id: the id a sign-in is for stays.
+        if (name.trim() === '') serverName = server.name;
         name = server.name;
         prefilledName = server.name;
       }
-      const sentence = (server.instructions ?? '').split('\n', 1)[0]?.trim() ?? '';
-      serverDescription = sentence.slice(0, 500);
+      serverDescription = descriptionOfInstructions(server.instructions);
     });
   });
 

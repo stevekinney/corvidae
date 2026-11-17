@@ -2190,6 +2190,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const { id, source } = checkedDescription(request, input?.owner ?? owner);
       const supplied = checkedCredentials(request.credentials, referencedCredentials(source));
       const missing = referencedCredentials(source).filter((name) => !supplied.has(name));
+      // Read before the first `await`: the caller owns the request.
+      const signInReference = request.signIn;
       if (closed) throw new Error('The host is shutting down.');
       const mutation = input ?? (await createLocalHostMutationContext(bungalow));
       const identity = await assertMutation(mutation, source);
@@ -2197,9 +2199,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       // source that succeeded before it is saved lends a copy of its tokens, which a refresh in the
       // probe could not use: the probe admits no token request, and keeps nothing (COR-2436).
       const storage =
-        request.signIn === undefined
+        signInReference === undefined
           ? probeTokenStorage()
-          : copiedTokenStorage(savedOAuthState(ownedSignIn(request.signIn, identity, id, source)));
+          : copiedTokenStorage(savedOAuthState(ownedSignIn(signInReference, identity, id, source)));
       // An edit of a saved source may leave a stored credential blank (COR-2436): the probe uses
       // the stored value, as the save would, but only while the source still goes to the same
       // place, so a stored credential is never sent to an address a request just typed.
@@ -2333,6 +2335,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const incomingTools =
         request.tools === undefined ? undefined : checkedToolSettings(request.tools);
       const labels = checkedLabels(request);
+      // Read before the first `await`, as the rest of the request is: the caller owns it.
+      const signInReference = request.signIn;
       // Set inside the source's turn: whether this connection added the source, which is loaded at once.
       let added = false;
       const change = await serialized(() =>
@@ -2350,9 +2354,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           // reference, for its owner, for this description, once: only a source this request
           // adds, or a retry of the same save, may take it.
           const pendingSignIn =
-            request.signIn === undefined
+            signInReference === undefined
               ? undefined
-              : ownedSignIn(request.signIn, identity, id, source, operationId);
+              : ownedSignIn(signInReference, identity, id, source, operationId);
           if (pendingSignIn !== undefined) {
             if (!isOAuth(source)) {
               throw new ToolSourceInputError('signIn', 'the source does not sign in with OAuth.');

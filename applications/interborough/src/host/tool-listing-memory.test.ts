@@ -198,6 +198,14 @@ describe('a plugin listing', () => {
     ]);
   });
 
+  test('a plugin waiting for setup that lists no tool leaves the last listing as it was', async () => {
+    const memory = createToolListingMemory(new MemoryStorage(), () => at);
+    await rememberPluginListings(memory, [listingOf('running')], [draftReleaseNotes], () => {});
+    await rememberPluginListings(memory, [listingOf('needs-setup')], [], () => {});
+    const record = await memory.read(pluginListingOwner(listingOf('running')));
+    expect(record?.tools.map((tool) => tool.name)).toEqual(['demo:draft-release-notes']);
+  });
+
   test('takes only the tools the plugin itself contributes', async () => {
     const memory = createToolListingMemory(new MemoryStorage());
     await rememberPluginListings(
