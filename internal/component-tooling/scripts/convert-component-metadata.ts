@@ -18,7 +18,7 @@
  *    `applications/playground/src/shell-app/compound-families.ts` still exists;
  * 3. deletes each `<name>.constraints.ts` whose authored `<name>.constraints.json` exists, and
  *    points its `<name>.constraints.test.ts` at the JSON;
- * 4. writes `components/cinder/src/schemas/component-meta.schema.json` from `src/manifest.meta.ts`.
+ * 4. writes `internal/component-tooling/src/schemas/component-meta.schema.json` from `src/manifest.meta.ts`.
  *
  * `--check` reports any step with work left, which is what `lint:checks` runs.
  */
@@ -409,7 +409,7 @@ async function planSchema(plan: Plan): Promise<void> {
 const RETIRED_PARSER = /(['"])((?:\.\.?\/)+(?:[\w-]+\/)*)generate-component-metadata\.ts\1/g;
 const META_MODULE = join(
   import.meta.dir,
-  '../../../components/cinder/scripts/lib/component-meta.ts',
+  '../../../internal/component-tooling/scripts/lib/component-meta.ts',
 );
 
 /** Point imports of the retired JSDoc parser at `scripts/lib/component-meta.ts`, which replaced it. */

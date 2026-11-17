@@ -2,10 +2,11 @@
  * The derived metadata of a component package (cinder, chat, editor or terminal).
  *
  * ```sh
- * bun scripts/generate-component-artifacts.ts                 # the `metadata` task: write .metadata/
- * bun scripts/generate-component-artifacts.ts --check         # in lint: check what is committed
- * bun scripts/generate-component-artifacts.ts --fix           # rewrite the committed generated regions
- * bun ../cinder/scripts/generate-component-artifacts.ts --package-root .   # another package
+ * # from a component package's directory (cinder, a family, chat, editor or terminal)
+ * bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts           # `metadata`: write .metadata/
+ * bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --check   # in lint
+ * bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --fix     # rewrite README regions
+ * # every package but core adds `--package-root .`
  * ```
  *
  * The default mode is each package's `metadata` Turborepo task. It writes only the ignored
@@ -114,9 +115,8 @@ async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
 
 /** The commands that make what `--check` compares current again. */
 function fixCommand(pkg: ComponentPackage): string {
-  const script = pkg.isCinder
-    ? 'bun scripts/generate-component-artifacts.ts'
-    : 'bun ../cinder/scripts/generate-component-artifacts.ts --package-root .';
+  const tooling = '../../internal/component-tooling/scripts/generate-component-artifacts.ts';
+  const script = pkg.isCinder ? `bun ${tooling}` : `bun ${tooling} --package-root .`;
   return `cd ${pkg.root.slice(pkg.root.indexOf('components/'))} && ${script} --fix`;
 }
 
