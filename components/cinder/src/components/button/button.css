@@ -758,5 +758,16 @@
     .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only] {
       min-width: var(--_cinder-compact-control-height);
     }
+
+    /* Two neighbouring compact icon-only buttons each reach (44px - 24px) / 2 past their face, so
+       their hit areas would overlap across a header's 8px gap. The following one steps away by
+       the rest, widening the gap while both keep their drawn size (COR-2388). */
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only]
+      + .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only] {
+      margin-inline-start: calc(
+        var(--cinder-touch-target-min) - var(--_cinder-compact-control-height) -
+          var(--cinder-space-2)
+      );
+    }
   }
 }

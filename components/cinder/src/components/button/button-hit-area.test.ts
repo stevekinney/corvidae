@@ -82,3 +82,26 @@ describe('an icon passed as the button’s own child', () => {
     );
   });
 });
+
+describe('adjacent compact icon-only header buttons on a coarse pointer (COR-2388)', () => {
+  const COMPACT =
+    ".cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only]";
+
+  test('the gap holds both 44px hit-area extensions, and the drawn size stays 24px', () => {
+    const next = declarationsFor(buttonCss, `${COMPACT} + ${COMPACT}`);
+    // Header actions are spaced by space-2 (8px); the margin tops the pitch up so the two
+    // extensions, (44 - 24) / 2 on each side of each button, do not overlap.
+    expect(next.get('margin-inline-start')).toBe(
+      'calc(var(--cinder-touch-target-min) - var(--_cinder-compact-control-height) - var(--cinder-space-2))',
+    );
+    const gap = rem('2') * 16;
+    const touch = Number(/--cinder-touch-target-min:\s*(\d+)px/.exec(tokens)?.[1]);
+    const drawn = 24;
+    expect(gap + (touch - drawn - gap)).toBeGreaterThanOrEqual(touch - drawn);
+    expect(touch - drawn - gap).toBeGreaterThan(0);
+    // The visible button keeps its drawn size.
+    expect(declarationsFor(buttonCss, COMPACT).get('min-width')).toBe(
+      'var(--_cinder-compact-control-height)',
+    );
+  });
+});

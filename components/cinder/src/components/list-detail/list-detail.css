@@ -44,6 +44,10 @@
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-4);
     border-block-end: 1px solid var(--cinder-border-muted);
+    /* The header is never shorter than a row of compact actions, which draw at that height, so
+       rendering actions in it does not grow it (COR-2388). */
+    min-block-size: calc(var(--cinder-space-4) * 2 + var(--_cinder-compact-control-height));
+    box-sizing: border-box;
   }
 
   /* A list with no header of its own holds the toggle alone, at the header's end. */
