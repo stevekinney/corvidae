@@ -237,6 +237,11 @@ export const OPERATION_MAP = {
   'bureau.assets.uploads.abort': { workspaceClass: 'private-owned', member: 'assets.abortUpload' },
 
   'bureau.audit.query': { workspaceClass: 'private-owned', member: 'audit.query' },
+  // COR-2113: check results across runs and goals, composed from the audit trail and the goal store.
+  'bureau.checks.list': {
+    workspaceClass: 'private-owned',
+    exempt: 'composed from the audit trail and the goal store',
+  },
 
   'bureau.notifications.list': { workspaceClass: 'private-owned', member: 'notifications.list' },
   'bureau.notifications.markread': {

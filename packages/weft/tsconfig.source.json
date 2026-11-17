@@ -16,5 +16,10 @@
     "src/cli/__fixtures__/**",
     "src/client/__fixtures__/**",
     "**/*.test-d.ts"
+  ],
+  "references": [
+    {
+      "path": "../backchannel/tsconfig.source.json"
+    }
   ]
 }

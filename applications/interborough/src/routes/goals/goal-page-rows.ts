@@ -18,9 +18,10 @@ import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal } from '../../lib/bureau-goals.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import type { TaskView } from '../../lib/bureau-tasks.ts';
+import { checkText } from '../../lib/check-text.ts';
 import { clockTime } from '../../lib/format/clock.ts';
 import { durationWords, waitedWords } from '../workflows/runs/run-rows.ts';
-import { checkText, goalListWord } from './goal-rows.ts';
+import { goalListWord } from './goal-rows.ts';
 
 const copy = GOALS_COPY.detail;
 

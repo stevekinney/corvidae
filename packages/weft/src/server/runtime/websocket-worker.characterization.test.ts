@@ -15,6 +15,7 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { TaskResultDeadLetteredEvent } from '../../core/events.ts';
@@ -28,7 +29,6 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../../worker/protocol.ts';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { useObservableActivityHeartbeatsForTesting } from './activity-heartbeat-test-hooks.ts';
 import {
   FailingTerminalCommitStorage,

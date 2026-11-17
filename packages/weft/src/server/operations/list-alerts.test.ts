@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  executeOperation,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { ALERT_METRICS } from '../../alerting/types.ts';
 import { Engine } from '../../core/engine.ts';
 import { WorkflowFailedEvent } from '../../core/events.ts';
 import { handleRequest } from '../handler.ts';
-import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { listAlertsOperation, listAlertsRestBinding } from './list-alerts.ts';
 
 function createEngine(): Engine {

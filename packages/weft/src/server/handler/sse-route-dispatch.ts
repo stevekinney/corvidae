@@ -1,20 +1,24 @@
-import { faultToHttpResponse } from '../fault-to-http.ts';
-import type { FleetEventFeed } from '../fleet-event-feed.ts';
-import type { OpenApiSecuritySchemeName } from '../openapi.ts';
+import {
+  principalFromStdioLocal,
+  type OperationFault,
+  type Principal,
+} from '@lostgradient/backchannel';
 import {
   executeOperation,
+  isAuthenticated,
+  type ConnectionLease,
+  type OpenApiSecuritySchemeName,
   type OperationRegistry,
   type PipelineTrace,
-} from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
+import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import { fleetEventsSseOperation } from '../operations/fleet-events-sse.ts';
 import {
   workflowEventsSseOperation,
   type WorkflowStreamConnectionAcquirer,
 } from '../operations/workflow-events-sse.ts';
-import { isAuthenticated, principalFromStdioLocal, type Principal } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
+import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 
 export type LiveEventStreamContext = {
@@ -62,7 +66,9 @@ export async function dispatchServerSentEventsBinding(
     ...(options.pipelineTrace === undefined ? {} : { pipelineTrace: options.pipelineTrace }),
   });
   if (result.ok) return shapeSuccess(result.value, options.request);
-  return binding.shapeFault ? binding.shapeFault(result.fault) : faultToHttpResponse(result.fault);
+  return binding.shapeFault
+    ? binding.shapeFault(result.fault)
+    : weftFaultToHttpResponse(result.fault);
 }
 
 function shapeMissingOperation(
@@ -75,7 +81,7 @@ function shapeMissingOperation(
     message: `unknown operation: ${binding.operationName}`,
     data: { method: binding.operationName },
   };
-  return binding.shapeFault ? binding.shapeFault(fault) : faultToHttpResponse(fault);
+  return binding.shapeFault ? binding.shapeFault(fault) : weftFaultToHttpResponse(fault);
 }
 
 function principalForServerSentEvents(options: DispatchServerSentEventsBindingOptions): Principal {

@@ -263,6 +263,7 @@ export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {
                     'bureau.tasks.respond',
                     'bureau.reviews.resolve',
                     'bureau.audit.query',
+                    'bureau.checks.list',
                     'bureau.assets.get',
                     'bureau.assets.uploads.create',
                     'bureau.assets.uploads.append',

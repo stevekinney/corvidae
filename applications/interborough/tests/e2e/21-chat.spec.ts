@@ -15,6 +15,7 @@ import {
   newThreadId,
   releaseBarrier,
   runToEnd,
+  untilChatLoaded,
 } from './chat-support.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
@@ -50,6 +51,7 @@ async function sendFollowUp(page: Page, text: string): Promise<void> {
 }
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   await composer(page).fill(text);
   await composer(page).press('Enter');
 }

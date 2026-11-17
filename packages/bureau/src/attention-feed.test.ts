@@ -13,8 +13,8 @@ import {
   StorageSizeReportedEvent,
   type AlertStateSnapshot,
   type ScheduleSummary,
-  type WorkspaceIdentity,
 } from '@lostgradient/weft';
+import { type WorkspaceIdentity } from '@lostgradient/backchannel';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { workspaceConformanceLedger } from './http/workspace-conformance-ledger.test-support.ts';

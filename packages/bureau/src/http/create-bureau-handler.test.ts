@@ -8,7 +8,7 @@ import {
   AUTHORIZATION_SCOPES,
   type OperationHandlerMount,
   principalFromApiKey,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from '../assets/storage';
@@ -584,6 +584,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.assets.uploads.complete',
         'bureau.assets.uploads.create',
         'bureau.audit.query',
+        'bureau.checks.list',
         'bureau.contexts.archive',
         'bureau.contexts.delete',
         'bureau.contexts.forgetgrants',

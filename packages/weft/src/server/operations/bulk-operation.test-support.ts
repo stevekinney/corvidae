@@ -12,11 +12,11 @@
  * build) and must never be imported by production server code.
  */
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import type { AnyWorkflowDefinition } from '../../core/types.ts';
 import type { HandlerOptions } from '../handler/route-dispatch.ts';
-import { principalFromApiKey } from '../principal.ts';
 
 /**
  * Build a `MemoryStorage`-backed engine with the given workflow definitions

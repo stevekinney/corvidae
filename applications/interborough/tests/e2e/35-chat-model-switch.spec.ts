@@ -14,6 +14,7 @@ import {
   newThreadId,
   runToEnd,
   showModelPicker,
+  untilChatLoaded,
 } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
@@ -27,6 +28,7 @@ const [SONNET, HAIKU] = MODEL_SWITCHER_MODELS;
 const ASSISTANT_ROW = '[data-message-role="assistant"]';
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   const box = page.getByRole('textbox');
   await box.fill(text);
   await expect(box).toHaveValue(text);

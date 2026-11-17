@@ -54,12 +54,14 @@ describe('the shell’s shortcuts', () => {
     expect(() => registerShellShortcuts(registry, actions)).not.toThrow();
   });
 
-  test('the sidebar’s destinations are the twelve names, in order, each with its own letter', () => {
+  test('the sidebar’s destinations are the thirteen names, in order, each with its own letter', () => {
     expect(DESTINATIONS.map((destination) => [destination.path, destination.letter])).toEqual([
       ['/', 'h'],
       ['/chats', 'c'],
       ['/reviews', 'r'],
       ['/runs', 'u'],
+      // `x`: every letter of "checks" is taken, and Checks sits directly after Runs (C2-01).
+      ['/checks', 'x'],
       ['/agents', 'a'],
       ['/workflows', 'w'],
       ['/schedules', 's'],
@@ -78,7 +80,7 @@ describe('the shell’s shortcuts', () => {
     }
     expect([...groups]).toEqual([
       ['home', ['home']],
-      ['work', ['chat', 'reviews', 'runs']],
+      ['work', ['chat', 'reviews', 'runs', 'checks']],
       ['build', ['agents', 'workflows', 'schedules', 'goals', 'capabilities', 'hooks']],
       ['system', ['health', 'settings']],
     ]);

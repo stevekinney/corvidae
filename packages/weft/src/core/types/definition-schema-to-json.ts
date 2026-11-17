@@ -1,7 +1,11 @@
 import type { z } from 'zod';
 
+import {
+  requirePlainObject,
+  stripDialect,
+  zodToJsonSchema,
+} from '@lostgradient/backchannel/internals';
 import { tryLoadNodeBuiltin } from '../../runtime/portable.ts';
-import { requirePlainObject, stripDialect, zodToJsonSchema } from '../../server/zod-json-schema.ts';
 import type {
   DefinitionSchema,
   StandardJSONSchemaV1Options,

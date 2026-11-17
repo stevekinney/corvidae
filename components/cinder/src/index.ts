@@ -1526,4 +1526,4 @@ export type {
   TreeSelectAllProps,
   TreeVirtualizedItemRenderState,
 } from './components/tree/index.ts';
-export { createBodyScrollLock, scrollEdgeFade } from './utilities/attachments.ts';
+export { createBodyScrollLock, dockedToBottom, scrollEdgeFade } from './utilities/attachments.ts';

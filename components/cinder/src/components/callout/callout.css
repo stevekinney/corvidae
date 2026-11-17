@@ -449,10 +449,13 @@
       flex: 1 1 100%;
     }
 
-    /* A message that shares its row with the action takes only the width of its words, so the
-     * action sits beside it while both fit and drops under it, at the trailing edge, when not. */
+    /* A message that shares its row with the action starts at the width of its words, so the
+     * action sits beside it while both fit and drops under it, at the trailing edge, when not.
+     * Once they share the row it grows into the room left: sized to its words alone, the message
+     * lost a fraction of a pixel to the floated glyph beside its first line, and its last word
+     * broke onto a second line with the row half empty (COR-2327). */
     .cinder-callout--fit-action > .cinder-callout__body > .cinder-callout__message {
-      flex: 0 1 auto;
+      flex: 1 1 auto;
     }
 
     /* The action drops under the message, so the message is not the last ink: the button is. */

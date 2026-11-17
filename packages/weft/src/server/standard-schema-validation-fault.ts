@@ -1,5 +1,5 @@
+import type { OperationFault } from '@lostgradient/backchannel';
 import { StandardSchemaValidationError } from '../core/types/standard-schema-validate.ts';
-import type { OperationFault } from './operation-fault.ts';
 
 /**
  * The `InvalidParams` fault for a payload the engine rejected against its

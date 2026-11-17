@@ -49,7 +49,8 @@ export default [
   },
   {
     // The Settings rows a plugin's configuration is drawn as: one control at the inline end, and a
-    // group under its row. At 320px the rows stack, and nothing overflows.
+    // group of one short field ("Account", holding "Owner") as one row with its control in the same
+    // column. At 320px the rows stack, and nothing overflows.
     name: 'setting-rows',
     props: {
       id: 'schema-form-setting-rows',

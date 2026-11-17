@@ -291,13 +291,14 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     outcomeLabel?: string;
     /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
     footnote?: string;
-    /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
+    /** What the payload is called, such as `Runs with`: the name of the input rows in the row and decision layouts and of the Input block on the detail page (default `Input`), and of the arguments in the card (default `<tool> arguments`). */
     inputLabel?: string;
     /** A line of context written above the question, such as "Test chat, this runs for real". */
     context?: Snippet;
     /**
-     * Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch
-     * can govern every payload on a page. Default `fields`.
+     * Which view of the arguments the card and the detail page show, Fields or JSON; the row and
+     * decision layouts write the input as rows in the open. Bindable, so one switch can govern
+     * every payload on a page. Default `fields`.
      */
     view?: PayloadInspectorView;
     /** The reference time for relative times. Defaults to now. */
@@ -395,9 +396,9 @@ export type ApprovalCardSchemaProps = {
   outcomeLabel?: string;
   /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
   footnote?: string;
-  /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
+  /** What the payload is called, such as `Runs with`: the name of the input rows in the row and decision layouts and of the Input block on the detail page (default `Input`), and of the arguments in the card (default `<tool> arguments`). */
   inputLabel?: string;
-  /** Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`. @default 'fields' */
+  /** Which view of the arguments the card and the detail page show, Fields or JSON; the row and decision layouts write the input as rows in the open. Bindable, so one switch can govern every payload on a page. Default `fields`. @default 'fields' */
   view?: PayloadInspectorView;
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;

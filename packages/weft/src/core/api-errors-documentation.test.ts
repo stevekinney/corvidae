@@ -9,11 +9,11 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import * as root from '../index.ts';
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
-} from '../server/operation-fault.ts';
+} from '@lostgradient/backchannel/internals';
+import * as root from '../index.ts';
 import { FAULT_CODE_TO_FAILURE_CATEGORY } from './fault-code.ts';
 import { WeftError, isWeftErrorCode } from './weft-error.ts';
 

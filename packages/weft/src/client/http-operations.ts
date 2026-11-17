@@ -11,7 +11,7 @@
  * @module client/http-operations
  */
 
-import { isFaultCode } from '../core/fault-code.ts';
+import { isFaultCode } from '@lostgradient/backchannel';
 import { HttpClientError, request } from './http-request.ts';
 import type { CatalogTransport, ClientRestOperationBinding } from './operation-client-runtime.ts';
 

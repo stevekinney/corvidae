@@ -1,17 +1,15 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import * as weft from '../../index.ts';
-import { createAuthenticator, signJWT, type AuthContext } from '../authentication.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { ServerContext } from '../runtime/context.ts';
-import { authenticateRequest } from '../runtime/request-gate.ts';
 import {
+  createAuthenticator,
+  createOperationHandler,
   createOperationHandlerAuthenticator,
+  defineOperation,
   type OperationHandlerAuthenticate,
-} from './operation-handler-authentication.ts';
-import type { OperationHandlerMount } from './operation-handler-mounts.ts';
+  type OperationHandlerMount,
+} from '@lostgradient/backchannel';
+import { signJWT, type AuthContext } from '@lostgradient/backchannel/internals';
 import {
   createTestHost,
   eventsOperation,
@@ -20,8 +18,11 @@ import {
   scopedEchoOperation,
   statusOf,
   strangerContext,
-} from './operation-handler.test-support.ts';
-import { createOperationHandler } from './operation-handler.ts';
+} from '@lostgradient/backchannel/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import * as weft from '../../index.ts';
+import type { ServerContext } from '../runtime/context.ts';
+import { authenticateRequest } from '../runtime/request-gate.ts';
 
 const echoOperation = defineOperation({
   name: 'probe.echo',
@@ -397,9 +398,11 @@ describe('createOperationHandler', () => {
     expect(frames).toEqual([]);
   });
 
-  it('is exported from the package entry point', () => {
-    expect(weft.createOperationHandler).toBe(createOperationHandler);
-    expect(weft.createOperationHandlerAuthenticator).toBe(createOperationHandlerAuthenticator);
+  it('is exported from @lostgradient/backchannel and not from Weft', () => {
+    expect(Reflect.has(weft, 'createOperationHandler')).toBe(false);
+    expect(Reflect.has(weft, 'createOperationHandlerAuthenticator')).toBe(false);
+    expect(createOperationHandler).toBeFunction();
+    expect(createOperationHandlerAuthenticator).toBeFunction();
   });
 
   it('serves a caller-supplied operation over JSON-RPC HTTP with no Engine constructed', async () => {

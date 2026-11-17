@@ -17,13 +17,13 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type {
   WorkflowRefreshDiagnostics,
   WorkflowRefreshStatus,
 } from '../../core/catalog/index.ts';
 import type { Engine } from '../../core/engine.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { assertOperationWorkflowMethods } from './operation-helpers.ts';
 import {
   validateWorkflowNameField,

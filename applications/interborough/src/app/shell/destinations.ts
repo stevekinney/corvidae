@@ -12,6 +12,7 @@ import {
   House,
   Inbox,
   Keyboard,
+  ListChecks,
   MessageSquare,
   Play,
   Plus,
@@ -63,6 +64,8 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'chat', path: '/chats', letter: 'c', icon: MessageSquare, group: 'work' },
   { view: 'reviews', path: '/reviews', letter: 'r', icon: Inbox, group: 'work' },
   { view: 'runs', path: '/runs', letter: 'u', icon: Play, group: 'work' },
+  // `x`: every letter of "checks" is taken (h, c, r, u, a, w, s, l, p, k, e, n, o, t and d).
+  { view: 'checks', path: '/checks', letter: 'x', icon: ListChecks, group: 'work' },
   { view: 'agents', path: '/agents', letter: 'a', icon: Bot, group: 'build' },
   { view: 'workflows', path: '/workflows', letter: 'w', icon: Workflow, group: 'build' },
   { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, group: 'build' },

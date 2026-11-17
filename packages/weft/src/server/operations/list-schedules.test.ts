@@ -16,12 +16,15 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  type OperationFault,
+  anonymousPrincipal,
+  defineOperation,
+  principalFromApiKey,
+} from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import {
   createListSchedulesApiKeyAuthContext,

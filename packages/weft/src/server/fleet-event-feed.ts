@@ -1,13 +1,12 @@
+import type { Cursor, ReplayLiveSubscribeOptions } from '@lostgradient/backchannel';
 import type { Storage } from '@lostgradient/storage';
 import { createFleetEventFeedOperations } from './fleet-event-feed-operations.ts';
 import type {
-  Cursor,
   FleetEventAppendOptions,
   FleetEventEnvelope,
   FleetEventFeedOptions,
   FleetEventInput,
   FleetWorkflowEventInput,
-  ReplayLiveSubscribeOptions,
 } from './workflow-event-feed.ts';
 
 export type {

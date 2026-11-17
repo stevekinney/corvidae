@@ -300,6 +300,14 @@ export const routes: readonly RouteDefinition[] = [
     view: 'reviews',
     load: () => import('../routes/reviews/index.svelte'),
   },
+  // What every check decided, newest first: one list of rows, each a link to its goal or its run.
+  {
+    pattern: '/checks',
+    kind: 'table',
+    crumb: VIEW_COPY.checks.label,
+    view: 'checks',
+    load: () => import('../routes/checks/checks-list.svelte'),
+  },
   // The caller's hooks, the page that makes one, and one hook's editor with its recent deliveries.
   // `new` is a path segment, not a hook: its route comes before `/hooks/:hook`. The new hook page is
   // a form at reading width (sweep S56); a saved hook is an editor, which has the delivery log beside

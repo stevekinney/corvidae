@@ -201,6 +201,12 @@ export const queryKeys = {
     /** The schedules' names, which the events of a schedule are worded with. */
     schedules: () => ['audit', 'schedules'] as const,
   },
+  /** The check results, under the filter the address holds as its query string (`bureau.checks.list`). */
+  checks: {
+    list: (filter: string) => ['checks', 'list', filter] as const,
+    /** The agents the Agent chip offers, which the catalog names besides the rows' own. */
+    agents: () => ['checks', 'agents'] as const,
+  },
   /** The Bureau's runtime settings: their values (`bureau.settings.get`) and their schema (`bureau.settings.schema`). */
   settings: {
     snapshot: () => ['settings', 'snapshot'] as const,
@@ -286,6 +292,8 @@ export const queryKeys = {
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
     /** One step's reply details (`bureau.tasks.inspect` with `step`). */
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
+    /** One run's hook plan and the hooks that threw (`bureau.tasks.inspect`, COR-2115). */
+    hooks: (taskId: string) => ['bureau-tasks', 'hooks', taskId] as const,
     /** How many runs are running now: working or not yet started, never waiting on a person. */
     running: () => ['bureau-tasks', 'running'] as const,
     /**

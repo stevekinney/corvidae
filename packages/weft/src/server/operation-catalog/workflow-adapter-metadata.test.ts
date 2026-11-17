@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { anonymousPrincipal } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  executeOperation,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import {
   WorkflowAlreadyExistsError,
   WorkflowNotRegisteredError,
 } from '../../core/engine/errors.ts';
 import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
 import { workflow } from '../../core/types.ts';
-import { generateOpenRpcDocument } from '../openrpc.ts';
-import { anonymousPrincipal } from '../principal.ts';
-import { createOperationRegistry, executeOperation } from './index.ts';
 import {
   catalogCheckoutWorkflow,
   catalogTransports,

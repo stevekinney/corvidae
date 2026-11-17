@@ -88,6 +88,7 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   capabilities: '/capabilities',
   workflows: '/workflows',
   runs: '/runs',
+  checks: '/checks',
   schedules: '/schedules',
   reviews: '/reviews',
   workers: '/health/workers',
@@ -143,6 +144,9 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
   goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
+  // The Checks page owns its states (`VIEWS.checks.ownsStates`), so only the frame's refusal is
+  // driven from here; `checks-states.spec.ts` drives the page's own.
+  checks: bureauProbe('bureau.checks.list', { checks: [], nextCursor: null }),
   hooks: bureauProbe('bureau.hooks.list', { hooks: [] }),
   // Never empty (`VIEWS.settings.canBeEmpty`), so the answer is never served as an empty one.
   settings: bureauProbe('bureau.settings.get', {

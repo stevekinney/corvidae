@@ -17,6 +17,7 @@
   import JsonEditor from '../json-editor/json-editor.svelte';
   import NumberInput from '../number-input/number-input.svelte';
   import Segment from '../segment/segment.svelte';
+  import SchemaFormNamedControl from './schema-form-named-control.svelte';
   import SettingRow from '../setting-row/setting-row.svelte';
   import TagInput from '../tag-input/tag-input.svelte';
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
@@ -253,6 +254,17 @@
     const option = field.options.find((candidate) => Object.is(candidate.value, current));
     if (field.clearable) return option?.encodedValue ?? '';
     return option?.encodedValue ?? field.options[0]?.encodedValue ?? '';
+  }
+
+  /**
+   * The one field a group holds when that field is a short single control (text, number, select,
+   * duration or switch): the group then draws as one row with the field's control in the control
+   * column. Any other group, or a group of several fields, is drawn under its row as before.
+   */
+  function loneField(group: SchemaFormField): SchemaFormField | undefined {
+    if (group.kind !== 'object' || group.fields.length !== 1) return undefined;
+    const [only] = group.fields;
+    return only !== undefined && INLINE_KINDS.has(only.kind) ? only : undefined;
   }
 
   /** What a setting row calls a field: the schema's title, else its key in sentence case. */
@@ -690,30 +702,42 @@
 {/snippet}
 
 {#snippet settingRow(field: SchemaFormField)}
-  {@const id = fieldDomId(field)}
-  {@const error = fieldError(field)}
-  {@const inline = INLINE_KINDS.has(field.kind)}
+  {@const lone = loneField(field)}
+  {@const carried = lone ?? field}
+  {@const id = fieldDomId(carried)}
+  {@const rowId = lone ? `${id}-group` : id}
+  {@const error = fieldError(carried)}
+  {@const inline = INLINE_KINDS.has(carried.kind)}
   {@const identifier = rowIdentifier(field)}
+  {@const description = field.description ?? lone?.description}
   <div
     class="cinder-schema-form__setting"
     data-cinder-field={field.key}
-    oninput={inline || field.kind === 'tags'
-      ? (event) => formState.handleFieldInput(field, event)
+    role={lone ? 'group' : undefined}
+    aria-labelledby={lone ? `${rowId}-label` : undefined}
+    oninput={inline || carried.kind === 'tags'
+      ? (event) => formState.handleFieldInput(carried, event)
       : undefined}
   >
     <SettingRow
-      {id}
+      id={rowId}
       label={rowLabel(field)}
       {...identifier === undefined ? {} : { identifier }}
-      required={field.required}
+      required={carried.required}
       disabled={frozen}
-      controlWidth={field.kind === 'boolean' ? 'auto' : '16rem'}
-      controlAlign={field.kind === 'boolean' ? 'end' : 'stretch'}
-      {...field.description === undefined ? {} : { description: field.description }}
+      controlWidth={carried.kind === 'boolean' ? 'auto' : '16rem'}
+      controlAlign={carried.kind === 'boolean' ? 'end' : 'stretch'}
+      {...description === undefined ? {} : { description }}
       {...error === undefined ? {} : { error }}
     >
       {#snippet control()}
-        {#if inline}{@render settingControl(field, id)}{/if}
+        {#if lone}
+          <SchemaFormNamedControl {id} label={rowLabel(lone)} named={lone.kind !== 'enum'}>
+            {@render settingControl(lone, id)}
+          </SchemaFormNamedControl>
+        {:else if inline}
+          {@render settingControl(field, id)}
+        {/if}
       {/snippet}
       {#snippet disclosure()}
         {#if !inline}{@render settingDisclosure(field, id, error)}{/if}
