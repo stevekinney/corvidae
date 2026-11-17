@@ -4,7 +4,7 @@
    * footer and a Clear link, or a titled list of radio rows. The facet chip's popover and the
    * narrow form's Filter menu both draw it, so a facet reads the same in either place.
    */
-  import { default as Button } from '../button/index.ts';
+  import { default as Button } from '@lostgradient/button/components/button/index.ts';
   import { default as Checkbox } from '@lostgradient/checkbox/components/checkbox/index.ts';
   import { default as Radio } from '@lostgradient/radio-group/components/_radio/index.ts';
   import { default as RadioGroup } from '@lostgradient/radio-group/components/radio-group/index.ts';

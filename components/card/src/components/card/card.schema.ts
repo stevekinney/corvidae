@@ -1,0 +1,140 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      description: "Primary heading text rendered inside the card's header region.",
+    },
+    headingLevel: {
+      enum: [2, 3, 4, 5, 6],
+      description:
+        'Heading level for the generated title. Defaults to `3`. Set this so the\ncard title nests correctly within the surrounding document outline.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional subheading rendered as a paragraph below the title inside the header.',
+    },
+    href: {
+      type: 'string',
+      description: 'Destination URL that makes the entire card an anchor.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-card`.',
+    },
+    variant: {
+      enum: ['card', 'well', 'plain'],
+      description:
+        'Visual container style. `card` is raised; `well` is flatter and inset; `plain` is a heading on the page with no box.',
+    },
+    edge: {
+      enum: ['none', 'border', 'shadow'],
+      description:
+        'The one edge the card draws: `none` (default), a `border`, or a `shadow`, never both. An interactive\ncard strengthens whichever edge it has on hover.',
+    },
+    headerDivider: {
+      type: 'boolean',
+      description:
+        'Draw a divider rule under the header. Off by default: the header is separated from the body\nby its surface alone, and a divider is opt-in.',
+    },
+    tone: {
+      enum: ['default', 'danger', 'suggested'],
+      description:
+        'Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions.\n`suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on the\ntitle row (or at the top of the body when the card has no `title`), with no tint, border or pill.',
+    },
+    suggestedLabel: {
+      type: 'string',
+      description:
+        'The words of the `suggested` label, such as "Suggested wording". Used with `tone="suggested"`.',
+      default: 'Suggested',
+    },
+    bodyTone: {
+      enum: ['default', 'muted'],
+      description: 'Body surface treatment. `muted` renders a grey/inset body region.',
+    },
+    footerTone: {
+      enum: ['default', 'muted'],
+      description: 'Footer surface treatment. `muted` renders a grey/inset footer region.',
+    },
+    headerTone: {
+      enum: ['default', 'muted'],
+      description:
+        'Header surface treatment. `muted` renders a grey/inset header region, for a card whose title row reads as a band over its rows.',
+    },
+    edgeToEdgeOnMobile: {
+      type: 'boolean',
+      description: 'Remove side borders/radius and bleed to the viewport edge on narrow screens.',
+    },
+    padding: {
+      enum: ['none', 'default'],
+      description:
+        'Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges.',
+    },
+    mediaPosition: {
+      enum: ['top', 'leading'],
+      description:
+        'Where the media sits: `top` spans the card above the header, `leading` is a column before the content. Used with `media`.',
+      default: 'top',
+    },
+    mediaAspectRatio: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'number',
+        },
+      ],
+      description:
+        'The aspect ratio of the media box, such as `"16 / 9"` or `1`. The media fills it and is cropped to fit. Used with `media`.',
+      default: '16 / 9',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          "Actions rendered at the end of the title row, aligned to the title's baseline. Buttons\ninside draw at the `xs` control height, so they never make the header taller. Ignored\nwhen the card is interactive (`href` or `onclick`), because a control cannot nest inside\nthe whole-card link or button.",
+      },
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Basic card with no generated header.',
+      },
+      {
+        name: 'footer',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'header',
+        reason: 'function-or-snippet',
+        description: 'Card with a custom header snippet — full control over header content.',
+      },
+      {
+        name: 'media',
+        reason: 'function-or-snippet',
+        description:
+          'An optional image or other media, drawn at a set aspect ratio at the top of the card or in a leading column. A card with no media draws no placeholder and reserves no space.',
+      },
+      {
+        name: 'onclick',
+        reason: 'function-or-snippet',
+        description: 'Click handler that makes the entire card a button.',
+      },
+      {
+        name: 'type',
+        reason: 'unknown-shape',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

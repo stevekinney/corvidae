@@ -1,0 +1,72 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    value: {
+      type: 'string',
+      description: 'Text to copy to the clipboard.',
+    },
+    html: {
+      type: 'string',
+      description:
+        'Optional HTML representation written alongside text/plain through ClipboardItem.',
+    },
+    confirmDuration: {
+      type: 'number',
+      description: 'Duration in ms to show the confirmation state. Default 1500.',
+    },
+    label: {
+      type: 'string',
+      description: 'Accessible label for the idle state. Defaults to "Copy to clipboard".',
+    },
+    copiedLabel: {
+      type: 'string',
+      description:
+        'Accessible label for the copied state — what `aria-live="polite"` announces\nwhen the copy succeeds. Defaults to "Copied". Override this when `label` is\ncustomized so the live-region announcement reflects what just happened\n(e.g. label="Copy code" + copiedLabel="Code copied").',
+    },
+    textVisible: {
+      type: 'boolean',
+      description:
+        'Shows the words "Copy", and "Copied" after a copy, after the icon. By default the button is\nthe Copy icon alone (a Check after a copy), named by `label`, which also shows as a tooltip.\nThe button keeps one width in both states.',
+      default: false,
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-copy-button`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['value'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description:
+          'The words of the text face at rest, after the Copy icon. Passing them shows the text face.',
+      },
+      {
+        name: 'confirmation',
+        reason: 'function-or-snippet',
+        description:
+          'The words of the text face once copied, after the Check icon. Defaults to "Copied".',
+      },
+      {
+        name: 'image',
+        reason: 'unknown-shape',
+        description: 'Optional image blob or URL written alongside text and HTML when supported.',
+      },
+      {
+        name: 'onError',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the clipboard write fails (permission denied, insecure context, or the legacy execCommand fallback also failing).',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

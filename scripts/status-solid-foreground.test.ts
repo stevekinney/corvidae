@@ -225,7 +225,7 @@ describe('status fills as foreground colors', () => {
       join(root, 'components/chat/src/lib/components/chat/input/chat-input.svelte'),
     ).text();
     const button = await Bun.file(
-      join(root, 'components/cinder/src/components/button/button.css'),
+      join(root, 'components/button/src/components/button/button.css'),
     ).text();
     expect(button).toMatch(
       /@media \(any-pointer: coarse\) \{\s*\.cinder-button\[data-cinder-hit-target='44'\] \{\s*position: relative;/,

@@ -204,6 +204,8 @@ interface Plan {
   pending: Map<string, string>;
   /** The directory (core's or a package's) each placed file was found in. */
   location: Map<string, string>;
+  /** Each written file's text before the run (undefined for a new file). */
+  originals: Map<string, string | undefined>;
 }
 
 function packageDirectory(plan: Plan, name: string): string {
@@ -228,7 +230,10 @@ function write(plan: Plan, path: string, text: string): void {
   if (existsSync(absolute) && readFileSync(absolute, 'utf8') === text && !plan.pending.has(path)) {
     return;
   }
-  if (!plan.result.written.includes(path)) plan.result.written.push(path);
+  if (!plan.result.written.includes(path)) {
+    plan.result.written.push(path);
+    plan.originals.set(path, existsSync(absolute) ? readFileSync(absolute, 'utf8') : undefined);
+  }
   if (plan.options.dryRun) {
     plan.pending.set(path, text);
     return;
@@ -872,13 +877,19 @@ export function readComponentsCssOrder(text: string): ComponentsCssOrder {
   };
 }
 
-function stylesheetSpecifier(plan: Plan, path: string, aggregate: boolean): string {
+/**
+ * How core's `components.css` names an ordered stylesheet: by relative path while core holds it;
+ * as `/styles` when it is the one line of a single-component family (whose stylesheet is that
+ * line); otherwise by its own subpath, since a family with several lines (popover's
+ * `popover-surface.css` and `popover.css` sit apart) keeps them apart.
+ */
+function stylesheetSpecifier(plan: Plan, path: string, lines: ReadonlyMap<string, number>): string {
   const name = plan.owner.get(path);
   if (name === undefined) throw new Error(`${ORDER_FILE} names ${path}, which no package holds.`);
   if (packageDirectory(plan, name) === plan.options.core)
     return relativeSpecifier(COMPONENTS_CSS, path);
   const components = plan.components.get(name) ?? [];
-  if (aggregate && kindOf(name) === 'family' && components.length === 1) {
+  if (kindOf(name) === 'family' && components.length === 1 && lines.get(name) === 1) {
     return `${PACKAGE_SCOPE}${name}/styles`;
   }
   return specifierFor(name, path, components).specifier;
@@ -922,10 +933,15 @@ function regenerateStylesheets(plan: Plan): void {
       `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} in no line of ${orderPath}: place each in "imports" (or "unlisted"), then re-run.`,
     );
   }
+  const perPackage = new Map<string, number>();
+  for (const entry of order.imports) {
+    const name = plan.owner.get(entry.path);
+    if (name !== undefined) perPackage.set(name, (perPackage.get(name) ?? 0) + 1);
+  }
   const lines: string[] = [];
   for (const entry of order.imports) {
     if (entry.comment !== undefined) lines.push('', entry.comment);
-    lines.push(`@import '${stylesheetSpecifier(plan, entry.path, true)}';`);
+    lines.push(`@import '${stylesheetSpecifier(plan, entry.path, perPackage)}';`);
   }
   if (order.trailer !== undefined) lines.push('', order.trailer);
   write(plan, posix.join(core, COMPONENTS_CSS), `${lines.join('\n').trim()}\n`);
@@ -1258,6 +1274,7 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
     exportKeys: new Map(),
     pending: new Map(),
     location: new Map(),
+    originals: new Map(),
   };
   const { root, core, families } = plan.options;
   for (const name of Object.keys(families.packages)) {
@@ -1312,6 +1329,10 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
       const formatted = await plan.options.format(absolute, text);
       if (formatted !== text) writeFileSync(absolute, formatted);
     }
+    // A file the run wrote and formatting returned to what it was is not a change.
+    plan.result.written = plan.result.written.filter(
+      (path) => readFileSync(join(root, path), 'utf8') !== plan.originals.get(path),
+    );
   }
   return plan.result;
 }

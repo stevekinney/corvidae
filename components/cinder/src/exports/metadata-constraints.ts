@@ -1,9 +1,9 @@
 /** Generated root exports for component constraints metadata. Do not edit. */
 
+import buttonConstraintsJson from '@lostgradient/button/components/button/button.constraints.json' with { type: 'json' };
 import inputConstraintsJson from '@lostgradient/input/components/input/input.constraints.json' with { type: 'json' };
-import buttonConstraintsJson from '../components/button/button.constraints.json' with { type: 'json' };
-import modalConstraintsJson from '../components/modal/modal.constraints.json' with { type: 'json' };
-import pricingCardConstraintsJson from '../components/pricing-card/pricing-card.constraints.json' with { type: 'json' };
+import modalConstraintsJson from '@lostgradient/modal/components/modal/modal.constraints.json' with { type: 'json' };
+import pricingCardConstraintsJson from '@lostgradient/pricing-card/components/pricing-card/pricing-card.constraints.json' with { type: 'json' };
 /** Machine-readable usage constraints for this component. */
 export const buttonConstraints = buttonConstraintsJson;
 /** Machine-readable usage constraints for this component. */

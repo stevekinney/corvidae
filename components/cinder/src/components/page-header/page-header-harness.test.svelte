@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Button from '../button/button.svelte';
-  import StaleRegion from '../stale-region/stale-region.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import StaleRegion from '@lostgradient/stale-region/components/stale-region/stale-region.svelte';
   import PageHeader from './page-header.svelte';
   import type { PageHeaderStatusPlacement } from './page-header.types.ts';
 

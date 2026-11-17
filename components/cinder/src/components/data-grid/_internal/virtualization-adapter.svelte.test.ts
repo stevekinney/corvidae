@@ -2,11 +2,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { setupHappyDom } from '@lostgradient/testing';
 import {
   DataGridVirtualizationAdapter,
   type DataGridVirtualizationAdapterOptions,
-} from './virtualization-adapter.svelte.ts';
+} from '@lostgradient/data-grid/components/data-grid/_internal/virtualization-adapter.svelte.ts';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

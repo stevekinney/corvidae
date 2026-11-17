@@ -28,7 +28,7 @@
   } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Kbd from '@lostgradient/kbd/components/kbd/kbd.svelte';
   import { setCommandListContext } from '@lostgradient/foundation/components/_internal/command-list-context.ts';
   import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';

@@ -7,14 +7,14 @@
  */
 
 @import './index.css';
-@import '../components/button/button.css';
-@import '../components/color-picker/color-picker.css';
+@import '@lostgradient/button/button.css';
+@import '@lostgradient/color-picker/color-picker.css';
 @import '@lostgradient/color-swatch-picker/color-swatch-picker.css';
 @import '@lostgradient/input/input.css';
-@import '../components/number-input/number-input.css';
-@import '../components/popover/popover.css';
+@import '@lostgradient/number-input/number-input.css';
+@import '@lostgradient/popover/popover.css';
 @import '@lostgradient/segmented-control/segmented-control.css';
-@import '../components/side-navigation/side-navigation.css';
+@import '@lostgradient/side-navigation/side-navigation.css';
 /* side-navigation.css intentionally carries no per-item styling — the row
    appearance (text-decoration:none, padding, colors, active indicator) lives in
    navigation-item.css. Without this import the sidebar links fall back to bare

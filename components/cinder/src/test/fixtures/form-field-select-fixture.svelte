@@ -15,7 +15,7 @@
 
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import Select from '../../components/select/select.svelte';
+  import Select from '@lostgradient/select/components/select/select.svelte';
 
   let {
     fieldId,

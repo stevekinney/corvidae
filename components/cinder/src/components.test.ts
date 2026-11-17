@@ -2,8 +2,8 @@ import { sveltePlugin, throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { mkdir } from 'node:fs/promises';
 
+import Button from '@lostgradient/button/components/button/button.svelte';
 import { allowCinderTestStyleBlock } from '@lostgradient/component-tooling/scripts/preload.ts';
-import Button from './components/button/button.svelte';
 
 describe('svelte plugin', () => {
   test('preload permits only colocated Cinder style fixtures', () => {

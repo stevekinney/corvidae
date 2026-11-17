@@ -2,7 +2,7 @@
 /* MenuBar renders DropdownItem, DropdownMenu, DropdownGroup, DropdownLabel,
  * and DropdownSeparator inside its overflow menus. Pull in their styles so
  * that importing `cinder/menu-bar` is self-sufficient. */
-@import '../dropdown/dropdown.css';
+@import '@lostgradient/dropdown/dropdown.css';
 
 @layer cinder.components {
   .cinder-menu-bar {

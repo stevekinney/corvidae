@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Toolbar } from '@lostgradient/toolbar/components/toolbar/index.ts';
-  import { Button } from '../../components/button/index.ts';
-  import { NumberInput } from '../../components/number-input/index.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
+  import { NumberInput } from '@lostgradient/number-input/components/number-input/index.ts';
   import { Segment } from '@lostgradient/segmented-control/components/segment/index.ts';
   import { SegmentedControl } from '@lostgradient/segmented-control/components/segmented-control/index.ts';
 

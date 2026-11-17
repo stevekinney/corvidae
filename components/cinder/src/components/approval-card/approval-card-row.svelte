@@ -90,10 +90,10 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { untrack } from 'svelte';
 
-  import Button from '../button/button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
-  import CodeBlock from '../code-block/code-block.svelte';
-  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
+  import CodeBlock from '@lostgradient/code-block/components/code-block/code-block.svelte';
+  import InlineConfirm from '@lostgradient/inline-confirm/components/inline-confirm/inline-confirm.svelte';
   import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
   import ApprovalCardSettled from './approval-card-settled.svelte';
   import ApprovalCardFactsLine from './approval-card-facts-line.svelte';

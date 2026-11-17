@@ -82,7 +82,7 @@ describe('PhoneInput rendering', () => {
     const { container } = render(PhoneInput, { props: { id: 'p', label: 'Phone' } });
 
     expect(source).toContain("from '@lostgradient/input/components/input/index.ts';");
-    expect(source).toContain("from '../select/index.ts';");
+    expect(source).toContain("from '@lostgradient/select/components/select/index.ts';");
     expect(styles).not.toContain('background-image');
     expect(styles).toContain('.cinder-phone-input__country .cinder-select option');
     expect(styles).toContain('text-indent: 0;');

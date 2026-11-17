@@ -14,8 +14,8 @@
 
 <script lang="ts">
   import { onDestroy, type Component } from 'svelte';
-  import { default as ConfirmDialog } from '../confirm-dialog/index.ts';
-  import { default as Modal } from '../modal/index.ts';
+  import { default as ConfirmDialog } from '@lostgradient/confirm-dialog/components/confirm-dialog/index.ts';
+  import { default as Modal } from '@lostgradient/modal/components/modal/index.ts';
   import {
     setModalContext,
     type ModalEntry,

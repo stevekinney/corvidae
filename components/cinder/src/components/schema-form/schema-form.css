@@ -2,7 +2,7 @@
 @import '@lostgradient/input/input.css';
 @import '@lostgradient/textarea/textarea.css';
 @import '../duration-field/duration-field.css';
-@import '../setting-row/setting-row.css';
+@import '@lostgradient/setting-row/setting-row.css';
 @import '@lostgradient/tag-input/tag-input.css';
 
 @layer cinder.components {

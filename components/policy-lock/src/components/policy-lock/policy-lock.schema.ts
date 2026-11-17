@@ -1,0 +1,34 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description: 'Stable id for the lock explanation.',
+    },
+    reason: {
+      type: 'string',
+      description: 'Required explanation of why the setting is managed.',
+    },
+    source: {
+      type: 'string',
+      description: 'Name of the policy source, when the host can name it.',
+    },
+    scope: {
+      type: 'string',
+      description:
+        'Policy scope, rendered as a Badge when non-empty—`scope=""` renders nothing, the same as omitted (`{#if scope}`).',
+    },
+    class: {
+      type: 'string',
+      description: "Additional class merged with the component's root class.",
+    },
+  },
+  additionalProperties: false,
+  required: ['id', 'reason'],
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

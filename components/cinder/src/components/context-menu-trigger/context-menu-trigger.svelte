@@ -18,7 +18,7 @@
 <script lang="ts">
   import type { ContextMenuTriggerProps } from './context-menu-trigger.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import { getDropdownRegisterTrigger } from '../dropdown/dropdown.context.ts';
+  import { getDropdownRegisterTrigger } from '@lostgradient/dropdown/components/dropdown/dropdown.context.ts';
   import { getContextMenuContext } from '../context-menu/context-menu.context.ts';
 
   const context = getContextMenuContext();

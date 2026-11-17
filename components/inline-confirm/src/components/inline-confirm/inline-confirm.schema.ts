@@ -1,0 +1,134 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    confirmLabel: {
+      type: 'string',
+      description: 'Label for the confirming action.',
+    },
+    cancelLabel: {
+      type: 'string',
+      description: "Label for the cancelling action. Defaults to `'Cancel'`.",
+      default: 'Cancel',
+    },
+    destructive: {
+      type: 'boolean',
+      description: 'Marks the confirming action as destructive. Defaults to `false`.',
+      default: false,
+    },
+    flush: {
+      type: 'boolean',
+      description:
+        "The strip sits flush inside a bordered container. At the container's start or end it drops\nits own rule there instead of doubling the container's edge. Defaults to `false`.",
+      default: false,
+    },
+    open: {
+      type: 'boolean',
+      description:
+        'Whether the confirmation is open. Bindable, and component-owned on\nclose: confirming, clicking Cancel, and pressing Escape all set this\nto `false` before calling `onConfirm`/`onCancel`, so a bound parent\nobserves the confirmation as already closed by the time either\ncallback runs—neither callback can veto or delay that close. Defaults\nto `false`.',
+      default: false,
+    },
+    presentation: {
+      enum: ['strip', 'two-press'],
+      description: 'The in-flow strip (default) or a single guarded action button.',
+    },
+    armed: {
+      type: 'boolean',
+      description: 'Bindable armed state for two-press presentation.',
+    },
+    requestKey: {
+      type: 'string',
+      description: 'Request identity; changing it disarms two-press presentation.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disables and disarms two-press presentation.',
+    },
+    blocked: {
+      type: 'boolean',
+      description:
+        'Blocks interaction while keeping the action focusable for an explanatory reason.',
+    },
+    requiresSecondPress: {
+      type: 'boolean',
+      description: 'Requires a second press; defaults to `true` in two-press presentation.',
+    },
+    mutating: {
+      type: 'boolean',
+      description:
+        'Marks the two-press action as one that changes something, so a stale `StaleRegion` makes it inert.',
+    },
+    ariaDisabled: {
+      type: 'boolean',
+      description: 'Explicit aria-disabled value for a blocked action.',
+    },
+    armedLabel: {
+      type: 'string',
+      description: 'Full accessible label shown after the first press.',
+    },
+    armedHint: {
+      type: 'string',
+      description: 'Status text shown while the two-press action is armed.',
+    },
+    armedEscapeHint: {
+      type: 'string',
+      description: 'Optional keyboard instruction shown beside the armed status on fine pointers.',
+    },
+    loading: {
+      type: 'boolean',
+      description: 'Shows a loading state on the action button.',
+    },
+    loadingLabel: {
+      type: 'string',
+      description: 'Accessible loading label for the action button.',
+    },
+    ariaDescribedBy: {
+      type: 'string',
+      description: "Id referenced by the action button's aria-describedby.",
+    },
+    class: {
+      type: 'string',
+      description: "Additional class merged with the component's root class.",
+    },
+    hintClass: {
+      type: 'string',
+      description: 'Additional class merged with the two-press status hint.',
+    },
+    hintId: {
+      type: 'string',
+      description: 'Id assigned to the two-press status hint.',
+    },
+    prompt: {
+      type: 'string',
+    },
+  },
+  additionalProperties: false,
+  required: ['confirmLabel'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description:
+          'Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open.',
+      },
+      {
+        name: 'onCancel',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the user cancels the action (via the Cancel action or Escape), after `open` is already set to `false`.',
+      },
+      {
+        name: 'onConfirm',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the user confirms the action, after `open` is already set to `false`.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

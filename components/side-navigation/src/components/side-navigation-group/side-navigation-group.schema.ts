@@ -1,0 +1,61 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: 'Visible section header label.',
+    },
+    id: {
+      type: 'string',
+      description:
+        'Optional stable id for the root <li>. Trigger uses `${id}-trigger`, panel uses `${id}-panel`. If omitted, generated via useId.',
+    },
+    collapsible: {
+      type: 'boolean',
+      description:
+        'Whether the group opens and closes. Default: true. Set `false` for a static section: its label\nis plain text over an always-visible list, and in a collapsed sidebar the label gives way to\na hairline between sections. `expanded` and `disabled` do nothing on a static group.',
+    },
+    expanded: {
+      type: 'boolean',
+      description: 'Whether the group is expanded. Bindable. Default: true.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'When true, the disclosure button is disabled. Default: false.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional CSS class merged with `.cinder-side-navigation-group`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['label'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'badge',
+        reason: 'function-or-snippet',
+        description:
+          'Optional trailing badge rendered inside the header button after the label, before the chevron.',
+      },
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description:
+          'Must be <li>-wrapped NavigationItems (or SideNavigationItems) rendered inside the disclosed <ul>.',
+      },
+      {
+        name: 'icon',
+        reason: 'function-or-snippet',
+        description: 'Optional leading icon rendered inside the header button before the label.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

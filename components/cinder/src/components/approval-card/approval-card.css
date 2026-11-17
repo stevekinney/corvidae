@@ -5,12 +5,12 @@
  * between `src/` and generated `dist/`. */
 @import '@lostgradient/alert/alert.css';
 @import '@lostgradient/badge/badge.css';
-@import '../button/button.css';
-@import '../card/card.css';
+@import '@lostgradient/button/button.css';
+@import '@lostgradient/card/card.css';
 @import '@lostgradient/checkbox/checkbox.css';
-@import '../code-block/code-block.css';
-@import '../copy-button/copy-button.css';
-@import '../json-editor/json-editor.css';
+@import '@lostgradient/code-block/code-block.css';
+@import '@lostgradient/copy-button/copy-button.css';
+@import '@lostgradient/json-editor/json-editor.css';
 @import '@lostgradient/json-viewer/json-viewer.css';
 @import '@lostgradient/link/link.css';
 @import '../payload-inspector/payload-inspector.css';

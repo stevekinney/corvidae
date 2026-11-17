@@ -1,0 +1,53 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      description: 'HTML id applied to the dropdown root element. Auto-generated when omitted.',
+    },
+    open: {
+      type: 'boolean',
+      description: 'Controls the open state of the dropdown menu; bindable for controlled usage.',
+    },
+    placement: {
+      enum: ['top-start', 'top-end', 'bottom-start', 'bottom-end'],
+      description:
+        'Preferred menu placement relative to the trigger. Default `bottom-start`.\nThe rendered menu may still flip to stay within the viewport.',
+    },
+    class: {
+      type: 'string',
+      description: "Additional class names merged with the component's root class.",
+    },
+    sheetBelow: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          const: false,
+        },
+      ],
+      description:
+        "Viewport width below which the menu docks to the bottom edge as a sheet,\nwith the bottom Drawer's geometry, instead of anchoring to its trigger.\nKeyboard, focus, and dismissal behave exactly as when anchored. A simple\nCSS length such as `'640px'`, or `false` to always anchor. Default\n`'640px'`.",
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+      },
+      {
+        name: 'trigger',
+        reason: 'function-or-snippet',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

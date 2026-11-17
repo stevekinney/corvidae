@@ -1,0 +1,66 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    granted: {
+      type: 'boolean',
+      description: 'Whether the consumer-authorized action or section is available.',
+    },
+    variant: {
+      enum: ['inline', 'section'],
+      description: 'Presentation mode.',
+      default: 'inline',
+    },
+    reason: {
+      type: 'string',
+      description: 'Human-readable explanation shown to users and wired to assistive technology.',
+    },
+    requirement: {
+      type: 'string',
+      description:
+        'Named scope, permission, or policy requirement. A section gate shows it small and monospaced on its own line, as "requires <requirement>".',
+    },
+    title: {
+      type: 'string',
+      description:
+        "Heading of a denied `'section'` gate, in the person's words, such as \"Your sign-in can't\nopen Hooks\". Ignored by the inline variant.",
+      default: 'Section locked',
+    },
+    headingLevel: {
+      enum: [1, 2, 3, 4, 5, 6],
+      description: 'Heading level of the section title.',
+      default: 3,
+    },
+    layout: {
+      enum: ['inline', 'page'],
+      description: "Layout of a denied `'section'` gate. Ignored by the inline variant.",
+      default: 'inline',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with the denied-state wrapper or section placeholder.',
+    },
+  },
+  additionalProperties: false,
+  required: ['granted', 'reason'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          'Actions rendered under a denied `\'section\'` gate, such as "See your scopes" or "Back to\nHome". Give them the secondary button variant: a gate has no primary action.',
+      },
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description: 'Gated content. Rendered untouched when access is granted.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

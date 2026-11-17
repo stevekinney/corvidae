@@ -30,9 +30,9 @@
   import Download from '@lucide/svelte/icons/download';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Badge from '@lostgradient/badge/components/badge/badge.svelte';
-  import Button from '../button/button.svelte';
-  import CodeBlock from '../code-block/code-block.svelte';
-  import CopyButton from '../copy-button/copy-button.svelte';
+  import Button from '@lostgradient/button/components/button/button.svelte';
+  import CodeBlock from '@lostgradient/code-block/components/code-block/code-block.svelte';
+  import CopyButton from '@lostgradient/copy-button/components/copy-button/copy-button.svelte';
   import InlineLoading from '@lostgradient/inline-loading/components/inline-loading/inline-loading.svelte';
   import JsonViewer from '@lostgradient/json-viewer/components/json-viewer/json-viewer.svelte';
   import Segment from '@lostgradient/segmented-control/components/segment/segment.svelte';

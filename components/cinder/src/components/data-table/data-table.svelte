@@ -27,12 +27,12 @@
   import type { Attachment } from 'svelte/attachments';
 
   import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
-  import TableBody from '../table-body/table-body.svelte';
-  import TableCell from '../table-cell/table-cell.svelte';
-  import TableHeaderCell from '../table-header-cell/table-header-cell.svelte';
-  import TableHeader from '../table-header/table-header.svelte';
-  import TableRow from '../table-row/table-row.svelte';
-  import TableRoot from '../table/table.svelte';
+  import TableBody from '@lostgradient/table/components/table-body/table-body.svelte';
+  import TableCell from '@lostgradient/table/components/table-cell/table-cell.svelte';
+  import TableHeaderCell from '@lostgradient/table/components/table-header-cell/table-header-cell.svelte';
+  import TableHeader from '@lostgradient/table/components/table-header/table-header.svelte';
+  import TableRow from '@lostgradient/table/components/table-row/table-row.svelte';
+  import TableRoot from '@lostgradient/table/components/table/table.svelte';
 
   import { overflowFadeEdges } from '@lostgradient/foundation/utilities/attachments.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';

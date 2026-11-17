@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '@lostgradient/badge/badge.css';
-@import '../code-block/code-block.css';
+@import '@lostgradient/code-block/code-block.css';
 @import '@lostgradient/collapsible/collapsible.css';
 @import '@lostgradient/link/link.css';
 @import '@lostgradient/progress/progress.css';

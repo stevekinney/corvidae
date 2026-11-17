@@ -3,8 +3,8 @@
   Not part of the public API; SchemaFormBody renders it inside the field's fieldset.
 -->
 <script lang="ts">
-  import KeyValueEditor from '../key-value-editor/key-value-editor.svelte';
-  import type { KeyValueEntry } from '../key-value-editor/key-value-editor.types.ts';
+  import KeyValueEditor from '@lostgradient/key-value-editor/components/key-value-editor/key-value-editor.svelte';
+  import type { KeyValueEntry } from '@lostgradient/key-value-editor/components/key-value-editor/key-value-editor.types.ts';
 
   let {
     label,

@@ -8,7 +8,7 @@
   import Plus from '@lucide/svelte/icons/plus';
   import X from '@lucide/svelte/icons/x';
 
-  import { default as Popover } from '../popover/index.ts';
+  import { default as Popover } from '@lostgradient/popover/components/popover/index.ts';
   import FilterBarOptions from './filter-bar-options.svelte';
   import { appliedSummary, appliedValues } from './filter-bar.utilities.ts';
   import type { AppliedFilter, ChoiceFacet } from './filter-bar.types.ts';

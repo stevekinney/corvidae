@@ -23,7 +23,7 @@ describe('--cinder-type-tab-size (declaration, value, usage)', () => {
     const consumers = [
       '../../../input/src/components/input/input.css',
       '../../../textarea/src/components/textarea/textarea.css',
-      '../components/code-block/code-block.css',
+      '../../../code-block/src/components/code-block/code-block.css',
     ];
     for (const relativePath of consumers) {
       const consumerCss = readFileSync(

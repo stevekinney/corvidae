@@ -109,6 +109,7 @@ const TREE: Record<string, string> = {
     '/* The component stylesheets. */',
     '',
     "@import './components/_partial.css';",
+    "@import '../components/card/card-surface.css';",
     "@import '../components/button/button.css';",
     '',
     '/* Card sits after button. */',
@@ -151,6 +152,7 @@ const TREE: Record<string, string> = {
   [`${CORE}/src/components/card/index.ts`]:
     "import './card.css';\nimport Card from './card.svelte';\n\nexport default Card;\n",
   [`${CORE}/src/components/card/card.css`]: '.card { color: green; }\n',
+  [`${CORE}/src/components/card/card-surface.css`]: '.card-surface { color: teal; }\n',
   [`${CORE}/src/components/card/card.svelte`]: [
     '<script lang="ts">',
     "  import Button from '../button/button.svelte';",
@@ -272,6 +274,7 @@ describe('the layout', () => {
     const order = readComponentsCssOrder(TREE[`${CORE}/src/styles/components.css`] ?? '');
     expect(order.imports).toEqual([
       { path: 'src/styles/components/_partial.css', comment: '/* The component stylesheets. */' },
+      { path: 'src/components/card/card-surface.css' },
       { path: 'src/components/button/button.css' },
       { path: 'src/components/card/card.css', comment: '/* Card sits after button. */' },
     ]);
@@ -400,12 +403,17 @@ describe('extract-families', () => {
       [
         '/* The component stylesheets. */',
         "@import '@lostgradient/foundation/components/_partial.css';",
+        "@import '@lostgradient/card/components/card/card-surface.css';",
         "@import '@lostgradient/button/styles';",
         '',
         '/* Card sits after button. */',
-        "@import '@lostgradient/card/styles';",
+        "@import '@lostgradient/card/card.css';",
         '',
       ].join('\n'),
+    );
+    // A family whose lines sit apart is imported line by line; its stylesheet keeps their order.
+    expect(read(root, 'components/card/src/styles/index.css')).toContain(
+      "@import '../components/card/card-surface.css';\n@import '../components/card/card.css';",
     );
     expect(read(root, 'components/button/src/styles/index.css')).toContain(
       "@import '../components/button/button.css';",
