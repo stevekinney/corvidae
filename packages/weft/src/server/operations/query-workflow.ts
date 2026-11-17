@@ -1,15 +1,13 @@
 import { z } from 'zod';
 
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { readRestTextBody } from '../rest-body.ts';
-import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
 import {
-  assertOperationEngineMethods,
+  type UnknownRestBinding,
   invalidParamsFault,
-  undeclaredMessageFault,
-} from './operation-helpers.ts';
+  readRestTextBody,
+} from '@lostgradient/backchannel/internals';
+import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
+import { assertOperationEngineMethods, undeclaredMessageFault } from './operation-helpers.ts';
 
 const queryWorkflowInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow to query.'),

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import { type UnknownRestBinding, invalidParamsFault } from '@lostgradient/backchannel/internals';
 import {
   IdempotencyKeyPurgedError,
   WorkflowAlreadyExistsError,
@@ -11,12 +13,8 @@ import {
   WorkerStartOverrideRejectedError,
 } from '../../core/start-workflow-validation.ts';
 import type { SearchAttributeSchema, StartOptions } from '../../core/types.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import {
-  invalidParamsFault,
   workerStartOverrideRejectedFault,
   workerVersionRemovedFault,
 } from './operation-helpers.ts';

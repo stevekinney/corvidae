@@ -1,5 +1,5 @@
-import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '../src/server/authorization-scope.ts';
-import { compareStrings } from '../src/server/json-schema-utilities.ts';
+import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '@lostgradient/backchannel';
+import { compareStrings } from '@lostgradient/backchannel/internals';
 
 const UNSUPPORTED_COMBINATOR = Symbol('unsupported-combinator');
 

@@ -66,6 +66,8 @@ export type FakePluginHost = {
   lockReason?: 'deployment';
   /** Makes the next reads fail with a status. */
   failReads: number;
+  /** Holds every read of the plugins until this settles, so a test can look at the page while it loads. */
+  holdReads?: Promise<void>;
   readonly requests: HostRequest[];
   restore(): void;
 };
@@ -168,6 +170,8 @@ export function installFakePluginHost(
   plugins: PluginFixture[],
   options: {
     lockReason?: 'deployment';
+    /** Holds every read of the plugins until this settles. */
+    holdReads?: Promise<void>;
     restartApplies?: boolean;
     downFor?: number;
     answersBeforeStopping?: number;
@@ -187,6 +191,7 @@ export function installFakePluginHost(
     launch: 'bun run start',
     unloaded: [],
     ...(options.lockReason === undefined ? {} : { lockReason: options.lockReason }),
+    ...(options.holdReads === undefined ? {} : { holdReads: options.holdReads }),
     requests: [],
     restore: () => undefined,
   };
@@ -221,6 +226,7 @@ export function installFakePluginHost(
     }
     host.requests.push({ method, path, body });
     if (method === 'GET') {
+      if (host.holdReads !== undefined && path === '/host/plugins') await host.holdReads;
       if (host.failReads > 0) {
         host.failReads -= 1;
         return Response.json({ error: 'failed' }, { status: 500 });

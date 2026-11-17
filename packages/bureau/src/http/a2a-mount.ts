@@ -21,7 +21,7 @@ import type { BureauWorkspaceHost } from './workspace-principal.ts';
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type { OperationHandlerMount } from '@lostgradient/weft';
+import type { OperationHandlerMount } from '@lostgradient/backchannel';
 import {
   type A2AHandler,
   type A2ASecurityDeclaration,

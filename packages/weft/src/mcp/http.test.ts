@@ -2,6 +2,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { anonymousPrincipal, principalFromJwtClaims } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
@@ -10,7 +11,6 @@ import { Engine } from '../core/engine.ts';
 import { activity, type DefinitionSchema, type WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { serve, type WeftServer } from '../server/index.ts';
-import { anonymousPrincipal, principalFromJwtClaims } from '../server/principal.ts';
 import { createMcpEndpoint, handleMcpHttpRequest, type McpEndpoint } from './http.ts';
 import { connectInProcessClient, readJsonRpcResponse } from './mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';

@@ -16,7 +16,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module events-catalog-operation
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { bureauEventCatalog } from '../../bureau-event-catalog.ts';

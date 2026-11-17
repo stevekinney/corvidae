@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { encode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import { encodeScheduleRunMetadata } from '../../core/engine/schedule-run-metadata.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   getWorkflowFinalizerOperation,
   getWorkflowFinalizerRestBinding,

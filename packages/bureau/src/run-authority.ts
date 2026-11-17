@@ -1,8 +1,9 @@
-import { readBackendDescriptors, withBackendDescriptors } from '@lostgradient/operative';
-import type {
-  ContentSourceResolver,
-  RunOptions,
-  SessionInputPayload,
+import {
+  readBackendDescriptors,
+  withBackendDescriptors,
+  type ContentSourceResolver,
+  type RunOptions,
+  type SessionInputPayload,
 } from '@lostgradient/operative';
 import {
   freezeToolRequestContext,
@@ -15,7 +16,7 @@ import {
   principalFromApiKey,
   principalFromUnauthenticatedLocal,
   type AuthenticatedPrincipal,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 import { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes.ts';
 import { mayAccessOwnedResource } from './http/owner-predicate.ts';

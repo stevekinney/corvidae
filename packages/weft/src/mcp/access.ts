@@ -1,8 +1,8 @@
+import { type AuthorizationScope, type Principal } from '@lostgradient/backchannel';
+import { isAuthenticated } from '@lostgradient/backchannel/internals';
 import type { Engine } from '../core/engine.ts';
 import type { ListFilter, PaginatedResult, WorkflowState, WorkflowSummary } from '../core/types.ts';
 import { WeftError } from '../core/weft-error.ts';
-import type { AuthorizationScope } from '../server/authorization-scope.ts';
-import { isAuthenticated, type Principal } from '../server/principal.ts';
 
 /** Execution context shared by MCP tools and resources. */
 export type McpAccessContext = {

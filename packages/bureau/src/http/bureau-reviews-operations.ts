@@ -42,11 +42,8 @@
  * @module bureau-reviews-operations
  */
 
-import {
-  defineOperation,
-  type OperationFault,
-  type RegistryAgnosticEngine,
-} from '@lostgradient/weft';
+import { type RegistryAgnosticEngine } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { reviewReceiptOf } from '../tasks/respond-to-task.ts';

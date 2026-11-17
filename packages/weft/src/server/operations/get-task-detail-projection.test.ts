@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromJwtClaims } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromJwtClaims } from '../principal.ts';
 import { createLiveOperationRegistry, REST_BINDINGS } from '../rest-bindings.ts';
 import * as fixture from './get-task-detail.test-support.ts';
 import {

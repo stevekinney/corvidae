@@ -43,7 +43,7 @@ import {
  * @module hooks-operations
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { isSharedWebhook } from '../../hooks/workspace-hook-events.ts';

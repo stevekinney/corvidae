@@ -7,7 +7,7 @@ import {
   createOperationHandler,
   createOperationHandlerAuthenticator,
   principalFromApiKey,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import type { PendingReview, ResolvedReview, ResolveReviewInput } from '../bureau-types/reviews.ts';

@@ -1,24 +1,26 @@
 import { z } from 'zod';
 
 import {
+  type OperationContext,
+  type OperationFault,
+  type TransportAvailability,
+  type UnarySchemaOperationDefinition,
+  type UnknownKeyPolicy,
+  defineOperation,
+  validateOperationName,
+} from '@lostgradient/backchannel';
+import {
+  type AccessPolicy,
+  type AuthorizationDecision,
+  invalidParamsFault,
+} from '@lostgradient/backchannel/internals';
+import {
   WorkflowAlreadyExistsError,
   WorkflowNotRegisteredError,
 } from '../../core/engine/errors.ts';
 import { runtimeWorkflowEngine } from '../../core/runtime-workflow-engine.ts';
 import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
 import type { WorkflowDefinition } from '../../core/types.ts';
-import type { AccessPolicy } from '../authorization.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import type { UnarySchemaOperationDefinition } from '../operation-registry.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { invalidParamsFault } from '../operations/operation-helpers.ts';
-import type {
-  AuthorizationDecision,
-  OperationContext,
-  TransportAvailability,
-  UnknownKeyPolicy,
-} from './types.ts';
-import { validateOperationName } from './types.ts';
 
 const StartHandleSchema = z.object({
   workflowId: z.string(),

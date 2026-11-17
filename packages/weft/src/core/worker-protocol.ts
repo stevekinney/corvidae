@@ -1,4 +1,4 @@
-import { copyBytesToArrayBuffer } from './byte-arrays.ts';
+import { copyBytesToArrayBuffer } from '@lostgradient/backchannel/internals';
 import { encode, validateCloneable } from './codec.ts';
 import type { ContextOperationRequest } from './context.ts';
 import type { FailureCategory, OperationRequest, WorkerOutboundMessage } from './types.ts';

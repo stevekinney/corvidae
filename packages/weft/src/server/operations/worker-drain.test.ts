@@ -3,6 +3,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { type OperationFault, principalFromApiKey } from '@lostgradient/backchannel';
+import { executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
@@ -13,9 +15,6 @@ import {
   testWorkerManifest,
 } from '../../worker/registry-fixtures.test-support.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
-import { executeOperation } from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import { createOperationTestEngine } from './operation-registry-test-helpers.test-support.ts';
 import {

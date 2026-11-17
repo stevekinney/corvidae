@@ -29,7 +29,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  */
 
 import { type DecisionRequest, DecisionSchemaError } from '@lostgradient/operative';
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { BureauError } from '../../bureau-errors.ts';

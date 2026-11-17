@@ -15,7 +15,7 @@ import {
   HASHING_EMBEDDER_ID,
 } from '@lostgradient/memory';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { encodeCursor } from '@lostgradient/weft';
+import { encodeCursor } from '@lostgradient/backchannel';
 
 import {
   SETTING_KEYS,

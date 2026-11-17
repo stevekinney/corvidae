@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createInMemoryReplayLiveBackend } from './in-memory-replay-live-backend.ts';
 import {
+  createInMemoryReplayLiveBackend,
   createReplayLiveFeed,
   encodeCursor,
   type SequencedEventEnvelope,
-} from './workflow-event-feed.ts';
+} from '@lostgradient/backchannel';
 
 type ProbeEnvelope = SequencedEventEnvelope & { readonly kind: string; readonly payload?: unknown };
 

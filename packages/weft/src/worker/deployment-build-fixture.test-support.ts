@@ -5,12 +5,11 @@
  */
 import { expect } from 'bun:test';
 
+import type { OperationFault } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { decode } from '../core/codec/index.ts';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowState } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
-import type { OperationFault } from '../server/operation-fault.ts';
+import { type WorkflowState, workflow } from '../core/types.ts';
 import { bindingStampShard } from './deployment-records.ts';
 import { WorkerDeploymentCatalog } from './deployment-routing.ts';
 import type { WorkerManifest } from './manifest/types.ts';

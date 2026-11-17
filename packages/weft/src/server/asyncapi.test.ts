@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  generateAsyncApiDocument as generateDocument,
+  isDiscoverable,
+  type AsyncApiOptions,
+  type OperationRegistry,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { VERSION } from '../version.ts';
-import { generateAsyncApiDocument as generateDocument, type AsyncApiOptions } from './asyncapi.ts';
-import { isDiscoverable } from './discovery-filter.ts';
 import { serve, type WeftServer } from './index.ts';
-import type { OperationRegistry } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 import { weftDiscoveryInfo } from './weft-documents.ts';
 

@@ -14,7 +14,7 @@
  */
 
 import { sessionOwnerOf } from '@lostgradient/operative';
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { BureauShuttingDownError } from '../../bureau-errors.ts';

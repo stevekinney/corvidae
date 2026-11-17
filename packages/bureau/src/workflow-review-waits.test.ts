@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MemoryStorage } from '@lostgradient/storage';
-import { principalFromApiKey, type WorkflowState } from '@lostgradient/weft';
+import { type WorkflowState } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 

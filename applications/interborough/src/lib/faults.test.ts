@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { FaultCode, WeftErrorCode } from '@lostgradient/weft';
-import { HttpClientError } from '@lostgradient/weft';
+import type { FaultCode } from '@lostgradient/backchannel';
+import { HttpClientError, type WeftErrorCode } from '@lostgradient/weft';
 
 import {
   classifyFault,

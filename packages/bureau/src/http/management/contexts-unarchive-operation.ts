@@ -9,7 +9,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  */
 
 import { sessionOwnerOf } from '@lostgradient/operative';
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { BureauShuttingDownError } from '../../bureau-errors.ts';

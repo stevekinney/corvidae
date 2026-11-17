@@ -9,7 +9,7 @@
  * @module agent-overrides-wire
  */
 
-import type { Principal } from '@lostgradient/weft';
+import type { Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import {

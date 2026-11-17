@@ -7,16 +7,18 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromStdioLocal } from '@lostgradient/backchannel';
+import {
+  executeOperation,
+  MalformedRouteParameterError,
+  UndeclaredFaultError,
+} from '@lostgradient/backchannel/internals';
 import {
   WorkflowAlreadyExistsError,
   WorkflowNotFoundError,
   WorkflowNotRegisteredError,
 } from '../../core/engine/errors.ts';
-import { principalFromStdioLocal } from '../principal.ts';
-import { MalformedRouteParameterError } from '../rest-binding.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
-import { executeOperation } from './index.ts';
-import { UndeclaredFaultError } from './pipeline-helpers.ts';
 
 async function faultOf(thrown: Error) {
   const result = await executeOperation(
