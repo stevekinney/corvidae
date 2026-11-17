@@ -59,6 +59,7 @@
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import GoalAsked from './goal-asked.svelte';
+  import { goalName } from '../workflows/runs/run-rows.ts';
   import GoalAttempts from './goal-attempts.svelte';
   import GoalVerdictPanel from './goal-verdict-panel.svelte';
   import {
@@ -204,8 +205,8 @@
   const name = $derived.by(() => {
     const found = goal.data;
     if (found === undefined) return undefined;
-    const trimmed = found.identity.name.trim();
-    return trimmed === '' ? found.goalRunId : trimmed;
+    // The one helper every page names a goal with (rows 55f, 55h).
+    return goalName(found);
   });
   usePageLabel(() => ({ path: router.pathname, label: name }));
 

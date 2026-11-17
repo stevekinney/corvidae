@@ -32,6 +32,7 @@
   import { configurationIssuesOf, saveFailure } from './goal-form-failure.ts';
   import { GOAL_FIELD_IDS, GoalFormState, type GoalField } from './goal-form-state.svelte.ts';
   import GoalForm from './goal-form.svelte';
+  import { goalName } from '../workflows/runs/run-rows.ts';
 
   const copy = GOALS_COPY.form;
   /** How long a read is let to finish before its placeholders are drawn (Cinder's loading rule). */
@@ -77,8 +78,8 @@
   const name = $derived.by(() => {
     const found = goal.data;
     if (found === undefined) return undefined;
-    const trimmed = found.identity.name.trim();
-    return trimmed === '' ? found.goalRunId : trimmed;
+    // The one helper every page names a goal with (rows 55f, 55h).
+    return goalName(found);
   });
   // The crumb between Goals and Edit is the goal's name.
   usePageLabel(() => ({ path: goalPath(goalRunId), label: name }));
