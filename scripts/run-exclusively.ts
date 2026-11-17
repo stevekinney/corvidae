@@ -230,10 +230,17 @@ function isProcessGroupAlive(processGroup: number, leaderStartedAt: string | und
 export async function readOwner(lockDirectory: string): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8')) as OwnerRecord;
-  } catch {
+  } catch (error) {
     // Missing or half written: an ownerless lock, which callers judge by its age after a grace.
-    return undefined;
+    // Any other failure to read it is thrown, never read as no owner.
+    if (isAbsentOrPartial(error)) return undefined;
+    throw error;
   }
+}
+
+/** A missing file, or one caught half written: the only reads a record reader treats as absent. */
+export function isAbsentOrPartial(error: unknown): boolean {
+  return errorCode(error) === 'ENOENT' || error instanceof SyntaxError;
 }
 
 /**
@@ -700,9 +707,10 @@ export async function readTicket(
 ): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(queueDirectory, name), 'utf8')) as OwnerRecord;
-  } catch {
+  } catch (error) {
     // Gone (its waiter took its turn or gave up) or half written: no ticket to read yet.
-    return undefined;
+    if (isAbsentOrPartial(error)) return undefined;
+    throw error;
   }
 }
 
@@ -1145,9 +1153,10 @@ export async function terminateProcessGroup(processGroup: number): Promise<void>
     try {
       process.kill(-processGroup, signal);
       return true;
-    } catch {
-      // The group has exited: a signal to our own child's group fails only with ESRCH.
-      return false;
+    } catch (error) {
+      // The group has exited; any other failure to signal our own child's group is thrown.
+      if (errorCode(error) === 'ESRCH') return false;
+      throw error;
     }
   };
   if (!signalGroup('SIGTERM')) return;

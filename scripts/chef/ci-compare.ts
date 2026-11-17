@@ -58,6 +58,8 @@ export interface Comparison {
   run: string;
   conclusion: string;
   complete: boolean;
+  /** Completed without success yet with no failed job: nothing ran that could be judged. */
+  noEvidence: boolean;
   mainRuns: string[];
   jobs: JudgedJob[];
   hasNew: boolean;
@@ -151,9 +153,13 @@ const TEST_JOB = /(^|\s)tests\b|end-to-end|e2e|fixtures|integration/i;
 export function compare(target: RunFailures, main: RunFailures[]): Comparison {
   const jobs = target.jobs.map((job): JudgedJob => {
     const seenIn = main.filter((m) => m.jobs.some((j) => j.name === job.name)).map((m) => m.id);
+    // A test counts as seen only under the same job: one name in another shard or suite is a
+    // different failure.
     const tests = job.tests.map((name): JudgedTest => ({
       name,
-      seenIn: main.filter((m) => m.jobs.some((j) => j.tests.includes(name))).map((m) => m.id),
+      seenIn: main
+        .filter((m) => m.jobs.some((j) => j.name === job.name && j.tests.includes(name)))
+        .map((m) => m.id),
     }));
     // A test job whose log names no failing test cannot be judged by its name alone: a new failure
     // in a shard that is already red on main would read as known.
@@ -162,13 +168,17 @@ export function compare(target: RunFailures, main: RunFailures[]): Comparison {
     return { name: job.name, seenIn, tests, isNew, unknown };
   });
   const complete = target.status === 'completed';
+  // A run that did not succeed yet names no failed job (a startup failure, a cancellation) gives no
+  // evidence either way, so it never passes.
+  const noEvidence = complete && target.conclusion !== 'success' && jobs.length === 0;
   return {
     run: target.id,
     conclusion: target.conclusion,
     complete,
+    noEvidence,
     mainRuns: main.map((m) => m.id),
     jobs,
-    hasNew: !complete || jobs.some((job) => job.isNew),
+    hasNew: !complete || noEvidence || jobs.some((job) => job.isNew),
   };
 }
 
@@ -177,6 +187,8 @@ export function renderComparison(comparison: Comparison): string {
     `run ${comparison.run}: ${comparison.complete ? comparison.conclusion : 'not complete'}; compared with ${comparison.mainRuns.length} main run(s)`,
   ];
   if (!comparison.complete) lines.push('NOT COMPLETE: wait for the run before judging it.');
+  if (comparison.noEvidence)
+    lines.push(`NO EVIDENCE: the run ended ${comparison.conclusion} with no failed job; rerun it.`);
   for (const job of comparison.jobs) {
     const where = job.seenIn.length === 0 ? 'NEW' : `seen on main in ${job.seenIn.join(', ')}`;
     lines.push(

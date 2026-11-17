@@ -83,6 +83,24 @@ describe('compare', () => {
     expect(result.jobs[0]?.tests.map((t) => t.seenIn.length)).toEqual([1, 0]);
   });
 
+  test('a test seen only under another job is new', () => {
+    const result = compare(failures('1', [['E2E (4/4)', ['chat layout']]]), [
+      ...main,
+      failures('13', [['E2E (4/4)', ['other']]]),
+    ]);
+    expect(result.jobs[0]?.tests[0]?.seenIn).toEqual([]);
+    expect(result.hasNew).toBe(true);
+  });
+
+  test('a run that failed or was cancelled with no failed job never passes', () => {
+    for (const conclusion of ['startup_failure', 'cancelled']) {
+      const result = compare({ id: '1', status: 'completed', conclusion, jobs: [] }, main);
+      expect(result.hasNew).toBe(true);
+      expect(renderComparison(result)).toContain('NO EVIDENCE');
+    }
+    expect(compare(failures('1', []), main).hasNew).toBe(false);
+  });
+
   test('a run that has not finished never passes', () => {
     const result = compare(failures('1', [], 'in_progress'), main);
     expect(result.hasNew).toBe(true);
