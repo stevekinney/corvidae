@@ -9,8 +9,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { normalizeBarData } from '@lostgradient/chart/_internal/chart/chart-bar-data.ts';
 import { formatAcceptDescription } from '@lostgradient/file-upload/components/file-upload/file-upload-utilities.ts';
-import { setValueAtPath } from './components/schema-form/schema-form-model.ts';
-import { issuesByPath } from './components/schema-form/schema-form-validation.ts';
+import { setValueAtPath } from '@lostgradient/schema-form/components/schema-form/schema-form-model.ts';
+import { issuesByPath } from '@lostgradient/schema-form/components/schema-form/schema-form-validation.ts';
 
 describe('a form field named constructor', () => {
   test('keeps its validation message', () => {

@@ -34,7 +34,7 @@ function valueOf(found: Declaration[], selector: string, property: string) {
 
 const files = {
   table: '../table/table.css',
-  dataTable: '../../../../core/src/components/data-table/data-table.css',
+  dataTable: '../../../../data-table/src/components/data-table/data-table.css',
   dataGrid: '../../../../data-grid/src/components/data-grid/data-grid.css',
 } as const;
 

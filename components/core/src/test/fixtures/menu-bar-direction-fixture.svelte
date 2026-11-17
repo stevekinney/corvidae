@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
   import LocaleProvider from '@lostgradient/locale-provider/components/locale-provider/locale-provider.svelte';
-  import MenuBar from '../../components/menu-bar/menu-bar.svelte';
-  import type { MenuBarProps } from '../../components/menu-bar/menu-bar.types.ts';
+  import MenuBar from '@lostgradient/menu-bar/components/menu-bar/menu-bar.svelte';
+  import type { MenuBarProps } from '@lostgradient/menu-bar/components/menu-bar/menu-bar.types.ts';
 
   let {
     menus,

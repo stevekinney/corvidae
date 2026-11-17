@@ -2,7 +2,7 @@
 /**
  * Tests for the `createEventSource` attachment factory.
  *
- * Setup mirrors Cinder's `components/core/src/components/tabs/tabs-activation.test.ts`:
+ * Setup mirrors Cinder's `components/tabs/src/components/tabs/tabs-activation.test.ts`:
  * happy-dom is installed onto `globalThis` before `@testing-library/svelte`
  * loads, so component mount has a working DOM.
  *

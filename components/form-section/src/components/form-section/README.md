@@ -38,7 +38,7 @@ Groups related form fields under a heading with optional description and layout 
 
 ## Grouped sections
 
-`grouped` draws the children as one bordered card with a divider between them, under a larger heading and its description. It is the frame of a settings page: each child is a [`SettingRow`](../../../../core/src/components/setting-row/README.md), and a grouped section is always one column whatever `columns` says.
+`grouped` draws the children as one bordered card with a divider between them, under a larger heading and its description. It is the frame of a settings page: each child is a [`SettingRow`](../../../../setting-row/src/components/setting-row/README.md), and a grouped section is always one column whatever `columns` says.
 
 ```svelte
 <script lang="ts">

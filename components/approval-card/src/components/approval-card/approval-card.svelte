@@ -1,0 +1,1055 @@
+<script lang="ts" module>
+  export type {
+    ApprovalCardCallbacks,
+    ApprovalCardHeadingLevel,
+    ApprovalCardLayout,
+    ApprovalCardProps,
+    ApprovalCardSchemaProps,
+    ApprovalFact,
+    ApprovalFailure,
+    ApprovalOperation,
+    ApprovalOperationKind,
+    ApprovalResolution,
+    ApprovalResolutionDecision,
+    ApprovalResolving,
+    ApprovalSandbox,
+    ApprovalState,
+    ApprovalTool,
+    ApprovalToolRisk,
+  } from './approval-card.types.ts';
+</script>
+
+<script lang="ts">
+  import Check from '@lucide/svelte/icons/check';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import File from '@lucide/svelte/icons/file';
+  import FileDiff from '@lucide/svelte/icons/file-diff';
+  import FilePen from '@lucide/svelte/icons/file-pen';
+  import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    formatRelativeTime,
+    formatTimeOfDay,
+  } from '@lostgradient/foundation/utilities/format-date.ts';
+  import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+  import Card from '@lostgradient/card/components/card/card.svelte';
+  import CodeBlock from '@lostgradient/code-block/components/code-block/code-block.svelte';
+  import CopyButton from '@lostgradient/copy-button/components/copy-button/copy-button.svelte';
+  import Link from '@lostgradient/link/components/link/link.svelte';
+  import PayloadInspector from '@lostgradient/payload-inspector/components/payload-inspector/payload-inspector.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
+  import ApprovalCardActions from './approval-card-actions.svelte';
+  import ApprovalCardDecision from './approval-card-decision.svelte';
+  import ApprovalCardFailure from './approval-card-failure.svelte';
+  import ApprovalCardOutcome from './approval-card-outcome.svelte';
+  import ApprovalCardRow from './approval-card-row.svelte';
+  import {
+    RISK_LABELS,
+    RISK_WORDS,
+    STATE_DOT_STATUS,
+    STATE_LABELS,
+    dedupeFilePaths,
+    describeCountdown,
+    describeCountdownShort,
+    describeFilesTouched,
+    describeDecisionTime,
+    describeExpiry,
+    describeInputRows,
+    inputRepeatsShownFacts,
+    isApprovalActionable,
+    normalizeArgumentsPreviewValue,
+    parseExpirationTimestamp,
+    prepareArgumentsPreview,
+    resolveEffectiveApprovalState,
+    sanitizeEnvironmentNames,
+    splitFilePath,
+    summarizeInput,
+  } from './approval-card-state.ts';
+  import type {
+    ApprovalCardProps,
+    ApprovalResolution,
+    ApprovalState,
+  } from './approval-card.types.ts';
+
+  const generatedId = $props.id();
+
+  let {
+    tool,
+    sandbox,
+    operation,
+    env = [],
+    snapshotId,
+    policyVersion,
+    idempotencyKey,
+    expiresAt,
+    state: approvalState,
+    editableArgs = false,
+    headingLevel = 3,
+    layout = 'card',
+    question,
+    source,
+    sourcePrefix,
+    sourceHref,
+    sourceIn,
+    sourceInHref,
+    said,
+    eyebrow,
+    toolPrefix,
+    requestedAt,
+    consequence,
+    rememberScope,
+    decidedBy,
+    decidedAt,
+    decisionNote,
+    disabledReason,
+    unavailableReason,
+    resolving,
+    failure,
+    notice,
+    result,
+    decidedIn,
+    decidedInHref,
+    facts = [],
+    approveLabel,
+    pauseSentence,
+    why,
+    outcomeLabel,
+    footnote,
+    inputLabel,
+    context,
+    view = $bindable('fields'),
+    now,
+    onResolve,
+    onAskAgain,
+    id,
+    class: customClassName,
+    ...rest
+  }: ApprovalCardProps = $props();
+
+  const rootId = $derived(id ?? generatedId);
+  const rowQuestion = $derived(question ?? `Run ${tool.name}?`);
+  const cardDirection = $derived(/[\u0590-\u08ff]/u.test(rowQuestion) ? 'rtl' : 'ltr');
+  const titleId = $derived(`${rootId}-title`);
+  const saidId = $derived(`${rootId}-said`);
+  let saidOpen = $state(false);
+
+  // Coerce + clamp like Card: schema-driven callers can pass out-of-range or
+  // non-numeric levels, and `h${level}` must never emit invalid markup.
+  const resolvedHeadingLevel = $derived(
+    Number.isFinite(Math.trunc(Number(headingLevel)))
+      ? Math.min(6, Math.max(2, Math.trunc(Number(headingLevel))))
+      : 3,
+  );
+  const titleTag = $derived(`h${resolvedHeadingLevel}`);
+  const sectionTag = $derived(`h${Math.min(6, resolvedHeadingLevel + 1)}`);
+
+  let currentTime = $state<number | undefined>();
+  let expirationTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const expirationTimestamp = $derived(parseExpirationTimestamp(expiresAt));
+  const effectiveState = $derived<ApprovalState>(
+    resolveEffectiveApprovalState(approvalState, expirationTimestamp, currentTime),
+  );
+  const isActionable = $derived(
+    isApprovalActionable(approvalState, expirationTimestamp, currentTime),
+  );
+  // Guards against a non-function truthy value reaching a JS (non-typechecked)
+  // or schema-driven caller — `onResolve?.()` alone would still throw on a
+  // truthy non-function.
+  const hasResolutionCallback = $derived(typeof onResolve === 'function');
+
+  const riskLabel = $derived(RISK_LABELS[tool.risk]);
+  const riskWord = $derived(RISK_WORDS[tool.risk]);
+  const isDetail = $derived(layout === 'detail');
+  const sourceText = $derived(
+    source === undefined
+      ? undefined
+      : `${sourcePrefix ?? (isDetail ? 'Asked by' : 'Approval from')} ${source}`,
+  );
+  const hasSourcePlace = $derived(source !== undefined && sourceIn !== undefined);
+  // How long ago the request was made only matters while someone can still answer it.
+  const requestedDate = $derived(requestedAt === undefined ? undefined : new Date(requestedAt));
+  const requestedValid = $derived(
+    requestedDate !== undefined && !Number.isNaN(requestedDate.getTime()),
+  );
+  const requestedText = $derived.by(() => {
+    if (
+      !requestedValid ||
+      requestedDate === undefined ||
+      (effectiveState !== 'pending' && effectiveState !== 'unavailable')
+    ) {
+      return undefined;
+    }
+    const relative = formatRelativeTime(requestedDate, { now });
+    // The detail page counts how long the question has waited: "waiting 4 min", not "4 min ago".
+    return isDetail && relative !== 'just now'
+      ? `waiting ${relative.replace(/\s+ago$/, '')}`
+      : relative;
+  });
+  const requestedIso = $derived(
+    requestedValid && requestedDate !== undefined ? requestedDate.toISOString() : undefined,
+  );
+  const decidedDate = $derived(decidedAt === undefined ? undefined : new Date(decidedAt));
+  const outcomeTime = $derived(
+    decidedDate !== undefined && !Number.isNaN(decidedDate.getTime())
+      ? formatTimeOfDay(decidedDate)
+      : undefined,
+  );
+  // "Approved by you in Reviews at 10:44 AM" when a card was decided somewhere else, otherwise
+  // "Denied by you" with the time after a comma, as the row writes it too: "Approved by you in
+  // Reviews, 10:46 AM".
+  const outcomeBase = $derived(
+    effectiveState === 'pending' || effectiveState === 'unavailable'
+      ? undefined
+      : `${outcomeLabel ?? STATE_LABELS[effectiveState]}${decidedBy === undefined ? '' : ` by ${decidedBy}`}${decidedIn === undefined ? '' : ` in ${decidedIn}`}`,
+  );
+  const outcomeText = $derived(
+    outcomeBase !== undefined &&
+      decidedIn !== undefined &&
+      outcomeTime !== undefined &&
+      layout !== 'row'
+      ? `${outcomeBase} at ${outcomeTime}`
+      : outcomeBase,
+  );
+  // The Done detail writes the day after the time ("10:33 AM today"); the other layouts keep the clock alone.
+  const outcomeClock = $derived(
+    decidedIn !== undefined && layout !== 'row'
+      ? undefined
+      : isDetail && decidedDate !== undefined && outcomeTime !== undefined
+        ? describeDecisionTime(decidedDate, now)
+        : outcomeTime,
+  );
+  // An approval is green, and every other decision is neutral text: a denial is not an error.
+  const outcomeTone = $derived<'success' | 'neutral'>(
+    effectiveState === 'approved' || effectiveState === 'approved_with_edits'
+      ? 'success'
+      : 'neutral',
+  );
+  const decisionNoteCaption = $derived(
+    decisionNote === undefined
+      ? undefined
+      : effectiveState === 'denied'
+        ? 'Sent to the agent as the reason.'
+        : 'Saved with your decision.',
+  );
+  const isDecidedState = $derived(
+    effectiveState === 'approved' ||
+      effectiveState === 'approved_with_edits' ||
+      effectiveState === 'denied',
+  );
+  const stateText = $derived(STATE_LABELS[effectiveState]);
+  // An approval answered somewhere else replaces the card with what happened and who did it, so
+  // nobody answers twice: "Approved by you in Reviews at 10:44 AM", then one sentence about it.
+  const answeredElsewhere = $derived(
+    layout === 'card' && decidedIn !== undefined && isDecidedState && outcomeText !== undefined,
+  );
+  // A question answered elsewhere has no tool to name, so its sentence is the question itself.
+  const elsewhereSentence = $derived(
+    [
+      outcomeLabel === undefined
+        ? `${rowQuestion.replace(/\?$/, '')}, ${tool.label ?? tool.name}.`
+        : rowQuestion,
+      notice,
+    ]
+      .filter((part) => part !== undefined && part !== '')
+      .join(' '),
+  );
+  // An approval that passed the time its request set says when, unless the host wrote its own.
+  const resolvedNotice = $derived(
+    notice ??
+      (effectiveState === 'expired' && expirationTimestamp !== undefined
+        ? describeExpiry(expirationTimestamp)
+        : undefined),
+  );
+  // The card says who decided and when only once someone did.
+  const showCardOutcome = $derived(
+    outcomeText !== undefined &&
+      (decidedBy !== undefined || decidedAt !== undefined || decidedIn !== undefined),
+  );
+  // The Done detail is the record of a decision: eyebrow, question, who decided and when, the input
+  // and the result. What the tool is and what approving would do are asked only while it is open.
+  const detailDone = $derived(layout === 'detail' && isDecidedState && showCardOutcome);
+  // A read-only approval says why only when there is something to say: the outcome line already
+  // names a decision, so a sentence repeating the state would just be noise.
+  const readonlySummary = $derived(
+    resolvedNotice ??
+      (effectiveState === 'unavailable' && unavailableReason !== undefined
+        ? unavailableReason
+        : showCardOutcome
+          ? undefined
+          : `No approval actions are available because this request is ${stateText.toLowerCase()}.`),
+  );
+  // Only a live countdown is shown. Once the state itself reads "Expired" (via
+  // StatusDot's label), a second "Expired" badge would just repeat the same word.
+  const expirationText = $derived.by(() => {
+    if (
+      approvalState !== 'pending' ||
+      effectiveState !== 'pending' ||
+      expirationTimestamp === undefined ||
+      currentTime === undefined
+    ) {
+      return undefined;
+    }
+    return describeCountdown(expirationTimestamp, currentTime);
+  });
+  // The same deadline as a narrow card writes it, so it shares a line with "Can't be undone".
+  const expirationTextShort = $derived(
+    expirationText === undefined || expirationTimestamp === undefined || currentTime === undefined
+      ? undefined
+      : describeCountdownShort(expirationTimestamp, currentTime),
+  );
+
+  const payloadLabel = $derived(
+    inputLabel ?? (layout === 'card' ? `${tool.name} arguments` : 'Input'),
+  );
+  const hasArgumentsPreview = $derived(operation.argsPreview !== undefined);
+  const editableArgumentsValue = $derived(normalizeArgumentsPreviewValue(operation.argsPreview));
+  const argumentsPreview = $derived(prepareArgumentsPreview(editableArgumentsValue));
+  const inputPairs = $derived(hasArgumentsPreview ? summarizeInput(operation.argsPreview) : []);
+  const canEditArguments = $derived(editableArgs && hasArgumentsPreview);
+  const filesTouched = $derived(dedupeFilePaths(operation.filesTouched ?? []));
+  const filesTouchedTitle = $derived(describeFilesTouched(filesTouched.length));
+  // A patch changes the lines a diff shows; a write replaces a file; anything else just names it.
+  const FileGlyph = $derived(
+    operation.kind === 'patch' ? FileDiff : operation.kind === 'file-write' ? FilePen : File,
+  );
+  const environmentNames = $derived(sanitizeEnvironmentNames(env));
+  // Details holds what the host adds about where the request runs. Without any of it there is nothing to disclose.
+  const hasDetails = $derived(
+    sandbox !== undefined || environmentNames.length > 0 || snapshotId !== undefined,
+  );
+  // The row and decision layouts show the command in the open, and the input under it.
+  const decisionCommand = $derived(
+    operation.kind === 'command' && operation.command ? operation.command : undefined,
+  );
+  const patchDiff = $derived(
+    operation.kind === 'patch' && operation.diff ? operation.diff : undefined,
+  );
+  const hasOpenOperation = $derived(patchDiff !== undefined || filesTouched.length > 0);
+  // A command-only preview is already visible in the open command block, so it gets no input of
+  // its own; a preview with other values shows them all.
+  const argumentsBeyondCommand = $derived(
+    hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]),
+  );
+  const rowInputPairs = $derived(argumentsBeyondCommand ? inputPairs : []);
+  const inputRows = $derived(hasArgumentsPreview ? describeInputRows(operation.argsPreview) : []);
+  const rowInputRows = $derived(argumentsBeyondCommand ? inputRows : []);
+  // The card keeps its arguments and its Details behind disclosures, closed until asked for.
+  // Arguments that only repeat the command shown above get no disclosure of their own.
+  const hasCardArguments = $derived(argumentsBeyondCommand);
+  // The title above already names the tool, so the closed line just says "Arguments"; the
+  // inspector it opens keeps the tool's name, which also names its copy button.
+  const cardArgumentsWord = $derived(inputLabel ?? 'Arguments');
+  const argumentsId = $derived(`${rootId}-arguments`);
+  const detailsId = $derived(`${rootId}-details`);
+  let argumentsOpen = $state(false);
+  let detailsOpen = $state(false);
+
+  // Arguments that only repeat what the facts already show in the open (the command, the target,
+  // the tool) get no input rows of their own.
+  const argumentsRepeatFacts = $derived(
+    inputRepeatsShownFacts(inputPairs, [
+      decisionCommand,
+      tool.name,
+      tool.label,
+      ...facts.map((fact) => fact.value),
+    ]),
+  );
+  const hasDecisionArguments = $derived(hasArgumentsPreview && !argumentsRepeatFacts);
+
+  $effect(() => {
+    clearExpirationTimer();
+
+    if (approvalState === 'pending' && expirationTimestamp !== undefined) {
+      const updateCurrentTime = () => {
+        const nextCurrentTime = Date.now();
+        currentTime = nextCurrentTime;
+        if (nextCurrentTime >= expirationTimestamp) {
+          clearExpirationTimer();
+          return;
+        }
+
+        const nextDelay = Math.min(1_000, expirationTimestamp - nextCurrentTime);
+        expirationTimer = setTimeout(updateCurrentTime, nextDelay);
+      };
+
+      updateCurrentTime();
+    }
+
+    return clearExpirationTimer;
+  });
+
+  function clearExpirationTimer(): void {
+    if (expirationTimer !== undefined) {
+      clearTimeout(expirationTimer);
+      expirationTimer = undefined;
+    }
+  }
+
+  function resolveIfActionable(resolution: ApprovalResolution): void {
+    // Re-check against the wall clock: the countdown timer only ticks once per
+    // second, so a click can land after the deadline but before the next tick.
+    const comparisonTime = expirationTimestamp === undefined ? currentTime : Date.now();
+    // An answer already on its way is the only one: a second press would answer twice.
+    if (resolving !== undefined) return;
+    // Every commit path ends here (Deny, Approve, Confirm edited approval and an armed press), so
+    // a reason given after the approver edited or armed still holds the answer back.
+    if (disabledReason !== undefined) return;
+    if (!isApprovalActionable(approvalState, expirationTimestamp, comparisonTime)) {
+      if (approvalState === 'pending' && expirationTimestamp !== undefined) {
+        currentTime = comparisonTime;
+      }
+      return;
+    }
+    if (typeof onResolve === 'function') onResolve(resolution);
+  }
+</script>
+
+{#snippet sourceName()}
+  {#if sourceHref !== undefined}<Link href={sourceHref}>{source}</Link>{:else}{source}{/if}
+{/snippet}
+
+{#snippet sourcePlace()}
+  {#if sourceInHref !== undefined}<Link href={sourceInHref}>{sourceIn}</Link>{:else}{sourceIn}{/if}
+{/snippet}
+
+<!-- "Tool runner in Please refund order 4471", the name and the place each a link when it has one. -->
+{#snippet askedFrom()}
+  {@render sourceName()}{#if hasSourcePlace}{' in '}{@render sourcePlace()}{/if}
+{/snippet}
+
+{#snippet operationPreview()}
+  {#if operation.kind === 'command' && operation.command}
+    <div class="cinder-approval-card__section">
+      <CodeBlock code={operation.command} language="shell" languageLabelVisible={false} wrap />
+    </div>
+  {:else if operation.kind === 'patch' && operation.diff}
+    <div class="cinder-approval-card__section">
+      <CodeBlock code={operation.diff} language="diff" languageLabelVisible={false} />
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet filesTouchedSection()}
+  {#if filesTouched.length > 0}
+    <div class="cinder-approval-card__section">
+      <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
+        {filesTouchedTitle}
+      </svelte:element>
+      <ul class="cinder-approval-card__file-list">
+        {#each filesTouched as file (file)}
+          {@const path = splitFilePath(file)}
+          <li class="cinder-approval-card__file">
+            <FileGlyph
+              class="cinder-approval-card__file-icon"
+              size={16}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <!-- The directory is muted and the name is not; a line breaks after a slash, so the
+                 name stays whole. Written with no space between, the text is the path exactly. -->
+            <span class="cinder-approval-card__file-path" dir="ltr"
+              >{#each path.directorySegments as segment, index (index)}<span
+                  class="cinder-approval-card__file-directory">{segment}</span
+                ><wbr />{/each}<span class="cinder-approval-card__file-name">{path.name}</span
+              ></span
+            >
+            <CopyButton
+              value={file}
+              label={`Copy path ${file}`}
+              copiedLabel="Path copied"
+              class="cinder-approval-card__file-copy"
+            />
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet argumentsPreviewSection()}
+  {#if hasArgumentsPreview}
+    <div class="cinder-approval-card__section">
+      <PayloadInspector
+        value={argumentsPreview.value}
+        truncated={argumentsPreview.truncated}
+        label={payloadLabel}
+        bind:view
+      />
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet cardDetails()}
+  <div class="cinder-approval-card__details-content">
+    {#if sandbox}
+      <div class="cinder-approval-card__details-group">
+        <p class="cinder-approval-card__details-label">Sandbox</p>
+        <dl class="cinder-approval-card__metadata cinder-approval-card__metadata--compact">
+          <div class="cinder-approval-card__metadata-item">
+            <dt>Provider</dt>
+            <dd>{sandbox.provider}</dd>
+          </div>
+          <div class="cinder-approval-card__metadata-item">
+            <dt>Profile</dt>
+            <dd>{sandbox.name}</dd>
+          </div>
+          <div class="cinder-approval-card__metadata-item">
+            <dt>Working directory</dt>
+            <dd>{sandbox.workingDir}</dd>
+          </div>
+        </dl>
+      </div>
+    {/if}
+
+    {#if environmentNames.length > 0}
+      <div class="cinder-approval-card__details-group">
+        <p class="cinder-approval-card__details-label">Environment</p>
+        <ul
+          class="cinder-approval-card__environment-list"
+          aria-label="Environment variable names only; values are never shown"
+        >
+          {#each environmentNames as environmentName (environmentName)}
+            <li>
+              <Badge size="sm" monospace>{environmentName}</Badge>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    <dl class="cinder-approval-card__metadata">
+      <div class="cinder-approval-card__metadata-item">
+        <dt>Policy version</dt>
+        <dd>
+          {policyVersion}
+          <span class="cinder-approval-card__metadata-help">
+            Approval policy that produced this request.
+          </span>
+        </dd>
+      </div>
+      <div class="cinder-approval-card__metadata-item">
+        <dt>Idempotency key</dt>
+        <dd>
+          {idempotencyKey}
+          <span class="cinder-approval-card__metadata-help">
+            Keeps this decision durable if it is submitted more than once.
+          </span>
+        </dd>
+      </div>
+      {#if snapshotId}
+        <div class="cinder-approval-card__metadata-item">
+          <dt>Snapshot</dt>
+          <dd>
+            {snapshotId}
+            <span class="cinder-approval-card__metadata-help">
+              Workspace snapshot this request was captured against.
+            </span>
+          </dd>
+        </div>
+      {/if}
+    </dl>
+  </div>
+{/snippet}
+
+<!-- The row and decision layouts show the patch and the touched files in the open, under the
+     command, as the card does; the arguments follow them as rows. -->
+{#snippet openOperationBody()}
+  {#if patchDiff !== undefined}
+    <div class="cinder-approval-card__section">
+      <CodeBlock code={patchDiff} language="diff" languageLabelVisible={false} />
+    </div>
+  {/if}
+  {@render filesTouchedSection()}
+{/snippet}
+
+{#if answeredElsewhere}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--elsewhere', customClassName)}
+    aria-labelledby={titleId}
+    dir="auto"
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="card"
+  >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
+    <Check
+      class="cinder-approval-card__elsewhere-glyph"
+      size={16}
+      strokeWidth={2}
+      aria-hidden="true"
+    />
+    <div class="cinder-approval-card__elsewhere-text">
+      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__elsewhere-title">
+        {outcomeText}
+      </svelte:element>
+      <p class="cinder-approval-card__elsewhere-body" dir="auto">{elsewhereSentence}</p>
+    </div>
+  </article>
+{:else if layout === 'row'}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--row', customClassName)}
+    aria-labelledby={titleId}
+    dir="auto"
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="row"
+  >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
+    <ApprovalCardRow
+      {rootId}
+      {titleTag}
+      {titleId}
+      {tool}
+      approvalState={effectiveState}
+      question={rowQuestion}
+      command={decisionCommand}
+      {approveLabel}
+      {sourceText}
+      {requestedText}
+      {requestedIso}
+      {consequence}
+      countdown={expirationText}
+      countdownShort={expirationTextShort}
+      {rememberScope}
+      decidedElsewhere={decidedIn !== undefined}
+      {outcomeText}
+      outcomeTime={outcomeClock}
+      {outcomeTone}
+      {decisionNote}
+      {decisionNoteCaption}
+      {disabledReason}
+      {unavailableReason}
+      {resolving}
+      {failure}
+      {notice}
+      {result}
+      {footnote}
+      inputLabel={payloadLabel}
+      {context}
+      requestKey={idempotencyKey}
+      inputRows={rowInputRows}
+      operationBody={hasOpenOperation ? openOperationBody : undefined}
+      {onAskAgain}
+      resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
+    />
+  </article>
+{:else if layout === 'decision'}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--decision', customClassName)}
+    aria-labelledby={titleId}
+    dir={cardDirection}
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="decision"
+  >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
+    <ApprovalCardDecision
+      {rootId}
+      {titleTag}
+      {titleId}
+      {tool}
+      approvalState={effectiveState}
+      question={rowQuestion}
+      {facts}
+      command={decisionCommand}
+      {why}
+      countdown={expirationText}
+      countdownShort={expirationTextShort}
+      {consequence}
+      {rememberScope}
+      {approveLabel}
+      {disabledReason}
+      {unavailableReason}
+      {resolving}
+      {failure}
+      {notice}
+      {result}
+      {footnote}
+      outcomeWord={outcomeLabel ?? STATE_LABELS[effectiveState]}
+      {outcomeTone}
+      {decidedBy}
+      {decidedIn}
+      {decidedInHref}
+      {onAskAgain}
+      {decisionNote}
+      {context}
+      requestKey={idempotencyKey}
+      operationBody={hasOpenOperation ? openOperationBody : undefined}
+      inputRows={hasDecisionArguments ? inputRows : []}
+      inputLabel={payloadLabel}
+      resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
+    />
+  </article>
+{:else if layout === 'detail'}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--detail', customClassName)}
+    aria-labelledby={titleId}
+    dir="auto"
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="detail"
+  >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
+    <header class="cinder-approval-card__detail-header">
+      <p class="cinder-approval-card__detail-eyebrow">
+        <span
+          class="cinder-approval-card__risk-icon"
+          role="img"
+          aria-label={riskLabel}
+          data-cinder-risk={tool.risk}
+        >
+          <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+        </span>
+        <span>{eyebrow ?? 'Tool approval'}</span>
+      </p>
+      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title" dir="auto">
+        {rowQuestion}
+      </svelte:element>
+      {#if showCardOutcome && isDecidedState && outcomeText !== undefined}
+        <ApprovalCardOutcome
+          {outcomeText}
+          outcomeTime={outcomeClock}
+          tone={outcomeTone}
+          inlineTime
+          trailing={source === undefined ? undefined : askedFrom}
+          {decisionNote}
+          {decisionNoteCaption}
+        />
+      {:else if source !== undefined || requestedText !== undefined || !isActionable || !hasResolutionCallback}
+        <p class="cinder-approval-card__detail-ask">
+          {#if source !== undefined}<span
+              >{sourcePrefix ?? 'Asked by'}{' '}{@render askedFrom()}</span
+            >{#if requestedText !== undefined}<span
+                class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                aria-hidden="true">,</span
+              >{/if}{/if}{#if requestedText !== undefined}{#if source !== undefined}{' '}{/if}<time
+              datetime={requestedIso}>{requestedText}</time
+            >{/if}{#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
+            {#if source !== undefined || requestedText !== undefined}
+              <span class="cinder-approval-card__separator" aria-hidden="true">,</span>
+            {/if}
+            <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
+          {/if}
+        </p>
+      {/if}
+      {#if said !== undefined && said !== ''}
+        <div class="cinder-approval-card__said">
+          <button
+            type="button"
+            class="cinder-approval-card__said-toggle"
+            aria-expanded={saidOpen}
+            aria-controls={saidId}
+            onclick={() => (saidOpen = !saidOpen)}
+          >
+            <ChevronRight
+              class="cinder-approval-card__said-chevron"
+              size={12}
+              strokeWidth={2}
+              aria-hidden="true"
+              data-cinder-open={saidOpen || undefined}
+            />
+            <span class="cinder-approval-card__said-label">{source ?? 'It'} said</span>
+            <span
+              id={saidId}
+              class="cinder-approval-card__said-text"
+              dir="auto"
+              data-cinder-open={saidOpen || undefined}>{said}</span
+            >
+          </button>
+        </div>
+      {/if}
+      {#if context !== undefined}
+        <div class="cinder-approval-card__context">{@render context()}</div>
+      {/if}
+      {#if !detailDone}
+        <p class="cinder-approval-card__detail-tool">
+          {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
+              class="cinder-approval-card__tool-label">{tool.label}</span
+            >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code><span
+            class="cinder-approval-card__separator"
+            aria-hidden="true">,</span
+          >
+          <span class="cinder-approval-card__risk-word">{riskWord}</span>
+        </p>
+      {/if}
+    </header>
+
+    <div class="cinder-approval-card__detail-body">
+      {@render operationPreview()}
+      {@render filesTouchedSection()}
+      {@render argumentsPreviewSection()}
+
+      {#if !detailDone && (tool.irreversible || consequence !== undefined)}
+        <p class="cinder-approval-card__detail-risk">
+          <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+          <span>
+            {#if tool.irreversible}<span class="cinder-approval-card__undone">Can't be undone.</span
+              >{' '}{/if}{#if consequence !== undefined}<span
+                class="cinder-approval-card__consequence"
+                dir="auto">{consequence}</span
+              >{/if}
+          </span>
+        </p>
+      {/if}
+
+      {#if isActionable && hasResolutionCallback}
+        {#if failure !== undefined}
+          <ApprovalCardFailure {failure} />
+        {/if}
+        <ApprovalCardActions
+          idBase={rootId}
+          requestKey={idempotencyKey}
+          toolName={tool.label ?? tool.name}
+          {rememberScope}
+          {disabledReason}
+          {resolving}
+          {canEditArguments}
+          argumentsValue={editableArgumentsValue}
+          resolve={resolveIfActionable}
+        />
+        {#if footnote !== undefined}
+          <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
+        {/if}
+      {:else}
+        {#if resolvedNotice !== undefined || (effectiveState === 'unavailable' && unavailableReason !== undefined)}
+          <p
+            class="cinder-approval-card__readonly-summary"
+            data-cinder-state={effectiveState}
+            dir="auto"
+          >
+            {resolvedNotice ?? unavailableReason}
+          </p>
+        {/if}
+        {#if result !== undefined}
+          <p class="cinder-approval-card__result">
+            <span class="cinder-approval-card__result-label">Result:</span>
+            {result}
+          </p>
+        {/if}
+      {/if}
+    </div>
+  </article>
+{:else}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', customClassName)}
+    aria-labelledby={titleId}
+    dir="auto"
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+  >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
+    <Card padding="none" class="cinder-approval-card__surface">
+      <!-- The heading is the body's first row, on the card's own fill: Card's header slot is a
+           band above the content, and this is the top of the content. -->
+      <div class="cinder-approval-card__body">
+        <div class="cinder-approval-card__header">
+          <Tooltip text={riskLabel} describe={false} class="cinder-approval-card__risk-tip">
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
+            <span
+              class="cinder-approval-card__risk-icon"
+              role="img"
+              tabindex="0"
+              aria-label={riskLabel}
+              data-cinder-risk={tool.risk}
+            >
+              <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+            </span>
+          </Tooltip>
+          <div class="cinder-approval-card__title-group">
+            {#if context !== undefined}
+              <div class="cinder-approval-card__context">{@render context()}</div>
+            {/if}
+            {#if sourceText !== undefined || requestedText !== undefined}
+              <p class="cinder-approval-card__eyebrow">
+                {#if sourceText !== undefined}<span>{sourceText}</span
+                  >{#if requestedText !== undefined}<span
+                      class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                      aria-hidden="true">,</span
+                    >{/if}{/if}
+                {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time
+                  >{/if}
+              </p>
+            {/if}
+            <svelte:element
+              this={titleTag}
+              id={titleId}
+              class="cinder-approval-card__title"
+              dir="auto"
+            >
+              {#if question !== undefined}
+                {question}
+              {:else}
+                Approval required for
+                <span class="cinder-approval-card__title-tool">{tool.name}</span>
+              {/if}
+            </svelte:element>
+            <!-- One line says what runs and how risky it is: "Issue refund issue-refund, Dangerous,
+                 Can't be undone". A title without a question already names the tool. -->
+            <p class="cinder-approval-card__risk-line">
+              {#if question !== undefined}<span class="cinder-approval-card__keep"
+                  >{#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
+                      >{tool.label}</span
+                    >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
+                  ><span class="cinder-approval-card__separator" aria-hidden="true">,</span></span
+                >{' '}{/if}<span class="cinder-approval-card__risk-word">{riskWord}</span
+              >{#if tool.irreversible}<span
+                  class="cinder-approval-card__separator"
+                  aria-hidden="true">,</span
+                >
+                <span class="cinder-approval-card__undone">Can't be undone</span>
+              {/if}
+            </p>
+            {#if consequence !== undefined}
+              <p class="cinder-approval-card__consequence" dir="auto">{consequence}</p>
+            {/if}
+          </div>
+          <div class="cinder-approval-card__badges" role="group" aria-label="Approval status">
+            {#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
+              <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
+            {/if}
+            {#if expirationText}
+              <Badge variant="warning" size="sm">
+                {expirationText}
+              </Badge>
+            {/if}
+          </div>
+        </div>
+
+        {@render operationPreview()}
+
+        {@render filesTouchedSection()}
+
+        <!-- What the request carries beyond the command and the files waits behind two quiet
+             disclosures, closed by default, so the decision follows straight after. -->
+        {#if hasCardArguments || hasDetails}
+          <div class="cinder-approval-card__disclosures">
+            {#if hasCardArguments}
+              <div class="cinder-approval-card__input">
+                <button
+                  type="button"
+                  class="cinder-approval-card__input-toggle"
+                  aria-expanded={argumentsOpen}
+                  aria-controls={argumentsId}
+                  onclick={() => (argumentsOpen = !argumentsOpen)}
+                >
+                  <ChevronRight
+                    class="cinder-approval-card__input-chevron"
+                    size={12}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                    data-cinder-open={argumentsOpen || undefined}
+                  />
+                  <span class="cinder-approval-card__input-word">{cardArgumentsWord}</span>
+                  <span class="cinder-approval-card__input-pairs">
+                    {#each rowInputPairs as pair, index (pair.key)}
+                      {#if index > 0}<span
+                          class="cinder-approval-card__separator"
+                          aria-hidden="true">,</span
+                        >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
+                      >{' '}<span
+                        class="cinder-approval-card__pair-value"
+                        data-cinder-muted={pair.muted || undefined}>{pair.text}</span
+                      >
+                    {/each}
+                  </span>
+                </button>
+                <!-- Kept mounted while closed, so a bound Fields and JSON choice holds. -->
+                <div
+                  id={argumentsId}
+                  class="cinder-approval-card__row-input"
+                  hidden={!argumentsOpen}
+                >
+                  {@render argumentsPreviewSection()}
+                </div>
+              </div>
+            {/if}
+            {#if hasDetails}
+              <div class="cinder-approval-card__input">
+                <button
+                  type="button"
+                  class="cinder-approval-card__input-toggle"
+                  aria-expanded={detailsOpen}
+                  aria-controls={detailsId}
+                  onclick={() => (detailsOpen = !detailsOpen)}
+                >
+                  <ChevronRight
+                    class="cinder-approval-card__input-chevron"
+                    size={12}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                    data-cinder-open={detailsOpen || undefined}
+                  />
+                  <span class="cinder-approval-card__input-word">Details</span>
+                </button>
+                <div id={detailsId} class="cinder-approval-card__row-input" hidden={!detailsOpen}>
+                  {#if detailsOpen}
+                    {@render cardDetails()}
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#if isActionable && hasResolutionCallback}
+          {#if failure !== undefined}
+            <ApprovalCardFailure {failure} />
+          {/if}
+          <ApprovalCardActions
+            idBase={rootId}
+            requestKey={idempotencyKey}
+            toolName={tool.label ?? tool.name}
+            {rememberScope}
+            {disabledReason}
+            {resolving}
+            {canEditArguments}
+            argumentsValue={editableArgumentsValue}
+            resolve={resolveIfActionable}
+          />
+          {#if footnote !== undefined}
+            <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
+          {/if}
+        {/if}
+        {#if !isActionable}
+          {#if showCardOutcome && outcomeText !== undefined}
+            <ApprovalCardOutcome
+              {outcomeText}
+              outcomeTime={outcomeClock}
+              tone={outcomeTone}
+              {decisionNote}
+              {decisionNoteCaption}
+            />
+          {/if}
+          {#if readonlySummary !== undefined}
+            <p
+              class="cinder-approval-card__readonly-summary"
+              data-cinder-state={effectiveState}
+              dir="auto"
+            >
+              {readonlySummary}
+            </p>
+          {/if}
+          {#if result !== undefined}
+            <p class="cinder-approval-card__result">
+              <span class="cinder-approval-card__result-label">Result:</span>
+              {result}
+            </p>
+          {/if}
+        {/if}
+      </div>
+    </Card>
+  </article>
+{/if}

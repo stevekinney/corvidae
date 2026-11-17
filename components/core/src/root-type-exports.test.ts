@@ -130,55 +130,55 @@ test('root exports retain the component contract types formerly exposed through 
     import('@lostgradient/description-list/components/description-list/index.ts').DescriptionListDefinition
   >();
   expectTypeOf<import('./index.ts').InvocationRuleBuilderSchemaProps>().toEqualTypeOf<
-    import('./components/invocation-rule-builder/index.ts').InvocationRuleBuilderSchemaProps
+    import('@lostgradient/invocation-rule-builder/components/invocation-rule-builder/index.ts').InvocationRuleBuilderSchemaProps
   >();
   expectTypeOf<import('./index.ts').KbdSize>().toEqualTypeOf<
     import('@lostgradient/kbd/components/kbd/index.ts').KbdSize
   >();
   expectTypeOf<import('./index.ts').PayloadInspectorSchemaProps>().toEqualTypeOf<
-    import('./components/payload-inspector/index.ts').PayloadInspectorSchemaProps
+    import('@lostgradient/payload-inspector/components/payload-inspector/index.ts').PayloadInspectorSchemaProps
   >();
   expectTypeOf<import('./index.ts').PayloadInspectorSchemaValue>().toEqualTypeOf<
-    import('./components/payload-inspector/index.ts').PayloadInspectorSchemaValue
+    import('@lostgradient/payload-inspector/components/payload-inspector/index.ts').PayloadInspectorSchemaValue
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaBranchGroup>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaBranchGroup
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaBranchGroup
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaBranchLane>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaBranchLane
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaBranchLane
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaChildStep>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaChildStep
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaChildStep
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaEntry>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaEntry
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaEntry
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaGrandchildStep>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaGrandchildStep
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaGrandchildStep
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaGreatGrandchildStep>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaGreatGrandchildStep
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaGreatGrandchildStep
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaLaneStep>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaLaneStep
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaLaneStep
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaProps>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaProps
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaProps
   >();
   expectTypeOf<import('./index.ts').RunStepTimelineSchemaStep>().toEqualTypeOf<
-    import('./components/run-step-timeline/index.ts').RunStepTimelineSchemaStep
+    import('@lostgradient/run-step-timeline/components/run-step-timeline/index.ts').RunStepTimelineSchemaStep
   >();
   expectTypeOf<import('./index.ts').ScheduleBuilderSchemaProps>().toEqualTypeOf<
-    import('./components/schedule-builder/index.ts').ScheduleBuilderSchemaProps
+    import('@lostgradient/schedule-builder/components/schedule-builder/index.ts').ScheduleBuilderSchemaProps
   >();
   expectTypeOf<import('./index.ts').ScheduleValueSchema>().toEqualTypeOf<
-    import('./components/schedule-builder/index.ts').ScheduleValueSchema
+    import('@lostgradient/schedule-builder/components/schedule-builder/index.ts').ScheduleValueSchema
   >();
   expectTypeOf<import('./index.ts').SliderRangeProps>().toEqualTypeOf<
     import('@lostgradient/slider/components/slider/index.ts').SliderRangeProps
   >();
   expectTypeOf<import('./index.ts').PageHeaderHeadingLevel>().toEqualTypeOf<
-    import('./components/page-header/index.ts').PageHeaderHeadingLevel
+    import('@lostgradient/page-header/components/page-header/index.ts').PageHeaderHeadingLevel
   >();
   expectTypeOf<import('./index.ts').SliderSingleProps>().toEqualTypeOf<
     import('@lostgradient/slider/components/slider/index.ts').SliderSingleProps
@@ -187,22 +187,22 @@ test('root exports retain the component contract types formerly exposed through 
     import('@lostgradient/speed-dial/components/speed-dial/index.ts').SpeedDialSchemaProps
   >();
   expectTypeOf<import('./index.ts').TimelineEntry>().toEqualTypeOf<
-    import('./components/timeline/index.ts').TimelineEntry
+    import('@lostgradient/timeline/components/timeline/index.ts').TimelineEntry
   >();
   expectTypeOf<import('./index.ts').TimelineGroupBy>().toEqualTypeOf<
-    import('./components/timeline/index.ts').TimelineGroupBy
+    import('@lostgradient/timeline/components/timeline/index.ts').TimelineGroupBy
   >();
   expectTypeOf<import('./index.ts').TimelineHeadingLevel>().toEqualTypeOf<
-    import('./components/timeline/index.ts').TimelineHeadingLevel
+    import('@lostgradient/timeline/components/timeline/index.ts').TimelineHeadingLevel
   >();
   expectTypeOf<import('./index.ts').TimelineOrientation>().toEqualTypeOf<
-    import('./components/timeline/index.ts').TimelineOrientation
+    import('@lostgradient/timeline/components/timeline/index.ts').TimelineOrientation
   >();
   expectTypeOf<import('./index.ts').TimelineTone>().toEqualTypeOf<
-    import('./components/timeline/index.ts').TimelineTone
+    import('@lostgradient/timeline/components/timeline/index.ts').TimelineTone
   >();
   expectTypeOf<import('./index.ts').TimelineWeekStartsOn>().toEqualTypeOf<
-    import('./components/timeline/index.ts').TimelineWeekStartsOn
+    import('@lostgradient/timeline/components/timeline/index.ts').TimelineWeekStartsOn
   >();
   expectTypeOf<import('./index.ts').FlattenedTreeDataItem>().toEqualTypeOf<
     import('@lostgradient/tree/components/tree/index.ts').FlattenedTreeDataItem

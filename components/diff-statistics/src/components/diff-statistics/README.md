@@ -10,13 +10,13 @@ Compact inline display of added, modified, and removed line counts for a file di
 
 ## Choosing something else
 
-- General numeric metrics (revenue, users, errors) — use [`Statistic`](../../../../core/src/components/statistic/README.md) or [`StatisticGroup`](../../../../core/src/components/statistic-group/README.md) for dashboard figures.
+- General numeric metrics (revenue, users, errors) — use [`Statistic`](../../../../statistic/src/components/statistic/README.md) or [`StatisticGroup`](../../../../statistic/src/components/statistic-group/README.md) for dashboard figures.
 - Full diff rendering (side-by-side or unified views of the actual line changes) — DiffStatistics only summarises counts; use a diff renderer component for the actual content.
 
 ## Related components
 
-- [`Statistic`](../../../../core/src/components/statistic/README.md) — general-purpose metric tile for non-diff numeric values.
-- [`StatisticGroup`](../../../../core/src/components/statistic-group/README.md) — grid container for multiple `Statistic` tiles.
+- [`Statistic`](../../../../statistic/src/components/statistic/README.md) — general-purpose metric tile for non-diff numeric values.
+- [`StatisticGroup`](../../../../statistic/src/components/statistic-group/README.md) — grid container for multiple `Statistic` tiles.
 - [`SourceDiffViewer`](../../../../source-diff-viewer/src/components/source-diff-viewer/README.md) — dependency-light unified-diff rendering whose per-file counts these statistics summarize.
 - [`DiffViewer`](https://github.com/stevekinney/cinder/tree/main/components/editor/src/lib/components/diff-viewer) — `@lostgradient/editor`'s Markdown-oriented diff review surface, the other producer of diff counts.
 

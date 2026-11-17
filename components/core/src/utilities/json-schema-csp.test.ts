@@ -15,12 +15,12 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import type { JsonSchemaKnownDraft } from '../components/json-schema-editor/json-schema-editor-types.ts';
+import type { JsonSchemaKnownDraft } from '@lostgradient/json-schema-editor/components/json-schema-editor/json-schema-editor-types.ts';
 import {
   tryCompile,
   validateMetaSchema,
-} from '../components/json-schema-editor/json-schema-validator.ts';
-import { validateSchemaValue } from '../components/schema-form/schema-form-validation.ts';
+} from '@lostgradient/json-schema-editor/components/json-schema-editor/json-schema-validator.ts';
+import { validateSchemaValue } from '@lostgradient/schema-form/components/schema-form/schema-form-validation.ts';
 
 const DRAFT_SCHEMA_IDS: Record<JsonSchemaKnownDraft, string> = {
   'draft-07': 'http://json-schema.org/draft-07/schema#',
