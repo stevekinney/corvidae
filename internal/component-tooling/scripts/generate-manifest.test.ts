@@ -137,6 +137,16 @@ describe('findDanglingAlternatives — avoidWhen referential integrity', () => {
     ]);
   });
 
+  it('accepts an alternative another package lists, as a Cinder family may name', () => {
+    const components = [
+      { id: 'accordion', avoidWhen: [{ reason: 'A reason.', alternative: 'tabs' }] },
+    ];
+    expect(findDanglingAlternatives(components)).toEqual([
+      { componentId: 'accordion', alternative: 'tabs' },
+    ]);
+    expect(findDanglingAlternatives(components, ['tabs'])).toEqual([]);
+  });
+
   it('ignores entries with no alternative', () => {
     const components = [{ id: 'accordion', avoidWhen: [{ reason: 'Reason only.' }] }];
     expect(findDanglingAlternatives(components)).toEqual([]);
@@ -158,12 +168,16 @@ it('generates root imports and package-relative artifact paths for every compone
   for (const component of manifest.components) {
     expect(component.import).toBe('@lostgradient/cinder');
     for (const path of Object.values(component.artifacts)) {
-      // Derived files live in the metadata task's `.metadata/`; authored ones beside the component.
+      // Derived files live in the metadata task's `.metadata/`; authored ones beside the component,
+      // relative to the package that holds it (core, or the family the split moved it into).
       expect(path.startsWith('.metadata/') || path.startsWith('src/components/')).toBe(true);
       if (path.startsWith('src/components/')) {
-        expect(
-          await Bun.file(join(import.meta.dir, '../../../components/cinder', path)).exists(),
-        ).toBe(true);
+        const packageRoot = join(
+          import.meta.dir,
+          '../../../components/cinder',
+          component.source.packageRoot,
+        );
+        expect(await Bun.file(join(packageRoot, path)).exists()).toBe(true);
       }
     }
   }

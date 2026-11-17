@@ -9,7 +9,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import Ajv from 'ajv/dist/2020.js';
 
@@ -17,6 +17,7 @@ import type { CategoryId, StatusLevel } from '../src/manifest.meta.ts';
 import { categories, overlapFamilies, statusLevels } from '../src/manifest.meta.ts';
 import {
   CORE_ROOT,
+  cinderPackages,
   discoverComponentDirectories,
   type DiscoveredComponent,
 } from './discover-component-directories.ts';
@@ -267,12 +268,14 @@ export type DanglingAlternative = { componentId: string; alternative: string };
  * dangling id would ship a dead link — the generator fails on any hit.
  *
  * Exported (like {@link formatExtractionErrorMessage}) so the referential-
- * integrity check is unit-testable without reading the filesystem.
+ * integrity check is unit-testable without reading the filesystem. `otherIds` are the ids an
+ * alternative may also name: a Cinder family's component may point at any Cinder component.
  */
 export function findDanglingAlternatives(
   components: ReadonlyArray<Pick<ManifestComponent, 'id' | 'avoidWhen'>>,
+  otherIds: Iterable<string> = [],
 ): DanglingAlternative[] {
-  const componentIds = new Set(components.map((entry) => entry.id));
+  const componentIds = new Set([...components.map((entry) => entry.id), ...otherIds]);
   const dangling: DanglingAlternative[] = [];
   for (const entry of components) {
     for (const guidance of entry.avoidWhen) {
@@ -368,7 +371,14 @@ export async function buildManifest(packageRoot: string = PACKAGE_ROOT): Promise
   // 4a. Cross-check every `avoidWhen.alternative` resolves to a real component
   //     id. The page renders the alternative as a `/c/<id>` link, so a dangling
   //     id would ship a dead link — fail generation instead.
-  const danglingAlternatives = findDanglingAlternatives(componentEntries);
+  //     A family package core depends on lists its own components, but each one's
+  //     alternatives may name any component core lists (P-COR-101).
+  const isCinderFamily =
+    !pkg.isCinder && cinderPackages(CORE_ROOT).some(([, root]) => resolve(root) === pkg.root);
+  const cinderIds = isCinderFamily
+    ? (await discoverComponentDirectories(CORE_ROOT)).map((component) => component.name)
+    : [];
+  const danglingAlternatives = findDanglingAlternatives(componentEntries, cinderIds);
   if (danglingAlternatives.length > 0) {
     throw new Error(formatDanglingAlternativeMessage(danglingAlternatives));
   }
