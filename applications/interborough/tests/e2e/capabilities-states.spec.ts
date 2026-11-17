@@ -34,7 +34,7 @@ const GITHUB_LISTING = [
     enabled: true,
     savedEnabled: true,
     tier: 'read-only',
-    approval: 'allow',
+    approval: 'never',
     approvalSaved: false,
     title: 'List issues',
     description: 'List the open issues of a repository.',
@@ -303,7 +303,7 @@ for (const width of WIDTHS) {
           ].join('\n'),
         },
       });
-      await open(page, width, '/capabilities?tab=skills&skill=release-notes');
+      await open(page, width, '/capabilities?tab=skills&skill=built-in%2Frelease-notes');
       const instructions = page.getByTestId('skill-instructions');
       await expect(instructions.getByTestId('skill-instructions-title')).toContainText(
         'Instructions',
