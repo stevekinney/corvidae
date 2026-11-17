@@ -321,6 +321,12 @@ export type HostPathsReport = {
    * know the public origin, so the host says.
    */
   readonly a2aDirectoryUrl: string;
+  /**
+   * COR-2171 — where a trigger that receives is sent its deliveries, before the workflow's
+   * identifier: `<origin>/triggers/`, under the public origin when the operator set one (COR-2169),
+   * else the host's own, as for {@link a2aDirectoryUrl}.
+   */
+  readonly triggersUrl: string;
 };
 
 /**
@@ -339,7 +345,7 @@ export function hostPathsReport(
   >,
   content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
   providers: readonly { readonly name: string; readonly secretKey: string }[],
-  a2aDirectoryUrl: string,
+  addresses: { readonly a2aDirectoryUrl: string; readonly triggersUrl: string },
   kinds: { readonly database?: DatabaseKinds; readonly content?: ContentKinds } = {},
 ): HostPathsReport {
   return {
@@ -353,7 +359,8 @@ export function hostPathsReport(
       name,
       secretFile: `workspace:${bungalow.workspaceId}/${secretKey}`,
     })),
-    a2aDirectoryUrl,
+    a2aDirectoryUrl: addresses.a2aDirectoryUrl,
+    triggersUrl: addresses.triggersUrl,
   };
 }
 

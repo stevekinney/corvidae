@@ -1756,6 +1756,7 @@
     "$.triggers[].description",
     "$.triggers[].id",
     "$.triggers[].plugin",
+    "$.triggers[].receives",
     "$.triggers[].version"
   ],
   "output:bureau.reviews.get": [
