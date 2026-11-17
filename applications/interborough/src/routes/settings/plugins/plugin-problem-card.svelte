@@ -43,6 +43,19 @@
   }: Props = $props();
 
   const view = $derived(problemView(problem, plugin));
+  // A thing with no title is named by its identifier, which is set in monospace where the body says it.
+  const identifierParts = $derived.by(() => {
+    const identifier = view.identifier;
+    if (identifier === undefined) return undefined;
+    const at = view.body.indexOf(identifier);
+    return at < 0
+      ? undefined
+      : {
+          before: view.body.slice(0, at),
+          identifier,
+          after: view.body.slice(at + identifier.length),
+        };
+  });
   const action = $derived(view.action);
   const available = $derived(
     action === undefined
@@ -110,13 +123,19 @@
 {#snippet body()}
   <div class="ib-problem__content">
     {@render statusRow()}
-    <div class="ib-problem__text">
-      <p class="ib-problem__title">{view.title}</p>
-      <p class="ib-problem__body">{view.body}</p>
+    <div class="ib-problem__main">
+      <div class="ib-problem__text">
+        <p class="ib-problem__title">{view.title}</p>
+        <p class="ib-problem__body">
+          {#if identifierParts !== undefined}{identifierParts.before}<code
+              class="ib-problem__identifier">{identifierParts.identifier}</code
+            >{identifierParts.after}{:else}{view.body}{/if}
+        </p>
+      </div>
+      {#if available}
+        <div class="ib-problem__action">{@render button()}</div>
+      {/if}
     </div>
-    {#if available}
-      <div class="ib-problem__action">{@render button()}</div>
-    {/if}
   </div>
 {/snippet}
 
@@ -126,7 +145,34 @@
 
 <style>
   .ib-problem {
+    container-type: inline-size;
     min-width: 0;
+  }
+
+  /* The text keeps a readable line length, with its one action at the inline end; in a narrow card
+     the action drops under the text. */
+  .ib-problem__main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+  }
+
+  @container (inline-size >= 36rem) {
+    .ib-problem__main {
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--cinder-space-4);
+    }
+
+    .ib-problem__text {
+      max-inline-size: 70ch;
+    }
+
+    .ib-problem__action {
+      flex: none;
+    }
   }
 
   .ib-problem__status {
@@ -153,6 +199,7 @@
   }
 
   .ib-problem__text {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1);
@@ -161,6 +208,11 @@
   .ib-problem__title {
     margin: 0;
     font-weight: 600;
+  }
+
+  .ib-problem__identifier {
+    font-family: var(--cinder-font-mono);
+    font-size: 0.95em;
   }
 
   .ib-problem__body {

@@ -5,6 +5,7 @@
  * this is the page deciding which to draw. The engine answers over scripted HTTP routes and the
  * Bureau over scripted JSON-RPC methods, through one `ScriptedFetch`.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 import { readFileSync } from 'node:fs';
@@ -488,6 +489,25 @@ describe('a run the Bureau describes', () => {
       expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-2'))).toBe(true),
     );
     expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
+  });
+
+  test('keeps the page it read when a later read of the task finds the server gone (C3-23)', async () => {
+    describeTask('task-9');
+    routeRun('task-9');
+    const queryClient = newQueryClient();
+    const view = mount('task-9', GRANTED_PRINCIPAL, queryClient);
+    expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
+
+    // The server stops answering, and the page reads the task again, as it does when it is shown again.
+    globalThis.fetch = (async () => {
+      throw new TypeError('Failed to fetch');
+    }) as unknown as typeof fetch;
+    await queryClient.refetchQueries({ queryKey: queryKeys.bureauTasks.detail('task-9') });
+    await quietFor(50);
+
+    expect(queryClient.getQueryState(queryKeys.bureauTasks.detail('task-9'))?.status).toBe('error');
+    expect(view.queryByText(TASK_COPY.loadFailed.title)).toBeNull();
+    expect(view.getByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
   });
 
   test('says the engine could not be read, with Retry, when it fails', async () => {

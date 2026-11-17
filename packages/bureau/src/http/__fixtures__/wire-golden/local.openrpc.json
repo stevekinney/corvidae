@@ -3052,7 +3052,7 @@
       }
     },
     {
-      "description": "Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one. `effectiveContext` is returned only when `step` names one step, because a record runs to 256 KiB and this snapshot is polled; the list form carries `hasEffectiveContext` in its place. A run that seals no context epochs records an `effectiveContext` with no `epochId`. The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.",
+      "description": "Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one. `effectiveContext` is returned only when `step` names one step, because a record runs to 256 KiB and this snapshot is polled; the list form carries `hasEffectiveContext` in its place. A run that seals no context epochs records an `effectiveContext` with no `epochId`. `hooks` carries the run’s hook plan while it is live (`plan`: each registration’s `id`, `hookPoint`, `source`, `priority` and `replay`, redacted, `null` once the run has ended or when the plan cannot be read) and the registrations of its plan that threw (`failed`: `hookId`, `hookPoint`, `source`, how many times (`count`) and when last (`lastFailedAt`), never the error’s text). The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -3141,6 +3141,97 @@
                 "type": "object"
               },
               "type": "array"
+            },
+            "hooks": {
+              "additionalProperties": false,
+              "properties": {
+                "failed": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "hookId": {
+                        "type": "string"
+                      },
+                      "hookPoint": {
+                        "type": "string"
+                      },
+                      "lastFailedAt": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "hookId",
+                      "hookPoint",
+                      "source",
+                      "count",
+                      "lastFailedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "plan": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "hookPoint": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "number"
+                          },
+                          "replay": {
+                            "enum": [
+                              "safe",
+                              "effectful"
+                            ],
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "hookPoint",
+                          "source",
+                          "priority",
+                          "replay"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "plan",
+                "failed"
+              ],
+              "type": "object"
             },
             "liveness": {
               "anyOf": [
@@ -4000,7 +4091,8 @@
             "task",
             "liveness",
             "children",
-            "steps"
+            "steps",
+            "hooks"
           ],
           "type": "object"
         }
@@ -16843,7 +16935,7 @@
       }
     },
     {
-      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped` or `ready`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
+      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped`, `ready` or `standby`, and a failed listener whose attempt finds another Bureau running it is answered `standby`, starting nothing. It answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16931,13 +17023,14 @@
                   "type": "string"
                 },
                 "state": {
-                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.",
                   "enum": [
                     "listening",
                     "waiting-for-secret",
                     "failed",
                     "stopped",
-                    "ready"
+                    "ready",
+                    "standby"
                   ],
                   "type": "string"
                 }
@@ -16985,7 +17078,7 @@
       }
     },
     {
-      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped` or `ready`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
+      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped`, `ready` or `standby`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -17100,13 +17193,14 @@
                       "type": "string"
                     },
                     "state": {
-                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.",
                       "enum": [
                         "listening",
                         "waiting-for-secret",
                         "failed",
                         "stopped",
-                        "ready"
+                        "ready",
+                        "standby"
                       ],
                       "type": "string"
                     }
@@ -17527,13 +17621,14 @@
                                 "type": "string"
                               },
                               "state": {
-                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.",
                                 "enum": [
                                   "listening",
                                   "waiting-for-secret",
                                   "failed",
                                   "stopped",
-                                  "ready"
+                                  "ready",
+                                  "standby"
                                 ],
                                 "type": "string"
                               }
@@ -21502,6 +21597,13 @@
                       "budget.threshold",
                       "tool.policy-denied",
                       "tool.error",
+                      "multiagent.child-workflow.started",
+                      "multiagent.child-workflow.completed",
+                      "multiagent.child-workflow.failed",
+                      "multiagent.child-workflow.aborted",
+                      "multiagent.handoff.occurred",
+                      "steering.applied",
+                      "hook-plan.failed",
                       "run.registered",
                       "run.settled",
                       "run.completed",
@@ -21539,10 +21641,16 @@
                       "review.canceled",
                       "review.superseded",
                       "steering.accepted",
+                      "steering.rejected",
+                      "steering.superseded",
+                      "steering.failed",
+                      "workflow.version-mismatch",
                       "goal.started",
                       "goal.attempt.started",
                       "goal.attempt.evaluating",
                       "goal.attempt.validated",
+                      "goal.feedback.recorded",
+                      "goal.retrying",
                       "goal.succeeded",
                       "goal.exhausted",
                       "goal.canceled",
@@ -21553,12 +21661,23 @@
                       "asset.blob.purged",
                       "asset.expired",
                       "definitions.changed",
+                      "trigger.started",
+                      "trigger.stopped",
+                      "trigger.failed",
+                      "trigger.fired",
                       "schedule.missed",
                       "task.cleanup-acknowledged",
                       "notification.created",
+                      "hook.delivery.failed",
+                      "hook.delivery.gave-up",
                       "diagnostic",
                       "memory.governance",
-                      "decision.made"
+                      "decision.made",
+                      "secret.set",
+                      "secret.removed",
+                      "plugin.settings-changed",
+                      "plugin.status-changed",
+                      "scorer.threshold-breached"
                     ],
                     "type": "string"
                   },
@@ -21580,6 +21699,13 @@
                         "budget.threshold",
                         "tool.policy-denied",
                         "tool.error",
+                        "multiagent.child-workflow.started",
+                        "multiagent.child-workflow.completed",
+                        "multiagent.child-workflow.failed",
+                        "multiagent.child-workflow.aborted",
+                        "multiagent.handoff.occurred",
+                        "steering.applied",
+                        "hook-plan.failed",
                         "run.registered",
                         "run.settled",
                         "run.completed",
@@ -21617,10 +21743,16 @@
                         "review.canceled",
                         "review.superseded",
                         "steering.accepted",
+                        "steering.rejected",
+                        "steering.superseded",
+                        "steering.failed",
+                        "workflow.version-mismatch",
                         "goal.started",
                         "goal.attempt.started",
                         "goal.attempt.evaluating",
                         "goal.attempt.validated",
+                        "goal.feedback.recorded",
+                        "goal.retrying",
                         "goal.succeeded",
                         "goal.exhausted",
                         "goal.canceled",
@@ -21631,12 +21763,23 @@
                         "asset.blob.purged",
                         "asset.expired",
                         "definitions.changed",
+                        "trigger.started",
+                        "trigger.stopped",
+                        "trigger.failed",
+                        "trigger.fired",
                         "schedule.missed",
                         "task.cleanup-acknowledged",
                         "notification.created",
+                        "hook.delivery.failed",
+                        "hook.delivery.gave-up",
                         "diagnostic",
                         "memory.governance",
-                        "decision.made"
+                        "decision.made",
+                        "secret.set",
+                        "secret.removed",
+                        "plugin.settings-changed",
+                        "plugin.status-changed",
+                        "scorer.threshold-breached"
                       ],
                       "type": "string"
                     },
@@ -21716,6 +21859,13 @@
                       "budget.threshold",
                       "tool.policy-denied",
                       "tool.error",
+                      "multiagent.child-workflow.started",
+                      "multiagent.child-workflow.completed",
+                      "multiagent.child-workflow.failed",
+                      "multiagent.child-workflow.aborted",
+                      "multiagent.handoff.occurred",
+                      "steering.applied",
+                      "hook-plan.failed",
                       "run.registered",
                       "run.settled",
                       "run.completed",
@@ -21753,10 +21903,16 @@
                       "review.canceled",
                       "review.superseded",
                       "steering.accepted",
+                      "steering.rejected",
+                      "steering.superseded",
+                      "steering.failed",
+                      "workflow.version-mismatch",
                       "goal.started",
                       "goal.attempt.started",
                       "goal.attempt.evaluating",
                       "goal.attempt.validated",
+                      "goal.feedback.recorded",
+                      "goal.retrying",
                       "goal.succeeded",
                       "goal.exhausted",
                       "goal.canceled",
@@ -21767,12 +21923,23 @@
                       "asset.blob.purged",
                       "asset.expired",
                       "definitions.changed",
+                      "trigger.started",
+                      "trigger.stopped",
+                      "trigger.failed",
+                      "trigger.fired",
                       "schedule.missed",
                       "task.cleanup-acknowledged",
                       "notification.created",
+                      "hook.delivery.failed",
+                      "hook.delivery.gave-up",
                       "diagnostic",
                       "memory.governance",
-                      "decision.made"
+                      "decision.made",
+                      "secret.set",
+                      "secret.removed",
+                      "plugin.settings-changed",
+                      "plugin.status-changed",
+                      "scorer.threshold-breached"
                     ],
                     "type": "string"
                   },
@@ -21794,6 +21961,13 @@
                         "budget.threshold",
                         "tool.policy-denied",
                         "tool.error",
+                        "multiagent.child-workflow.started",
+                        "multiagent.child-workflow.completed",
+                        "multiagent.child-workflow.failed",
+                        "multiagent.child-workflow.aborted",
+                        "multiagent.handoff.occurred",
+                        "steering.applied",
+                        "hook-plan.failed",
                         "run.registered",
                         "run.settled",
                         "run.completed",
@@ -21831,10 +22005,16 @@
                         "review.canceled",
                         "review.superseded",
                         "steering.accepted",
+                        "steering.rejected",
+                        "steering.superseded",
+                        "steering.failed",
+                        "workflow.version-mismatch",
                         "goal.started",
                         "goal.attempt.started",
                         "goal.attempt.evaluating",
                         "goal.attempt.validated",
+                        "goal.feedback.recorded",
+                        "goal.retrying",
                         "goal.succeeded",
                         "goal.exhausted",
                         "goal.canceled",
@@ -21845,12 +22025,23 @@
                         "asset.blob.purged",
                         "asset.expired",
                         "definitions.changed",
+                        "trigger.started",
+                        "trigger.stopped",
+                        "trigger.failed",
+                        "trigger.fired",
                         "schedule.missed",
                         "task.cleanup-acknowledged",
                         "notification.created",
+                        "hook.delivery.failed",
+                        "hook.delivery.gave-up",
                         "diagnostic",
                         "memory.governance",
-                        "decision.made"
+                        "decision.made",
+                        "secret.set",
+                        "secret.removed",
+                        "plugin.settings-changed",
+                        "plugin.status-changed",
+                        "scorer.threshold-breached"
                       ],
                       "type": "string"
                     },
@@ -22344,6 +22535,10 @@
                     "description": "The contributing plugin.",
                     "type": "string"
                   },
+                  "receives": {
+                    "description": "Whether the kind receives requests: a file whose trigger is one is sent its deliveries at `POST /triggers/<workflow-id>` on the host.",
+                    "type": "boolean"
+                  },
                   "version": {
                     "description": "The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.",
                     "type": "string"
@@ -22354,6 +22549,7 @@
                   "id",
                   "description",
                   "version",
+                  "receives",
                   "configuration"
                 ],
                 "type": "object"
@@ -22385,7 +22581,7 @@
       }
     },
     {
-      "description": "Lists every guardrail installed in the Bureau, one row per family it serves (`input`, `output`, `tools`, or `memory`, which guards the host’s memory and no agent file chooses): the `id` (`plugin:name`) an agent file’s `guardrails` lists, its `description`, whether it is `configurable` and its `configuration` as JSON Schema (a configurable guardrail is listed in a file as `{ id, configuration }`, and a field the configuration leaves out takes the default the schema shows), and its `source`, a running `plugin` or the `host`, with the `plugin` that contributes it. The host’s come first, then the running plugins’ in load order. Read-only; any authenticated caller may read it.",
+      "description": "Lists every guardrail installed in the Bureau, one row per family it serves (`input`, `output`, `tools`, or `memory`, which guards the host’s memory and no agent file chooses): the `id` (`plugin:name`) an agent file’s `guardrails` lists, its `description`, whether it is `configurable` and its `configuration` as JSON Schema (a configurable guardrail is listed in a file as `{ id, configuration }`, and a field the configuration leaves out takes the default the schema shows), and its `source`, a running `plugin`, the `host`, or the `bungalow` for a guardrail the owner wrote as a file in the Bungalow’s `guardrails` folder, with the `plugin` that contributes it (`null` for an owner’s guardrail, whose `id` is its file’s name, not `plugin:name`). The host’s come first, then the running plugins’ in load order, then the owner’s files by name. Read-only; any authenticated caller may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22410,7 +22606,7 @@
           "additionalProperties": false,
           "properties": {
             "guardrails": {
-              "description": "Every installed guardrail, one row per family it serves: the host’s first, then the running plugins’ in load order.",
+              "description": "Every installed guardrail, one row per family it serves: the host’s first, then the running plugins’ in load order, then the owner’s files by name.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -22452,14 +22648,18 @@
                     "type": "string"
                   },
                   "plugin": {
-                    "description": "The contributing plugin’s name, the first half of `id`.",
-                    "type": "string"
+                    "description": "The contributing plugin’s name, the first half of `id`; `null` for an owner’s guardrail, whose `id` is its file’s name and which no plugin holds.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "source": {
-                    "description": "Who installed it: a running plugin, or the host that built the Bureau.",
+                    "description": "Who installed it: a running plugin, the host that built the Bureau, or the owner, as a file in the Bungalow’s `guardrails` folder.",
                     "enum": [
                       "plugin",
-                      "host"
+                      "host",
+                      "bungalow"
                     ],
                     "type": "string"
                   }
@@ -22500,7 +22700,7 @@
       }
     },
     {
-      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), and its `source`, the `bureau` kind for a validator the host gave the Bureau or the `plugin` kind for one a running plugin contributes, with that source’s name and version. The host’s come first, then the running plugins’ in load order. The catalog is built at startup, so a plugin enabled or disabled takes effect on the next restart. Read-only; any authenticated caller that can create a goal may read it.",
+      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), its `configuration` (the JSON Schema of what a goal may configure it with, passed as `validator.configuration` to `bureau.goals.create`, or `null` when it takes none), and its `source`, the `bureau` kind for a validator the host gave the Bureau the `plugin` kind for one a running plugin contributes, or the `bungalow` kind for one the owner wrote as a file in the Bungalow’s `validators` folder (its `version` is a digest of what the file says), with that source’s name and version. The host’s come first, then the running plugins’ in load order, then the owner’s files by name. The host’s and the plugins’ are built at startup, so a plugin enabled or disabled takes effect on the next restart; the owner’s files are read as they change. Read-only; any authenticated caller that can create a goal may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22529,6 +22729,21 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "configuration": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The JSON Schema of the configuration a goal may give it, which the Bureau parses before it stores it; `null` when the validator takes none."
+                  },
                   "determinism": {
                     "anyOf": [
                       {
@@ -22553,19 +22768,20 @@
                     "description": "Who the validator comes from.",
                     "properties": {
                       "kind": {
-                        "description": "`bureau` for a validator the host gave the Bureau; `plugin` otherwise.",
+                        "description": "`bureau` for a validator the host gave the Bureau, `plugin` for one a plugin contributes, `bungalow` for one the owner wrote as a file.",
                         "enum": [
                           "bureau",
-                          "plugin"
+                          "plugin",
+                          "bungalow"
                         ],
                         "type": "string"
                       },
                       "name": {
-                        "description": "`bureau`, or the contributing plugin’s name.",
+                        "description": "`bureau`, the contributing plugin’s name, or `bungalow`.",
                         "type": "string"
                       },
                       "version": {
-                        "description": "Bureau’s version, or the plugin’s.",
+                        "description": "Bureau’s version, the plugin’s, or the file’s version, which is a digest of what it says.",
                         "type": "string"
                       }
                     },
@@ -22585,6 +22801,7 @@
                   "name",
                   "version",
                   "determinism",
+                  "configuration",
                   "source"
                 ],
                 "type": "object"
@@ -26456,7 +26673,8 @@
                       "version"
                     ],
                     "type": "object"
-                  }
+                  },
+                  "validatorConfiguration": {}
                 },
                 "required": [
                   "goalRunId",
@@ -26464,6 +26682,7 @@
                   "agentName",
                   "identity",
                   "validator",
+                  "validatorConfiguration",
                   "status",
                   "terminalReason",
                   "revision",
@@ -26850,7 +27069,8 @@
                 "version"
               ],
               "type": "object"
-            }
+            },
+            "validatorConfiguration": {}
           },
           "required": [
             "goalRunId",
@@ -26858,6 +27078,7 @@
             "agentName",
             "identity",
             "validator",
+            "validatorConfiguration",
             "status",
             "terminalReason",
             "revision",
@@ -27028,7 +27249,8 @@
                         "kind": {
                           "enum": [
                             "bureau",
-                            "plugin"
+                            "plugin",
+                            "bungalow"
                           ],
                           "type": "string"
                         },
@@ -27386,8 +27608,11 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "A validator this Bureau was configured with, by exact name and version.",
+            "description": "A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27714,7 +27939,8 @@
                     "version"
                   ],
                   "type": "object"
-                }
+                },
+                "validatorConfiguration": {}
               },
               "required": [
                 "goalRunId",
@@ -27722,6 +27948,7 @@
                 "agentName",
                 "identity",
                 "validator",
+                "validatorConfiguration",
                 "status",
                 "terminalReason",
                 "revision",
@@ -27902,8 +28129,11 @@
           },
           "validator": {
             "additionalProperties": false,
-            "description": "A validator this Bureau was configured with, by exact name and version.",
+            "description": "A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -28165,8 +28395,11 @@
           "required": false,
           "schema": {
             "additionalProperties": false,
-            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version.",
+            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -28272,8 +28505,11 @@
           },
           "validator": {
             "additionalProperties": false,
-            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version.",
+            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -30568,6 +30804,236 @@
       }
     },
     {
+      "description": "Returns the embedding recall and admission use as `active` (its `embedder`, `dimension` and `model`; `model` is `null` for a profile stored before models were recorded that no process has adopted one for), a `problem` (`embedder-unavailable` while that embedder is not loaded, is loaded with another dimension or model than made its vectors, or needs setup; recall then scores by text alone), the `job`, the switch to another embedder that is running or that last failed or was cancelled (`target`, `state`, `done` of `total` memories, and `error`, a code: `target-unavailable`, `target-missing`, `embedder-failed` or `embedder-timeout`, never an embedder’s own text), and every registered `embedders` entry with its `dimension` and whether it is `available` or `needs-setup`. Each of `problem` and `job` is `null` when there is none. A switch is started by writing the `memory.embedder` setting and cancelled by `bureau.memory.embedding.cancel`. Requires `bureau.settings:read`; a caller without it is `Forbidden`, whatever the Bureau holds.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.memory.embedding",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "additionalProperties": false,
+              "properties": {
+                "dimension": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "embedder": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "embedder",
+                "dimension",
+                "model"
+              ],
+              "type": "object"
+            },
+            "embedders": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "availability": {
+                    "enum": [
+                      "available",
+                      "needs-setup"
+                    ],
+                    "type": "string"
+                  },
+                  "dimension": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "dimension",
+                  "availability"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "job": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "done": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "target-unavailable",
+                            "target-missing",
+                            "embedder-failed",
+                            "embedder-timeout"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "enum": [
+                        "running",
+                        "failed",
+                        "cancelled"
+                      ],
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "state",
+                    "done",
+                    "total",
+                    "error"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "embedder-unavailable"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "active",
+            "problem",
+            "job",
+            "embedders"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read the embedding memory uses, and the switch to another",
+      "tags": [
+        {
+          "name": "Memory"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.memory.embedding.cancel",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "cancelled"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Cancel the running switch to another embedder",
+      "tags": [
+        {
+          "name": "Memory"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "description": "Returns audit records, oldest first (or newest first with `order: 'newest'`), as metadata only: `timestamp`, `type`, `resource` (what the record is about), `principal` (the actor), and a few scalar fields in `detail`. No record carries a secret, transcript, tool argument, tool result, or memory content. A caller sees the records about the resources it owns; a caller holding `bureau.audit:read` sees every record, and a record about a resource with no owner is read only through that scope. `runId` narrows to one resource, `type` to one kind, `types` to any of several kinds, `principal` to one actor, and `since` and `until` to a time range (both ends inclusive). `format: 'jsonl'` returns the page as JSON Lines in `body` (one record per line, with the same redaction) instead of `records`, for export. `includeTotal: true` also returns `total`, how many records match and the caller may see. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the records the caller may see, so a cursor advances across any number of records it may not.",
       "errors": [
         {
@@ -30904,6 +31370,311 @@
           },
           "until": {
             "description": "Only records at or before this time, in epoch milliseconds.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lists the results of the checks Bureau keeps, newest first: a goal’s validator verdicts, the guardrails that blocked, warned, sanitized, redacted or tripped a run, the scorers’ scores of completed runs (`scorer.recorded`, with the scorer’s `name@version` as the check, a validator outcome kind as the outcome, and the score when it gave one), and the sessions a guardrail flagged (`session.tainted`, read from the session’s stored taint, with the detector as the check and the time it was flagged). A caller sees the results about what it owns; a caller holding `bureau.audit:read` sees every owner’s run results and flagged sessions, and one holding `bureau.goals:read` every owner’s goal results. `kind`, `checkId`, `agentName` and `outcome` each narrow to one value, and `since` and `until` to a time range (both ends inclusive). A row names the check, the agent, the outcome, the time and the run, and never the text a guardrail flagged, a validator’s feedback or evidence, or a scorer’s message. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the results the caller may see, so a cursor advances across any number of results it may not.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        }
+      ],
+      "name": "bureau.checks.list",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "agentName",
+          "required": false,
+          "schema": {
+            "description": "Only results about this agent.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "checkId",
+          "required": false,
+          "schema": {
+            "description": "Only results of this check, exactly as a row names it.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "The `nextCursor` of the previous page, to continue after it.",
+            "maxLength": 1024,
+            "type": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "description": "Only results of this kind.",
+            "enum": [
+              "goal.attempt.validated",
+              "run.guardrail",
+              "run.tripwire",
+              "scorer.recorded",
+              "session.tainted"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "The most results to return in one page, from 1 to 100. Defaults to 50.",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "outcome",
+          "required": false,
+          "schema": {
+            "description": "Only results with this outcome.",
+            "enum": [
+              "pass",
+              "fail",
+              "error",
+              "unavailable",
+              "canceled",
+              "indeterminate",
+              "block",
+              "warn",
+              "sanitize",
+              "redact",
+              "tripwire",
+              "tainted"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "since",
+          "required": false,
+          "schema": {
+            "description": "Only results at or after this time, in epoch milliseconds.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "until",
+          "required": false,
+          "schema": {
+            "description": "Only results at or before this time, in epoch milliseconds.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "checks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "agentName": {
+                    "description": "The agent the check judged, or `null` when it cannot be told.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "attemptId": {
+                    "description": "The goal attempt the check judged, or `null` for a run row.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "checkId": {
+                    "description": "The check: a validator’s or a scorer’s `name@version`, a guardrail’s name, or the detector that flagged a session.",
+                    "type": "string"
+                  },
+                  "goalRunId": {
+                    "description": "The goal the check judged, or `null` for a run row.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "description": "Where the result is kept.",
+                    "enum": [
+                      "goal.attempt.validated",
+                      "run.guardrail",
+                      "run.tripwire",
+                      "scorer.recorded",
+                      "session.tainted"
+                    ],
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "description": "What the check decided.",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "error",
+                      "unavailable",
+                      "canceled",
+                      "indeterminate",
+                      "block",
+                      "warn",
+                      "sanitize",
+                      "redact",
+                      "tripwire",
+                      "tainted"
+                    ],
+                    "type": "string"
+                  },
+                  "runId": {
+                    "description": "The run the check judged.",
+                    "type": "string"
+                  },
+                  "score": {
+                    "description": "A scorer’s score from 0 to 1 when it gave one, and `null` for every other row.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "timestamp": {
+                    "description": "When it decided, as an ISO-8601 time.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "checkId",
+                  "agentName",
+                  "outcome",
+                  "timestamp",
+                  "runId",
+                  "goalRunId",
+                  "attemptId",
+                  "score"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "nextCursor": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "checks",
+            "nextCursor"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "List check results",
+      "tags": [
+        {
+          "name": "Checks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "agentName": {
+            "description": "Only results about this agent.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "checkId": {
+            "description": "Only results of this check, exactly as a row names it.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "cursor": {
+            "description": "The `nextCursor` of the previous page, to continue after it.",
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "kind": {
+            "description": "Only results of this kind.",
+            "enum": [
+              "goal.attempt.validated",
+              "run.guardrail",
+              "run.tripwire",
+              "scorer.recorded",
+              "session.tainted"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "description": "The most results to return in one page, from 1 to 100. Defaults to 50.",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "outcome": {
+            "description": "Only results with this outcome.",
+            "enum": [
+              "pass",
+              "fail",
+              "error",
+              "unavailable",
+              "canceled",
+              "indeterminate",
+              "block",
+              "warn",
+              "sanitize",
+              "redact",
+              "tripwire",
+              "tainted"
+            ],
+            "type": "string"
+          },
+          "since": {
+            "description": "Only results at or after this time, in epoch milliseconds.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "until": {
+            "description": "Only results at or before this time, in epoch milliseconds.",
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
@@ -33596,7 +34367,7 @@
       }
     },
     {
-      "description": "Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: \"webhook\", url }` (or `url` alone, its shorthand), `{ type: \"start-workflow\", workflowId, input? }`, `{ type: \"notify\", title? }` or `{ type: \"plugin\", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is refused for the other actions and is write-only; a webhook created without one gets a secret the Bureau generates (`whsec_` and 24 hexadecimal digits), returned as `signingSecret` on this answer and never again (`null` otherwise). `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: \"event\"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: \"workflow authority\"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. `scope` makes the hook fire only for one agent, workflow or schedule, read from each event and the Bureau’s records; an event it cannot place is out of scope. A scope some listed kind cannot be told by (`scopes` in `bureau.events.catalog`) is `InvalidParams` on `scope`. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: \"deployment\"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.",
+      "description": "Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: \"webhook\", url }` (or `url` alone, its shorthand), `{ type: \"start-workflow\", workflowId, input? }`, `{ type: \"notify\", title? }` or `{ type: \"plugin\", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is refused for the other actions and is write-only; a webhook created without one gets a secret the Bureau generates (`whsec_` and 24 hexadecimal digits), returned as `signingSecret` on this answer and never again (`null` otherwise). `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: \"event\"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: \"workflow authority\"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` or a `hook.delivery.*` kind (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. `scope` makes the hook fire only for one agent, workflow or schedule, read from each event and the Bureau’s records; an event it cannot place is out of scope. A scope some listed kind cannot be told by (`scopes` in `bureau.events.catalog`) is `InvalidParams` on `scope`. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: \"deployment\"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -33744,6 +34515,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -33781,10 +34559,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -33795,12 +34579,23 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
+                "hook.delivery.failed",
+                "hook.delivery.gave-up",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -34190,6 +34985,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -34227,10 +35029,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -34241,12 +35049,23 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
+                "hook.delivery.failed",
+                "hook.delivery.gave-up",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -34460,6 +35279,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -34497,10 +35323,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -34511,12 +35343,23 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
+                "hook.delivery.failed",
+                "hook.delivery.gave-up",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -34928,6 +35771,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -34965,10 +35815,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -34979,12 +35835,23 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
+                "hook.delivery.failed",
+                "hook.delivery.gave-up",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },

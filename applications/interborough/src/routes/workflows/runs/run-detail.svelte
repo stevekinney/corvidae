@@ -77,6 +77,7 @@
   import { RunEngine } from './run-engine.svelte.ts';
   import RunHappened from './run-happened.svelte';
   import RunHeader from './run-header.svelte';
+  import RunHooks from './run-hooks.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunInspector from './run-inspector.svelte';
   import { instanceEntries, progressPhrase, triesOfStep } from './run-instance.ts';
@@ -447,8 +448,10 @@
   // The goals are looked at only to find a goal's attempt: when they cannot be read and the engine,
   // or the Bureau's record of a workflow file, holds the run, that run is shown, not an error about
   // a read it did not need (COR-2424).
+  // A read that fails after the task was read leaves the page as it was, as the run list does while
+  // the server does not answer (C3-23): the shell's banner says it once.
   const failed = $derived(
-    (task.isError && !notFound) ||
+    (task.isError && !notFound && task.data === undefined) ||
       (notFound && goals.isError && summary === undefined && !engineAsking),
   );
   // Nothing knows this run: the Bureau has no task, no goal made it (the goals were read), and the
@@ -896,6 +899,9 @@
               startedAt={summary.startedAt}
               events={taskEvents}
             />
+            <!-- Directly after What happened and before How it ran, at every width, so a settled
+                 run's failed hooks are never inside the disclosure that is closed for it. -->
+            <RunHooks task={task.data} over={summary.over} events={taskEvents} />
           {/if}
           <!-- COR-2424, row 54i: Steps, Inspector, Raw payloads and Events and logs, then
                Versioning and Search attributes only when the run has something in them. -->

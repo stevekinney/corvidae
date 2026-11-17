@@ -12,9 +12,22 @@
 //   lint:root       bun run lint:root, always
 //   typecheck:root  bun run typecheck:root, when a changed file is at the root or under scripts/
 //   turbo           bunx turbo run lint typecheck, filtered to each changed workspace
-//   tests           bun scripts/affected-tests.ts run (the quick tier)
-//   tests:isolated  bun scripts/affected-tests.ts run --isolated, when the selection reaches a
-//                   *.integration.test.ts or *.slow.test.ts file
+//   tests           the direct tests only (owner decision, 2026-11-16): each changed
+//                   `*.test.ts` file, and the test files beside each changed source file (same
+//                   directory, same stem). Never `affected-tests.ts`'s dependency graph, which
+//                   hung over 60 minutes per run on the shared pool. The selection is written as a
+//                   manifest that narrows each workspace's own `test` lane (`tests`) and the root
+//                   `test:self` lane (`tests:root`).
+//   tests:isolated  the same set through the `test:slow` lanes (`tests:isolated`,
+//                   `tests:root:isolated`), when it holds a *.integration.test.ts or
+//                   *.slow.test.ts file
+// The full test evidence is CI on the pushed branch, run once per batch and never waited on.
+// A change to a governed process document (AGENTS.md, .agents/skills, .claude/agents,
+// .codex/agents) also selects every `*.test.ts` under `scripts/` whose source names that
+// document's path or its directory prefix (the word budgets, moved rules, references, command
+// spellings, charter), because no sibling test sits beside a Markdown file. An integration test
+// that names it joins the isolated set.
+// Tests under `scripts/browser-fixtures` are left to CI: their lane builds a curated site.
 // Steps run one after another and a failure does not stop the rest. A diff of more than 3,000 added
 // and deleted lines outside test files, or of more than 60 files, prints a warning suggesting a
 // split; it never fails the run.
@@ -29,8 +42,8 @@
 // Workers never run a browser suite on the host (owner decision, 2026-11-13). The planned tiers
 // never run the Playwright suites (`test:browser`), and the real-browser smoke tests skip unless
 // `WEFT_BROWSER_SMOKE=1`, but a few `*.integration.test.ts` files launch Chromium unconditionally.
-// When the selection reaches one, the `tests:isolated` step runs with `--exclude <file>` for each,
-// and a warning line names them and `gh workflow run main.yml --ref <branch>`, to run after the push.
+// When the direct set holds one, no lane runs it, and a warning line names it and
+// `gh workflow run main.yml --ref <branch>`, to run after the push.
 //
 // Each step runs in a process group of its own. The hang guard, SIGTERM and SIGINT end the whole
 // group (SIGTERM, then SIGKILL after a grace), so no turbo or `bun test` worker outlives its step
@@ -50,6 +63,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { constants } from 'node:os';
 import { join } from 'node:path';
+import { SELECTION_VARIABLE, writeManifest, type Manifest } from '../affected-tests-manifest.ts';
 import { ISOLATED_SUFFIXES } from '../affected-tests.ts';
 import { terminateProcessGroup } from '../run-exclusively.ts';
 import { directoryGlob, workspaceParentDirectories } from '../workspace-directories.ts';
@@ -58,8 +72,8 @@ import {
   describeError,
   emitResult,
   parseOptions,
-  type Runner,
   UsageError,
+  type Runner,
 } from './process-runner.ts';
 
 export { UsageError };
@@ -99,10 +113,131 @@ export interface PlanInput {
   existing: readonly string[];
   workspaces: readonly WorkspaceReference[];
   base: string;
-  /** Whether the quick-tier selection reaches an integration or slow test file. */
-  selectsIsolatedTest: boolean;
-  /** The selected isolated test files that launch a browser; the isolated lane excludes them. */
-  browserTests?: readonly string[];
+  /** The direct tests' manifest, written by the caller; absent when no test is selected. */
+  direct?: DirectSelection | undefined;
+}
+
+/** The direct tests as the lanes see them: a written manifest and the lanes it reaches. */
+export interface DirectSelection {
+  /** The digest naming the manifest, which the lanes read from `CORVIDAE_TEST_SELECTION`. */
+  digest: string;
+  /** The `--filter` names of the workspaces holding a selected test. */
+  filters: string[];
+  /** Whether a selected test belongs to the root `test:self` lane. */
+  root: boolean;
+  /** Whether a selected test is an integration or slow test, which the isolated lanes run. */
+  isolated: boolean;
+}
+
+const testSuffix = /\.test\.[cm]?[jt]sx?$/;
+const browserFixtures = 'scripts/browser-fixtures/';
+
+/** Whether `path` is a test file `bun test` would pick up. */
+export function isTestFile(path: string): boolean {
+  return testSuffix.test(path);
+}
+
+/**
+ * The governed process documents, as the path or directory prefix a test names when it guards them.
+ * No sibling test sits beside a Markdown file, so a change to one selects the tests that name it.
+ */
+export const governedPrefixes = [
+  'AGENTS.md',
+  '.agents/skills',
+  '.claude/agents',
+  '.codex/agents',
+] as const;
+
+/** The governed prefix a changed path falls under, if any. */
+function governedPrefix(path: string): string | undefined {
+  return governedPrefixes.find((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+/**
+ * The tests that guard the changed governed documents, derived from the tests themselves: every
+ * `*.test.ts` under `scripts/` (`scriptTests` maps path to source) whose source names a changed
+ * document's path or its governed prefix. Pure.
+ */
+export function documentGuardTests(
+  changed: readonly string[],
+  scriptTests: ReadonlyMap<string, string>,
+): string[] {
+  const named = new Set<string>();
+  for (const path of changed) {
+    const prefix = governedPrefix(path);
+    if (prefix !== undefined) named.add(path).add(prefix);
+  }
+  if (named.size === 0) return [];
+  return [...scriptTests]
+    .filter(([, source]) => [...named].some((name) => source.includes(name)))
+    .map(([path]) => path)
+    .toSorted();
+}
+
+/**
+ * The direct tests of a change (owner decision, 2026-11-16): each changed test file itself, plus
+ * the test files beside each changed source file, in its directory and with its stem
+ * (`a.ts` selects `a.test.ts`, `a.slow.test.ts` and `a.integration.test.ts`). The import graph is
+ * never read. A changed governed document also selects the `scriptTests` that name it
+ * (`documentGuardTests`). A path that no longer exists selects nothing. Pure given its inputs.
+ */
+export function directTests(
+  changed: readonly string[],
+  exists: (path: string) => boolean,
+  scriptTests: ReadonlyMap<string, string> = new Map(),
+): string[] {
+  const selected = new Set<string>();
+  for (const test of documentGuardTests(changed.filter(exists), scriptTests))
+    if (exists(test)) selected.add(test);
+  for (const path of changed) {
+    if (!exists(path) || path.endsWith('.md') || path.endsWith('.json')) continue;
+    if (isTestFile(path)) {
+      selected.add(path);
+      continue;
+    }
+    const slash = path.lastIndexOf('/');
+    const name = path.slice(slash + 1);
+    const dot = name.lastIndexOf('.');
+    if (dot <= 0) continue;
+    const stem = path.slice(0, slash + 1) + name.slice(0, dot);
+    for (const kind of ['test', 'slow.test', 'integration.test'])
+      for (const extension of new Set(['.ts', name.slice(dot)])) {
+        const candidate = `${stem}.${kind}${extension}`;
+        if (isTestFile(candidate) && exists(candidate)) selected.add(candidate);
+      }
+  }
+  return [...selected].toSorted();
+}
+
+/**
+ * The manifest that narrows the lanes to `tests`, with the lanes it reaches. A test inside a
+ * package workspace is listed relative to it; every other test is a root test, relative to the
+ * repository root. Tests under `scripts/browser-fixtures` are left to CI.
+ */
+export function directManifest(
+  tests: readonly string[],
+  workspaces: readonly WorkspaceReference[],
+): { manifest: Manifest; filters: string[]; root: boolean; isolated: boolean } | undefined {
+  const manifest: Manifest = { version: 1, workspaces: {} };
+  const filters: string[] = [];
+  let root = false;
+  let isolated = false;
+  for (const test of tests) {
+    if (test.startsWith(browserFixtures)) continue;
+    const owner = workspaceOf(test, workspaces);
+    const packaged = owner !== undefined && !owner.directory.startsWith('scripts/');
+    const key = packaged ? owner.directory : '.';
+    const file = packaged ? test.slice(owner.directory.length + 1) : test;
+    const entry = (manifest.workspaces[key] ??= { mode: 'partial', files: [] });
+    entry.files.push(file);
+    if (packaged) {
+      if (!filters.includes(owner.name)) filters.push(owner.name);
+    } else root = true;
+    if (ISOLATED_SUFFIXES.some((suffix) => test.endsWith(suffix))) isolated = true;
+  }
+  if (Object.keys(manifest.workspaces).length === 0) return undefined;
+  for (const entry of Object.values(manifest.workspaces)) entry.files.sort();
+  return { manifest, filters: filters.toSorted(), root, isolated };
 }
 
 /** The CI command a skipped browser lane points to, named in the line printed in its place. */
@@ -159,23 +294,26 @@ export function planSteps(input: PlanInput): PlannedStep[] {
       name: 'turbo',
       command: ['bunx', 'turbo', 'run', 'lint', 'typecheck', ...names.map((n) => `--filter=${n}`)],
     });
-  steps.push({
-    name: 'tests',
-    command: ['bun', 'scripts/affected-tests.ts', 'run', '--base', input.base],
-  });
-  if (input.selectsIsolatedTest)
-    steps.push({
-      name: 'tests:isolated',
-      command: [
-        'bun',
-        'scripts/affected-tests.ts',
-        'run',
-        '--isolated',
-        ...(input.browserTests ?? []).flatMap((path) => ['--exclude', path]),
-        '--base',
-        input.base,
-      ],
-    });
+  const direct = input.direct;
+  if (direct === undefined) return steps;
+  const filters = direct.filters.map((name) => `--filter=${name}`);
+  const lanes = (isolated: boolean) => {
+    const suffix = isolated ? ':isolated' : '';
+    const extra = isolated ? ['--concurrency=1'] : [];
+    const select = ['env', `${SELECTION_VARIABLE}=${direct.digest}`, 'bunx', 'turbo', 'run'];
+    if (filters.length > 0)
+      steps.push({
+        name: `tests${suffix}`,
+        command: [...select, isolated ? 'test:slow' : 'test', ...filters, ...extra],
+      });
+    if (direct.root)
+      steps.push({
+        name: `tests:root${suffix}`,
+        command: [...select, isolated ? 'test:self:slow' : 'test:self', '--filter=//', ...extra],
+      });
+  };
+  lanes(false);
+  if (direct.isolated) lanes(true);
   return steps;
 }
 
@@ -306,6 +444,14 @@ export function readFixtureSpecs(root: string): Map<string, string> {
   return specs;
 }
 
+/** Every `*.test.ts` file under `scripts/` and its source. */
+export function readScriptTests(root: string): Map<string, string> {
+  const tests = new Map<string, string>();
+  for (const path of new Bun.Glob('scripts/**/*.test.ts').scanSync({ cwd: root }))
+    if (!path.includes('node_modules/')) tests.set(path, readFileSync(join(root, path), 'utf8'));
+  return tests;
+}
+
 export interface StepResult {
   name: string;
   command: string;
@@ -341,8 +487,12 @@ export interface FocusedDependencies {
   exists?: (path: string) => boolean;
   readText?: (path: string) => string | undefined;
   workspaces?: (root: string) => WorkspaceReference[];
+  /** Writes the direct tests' manifest and returns its digest. */
+  writeSelection?: (manifest: Manifest, root: string) => string;
   /** Each Chromium fixture spec's file name and source. */
   fixtureSpecs?: (root: string) => ReadonlyMap<string, string>;
+  /** Each `*.test.ts` file under `scripts/` and its source, which a governed document change reads. */
+  scriptTests?: (root: string) => ReadonlyMap<string, string>;
   /** Progress lines; standard error by default. */
   log?: (line: string) => void;
 }
@@ -500,37 +650,40 @@ export async function runChecks(
   );
   if (fixtureAdvice !== undefined) warnings.push(fixtureAdvice);
 
-  let selectsIsolatedTest = false;
-  const browserTests: string[] = [];
-  const selection = runner(['bun', 'scripts/affected-tests.ts', '--json', '--base', base], {
-    cwd: root,
-  });
-  if (selection.code === 0) {
-    try {
-      const parsed = JSON.parse(selection.stdout) as { view: { tests: string[] }[] };
-      const isolated = parsed.view
-        .flatMap((workspace) => workspace.tests)
-        .filter((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)));
-      selectsIsolatedTest = isolated.length > 0;
-      browserTests.push(...isolated.filter((path) => launchesBrowser(readText(path) ?? '')));
-    } catch {
-      warnings.push('could not read the affected-tests selection; the isolated lane is skipped.');
-    }
-  } else {
-    warnings.push(`affected-tests --json exited ${selection.code}; the isolated lane is skipped.`);
-  }
+  const candidates = directTests(
+    changed,
+    exists,
+    (dependencies.scriptTests ?? readScriptTests)(root),
+  );
+  const browserTests = candidates.filter(
+    (path) =>
+      ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)) &&
+      launchesBrowser(readText(path) ?? ''),
+  );
+  const selected = directManifest(
+    candidates.filter((path) => !browserTests.includes(path)),
+    workspaces,
+  );
+  const direct: DirectSelection | undefined =
+    selected === undefined
+      ? undefined
+      : {
+          digest: (dependencies.writeSelection ?? writeManifest)(selected.manifest, root),
+          filters: selected.filters,
+          root: selected.root,
+          isolated: selected.isolated,
+        };
 
   const steps = planSteps({
     changed,
     existing: changed.filter(exists),
     workspaces,
     base,
-    selectsIsolatedTest,
-    browserTests,
+    direct,
   });
-  if (selectsIsolatedTest && browserTests.length > 0)
+  if (browserTests.length > 0)
     warnings.push(
-      `tests:isolated excludes ${browserTests.join(', ')}: they launch a browser, which workers never run on the host; after pushing, run \`${BROWSER_CI_COMMAND}\`.`,
+      `${browserTests.join(', ')} launch a browser, which workers never run on the host, so no lane runs them; after pushing, run \`${BROWSER_CI_COMMAND}\`.`,
     );
   const results: StepResult[] = [];
   for (const step of steps) {

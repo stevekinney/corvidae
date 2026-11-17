@@ -53,6 +53,12 @@ describe('ollama plugin', () => {
     const contributed = await embedder({});
     expect(contributed.name).toBe('embed');
     expect(contributed.dimensions).toBe(768);
+    expect(contributed.model).toBe('nomic-embed-text');
+  });
+
+  it('names the configured model, so reconfiguring it is a different embedding (COR-2184)', async () => {
+    const contributed = await embedder({ model: 'mxbai-embed-large', dimensions: 1024 });
+    expect(contributed.model).toBe('mxbai-embed-large');
   });
 
   it('posts the texts to the configured server and returns one vector per text', async () => {

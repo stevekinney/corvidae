@@ -10,6 +10,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from './durable-event-history';
@@ -537,6 +538,35 @@ describe('the goal event projection', () => {
       ).toEqual([1, 2]);
     });
 
+    it('publishes nothing for a write whose commit throws', async () => {
+      // The store's write is a conditional batch; the history is written only after it commits.
+      const inner = textValueStore(new MemoryStorage());
+      let failing = false;
+      const kv = Object.create(inner, {
+        conditionalBatch: {
+          value: (...parameters: Parameters<typeof inner.conditionalBatch>) =>
+            failing
+              ? Promise.reject(new Error('the commit failed'))
+              : inner.conditionalBatch(...parameters),
+        },
+      }) as typeof inner;
+      const { recorder, events } = await setup();
+      const store = createGoalStore(kv, { observe: recorder });
+      await store.create(newGoal());
+      const before = summary(await events());
+
+      failing = true;
+      const failure = await throwingRejectionOf(
+        store.applyTransition(
+          transition(1, 'failed', { terminalReason: 'unsupported-validation' }),
+        ),
+      );
+      expect(failure).toThrow('the commit failed');
+
+      expect(summary(await events())).toEqual(before);
+      expect(before).toEqual(['goal.started']);
+    });
+
     it('does not change a commit when the observer throws', async () => {
       const diagnostics: unknown[] = [];
       const store = createGoalStore(textValueStore(new MemoryStorage()), {
@@ -713,6 +743,125 @@ describe('live goal events (COR-1721)', () => {
     );
     const stored = await store.get(GOAL);
     expect(JSON.stringify(stored?.auditLog)).not.toContain('goal.attempt.evaluating');
+  });
+
+  describe('goal.feedback.recorded and goal.retrying (COR-2097)', () => {
+    const failVerdict = (feedback = SECRET_FEEDBACK) =>
+      validation({
+        kind: 'fail',
+        feedback,
+        evidence: [{ source: 'unit', detail: SECRET_EVIDENCE }],
+        retryable: true,
+      });
+
+    it('dispatches the digest of a failing verdict and the retry it led to, live only, in order', async () => {
+      const { store, dispatched, history } = await liveSetup();
+      await store.create(newGoal());
+      await toEvaluating(store);
+      await store.applyTransition(
+        transition(3, 'retrying', {
+          attempt: attempt(0, {
+            status: 'failed',
+            feedback: SECRET_FEEDBACK,
+            validation: failVerdict(),
+          }),
+          active: null,
+        }),
+      );
+
+      const kinds = dispatched.map((event) => event.type);
+      expect(kinds).toEqual([
+        'goal.started',
+        'goal.attempt.started',
+        'goal.attempt.evaluating',
+        'goal.attempt.validated',
+        'goal.feedback.recorded',
+        'goal.retrying',
+      ]);
+      const validated = dispatched.find((event) => event.type === 'goal.attempt.validated');
+      const feedback = dispatched.find((event) => event.type === 'goal.feedback.recorded');
+      const retrying = dispatched.find((event) => event.type === 'goal.retrying');
+      // The digest is the one the validation event carries, and it is not the feedback.
+      expect(feedback?.payload).toEqual({
+        goalRunId: GOAL,
+        attemptId: goalAttemptId(GOAL, 0),
+        feedbackDigest: validated?.payload['feedbackDigest'],
+      });
+      expect(typeof feedback?.payload['feedbackDigest']).toBe('string');
+      expect(retrying?.payload).toEqual({
+        goalRunId: GOAL,
+        attemptIndex: 0,
+        retryReason: 'failed',
+      });
+      expect(JSON.stringify(dispatched.map((event) => event.payload))).not.toContain('FEEDBACK-');
+
+      // Live only: neither is in the goal's history, nor in the record's audit log.
+      const recorded = await history.page({ kind: 'goal', id: GOAL });
+      if ('outcome' in recorded) throw new Error('unexpected gap');
+      expect(recorded.events.map((event) => event.kind)).toEqual([
+        'goal.started',
+        'goal.attempt.started',
+        'goal.attempt.validated',
+      ]);
+      const stored = await store.get(GOAL);
+      expect(JSON.stringify(stored?.auditLog)).not.toContain('goal.feedback.recorded');
+      expect(JSON.stringify(stored?.auditLog)).not.toContain('goal.retrying');
+    });
+
+    it('dispatches the feedback of a failing verdict that ends the goal, and no retry', async () => {
+      const { store, dispatched } = await liveSetup();
+      await store.create(newGoal());
+      await toEvaluating(store);
+      await store.applyTransition(
+        transition(3, 'failed', {
+          terminalReason: 'validator-fail-non-retryable',
+          attempt: attempt(0, {
+            status: 'failed',
+            feedback: SECRET_FEEDBACK,
+            validation: validation({
+              kind: 'fail',
+              feedback: SECRET_FEEDBACK,
+              evidence: [],
+              retryable: false,
+            }),
+          }),
+          active: null,
+        }),
+      );
+
+      const kinds = dispatched.map((event) => event.type);
+      expect(kinds).toContain('goal.feedback.recorded');
+      expect(kinds).not.toContain('goal.retrying');
+      expect(kinds.at(-1)).toBe('goal.failed');
+    });
+
+    it('dispatches a retry of an attempt that never reached its validator, with that attempt’s status', async () => {
+      const { store, dispatched } = await liveSetup();
+      await store.create(newGoal());
+      await store.applyTransition(
+        transition(1, 'running', {
+          attempt: attempt(0),
+          usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
+          active: {
+            kind: 'attempt',
+            attemptId: goalAttemptId(GOAL, 0),
+            runId: goalAttemptRunId(GOAL, 0),
+            startedAt: '2026-10-02T00:00:05.000Z',
+          },
+        }),
+      );
+      await store.applyTransition(
+        transition(2, 'retrying', { attempt: attempt(0, { status: 'aborted' }), active: null }),
+      );
+
+      const kinds = dispatched.map((event) => event.type);
+      expect(kinds).toEqual(['goal.started', 'goal.attempt.started', 'goal.retrying']);
+      expect(dispatched.at(-1)?.payload).toEqual({
+        goalRunId: GOAL,
+        attemptIndex: 0,
+        retryReason: 'aborted',
+      });
+    });
   });
 
   it('dispatches nothing for the created and replayed observations the boot pass makes', async () => {

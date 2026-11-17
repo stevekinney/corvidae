@@ -106,7 +106,9 @@ describe('runGatedBrowserSuite', () => {
     const { environment, errors, runs } = fakeEnvironment({ isFree: () => false });
     expect(await runGatedBrowserSuite([], environment)).toBe(2);
     expect(runs).toHaveLength(0);
-    expect(errors.join('')).toContain('no block of 7 free consecutive ports');
+    expect(errors.join('')).toContain(
+      `no block of ${String(END_TO_END_PORT_COUNT)} free consecutive ports`,
+    );
   });
 
   test('honors a requested port only when its whole block is free', async () => {

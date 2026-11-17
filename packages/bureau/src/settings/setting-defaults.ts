@@ -53,13 +53,14 @@ export const DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
 /**
  * The keys that have no one value while nothing sets them, because leaving them unset is itself
  * the behavior: no model policy, no summarizer, the memory policy's own windows, log lines and hook
- * deliveries kept with what owns them, no decision model (the fallback model answers), notifications kept up to a count, and no workflow version
+ * deliveries kept with what owns them, no decision model (the fallback model answers), no daily limit on scoring, notifications kept up to a count, and no workflow version
  * stamped, and no agent named for A2A (each follows its own file). Each key's description in the schema says what unset means. `effective` omits them.
  */
 export const SETTINGS_WITHOUT_DEFAULT = [
   'modelPolicy',
   'a2a.agents',
   'decisions.model',
+  'scorers.dailyBudget',
   'context.summarizerModel',
   'retention.memory',
   'retention.logs',
@@ -90,6 +91,9 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     'tools.decide': true,
     'decisions.fallbackModel': DEFAULT_DECISION_FALLBACK_MODEL,
     'decisions.maximumPerTask': DEFAULT_DECISIONS_PER_TASK,
+    // No run is scored by any scorer until the owner raises the rate above 0, whatever rate a scorer
+    // asks for itself (COR-2202, COR-2203).
+    'scorers.sampleRate': 0,
     'retention.audit': 'forever',
     'retention.runs': 'forever',
     'retention.chats': 'forever',

@@ -1,3 +1,5 @@
+import type { StatusDotWordLabel } from '@lostgradient/cinder';
+
 /** The words the run page uses for its steps, and for the lines the run logged. */
 export const RUN_STEPS_COPY = {
   heading: 'Steps',
@@ -250,6 +252,62 @@ export const RUN_DETAIL_COPY = {
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',
   /** The disclosure under what happened, for what only an operator reads. */
+  /**
+   * The hooks of a run (COR-2115, the agreed design): the section after What happened that lists a
+   * live run's hook plan with the hooks that threw first, and a settled run's failed hooks alone. It
+   * says "Run hooks", never "Hooks", which is the page of webhooks. No row has a retry or a reason:
+   * the record names the registration, the hook point and who registered it, and nothing of the error.
+   */
+  hooks: {
+    heading: 'Run hooks',
+    /** The accessible name of the list of hooks. */
+    listLabel: 'Run hooks',
+    descriptionLive: 'In the order they run, failed hooks first.',
+    /** For a settled run, verbatim from the brief. */
+    descriptionSettled: 'The full hook plan is shown while a run is live.',
+    descriptionUnreadable: 'This run’s hook plan can’t be read.',
+    /** The accessible name of the placeholders while a live run’s hooks load. */
+    loading: 'Loading this run’s hooks',
+    loadFailed: {
+      title: 'Couldn’t load this run’s hooks.',
+      description: 'The rest of the run is shown.',
+    },
+    forbidden: {
+      title: 'Your sign-in can’t see this run’s hooks',
+      /** The scope Interborough’s API checks before it lets the inspection through (`host/scope-gate.ts`). */
+      requirement: 'runs:read',
+    },
+    /** A hook that threw: its one status word, with how many times when it was more than once. */
+    failed: (count: number): StatusDotWordLabel =>
+      count > 1 ? `Failed, ${String(count)} times` : 'Failed',
+    priority: (priority: number): string => `priority ${String(priority)}`,
+    replay: { safe: 'no side effects', effectful: 'has side effects' },
+    /** Who registered a hook, for the sources that are not a plugin or the run’s agent. */
+    sources: { bureau: 'Interborough', direct: 'This run' },
+    /** The hook points, in the person’s words. A point this table does not know is shown as its name, in code. */
+    points: {
+      prepareStep: 'Before each step',
+      onStep: 'After each step',
+      beforeToolExecution: 'Before a tool runs',
+      afterToolExecution: 'After a tool runs',
+      selectTools: 'When tools are chosen',
+      selectToolChoice: 'When the tool choice is made',
+      validateResponse: 'When a reply is checked',
+      validateToolResult: 'When a tool’s result is checked',
+      beforeGenerate: 'Before the model is asked',
+      afterGenerate: 'After the model answers',
+      onLLMInput: 'Watching what the model is sent',
+      onLLMOutput: 'Watching what the model sends back',
+      beforeCompaction: 'Before the conversation is shortened',
+      beforeBackgroundCompaction: 'Before a background shortening',
+      afterCompaction: 'After the conversation is shortened',
+      onRunStart: 'When the run starts',
+      onRunComplete: 'When the run finishes',
+      onRunError: 'When the run fails',
+      onRunAbort: 'When the run is stopped',
+      onError: 'When a step fails',
+    } as Readonly<Record<string, string>>,
+  },
   howItRan: {
     heading: 'How it ran',
     caption: 'For operators',

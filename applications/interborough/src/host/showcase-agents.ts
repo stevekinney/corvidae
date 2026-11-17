@@ -180,8 +180,10 @@ export interface ShowcaseLookupMoment {
 
 /** A goal's check about to answer, handed to {@link ShowcasePacing.check}. */
 export interface ShowcaseCheckMoment {
-  /** The check's validator name, one of {@link SHOWCASE_GOAL_CHECKS}. */
+  /** The check's validator name, {@link SHOWCASE_PHRASE_CHECK}'s. */
   readonly check: string;
+  /** The phrase the goal configured it to look for, one of {@link SHOWCASE_GOAL_CHECKS}'. */
+  readonly phrase: string;
   /** Which attempt it judges, from zero. */
   readonly attemptIndex: number;
   /** Whether the attempt met the check. */
@@ -495,46 +497,56 @@ export function showcaseAssistantGenerate(pacing: ShowcasePacing = {}): Generate
   };
 }
 
+/** The one phrase check of the showcase host: `contains-phrase`, configured with the phrase to look for. */
+export const SHOWCASE_PHRASE_CHECK = { name: 'contains-phrase', version: '1' } as const;
+
+/** What a goal configures {@link SHOWCASE_PHRASE_CHECK} with: the phrase its attempt's answer must hold. */
+const showcasePhraseConfiguration = z.strictObject({
+  phrase: z
+    .string()
+    .min(1)
+    .describe('The phrase the attempt’s answer must contain, in any letter case.'),
+});
+
 /**
- * The checks the sample world's goals name (PageGoals), each a built-in validator of the showcase
- * host whose name says the check in words: "Reply says hello", "Notes mention the staging fix" and
- * "Summary lists every refund waiting for approval". Each looks for its phrase in the attempt's
- * answer.
+ * The checks the sample world's goals name (PageGoals), each the showcase host's `contains-phrase`
+ * validator configured with the phrase it looks for in the attempt's answer: "Contains phrase
+ * "hello"", "Contains phrase "staging fix"" and "Contains phrase "waiting for approval"".
  */
 export const SHOWCASE_GOAL_CHECKS = {
-  sayHello: { name: 'reply-says-hello', version: '1', phrase: 'hello' },
-  stagingFix: { name: 'notes-mention-the-staging-fix', version: '1', phrase: 'staging fix' },
-  waitingRefunds: {
-    name: 'summary-lists-every-refund-waiting-for-approval',
-    version: '1',
-    phrase: 'waiting for approval',
-  },
+  sayHello: { ...SHOWCASE_PHRASE_CHECK, configuration: { phrase: 'hello' } },
+  stagingFix: { ...SHOWCASE_PHRASE_CHECK, configuration: { phrase: 'staging fix' } },
+  waitingRefunds: { ...SHOWCASE_PHRASE_CHECK, configuration: { phrase: 'waiting for approval' } },
 } as const;
 
 /**
- * The goal checks of {@link SHOWCASE_GOAL_CHECKS} as validators: an attempt whose answer holds the
- * check's phrase passes, and one that doesn't fails with a retryable "Check not met", so the goal
- * tries again while it has attempts left. `pacing` is awaited before each answer.
+ * The goal checks of {@link SHOWCASE_GOAL_CHECKS} as one validator: an attempt whose answer holds
+ * the configured phrase passes, and one that doesn't fails with a retryable "Check not met", so the
+ * goal tries again while it has attempts left. `pacing` is awaited before each answer.
  */
 export function createShowcaseValidators(pacing: ShowcasePacing = {}): Validator[] {
-  return Object.values(SHOWCASE_GOAL_CHECKS).map(({ name, version, phrase }) => ({
-    identity: { name, version },
-    determinism: 'deterministic',
-    validate: async ({ result, attemptIndex }): Promise<ValidatorOutcome> => {
-      const answer = result.content;
-      const passed = answer.toLowerCase().includes(phrase);
-      await pacing.check?.({ check: name, attemptIndex, passed });
-      const evidence = [{ source: name, detail: { answer } }];
-      return passed
-        ? { kind: 'pass', evidence }
-        : {
-            kind: 'fail',
-            feedback: `The answer doesn’t mention “${phrase}”.`,
-            evidence,
-            retryable: true,
-          };
+  return [
+    {
+      identity: SHOWCASE_PHRASE_CHECK,
+      determinism: 'deterministic',
+      configuration: showcasePhraseConfiguration,
+      validate: async ({ result, attemptIndex, configuration }): Promise<ValidatorOutcome> => {
+        const { phrase } = showcasePhraseConfiguration.parse(configuration);
+        const answer = result.content;
+        const passed = answer.toLowerCase().includes(phrase.toLowerCase());
+        await pacing.check?.({ check: SHOWCASE_PHRASE_CHECK.name, phrase, attemptIndex, passed });
+        const evidence = [{ source: SHOWCASE_PHRASE_CHECK.name, detail: { answer } }];
+        return passed
+          ? { kind: 'pass', evidence }
+          : {
+              kind: 'fail',
+              feedback: `The answer doesn’t mention “${phrase}”.`,
+              evidence,
+              retryable: true,
+            };
+      },
     },
-  }));
+  ];
 }
 
 /** Echo's script: it repeats the text of the last user message, unchanged. */

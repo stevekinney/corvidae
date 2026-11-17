@@ -9,7 +9,6 @@ import { goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { GOAL_STATUSES, type GoalStatus } from '../../lib/bureau-goals.ts';
 import {
   GOAL_SEGMENTS,
-  checkText,
   countGoalRows,
   goalDayGroup,
   goalFiltersFromSearch,
@@ -80,29 +79,13 @@ describe('the status word of a goal', () => {
   });
 });
 
-describe('the check of a goal', () => {
-  test('reads a validator named by a slug as the sentence it stands for', () => {
-    expect(checkText('summary-lists-every-refund-waiting-for-approval')).toBe(
-      'Summary lists every refund waiting for approval',
-    );
-    expect(checkText('reply-says-hello')).toBe('Reply says hello');
-    expect(checkText('notes_mention_the_staging_fix')).toBe('Notes mention the staging fix');
-  });
-
-  test('says a name that already has spaces as it is, and nothing for no name', () => {
-    expect(checkText('Reply says hello')).toBe('Reply says hello');
-    expect(checkText('  Reply says hello  ')).toBe('Reply says hello');
-    expect(checkText('')).toBe('');
-    expect(checkText('---')).toBe('---');
-  });
-});
-
 describe('a goal as a row', () => {
   test('is titled by the goal’s name and says the agent, the attempts, the check and when it began', () => {
     const row = goalRow(
       goalFixture('goal-1', {
         identity: { name: '  Summarize open refunds  ', version: '1' },
-        validator: { name: 'summary-lists-every-refund-waiting-for-approval', version: '1' },
+        validator: { name: 'contains-phrase', version: '1' },
+        validatorConfiguration: { phrase: 'waiting for approval' },
         agentName: 'tool-runner',
         status: 'canceled',
         createdAt: '2026-10-30T15:05:00.000Z',
@@ -123,7 +106,7 @@ describe('a goal as a row', () => {
       status: 'canceled',
       segment: 'stopped',
       statusWord: 'Stopped',
-      check: 'Summary lists every refund waiting for approval',
+      check: 'Contains phrase "waiting for approval"',
       made: 2,
       allowed: 5,
       startedAt: Date.parse('2026-10-30T15:05:00.000Z'),

@@ -1,15 +1,25 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { Embedder } from 'armorer';
 
-import { type EmbedderRegistry, EmbedderRegistryError } from '../embedder-registry';
 import {
+  type EmbedderRegistry,
+  EmbedderRegistryError,
+  type RegisteredEmbedder,
+} from '../embedder-registry';
+import {
+  MEMORY_EMBEDDING_FAILURES,
+  type MemoryEmbeddingFailure,
   type MemoryEmbeddingProfile,
+  MemoryVectorDimensionError,
   type MemoryVectorReference,
   type MemoryVectorStore,
-  MemoryVectorDimensionError,
 } from '../memory-vector-store';
 import { raceAbort } from './abort-race';
-import type { MemoryEmbedderAvailability, MemoryEmbeddingStatus } from './governed-memory-types';
+import type {
+  MemoryEmbedderAvailability,
+  MemoryEmbedderListing,
+  MemoryEmbeddingStatus,
+} from './governed-memory-types';
 
 /**
  * The active profile as one operation reads it, with the embedder that made its vectors. An
@@ -85,19 +95,23 @@ export interface GovernedEmbedding {
     readonly embedding?: ActiveEmbedding;
   }>;
   /**
-   * Whether `profile`'s embedder can embed now: it is registered, with the profile's dimension, and
-   * needs no setup. A profile that fails this is never embedded into; its embeds wait in a queue.
+   * Whether `profile`'s embedder can embed now: it is registered, with the profile's dimension and
+   * model (COR-2184), and needs no setup. A profile that fails this is never embedded into; its
+   * embeds wait in a queue.
    */
   canEmbed(profile: MemoryEmbeddingProfile): boolean;
   /**
    * `profile` with the embedder registered under its id. Throws {@link EmbedderRegistryError} when
-   * nothing is registered under it, or it is registered with another dimension than the profile's.
+   * nothing is registered under it, or it is registered with another dimension or model than the
+   * profile's.
    */
   bind(profile: MemoryEmbeddingProfile): ActiveEmbedding;
   /** What `memory.embedding.status()` reports. A read: it stores no active profile. */
   status(): Promise<MemoryEmbeddingStatus>;
   /** Whether `id` names an embedder memory could embed with now. */
   availability(id: string): MemoryEmbedderAvailability;
+  /** Every registered embedder with its availability as it is now, in registry order. */
+  embedders(): readonly MemoryEmbedderListing[];
   /**
    * Deletes the referenced records' vectors from every profile. Called after the records
    * themselves are deleted, so a vector never outlives a record a reader can still find.
@@ -118,6 +132,27 @@ export interface CreateGovernedEmbeddingInput {
    * {@link DEFAULT_EMBED_TIMEOUT_MILLISECONDS}. A positive, finite number.
    */
   readonly embedTimeoutMilliseconds?: number;
+}
+
+/**
+ * Whether `registered` runs the model `profile` was made with. A profile with no model (stored
+ * before COR-2184, and not adopted yet) is made by whatever model its embedder is registered with:
+ * memory has no record of another.
+ */
+export function modelMatches(
+  profile: MemoryEmbeddingProfile,
+  registered: Pick<RegisteredEmbedder, 'model'>,
+): boolean {
+  return profile.model === undefined || profile.model === registered.model;
+}
+
+/**
+ * The code a stored switch error reports as. A switch since COR-2188 stores a code. One stored
+ * before it holds the text its embedder gave, which can carry a provider's response, so it reports
+ * as `embedder-failed` and its text goes no further.
+ */
+export function failureCodeOf(stored: string): MemoryEmbeddingFailure {
+  return MEMORY_EMBEDDING_FAILURES.find((code) => code === stored) ?? 'embedder-failed';
 }
 
 /**
@@ -144,6 +179,7 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     embedderId: initial.id,
     dimension: initial.dimension,
     generation: 1,
+    model: initial.model,
   };
 
   function bind(profile: MemoryEmbeddingProfile): ActiveEmbedding {
@@ -156,6 +192,11 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     if (registered.dimension !== profile.dimension) {
       throw new EmbedderRegistryError(
         `The embedder "${profile.embedderId}" is registered with ${registered.dimension} dimensions, but the embedding it is asked for has ${profile.dimension}.`,
+      );
+    }
+    if (!modelMatches(profile, registered)) {
+      throw new EmbedderRegistryError(
+        `The embedder "${profile.embedderId}" is registered with the model "${registered.model}", but the embedding it is asked for was made by "${profile.model}".`,
       );
     }
     const embedder = registry.resolve(profile.embedderId);
@@ -214,6 +255,7 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     return (
       registered !== undefined &&
       registered.dimension === profile.dimension &&
+      modelMatches(profile, registered) &&
       registered.availability === 'available'
     );
   }
@@ -231,10 +273,10 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     async status() {
       // A store with no active profile yet reports the one its first write will store.
       const profile = (await vectors.getActiveProfile()) ?? initialProfile;
-      const { embedderId, dimension } = profile;
+      const { embedderId, dimension, model } = profile;
       const job = await vectors.getJob();
       return {
-        active: { embedder: embedderId, dimension },
+        active: { embedder: embedderId, dimension, ...(model === undefined ? {} : { model }) },
         ...(canEmbed(profile) ? {} : { problem: 'embedder-unavailable' as const }),
         ...(job === undefined
           ? {}
@@ -244,13 +286,27 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
                 state: job.state,
                 done: job.done,
                 total: job.total,
-                ...(job.error === undefined ? {} : { error: job.error }),
+                ...(job.error === undefined ? {} : { error: failureCodeOf(job.error) }),
               },
             }),
       };
     },
     availability(id) {
       return registry.describe(id)?.availability ?? 'not-loaded';
+    },
+    embedders() {
+      return registry.ids.flatMap((id) => {
+        const registered = registry.describe(id);
+        return registered === undefined
+          ? []
+          : [
+              {
+                id: registered.id,
+                dimension: registered.dimension,
+                availability: registered.availability,
+              },
+            ];
+      });
     },
     forget: (references) => vectors.deleteMany(references),
   };

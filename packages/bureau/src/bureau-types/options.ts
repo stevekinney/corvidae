@@ -21,7 +21,12 @@ import type {
 import type { SkillCatalogRevision } from '../skills';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { BureauAttentionItem } from '../attention-feed';
-import type { AgentSource, WorkflowSource } from '../sources/definition-source';
+import type {
+  AgentSource,
+  GuardrailSource,
+  ValidatorSource,
+  WorkflowSource,
+} from '../sources/definition-source';
 import type { Storage, TextValueStore } from '@lostgradient/storage';
 import type {
   AlertingOptions,
@@ -45,13 +50,70 @@ import type { WebhookNotifierOptions } from '../webhook-notifier';
 import type { EventFormatterRegistration } from '../bureau-event-formatting';
 import type { HookActionKindRegistration, HookSecretStore } from '../hooks/hook-types';
 import type { HookUrlPolicy } from '../hooks/hook-url-policy';
+import type { PluginProblemCode } from '../plugins/plugin-problem-codes';
 import type {
   BureauMemoryFactory,
   BureauPluginEntry,
   BureauPluginSecrets,
   BureauPluginSettings,
+  PluginStatus,
 } from '../plugins/plugin-types';
 import type { RecoverableStartedApproval } from './reviews';
+
+// ── Host events ──────────────────────────────────────────────────────
+
+/**
+ * The plugin and secret changes a host reports (COR-2098), by kind, each with the payload the
+ * Bureau publishes under that kind. A payload names the plugin and, for a secret, its declared
+ * key: never a secret's value, its length, a digest of it or a prefix of it, and never a
+ * configuration value or a problem's message.
+ */
+interface BureauHostEventPayloads {
+  /** A secret a plugin declared was stored. `key` is the key the plugin's descriptor declares. */
+  readonly 'secret.set': { readonly plugin: string; readonly key: string };
+  /** A secret a plugin declared was removed. */
+  readonly 'secret.removed': { readonly plugin: string; readonly key: string };
+  /**
+   * A plugin's persisted choices were written. `restartRequired` says whether they differ from
+   * what the running host loaded: Bureau composes plugins once.
+   */
+  readonly 'plugin.settings-changed': {
+    readonly plugin: string;
+    readonly enabled: boolean;
+    readonly restartRequired: boolean;
+  };
+  /** A plugin's standing changed after a write: its status, and the codes of the problems it lists. */
+  readonly 'plugin.status-changed': {
+    readonly plugin: string;
+    readonly previousStatus: PluginStatus;
+    readonly status: PluginStatus;
+    readonly problemCodes: readonly PluginProblemCode[];
+  };
+}
+
+/** One change a host reports, as a kind and its payload: a union over the four kinds. */
+export type BureauHostEvent = {
+  readonly [Kind in keyof BureauHostEventPayloads]: {
+    readonly kind: Kind;
+    readonly payload: BureauHostEventPayloads[Kind];
+  };
+}[keyof BureauHostEventPayloads];
+
+/**
+ * The port through which a host tells Bureau about the plugin and secret changes it makes
+ * (COR-2098). Bureau sees a secret only through {@link BureauPluginSecrets.watch}, which reports
+ * that a key changed and not what the change was, so the host, which writes them, reports each
+ * committed write. The host calls the listener after the write is committed and audited, and never
+ * for a change it did not commit.
+ *
+ * Bureau checks every event it is given against the published shapes (a known kind, a plugin and a
+ * key that are single tokens, a status and problem codes from their lists, booleans where booleans
+ * belong) and drops one that does not match, reporting a diagnostic that names no value.
+ */
+export interface BureauHostEvents {
+  /** Calls `listener` with each change the host reports from now on; returns the function that stops it. */
+  subscribe(listener: (event: BureauHostEvent) => void): () => void;
+}
 
 // ── Provider Configuration ───────────────────────────────────────────
 
@@ -525,6 +587,23 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentSkillCatalog?: () => SkillCatalogRevision | undefined;
   /**
+   * COR-2100 — where the host reports a change to the skills it discovers. Discovery stays the
+   * host's, so this is a subscription, not a watcher: each report is published as
+   * `definitions.changed` with `catalog: 'skills'`, `added`, `changed`, `removed` and `rejected`.
+   * The host calls the listener after it has replaced the catalog `agentSkillCatalog` reads, and
+   * never for the first discovery. The Bureau unsubscribes when it is disposed.
+   */
+  skillChanges?: {
+    onChange(
+      listener: (change: {
+        readonly added: readonly string[];
+        readonly changed: readonly string[];
+        readonly removed: readonly string[];
+        readonly rejected: readonly string[];
+      }) => void,
+    ): () => void;
+  };
+  /**
    * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
    * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON
    * workflow files (COR-1527): every `*.json` file in it is an agent-authored workflow
@@ -574,6 +653,26 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * version. Two validators with the same name and version are a startup error.
    */
   validators?: readonly Validator[];
+  /**
+   * COR-2119 — where the owner's validator files are (`validatorFileDirectory` or
+   * `validatorObjectSource`): a JSON file per validator that says when a goal's work is done,
+   * watched like the agent and workflow files. A goal may name one beside the validators of
+   * {@link BureauOptions.validators}, which are looked up first; a goal copies the definition it was
+   * created with, so editing or deleting the file never changes a goal that began on it. A file that
+   * cannot be used is reported through `definitions.changed` (`catalog: 'validators'`, `rejected`).
+   */
+  validatorSource?: ValidatorSource;
+  /**
+   * COR-2120 — where the owner's guardrail files are (`guardrailFileDirectory` or
+   * `guardrailObjectSource`): a JSON file per guardrail (`kind: 'pattern'`, `checks`, `action`,
+   * `phrases` and `patterns`) that an agent file lists in `guardrails` by the file's stem, beside
+   * the plugin guardrails (`plugin:name`). Watched like the agent files: an edit changes the agents
+   * that name it from their next run, and never a run that started on the old one, whose snapshot
+   * holds a copy of the definition. A file that cannot be used is reported through
+   * `definitions.changed` (`catalog: 'guardrails'`, `rejected`), and an agent that names it is
+   * `reference-unresolved`.
+   */
+  guardrailSource?: GuardrailSource;
   /**
    * COR-851 — resolves the producing run of a `fresh-from-artifact` goal's
    * handoff artifact: its sealed context epoch and the actors permitted to
@@ -688,6 +787,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   pluginConfiguration?: Readonly<Record<string, BureauPluginSettings>>;
   /** COR-1879 — reads the secrets plugins declare; a plugin reads only the keys it declared. */
   pluginSecrets?: BureauPluginSecrets;
+  /**
+   * COR-2098 — where the host reports the plugin and secret changes it commits: a secret stored or
+   * removed, a plugin's choices written, a plugin's status changed. Bureau publishes each as
+   * `secret.set`, `secret.removed`, `plugin.settings-changed` or `plugin.status-changed` on the
+   * event feed, as an `unattributed` kind. Without it those four kinds are never published.
+   */
+  hostEvents?: BureauHostEvents;
   /**
    * COR-41 — the memory authority Bureau delegates to each run it composes
    * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
@@ -900,10 +1006,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
-   * durable audit trail, and fires a webhook (via `options.webhooks`, AB-21's
-   * durable delivery infra) when a judge returns a `fail` outcome or a score
-   * below its configured alert threshold. Omit, pass no judges, or pass `sampleRate: 0` to
-   * disable — the default.
+   * durable audit trail, and publishes `scorer.threshold-breached` on the hook event feed when a
+   * judge returns a `fail` outcome or a score below its configured alert threshold. Omit or pass
+   * no judges to disable — the default. A `sampleRate` of 0 turns every judge off, whatever rate a
+   * judge asks for itself (a judge's own `sampleRate` applies only while this one is above 0); the
+   * `scorers.sampleRate` setting replaces it, at the next run to finish.
    */
   scorers?: ScorerSamplerOptions;
   /**

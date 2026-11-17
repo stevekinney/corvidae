@@ -3,11 +3,42 @@
  * alert above the footer's buttons, built from the fault the Bureau answered with. The pages put
  * what failed first and what is kept after it, so the person reads that nothing was lost.
  */
+import { HttpClientError } from '@lostgradient/weft';
+
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { wireCodeOf } from '../../lib/bureau-client.ts';
 import { faultTreatment } from '../../lib/faults.ts';
 
 const copy = GOALS_COPY.form;
+
+/** The leading path of an issue the Bureau names inside a check's configuration (`bureau.goals.create`, COR-2117). */
+const CONFIGURATION_PATH = ['validator', 'configuration'] as const;
+
+/**
+ * The fields of a check's configuration an `InvalidParams` fault names, each by its path inside the
+ * configuration, for the form to show on the field. An issue about the goal rather than the
+ * configuration, and any other fault, names none.
+ */
+export function configurationIssuesOf(
+  error: unknown,
+): { readonly path: readonly (string | number)[]; readonly message: string }[] {
+  if (!(error instanceof HttpClientError) || wireCodeOf(error) !== 'InvalidParams') return [];
+  const issues: unknown = error.data?.['issues'];
+  if (!Array.isArray(issues)) return [];
+  return issues.flatMap((issue: unknown) => {
+    if (typeof issue !== 'object' || issue === null) return [];
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (
+      !Array.isArray(path) ||
+      typeof message !== 'string' ||
+      !path.every((segment) => typeof segment === 'string' || typeof segment === 'number') ||
+      !CONFIGURATION_PATH.every((segment, index) => path[index] === segment)
+    ) {
+      return [];
+    }
+    return [{ path: path.slice(CONFIGURATION_PATH.length), message }];
+  });
+}
 
 /** What a request that failed says: the title and sentence for the alert, and the Bureau's code for tests and tooling. */
 export type GoalFormFailure = {

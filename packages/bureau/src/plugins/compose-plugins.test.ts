@@ -337,14 +337,14 @@ describe('composePlugins', () => {
     }
   });
 
-  it('registers a scorer under its namespaced name and hands its score the run and the signal (COR-2199)', async () => {
-    const received: { run: unknown; signal: AbortSignal; self: unknown }[] = [];
+  it('registers a scorer under its namespaced name and hands its score the run, the signal and the run id (COR-2199, COR-2204)', async () => {
+    const received: { run: unknown; signal: AbortSignal; context: unknown; self: unknown }[] = [];
     const scorer = {
       name: 'judge',
       version: '1',
       determinism: 'stochastic' as const,
-      score(run: unknown, signal: AbortSignal) {
-        received.push({ run, signal, self: this });
+      score(run: unknown, signal: AbortSignal, context: unknown) {
+        received.push({ run, signal, context, self: this });
         return { outcome: 'pass' as const, message: 'ok' };
       },
     };
@@ -359,11 +359,45 @@ describe('composePlugins', () => {
 
     const run = { content: 'a run' } as never;
     const signal = new AbortController().signal;
-    await composed?.score(run, signal);
+    const context = { runId: 'run-1' };
+    await composed?.score(run, signal, context);
     expect(received).toHaveLength(1);
     expect(received[0]?.run).toBe(run);
     expect(received[0]?.signal).toBe(signal);
+    expect(received[0]?.context).toBe(context);
     expect(received[0]?.self).toBe(scorer);
+  });
+
+  it('registers a scorer in the contribution catalog under the plugin that gave it (COR-2200)', async () => {
+    const scorer = {
+      name: 'judge',
+      version: '2',
+      sampleRate: 0.25,
+      score: () => ({ outcome: 'pass' as const, message: '' }),
+    };
+    const bad = { name: 'odd', version: '1@x', score: scorer.score };
+    const given: ComposableOptions = {
+      plugins: [pluginEntry('kit', () => ({ scorers: [scorer, bad] }))],
+      scorers: { list: [], sampleRate: 1 },
+    };
+    const { options } = await composePlugins(given);
+
+    const found = options.contributionCatalog?.resolve('scorer', {
+      name: 'kit:judge',
+      version: '2',
+    });
+    expect(found?.ok).toBe(true);
+    expect(found?.ok === true ? found.entry.source : undefined).toEqual({
+      name: 'kit',
+      version: '1.0.0',
+    });
+    // An identity the catalog refuses is left out; the scorer still runs.
+    expect(options.contributionCatalog?.entries('scorer').map(({ name }) => name)).toEqual([
+      'kit:judge',
+    ]);
+    expect(options.scorers?.list.map(({ name }) => name)).toEqual(['kit:judge', 'kit:odd']);
+    // A scorer's own rate (COR-2203) reaches the sampler with the scorer.
+    expect(options.scorers?.list[0]?.sampleRate).toBe(0.25);
   });
 
   it('lists only the contributions whose option the host gave', async () => {
@@ -371,7 +405,14 @@ describe('composePlugins', () => {
       pluginEntry('kit', () => ({
         reactions: [actionKind('page')],
         scorers: [judge('judge')],
-        embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
+        embedders: [
+          {
+            name: 'small',
+            model: 'small-model',
+            dimensions: 4,
+            embed: async (texts) => texts.map(() => []),
+          },
+        ],
         guardrails: {
           memory: [
             { name: 'tags', description: 'A test guardrail.', detect: async () => ({}) as never },
@@ -1187,7 +1228,7 @@ describe('composePlugins', () => {
           ],
         })),
         pluginEntry('flat', () => ({
-          embedders: [{ name: 'zero', dimensions: 0, embed: async () => [] }],
+          embedders: [{ name: 'zero', model: 'zero-model', dimensions: 0, embed: async () => [] }],
         })),
         pluginEntry('fine', () => ({ interceptors: [{ name: 'audit' }] })),
       ],
@@ -1198,6 +1239,28 @@ describe('composePlugins', () => {
       ['skipped', 'setup-failed'],
       ['running', undefined],
       ['skipped', 'setup-failed'],
+    ]);
+  });
+
+  it('skips a plugin whose embedder names a blank model, and composes the others (COR-2184)', async () => {
+    const embed = async () => [];
+    const { records } = await composePlugins({
+      plugins: [
+        pluginEntry('blank', () => ({
+          embedders: [{ name: 'embed', model: '  ', dimensions: 4, embed }],
+        })),
+        pluginEntry('missing', () => ({
+          embedders: [{ name: 'embed', dimensions: 4, embed } as never],
+        })),
+        pluginEntry('named', () => ({
+          embedders: [{ name: 'embed', model: 'named-model', dimensions: 4, embed }],
+        })),
+      ],
+    });
+    expect(records.map(({ status, problems }) => [status, problems[0]?.code])).toEqual([
+      ['skipped', 'setup-failed'],
+      ['skipped', 'setup-failed'],
+      ['running', undefined],
     ]);
   });
 
@@ -1488,6 +1551,48 @@ describe('MCP apps a plugin contributes', () => {
     ]);
   });
 
+  it('lists a panel as a contribution with its title, so the host can name it (COR-2213)', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('titled', () => ({
+          panels: [
+            { ...mcpApp('review-queue', 'ui://titled/review-queue/v1'), title: 'Review queue' },
+          ],
+        })),
+      ],
+    });
+    expect(records[0]?.contributions).toEqual([
+      { kind: 'panel', id: 'titled:review-queue', title: 'Review queue' },
+    ]);
+  });
+
+  it('skips a plugin whose panel allows a tool without the bureau. prefix, naming the tool', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          panels: [
+            {
+              ...mcpApp('one', 'ui://a/one/v1', 'bureau.tasks.inspect'),
+              allowedTools: ['bureau.tasks.inspect', 'tool.elsewhere'],
+            },
+          ],
+        })),
+        pluginEntry('b', () => ({
+          panels: [mcpApp('two', 'ui://b/two/v1', 'bureau.tasks.events')],
+        })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+    expect(records[0]?.problems).toEqual([
+      expect.objectContaining({
+        code: 'setup-failed',
+        message: expect.stringContaining(
+          'setup returned the panel "one" with the tool "tool.elsewhere" in allowedTools, which is not a Bureau tool: every allowedTools entry begins bureau.',
+        ),
+      }),
+    ]);
+  });
+
   it('skips a plugin whose app is opened from a tool it may not call', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
@@ -1503,11 +1608,11 @@ describe('MCP apps a plugin contributes', () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
         pluginEntry('a', () => ({ panels: [mcpApp('one', 'https://example.test/one')] })),
-        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://b/shared/v1', 'tool.b')] })),
+        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://b/shared/v1', 'bureau.test.b')] })),
         pluginEntry('c', () => ({
           panels: [
-            mcpApp('one', 'ui://c/shared/v1', 'tool.c1'),
-            mcpApp('two', 'ui://c/shared/v1', 'tool.c2'),
+            mcpApp('one', 'ui://c/shared/v1', 'bureau.test.c1'),
+            mcpApp('two', 'ui://c/shared/v1', 'bureau.test.c2'),
           ],
         })),
       ],
@@ -1524,9 +1629,13 @@ describe('MCP apps a plugin contributes', () => {
       plugins: [
         // Another plugin's namespace, a prefix that is not a path segment, and no path at all.
         pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://bureau/one/v1')] })),
-        pluginEntry('ab', () => ({ panels: [mcpApp('one', 'ui://abc/one/v1', 'tool.ab')] })),
-        pluginEntry('abc', () => ({ panels: [mcpApp('one', 'ui://abc', 'tool.abc')] })),
-        pluginEntry('fine', () => ({ panels: [mcpApp('one', 'ui://fine/one/v1', 'tool.fine')] })),
+        pluginEntry('ab', () => ({
+          panels: [mcpApp('one', 'ui://abc/one/v1', 'bureau.test.ab')],
+        })),
+        pluginEntry('abc', () => ({ panels: [mcpApp('one', 'ui://abc', 'bureau.test.abc')] })),
+        pluginEntry('fine', () => ({
+          panels: [mcpApp('one', 'ui://fine/one/v1', 'bureau.test.fine')],
+        })),
       ],
     });
     expect(records.map(({ status }) => status)).toEqual([

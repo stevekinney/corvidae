@@ -10,6 +10,7 @@ import type { Page } from '@playwright/test';
 import { newThreadId, releaseBarrier, runToEnd } from './chat-support.ts';
 import { E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
@@ -48,9 +49,11 @@ test.describe('a new chat', () => {
     expect(await pill.evaluate((element) => element.closest('form.chat-input') !== null)).toBe(
       true,
     );
-    const composerBox = await composer(page).boundingBox();
-    const pillBox = await pill.boundingBox();
-    expect(pillBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(composerBox?.y ?? 0);
+    const { composerBox, pillBox } = await readBoxes(page, {
+      composerBox: composer(page),
+      pillBox: pill,
+    });
+    expect(pillBox.y).toBeLessThan(composerBox.y);
     // One agent control, no agent card, and the greeting is the one title: no header over it.
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(1);
     await expect(page.getByTestId('agent-card')).toHaveCount(0);

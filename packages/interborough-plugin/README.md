@@ -10,7 +10,12 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
-| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`, `publish` (publishes an event the plugin declared as `<plugin>:<name>`, with the payload checked against its schema; rejects with `PluginHostDisposedError` once the Bureau is disposed, and publishes nothing). |
+| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`, `publish` (publishes an event the plugin declared as `<plugin>:<name>`, with the payload checked against its schema; rejects with `PluginHostDisposedError` once the Bureau is disposed, and publishes nothing), and `decisions.decide` (asks a model a question as the plugin; see [Ask a decision](#ask-a-decision)). |
+| `PluginDecideOptions` | The options of `host.decisions.decide`: `signal`, `taskId` and `requireKinds`. |
+| `decisionScorer` | Builds a scorer that asks a decision about each sampled run; `determinism: 'stochastic'`. See [Ask a decision](#ask-a-decision). |
+| `decisionValidator` | Builds a goal validator that asks a decision under the goal run's id; `determinism: 'stochastic'`. See [Ask a decision](#ask-a-decision). |
+| `PluginDecisionScorerOptions`, `PluginDecisionValidatorOptions`, `DecisionScorerContent` | The options of `decisionScorer` and `decisionValidator`, and the `content` a scorer reads (`'final'` or `'transcript'`). |
+| `PluginScoredRun` | What a scorer's `score` is told beside the run and the signal: `{ runId }`. |
 | `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, events, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
@@ -100,8 +105,8 @@ The descriptor's members:
 | `triggers` | New external sources that start work. |
 | `reactions` | New things a hook can do when its event happens. |
 | `providers` | Model providers, each with the catalog rows of its models (a row with `decisions: { kinds, only: true }` answers those decision kinds natively through the provider's `decide` and runs no agent, as the `typesafe` plugin's does) and, optionally, the `secretKey` of the declared secret that holds its API key (see [Provider keys](#provider-keys)). |
-| `embedders` | Embedders the `memory.embedder` setting can name. |
-| `scorers` | Scorers that score a sample of completed runs: `score(run, signal)` returns a `PluginScore` (`outcome`, `message`, optional `score` from 0 to 1) and may declare `determinism`. The signal aborts on shutdown and after 30 seconds. |
+| `embedders` | Embedders the `memory.embedder` setting can name, each `{ name, model, dimensions, embed }`. `model` names the model the embedder runs (never blank), which memory records in the embedding profile beside the embedder's id and dimension: an embedder reconfigured to another model under the same `plugin:name` is a different embedding, the active profile reports `embedder-unavailable` until memory re-embeds under it, and writing the setting again starts that switch. An embedder takes the plugin's version, and its identity records `{ dimensions, model }`. Renaming a plugin or an embedder orphans the active profile, which names its embedder by `plugin:name`; that is accepted while Corvidae is pre-release. |
+| `scorers` | Scorers that score a sample of completed runs: `score(run, signal, { runId })` returns a `PluginScore` (`outcome`, `message`, optional `score` from 0 to 1) and may declare `determinism`. The signal aborts on shutdown and after 30 seconds, and `runId` is the id a scorer files its own records under. |
 | `panels` | Interface panels. |
 | `formatters` | Titles and bodies for the activity views, and optionally a `tier` (`critical`, `warning` or `info`, which is also what the view gets when a formatter names none), an `icon` (a Lucide icon name) and a `link` (a router-relative path starting with one `/` and holding no whitespace or control character; the host drops any other value, a URL, a `//host` path or a path with a tab or line break among them). A formatter formats from the event alone, synchronously: `format(event)` is handed nothing else and returns no promise. The host keeps a `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000, cutting a longer one rather than refusing it, and drops a `body` that is not a string with a `warn` diagnostic. A formatter that lists one kind twice, or a kind another plugin's formatter holds, skips the plugin with `name-clash`. |
 | `events` | Event kinds the plugin declares, `{ name, description, payload, version? }` (`PluginEventDeclaration`). The kind is `plugin:name`; see [Declared events](#declared-events). |
@@ -388,7 +393,7 @@ export default definePlugin({
 });
 ```
 
-An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
+An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. A `name-clash` skips the whole plugin, never just the panel: none of its contributions register. Every `allowedTools` entry begins `bureau.`, and setup refuses a panel that lists any other name. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
 
 ```ts
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
@@ -411,9 +416,27 @@ export default definePlugin({
 });
 ```
 
+Every `PluginPanel` field:
+
+| Field | Required | What it holds |
+| --- | --- | --- |
+| `name` | yes | The panel's name, unique within the plugin. |
+| `version` | no | The panel's own version; a record that pins it uses the plugin's version without one. |
+| `title` | yes | The panel's title, which the host shows wherever it names the panel. |
+| `description` | no | What the panel shows. |
+| `uri` | yes | The `ui://<plugin>/…` resource the page is served at. Unique across plugins; a clash skips the whole plugin. |
+| `entry` | yes | The browser entry module (a `URL`) the host bundles into the page. |
+| `styles` | no | CSS inlined into the page's `<style>` element. |
+| `allowedTools` | yes | The Bureau tools the panel may call, every one beginning `bureau.`. |
+| `hostOnlyTools` | no | Operations only a host panel may call. Each is one of `allowedTools` and one the Bureau lists as open to host panels; setup refuses any other. |
+| `placements` | no | Where the panel appears: `page`, `run` or `chat-tool` (below). |
+| `opensFromTool` | no | The one `allowedTools` entry a client runs to open the page; unique across plugins. |
+
+A panel that renders Cinder components imports `mountPanel` from `@lostgradient/cinder/panel` and mounts its Svelte component with it. The kit carries Cinder's stylesheet and reads the host's theme: each `--cinder-*` token the MCP Apps spec maps is `var(--color-…, <Cinder default>)`, so the panel follows the owner's light or dark theme inside Interborough, adapts to another host that sends a different palette, and looks like Cinder where the host sends none. The panel build resolves `svelte` and `@lostgradient/cinder` from the host's own install, never from the plugin's, so list Cinder as a `devDependency` only and the version always matches the application. A panel is a document in a sandboxed frame, and three limits follow from that. Dialogs, popovers and toasts render inside the frame and never above the host's own interface. Keyboard focus does not flow between the host and the panel: a person tabs out of the frame as they would out of any embedded document. Navigation, links, resizing and notifications go through the MCP Apps bridge, and Interborough's bridge refuses `ui/message` everywhere, so a panel cannot post a message into the conversation, and it refuses `ui/open-link` too except on a panel's own page (a `page` placement), where a link that stays inside Interborough opens in the same tab and any other address is blocked.
+
 A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
 
-- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.
+- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router, at `/plugins/<plugin>/<path>`. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`. The host draws the page's header (the panel's `title` and "From" the plugin's title) and fills the rest of the page with your app, so do not repeat the title in the app. The entry sits after the group's built-in entries, in load order, labelled with the panel's `title` and marked "Plugin"; it has no keyboard shortcut. `icon` is one of `puzzle`, `plug`, `blocks`, `chart-line`, `list-checks`, `bell`, `workflow` and `book-open`, and any other name draws `puzzle`. A page with no `sidebar` entry is reachable from the command palette and its address. When a plugin is disabled its pages are gone, and its address says the plugin is disabled.
 - `{ kind: 'run' }`: the panel shows on a run's page. Two plugins can both place a panel there.
 - `{ kind: 'chat-tool', agentTool }`: Chat opens the panel inline when the agent tool `agentTool` is called. A Bureau given its agent tools refuses an id it does not hold, except the workflow tools it adds itself.
 
@@ -539,6 +562,43 @@ export default definePlugin({
 Without `secretKey`, a plugin that declares exactly one secret uses it as the key, and a plugin that declares several is refused with `provider-secret-ambiguous`, because the order of the declarations is never read as a choice. A `secretKey` the plugin does not declare is refused with `provider-secret-unknown`. A plugin that declares no secret has a keyless provider, such as a local Ollama or LM Studio server: its models are available whenever the plugin runs, and its definition is called with `apiKey` omitted.
 
 `setup`'s `storage` is confined to the key prefix `plugin:<name>:`, so a plugin cannot read another's records.
+
+## Ask a decision
+
+`host.decisions.decide(request, options?)` asks a model a typed question (`boolean`, `choice`, `scale` or `structured`) and answers a `Decision`. It is bound to the plugin: the host records the call as the principal `plugin:<name>`, hands that principal to the model, and ignores any `principal` or `routingId` the caller passes, so a plugin cannot decide as another principal. The call is available on the host `setup` receives too, where it rejects until the host has started, so a helper can be built during `setup`.
+
+- **Options.** `taskId` files the `decision.made` audit record under that task (the run a scorer judges, the goal a validator checks) and names it on the event; without one the record is filed under `decision:<uuid>`. `signal` cancels the call. `requireKinds` lists the kinds a model must serve natively: a call is then answered only by a registered model, or a catalog row whose built model serves every listed kind, and never by the language-model fallback or a row's own `generate`.
+- **Refusals.** A `taskId` that is not a non-empty string, a `signal` that is not an `AbortSignal`, and `requireKinds` that is not a non-empty list of decision kinds reject `BAD_REQUEST`. A call after the Bureau is disposed rejects `PluginHostDisposedError`, a signal already aborted rejects with its reason, and the plugin's needs-setup error rejects while a secret it declared is not set. A refused call asks no model and records nothing. When no model can answer, or `requireKinds` is not met, the call rejects `NOT_CONFIGURED` and its record is `refused`.
+- **No deadline.** The host adds no deadline and no concurrency limit, and a call is also aborted when the Bureau shuts down. Pass a `signal` to bound a call.
+
+`decisionScorer(host.decisions, options)` and `decisionValidator(host.decisions, options)` turn a decision into a scorer or a goal validator. Both declare `determinism: 'stochastic'` and map a rejection the same way, and never throw it: an abort is `canceled`, `NOT_CONFIGURED` or a model-policy denial is `unavailable`, and anything else is an `error`. The text of a failure is fixed and names a code (`Decision failed: PROVIDER_DOWN`), never the provider's message, because the validator's error code reaches `goal.failed` and both texts are read back.
+
+- **`decisionScorer`** takes `{ name, version, question, verdict, content?, requireKinds?, alertThreshold? }`. `question` is a decision request without its `context`, which the helper sets from the run: the final reply by default (`content: 'final'`), or the whole conversation as Markdown with `content: 'transcript'`, an explicit opt-in. Any other `content` throws a `TypeError` when the scorer is built. It asks under `taskId: context.runId`, and the score lists the decision's provider, model and usage in `decisions`.
+- **`decisionValidator`** takes `{ name, version, request, verdict, requireKinds? }`, and asks under `taskId: input.goalRunId`. A decision that is `unavailable` lets a goal whose `retryOn` includes `validator-unavailable` retry; its error code is `DECISION_UNAVAILABLE` or `DECISION_FAILED`.
+
+```ts
+import { decisionScorer, definePlugin } from '@lostgradient/interborough-plugin';
+
+export default definePlugin({
+  name: 'helpfulness',
+  version: '1.0.0',
+  description: 'Scores whether a reply answered the request.',
+  setup: ({ host }) => ({
+    scorers: [
+      decisionScorer(host.decisions, {
+        name: 'helpful',
+        version: '1',
+        question: { kind: 'boolean', question: 'Did the reply answer the request?' },
+        requireKinds: ['boolean'],
+        verdict: (decision) =>
+          decision.value === true
+            ? { outcome: 'pass', message: 'Answered', score: 1 }
+            : { outcome: 'fail', message: 'Did not answer', score: 0 },
+      }),
+    ],
+  }),
+});
+```
 
 ## Do work after Bureau starts
 

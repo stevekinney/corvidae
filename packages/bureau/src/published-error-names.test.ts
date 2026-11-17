@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 
-import { publishableErrorCode, publishableErrorKind } from './published-error-names';
+import {
+  publishableDeliveryOutcome,
+  publishableErrorCode,
+  publishableErrorKind,
+  publishableFinishReason,
+  publishablePluginStatus,
+  publishableProblemCodes,
+  publishableSecretKey,
+  publishableSteeringFailureReason,
+  publishableToken,
+} from './published-error-names';
 
 /** Every `AgentRunErrorCode` and every code Armorer assigns a tool failure: all must be publishable. */
 const KNOWN_CODES = [
@@ -77,4 +87,139 @@ describe('what a pushed event may name of a failure (COR-2095, Revision 2026-11-
       expect(publishableErrorKind(kind)).toBeUndefined();
     },
   );
+});
+
+describe('what a pushed event may name of a plugin and its secret (COR-2098)', () => {
+  it.each(['running', 'needs-setup', 'disabled', 'skipped'])(
+    'publishes the status %s',
+    (status) => {
+      expect(publishablePluginStatus(status)).toBe(status);
+    },
+  );
+
+  it.each(['Running', 'needs setup', 'broken', '', undefined, null, 1])(
+    'omits the status %j',
+    (status) => {
+      expect(publishablePluginStatus(status)).toBeUndefined();
+    },
+  );
+
+  it('publishes the problem codes it is given once each, in order, and refuses a list with anything else in it', () => {
+    expect(publishableProblemCodes([])).toEqual([]);
+    expect(publishableProblemCodes(['secret-missing', 'panel-changed', 'secret-missing'])).toEqual([
+      'secret-missing',
+      'panel-changed',
+    ]);
+    expect(publishableProblemCodes(['secret-missing', 'the key is missing'])).toBeUndefined();
+    expect(publishableProblemCodes(['toString'])).toBeUndefined();
+    expect(publishableProblemCodes([{ code: 'secret-missing' }])).toBeUndefined();
+    expect(publishableProblemCodes('secret-missing')).toBeUndefined();
+    expect(publishableProblemCodes(undefined)).toBeUndefined();
+  });
+
+  it.each(['kit-api-key', 'a', '0-key', 'a'.repeat(128)])('publishes the key %s', (key) => {
+    expect(publishableSecretKey(key)).toBe(key);
+  });
+
+  it.each(['Kit-Key', '-key', 'kit key', 'kit_key', 'key\n', 'a'.repeat(129), '', undefined, 9])(
+    'omits the key %j',
+    (key) => {
+      expect(publishableSecretKey(key)).toBeUndefined();
+    },
+  );
+});
+
+describe('what a pushed event may name of a child run, a steering command and a hook (COR-2097)', () => {
+  it.each([
+    'stop-condition',
+    'maximum-steps',
+    'aborted',
+    'error',
+    'elicitation-denied',
+    'budget-exceeded',
+    'tripwire',
+  ])('publishes the finish reason %s as it is', (reason) => {
+    expect(publishableFinishReason(reason, 'error')).toBe(reason);
+  });
+
+  it.each(['failed', 'Error', 'error ', 'the provider said no', '', undefined, null, 4, {}])(
+    'replaces the finish reason %j with the fallback',
+    (reason) => {
+      expect(publishableFinishReason(reason, 'FALLBACK')).toBe('FALLBACK');
+    },
+  );
+
+  it.each([
+    'session-terminal',
+    'run-terminal',
+    'run-ambiguous',
+    'authorization-revoked',
+    'policy-denied',
+    'model-not-allowed',
+    'stale-revision',
+    'shutting-down',
+    'deadline-passed',
+    'superseded-by',
+  ])('publishes the steering reason %s as it is', (reason) => {
+    expect(publishableSteeringFailureReason(reason)).toBe(reason);
+  });
+
+  it.each(['denied', 'Policy-Denied', 'policy-denied ', 'because I said so', '', undefined, 3])(
+    'omits the steering reason %j',
+    (reason) => {
+      expect(publishableSteeringFailureReason(reason)).toBeUndefined();
+    },
+  );
+
+  it.each([
+    'agent:own',
+    'plugin:audit:guard',
+    'audit',
+    '@scope/plugin',
+    'a.b_c-d',
+    '1.0.0',
+    'v2024-11-01',
+    'a'.repeat(128),
+  ])('publishes the token %s as it is', (name) => {
+    expect(publishableToken(name)).toBe(name);
+  });
+
+  it.each([
+    'two words',
+    ' leading',
+    'trailing ',
+    'new\nline',
+    'password=hunter2',
+    '-starts-with-a-dash',
+    'a'.repeat(129),
+    '',
+    undefined,
+    null,
+    9,
+  ])('omits the token %j', (name) => {
+    expect(publishableToken(name)).toBeUndefined();
+  });
+});
+
+describe('publishableDeliveryOutcome (COR-2099)', () => {
+  it.each(['response', 'network-error', 'refused', 'error', 'rejected'] as const)(
+    'publishes the outcome %s as it is',
+    (outcome) => {
+      expect(publishableDeliveryOutcome(outcome, 'error')).toBe(outcome);
+    },
+  );
+
+  it.each([
+    'Unable to connect to https://receiver.example/hook?token=abc123',
+    'completed',
+    'interrupted',
+    'sending',
+    '',
+    undefined,
+    null,
+    500,
+  ])('publishes the fallback for %j', (outcome) => {
+    expect(publishableDeliveryOutcome(outcome, 'error')).toBe('error');
+    expect(publishableDeliveryOutcome(outcome, 'rejected')).toBe('rejected');
+  });
 });

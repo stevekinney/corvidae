@@ -57,6 +57,11 @@ describe('classifyRequest', () => {
     expect(isReadOperation('bureau.schedules.pause')).toBe(false);
   });
 
+  test('reading the embedding is a read, and canceling its switch is a write', () => {
+    expect(isReadOperation('bureau.memory.embedding')).toBe(true);
+    expect(isReadOperation('bureau.memory.embedding.cancel')).toBe(false);
+  });
+
   test('archiving and unarchiving a chat are writes', () => {
     const url = 'http://localhost/bureau/jsonrpc';
     for (const method of ['bureau.contexts.archive', 'bureau.contexts.unarchive']) {

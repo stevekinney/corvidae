@@ -83,10 +83,23 @@ export type SteeringLogEvent =
       readonly now: string;
     };
 
-/** The log head as last read: its exact stored value (the append precondition) and sequence. */
+/**
+ * The log head as last read: its exact stored value (the append precondition), its sequence, and
+ * whether the log is sealed (COR-2097): the session it belongs to ended, and no append is
+ * accepted after the process that ended it read what the log held.
+ */
 export interface SteeringLogHead {
   readonly raw: string | null;
   readonly sequence: number;
+  readonly sealed?: boolean | undefined;
+}
+
+/** Thrown when a log is sealed: its session ended, so nothing may be appended to it or admitted through it. */
+export class SteeringLogSealedError extends Error {
+  constructor(sessionId: string) {
+    super(`The steering log of session "${sessionId}" is sealed: the session has ended.`);
+    this.name = 'SteeringLogSealedError';
+  }
 }
 
 /** Where a bureau-wide `(principal, id)` idempotency key was admitted. */
@@ -377,7 +390,35 @@ export async function readSteeringLogHead(
   if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence < 0) {
     throw new SteeringLogCorruptError(`Steering log head for session "${sessionId}" is malformed.`);
   }
-  return { raw, sequence };
+  return {
+    raw,
+    sequence,
+    ...(isRecord(parsed) && parsed['sealed'] === true ? { sealed: true } : {}),
+  };
+}
+
+/**
+ * Seals the log whose head was read as `head`, with one write conditioned on that head (COR-2097).
+ * The process that ended the session seals the log before it announces what the ending did to the
+ * commands still accepted, so the log arbitrates a race with the process hosting a run: an append
+ * that committed before the seal is in what was read, and one that comes after it finds the head
+ * moved and, on reading it again, a sealed log, and is refused. Answers the sealed head, or
+ * `undefined` when the head had moved (the caller reads it again). A log already sealed is answered
+ * as it is.
+ */
+export async function sealSteeringLog(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  incarnation: string,
+  head: SteeringLogHead,
+): Promise<SteeringLogHead | undefined> {
+  if (head.sealed === true) return head;
+  const sealedHead = JSON.stringify({ sequence: head.sequence, sealed: true });
+  const sealed = await kv.conditionalBatch(
+    [{ key: headKey(sessionId, incarnation), expectedValue: head.raw }],
+    [{ type: 'set', key: headKey(sessionId, incarnation), value: sealedHead }],
+  );
+  return sealed ? { raw: sealedHead, sequence: head.sequence, sealed: true } : undefined;
 }
 
 /**
@@ -454,6 +495,8 @@ export async function appendSteeringLogEvent(
       `Steering log event "${event.type}" for session "${sessionId}" could not be read back, so it was not appended.`,
     );
   }
+  // A sealed head is final: appending against it would write an unsealed head over the seal.
+  if (head.sealed === true) throw new SteeringLogSealedError(sessionId);
   const sequence = head.sequence + 1;
   const nextHead = JSON.stringify({ sequence });
   const conditions: { key: string; expectedValue: string | null }[] = [
@@ -484,11 +527,10 @@ export async function appendSteeringLogEvent(
 }
 
 /**
- * Deletes one session incarnation's log and every idempotency key it bound.
- * A key is deleted only while it still points at this incarnation, so a key
- * a newer session has since rebound survives.
+ * Removes the idempotency keys an incarnation's log bound, each only while it still points at this
+ * incarnation, so a key a newer session has since rebound survives.
  */
-export async function deleteSteeringLog(
+async function deleteBoundSteeringKeys(
   kv: ConditionalTextValueStore,
   sessionId: string,
   incarnation: string,
@@ -518,7 +560,46 @@ export async function deleteSteeringLog(
       );
     }
   }
-  await kv.deletePrefix(prefix);
+}
+
+/**
+ * Deletes one session incarnation's log and every idempotency key it bound.
+ * A key is deleted only while it still points at this incarnation, so a key
+ * a newer session has since rebound survives.
+ */
+export async function deleteSteeringLog(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  incarnation: string,
+): Promise<void> {
+  await deleteBoundSteeringKeys(kv, sessionId, incarnation);
+  await kv.deletePrefix(logPrefix(sessionId, incarnation));
+}
+
+/**
+ * Removes an ended session incarnation's log but keeps its sealed head (COR-2097): the entries and
+ * the keys they bound go, and the head stays, sealed, until the boot sweep removes it with
+ * {@link deleteSteeringLog}. A head that was removed with the entries reads as an empty log that is
+ * neither sealed nor shorter than what a cursor folded, so an admission that found the session
+ * before it ended and read the log after this would append to a fresh log and publish
+ * `steering.accepted` with no terminal event to follow. Sealed, it is refused. A head found
+ * unsealed is sealed first, so the log is never left open without its entries; a log with no head
+ * (never written, or already swept) gets none.
+ */
+export async function deleteEndedSteeringLogEntries(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  incarnation: string,
+): Promise<void> {
+  for (;;) {
+    const head = await readSteeringLogHead(kv, sessionId, incarnation);
+    if (head.raw === null) break;
+    if ((await sealSteeringLog(kv, sessionId, incarnation, head)) !== undefined) break;
+  }
+  await deleteBoundSteeringKeys(kv, sessionId, incarnation);
+  const prefix = logPrefix(sessionId, incarnation);
+  await kv.deletePrefix(`${prefix}entry:`);
+  await kv.deletePrefix(`${prefix}key:`);
 }
 
 /**

@@ -220,3 +220,15 @@ export function isStaleInspection(shown: Inspection | undefined, next: Inspectio
   const after = next.liveness?.revision;
   return before !== undefined && after !== undefined && after < before;
 }
+
+/** One-line announcement of what changed between two models, for the live region. */
+export function describeChange(
+  before: InspectorModel | undefined,
+  after: InspectorModel,
+): string | null {
+  if (before === undefined) return null;
+  if (before.lifecycle !== after.lifecycle) return `Run is now ${after.lifecycle}.`;
+  if (before.abort.state !== after.abort.state) return `Abort: ${after.abort.state}.`;
+  if (before.stream.kind !== after.stream.kind) return `Event stream: ${after.stream.kind}.`;
+  return null;
+}

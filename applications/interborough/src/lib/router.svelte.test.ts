@@ -81,6 +81,31 @@ describe('matchRoute', () => {
     expect(matchRoute('/workflows/%E0/runs', nested)).toBeNull();
   });
 
+  test('a final * matches one or more segments and captures them joined by a slash (COR-2213)', () => {
+    const pages = [
+      {
+        pattern: '/plugins/:plugin/*',
+        kind: 'reading' as const,
+        load: definitions[1]!.load,
+      },
+    ];
+    expect(matchRoute('/plugins/reports/queue', pages)).toEqual({
+      pattern: '/plugins/:plugin/*',
+      params: { plugin: 'reports', '*': 'queue' },
+    });
+    expect(matchRoute('/plugins/reports/reviews/queue/', pages)?.params).toEqual({
+      plugin: 'reports',
+      '*': 'reviews/queue',
+    });
+    expect(matchRoute('/plugins/reports/a%20b/c', pages)?.params['*']).toBe('a b/c');
+    // At least one segment must stand for the *, and a fixed segment before it must be there.
+    expect(matchRoute('/plugins/reports', pages)).toBeNull();
+    expect(matchRoute('/plugins', pages)).toBeNull();
+    expect(matchRoute('/other/reports/queue', pages)).toBeNull();
+    // A segment that is not valid percent-encoding is no match, in the rest as elsewhere.
+    expect(matchRoute('/plugins/reports/%E0', pages)).toBeNull();
+  });
+
   test('returns null when segment counts differ', () => {
     expect(matchRoute('/runs/wf_1/timeline', definitions)).toBeNull();
     expect(

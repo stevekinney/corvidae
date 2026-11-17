@@ -242,6 +242,18 @@ describe('a scoped hook', () => {
 });
 
 describe('writing a scope', () => {
+  it('[COR-2100, matrix 123] refuses a scope for definitions.changed, skills included: it names no agent, workflow or schedule', async () => {
+    const run = setup();
+    for (const scope of [
+      { kind: 'agent', id: 'alpha' },
+      { kind: 'workflow', id: 'nightly' },
+    ] as const) {
+      const refused = await refusal(run.notifyHook(['definitions.changed'], scope));
+      expect(refused.issues[0]?.path).toEqual(['scope']);
+      expect(refused.message).toContain('definitions.changed');
+    }
+  });
+
   it('refuses an event its kind cannot tell, on both sides of an update, naming the event', async () => {
     const run = setup();
     const created = await refusal(
@@ -510,8 +522,35 @@ describe('subjectsOfPayload', () => {
     expect(subjects.agent.size).toBe(0);
   });
 
+  it('reads the run a child run’s event is about from its parent’s id (COR-2097)', async () => {
+    const asked: string[] = [];
+    const subjects = await subjectsOfPayload(
+      { parentRunId: 'parent-run', childRunId: 'child-run', childAgentName: 'worker' },
+      {
+        run: (runId) => {
+          asked.push(runId);
+          return Promise.resolve({ agent: 'planner', workflows: ['digest'], schedules: [] });
+        },
+        agentOfSchedule: () => Promise.resolve(undefined),
+        agentOfGoal: () => Promise.resolve(undefined),
+      },
+    );
+
+    expect(asked).toEqual(['parent-run']);
+    expect([...subjects.agent]).toEqual(['planner']);
+    expect([...subjects.workflow]).toEqual(['digest']);
+  });
+
   it('names a subject the catalog says each scoped kind can tell, from its own payload fields', () => {
-    const subjectFields = ['agentName', 'runId', 'goalRunId', 'taskId', 'scheduleId'];
+    // `parentRunId`: a child run's events name the run that dispatched it (COR-2097).
+    const subjectFields = [
+      'agentName',
+      'runId',
+      'goalRunId',
+      'taskId',
+      'scheduleId',
+      'parentRunId',
+    ];
     for (const entry of Object.values(BUREAU_EVENT_CATALOG)) {
       if (entry.scopes.length === 0) continue;
       const fields = entry.payload.map((field) => field.name);

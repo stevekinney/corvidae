@@ -36,6 +36,7 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   decideDeterminismRequirement,
   GoalConfigurationError,
+  type JSONValue,
   validateBudget,
 } from '@lostgradient/operative';
 
@@ -55,6 +56,12 @@ import type {
   BureauGoalUpdateRequest,
 } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
+import type { ValidatorFileDefinition } from './validator-file';
+import {
+  describeConfigurationRefusal,
+  type GoalConfigurationIssue,
+  parseValidatorConfiguration,
+} from './goal-validator-configuration';
 
 /** What an update reads and writes. */
 export interface GoalUpdateDependencies {
@@ -106,25 +113,37 @@ function rejected(
   code: BureauGoalUpdateRejectionCode,
   reason: string,
   availableVersions?: readonly string[],
+  issues?: readonly GoalConfigurationIssue[],
 ): Rejection {
   return {
     outcome: 'rejected',
     code,
     reason,
     ...(availableVersions === undefined ? {} : { availableVersions }),
+    ...(issues === undefined ? {} : { issues }),
   };
+}
+
+/** What a request that may be written needs beyond what it names. */
+interface PreparedUpdate {
+  /** The validator's configuration as its schema parsed it (COR-2117); `undefined` when the request names none. */
+  readonly validatorConfiguration: JSONValue | undefined;
+  /** The definition of the owner-defined validator the request changes the goal to (COR-2119). */
+  readonly validatorDefinition: ValidatorFileDefinition | undefined;
 }
 
 /**
  * Why `request` cannot change `record`, judged on what does not depend on the record as stored at
- * the write: the fields named, their values, and what the Bureau holds now. `undefined` when it may
- * be written.
+ * the write: the fields named, their values, and what the Bureau holds now. Otherwise, what the
+ * write needs beyond the request ({@link PreparedUpdate}).
  */
 function refusalOf(
   dependencies: Pick<GoalUpdateDependencies, 'catalog' | 'planAgent'>,
   record: GoalState,
   request: BureauGoalUpdateRequest,
-): Rejection | undefined {
+): Rejection | PreparedUpdate {
+  let validatorConfiguration: JSONValue | undefined;
+  let validatorDefinition: ValidatorFileDefinition | undefined;
   const { prompt, agentName, validator, maximumAttempts } = request;
   if (
     prompt === undefined &&
@@ -161,11 +180,19 @@ function refusalOf(
       );
     }
   }
-  if (
+  // A validator that is not the goal's, or the goal's own with a configuration named (COR-2117),
+  // is resolved and its configuration parsed by the rules `create` uses; the schema of the validator
+  // named decides whether naming no configuration is allowed.
+  const validatorChanged =
     validator !== undefined &&
-    (validator.name !== record.validator.name || validator.version !== record.validator.version)
-  ) {
-    const resolution = dependencies.catalog.resolve(validator);
+    (validator.name !== record.validator.name || validator.version !== record.validator.version);
+  if (validator !== undefined && (validatorChanged || validator.configuration !== undefined)) {
+    // The goal's own copy answers for the validator it already has (COR-2119); another is the
+    // catalog's, and an owner-defined one is copied into the record when it is written.
+    const resolution = dependencies.catalog.resolve(
+      validator,
+      validatorChanged ? undefined : record.validatorDefinition,
+    );
     if (!resolution.ok) {
       return resolution.reason === 'missing'
         ? rejected(
@@ -178,16 +205,29 @@ function refusalOf(
             resolution.availableVersions,
           );
     }
-    const unsupported = decideDeterminismRequirement(
-      record.requireDeterministicValidation,
-      resolution.entry.descriptor.determinism,
-    );
-    if (unsupported?.kind === 'fail') {
+    if (validatorChanged) {
+      const unsupported = decideDeterminismRequirement(
+        record.requireDeterministicValidation,
+        resolution.entry.descriptor.determinism,
+      );
+      if (unsupported?.kind === 'fail') {
+        return rejected(
+          'unsupported-validation',
+          `The goal requires deterministic validation, and the validator "${validator.name}@${validator.version}" does not declare it.`,
+        );
+      }
+    }
+    const parsed = parseValidatorConfiguration(resolution.entry.validator, validator.configuration);
+    if (!parsed.ok) {
       return rejected(
-        'unsupported-validation',
-        `The goal requires deterministic validation, and the validator "${validator.name}@${validator.version}" does not declare it.`,
+        'invalid-configuration',
+        describeConfigurationRefusal(validator, parsed.issues),
+        undefined,
+        parsed.issues,
       );
     }
+    validatorConfiguration = parsed.value;
+    validatorDefinition = validatorChanged ? resolution.entry.definition : undefined;
   }
   if (maximumAttempts !== undefined && maximumAttempts !== record.bounds.maximumAttempts) {
     try {
@@ -208,7 +248,7 @@ function refusalOf(
       throw error;
     }
   }
-  return undefined;
+  return { validatorConfiguration, validatorDefinition };
 }
 
 /**
@@ -224,14 +264,20 @@ export async function updateGoal(
   if (record.revision !== request.expectedRevision) {
     return { outcome: 'stale-revision', goal: record };
   }
-  const refusal = refusalOf(dependencies, record, request);
-  if (refusal !== undefined) return refusal;
+  const prepared = refusalOf(dependencies, record, request);
+  if ('outcome' in prepared) return prepared;
   const patch: GoalConfigurationPatch = {
     ...(request.prompt === undefined ? {} : { prompt: request.prompt }),
     ...(request.agentName === undefined ? {} : { agentName: request.agentName }),
     ...(request.validator === undefined
       ? {}
       : { validator: { name: request.validator.name, version: request.validator.version } }),
+    ...(prepared.validatorConfiguration === undefined
+      ? {}
+      : { validatorConfiguration: prepared.validatorConfiguration }),
+    ...(prepared.validatorDefinition === undefined
+      ? {}
+      : { validatorDefinition: prepared.validatorDefinition }),
     ...(request.maximumAttempts === undefined ? {} : { maximumAttempts: request.maximumAttempts }),
   };
   const written = await dependencies.store.updateConfiguration(

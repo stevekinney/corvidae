@@ -101,13 +101,19 @@ describe('the page', () => {
     ).not.toBeNull();
   });
 
-  test('draws Tools, Runs, Storage and Your preferences, and never an Engine heading', async () => {
+  test('draws Tools, Runs, Memory, Storage and Your preferences, and never an Engine heading', async () => {
     const view = open(servedSettings());
     await view.findByRole('group', READY);
     const headings = [...view.container.querySelectorAll('h2')].map((heading) =>
       heading.textContent?.trim(),
     );
-    expect(headings.slice(0, 4)).toEqual(['Tools', 'Runs', 'Storage', 'Your preferences']);
+    expect(headings.slice(0, 5)).toEqual([
+      'Tools',
+      'Runs',
+      'Memory',
+      'Storage',
+      'Your preferences',
+    ]);
     expect(headings.join('|')).not.toMatch(/engine/i);
     expect(view.container.textContent).toContain(SETTINGS_COPY.general.sections.runs.description);
     expect(view.container.textContent).toContain(
@@ -374,7 +380,7 @@ describe('a save', () => {
     expect(found?.querySelector('[aria-invalid="true"]')).not.toBeNull();
   });
 
-  test('keeps the typed value, says the save did not go through, and tries again on Retry', async () => {
+  test('keeps the typed value, says the save did not go through, and tries again on Try again', async () => {
     const served = servedSettings();
     let failing = true;
     const view = open(served, {
@@ -395,7 +401,7 @@ describe('a save', () => {
     expect(fieldOf(view.container, 'logs.maximumLinesPerRun').value).toBe('300');
 
     failing = false;
-    await fireEvent.click(within(found as HTMLElement).getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(within(found as HTMLElement).getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(found?.textContent).not.toContain(SETTINGS_COPY.couldNotSave));
     expect(served.values['logs.maximumLinesPerRun']).toBe(300);
   });

@@ -3,3 +3,8 @@
 
 [run]
 bun = true
+
+[test]
+# A host a test starts builds the stub panel pages, not a real bundle of every default plugin's
+# panels (COR-2219). `bunfig.ui.toml` replaces this file for the browser-side lane.
+preload = ["./src/host/panel-build-stub.preload.ts"]

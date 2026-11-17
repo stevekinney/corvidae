@@ -149,6 +149,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'written by a surface removal, which the purge itself performs and cleans up in the same pass',
   ),
   purged('bureau-resolved-review:v1:'),
+  contentFree(
+    'bureau-scorer-budget:v1:',
+    'the count of scorer invocations in one UTC day (COR-2205): a day and a number, no run and no chat',
+  ),
   kept('bureau-schedule-transition:', 'a schedule’s pending transition, not a chat’s'),
   purged('bureau-secret-answer:v1:'),
   purged('bureau-surface:v1:'),
@@ -163,6 +167,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
   kept(
     'bureau-task:v1:',
     'a task’s record (ids, status, cleanup) is kept as proof the task happened; its history is emptied at the delete (COR-1481) and its settlement’s message and answer text are dropped by the purge',
+  ),
+  kept(
+    'bureau-trigger:v1:',
+    'a workflow file’s listener lease: the id of the process that runs its trigger (COR-2167), not a chat’s',
   ),
   kept('bureau-workflow-cancelled-run:v1:', 'a workflow run’s cancellation record, not a chat’s'),
   kept(

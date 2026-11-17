@@ -5,11 +5,19 @@
  */
 import { default as Axe } from '@axe-core/playwright';
 import { pendingReview } from '@lostgradient/plugin-inspectors';
-import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
+import type { McpUiHostContext, McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
+import {
+  expectFollowsHost,
+  firstDurationSeconds,
+  hostContextFor,
+  REDUCED_MOTION_SECONDS,
+  SCHEMES,
+  type Scheme,
+} from './host-theme.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
 const TITLE = 'Pending reviews';
@@ -53,7 +61,7 @@ const review = (id: string, overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-async function open(page: Page, reviews: unknown[]) {
+async function open(page: Page, reviews: unknown[], scheme?: Scheme) {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route(`${HOST_ORIGIN}/`, (route) =>
@@ -65,9 +73,15 @@ async function open(page: Page, reviews: unknown[]) {
   await page.goto(`${HOST_ORIGIN}/`);
   await page.evaluate<
     void,
-    { html: string; csp: McpUiResourceCsp; reviews: { id: string }[]; title: string }
+    {
+      html: string;
+      csp: McpUiResourceCsp;
+      reviews: { id: string }[];
+      title: string;
+      hostContext: unknown;
+    }
   >(
-    async ({ html, csp, reviews: queue, title }) => {
+    async ({ html, csp, reviews: queue, title, hostContext }) => {
       const host = window.referenceHost;
       const state = { queue: [...queue] as { id: string; status: string }[] };
       Object.assign(window, { queueState: state });
@@ -90,13 +104,14 @@ async function open(page: Page, reviews: unknown[]) {
           receipt: 'applied',
         };
       };
-      await host.mount(html, csp, {}, title);
+      await host.mount(html, csp, {}, title, hostContext as McpUiHostContext | undefined);
     },
     {
       html: pageHtml,
       csp: MCP_APP_UI_META.csp,
       reviews: reviews as { id: string }[],
       title: TITLE,
+      hostContext: scheme === undefined ? undefined : hostContextFor(scheme),
     },
   );
   return { errors, app: page.frameLocator(`iframe[title="${TITLE}"]`) };
@@ -305,6 +320,20 @@ test.describe('the pending-review MCP App', () => {
     await expect(app.getByRole('status')).toHaveText('Reconnected.');
   });
 
+  for (const scheme of SCHEMES) {
+    test(`follows the host's ${scheme} theme and has no axe violations in it`, async ({ page }) => {
+      // The system says the other scheme: the host's word is the one the panel follows.
+      await page.emulateMedia({ colorScheme: scheme === 'dark' ? 'light' : 'dark' });
+      const { app } = await open(page, [review('a')], scheme);
+      await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
+      await expectFollowsHost(app, scheme);
+      await app.getByRole('button', { name: 'Reject with feedback' }).click();
+      await expect(app.getByLabel('Feedback for the agent')).toBeVisible();
+      const results = await new Axe({ page }).include('iframe').analyze();
+      expect(results.violations.filter((violation) => violation.impact !== 'minor')).toEqual([]);
+    });
+  }
+
   test('has no axe violations and honors reduced motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
     const { app } = await open(page, [review('a')]);
@@ -316,7 +345,7 @@ test.describe('the pending-review MCP App', () => {
     const transition = await frame.evaluate(
       () => getComputedStyle(document.querySelector('button')!).transitionDuration,
     );
-    expect(['0s', '0.00001s']).toContain(transition === '' ? '0s' : transition.split(',')[0]);
+    expect(firstDurationSeconds(transition)).toBeLessThanOrEqual(REDUCED_MOTION_SECONDS);
   });
 
   test('cannot reach the network, the parent, storage, or the camera', async ({ page }) => {

@@ -41,22 +41,22 @@ export type SettingRowProps = {
   /** Replaces the words of the status line, such as "Saved 2 minutes ago" for `saved`. The glyph and tone still follow `status`. */
   statusLabel?: string;
   /**
-   * Called by the quiet Retry beside the error, for a save that did not go through ("Couldn't
-   * save. Your value is still in the field. Retry"), and beside `loadError`, for a read that did
+   * Called by the quiet Try again beside the error, for a save that did not go through ("Couldn't
+   * save. Your value is still in the field. Try again"), and beside `loadError`, for a read that did
    * not. Leave it unset for an invalid value, where retrying changes nothing and the person fixes
    * the field instead.
    */
   onRetry?: () => void;
   /**
    * Label of the retry action drawn beside the error or the load error when `onRetry` is set.
-   * @default "Retry"
+   * @default "Try again"
    */
   retryLabel?: string;
   /**
-   * Says that what the row's control offers did not load ("Couldn't load the models. Retry"), such
+   * Says that what the row's control offers did not load ("Couldn't load the models. Try again"), such
    * as the options of a select. It is an advisory, in the warning tone and not the error's, so the
    * control is not marked invalid, and it takes the place of `warning` while it is set. With
-   * `onRetry` it ends in the same quiet Retry the error has. While `error` is also set, the Retry
+   * `onRetry` it ends in the same quiet Try again the error has. While `error` is also set, the Try again
    * stays beside the error, which `onRetry` is for.
    */
   loadError?: string;
@@ -114,6 +114,14 @@ export type SettingRowProps = {
    * width where the row stacks, the control takes the row's width whatever this says.
    */
   controlWidth?: string;
+  /**
+   * Where the control sits in its column. `end` (the default) sizes the control to its content and
+   * puts it at the inline end, which suits a switch or a button. `stretch` makes the control fill
+   * the column, so text-entry controls (a field, a select, a number) share one leading edge and one
+   * width down a list of rows.
+   * @default "end"
+   */
+  controlAlign?: 'end' | 'stretch';
   /** The setting's control, rendered with `FormField` context applied. */
   control: Snippet;
   /** Optional disclosure content rendered beneath the row. */

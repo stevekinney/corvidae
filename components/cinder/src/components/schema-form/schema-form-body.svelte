@@ -83,7 +83,6 @@
     'boolean',
     'number',
     'integer',
-    'tags',
   ]);
 
   /** Kinds edited by one control that holds many values, so their descendants' issues show on it. */
@@ -588,16 +587,6 @@
       disabled={frozen}
       bind:checked={() => booleanValue(field), (next) => formState.updateValue(field.path, next)}
     />
-  {:else if field.kind === 'tags'}
-    <TagInput
-      value={stringArrayValue(field)}
-      placeholder="Add a value"
-      duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
-      commitOnSubmit
-      disabled={frozen}
-      onValueChange={(next) => formState.updateValue(field.path, next)}
-      onblur={() => formState.validateTouchedField(field)}
-    />
   {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
     <DurationField
       {id}
@@ -628,6 +617,17 @@
     {@render renderFields(field.fields)}
   {:else if field.kind === 'array'}
     <div class="cinder-schema-form__setting-body">{@render arrayBody(field)}</div>
+  {:else if field.kind === 'tags'}
+    <TagInput
+      aria-label={rowLabel(field)}
+      value={stringArrayValue(field)}
+      placeholder="Add a value"
+      duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
+      commitOnSubmit
+      disabled={frozen}
+      onValueChange={(next) => formState.updateValue(field.path, next)}
+      onblur={() => formState.validateTouchedField(field)}
+    />
   {:else if field.kind === 'enumArray'}
     <div role="group" aria-label={rowLabel(field)}>
       <SchemaFormChips
@@ -671,7 +671,9 @@
   <div
     class="cinder-schema-form__setting"
     data-cinder-field={field.key}
-    oninput={inline ? (event) => formState.handleFieldInput(field, event) : undefined}
+    oninput={inline || field.kind === 'tags'
+      ? (event) => formState.handleFieldInput(field, event)
+      : undefined}
   >
     <SettingRow
       {id}
@@ -680,6 +682,7 @@
       required={field.required}
       disabled={frozen}
       controlWidth={field.kind === 'boolean' ? 'auto' : '16rem'}
+      controlAlign={field.kind === 'boolean' ? 'end' : 'stretch'}
       {...field.description === undefined ? {} : { description: field.description }}
       {...error === undefined ? {} : { error }}
     >

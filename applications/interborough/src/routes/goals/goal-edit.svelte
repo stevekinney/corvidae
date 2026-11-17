@@ -25,10 +25,11 @@
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { getGoal, updateGoal, type GoalChange } from '../../lib/bureau-goals.ts';
+  import { listValidators } from '../../lib/bureau-validators.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { saveFailure } from './goal-form-failure.ts';
+  import { configurationIssuesOf, saveFailure } from './goal-form-failure.ts';
   import { GOAL_FIELD_IDS, GoalFormState, type GoalField } from './goal-form-state.svelte.ts';
   import GoalForm from './goal-form.svelte';
 
@@ -56,6 +57,23 @@
     undefined,
   );
 
+  /** The checks the goal's own may be changed to; its own stays a choice even when not listed. */
+  const validatorsQuery = createQuery(
+    () => ({
+      queryKey: queryKeys.goals.validators(),
+      queryFn: ({ signal }) => listValidators({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  $effect.pre(() => {
+    const listed = validatorsQuery.data;
+    if (listed === undefined) return;
+    untrack(() => {
+      form.validators = listed;
+    });
+  });
+
   const name = $derived.by(() => {
     const found = goal.data;
     if (found === undefined) return undefined;
@@ -78,8 +96,11 @@
   const saving = createMutation(() => ({
     mutationFn: (request: { readonly revision: number; readonly change: GoalChange }) =>
       updateGoal(goalRunId, request.revision, request.change),
-    // The fault is said on the page, beside what was typed, so it is not also a toast.
-    onError: () => undefined,
+    // The fault is said on the page, beside what was typed, so it is not also a toast; each field of
+    // the check's configuration it refused is shown on that field.
+    onError: (error) => {
+      form.configurationIssues = configurationIssuesOf(error);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.goals.list() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.goals.detail(goalRunId) });
@@ -120,6 +141,7 @@
     mode="edit"
     agents={agentsQuery.data}
     agentsFailed={agentsQuery.isError}
+    checksFailed={validatorsQuery.isError}
     providerConnected={undefined}
     scripted={undefined}
     {busy}

@@ -3,8 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import type { Manifest } from '../affected-tests-manifest.ts';
 import {
   diffSize,
+  directManifest,
+  directTests,
   FILE_LIMIT,
   FIXTURE_SPEC_LIMIT,
   FIXTURE_SPECS_COMMAND,
@@ -14,6 +17,7 @@ import {
   LINE_LIMIT,
   planSteps,
   prettierReadable,
+  readScriptTests,
   run,
   runChecks,
   sizeWarnings,
@@ -28,20 +32,18 @@ import type { Runner } from './process-runner.ts';
 const workspaces: WorkspaceReference[] = [
   { name: '@lostgradient/weft', directory: 'packages/weft' },
   { name: '@lostgradient/operative', directory: 'packages/operative' },
+  { name: '@lostgradient/testing', directory: 'testing/testing' },
   { name: '@lostgradient/browser-fixtures', directory: 'scripts/browser-fixtures' },
 ];
 
-const planInput = (changed: string[], extra: { selectsIsolatedTest?: boolean } = {}) => ({
+const planInput = (changed: string[]) => ({
   changed,
   existing: changed,
   workspaces,
   base: 'abc123',
-  selectsIsolatedTest: false,
-  ...extra,
 });
 
-const names = (changed: string[], extra = {}) =>
-  planSteps(planInput(changed, extra)).map((step) => step.name);
+const names = (changed: string[]) => planSteps(planInput(changed)).map((step) => step.name);
 
 describe('workspaceOf', () => {
   test('picks the owning workspace and nothing for root or unrelated files', () => {
@@ -64,17 +66,8 @@ describe('touchesRootTypecheck', () => {
 });
 
 describe('planSteps', () => {
-  test('a workspace change runs prettier, the root lint, turbo and the quick tier', () => {
-    expect(names(['packages/weft/src/a.ts'])).toEqual(['prettier', 'lint:root', 'turbo', 'tests']);
-  });
-
   test('a scripts change adds the root type-check and no turbo step', () => {
-    expect(names(['scripts/chef/a.ts'])).toEqual([
-      'prettier',
-      'lint:root',
-      'typecheck:root',
-      'tests',
-    ]);
+    expect(names(['scripts/chef/a.ts'])).toEqual(['prettier', 'lint:root', 'typecheck:root']);
   });
 
   test('one turbo step filters every changed workspace once, in name order', () => {
@@ -107,20 +100,177 @@ describe('planSteps', () => {
     expect(planSteps({ ...planInput(['gone.ts']), existing: [] })[0]?.name).toBe('lint:root');
   });
 
-  test('the quick tier carries the base, and the isolated lane only when selected', () => {
-    const quick = planSteps(planInput(['a.ts']));
-    expect(quick.at(-1)?.command).toEqual([
-      'bun',
-      'scripts/affected-tests.ts',
-      'run',
-      '--base',
-      'abc123',
+  test('the test lanes read the direct manifest, and the isolated lanes only when selected', () => {
+    const direct = { digest: 'dig', filters: ['@lostgradient/weft'], root: true, isolated: false };
+    const quick = planSteps({ ...planInput(['a.ts']), direct }).filter((step) =>
+      step.name.startsWith('tests'),
+    );
+    expect(quick).toEqual([
+      {
+        name: 'tests',
+        command: [
+          'env',
+          'CORVIDAE_TEST_SELECTION=dig',
+          'bunx',
+          'turbo',
+          'run',
+          'test',
+          '--filter=@lostgradient/weft',
+        ],
+      },
+      {
+        name: 'tests:root',
+        command: [
+          'env',
+          'CORVIDAE_TEST_SELECTION=dig',
+          'bunx',
+          'turbo',
+          'run',
+          'test:self',
+          '--filter=//',
+        ],
+      },
     ]);
-    const both = planSteps(planInput(['a.ts'], { selectsIsolatedTest: true }));
-    expect(both.at(-1)).toEqual({
-      name: 'tests:isolated',
-      command: ['bun', 'scripts/affected-tests.ts', 'run', '--isolated', '--base', 'abc123'],
+    const both = planSteps({ ...planInput(['a.ts']), direct: { ...direct, isolated: true } });
+    expect(both.map((step) => step.name).filter((name) => name.startsWith('tests'))).toEqual([
+      'tests',
+      'tests:root',
+      'tests:isolated',
+      'tests:root:isolated',
+    ]);
+    expect(both.at(-1)?.command.slice(-3)).toEqual([
+      'test:self:slow',
+      '--filter=//',
+      '--concurrency=1',
+    ]);
+  });
+
+  test('no direct test plans no test step, and never the dependency graph', () => {
+    expect(names(['packages/weft/src/a.ts'])).toEqual(['prettier', 'lint:root', 'turbo']);
+    const direct = { digest: 'd', filters: ['x'], root: true, isolated: true };
+    const commands = planSteps({ ...planInput(['a.ts']), direct }).map((s) => s.command.join(' '));
+    expect(commands.some((command) => command.includes('affected-tests'))).toBe(false);
+  });
+});
+
+describe('direct test selection', () => {
+  const present = (...paths: string[]) => {
+    const known = new Set(paths);
+    return (path: string) => known.has(path);
+  };
+
+  test('a changed source file selects its sibling tests, in its directory and with its stem', () => {
+    const exists = present(
+      'packages/weft/src/a.ts',
+      'packages/weft/src/a.test.ts',
+      'packages/weft/src/a.integration.test.ts',
+      'packages/weft/src/b.test.ts',
+      'packages/weft/other/a.test.ts',
+    );
+    expect(directTests(['packages/weft/src/a.ts'], exists)).toEqual([
+      'packages/weft/src/a.integration.test.ts',
+      'packages/weft/src/a.test.ts',
+    ]);
+  });
+
+  test('a changed test file selects itself, and a deleted or documentation file selects nothing', () => {
+    const exists = present('scripts/x.test.ts', 'scripts/x.test.ts', 'scripts/y.test.ts');
+    expect(directTests(['scripts/x.test.ts', 'gone.ts', 'scripts/y.md'], exists)).toEqual([
+      'scripts/x.test.ts',
+    ]);
+  });
+
+  test('a governed process document selects the tests that guard it', () => {
+    const documents = [
+      'AGENTS.md',
+      '.agents/skills/chef/SKILL.md',
+      '.agents/skills/chef/references/planning-and-routing.md',
+      '.claude/agents/chef-worker.md',
+      '.codex/agents/chef-worker.toml',
+    ];
+    // The selection is derived from what each test's source names, so a new document test joins it.
+    const scriptTests = new Map([
+      ['scripts/process-docs-budget.test.ts', "readFileSync('AGENTS.md'); '.agents/skills/chef'"],
+      ['scripts/process-docs-moved-rules.test.ts', "read('AGENTS.md')"],
+      ['scripts/process-docs-references.test.ts', "'.claude/agents' '.codex/agents'"],
+      ['scripts/chef/future-document.integration.test.ts', "'.codex/agents/chef-worker.toml'"],
+      ['scripts/chef/unrelated.test.ts', 'nothing about documents'],
+    ]);
+    const exists = present(...documents, ...scriptTests.keys(), 'README.md');
+    expect(directTests(['AGENTS.md'], exists, scriptTests)).toEqual([
+      'scripts/process-docs-budget.test.ts',
+      'scripts/process-docs-moved-rules.test.ts',
+    ]);
+    expect(directTests(['.codex/agents/chef-worker.toml'], exists, scriptTests)).toEqual([
+      'scripts/chef/future-document.integration.test.ts',
+      'scripts/process-docs-references.test.ts',
+    ]);
+    expect(directTests(['.agents/skills/chef/SKILL.md'], exists, scriptTests)).toEqual([
+      'scripts/process-docs-budget.test.ts',
+    ]);
+    for (const path of documents)
+      expect(directTests([path], exists, scriptTests).length, path).toBeGreaterThan(0);
+    expect(
+      directTests(['documentation/repository/guards.md', 'README.md'], exists, scriptTests),
+    ).toEqual([]);
+    expect(directTests(['AGENTS.md'], (path) => path !== 'AGENTS.md', scriptTests)).toEqual([]);
+  });
+
+  test('the repository document tests are picked up when a governed document changes', () => {
+    const tests = readScriptTests(join(import.meta.dir, '../..'));
+    const selected = directTests(['AGENTS.md'], () => true, tests);
+    for (const name of [
+      'scripts/process-docs-budget.test.ts',
+      'scripts/process-docs-moved-rules.test.ts',
+      'scripts/process-docs-references.test.ts',
+      'scripts/chef/brief.test.ts',
+    ])
+      expect(selected, name).toContain(name);
+  });
+
+  test('a component file selects the test beside it', () => {
+    const exists = present('c/a.svelte', 'c/a.test.ts', 'c/a.svelte.test.ts');
+    expect(directTests(['c/a.svelte'], exists)).toEqual(['c/a.test.ts']);
+  });
+
+  test('an unrelated workspace is not selected', () => {
+    const manifest = directManifest(
+      directTests(
+        ['packages/weft/src/a.ts'],
+        present(
+          'packages/weft/src/a.ts',
+          'packages/weft/src/a.test.ts',
+          'packages/operative/src/a.test.ts',
+        ),
+      ),
+      workspaces,
+    );
+    expect(manifest?.filters).toEqual(['@lostgradient/weft']);
+    expect(manifest?.root).toBe(false);
+    expect(manifest?.manifest.workspaces).toEqual({
+      'packages/weft': { mode: 'partial', files: ['src/a.test.ts'] },
     });
+  });
+
+  test('root tests stay root-relative, isolated ones are noted, browser fixtures are left to CI', () => {
+    const manifest = directManifest(
+      [
+        'scripts/browser-fixtures/scripts/z.test.ts',
+        'scripts/chef/a.integration.test.ts',
+        'scripts/chef/a.test.ts',
+      ],
+      workspaces,
+    );
+    expect(manifest).toMatchObject({ filters: [], root: true, isolated: true });
+    expect(manifest?.manifest.workspaces).toEqual({
+      '.': {
+        mode: 'partial',
+        files: ['scripts/chef/a.integration.test.ts', 'scripts/chef/a.test.ts'],
+      },
+    });
+    expect(
+      directManifest(['scripts/browser-fixtures/scripts/z.test.ts'], workspaces),
+    ).toBeUndefined();
   });
 });
 
@@ -218,9 +368,10 @@ describe('size warnings', () => {
 });
 
 /** A runner answering git and the selection from a table; nothing starts a process. */
-function fakeRunner(
-  options: { changed?: string[]; untracked?: string[]; numstat?: string; tests?: string[] } = {},
-): { runner: Runner; calls: string[][] } {
+function fakeRunner(options: { changed?: string[]; untracked?: string[]; numstat?: string } = {}): {
+  runner: Runner;
+  calls: string[][];
+} {
   const calls: string[][] = [];
   const runner: Runner = (command) => {
     calls.push(command);
@@ -233,8 +384,6 @@ function fakeRunner(
       return ok(
         options.numstat ?? (options.changed ?? []).map((path) => `1\t0\t${path}`).join('\n'),
       );
-    if (text.includes('affected-tests.ts --json'))
-      return ok(JSON.stringify({ view: [{ tests: options.tests ?? [] }] }));
     if (text === 'git rev-parse --show-toplevel') return ok('/repo\n');
     return { code: 1, stdout: '', stderr: `unexpected ${text}` };
   };
@@ -255,10 +404,13 @@ function dependencies(
       const hit = Object.entries(exitCodes).find(([key]) => text.includes(key));
       return hit?.[1] ?? 0;
     },
-    exists: () => true,
+    // Every changed file and its plain sibling test exist; isolated siblings only when named.
+    exists: (path) => !path.includes('.slow.') && !path.includes('.integration.'),
+    writeSelection: () => 'digest',
     readText: () => 'a\nb\n',
     workspaces: () => workspaces,
     fixtureSpecs: () => new Map(),
+    scriptTests: () => new Map(),
     log: () => {},
   };
 }
@@ -329,43 +481,43 @@ describe('runChecks', () => {
     });
   });
 
-  test('excludes only the browser-launching test from the isolated lane, and names the CI command', async () => {
+  test('leaves the browser-launching test out of every lane, and names the CI command', async () => {
     const { runner } = fakeRunner({
-      changed: ['testing/testing/src/a.ts'],
-      tests: [
+      changed: [
         'testing/testing/src/probe.integration.test.ts',
         'testing/testing/src/c.slow.test.ts',
-        'testing/testing/src/b.test.ts',
       ],
     });
+    const written: Manifest[] = [];
     const deps = {
       ...dependencies(runner),
+      exists: () => true,
+      writeSelection: (manifest: Manifest) => (written.push(manifest), 'digest'),
       readText: (path: string) =>
         path.includes('probe') ? 'const browser = await chromium.launch();\n' : 'a\n',
     };
     const result = await runChecks('/repo', options, deps);
+    expect(written[0]?.workspaces['testing/testing']?.files).toEqual(['src/c.slow.test.ts']);
     expect(deps.executed.at(-1)).toBe(
-      'bun scripts/affected-tests.ts run --isolated --exclude testing/testing/src/probe.integration.test.ts --base base-sha',
+      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
     );
     expect(result.output).toContain(
-      'tests:isolated excludes testing/testing/src/probe.integration.test.ts',
+      'testing/testing/src/probe.integration.test.ts launch a browser',
     );
     expect(result.output).toContain('`gh workflow run main.yml --ref <branch>`');
     expect(result.code).toBe(0);
   });
 
-  test('keeps the isolated lane for a selected test whose browser launch is gated', async () => {
-    const { runner } = fakeRunner({
-      changed: ['packages/weft/a.ts'],
-      tests: ['packages/weft/src/x.integration.test.ts'],
-    });
+  test('keeps a selected test whose browser launch is gated', async () => {
+    const { runner } = fakeRunner({ changed: ['packages/weft/src/x.integration.test.ts'] });
     const deps = {
       ...dependencies(runner),
+      exists: () => true,
       readText: () =>
         "describe.skipIf(!enabled)('x', () => { chromium.launch({ headless: true }); });",
     };
     await runChecks('/repo', options, deps);
-    expect(deps.executed.at(-1)).toContain('--isolated');
+    expect(deps.executed.at(-1)).toContain('test:slow');
   });
 
   test('recognizes a test that launches a browser', () => {
@@ -380,16 +532,14 @@ describe('runChecks', () => {
     expect(result).toEqual({ code: 0, output: 'focused-checks: 4 passed, 0 failed' });
   });
 
-  test('plans against the merge base and adds the isolated lane when the selection reaches one', async () => {
-    const { runner, calls } = fakeRunner({
-      changed: ['packages/weft/a.ts'],
-      tests: ['packages/weft/src/x.integration.test.ts'],
-    });
-    const deps = dependencies(runner);
+  test('plans against the merge base, runs the direct tests and never the dependency graph', async () => {
+    const { runner, calls } = fakeRunner({ changed: ['packages/weft/src/x.integration.test.ts'] });
+    const deps = { ...dependencies(runner), exists: () => true };
     await runChecks('/repo', options, deps);
     expect(calls[0]).toEqual(['git', 'merge-base', 'origin/main', 'HEAD']);
+    expect(deps.executed.some((command) => command.includes('affected-tests'))).toBe(false);
     expect(deps.executed.at(-1)).toBe(
-      'bun scripts/affected-tests.ts run --isolated --base base-sha',
+      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
     );
   });
 

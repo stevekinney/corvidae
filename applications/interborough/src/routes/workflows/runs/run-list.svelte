@@ -50,6 +50,7 @@
   import { listAllTasks } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
+  import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
@@ -153,6 +154,9 @@
   function agentLabel(agentName: string): string {
     return agentLabelOf(agentName, agents.data);
   }
+
+  // A run a trigger started names its plugin by its title.
+  const pluginTitle = usePluginTitle();
 
   const everyRun = $derived(
     runListRows(
@@ -474,6 +478,7 @@
                   {now}
                   {zone}
                   {agentLabel}
+                  {pluginTitle}
                   readable={entry.row.engineRun !== true || engineReadable}
                 />
               {:else}

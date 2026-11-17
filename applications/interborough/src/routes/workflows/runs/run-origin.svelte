@@ -22,6 +22,11 @@
     scheduleLine?: { readonly name: string; readonly cadence: string } | undefined;
     /** Who is viewing the page: a run this principal started by hand reads "You" (COR-2424). */
     viewer?: string | null | undefined;
+    /**
+     * The title of a plugin, for a run its trigger started ("GitHub"); the identifier is said when
+     * none is loaded.
+     */
+    pluginTitle?: ((plugin: string) => string | undefined) | undefined;
   }
 
   let {
@@ -29,6 +34,7 @@
     attempt = null,
     scheduleLine = undefined,
     viewer = undefined,
+    pluginTitle = undefined,
   }: RunOriginProps = $props();
 
   /** Whether `who`, the principal a person origin records, is the one viewing the page. */
@@ -121,7 +127,20 @@
   {:else if origin.kind === 'system'}
     {STARTED_BY_LABELS.system}
   {:else if origin.kind === 'trigger'}
-    {STARTED_BY_LABELS.trigger}
+    {#if origin.plugin === null}
+      {STARTED_BY_LABELS.trigger}
+    {:else}
+      <!-- COR-2171: which trigger, by its plugin's title, linked to the file whose trigger it is. -->
+      {@const plugin = pluginTitle?.(origin.plugin) ?? origin.plugin}
+      <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.trigger}</span>
+      {#if origin.href !== null}
+        {@const triggerPath = origin.href}
+        <a href={router.href(triggerPath)} onclick={(event) => open(event, triggerPath)}>{plugin}</a
+        >
+      {:else}
+        {plugin}
+      {/if}
+    {/if}
   {:else}
     {TASK_COPY.originUnrecorded}
   {/if}

@@ -21,6 +21,7 @@ import { z } from 'zod';
 
 import {
   type BureauChildDelegationOptions,
+  type ChildAnnouncement,
   type ChildAuditEntry,
   type ChildTopologyParent,
   type ChildTopologyStart,
@@ -33,6 +34,7 @@ import {
   createChildTopologyStore,
 } from './child-topology-store';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import type { BureauDiagnostic } from './bureau-types/options';
 import type { CancelDurableRunOutcome } from './bureau-types/runs';
 
@@ -182,6 +184,8 @@ interface FixtureOptions {
   readonly isKnownRun?: (runId: string) => Promise<boolean>;
   /** Children whose runs take a while to honour an abort. */
   readonly slowToAbort?: readonly string[];
+  /** Hears each child the topology announces to its parent run (COR-1806). */
+  readonly announce?: (announcement: ChildAnnouncement) => void;
 }
 
 function createFixture(options: FixtureOptions = {}) {
@@ -229,6 +233,7 @@ function createFixture(options: FixtureOptions = {}) {
     },
     createBadRequest: (message) => new Error(`BAD_REQUEST: ${message}`),
     signalContracts: { worker: signals },
+    ...(options.announce === undefined ? {} : { announce: options.announce }),
     ...(options.delegation === undefined ? {} : { delegation: options.delegation }),
   });
   return { topology, store, kv, runtime, audits, diagnostics, starts, runs, engine, parents };
@@ -571,6 +576,36 @@ describe('children.dispatch', () => {
       expect(outcome.outcome).toBe(winnerReadable ? 'duplicate' : 'rejected');
       expect(fixture.starts).toHaveLength(0);
     }
+  });
+
+  // COR-2097: the parent run hears a child settle only once its record says so.
+  it('announces no settlement whose record write throws', async () => {
+    const real = createChildTopologyStore(textValueStore(new MemoryStorage()));
+    let failing = false;
+    let attempts = 0;
+    const store: ChildTopologyStore = {
+      ...real,
+      update: (expected, next) => {
+        if (!failing) return real.update(expected, next);
+        attempts += 1;
+        return Promise.reject(new Error('the record could not be written'));
+      },
+    };
+    const announced: string[] = [];
+    const fixture = createFixture({
+      store,
+      announce: (announcement) => void announced.push(announcement.kind),
+    });
+    await startedChild(fixture, { childRunId: 'child-a' });
+    expect(announced).toEqual(['started']);
+
+    failing = true;
+    fixture.runs.get('child-a')?.complete();
+    await waitUntil(() => attempts > 0, { message: 'the settlement tried to write its record' });
+    await quietFor(50);
+
+    expect(announced).toEqual(['started']);
+    expect(auditTypes(fixture.audits)).toEqual(['child.started']);
   });
 
   it('records a child whose start throws as failed', async () => {

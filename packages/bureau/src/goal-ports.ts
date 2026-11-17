@@ -105,6 +105,8 @@ import {
 } from './goal-state';
 import type { GoalStore } from './goal-store';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
+import { ownerOrLocal } from './owner-of-record';
+import { decodeStoredValidatorDefinition } from './validator-file';
 import type { CancelDurableRunOutcome } from './bureau-types/runs';
 
 /** The deterministic names the workflow and the store share. */
@@ -540,7 +542,21 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       };
     };
 
-    const resolution = catalog.resolve(request.validator);
+    // COR-2119: a goal that copied an owner-defined validator's definition runs that copy, which
+    // came in the request beside the identity, and never reads the file. A copy that does not decode
+    // is a record fault, answered as the validator being unavailable.
+    const stored =
+      request.validatorDefinition === undefined
+        ? undefined
+        : decodeStoredValidatorDefinition(request.validatorDefinition);
+    if (request.validatorDefinition !== undefined && stored === undefined) {
+      return unavailable(
+        'unavailable',
+        'VALIDATOR_DEFINITION_INVALID',
+        `The stored definition of the validator "${request.validator.name}@${request.validator.version}" cannot be read.`,
+      );
+    }
+    const resolution = catalog.resolve(request.validator, stored);
     if (!resolution.ok) {
       const message =
         resolution.reason === 'missing'
@@ -602,6 +618,14 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         attemptIndex: request.attemptIndex,
         result: reading.result,
         history: record.attempts.slice(0, request.attemptIndex).map(toAttemptRecord),
+        // COR-2117: the configuration travels in the request beside the identity, read in the same
+        // load of the record, so a validator is never run with another validator's configuration
+        // when the goal is updated between that load and this check.
+        ...(request.validatorConfiguration === undefined
+          ? {}
+          : { configuration: request.validatorConfiguration }),
+        // COR-2123: a validator that spends (a judge's model call) does it as the goal's owner.
+        principal: ownerOrLocal(record.principal),
       },
       // The activity's signal, which Weft aborts when the controller is cancelled
       // or the try times out; the executor composes it with the validator's own
@@ -617,12 +641,12 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     });
     // COR-2112: what judged the attempt is taken from the entry that ran, here and now, and
     // travels with the verdict: the goal's validator may change before or after this commits.
-    // No validator takes a configuration yet (COR-2117), so none was passed.
+    // The configuration is the exact one passed to the validator (COR-2117), `null` when none was.
     const { identity, source } = resolution.entry;
     const judgedBy: ValidatorJudge = {
       validator: { name: identity.name, version: identity.version },
       source: { kind: source.kind, name: source.name, version: source.version },
-      configuration: null,
+      configuration: request.validatorConfiguration ?? null,
     };
     return { ...projected, outcome: boundValidationOutcome(projected.outcome), judgedBy };
   }

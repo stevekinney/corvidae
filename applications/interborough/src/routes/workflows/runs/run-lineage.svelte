@@ -19,6 +19,7 @@
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';
+  import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
   import { cadenceClauseOf } from './run-schedule-cadence.ts';
   import RunOrigin from './run-origin.svelte';
@@ -95,6 +96,8 @@
     return origin.kind === 'agent' || origin.kind === 'parent' ? origin.parentRunId : undefined;
   }
 
+  // A run a trigger started names its plugin by its title.
+  const pluginTitle = usePluginTitle();
   const recordedOriginOfRun = $derived(originOf(runId, task, goal, chat));
   // An instance of a workflow file a schedule fired records no origin of its own: the schedule the
   // page read for it is what started it (COR-2424).
@@ -151,11 +154,11 @@
 </script>
 
 <li class="ib-run-lineage__item" data-depth="1">
-  <RunOrigin {origin} {attempt} {scheduleLine} {viewer} />
+  <RunOrigin {origin} {attempt} {scheduleLine} {viewer} {pluginTitle} />
 </li>
 {#each ancestors.data ?? [] as ancestor, index (ancestor.runId)}
   <li class="ib-run-lineage__item" data-depth={index + 2}>
-    <RunOrigin origin={ancestor.origin} {viewer} />
+    <RunOrigin origin={ancestor.origin} {viewer} {pluginTitle} />
   </li>
 {/each}
 <!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal, a schedule or a person, which are what the chain names (rows 55f, 55i, 54y, 54l). -->

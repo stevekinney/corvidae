@@ -18,6 +18,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { ChildAnnouncement } from './child-topology.ts';
+import { recordedRunEvent } from './recorded-run-events.ts';
 
 /** The action a child announcement records on its parent run: an event type and its detail. */
 export type ChildAction = {
@@ -60,4 +61,40 @@ export function childActionOf(announcement: ChildAnnouncement): ChildAction | un
     default:
       return undefined;
   }
+}
+
+/**
+ * Makes `announcement` known on its parent run (COR-1806, COR-2097): the parent's action log when
+ * the parent is on the run store, from which the store's action stream publishes it to the
+ * feed; and, when it is not, the feed itself. A child can be dispatched under another child, a goal
+ * attempt or a workflow step, none of which is on the store, so a record made through the store
+ * alone would be dropped there. One path is taken for each announcement, never both, so the event
+ * is published once.
+ */
+export function announceChildOnParent(
+  announcement: ChildAnnouncement,
+  store: {
+    getRun(runId: string): unknown;
+    recordAction(runId: string, type: string, detail: unknown): void;
+  },
+  dispatch: (event: Event) => void,
+  now: () => number,
+): void {
+  const action = childActionOf(announcement);
+  if (action === undefined) return;
+  const { parentRunId } = announcement.record;
+  if (store.getRun(parentRunId) !== undefined) {
+    store.recordAction(parentRunId, action.type, action.detail);
+    return;
+  }
+  // `sequence` orders a run's actions in its own log, and this run has none here: no reader of the
+  // feed's projection looks at it.
+  const event = recordedRunEvent({
+    sequence: 0,
+    runId: parentRunId,
+    type: action.type,
+    detail: action.detail,
+    timestamp: now(),
+  });
+  if (event !== undefined) dispatch(event);
 }

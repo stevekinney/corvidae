@@ -15,7 +15,8 @@ afterEach(cleanup);
 const ROW = goalRow(
   goalFixture('goal-1', {
     identity: { name: 'Summarize open refunds', version: '1' },
-    validator: { name: 'summary-lists-every-refund-waiting-for-approval', version: '1' },
+    validator: { name: 'contains-phrase', version: '1' },
+    validatorConfiguration: { phrase: 'waiting for approval' },
     agentName: 'tool-runner',
     status: 'canceled',
     createdAt: '2026-10-30T15:05:00.000Z',
@@ -30,7 +31,7 @@ const ROW = goalRow(
   }),
 );
 
-const CHECK = 'Check: Summary lists every refund waiting for approval';
+const CHECK = 'Check: Contains phrase "waiting for approval"';
 
 function mount(phone: boolean) {
   return render(GoalListRow, {

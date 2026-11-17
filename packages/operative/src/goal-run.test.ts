@@ -420,6 +420,20 @@ describe('validator contract', () => {
     ).toBe(250);
   });
 
+  it('hands the validator the configuration the goal started with (COR-2117)', async () => {
+    const fixture = createFixture();
+    const validator = scriptedValidator([PASS]);
+    await runToEnd({
+      ...goalOptions(fixture, validator),
+      validatorConfiguration: { phrase: 'staging fix' },
+    });
+    expect(validator.calls.map((call) => call.configuration)).toEqual([{ phrase: 'staging fix' }]);
+
+    const bare = scriptedValidator([PASS]);
+    await runToEnd(goalOptions(createFixture(), bare));
+    expect(bare.calls.map((call) => Object.hasOwn(call, 'configuration'))).toEqual([false]);
+  });
+
   it('retains fail feedback and evidence as structured data on the attempt', async () => {
     const fixture = createFixture();
     const outcome = failing(false, 'the file is missing');

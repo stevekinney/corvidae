@@ -1,4 +1,5 @@
 import {
+  type MemoryEmbeddingFailure,
   type MemoryEmbeddingJob,
   type MemoryEmbeddingProfile,
   type MemoryVectorReference,
@@ -6,7 +7,7 @@ import {
 } from '../memory-vector-store';
 import type { MemoryRecord } from '../types';
 import type { GovernanceContext } from './governance-context';
-import type { ActiveEmbedding } from './governed-embedding';
+import { type ActiveEmbedding, modelMatches } from './governed-embedding';
 import type { MemoryEmbeddingSwitchResult } from './governed-memory-types';
 import { evictCachedContent, putRecordVector } from './profile-vectors';
 
@@ -31,10 +32,10 @@ export const DEFAULT_SWITCH_BATCH_SIZE = 100;
 export const QUEUED_EMBED_GRACE_MILLISECONDS = 15 * 60 * 1000;
 
 /** The error a switch fails with when its embedder is no longer registered, or cannot embed. */
-export const TARGET_UNAVAILABLE = 'target-unavailable';
+export const TARGET_UNAVAILABLE = 'target-unavailable' satisfies MemoryEmbeddingFailure;
 
 /** The error a switch fails with when its profile was deleted while it still ran. */
-export const TARGET_MISSING = 'target-missing';
+export const TARGET_MISSING = 'target-missing' satisfies MemoryEmbeddingFailure;
 
 /**
  * How many times a start reads again after another writer moved the switch record or the active
@@ -49,10 +50,6 @@ export function sameProfile(left: MemoryEmbeddingProfile, right: MemoryEmbedding
     left.dimension === right.dimension &&
     left.generation === right.generation
   );
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function runningRefusal(job: MemoryEmbeddingJob): MemoryEmbeddingSwitchResult {
@@ -112,17 +109,24 @@ export async function switchEmbedder(
     const existing = await vectors.getJob();
     if (existing?.state === 'running') return runningRefusal(existing);
     const from = await vectors.activeProfile(embedding.initialProfile);
-    if (from.embedderId === id) {
+    const registered = embedding.registry.describe(id)!;
+    // The same embedding is the same id, dimension and model: an embedder reconfigured to another
+    // model or dimension under its own id makes vectors the active profile's cannot be compared with.
+    if (
+      from.embedderId === id &&
+      from.dimension === registered.dimension &&
+      modelMatches(from, registered)
+    ) {
       return {
         outcome: 'refused',
         reason: 'already-active',
         message: `Memory already embeds with "${id}".`,
       };
     }
-    const { dimension } = embedding.registry.describe(id)!;
+    const { dimension, model } = registered;
     let target: MemoryEmbeddingProfile;
     do {
-      target = { embedderId: id, dimension, generation: await vectors.nextGeneration() };
+      target = { embedderId: id, dimension, model, generation: await vectors.nextGeneration() };
     } while (!(await vectors.createProfile(target)));
     const job: MemoryEmbeddingJob = { from, target, state: 'running', done: 0, total: 0 };
     if (await vectors.startJob(existing, job)) {
@@ -246,11 +250,18 @@ function isTimeout(error: unknown): boolean {
  * fence holds per record. Returns how many records now hold their vector, which excludes one
  * deleted or changed while the batch was in flight.
  *
- * An embedder that errors, times out, or answers with the wrong number of vectors fails the
- * switch, and so does a target deleted meanwhile: it returns `stopped`. A failed batch has stored
- * nothing, so no record of it counts as embedded, and the switch is not resumed: the target profile
- * is deleted with it, and the next switch embeds every record again. A target deleted part-way
- * through the writes leaves the earlier records' vectors in a profile that goes with the switch.
+ * A batch that fails for any reason but its bound running out (an embedder that errors, answers
+ * with the wrong number of vectors, or gives a vector the profile refuses) is tried again one
+ * record per call, as a queue drain does (COR-2188): a batch can exceed a limit of the provider,
+ * such as a total of tokens per request, that each record alone is within, and would otherwise fail
+ * at the same batch on every attempt. A record that fails alone fails the switch as
+ * `embedder-failed`, as does a batch of one; an embed that times out fails it as `embedder-timeout`
+ * at once, because waiting on the bound again for every record is what a batch exists to avoid. So
+ * does a target deleted meanwhile (`target-missing`, unless the switch was cancelled): it returns
+ * `stopped`. A failed batch stored nothing, so no record of it counts as embedded, and the switch
+ * is not resumed: the target profile is deleted with it, and the next switch embeds every record
+ * again. A target deleted part-way through the writes leaves the earlier records' vectors in a
+ * profile that goes with the switch.
  */
 async function embedPendingBatch(
   context: GovernanceContext,
@@ -258,15 +269,56 @@ async function embedPendingBatch(
   job: MemoryEmbeddingJob,
   batch: readonly PendingRecord[],
 ): Promise<number | 'stopped'> {
-  let vectors: Float32Array[];
-  try {
-    vectors = await target.embed(batch.map((item) => item.record.content));
-  } catch (error) {
-    await endSwitch(context, job, { state: 'failed', error: messageOf(error) });
+  const answered = await embedItems(target, batch);
+  if ('vectors' in answered) return storePending(context, job, batch, answered.vectors);
+  if (answered.failure === 'embedder-timeout' || batch.length === 1) {
+    await endSwitch(context, job, { state: 'failed', error: answered.failure });
     return 'stopped';
   }
   let held = 0;
-  for (const [index, item] of batch.entries()) {
+  for (const item of batch) {
+    const alone = await embedItems(target, [item]);
+    if ('failure' in alone) {
+      await endSwitch(context, job, { state: 'failed', error: alone.failure });
+      return 'stopped';
+    }
+    const stored = await storePending(context, job, [item], alone.vectors);
+    if (stored === 'stopped') return 'stopped';
+    held += stored;
+  }
+  return held;
+}
+
+/** What embedding records came to: a vector for each, or the code the failure is reported as. */
+type Embedded =
+  | { readonly vectors: readonly Float32Array[] }
+  | { readonly failure: Extract<MemoryEmbeddingFailure, 'embedder-failed' | 'embedder-timeout'> };
+
+/** Embeds `items` in one call, naming a failure by its code and never carrying its text. */
+async function embedItems(
+  target: ActiveEmbedding,
+  items: readonly PendingRecord[],
+): Promise<Embedded> {
+  try {
+    return { vectors: await target.embed(items.map((item) => item.record.content)) };
+  } catch (error) {
+    return { failure: isTimeout(error) ? 'embedder-timeout' : 'embedder-failed' };
+  }
+}
+
+/**
+ * Writes `vectors`, one per item and in order, each as a write conditioned on its record, and
+ * returns how many records now hold theirs. A target deleted meanwhile fails the switch as
+ * `target-missing`, unless it was cancelled, which leaves it `cancelled`: it returns `stopped`.
+ */
+async function storePending(
+  context: GovernanceContext,
+  job: MemoryEmbeddingJob,
+  items: readonly PendingRecord[],
+  vectors: readonly Float32Array[],
+): Promise<number | 'stopped'> {
+  let held = 0;
+  for (const [index, item] of items.entries()) {
     try {
       if ((await putConditioned(context, job.target, item, vectors[index]!)) === 'held') held += 1;
     } catch (error) {

@@ -1,3 +1,4 @@
+import type { PluginScoreOutcome } from '@lostgradient/interborough-plugin';
 import type { EventMap } from '@lostgradient/lifecycle';
 import type { ScheduleMissedFireReason } from '@lostgradient/weft';
 import type {
@@ -15,6 +16,7 @@ import type {
   SessionDeletedEvent,
   SessionSavedEvent,
   SteeringAcceptedEvent,
+  WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 import type {
   SkillActivatedEvent,
@@ -23,6 +25,9 @@ import type {
   SkillLoadedEvent,
   SkillRejectedEvent,
 } from './skills';
+import type { HookDeliveryFailureOutcome } from './hooks/hook-types';
+import type { PluginProblemCode } from './plugins/plugin-problem-codes';
+import type { PluginStatus } from './plugins/plugin-types';
 import type { TaskCleanupState } from './task-registry';
 
 /**
@@ -122,6 +127,186 @@ export class ToolErrorRecordedEvent extends Event {
   constructor(action: Action) {
     super(ToolErrorRecordedEvent.type);
     this.action = action;
+  }
+}
+
+/**
+ * A child run was dispatched by a run (COR-2097), as the parent run recorded it. The feed publishes
+ * the parent, the child and the child's agent, never the prompt the child was given.
+ */
+export class ChildWorkflowStartedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'multiagent.child-workflow.started' as const;
+
+  /** The action the parent run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(ChildWorkflowStartedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/** A child run ended cleanly (COR-2097), as the parent run recorded it. */
+export class ChildWorkflowCompletedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'multiagent.child-workflow.completed' as const;
+
+  /** The action the parent run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(ChildWorkflowCompletedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * A child run ended in a failure (COR-2097), as the parent run recorded it. The feed publishes the
+ * finish reason when it is a member of the finish-reason enum, never the rejection's message the
+ * run recorded beside it.
+ */
+export class ChildWorkflowFailedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'multiagent.child-workflow.failed' as const;
+
+  /** The action the parent run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(ChildWorkflowFailedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/** A child run was aborted (COR-2097), as the parent run recorded it. The abort reason stays on the run. */
+export class ChildWorkflowAbortedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'multiagent.child-workflow.aborted' as const;
+
+  /** The action the parent run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(ChildWorkflowAbortedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/** A handoff tool transferred a run to another agent (COR-2097), as the run recorded it. */
+export class HandoffOccurredRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'multiagent.handoff.occurred' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(HandoffOccurredRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * Accepted steering commands were applied (COR-2097): a step observed their configuration, once the
+ * steering log recorded that boundary, or a command was already in force when it was admitted. One
+ * event covers every command one boundary applied. The feed publishes the session, never the
+ * effective state the run stamped on the step. `action.runId` is the run whose boundary applied
+ * them, and empty for a session-scoped command recorded applied at admission.
+ */
+export class SteeringAppliedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'steering.applied' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(SteeringAppliedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * A hook of a run's plan threw (COR-2097), as the run recorded it. The feed publishes which
+ * registration threw and an error code, never the error: its message and cause stay on the audit
+ * record.
+ */
+export class HookPlanFailedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'hook-plan.failed' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(HookPlanFailedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/** What a steering command did not do, and why: the part of a refusal, a supersession or a failure Bureau publishes. */
+export interface SteeringOutcomeDetail {
+  /** The session the command was sent to. */
+  readonly sessionId: string;
+  /** The command's id, when the command had one. */
+  readonly commandId?: string | undefined;
+  /** `SteeringCommandFailure.reason`; its `failedAt` and `supersededBy` are not published. */
+  readonly failureReason: string;
+}
+
+/**
+ * A steering command was refused at admission (COR-2097). A refusal that decides nothing (a command
+ * that never reached the gate) is not announced, and a retry of a key the log already decided is
+ * not announced again.
+ */
+export class SteeringCommandRejectedEvent extends Event implements SteeringOutcomeDetail {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'steering.rejected' as const;
+
+  readonly sessionId: string;
+  readonly commandId?: string | undefined;
+  readonly failureReason: string;
+
+  constructor(detail: SteeringOutcomeDetail) {
+    super(SteeringCommandRejectedEvent.type);
+    this.sessionId = detail.sessionId;
+    this.commandId = detail.commandId;
+    this.failureReason = detail.failureReason;
+  }
+}
+
+/** An accepted steering command was replaced by a later one for the same target (COR-2097). */
+export class SteeringCommandSupersededEvent extends Event implements SteeringOutcomeDetail {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'steering.superseded' as const;
+
+  readonly sessionId: string;
+  readonly commandId?: string | undefined;
+  readonly failureReason: string;
+
+  constructor(detail: SteeringOutcomeDetail) {
+    super(SteeringCommandSupersededEvent.type);
+    this.sessionId = detail.sessionId;
+    this.commandId = detail.commandId;
+    this.failureReason = detail.failureReason;
+  }
+}
+
+/** An accepted steering command could not be applied: its deadline passed or its run or session ended (COR-2097). */
+export class SteeringCommandFailedEvent extends Event implements SteeringOutcomeDetail {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'steering.failed' as const;
+
+  readonly sessionId: string;
+  readonly commandId?: string | undefined;
+  readonly failureReason: string;
+
+  constructor(detail: SteeringOutcomeDetail) {
+    super(SteeringCommandFailedEvent.type);
+    this.sessionId = detail.sessionId;
+    this.commandId = detail.commandId;
+    this.failureReason = detail.failureReason;
   }
 }
 
@@ -578,14 +763,16 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
 
 /**
  * The goal transitions dispatched live as a {@link GoalLifecycleEvent}: each one the goal event
- * projection records, and `goal.attempt.evaluating`, which is live only and never in a goal's
- * durable history.
+ * projection records, and `goal.attempt.evaluating`, `goal.feedback.recorded` and `goal.retrying`,
+ * which are live only and never in a goal's durable history.
  */
 export type GoalEventKind =
   | 'goal.started'
   | 'goal.attempt.started'
   | 'goal.attempt.evaluating'
   | 'goal.attempt.validated'
+  | 'goal.feedback.recorded'
+  | 'goal.retrying'
   | 'goal.succeeded'
   | 'goal.exhausted'
   | 'goal.canceled'
@@ -608,6 +795,9 @@ const GOAL_EVENT_FIELDS: Readonly<Record<GoalEventKind, readonly string[]>> = {
     'feedbackDigest',
     'judgedBy',
   ],
+  // COR-2097: a failing verdict's digest and the retry it led to; live only, so the audit log never holds them.
+  'goal.feedback.recorded': ['goalRunId', 'attemptId', 'feedbackDigest'],
+  'goal.retrying': ['goalRunId', 'attemptIndex', 'retryReason'],
   'goal.succeeded': ['goalRunId', 'terminalReason'],
   'goal.exhausted': ['goalRunId', 'terminalReason'],
   'goal.canceled': ['goalRunId', 'terminalReason'],
@@ -712,13 +902,70 @@ export class AssetLifecycleEvent extends Event {
   }
 }
 
-/** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
-export type DefinitionCatalogKind = 'agents' | 'workflows';
+/** The kinds of {@link TriggerLifecycleEvent}. */
+export type TriggerEventKind =
+  'trigger.started' | 'trigger.stopped' | 'trigger.failed' | 'trigger.fired';
+
+/** What became of one fire of a contributed trigger, as `trigger.fired` names it. */
+export type TriggerFireOutcome = 'started' | 'duplicate' | 'skipped' | 'refused';
 
 /**
- * Fired on the bureau emitter after a rescan of the agent or workflow files changed what the
- * catalog holds (COR-1721), with the same identifiers its `onChange` listeners receive. `rejected`
- * names those of `added` and `changed` whose definition is invalid now and cannot run.
+ * COR-2250 — what a workflow file's contributed trigger did in this Bureau: its listener started
+ * (`listening`, `waiting-for-secret`, or `ready` for a kind that only receives), stopped (its file
+ * was paused or removed, or another Bureau sharing the storage took it over, COR-2167), or failed,
+ * and what became of each fire. It names the file, the kind (`plugin:name`), the kind's version,
+ * and, for a fire, its outcome, the run it started or found, and the code of a refusal; for a
+ * failure, the listener's code. Never the payload, the idempotency key, or any error text.
+ */
+export class TriggerLifecycleEvent extends Event {
+  declare readonly type: TriggerEventKind;
+  readonly workflowId: string;
+  /** The contributed kind, `plugin:name`. */
+  readonly trigger: string;
+  /** The kind's own version, else its plugin's, as of when the listener or the call started. */
+  readonly version: string;
+  /** `trigger.fired` only. */
+  readonly outcome: TriggerFireOutcome | undefined;
+  /** The run a `started` or `duplicate` fire names. */
+  readonly runId: string | undefined;
+  /**
+   * An identifier (`^[A-Z][A-Z0-9_]{0,63}$`): why a `trigger.failed` listener failed
+   * (`START_FAILED`, `CONFIGURATION_REFUSED`), or why a `refused` fire was refused.
+   */
+  readonly errorCode: string | undefined;
+
+  constructor(
+    kind: TriggerEventKind,
+    event: {
+      readonly workflowId: string;
+      readonly trigger: string;
+      readonly version: string;
+      readonly outcome?: TriggerFireOutcome | undefined;
+      readonly runId?: string | undefined;
+      readonly errorCode?: string | undefined;
+    },
+  ) {
+    super(kind);
+    this.workflowId = event.workflowId;
+    this.trigger = event.trigger;
+    this.version = event.version;
+    this.outcome = event.outcome;
+    this.runId = event.runId;
+    this.errorCode = event.errorCode;
+  }
+}
+
+/** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
+export type DefinitionCatalogKind = 'agents' | 'workflows' | 'validators' | 'guardrails' | 'skills';
+
+/**
+ * Fired on the bureau emitter after a rescan of the agent, workflow, validator or guardrail files,
+ * or of the skill directories, changed what the catalog holds (COR-1721, and COR-2100 for skills),
+ * with the same identifiers its `onChange` listeners receive. `rejected` names those of `added`
+ * and `changed` whose definition is invalid now and cannot run. For `skills` the identifier is the
+ * skill's name, and a directory whose `SKILL.md` cannot be parsed has no name and is listed by its
+ * directory (under `rejected` too). The skills are discovered by the host, which reports each
+ * change through `BureauOptions.skillChanges`.
  */
 export class DefinitionsChangedEvent extends Event {
   static readonly type = 'definitions.changed' as const;
@@ -825,6 +1072,76 @@ export class NotificationCreatedEvent extends Event {
 }
 
 /**
+ * Fired on the bureau emitter after a hook's delivery attempt that did not deliver is written
+ * (COR-2099): a non-2xx answer, a network error, a URL the policy refused, a reaction that threw or
+ * a permanent rejection. It names the hook, the delivery, the attempt and how it failed, never why:
+ * `outcome` is one of a closed list, and `status` is the HTTP status of a `response` outcome. The
+ * attempt's error text can hold a URL's token, so it never crosses. Neither the owner nor the URL
+ * goes with it. Nothing is published for an attempt that was interrupted, aborted by a disabled or
+ * deleted hook, or waiting for a plugin's setup, for a `hooks.test` delivery, for a skipped
+ * `start-workflow` delivery, or for a delivery of a `hook.delivery.*` event (which breaks the cycle
+ * of a hook that watches its own failures). A publish is at most once: a crash between the write and
+ * the publish loses the event.
+ */
+export class HookDeliveryFailedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'hook.delivery.failed' as const;
+
+  /** The hook whose delivery failed. */
+  readonly hookId: string;
+  /** The delivery. */
+  readonly deliveryId: string;
+  /** The number of the attempt that failed, from 1. */
+  readonly attempt: number;
+  /** How the attempt failed. */
+  readonly outcome: HookDeliveryFailureOutcome;
+  /** The HTTP status, set only for a `response` outcome. */
+  readonly status?: number;
+
+  constructor(failure: {
+    readonly hookId: string;
+    readonly deliveryId: string;
+    readonly attempt: number;
+    readonly outcome: HookDeliveryFailureOutcome;
+    readonly status?: number | undefined;
+  }) {
+    super(HookDeliveryFailedEvent.type);
+    this.hookId = failure.hookId;
+    this.deliveryId = failure.deliveryId;
+    this.attempt = failure.attempt;
+    this.outcome = failure.outcome;
+    if (failure.status !== undefined) this.status = failure.status;
+  }
+}
+
+/**
+ * Fired on the bureau emitter once a delivery's last retry has failed and the delivery is
+ * `exhausted` (COR-2099), after the `hook.delivery.failed` event of that last attempt. It names the
+ * hook and the delivery and counts the attempts the record holds, an interrupted one included, so
+ * the count can exceed the number of `hook.delivery.failed` events. A manual retry of an exhausted
+ * delivery that fails again publishes it again with the new count. The same cases as
+ * {@link HookDeliveryFailedEvent} publish nothing.
+ */
+export class HookDeliveryGaveUpEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'hook.delivery.gave-up' as const;
+
+  /** The hook whose delivery was given up. */
+  readonly hookId: string;
+  /** The delivery. */
+  readonly deliveryId: string;
+  /** How many attempts the delivery's record holds. */
+  readonly attempts: number;
+
+  constructor(hookId: string, deliveryId: string, attempts: number) {
+    super(HookDeliveryGaveUpEvent.type);
+    this.hookId = hookId;
+    this.deliveryId = deliveryId;
+    this.attempts = attempts;
+  }
+}
+
+/**
  * Fired on the bureau emitter for each diagnostic the Bureau reports through `onDiagnostic` (or the
  * console, when that is unset), carrying its `level` and `scope` and never its message or cause
  * (COR-1721). A diagnostic raised before the emitter exists, by the event feed's own recorder, or
@@ -878,6 +1195,137 @@ export class DecisionMadeEvent extends Event {
     this.row = decision.row;
     this.path = decision.path;
     this.taskId = decision.taskId;
+  }
+}
+
+/**
+ * A secret a plugin declared was stored (COR-2098), as the host reported it through
+ * `BureauOptions.hostEvents`. It names the plugin and the key the plugin declares, and carries
+ * nothing of the value: not the value, its length, a digest of it or a prefix.
+ */
+export class PluginSecretSetEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'secret.set' as const;
+
+  /** The plugin that declared the secret. */
+  readonly plugin: string;
+  /** The key the plugin declared. */
+  readonly key: string;
+
+  constructor(plugin: string, key: string) {
+    super(PluginSecretSetEvent.type);
+    this.plugin = plugin;
+    this.key = key;
+  }
+}
+
+/** A secret a plugin declared was removed (COR-2098), as the host reported it. */
+export class PluginSecretRemovedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'secret.removed' as const;
+
+  /** The plugin that declared the secret. */
+  readonly plugin: string;
+  /** The key the plugin declared. */
+  readonly key: string;
+
+  constructor(plugin: string, key: string) {
+    super(PluginSecretRemovedEvent.type);
+    this.plugin = plugin;
+    this.key = key;
+  }
+}
+
+/**
+ * A plugin's persisted choices were written (COR-2098), as the host reported it: whether it is
+ * enabled, and whether a restart applies what is stored. It carries no configuration value.
+ */
+export class PluginSettingsChangedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'plugin.settings-changed' as const;
+
+  /** The plugin. */
+  readonly plugin: string;
+  /** Whether the plugin is enabled in the persisted choices. */
+  readonly enabled: boolean;
+  /** Whether the persisted choices differ from the ones the running host loaded. */
+  readonly restartRequired: boolean;
+
+  constructor(plugin: string, enabled: boolean, restartRequired: boolean) {
+    super(PluginSettingsChangedEvent.type);
+    this.plugin = plugin;
+    this.enabled = enabled;
+    this.restartRequired = restartRequired;
+  }
+}
+
+/**
+ * A plugin's status changed after a write (COR-2098), as the host reported it: the status it was
+ * last published at, the status now, and the codes of the problems it lists. A problem's message,
+ * path and key are never part of it.
+ */
+export class PluginStatusChangedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'plugin.status-changed' as const;
+
+  /** The plugin. */
+  readonly plugin: string;
+  /** The status the plugin was last reported at. */
+  readonly previousStatus: PluginStatus;
+  /** The status it has now. */
+  readonly status: PluginStatus;
+  /** The distinct codes of the problems it lists, in the order it lists them. */
+  readonly problemCodes: readonly PluginProblemCode[];
+
+  constructor(
+    plugin: string,
+    previousStatus: PluginStatus,
+    status: PluginStatus,
+    problemCodes: readonly PluginProblemCode[],
+  ) {
+    super(PluginStatusChangedEvent.type);
+    this.plugin = plugin;
+    this.previousStatus = previousStatus;
+    this.status = status;
+    this.problemCodes = problemCodes;
+  }
+}
+
+/**
+ * Fired once a scorer's score of a run has been recorded on the audit trail and breaches the
+ * scorer's rule: a `fail`, or a score below its `alertThreshold` (COR-2251). It names the run, the
+ * scorer and its version, the outcome and the score when there is one. It names no message, no
+ * threshold, no digest and nothing of the run's content: the scorer's text stays on the
+ * `scorer.recorded` audit record.
+ */
+export class ScorerThresholdBreachedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'scorer.threshold-breached' as const;
+
+  /** The run that was scored. */
+  readonly runId: string;
+  /** The scorer's name. */
+  readonly scorerName: string;
+  /** The scorer's version. */
+  readonly scorerVersion: string;
+  /** How the scorer judged the run: a validator outcome kind. */
+  readonly outcome: PluginScoreOutcome;
+  /** The score from 0 to 1, when the scorer gave one. */
+  readonly score?: number | undefined;
+
+  constructor(breach: {
+    readonly runId: string;
+    readonly scorerName: string;
+    readonly scorerVersion: string;
+    readonly outcome: PluginScoreOutcome;
+    readonly score?: number | undefined;
+  }) {
+    super(ScorerThresholdBreachedEvent.type);
+    this.runId = breach.runId;
+    this.scorerName = breach.scorerName;
+    this.scorerVersion = breach.scorerVersion;
+    this.outcome = breach.outcome;
+    this.score = breach.score;
   }
 }
 
@@ -1002,6 +1450,20 @@ export interface BureauEventMap extends EventMap {
   [ToolPolicyDeniedRecordedEvent.type]: ToolPolicyDeniedRecordedEvent;
   /** A tool call failed (COR-2096). */
   [ToolErrorRecordedEvent.type]: ToolErrorRecordedEvent;
+  /** A run dispatched a child run (COR-2097). */
+  [ChildWorkflowStartedRecordedEvent.type]: ChildWorkflowStartedRecordedEvent;
+  /** A child run ended cleanly (COR-2097). */
+  [ChildWorkflowCompletedRecordedEvent.type]: ChildWorkflowCompletedRecordedEvent;
+  /** A child run ended in a failure (COR-2097). */
+  [ChildWorkflowFailedRecordedEvent.type]: ChildWorkflowFailedRecordedEvent;
+  /** A child run was aborted (COR-2097). */
+  [ChildWorkflowAbortedRecordedEvent.type]: ChildWorkflowAbortedRecordedEvent;
+  /** A handoff tool transferred a run to another agent (COR-2097). */
+  [HandoffOccurredRecordedEvent.type]: HandoffOccurredRecordedEvent;
+  /** Accepted steering commands were applied (COR-2097). */
+  [SteeringAppliedRecordedEvent.type]: SteeringAppliedRecordedEvent;
+  /** A hook of a run's plan threw (COR-2097). */
+  [HookPlanFailedRecordedEvent.type]: HookPlanFailedRecordedEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
   [RunSettledEvent.type]: RunSettledEvent;
   /** A run ended without failing and without being aborted (COR-2095). */
@@ -1044,19 +1506,28 @@ export interface BureauEventMap extends EventMap {
   [ReviewRevokedEvent.type]: ReviewRevokedEvent;
   [ReviewCanceledEvent.type]: ReviewCanceledEvent;
   [ReviewSupersededEvent.type]: ReviewSupersededEvent;
-  /**
-   * AB-68. Only the `accepted` transition appears here: it is the one
-   * steering transition Bureau's own admission verb produces. The
-   * `rejected`/`superseded`/`failed` events are `accepted → X` transitions
-   * owned by the gate's post-admission state machine, and `applied` is
-   * dispatched by `runStep` onto the run emitter, not this one.
-   */
+  /** AB-68. The `accepted` transition: the one steering transition Bureau's own admission verb produces. */
   'steering.accepted': SteeringAcceptedEvent;
+  /** COR-2097. A command was refused at admission, with the gate's own reason. */
+  [SteeringCommandRejectedEvent.type]: SteeringCommandRejectedEvent;
+  /** COR-2097. An accepted command was replaced by a later one for the same target. */
+  [SteeringCommandSupersededEvent.type]: SteeringCommandSupersededEvent;
+  /** COR-2097. An accepted command could not be applied: its deadline passed or its run or session ended. */
+  [SteeringCommandFailedEvent.type]: SteeringCommandFailedEvent;
+  /**
+   * COR-2097. A recovered run's checkpointed workflow version differs from the registered one: the
+   * durable engine's own event, forwarded once the Bureau can announce it.
+   */
+  'workflow.version-mismatch': WorkflowVersionMismatchEvent;
   'goal.started': GoalLifecycleEvent;
   'goal.attempt.started': GoalLifecycleEvent;
   /** COR-1781 — an attempt's run finished and its validator started. Live only: never in the goal's history. */
   'goal.attempt.evaluating': GoalLifecycleEvent;
   'goal.attempt.validated': GoalLifecycleEvent;
+  /** COR-2097 — a failing verdict's feedback was recorded, as a digest. Live only. */
+  'goal.feedback.recorded': GoalLifecycleEvent;
+  /** COR-2097 — a failed attempt will be followed by another. Live only. */
+  'goal.retrying': GoalLifecycleEvent;
   'goal.succeeded': GoalLifecycleEvent;
   'goal.exhausted': GoalLifecycleEvent;
   'goal.canceled': GoalLifecycleEvent;
@@ -1067,12 +1538,31 @@ export interface BureauEventMap extends EventMap {
   'asset.blob.purged': AssetLifecycleEvent;
   'asset.expired': AssetLifecycleEvent;
   [DefinitionsChangedEvent.type]: DefinitionsChangedEvent;
+  /** COR-2250 — what a workflow file's contributed trigger did, and each fire's outcome. */
+  'trigger.started': TriggerLifecycleEvent;
+  'trigger.stopped': TriggerLifecycleEvent;
+  'trigger.failed': TriggerLifecycleEvent;
+  'trigger.fired': TriggerLifecycleEvent;
   [ScheduleMissedEvent.type]: ScheduleMissedEvent;
   [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;
   /** A notification was written (COR-1941). */
   [NotificationCreatedEvent.type]: NotificationCreatedEvent;
+  /** A hook's delivery attempt failed (COR-2099). */
+  [HookDeliveryFailedEvent.type]: HookDeliveryFailedEvent;
+  /** A hook's delivery was given up after its last retry (COR-2099). */
+  [HookDeliveryGaveUpEvent.type]: HookDeliveryGaveUpEvent;
   [DiagnosticEvent.type]: DiagnosticEvent;
   [MemoryGovernanceEvent.type]: MemoryGovernanceEvent;
   /** A decision was made and written to the audit trail (COR-2249). */
   [DecisionMadeEvent.type]: DecisionMadeEvent;
+  /** A plugin's secret was stored, as the host reported it (COR-2098). */
+  [PluginSecretSetEvent.type]: PluginSecretSetEvent;
+  /** A plugin's secret was removed, as the host reported it (COR-2098). */
+  [PluginSecretRemovedEvent.type]: PluginSecretRemovedEvent;
+  /** A plugin's persisted choices were written, as the host reported it (COR-2098). */
+  [PluginSettingsChangedEvent.type]: PluginSettingsChangedEvent;
+  /** A plugin's status changed after a write, as the host reported it (COR-2098). */
+  [PluginStatusChangedEvent.type]: PluginStatusChangedEvent;
+  /** A scorer's score of a run breached the scorer's rule (COR-2251). */
+  [ScorerThresholdBreachedEvent.type]: ScorerThresholdBreachedEvent;
 }

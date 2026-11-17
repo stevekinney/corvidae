@@ -55,6 +55,11 @@ const goalSchema = z.object({
   identity: z.object({ name: z.string(), version: z.string() }),
   /** The check the goal runs, by the exact name and version it holds now. */
   validator: z.object({ name: z.string(), version: z.string() }),
+  /**
+   * What the check was configured with (COR-2117): the JSON its schema parsed, or `null` when the
+   * goal named none. It is the check's own text, which `checkText` reads beside the name.
+   */
+  validatorConfiguration: z.unknown(),
   status: z.enum(GOAL_STATUSES),
   terminalReason: z.string().nullable(),
   revision: z.number().int(),
@@ -121,6 +126,53 @@ export async function getGoal(goalRunId: string, options?: Options): Promise<Goa
   return goalSchema.parse(await callBureau('bureau.goals.get', { goalRunId }, options));
 }
 
+const verdictSchema = z.object({
+  goalRunId: z.string(),
+  attemptId: z.string(),
+  attemptIndex: z.number().int(),
+  outcome: z.enum(['pass', 'fail', 'error', 'unavailable', 'canceled', 'indeterminate']),
+  feedback: z.string().nullable(),
+  retryable: z.boolean().nullable(),
+  evidence: z.array(z.object({ source: z.string(), detail: z.unknown() })),
+  reason: z.string().nullable(),
+  error: z.object({ kind: z.string(), code: z.string(), message: z.string() }).nullable(),
+  validator: z.object({ name: z.string(), version: z.string() }),
+  /** What the validator was passed: JSON, or `null` when it was passed none. */
+  configuration: z.unknown(),
+  /** What judged the attempt, captured when the validator ran; `null` on a record written before it. */
+  judgedBy: z
+    .object({
+      validator: z.object({ name: z.string(), version: z.string() }),
+      source: z.object({
+        kind: z.enum(['bureau', 'plugin', 'bungalow']),
+        name: z.string(),
+        version: z.string(),
+      }),
+      configuration: z.unknown(),
+    })
+    .nullable(),
+  startedAt: z.string(),
+  completedAt: z.string(),
+});
+
+/** What the check said about one attempt (`bureau.goals.verdict`, COR-2112). */
+export type GoalVerdict = z.infer<typeof verdictSchema>;
+
+/**
+ * One attempt's verdict: its outcome, feedback, evidence, the configuration it was given and what
+ * judged it. These are the goal's content, which the Bureau gives its owner and a caller holding
+ * `bureau.goals:content`: any other caller, and an attempt with no verdict yet, is `NotFound`.
+ */
+export async function getGoalVerdict(
+  goalRunId: string,
+  attemptIndex: number,
+  options?: Options,
+): Promise<GoalVerdict> {
+  return verdictSchema.parse(
+    await callBureau('bureau.goals.verdict', { goalRunId, attemptIndex }, options),
+  );
+}
+
 /** How many goals one request of {@link listAllGoals} asks for. */
 const GOALS_PAGE_SIZE = 100;
 
@@ -141,12 +193,22 @@ export async function listAllGoals(options?: Options): Promise<Goal[]> {
   }
 }
 
-/** What a goal is created from. A validator is named by free text, exactly, because the Bureau holds its own. */
+/**
+ * A validator as a goal names it: the exact name and version the Bureau lists (`bureau.validators.list`),
+ * and the configuration its schema takes, when it takes one.
+ */
+export type GoalValidatorChoice = {
+  readonly name: string;
+  readonly version: string;
+  readonly configuration?: unknown;
+};
+
+/** What a goal is created from. The validator is one the Bureau lists. */
 export type GoalInput = {
   readonly agentName: string;
   readonly prompt: string;
   readonly identity: { readonly name: string; readonly version: string };
-  readonly validator: { readonly name: string; readonly version: string };
+  readonly validator: GoalValidatorChoice;
   readonly maximumAttempts: number;
   /**
    * A goal needs at least one bound on all its attempts together, besides how many it may make: steps,
@@ -228,8 +290,8 @@ export type GoalChange = {
    * `Conflict` (`agent-between-attempts`).
    */
   readonly agentName?: string;
-  /** Named by free text, exactly, as when the goal was created. */
-  readonly validator?: { readonly name: string; readonly version: string };
+  /** Named exactly as when the goal was created; sent only when its name, version or configuration changed. */
+  readonly validator?: GoalValidatorChoice;
   /** It must leave room for an attempt beyond those already opened. */
   readonly maximumAttempts?: number;
 };

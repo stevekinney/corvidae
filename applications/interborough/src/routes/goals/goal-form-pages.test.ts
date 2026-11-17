@@ -20,7 +20,9 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { chooseOption, listboxTrigger, shownChoice } from '../chat/listbox.test-support.ts';
 import { landAt } from '../chat/pages.test-support.ts';
+import { GOAL_FIELD_IDS } from './goal-form-state.svelte.ts';
 
 const copy = GOALS_COPY.form;
 
@@ -55,14 +57,39 @@ const AGENTS = [
   },
 ];
 
-const CHECK_TEXT = 'Summary lists every refund waiting for approval';
-const CHECK_NAME = 'summary-lists-every-refund-waiting-for-approval';
+/** The check the goal under test holds, as the picker words it, and the phrase it was configured with. */
+const CHECK_LABEL = 'Contains phrase';
+const CHECK_PHRASE = 'waiting for approval';
+const CHECK_ID = GOAL_FIELD_IDS.check;
+
+/** The checks the Bureau lists: one that takes a phrase, one that takes no settings. */
+const VALIDATORS = [
+  {
+    name: 'contains-phrase',
+    version: '1',
+    determinism: 'deterministic',
+    configuration: {
+      type: 'object',
+      properties: { phrase: { type: 'string', minLength: 1, title: 'Phrase' } },
+      required: ['phrase'],
+    },
+    source: { kind: 'bureau', name: 'bureau', version: '1.0.0' },
+  },
+  {
+    name: 'accepts-any-answer',
+    version: '1',
+    determinism: 'deterministic',
+    configuration: null,
+    source: { kind: 'bureau', name: 'bureau', version: '1.0.0' },
+  },
+];
 
 /** The goal Edit and Start again open: Tool runner, asked to summarize refunds, 5 attempts at most. */
 const SUMMARIZE = goalFixture('goal-summarize', {
   agentName: 'tool-runner',
   identity: { name: 'Summarize open refunds', version: '1' },
-  validator: { name: CHECK_NAME, version: '1' },
+  validator: { name: 'contains-phrase', version: '1' },
+  validatorConfiguration: { phrase: CHECK_PHRASE },
   status: 'running',
   revision: 4,
   bounds: {
@@ -97,6 +124,8 @@ type Options = {
   /** How the Bureau answers an update, which says it changed the goal unless said. */
   update?: BureauHandler;
   hostProviders?: readonly { name: string; hasKey: boolean; connected?: boolean }[];
+  /** The checks the Bureau lists, which are {@link VALIDATORS} unless said. */
+  validators?: readonly Record<string, unknown>[];
 };
 
 function open(path: string, options: Options = {}) {
@@ -104,6 +133,7 @@ function open(path: string, options: Options = {}) {
   stub = installBureauStub(
     {
       'bureau.agents.list': () => ({ agents: AGENTS }),
+      'bureau.validators.list': () => ({ validators: options.validators ?? VALIDATORS }),
       'bureau.goals.list': () => ({ goals, nextOffset: null }),
       'bureau.goals.get': (params) => {
         const found = goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
@@ -143,12 +173,23 @@ function open(path: string, options: Options = {}) {
 
 type View = ReturnType<typeof open>;
 
-/** The page once the goal and the agents have filled it: its agent field shows `agent`. */
-async function filledPage(view: View, heading: string, agent: string) {
+/**
+ * The page once the goal, the agents and the checks have filled it: its agent field shows `agent`
+ * and its check picker shows `check`, which is empty while the Bureau lists none.
+ */
+async function filledPage(view: View, heading: string, agent: string, check = CHECK_LABEL) {
   await view.findByRole('heading', { level: 1, name: heading });
   const page = within(view.container);
   const select = (await page.findByLabelText(copy.agentLabel)) as HTMLSelectElement;
   await waitFor(() => expect(select.value).toBe(agent));
+  // An empty `check` is a picker with nothing chosen, which shows its placeholder and no value.
+  if (check !== '') {
+    await waitFor(() => expect(shownChoice(view.container, CHECK_ID)).toBe(check));
+  }
+  // The picker stays off until the Bureau has listed its checks.
+  await waitFor(() =>
+    expect(listboxTrigger(view.container, CHECK_ID).hasAttribute('disabled')).toBe(false),
+  );
   return page;
 }
 
@@ -176,7 +217,9 @@ describe('the Edit goal page', () => {
       copy.edit.promptPlaceholder('Summarize open refunds'),
     );
     expect(page.getByText(copy.edit.agentLocked)).not.toBeNull();
-    expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).value).toBe(CHECK_TEXT);
+    // The goal's own check is chosen, and its settings hold what the goal was configured with.
+    expect(shownChoice(view.container, CHECK_ID)).toBe(CHECK_LABEL);
+    expect((page.getByLabelText('Phrase') as HTMLInputElement).value).toBe(CHECK_PHRASE);
     expect((page.getByLabelText(copy.maximumAttemptsLabel) as HTMLInputElement).value).toBe('5');
     // The limit is Cinder's NumberInput with a floor of one attempt (row S25).
     const limit = page.getByLabelText(copy.maximumAttemptsLabel) as HTMLInputElement;
@@ -215,23 +258,94 @@ describe('the Edit goal page', () => {
     await fireEvent.input(page.getByLabelText(copy.promptLabel), {
       target: { value: 'Summarize open refunds, and say why each one waits.' },
     });
-    await fireEvent.input(page.getByLabelText(copy.checkLabel), {
-      target: { value: 'Summary lists every refund and the reason' },
-    });
+    await chooseOption(view.container, 'Accepts any answer, version 1', CHECK_ID);
     await setAttemptLimit(page, '8');
 
     await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.goals.update').length).toBe(1));
-    // The agent is not named while it is the one the form opened with.
+    // The agent is not named while it is the one the form opened with. A check with no settings is
+    // sent none.
     expect(stub?.callsTo('bureau.goals.update')[0]?.params).toEqual({
       goalRunId: 'goal-summarize',
       expectedRevision: 4,
       prompt: 'Summarize open refunds, and say why each one waits.',
-      validator: { name: 'summary-lists-every-refund-and-the-reason', version: '1' },
+      validator: { name: 'accepts-any-answer', version: '1' },
       maximumAttempts: 8,
     });
     await waitFor(() => expect(router.pathname).toBe('/goals/goal-summarize'));
+  });
+
+  test('names the validator, with its name and version, when only its settings changed', async () => {
+    const view = open('/goals/goal-summarize/edit');
+    const page = await filledPage(view, copy.edit.title, 'tool-runner');
+    await fireEvent.input(page.getByLabelText('Phrase'), { target: { value: 'the reason' } });
+
+    await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.goals.update')[0]?.params).toEqual({
+      goalRunId: 'goal-summarize',
+      expectedRevision: 4,
+      validator: { name: 'contains-phrase', version: '1', configuration: { phrase: 'the reason' } },
+    });
+  });
+
+  test('keeps the goal’s own check, with its settings, when the Bureau no longer lists it', async () => {
+    const view = open('/goals/goal-summarize/edit', { validators: [VALIDATORS[1]!] });
+    // The goal's own check reads as its page reads it, with the settings the goal holds.
+    const page = await filledPage(
+      view,
+      copy.edit.title,
+      'tool-runner',
+      `Contains phrase "${CHECK_PHRASE}"`,
+    );
+
+    expect(page.getByText(copy.checkUnlisted)).not.toBeNull();
+    expect(copy.checkUnlisted).toBe(
+      'Not installed any more. The goal keeps this check until you choose another.',
+    );
+    expect(listboxTrigger(view.container, CHECK_ID).textContent).toContain(
+      copy.checkVersionNotInstalled('1'),
+    );
+    // What the goal keeps is shown, read-only, where the settings would be: no field to change it.
+    const stored = within(view.getByTestId('goal-check-stored-settings'));
+    expect(stored.getByText('phrase')).not.toBeNull();
+    expect(stored.getByText(CHECK_PHRASE)).not.toBeNull();
+    expect(page.queryByLabelText('Phrase')).toBeNull();
+    // Nothing changed, so nothing is sent, and the validator is not cleared.
+    await setAttemptLimit(page, '6');
+    await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.goals.update')[0]?.params).toEqual({
+      goalRunId: 'goal-summarize',
+      expectedRevision: 4,
+      maximumAttempts: 6,
+    });
+  });
+
+  test('shows the field of the settings the Bureau refused, at the field', async () => {
+    const view = open('/goals/goal-summarize/edit', {
+      update: () => {
+        throw new StubFault('InvalidParams', 400, 'The configuration is refused: phrase', {
+          issues: [
+            {
+              path: ['validator', 'configuration', 'phrase'],
+              message: 'Too short',
+              code: 'custom',
+            },
+          ],
+        });
+      },
+    });
+    const page = await filledPage(view, copy.edit.title, 'tool-runner');
+    await fireEvent.input(page.getByLabelText('Phrase'), { target: { value: 'x' } });
+
+    await fireEvent.click(page.getByRole('button', { name: copy.edit.saveAction }));
+
+    await page.findByText('Too short');
+    expect((page.getByLabelText('Phrase') as HTMLInputElement).value).toBe('x');
   });
 
   test('says an attempt limit outside 1 to 20 at the field, as New goal does, and sends nothing', async () => {
@@ -262,7 +376,7 @@ describe('the Edit goal page', () => {
       'true',
     );
     expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).readOnly).toBe(true);
+    expect(listboxTrigger(view.container, CHECK_ID).getAttribute('aria-readonly')).toBe('true');
 
     answer.resolve({
       goalRunId: 'goal-summarize',
@@ -434,7 +548,8 @@ describe('Start again', () => {
     expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).value).toBe(
       'Summarize open refunds',
     );
-    expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).value).toBe(CHECK_TEXT);
+    expect(shownChoice(view.container, CHECK_ID)).toBe(CHECK_LABEL);
+    expect((page.getByLabelText('Phrase') as HTMLInputElement).value).toBe(CHECK_PHRASE);
     expect((page.getByLabelText(copy.maximumAttemptsLabel) as HTMLInputElement).value).toBe('5');
     expect(page.queryByTestId('goal-needs-provider')).toBeNull();
 
@@ -446,8 +561,9 @@ describe('Start again', () => {
       agentName: 'tool-runner',
       prompt: 'Summarize open refunds',
       identity: { name: 'Summarize open refunds', version: '1' },
-      // The check is the goal's own, so its validator is named exactly as the goal holds it.
-      validator: { name: CHECK_NAME, version: '1' },
+      // The check is the goal's own, so its validator is named exactly as the goal holds it,
+      // with the configuration it was given.
+      validator: { name: 'contains-phrase', version: '1', configuration: { phrase: CHECK_PHRASE } },
       bounds: { maximumAttempts: 5, maximumTotalSteps: 50 },
     });
     await waitFor(() => expect(router.pathname).toBe('/goals/goal-created-1'));
@@ -455,9 +571,10 @@ describe('Start again', () => {
 
   test('opens the form as New goal does when the goal cannot be read', async () => {
     const view = open('/goals/new?from=missing');
+    // The form starts with the first check the Bureau lists.
     const page = await filledPage(view, copy.title, 'assistant');
     expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).value).toBe('');
-    expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).value).toBe('');
+    expect(shownChoice(view.container, CHECK_ID)).toBe(CHECK_LABEL);
   });
 });
 
@@ -514,10 +631,12 @@ describe('a model agent chosen with no provider connected', () => {
   });
 
   test('is not a gate once a provider holds a key: the check is what stops Create goal, and it stays live', async () => {
+    // The Bureau lists no check, so the picker has nothing to offer and the form says so.
     const view = open('/goals/new', {
       hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }],
+      validators: [],
     });
-    const page = await filledPage(view, copy.title, 'assistant');
+    const page = await filledPage(view, copy.title, 'assistant', '');
     await chooseAgent(page, 'tool-runner');
     await fireEvent.input(page.getByLabelText(copy.promptLabel), {
       target: { value: 'Summarize open refunds.' },
@@ -526,9 +645,9 @@ describe('a model agent chosen with no provider connected', () => {
 
     await fireEvent.click(page.getByRole('button', { name: copy.createAction }));
 
-    const check = page.getByLabelText(copy.checkLabel);
+    const check = listboxTrigger(view.container, CHECK_ID);
     await waitFor(() => expect(document.activeElement === check).toBe(true));
-    expect(page.getByText(copy.checkRequired)).not.toBeNull();
+    expect(page.getByText(copy.noChecks)).not.toBeNull();
     expect(page.getByTestId('goal-form-note').textContent).toBe(copy.footer.check);
     expect(page.getByRole('button', { name: copy.createAction })).not.toBeDisabled();
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
@@ -536,13 +655,12 @@ describe('a model agent chosen with no provider connected', () => {
 });
 
 describe('a goal being created', () => {
+  /** The prompt, and the phrase the first check the Bureau lists takes. */
   async function fill(page: ReturnType<typeof within>) {
     await fireEvent.input(page.getByLabelText(copy.promptLabel), {
       target: { value: 'Say hello.' },
     });
-    await fireEvent.input(page.getByLabelText(copy.checkLabel), {
-      target: { value: 'Reply says hello' },
-    });
+    await fireEvent.input(page.getByLabelText('Phrase'), { target: { value: 'hello' } });
   }
 
   test('says Creating: the button, the note, Cancel off and the fields read-only, then lands on the new goal', async () => {
@@ -562,7 +680,7 @@ describe('a goal being created', () => {
       'true',
     );
     expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).readOnly).toBe(true);
+    expect(listboxTrigger(view.container, CHECK_ID).getAttribute('aria-readonly')).toBe('true');
     // A second press while the first is in flight sends nothing.
     await fireEvent.click(page.getByRole('button', { name: copy.creatingAction }));
     expect(stub?.callsTo('bureau.goals.create')).toHaveLength(1);
@@ -597,9 +715,8 @@ describe('a goal being created', () => {
     expect(fault.textContent).toContain(copy.kept);
     expect(page.getByRole('button', { name: copy.createAction })).not.toBeDisabled();
     expect((page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement).value).toBe('Say hello.');
-    expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).value).toBe(
-      'Reply says hello',
-    );
+    expect(shownChoice(view.container, CHECK_ID)).toBe(CHECK_LABEL);
+    expect((page.getByLabelText('Phrase') as HTMLInputElement).value).toBe('hello');
 
     await fireEvent.click(page.getByRole('button', { name: copy.tryAgain }));
 

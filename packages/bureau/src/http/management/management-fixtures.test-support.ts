@@ -103,6 +103,9 @@ export function as(key: string): Record<string, string> {
 }
 
 export type RpcBody = {
+  /** The envelope's own members, which a test that asserts the whole answer compares. */
+  jsonrpc?: string;
+  id?: number | string | null;
   result?: Record<string, unknown>;
   error?: {
     code: number;

@@ -488,7 +488,12 @@ describe('plugin composition', () => {
           ],
         },
         embedders: [
-          { name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => [0, 0, 0, 1]) },
+          {
+            name: 'small',
+            model: 'small-model',
+            dimensions: 4,
+            embed: async (texts) => texts.map(() => [0, 0, 0, 1]),
+          },
         ],
       }),
     });
@@ -499,7 +504,11 @@ describe('plugin composition', () => {
           admission: contributions.guardrails.admission.map(({ name }) => name),
           recall: contributions.guardrails.recall.map(({ name }) => name),
           sources: contributions.guardrails.sources,
-          embedders: contributions.embedders.map(({ id, dimension }) => ({ id, dimension })),
+          embedders: contributions.embedders.map(({ id, dimension, model }) => ({
+            id,
+            dimension,
+            model,
+          })),
         });
         return undefined as never;
       },
@@ -546,7 +555,7 @@ describe('plugin composition', () => {
             gates: ['recall'],
           },
         ],
-        embedders: [{ id: 'remembering:small', dimension: 4 }],
+        embedders: [{ id: 'remembering:small', dimension: 4, model: 'small-model' }],
       },
     ]);
   });

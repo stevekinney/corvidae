@@ -390,7 +390,15 @@ export function createSessionAgentRuns(core: CompositionCore, peers: SessionAgen
         // registration added to `runRuntime.hooks` after this point cannot
         // reach the run that already holds the copy. COR-1577 — a named agent's own tier
         // follows it, as on a catalog dispatch.
-        hooks: peers.composeHooks({ bureau: runRuntime.hooks, agent: sessionAgent?.options.hooks }),
+        // The Bureau tier is what a started run's is, `bureau:pending-approval-persist` included: a
+        // step this run takes after the restart records the approvals it leaves pending.
+        hooks: peers.composeHooks({
+          bureau:
+            runId === undefined
+              ? runRuntime.hooks
+              : core.withPendingApprovalPersist(runRuntime.hooks, runId, session.id),
+          agent: sessionAgent?.options.hooks,
+        }),
         onToolResultTaint: runRuntime.onToolResultTaint,
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a recovered run
