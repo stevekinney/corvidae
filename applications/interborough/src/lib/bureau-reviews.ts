@@ -295,12 +295,12 @@ export function isReviewRoundChanged(error: unknown): boolean {
 export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
 
 /**
- * Whether a decision found the review no longer waiting: the Bureau says it was already resolved,
- * or no longer holds it pending at all (a `NotFound`, as when the agent moved on).
+ * Whether a decision found the review no longer waiting: the Bureau says it was already resolved.
+ * A `NotFound` is not this: it also answers a caller who may not decide the review, so the list is
+ * read again, and a review that left it is said to be no longer waiting from there.
  */
 export function isReviewNoLongerWaiting(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
-  if (error.status === 404) return true;
   const reason: unknown = error.data?.['reason'];
   return typeof reason === 'string' && reason.startsWith(`${REVIEW_ALREADY_RESOLVED}:`);
 }

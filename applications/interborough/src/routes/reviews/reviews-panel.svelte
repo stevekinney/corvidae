@@ -224,6 +224,8 @@
       setTimeout(() => {
         lingerTimers.delete(key);
         lingering.delete(key);
+        // Still listed by the Bureau: it is waiting after all, and stays.
+        if (items.some((candidate) => candidate.key === key)) return;
         departed.add(key);
         announcement = REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, titles.get(key) ?? '');
       }, NO_LONGER_WAITING_LINGER_MILLISECONDS),

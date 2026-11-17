@@ -141,10 +141,11 @@ describe('the Bureau’s review operations', () => {
   test('tells a review that was already resolved, or is gone, from every other fault (COR-2426)', () => {
     const conflict = (reason: unknown) =>
       new HttpClientError(409, 'Conflict', { faultCode: 'Conflict', data: { reason } });
-    expect(isReviewNoLongerWaiting(conflict('REVIEW_ALREADY_RESOLVED: Review "x" is resolved'))).toBe(
-      true,
-    );
-    expect(isReviewNoLongerWaiting(new HttpClientError(404, 'No pending review'))).toBe(true);
+    expect(
+      isReviewNoLongerWaiting(conflict('REVIEW_ALREADY_RESOLVED: Review "x" is resolved')),
+    ).toBe(true);
+    // A NotFound also answers a caller who may not decide it, so it is not taken as gone.
+    expect(isReviewNoLongerWaiting(new HttpClientError(404, 'No pending review'))).toBe(false);
     expect(isReviewNoLongerWaiting(conflict('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);
     expect(isReviewNoLongerWaiting(conflict('Another resolver won.'))).toBe(false);
     expect(isReviewNoLongerWaiting(new Error('REVIEW_ALREADY_RESOLVED: x'))).toBe(false);

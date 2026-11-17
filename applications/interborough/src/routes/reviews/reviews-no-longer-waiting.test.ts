@@ -11,6 +11,7 @@ import { Window } from 'happy-dom';
 
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -20,7 +21,6 @@ import {
 import { until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { NO_LONGER_WAITING_LINGER_MILLISECONDS } from './review-items.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
@@ -99,7 +99,9 @@ describe('a review that left while it was open', () => {
     // After a moment the row leaves, and that is announced as a decision is.
     jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS);
     await until(() =>
-      expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).toBeNull(),
+      expect(
+        container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(getByTestId('reviews-announcement').textContent?.trim()).toBe(
       REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, 'Refund order-1001?'),
@@ -141,10 +143,34 @@ describe('a review that left while it was open', () => {
     expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).not.toBeNull();
     jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS);
     await until(() =>
-      expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).toBeNull(),
+      expect(
+        container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(getByTestId('reviews-announcement').textContent?.trim()).toBe(
       REVIEWS_COPY.announce(REVIEWS_COPY.announced.gone, 'Refund order-1001?'),
     );
+  });
+
+  test('says a NotFound for a review the Bureau still lists is a failure, and hides nothing (COR-2426)', async () => {
+    measuredAt(1200);
+    const { container, getByRole, queryByTestId } = open({
+      reviews: [APPROVAL, QUESTION],
+    });
+    await until(() => expect(getByRole('button', { name: 'Approve' })).not.toBeNull());
+    // A caller who may not decide it is answered NotFound, though it is still waiting.
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new StubFault('NotFound', 404, 'No review', { resource: 'review' });
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Approve' }));
+
+    await until(() => expect(container.textContent).toContain(REVIEWS_COPY.decisionFailed));
+    jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS + 5_000);
+    await until(() =>
+      expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).not.toBeNull(),
+    );
+    expect(queryByTestId('review-gone')?.outerHTML ?? null).toBeNull();
+    expect(getByRole('button', { name: 'Approve' })).not.toBeNull();
   });
 });
