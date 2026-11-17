@@ -96,7 +96,7 @@ describe('retrying a failed document run from its failed step', () => {
       activities: {
         first: () => {
           firstCalls += 1;
-          return ['a', 'b'];
+          return { items: ['a', 'b'] };
         },
         item: (argument: DocumentActivityArgument) => {
           seen.push(argument.previous);
@@ -113,7 +113,12 @@ describe('retrying a failed document run from its failed step', () => {
           trigger: { kind: 'manual' },
           steps: [
             { kind: 'activity', handler: 'first' },
-            { kind: 'map', concurrency: 1, steps: [{ kind: 'activity', handler: 'item' }] },
+            {
+              kind: 'map',
+              over: 'items',
+              concurrency: 1,
+              steps: [{ kind: 'activity', handler: 'item' }],
+            },
           ],
         },
       ],
