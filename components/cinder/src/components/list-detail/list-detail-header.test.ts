@@ -61,14 +61,24 @@ describe('ListDetail pane header with actions', () => {
     });
   });
 
-  // A page puts a row of its own above the heading (a way back) and marks it; ListDetail starts it
-  // after the list toggle, so no page reaches into this component's markup to learn the toggle is
-  // there (Interborough's interface lint refuses a page selector that names a Cinder class).
-  test('the heading, and a row a page marks as the header start, begin after the list toggle', async () => {
+  // The header's first row, whatever it holds (a plain `<h2>`, a SectionHeading, a way back), starts
+  // after the list toggle, so the toggle never draws over it and no page marks anything.
+  test('the first row of the header, whatever it is, begins after the list toggle', async () => {
     const text = await Bun.file(new URL('./list-detail.css', import.meta.url)).text();
-    const flat = text.replace(/\s+/g, ' ');
-    expect(flat).toContain(
-      '.cinder-list-detail[data-cinder-toggle-shown] .cinder-list-detail__header :is(.cinder-section-heading__primary, [data-cinder-list-detail-header-start]) { padding-inline-start: var(--cinder-button-height-sm); }',
+    const rule = declarationsFor(
+      text,
+      '.cinder-list-detail[data-cinder-toggle-slot] .cinder-list-detail__header > :first-child',
     );
+    expect(rule.get('padding-inline-start')).toBe('var(--cinder-button-height-sm)');
+    expect(text).not.toContain('cinder-section-heading__primary');
+    expect(text).not.toContain('data-cinder-list-detail-header-start');
+  });
+
+  test('the slot is kept while the panes sit side by side and the list can be hidden, with no item open', () => {
+    const { container } = render(Harness, { props: { collapsible: true } });
+    // Happy-dom measures no width, which ListDetail treats as wide: side by side.
+    const root = container.querySelector('.cinder-list-detail')!;
+    expect(root.hasAttribute('data-cinder-toggle-slot')).toBe(true);
+    expect(container.querySelector('.cinder-list-detail__toggle')).toBeNull();
   });
 });

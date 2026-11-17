@@ -417,7 +417,10 @@ describe('Chat — scrollFadeVisible', () => {
     // The placement is judged against the transcript without the reminder, by one rule, and runs
     // again on the transcript's, the card's and the fonts' layout changes, never on a timer.
     expect(source).toContain('const viewportBox = approvalArrivalBox(scroller);');
-    expect(source).toContain('const shift = approvalArrivalShift(cardBox, viewportBox);');
+    // The card and the row that labels it are placed as one unit.
+    expect(source).toContain(
+      'const shift = approvalArrivalShift(approvalUnitBox(card), viewportBox);',
+    );
     expect(source).toContain('resizes?.observe(card);');
     expect(source).toContain('fonts?.ready.then(');
     // The lift leaves a waiting approval to that placement.

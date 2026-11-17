@@ -345,6 +345,8 @@ export {
 } from './utilities/theme-transition-guard.ts';
 export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
 
+export { INPUT_MODALITY_ATTRIBUTE, trackInputModality } from './utilities/input-modality.ts';
+
 export { default as DataList } from './components/data-list/index.ts';
 export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 

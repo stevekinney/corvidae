@@ -358,12 +358,10 @@
   overflow: hidden;
 }
 
-/* The pane's header: the title and "+", then the search field and the status segments under
- * them, each on a line of its own so the action never reads as the field's submit button. */
-.ib-chats__controls {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
+/* The pane's header is ListDetail's column: the title and "+", then the search field and the status
+ * segments under them, each on a line of its own so the action never reads as the field's submit
+ * button. The title row is measured for the width the segments need. */
+.ib-chats__title {
   min-inline-size: 0;
 }
 

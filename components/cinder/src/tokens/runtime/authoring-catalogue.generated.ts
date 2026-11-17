@@ -6485,7 +6485,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (AppBar and `.cinder-translucent-surface`), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`).',
+        'The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (`.cinder-translucent-surface`; AppBar keeps its own 82% mix), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`).',
       themeAware: true,
       deprecated: false,
       profile: 'color',

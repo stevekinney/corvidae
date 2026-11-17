@@ -99,8 +99,8 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full
    * width, so the action never reads as the filter's submit button. The toggle that hides the list
-   * (`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and a
-   * `SectionHeading` title starts after it.
+   * (`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and the
+   * header's first row, whatever it holds, starts after it.
    */
   header?: Snippet;
   /**

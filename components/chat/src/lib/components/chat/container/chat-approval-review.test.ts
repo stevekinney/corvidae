@@ -22,6 +22,7 @@ import {
   approvalReviewBox,
   approvalRowVisible,
   approvalTallerThanTranscript,
+  approvalUnitBox,
   approvalVisibleBox,
   findPendingApprovalMessageId,
   focusPendingApproval,
@@ -333,9 +334,31 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     document.body.append(container);
     stubBox(transcript, 160, 380);
     transcript.style.setProperty('--cinder-chat-overlay-inset-start', '96px');
+    // The transcript's top padding is the overlay plus the timeline's padding (12px at 320).
+    transcript.style.paddingTop = '108px';
 
-    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 256, bottom: 380 });
+    // The box starts where the first row of a short chat starts, 12px under the header.
+    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 268, bottom: 380 });
     container.remove();
+  });
+
+  test('the card and the row that labels it are one unit to keep clear', () => {
+    const message = document.createElement('article');
+    message.setAttribute('data-message-id', 'm1');
+    const earlier = document.createElement('div');
+    earlier.className = 'cinder-tool-call-rail__row';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const card = document.createElement('div');
+    message.append(earlier, label, card);
+    document.body.append(message);
+    stubBox(earlier, 100, 140);
+    stubBox(label, 159, 211);
+    stubBox(card, 215, 400);
+
+    // The nearest row before the card labels it, so its top, not the card's, leads the unit.
+    expect(approvalUnitBox(card)).toEqual({ top: 159, bottom: 400 });
+    message.remove();
   });
 });
 

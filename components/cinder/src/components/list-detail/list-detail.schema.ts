@@ -166,7 +166,7 @@ const schema = {
         name: 'header',
         reason: 'function-or-snippet',
         description:
-          "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button. The toggle that hides the list\n(`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and a\n`SectionHeading` title starts after it.",
+          "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button. The toggle that hides the list\n(`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and the\nheader's first row, whatever it holds, starts after it.",
       },
       {
         name: 'items',
