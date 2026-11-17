@@ -336,6 +336,17 @@
     visibility: visible;
   }
 
+  /* The decision actions at the bar's inline end, tappable once the bar shows. */
+  .cinder-page-header__bar-decisions {
+    flex: none;
+    margin-inline-start: auto;
+    padding-inline-start: var(--cinder-space-3);
+  }
+
+  .cinder-page-header__bar[data-cinder-collapsed] .cinder-page-header__bar-surface {
+    pointer-events: auto;
+  }
+
   .cinder-page-header__bar-title {
     min-inline-size: 0;
     overflow: hidden;
