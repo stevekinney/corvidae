@@ -234,9 +234,10 @@
    * room beside the words, and a full-width row on a phone still drops it. A query cannot restyle
    * its own container, so the grid keeps its three tracks and the parts move: the words span the
    * second track and the empty third one (whose gap they take back, so their measure is what it
-   * was), and the action takes a third line under them, at the row's inline start, the edge a
-   * narrow ErrorState row puts its retry on, so the two read as one family in one card. Without a
-   * disc the action stays beside the words, as it always has. */
+   * was), and the action takes a third line under them, across the whole row and flush with its
+   * trailing edge (the owner's trailing-edge actions, 2026-11-13), the edge a narrow ErrorState
+   * row puts its retry on, so the two share one edge in one card. Without a disc the action stays
+   * beside the words, as it always has. */
   @container cinder-empty-state (max-width: 28rem) {
     .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
       :is(.cinder-empty-state-title, .cinder-empty-state-description) {
@@ -250,7 +251,7 @@
     }
 
     .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      justify-content: flex-start;
+      justify-content: flex-end;
       margin-block-start: var(--cinder-space-2);
     }
   }

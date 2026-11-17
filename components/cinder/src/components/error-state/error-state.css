@@ -309,12 +309,12 @@
 
   /* A narrow row: 28rem (448px; the row has no padding of its own, so that is its width). The retry
    * keeps the inline end whenever it has room beside the words, and a full-width row on a phone
-   * still drops it to a line of its own at the row's inline start, as a narrow EmptyState row
-   * does. */
+   * still drops it to a line of its own, flush with the row's trailing edge (the owner's
+   * trailing-edge actions, 2026-11-13), as a narrow EmptyState row does. */
   @container cinder-error-state (max-width: 28rem) {
     .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action {
       flex-basis: 100%;
-      justify-content: flex-start;
+      justify-content: flex-end;
     }
   }
 

@@ -475,15 +475,15 @@ describe('EmptyState layout', () => {
       `${withDisc} :is(.cinder-empty-state-title, .cinder-empty-state-description)`,
     );
     expect(words.get('grid-column')).toBe('2 / -1');
-    // A dropped action starts at the row's inline start, the edge a narrow ErrorState row puts its
-    // retry on, so the two read as one family in one card.
+    // A dropped action spans the whole row and ends on its trailing edge (trailing-edge actions
+    // everywhere, owner 2026-11-13), the edge a narrow ErrorState row ends its retry on.
     const action = narrow(`${withDisc} .cinder-empty-state-action`);
     expect(action.get('grid-column')).toBe('1 / -1');
     expect(action.get('grid-row')).toBe('3');
     const anyAction = narrow(
       ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",
     );
-    expect(anyAction.get('justify-content')).toBe('flex-start');
+    expect(anyAction.get('justify-content')).toBe('flex-end');
     expect(anyAction.get('margin-block-start')).toBe('var(--cinder-space-2)');
   });
 

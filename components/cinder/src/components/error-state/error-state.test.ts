@@ -225,7 +225,8 @@ describe('ErrorState variant', () => {
       ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
     );
     expect(action.get('flex-basis')).toBe('100%');
-    expect(action.get('justify-content')).toBe('flex-start');
+    // Trailing-edge actions everywhere (owner, 2026-11-13): the dropped retry ends the row.
+    expect(action.get('justify-content')).toBe('flex-end');
   });
 });
 
