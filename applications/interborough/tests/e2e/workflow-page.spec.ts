@@ -274,9 +274,9 @@ test.describe('the "⋯" menu', () => {
       page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.duplicate }),
     ).toBeVisible();
     await expect(page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause })).toBeVisible();
-    await expect(page.getByTestId('workflow-menu-pause-description')).toHaveText(
-      WORKFLOW_COPY.page.menu.pauseDescription,
-    );
+    await expect(
+      page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause }),
+    ).toHaveAccessibleDescription(WORKFLOW_COPY.page.menu.pauseDescription);
     await expect(
       page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.delete }),
     ).toBeVisible();

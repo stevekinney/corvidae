@@ -29,6 +29,11 @@ export type ViewNotFoundCopy = ViewStateCopy & {
   readonly back?: ViewLink;
   /** Leaves out the "Search everything" button, for a page whose only way out is back to its list. */
   readonly searchHidden?: boolean;
+  /**
+   * Leaves the missing thing out of the breadcrumb, so the trail ends at its list ("Workflows")
+   * rather than at "Not found", for a page whose title already says what is missing (row 63h).
+   */
+  readonly crumbHidden?: boolean;
 };
 
 export type ViewCopy = {

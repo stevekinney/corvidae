@@ -128,8 +128,15 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: FORBIDDEN_COPY.title('Workflows') },
-    // A workflow's page is neutral and has one way back, the list (board PageWorkflow, row 63h).
-    notFound: { ...WORKFLOW_COPY.page.notFound, searchHidden: true },
+    // A workflow's page is neutral and has one way back, the list, in the page's own words, and the
+    // breadcrumb still reads "Workflows" alone (board PageWorkflow, row 63h).
+    notFound: {
+      title: WORKFLOW_COPY.page.notFound.title,
+      description: WORKFLOW_COPY.page.notFound.description,
+      back: { label: WORKFLOW_COPY.page.notFound.back, href: '/workflows' },
+      searchHidden: true,
+      crumbHidden: true,
+    },
     notFoundByPattern: {
       '/workflows/:workflow/edit': {
         title: 'This workflow doesn’t exist',

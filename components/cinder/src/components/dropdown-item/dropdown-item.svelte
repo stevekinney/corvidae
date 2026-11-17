@@ -36,6 +36,7 @@
     inset = false,
     disabled,
     disabledReason,
+    description,
     closeOnSelect = true,
     class: customClassName,
     onclick,
@@ -49,12 +50,16 @@
 
   const isLink = $derived(href !== undefined);
 
-  // A disabled item says why on a second line, and names that line as its description; the label
-  // alone is its name. An enabled item, or one with no reason, keeps its single-line markup.
+  // A disabled item says why on a second line, and an item with a `description` says what it does
+  // there; either way the line is its description and the label alone is its name. A disabled
+  // item's reason takes the description's place. An item with neither keeps its single-line markup.
   const generatedId = $props.id();
   const labelId = `${generatedId}-label`;
   const reasonId = `${generatedId}-reason`;
-  const reasonText = $derived(disabled ? disabledReason?.trim() || undefined : undefined);
+  const reasonText = $derived(
+    (disabled ? disabledReason?.trim() || undefined : undefined) ??
+      (description?.trim() || undefined),
+  );
   const ownLabel = $derived(
     (rest as Record<string, unknown>)['aria-label'] !== undefined ||
       (rest as Record<string, unknown>)['aria-labelledby'] !== undefined,

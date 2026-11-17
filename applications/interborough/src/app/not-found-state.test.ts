@@ -114,6 +114,27 @@ describe('the not-found page', () => {
     expect(queryByRole('button', { name: NOT_FOUND_COPY.search })).toBeNull();
   });
 
+  test('COR-2431: a workflow’s page says Back to workflows in its own words, and the breadcrumb reads Workflows alone (row 63h)', async () => {
+    landAt('/workflows/does-not-exist');
+    const { container, getByTestId } = render(Harness, {
+      props: {
+        title: 'Workflow not found',
+        view: 'workflows',
+        search: false,
+        back: { label: 'Back to workflows', href: '/workflows' },
+        crumbHidden: true,
+      },
+    });
+
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Back to workflows']);
+    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(container.querySelector('.cinder-empty-state')?.getAttribute('data-cinder-kind')).toBe(
+      'not-found',
+    );
+    await waitFor(() => expect(getByTestId('trail').textContent).toBe('Workflows'));
+  });
+
   describe('a page whose missing thing can be started again (the chat page, row 19u)', () => {
     const create = { label: 'New chat', href: '/chats/new' };
     const back = { label: 'Back to chats', href: '/chats' };

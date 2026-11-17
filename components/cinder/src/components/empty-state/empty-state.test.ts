@@ -416,6 +416,21 @@ describe('EmptyState size', () => {
     expect(title.get('font-size')).toBe('var(--cinder-text-base)');
   });
 
+  test('compact draws a 32px disc, neutral for a first use, so a tab’s empty state is never a second call to act', () => {
+    const disc = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon",
+    );
+    expect(disc.get('inline-size')).toBe('var(--cinder-space-8)');
+    expect(disc.get('block-size')).toBe('var(--cinder-space-8)');
+    const firstUse = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-size='compact'][data-cinder-kind='first-use'] .cinder-empty-state-icon",
+    );
+    expect(firstUse.get('background')).toBe('var(--cinder-surface-inset)');
+    expect(firstUse.get('color')).toBe('var(--cinder-text-muted)');
+  });
+
   test('compact makes the Clear filters button small', () => {
     const { getByRole } = render(EmptyState, {
       props: { title: 'No matches', kind: 'filtered', size: 'compact', onClearFilters: () => {} },

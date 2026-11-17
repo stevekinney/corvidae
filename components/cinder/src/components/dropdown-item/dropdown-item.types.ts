@@ -33,6 +33,8 @@ type DropdownItemBase = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
   disabled?: boolean | undefined;
   /** Why the item is off: a second line under the label and its description while `disabled` is set. */
   disabledReason?: string | undefined;
+  /** What the item does: a second line under the label and its description. A disabled item's `disabledReason` takes its place. */
+  description?: string | undefined;
 };
 
 /**
@@ -148,4 +150,11 @@ export type DropdownItemProps = SharedHtmlAttributes &
      * a `title`, which touch never shows.
      */
     disabledReason?: string | undefined;
+    /**
+     * What the item does, such as what pausing does to the runs in flight. It is drawn under the
+     * label as a second line in the muted text colour, starting where the label's text starts, and
+     * it is the item's description (`aria-describedby`), while its name stays the label. While the
+     * item is disabled with a `disabledReason`, the reason takes its place.
+     */
+    description?: string | undefined;
   };

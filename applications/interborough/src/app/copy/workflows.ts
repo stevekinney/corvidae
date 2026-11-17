@@ -388,6 +388,8 @@ export const WORKFLOW_COPY = {
       title: 'Workflow not found',
       description:
         'This workflow doesn’t exist, or its file was removed. Check the link, or go back to the list.',
+      /** The one way back, in lower case as the page says it (row 63h). */
+      back: 'Back to workflows',
     },
   },
   /** `/workflows/:workflow/run`: one run of the workflow in the path, started now or on a schedule. */

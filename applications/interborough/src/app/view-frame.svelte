@@ -409,6 +409,7 @@
       create={notFoundCopy.create}
       back={fault?.back ?? notFoundCopy.back}
       search={notFoundCopy.searchHidden !== true}
+      crumbHidden={notFoundCopy.crumbHidden === true}
     />
   {:else if state === 'error'}
     {@render failure(errorCopy.title, errorCopy.description)}

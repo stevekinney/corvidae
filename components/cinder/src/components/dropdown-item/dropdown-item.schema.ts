@@ -52,6 +52,11 @@ const schema = {
       description:
         "Why the item is off. While `disabled` is set it is drawn under the label as a second line in\nthe muted text colour, and it is the item's description (`aria-describedby`), so it reads on\na phone and by keyboard with no hover. Ignored while the item is enabled. Use it in place of\na `title`, which touch never shows.",
     },
+    description: {
+      type: 'string',
+      description:
+        "What the item does, such as what pausing does to the runs in flight. It is drawn under the\nlabel as a second line in the muted text colour, starting where the label's text starts, and\nit is the item's description (`aria-describedby`), while its name stays the label. While the\nitem is disabled with a `disabledReason`, the reason takes its place.",
+    },
   },
   additionalProperties: false,
   metadata: {

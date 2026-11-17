@@ -100,7 +100,14 @@ async function openMenu(view: ReturnType<typeof open>): Promise<void> {
 /** The names of the items the open "⋯" menu holds, in order. */
 async function menuItems(view: ReturnType<typeof open>): Promise<string[]> {
   const items = await view.findAllByRole('menuitem');
-  return items.map((item) => item.getAttribute('aria-label') ?? item.textContent?.trim() ?? '');
+  // An item with a line under its label is named by its label alone (Cinder's `description`).
+  return items.map(
+    (item) =>
+      item.getAttribute('aria-label') ??
+      item.querySelector('.cinder-dropdown-item__label')?.textContent?.trim() ??
+      item.textContent?.trim() ??
+      '',
+  );
 }
 
 /** Opens the "⋯" menu and chooses an item by its name. */
@@ -213,9 +220,13 @@ describe('the "⋯" menu', () => {
       MENU.pause,
       MENU.delete,
     ]);
-    expect(testId(document, 'workflow-menu-pause-description')?.textContent).toBe(
+    // What pausing does is the item's own description line, which names it (row 63m).
+    const pause = testId(document, 'workflow-menu-pause');
+    expect(pause?.querySelector('.cinder-dropdown-item__reason')?.textContent?.trim()).toBe(
       MENU.pauseDescription,
     );
+    const describedBy = pause?.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(describedBy)?.textContent?.trim()).toBe(MENU.pauseDescription);
     // The header holds Edit and Start run, and no Pause or Delete of its own.
     expect(view.queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
     expect(view.queryByRole('button', { name: WORKFLOW_COPY.deleteAction })).toBeNull();
@@ -230,6 +241,22 @@ describe('the "⋯" menu', () => {
     expect(items).toContain(MENU.delete);
     expect(items).not.toContain(MENU.pause);
     expect(items).not.toContain(WORKFLOW_COPY.resumeAction);
+  });
+
+  test('COR-2431: on a paused workflow that accepts no signal holds only Duplicate and Delete… (row 62q)', async () => {
+    const text = JSON.stringify({
+      name: 'triage-inbox',
+      title: 'Triage inbox',
+      paused: true,
+      trigger: { kind: 'schedule', spec: '0 8 * * *' },
+      steps: [{ kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'Sort.' } }],
+    });
+    const view = open('/workflows/triage-inbox', {
+      files: [readyFile('triage-inbox', { paused: true, text })],
+    });
+    await ready(view.container);
+    await openMenu(view);
+    expect(await menuItems(view)).toEqual([MENU.duplicate, MENU.delete]);
   });
 
   test('Pause pauses the file, and the header shows Resume only once the Bureau has written it', async () => {

@@ -147,15 +147,24 @@
     gap: var(--cinder-space-2);
   }
 
+  /* The compact form serves any empty tab, panel or table with a 32px disc. Its first use is the
+   * neutral disc: inside a page that already has its own primary action, an accent disc would be a
+   * second call to act. Done and blocked keep their tints, which say how things stand. */
   .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon {
-    inline-size: var(--cinder-space-10);
-    block-size: var(--cinder-space-10);
+    inline-size: var(--cinder-space-8);
+    block-size: var(--cinder-space-8);
     margin-block-end: 0;
   }
 
+  .cinder-empty-state[data-cinder-size='compact'][data-cinder-kind='first-use']
+    .cinder-empty-state-icon {
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon > svg {
-    inline-size: var(--cinder-space-5);
-    block-size: var(--cinder-space-5);
+    inline-size: var(--cinder-space-4);
+    block-size: var(--cinder-space-4);
   }
 
   .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-title {

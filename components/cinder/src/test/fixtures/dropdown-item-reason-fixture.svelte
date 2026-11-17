@@ -31,6 +31,16 @@
         Open
       </DropdownItem>
       <DropdownItem disabled disabledReason="   ">Blank reason</DropdownItem>
+      <DropdownItem description="Runs in flight finish. No new runs start until you resume it.">
+        Pause
+      </DropdownItem>
+      <DropdownItem
+        disabled
+        disabledReason="Nothing is running."
+        description="Stops the runs in flight."
+      >
+        Stop
+      </DropdownItem>
     </DropdownMenu>
   </Dropdown>
 

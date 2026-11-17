@@ -34,6 +34,11 @@
     back?: ViewLink | undefined;
     /** Whether the "Search everything" button is drawn. Defaults to true. */
     search?: boolean;
+    /**
+     * Whether the breadcrumb leaves the missing thing out, so the trail ends at its list
+     * ("Workflows") rather than at "Not found". Defaults to false.
+     */
+    crumbHidden?: boolean;
   }
 
   let {
@@ -43,6 +48,7 @@
     create,
     back,
     search = true,
+    crumbHidden = false,
   }: NotFoundStateProps = $props();
 
   const parent = $derived(
@@ -50,7 +56,11 @@
   );
   const openSearch = getSearchOpener();
 
-  usePageLabel(() => ({ path: router.pathname, label: NOT_FOUND_COPY.breadcrumb }));
+  // An empty label leaves the missing thing out of the trail (`breadcrumbTrail`).
+  usePageLabel(() => ({
+    path: router.pathname,
+    label: crumbHidden ? '' : NOT_FOUND_COPY.breadcrumb,
+  }));
 
   /** Opens `path` in place, unless the person asked for a new tab or window. */
   function follow(event: MouseEvent, path: string): void {

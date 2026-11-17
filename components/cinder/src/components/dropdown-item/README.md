@@ -8,6 +8,8 @@ Selectable item within a dropdown menu, supporting icons, labels, and keyboard n
 
 A disabled item that cannot say why on its own takes `disabledReason`: the item draws the reason as a second line under its label, in the muted text colour and starting where the label's text starts, past a leading icon, and names it as its description (`aria-describedby`), while its name stays the label. It is drawn at every width, so a phone reads it without a hover, which a `title` never gives. An enabled item ignores it.
 
+An item whose label needs one more sentence about what it does takes `description`, such as Pause with "Runs in flight finish. No new runs start until you resume it.". It is drawn the same way, as a second line under the label that starts where the label's text starts, and it is the item's description, while its name stays the label. A disabled item's `disabledReason` takes its place.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -17,6 +19,7 @@ A disabled item that cannot say why on its own takes `disabledReason`: the item 
 | `checked` | `boolean` | no | — | Checked state for checkbox and radio menu items. Omitted for normal menu items. |
 | `class` | `string` | no | — | Additional class names merged with the component's root class. |
 | `closeOnSelect` | `boolean` | no | — | When true, the parent dropdown closes after this item is activated. Default `true`. |
+| `description` | `string` | no | — | What the item does, such as what pausing does to the runs in flight. It is drawn under the label as a second line in the muted text colour, starting where the label's text starts, and it is the item's description (`aria-describedby`), while its name stays the label. While the item is disabled with a `disabledReason`, the reason takes its place. |
 | `disabled` | `boolean` | no | — | When true the item is inert: click is blocked and aria-disabled is set. |
 | `disabledReason` | `string` | no | — | Why the item is off. While `disabled` is set it is drawn under the label as a second line in the muted text colour, and it is the item's description (`aria-describedby`), so it reads on a phone and by keyboard with no hover. Ignored while the item is enabled. Use it in place of a `title`, which touch never shows. |
 | `href` | `string` | no | — | Destination URL. Any defined value — including an empty string — selects the anchor branch and renders an `<a>`. Omit `href` entirely to render a `<button>`. |

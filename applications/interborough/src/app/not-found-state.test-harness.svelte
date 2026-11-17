@@ -22,9 +22,11 @@
     search?: boolean;
     /** Called when the page asks to open search. When omitted, the page is mounted without a shell. */
     onSearch?: () => void;
+    /** Whether the breadcrumb leaves the missing thing out. */
+    crumbHidden?: boolean;
   }
 
-  let { title, view, create, back, search, onSearch }: NotFoundHarnessProps = $props();
+  let { title, view, create, back, search, onSearch, crumbHidden }: NotFoundHarnessProps = $props();
 
   // `$props` are read once: the shell's opener does not change.
   // svelte-ignore state_referenced_locally
@@ -40,4 +42,5 @@
   {...create === undefined ? {} : { create }}
   {...back === undefined ? {} : { back }}
   {...search === undefined ? {} : { search }}
+  {...crumbHidden === undefined ? {} : { crumbHidden }}
 />

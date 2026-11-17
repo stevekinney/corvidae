@@ -780,8 +780,11 @@
     <!-- Off until the file is fixed, and the banner under the tabs says why. -->
     <Button variant="primary" size="sm" aria-disabled="true">{copy.page.startAction}</Button>
   {/if}
+  <!-- Send a signal is offered only to a workflow that accepts one: a menu has nothing to send
+       to a workflow that neither starts on a signal nor waits for one (row 62q). -->
   <WorkflowMoreMenu
-    canSignal={actions?.signal === true}
+    canSignal={actions?.signal === true &&
+      (acceptedSignals.length > 0 || document?.trigger.kind === 'signal')}
     onSendSignal={() => (signalOpen = true)}
     onDuplicate={canDuplicate ? () => duplicate.mutate() : undefined}
     onPause={file !== undefined && actions?.pause === true && !file.paused

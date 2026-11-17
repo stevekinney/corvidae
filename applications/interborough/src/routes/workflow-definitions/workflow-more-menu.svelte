@@ -65,22 +65,16 @@
         </Dropdown.Item>
       {/if}
       {#if onPause !== undefined}
+        <!-- What pausing does is Cinder's description line under the label (row 63m). -->
         <Dropdown.Item
           data-changes
+          data-testid="workflow-menu-pause"
           disabled={busy}
-          aria-label={copy.pause}
-          aria-describedby="ib-workflow-actions-pause-description"
+          description={copy.pauseDescription}
           onclick={onPause}
         >
           <Pause aria-hidden="true" size={14} />
-          <span class="ib-workflow-menu__item">
-            <span>{copy.pause}</span>
-            <span
-              class="ib-workflow-menu__description"
-              id="ib-workflow-actions-pause-description"
-              data-testid="workflow-menu-pause-description">{copy.pauseDescription}</span
-            >
-          </span>
+          {copy.pause}
         </Dropdown.Item>
       {/if}
       {#if onDelete !== undefined}

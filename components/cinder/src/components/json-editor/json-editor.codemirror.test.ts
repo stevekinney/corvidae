@@ -443,6 +443,25 @@ describe('JsonEditor — marked lines', () => {
     expect(gutter.map((element) => element.textContent)).toEqual(['2']);
   });
 
+  test('COR-2431: an invalid status label replaces the line status, and the mark can say where the parser stopped (rows 65f, 66f)', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: missingComma,
+      invalidStatusLabel: 'Invalid JSON',
+      parserStopVisible: true,
+    });
+    await mountedView(view);
+    const status = view.getByRole('status');
+    expect(status.textContent?.trim()).toBe('Invalid JSON');
+    // It still takes the person to the marked line.
+    expect(status.querySelector('button')).not.toBeNull();
+    expect(view.container.querySelector('.cinder-json-editor__problem')?.textContent).toBe(
+      'Missing comma at the end of this line. The parser stopped at line 3.',
+    );
+    expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   test('the toolbar message names the line and is a button that jumps to it (row 29r)', async () => {
     const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });
     const editor = await mountedView(view);

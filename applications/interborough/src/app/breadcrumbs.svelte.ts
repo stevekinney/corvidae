@@ -55,7 +55,9 @@ export function breadcrumbTrail(
         : Object.hasOwn(match.params, crumb.param)
           ? match.params[crumb.param]
           : undefined);
-    if (label !== undefined) items.push({ label, path });
+    // A page that supplies an empty label leaves its part out, as a not-found page whose title
+    // already names what is missing does (row 63h).
+    if (label !== undefined && label !== '') items.push({ label, path });
   }
   const own = table.find((route) => route.pattern === matchRoute(pathname, table)?.pattern);
   if (own?.leafCrumb !== undefined && items.at(-1)?.path === pathname) {

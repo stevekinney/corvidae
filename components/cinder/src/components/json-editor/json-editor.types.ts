@@ -78,6 +78,10 @@ export type JsonEditorProps = Omit<
   validFeedbackVisible?: boolean;
   /** Replaces the "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
   statusLabel?: string;
+  /** Replaces the "Line 8: expected a comma" status while the source does not parse, for a caller whose page names the line elsewhere, such as "Invalid JSON". The status still takes the person to the marked line, and the mark keeps its message. */
+  invalidStatusLabel?: string;
+  /** Adds "The parser stopped at line 9." to the marked line's message when the parser stopped on a later line than the one it marks, as it does for a missing comma. Defaults to false. @default false */
+  parserStopVisible?: boolean;
   /** Problems the caller found at specific lines of a document that parses. Each line is marked and shows its message under it. */
   diagnostics?: readonly JsonEditorDiagnostic[];
   /** The sample that shows muted, after "e.g.", while the editor is empty, such as `{ "timeoutSeconds": 300 }`. Defaults to `{ "key": "value" }`. A `placeholder` replaces the whole text. */

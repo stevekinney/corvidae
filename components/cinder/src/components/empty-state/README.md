@@ -72,7 +72,7 @@ A title says what is missing or what happened, never an instruction ("No hooks y
 
 The state centres itself in the height it is given, with 8px of extra bottom padding for the optical centre, so give it the height left under the page header and filters. Add `bordered` when the list or page body has no container of its own and the state should draw one.
 
-Use `size="compact"` inside a tab or a panel, where the default page-region padding and disc are too large:
+Use `size="compact"` inside a tab or a panel, where the default page-region padding and disc are too large. The compact form serves any empty tab, panel or table with a 32px disc, and a first use there keeps the neutral disc: the page around it already has its own primary action, so an accent disc would be a second call to act. Done and blocked keep their tints.
 
 ```svelte
 <script lang="ts">

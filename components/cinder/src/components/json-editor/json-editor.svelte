@@ -45,6 +45,8 @@
     rows = 8,
     validFeedbackVisible = true,
     statusLabel,
+    invalidStatusLabel,
+    parserStopVisible = false,
     diagnostics,
     example = '{ "key": "value" }',
     schema,
@@ -186,10 +188,25 @@
       normalizedConsumerInvalid !== false &&
       normalizedConsumerInvalid !== 'false',
   );
+  // The line the parser stopped at, which is later than the marked line for a missing separator.
+  const parserStopLine = $derived(
+    parseProblem ? draftValue.slice(0, parseProblem.parserPosition).split('\n').length : undefined,
+  );
   // The lines the editor marks: the line where the source stops parsing, else the caller's lines.
+  // With `parserStopVisible`, a mark whose parser stopped on a later line says so after its sentence.
   const problems = $derived(
     parseProblem
-      ? [{ line: parseProblem.line, message: parseProblem.detail }]
+      ? [
+          {
+            line: parseProblem.line,
+            message:
+              parserStopVisible &&
+              parserStopLine !== undefined &&
+              parserStopLine > parseProblem.line
+                ? `${parseProblem.detail} The parser stopped at line ${parserStopLine}.`
+                : parseProblem.detail,
+          },
+        ]
       : (diagnostics ?? []),
   );
   const status = $derived.by(
@@ -201,7 +218,7 @@
       if (parseProblem) {
         return {
           tone: 'danger',
-          text: `Line ${parseProblem.line}: ${parseProblem.summary}`,
+          text: invalidStatusLabel ?? `Line ${parseProblem.line}: ${parseProblem.summary}`,
           line: parseProblem.line,
         };
       }

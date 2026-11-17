@@ -82,6 +82,30 @@ describe('DropdownItem disabledReason', () => {
     }
   });
 
+  test('COR-2431: an enabled item with a description draws it as a second line and is described by it', async () => {
+    const { items } = await openMenu();
+    const pause = items[4]!;
+    const line = requiredInstance(
+      pause.querySelector('.cinder-dropdown-item__reason'),
+      HTMLElement,
+    );
+    expect(line.textContent?.trim()).toBe(
+      'Runs in flight finish. No new runs start until you resume it.',
+    );
+    expect(pause.hasAttribute('aria-disabled')).toBe(false);
+    expect(textOf(pause.getAttribute('aria-labelledby'))).toBe('Pause');
+    expect(textOf(pause.getAttribute('aria-describedby'))).toBe(
+      'Runs in flight finish. No new runs start until you resume it.',
+    );
+  });
+
+  test('COR-2431: a disabled item’s reason takes its description’s place', async () => {
+    const { items } = await openMenu();
+    const stop = items[5]!;
+    expect(stop.querySelectorAll('.cinder-dropdown-item__reason')).toHaveLength(1);
+    expect(textOf(stop.getAttribute('aria-describedby'))).toBe('Nothing is running.');
+  });
+
   test("a link item keeps the consumer's own description before the reason", async () => {
     const { items } = await openMenu();
     const open = items[2]!;
