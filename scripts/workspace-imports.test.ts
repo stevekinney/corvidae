@@ -248,7 +248,8 @@ describe('workspace imports', () => {
         directory === '.' ? 'scripts' : directory,
       );
       for (const { file, source } of sources.filter(
-        ({ file }) => // The root suite's files wait under `browser-fixtures/` for `move-browser-specs.ts` (COR-2092).
+        ({ file }) =>
+          // The root suite's files wait under `browser-fixtures/` for `move-browser-specs.ts` (COR-2092).
           directory !== '.' || !(file.startsWith('browser-fixtures/') || file.startsWith('groom/')),
       )) {
         expect(source, `${directory}/${file} suppresses TypeScript checking`).not.toMatch(
