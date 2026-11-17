@@ -199,9 +199,7 @@
 
   const active = $derived(quarantinedView ? quarantinedListing : applied === '' ? listing : search);
   /** Every memory the list or the search holds, before the kind filter, less those just forgotten. */
-  const base = $derived.by<MemoryRowData[]>(() =>
-    held.filter((row) => !hidden.has(row.id)),
-  );
+  const base = $derived.by<MemoryRowData[]>(() => held.filter((row) => !hidden.has(row.id)));
   const held = $derived.by<MemoryRowData[]>(() => {
     if (quarantinedView) {
       // Every quarantined memory read so far: the server does not search them, so what is typed

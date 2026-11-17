@@ -95,7 +95,8 @@ export function createAgentDisabledStore(options: AgentDisabledStoreOptions): Ag
       for (const key of await store.list(AGENT_DISABLED_KEY_PREFIX)) {
         const record = parseRecord(await store.get(key));
         // A record under another agent's key is not this agent's gate.
-        if (record !== undefined && agentDisabledKey(record.id) === key) next.set(record.id, record);
+        if (record !== undefined && agentDisabledKey(record.id) === key)
+          next.set(record.id, record);
       }
       disabled = next;
     },

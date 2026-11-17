@@ -126,4 +126,7 @@ export const agentsEnableOperation = defineOperation<
 });
 
 /** The disable and enable operations, in the order the handler serves them. */
-export const bureauAgentDisableOperations = [agentsDisableOperation, agentsEnableOperation] as const;
+export const bureauAgentDisableOperations = [
+  agentsDisableOperation,
+  agentsEnableOperation,
+] as const;

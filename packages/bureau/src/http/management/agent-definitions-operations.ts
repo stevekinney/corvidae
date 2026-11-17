@@ -101,11 +101,7 @@ import {
 export interface AgentDefinitionAuditEntry {
   readonly runId: string;
   readonly type:
-    | 'agent.created'
-    | 'agent.updated'
-    | 'agent.deleted'
-    | 'agent.disabled'
-    | 'agent.enabled';
+    'agent.created' | 'agent.updated' | 'agent.deleted' | 'agent.disabled' | 'agent.enabled';
   readonly detail: AgentDefinitionAuditDetail;
   /** The caller's owner string; absent for a caller the deployment cannot attribute. */
   readonly principal?: string;

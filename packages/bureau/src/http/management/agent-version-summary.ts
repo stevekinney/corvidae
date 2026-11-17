@@ -98,7 +98,8 @@ function changeOf(key: string, current: unknown, previous: unknown): string {
   if (absent(current) || now === undefined) {
     return absent(current) ? (absent(previous) ? 'changed' : 'cleared') : 'changed';
   }
-  if (absent(previous) || before === undefined) return absent(previous) ? `set to ${now}` : 'changed';
+  if (absent(previous) || before === undefined)
+    return absent(previous) ? `set to ${now}` : 'changed';
   return `${before} to ${now}`;
 }
 

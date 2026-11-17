@@ -36,6 +36,7 @@ import { createMemoryAssetStorage } from '../../assets/storage';
 import { runTask } from '../../test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 afterEach(disposeServed);
 
@@ -1181,7 +1182,7 @@ describe('bureau.agents.disable and bureau.agents.enable (COR-2429)', () => {
     expect(served.bureau.agents.find('alpha')).toBeUndefined();
     const offered = await callAs(served.local, 'bureau.agents.list', {});
     expect(listOf(offered, 'agents').map((entry) => entry['name'])).toEqual(['researcher']);
-    await expect(runTask(served.bureau, 'alpha', 'hello')).rejects.toThrow();
+    expect(await rejectionOf(runTask(served.bureau, 'alpha', 'hello'))).toBeDefined();
     const schedule = await callAs(served.local, 'bureau.schedules.create', {
       agentName: 'alpha',
       spec: '1d',
@@ -1228,7 +1229,7 @@ describe('bureau.agents.disable and bureau.agents.enable (COR-2429)', () => {
     await seed(served);
     await callAs(served.local, 'bureau.agents.disable', { id: 'researcher' });
     expect(served.bureau.agents.find('researcher')).toBeUndefined();
-    await expect(runTask(served.bureau, 'researcher', 'hello')).rejects.toThrow();
+    expect(await rejectionOf(runTask(served.bureau, 'researcher', 'hello'))).toBeDefined();
     await callAs(served.local, 'bureau.agents.enable', { id: 'researcher' });
     expect(served.bureau.agents.find('researcher')).toBeDefined();
   });
@@ -1242,7 +1243,12 @@ describe('bureau.agents.disable and bureau.agents.enable (COR-2429)', () => {
       expect(reader.error?.data?.httpStatus).toBe(404);
     }
     expect(served.bureau.agents.find('alpha')).toBeDefined();
-    const writer = await rpc(served.keyed, 'bureau.agents.disable', { id: 'alpha' }, 'agents-writer-key');
+    const writer = await rpc(
+      served.keyed,
+      'bureau.agents.disable',
+      { id: 'alpha' },
+      'agents-writer-key',
+    );
     expect(writer.result).toEqual({ id: 'alpha', disabled: true });
     expect(served.bureau.agents.isDisabled('alpha')).toBe(true);
   });

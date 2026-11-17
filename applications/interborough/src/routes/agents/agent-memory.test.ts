@@ -192,7 +192,9 @@ async function openDetails(
 }
 
 /** The toast a forget shows, with its Undo, once it is on the page. */
-async function forgetToastOf(view: Pick<ReturnType<typeof open>, 'container'>): Promise<HTMLElement> {
+async function forgetToastOf(
+  view: Pick<ReturnType<typeof open>, 'container'>,
+): Promise<HTMLElement> {
   return waitFor(() => {
     const toast = view.container.ownerDocument.querySelector<HTMLElement>(
       '.cinder-toast[data-cinder-undo]:not([data-cinder-leaving="true"])',
@@ -955,7 +957,9 @@ describe('forgetting a memory', () => {
     expect(within(toast).getByRole('button', { name: 'Undo' })).not.toBeNull();
     // It leaves the list at once, and the next memory opens in its place.
     await waitFor(() =>
-      expect(view.container.querySelector(`[data-memory="${AISLE.id}"]`)).toBeNull(),
+      expect(
+        view.container.querySelector(`[data-memory="${AISLE.id}"]`)?.outerHTML ?? null,
+      ).toBeNull(),
     );
     await waitFor(() => expect(router.search.get('selected')).toBe(WINDOW.id));
     // Nothing is sent while the toast shows.

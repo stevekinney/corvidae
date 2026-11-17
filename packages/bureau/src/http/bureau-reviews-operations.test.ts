@@ -8,6 +8,7 @@ import {
   type OperationHandlerAuthenticate,
   type WorkspaceIdentity,
 } from '@lostgradient/backchannel';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
@@ -1094,6 +1095,84 @@ describe('the reviews operations against a real Bureau', () => {
       expect(row?.toolResult?.outcome).toBe('success');
       expect(row?.toolResult?.content).toEqual({ charged: 500 });
       expect(charges).toEqual([500]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('resolves a tool approval of an agent disabled meanwhile (COR-2429)', async () => {
+    const charges: number[] = [];
+    let generations = 0;
+    const toolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'handler-approval-secret',
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as unknown as Toolbox;
+    const bureau = await createBureau<AgentDefinitions>({
+      assets: { storage: createMemoryAssetStorage() },
+      id: 'reviews-disabled-agent-bureau',
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            generations++;
+            return generations === 1
+              ? {
+                  content: '',
+                  toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+                }
+              : { content: 'Charged.', toolCalls: [] };
+          },
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+    });
+    try {
+      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
+      await waitForCondition(
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
+        'expected the tool call to surface a pending approval',
+      );
+      await bureau.agents.disable('default', { disabledBy: 'operator' });
+      const handler = createBureauHandler(bureau, { authentication });
+      const listed = await call(handler, 'bureau.reviews.list', {});
+      const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string }>;
+
+      const resolved = await call(handler, 'bureau.reviews.resolve', {
+        id: review?.id,
+        decision: 'approve',
+      });
+
+      // What the agent had started finishes: the decision is recorded and the approved call runs
+      // once, as a file agent's parked run resumes from its snapshot. Nothing new starts on it.
+      expect(resolved.result).toMatchObject({ decision: 'approve', receipt: 'applied' });
+      expect(charges).toEqual([500]);
+      const after = await call(handler, 'bureau.reviews.list', {});
+      expect(after.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
+      expect(await rejectionOf(bureau.tasks.start('default', 'Again'))).toBeDefined();
+      expect(generations).toBe(1);
     } finally {
       await bureau.dispose();
     }

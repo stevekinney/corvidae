@@ -204,8 +204,7 @@ describe('the skills the header names (sweep S65, COR-2429)', () => {
     await waitFor(() => expect(skills.querySelector('[data-skill="summarize"]')).not.toBeNull());
     const granted = [...skills.querySelectorAll<HTMLElement>('[data-skill]')]
       .filter(
-        (row) =>
-          row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked === true,
+        (row) => row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked === true,
       )
       .map((row) => row.getAttribute('data-skill'));
     expect(granted).toEqual(['cite', 'summarize']);
