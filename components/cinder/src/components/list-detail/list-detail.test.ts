@@ -1027,6 +1027,35 @@ describe('ListDetail', () => {
       }
     });
 
+    test('puts a Cancel on the still-loading line only when onLoadingCancel is given, and calls it', () => {
+      jest.useFakeTimers();
+      try {
+        const canceled: string[] = [];
+        const without = render(ListDetailFixture, {
+          props: { selectionLocation: memoryLocation(), loading: true },
+        });
+        jest.advanceTimersByTime(10_300);
+        flushSync();
+        expect(without.container.textContent).toContain('Still loading');
+        expect(without.queryByRole('button', { name: 'Cancel' })).toBeNull();
+        cleanup();
+
+        const withCancel = render(ListDetailFixture, {
+          props: {
+            selectionLocation: memoryLocation(),
+            loading: true,
+            onLoadingCancel: () => canceled.push('canceled'),
+          },
+        });
+        jest.advanceTimersByTime(10_300);
+        flushSync();
+        withCancel.getByRole('button', { name: 'Cancel' }).click();
+        expect(canceled).toEqual(['canceled']);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     test('shows the rows again when loading ends', async () => {
       const { container, rerender } = render(ListDetailFixture, {
         props: { selectionLocation: memoryLocation(), loading: true },

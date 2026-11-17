@@ -1,14 +1,13 @@
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { Engine, workflow } from '@lostgradient/weft';
 import {
-  Engine,
   createOperationHandler,
   createOperationHandlerAuthenticator,
   principalFromApiKey,
   principalFromJwtClaims,
-  workflow,
   type OperationHandlerAuthenticate,
   type WorkspaceIdentity,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';

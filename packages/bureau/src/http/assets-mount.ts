@@ -20,7 +20,7 @@ import { workspaceOwnerAuthority, type WorkspaceMembershipOptions } from './work
  * @module assets-mount
  */
 
-import type { OperationHandlerMount } from '@lostgradient/weft';
+import type { OperationHandlerMount } from '@lostgradient/backchannel';
 
 import {
   AssetIntegrityError,

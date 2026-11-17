@@ -1,22 +1,26 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { VERSION } from '../version.ts';
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  DIRECT_HTTP_ROUTES,
+  emitBindings,
+  externalApiPath,
+  generateOpenApiDocument,
+  toOpenApiPath,
+  toRegex,
+  type AccessPolicy,
+  type ParameterizedAccessHint,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
 import {
   accessPolicyMetadataExamples,
   expectedParameterizedAccessMetadata,
   parameterizedAccessMetadataExample,
-} from './access-policy-metadata.test-support.ts';
-import type { AccessPolicy } from './authorization.ts';
-import { emitBindings, generateOpenApiDocument } from './openapi.ts';
-import { createOperationRegistry, type ParameterizedAccessHint } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
-import {
-  createLiveOperationRegistry,
-  createLiveRestBindings,
-  type UnknownRestBinding,
-} from './rest-bindings.ts';
-import { DIRECT_HTTP_ROUTES, externalApiPath, toOpenApiPath, toRegex } from './route-model.ts';
+} from '@lostgradient/backchannel/testing';
+import { VERSION } from '../version.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 import { weftDiscoveryInfo } from './weft-documents.ts';
 
 function discoveryOperation(

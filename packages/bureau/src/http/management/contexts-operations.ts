@@ -21,7 +21,7 @@ import {
   sessionOwnerOf,
   summarizeSession,
 } from '@lostgradient/operative';
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { SESSION_END_REASONS, sessionEndReasonOf } from '../../bureau-session-persistence.ts';

@@ -1,9 +1,11 @@
+import { authContextToPrincipal } from '@lostgradient/backchannel';
+import {
+  type AuthContext,
+  type OperationRegistry,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import type { Engine } from '../core/engine.ts';
-import type { AuthContext } from './authentication.ts';
-import { authContextToPrincipal } from './handler.ts';
-import { handleJsonRpcHttpRequest } from './json-rpc-http.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
-import type { OperationRegistry } from './operation-catalog.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
 
 type WebSocketUpgradeServer = {

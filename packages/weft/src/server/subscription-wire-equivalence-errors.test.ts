@@ -17,18 +17,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
+import { defineOperation, principalFromApiKey } from '@lostgradient/backchannel';
 import {
   createJsonRpcWebSocketSession,
-  type JsonRpcWebSocketEmitter,
-} from './json-rpc-websocket.ts';
-import {
   createOperationRegistry,
   SubscriptionElementValidationError,
-} from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
-import { principalFromApiKey } from './principal.ts';
+  type JsonRpcWebSocketEmitter,
+} from '@lostgradient/backchannel/internals';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { jsonRecord, propertyRecord } from './protocol.test-support.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 

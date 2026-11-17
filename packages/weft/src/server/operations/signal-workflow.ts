@@ -1,10 +1,13 @@
 import { z } from 'zod';
 
+import {
+  type UnknownRestBinding,
+  isOperationFault,
+  readRestJsonBody,
+} from '@lostgradient/backchannel/internals';
 import { isSignalIdWithinByteLimit } from '../../core/signal-id.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { readRestJsonBody } from '../rest-body.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import { isOperationFault, undeclaredMessageFault } from './operation-helpers.ts';
+import { undeclaredMessageFault } from './operation-helpers.ts';
 import {
   createSingleWorkflowControlOperation,
   extractWorkflowIdFromPath,

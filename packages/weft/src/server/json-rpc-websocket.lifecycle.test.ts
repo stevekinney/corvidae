@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
-import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
+import { encodeCursor, principalFromApiKey } from '@lostgradient/backchannel';
 import {
   createJsonRpcWebSocketSession,
   type JsonRpcWebSocketEmitter,
-} from './json-rpc-websocket.ts';
-import { principalFromApiKey } from './principal.ts';
+} from '@lostgradient/backchannel/internals';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
 import {
   createWorkflowEventFeed,
-  encodeCursor,
   type EventEnvelope,
   type WorkflowEventFeed,
 } from './workflow-event-feed.ts';

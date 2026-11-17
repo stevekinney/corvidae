@@ -49,12 +49,8 @@
 // importing it from there, rather than the package root (whose barrel also
 // re-exports server-only code reaching `node:crypto`), is what actually
 // keeps this module's dependency graph browser-only end to end.
-import {
-  HttpClientError,
-  isWeftFault,
-  type FaultCode,
-  type WeftErrorCode,
-} from '@lostgradient/weft';
+import { type FaultCode } from '@lostgradient/backchannel';
+import { HttpClientError, isWeftFault, type WeftErrorCode } from '@lostgradient/weft';
 
 /** The six `FaultDisplay` UI treatment buckets (plan §10.4). */
 export type FaultTreatmentKind =

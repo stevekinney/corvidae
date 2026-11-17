@@ -9,16 +9,20 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import {
+  anonymousPrincipal,
+  AUTHORIZATION_SCOPES,
+  principalFromApiKey,
+  type AuthorizationScope,
+  type Principal,
+} from '@lostgradient/backchannel';
+import { evaluateAccess } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
-import { AUTHORIZATION_SCOPES, type AuthorizationScope } from './authorization-scope.ts';
-import { evaluateAccess } from './authorization.ts';
+import { workflow, type WorkflowContext } from '../core/types.ts';
 import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
 import { workflowEventsSseOperation } from './operations/workflow-events-sse.ts';
 import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
-import { anonymousPrincipal, principalFromApiKey, type Principal } from './principal.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
 
 /** The scope table from COR-1466: operation name → the scope it requires. */

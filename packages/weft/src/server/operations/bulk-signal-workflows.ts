@@ -1,17 +1,16 @@
+import { invalidParamsFault, type UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
 import { bulkSignalOutputSchema } from './bulk-output-schemas.ts';
 import {
   assertOperationEngineMethods,
   engineFailureFault,
   faultMessage,
-  invalidParamsFault,
   readOptionalJsonBody,
 } from './operation-helpers.ts';
 
+import { defineOperation } from '@lostgradient/backchannel';
 import { BulkOperationConfirmationError } from '../../core/engine.ts';
 import type { BulkOperationDryRunResult, BulkSignalResult, ListFilter } from '../../core/types.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { parseBulkListFilterFromBody } from './bulk-filter-body.ts';
 import { bulkListFilterInputSchema } from './bulk-filter-input.ts';
 import {

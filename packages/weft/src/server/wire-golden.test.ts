@@ -14,7 +14,7 @@ import {
   GOLDEN_VERSION,
   goldenFailure,
   listGoldenDirectory,
-} from './golden-files.test-support.ts';
+} from '@lostgradient/backchannel/testing';
 import {
   buildWireGolden,
   WIRE_GOLDEN_DIRECTORY,

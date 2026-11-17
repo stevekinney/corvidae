@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { encodeCursor } from '@lostgradient/backchannel';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
-import { encodeCursor, type EventEnvelope } from './workflow-event-feed.ts';
+import { type EventEnvelope } from './workflow-event-feed.ts';
 
 function envelope(sequence: number): EventEnvelope {
   return {

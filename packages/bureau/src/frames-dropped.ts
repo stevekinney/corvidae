@@ -32,7 +32,7 @@
  * @module frames-dropped
  */
 
-import { type ReplayLiveFeed, type SequencedEventEnvelope } from '@lostgradient/weft';
+import { type ReplayLiveFeed, type SequencedEventEnvelope } from '@lostgradient/backchannel';
 
 /** The `kind` of the marker that reports a live buffer overflow. */
 export const FRAMES_DROPPED_KIND = 'frames.dropped';

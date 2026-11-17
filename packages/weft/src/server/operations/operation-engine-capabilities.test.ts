@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
-import { principalFromApiKey } from '../principal.ts';
 import {
   assertOperationEngineMethods,
   assertOperationWorkflowMethods,

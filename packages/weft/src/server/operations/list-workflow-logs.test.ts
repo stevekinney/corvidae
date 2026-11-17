@@ -2,12 +2,11 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { createWorkflowLogStore } from '../../core/workflow-log-store.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import { listWorkflowLogsOperation, listWorkflowLogsRestBinding } from './list-workflow-logs.ts';
 import { waitForWorkflowStatus } from './operation-test-helpers.test-support.ts';
 

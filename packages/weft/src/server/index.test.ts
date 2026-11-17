@@ -3,6 +3,9 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { waitForParityCondition as waitFor } from '../core/parity/real-timer-wait.test-support.ts';
 
+import * as handlerModule from '@lostgradient/backchannel';
+import { anonymousPrincipal } from '@lostgradient/backchannel';
+import { API_PREFIX, DIRECT_HTTP_ROUTES } from '@lostgradient/backchannel/internals';
 import { MemoryStorage, type Storage as WeftStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -26,8 +29,7 @@ import {
   type RemoteTaskRecord,
   type RemoteTaskTerminalResolved,
 } from '../core/task-ledger/task-ledger.ts';
-import type { RetryPolicy, WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
+import { workflow, type RetryPolicy, type WorkflowContext } from '../core/types.ts';
 import { readJsonRpcResponse } from '../mcp/mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from '../mcp/protocol.ts';
 import { METRICS } from '../observability/metrics.ts';
@@ -41,11 +43,7 @@ import {
 } from '../worker/registry-fixtures.test-support.ts';
 import { resetPublicOriginWarningForTesting } from './api-catalog.ts';
 import { DeadlineTracker } from './deadline-tracker.ts';
-import * as handlerModule from './handler.ts';
-import type { ServeOptions, WeftServer } from './index.ts';
-import { serve, wireEventBroadcasting } from './index.ts';
-import { anonymousPrincipal } from './principal.ts';
-import { API_PREFIX, DIRECT_HTTP_ROUTES } from './route-model.ts';
+import { serve, wireEventBroadcasting, type ServeOptions, type WeftServer } from './index.ts';
 import { useManualTaskReconciliationForTesting } from './runtime/task-reconciliation.ts';
 import { buildFetchHandler, buildServerContext, resolveNetworkConfig } from './serve-internals.ts';
 

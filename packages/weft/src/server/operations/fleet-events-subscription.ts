@@ -1,16 +1,16 @@
 import { z } from 'zod';
 
-import type { FleetEventEnvelope, FleetEventFeed } from '../fleet-event-feed.ts';
-import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import type { TransportKind } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { EVENTS_READ_EVENT_TYPES } from '../runtime/client-visible-events.ts';
-import { decodeCursor, type Cursor } from '../workflow-event-feed.ts';
 import {
   createReplayAwareClosableIterable,
-  fleetEventEnvelopeSchema,
-} from './event-stream-contracts.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+  decodeCursor,
+  defineOperation,
+  type Cursor,
+} from '@lostgradient/backchannel';
+import { invalidParamsFault, type TransportKind } from '@lostgradient/backchannel/internals';
+import type { FleetEventEnvelope, FleetEventFeed } from '../fleet-event-feed.ts';
+import { raiseFault } from '../operation-catalog/raise-fault.ts';
+import { EVENTS_READ_EVENT_TYPES } from '../runtime/client-visible-events.ts';
+import { fleetEventEnvelopeSchema } from './event-stream-contracts.ts';
 
 const INITIAL_SUBSCRIPTION_CURSOR: Cursor = '-1';
 const MAX_FLEET_SUBSCRIPTION_REPLAY_EVENTS = 1_000;

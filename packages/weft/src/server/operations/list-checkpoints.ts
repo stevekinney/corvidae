@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { CheckpointSummary } from '../../core/types.ts';
 import { negotiatedResponse } from '../handler/response-helpers.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const listCheckpointsInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow whose checkpoints are listed.'),

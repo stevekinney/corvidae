@@ -8,7 +8,7 @@
 
 import type { AgentCard, SecurityRequirement, SecurityScheme } from '@a2a-js/sdk';
 
-import type { AuthConfig } from '../server/authentication/types.ts';
+import type { AuthConfig } from '@lostgradient/backchannel';
 
 /** The two A2A 1.0.1 `AgentCard` fields {@link securitySchemesFromAuthConfig} returns. */
 export type A2ASecurityDeclaration = Pick<AgentCard, 'securitySchemes' | 'securityRequirements'>;

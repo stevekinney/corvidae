@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, dispatchJsonRpc } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../../core/engine.ts';
 import { UpdateCoordinator } from '../../core/updates.ts';
-import { dispatchJsonRpc } from '../json-rpc-dispatch.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import {
   listWorkflowUpdatesOperation,
   listWorkflowUpdatesRestBinding,

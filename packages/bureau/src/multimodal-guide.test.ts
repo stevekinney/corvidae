@@ -15,7 +15,7 @@ import {
   withBackendDescriptors,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';

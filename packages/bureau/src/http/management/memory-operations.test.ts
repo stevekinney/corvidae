@@ -28,7 +28,7 @@ import {
   principalFromApiKey,
   principalFromJwtClaims,
   type WorkspaceIdentity,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';

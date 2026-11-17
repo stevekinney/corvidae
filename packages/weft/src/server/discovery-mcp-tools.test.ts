@@ -11,7 +11,15 @@
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  type JsonRpcWebSocketSession,
+  type OperationRegistry,
+  runStdioSession,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
@@ -19,10 +27,6 @@ import { VERSION } from '../version.ts';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { handleJsonRpcHttpRequestSafely } from './json-rpc-transport-helpers.ts';
 import { openJsonRpcWebSocketSession, type WebSocketData } from './json-rpc-websocket-runtime.ts';
-import type { JsonRpcWebSocketSession } from './json-rpc-websocket.ts';
-import { createOperationRegistry, type OperationRegistry } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
-import { runStdioSession } from './stdio-session.ts';
 import { collectingWritable, readableFromLines } from './stdio-stream.test-support.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 
@@ -143,6 +147,7 @@ describe('rpc.discover lists a workflow MCP tool on an engine-hosted server', ()
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry: createCheckoutRegistry(),
       engine,
+      discoverDocument: createWeftDiscoverDocument(createCheckoutRegistry(), engine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);

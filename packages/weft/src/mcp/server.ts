@@ -10,8 +10,8 @@ import {
   type RegisteredTool,
 } from '@modelcontextprotocol/server';
 
+import type { Principal } from '@lostgradient/backchannel';
 import type { Engine } from '../core/engine.ts';
-import type { Principal } from '../server/principal.ts';
 import { VERSION } from '../version.ts';
 import { McpToolExecutionError, type McpAccessContext } from './access.ts';
 import type { McpChangeFeed } from './change-feed.ts';

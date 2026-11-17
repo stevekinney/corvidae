@@ -79,6 +79,7 @@
     groupBy,
     loading = false,
     loadingLabel = 'Loading',
+    onLoadingCancel,
     detail,
     empty,
     listEmpty,
@@ -376,9 +377,11 @@
         <Skeleton
           variant="list"
           rows={5}
+          framed={false}
           label={loadingLabel}
           delay={LOADING_DELAY_MILLISECONDS}
           stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+          {...onLoadingCancel === undefined ? {} : { onCancel: onLoadingCancel }}
           class="cinder-list-detail__loading"
         />
       {:else if listBody}
@@ -459,7 +462,7 @@
     <div class="cinder-list-detail__detail-body">
       {#if loading}
         <div class="cinder-list-detail__loading-detail" aria-hidden="true">
-          <Skeleton variant="card" lines={5} delay={LOADING_DELAY_MILLISECONDS} />
+          <Skeleton lines={5} delay={LOADING_DELAY_MILLISECONDS} />
         </div>
       {:else if selectedEntry}
         {@render detail(selectedEntry.item)}

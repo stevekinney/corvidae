@@ -5,12 +5,11 @@ import { workflow } from '../core/types.ts';
 import { createMetricsCollectorExporter, MetricsCollector } from '../observability/metrics.ts';
 import type { HandlerOptions } from './handler.ts';
 
+import { defineOperation, type AuthConfig, type DiscoveryInfo } from '@lostgradient/backchannel';
 import {
   serve,
   TaskQueue,
   WorkerRegistry,
-  type AuthConfig,
-  type DiscoveryInfo,
   type PrometheusExporter,
   type RetryPolicy,
   type RoutingPolicy,
@@ -24,7 +23,6 @@ import {
   type WorkerAdmissionPolicy,
   type WorkerAdmissionRequest,
 } from './index.ts';
-import { defineOperation } from './operation-registry.ts';
 
 const engine = new Engine({ storage: new MemoryStorage() });
 const prometheusExporter = createMetricsCollectorExporter(new MetricsCollector());
