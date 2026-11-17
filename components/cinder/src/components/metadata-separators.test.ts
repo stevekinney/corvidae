@@ -46,6 +46,13 @@ describe('metadata pieces are not separated by a comma (COR-2445)', () => {
     expect(css).toMatch(/time,[^{]*\{\s*font-variant-numeric: tabular-nums/s);
   });
 
+  test('ApprovalCard sets who asked one step stronger than the time, in the line, the eyebrow and the detail ask (COR-2445)', () => {
+    const css = readFileSync(new URL('./approval-card/approval-card.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\.cinder-approval-card__line-source > span,\s*\.cinder-approval-card__eyebrow > span,\s*\.cinder-approval-card__detail-ask > span \{\s*color: var\(--cinder-text-muted\);/,
+    );
+  });
+
   test('ToolCallRail tells its counts and duration apart by the summary gap and a colour step', () => {
     const css = readFileSync(
       new URL('./tool-call-rail/tool-call-rail.css', import.meta.url),

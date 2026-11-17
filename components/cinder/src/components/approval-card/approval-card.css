@@ -98,6 +98,14 @@
     font-weight: var(--cinder-font-normal);
   }
 
+  /* Who asked is one step stronger than when: muted against the subtle time, so the two are not a
+   * bare run of words in one weight and one colour (COR-2445). */
+  .cinder-approval-card__line-source > span,
+  .cinder-approval-card__eyebrow > span,
+  .cinder-approval-card__detail-ask > span {
+    color: var(--cinder-text-muted);
+  }
+
   /* The gap that stands where the comma was, beside the space the markup keeps for the reader. */
   .cinder-approval-card__keep + .cinder-approval-card__keep,
   .cinder-approval-card__line-tool:has(*) + .cinder-approval-card__line-source,
