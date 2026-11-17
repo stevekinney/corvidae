@@ -427,7 +427,10 @@ test.describe('Start run', () => {
 });
 
 test.describe('the History tab', () => {
-  test('shows each version’s verdict against the current revision', async ({ page, request }) => {
+  test('lists every saved version by its number, with its verdict and the runs it had (COR-2431)', async ({
+    page,
+    request,
+  }) => {
     const id = 'e2e-page-history';
     created.add(id);
     await createWorkflowFile(request, id, {
@@ -450,13 +453,23 @@ test.describe('the History tab', () => {
     });
 
     await page.goto(`/workflows/${id}?tab=history`);
-    const version = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
-    await expect(version).toHaveCount(1);
-    await expect(version.getByTestId('workflow-revision-verdict')).toContainText(
-      WORKFLOW_COPY.revisions.incompatible,
+    const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
+    await expect(versions).toHaveCount(2);
+    // The newest is the file now; changing the signal a step waits for is breaking.
+    const current = versions.nth(0);
+    await expect(current.getByTestId('workflow-revision-title')).toContainText(
+      WORKFLOW_COPY.history.versionTitle('1.1.0', true),
     );
-    await expect(version.getByTestId('workflow-revision-reasons')).toContainText(
-      WORKFLOW_COPY.revisions.reason('artifact-revision-mismatch'),
+    await expect(current.getByTestId('workflow-revision-verdict')).toContainText(
+      WORKFLOW_COPY.history.breaking,
+    );
+    // The first version is named by its number, and had the one run.
+    const first = versions.nth(1);
+    await expect(first.getByTestId('workflow-revision-title')).toContainText(
+      WORKFLOW_COPY.history.versionTitle('1.0.0', false),
+    );
+    await expect(first.getByTestId('workflow-revision-line')).toContainText(
+      'run on this version: 1',
     );
 
     await expect

@@ -780,13 +780,10 @@
     <!-- Off until the file is fixed, and the banner under the tabs says why. -->
     <Button variant="primary" size="sm" aria-disabled="true">{copy.page.startAction}</Button>
   {/if}
-  <!-- Send a signal is offered only to a workflow a signal can reach: one whose steps wait for a
-       signal, or one a signal starts while it is not paused, since a paused workflow's start
-       signal starts nothing (row 62q). -->
+  <!-- A paused workflow's menu holds only Duplicate and Delete…: Resume is the header's, and a
+       signal starts nothing of it while it is paused (row 62q). -->
   <WorkflowMoreMenu
-    canSignal={actions?.signal === true &&
-      (acceptedSignals.length > 0 ||
-        (document?.trigger.kind === 'signal' && file?.paused !== true))}
+    canSignal={actions?.signal === true && file?.paused !== true}
     onSendSignal={() => (signalOpen = true)}
     onDuplicate={canDuplicate ? () => duplicate.mutate() : undefined}
     onPause={file !== undefined && actions?.pause === true && !file.paused

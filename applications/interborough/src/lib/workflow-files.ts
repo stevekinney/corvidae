@@ -438,6 +438,9 @@ const validationSchema = z.discriminatedUnion('status', [
 /** What `bureau.workflows.validate` answers: the draft would be written, is refused with issues, or conflicts. */
 export type WorkflowValidation = z.infer<typeof validationSchema>;
 
+/** The schema of `bureau.workflows.validate`, exported so a capture's stubbed answer is checked against it. */
+export const workflowValidationSchema = validationSchema;
+
 /**
  * Asks the Bureau whether a draft would be written, with the same checks as a write and without
  * writing (`bureau.workflows.validate`): `id` alone for a new workflow, with `expectedHash` for an

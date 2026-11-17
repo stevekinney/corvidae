@@ -243,7 +243,7 @@ describe('the "⋯" menu', () => {
     expect(items).not.toContain(WORKFLOW_COPY.resumeAction);
   });
 
-  test('COR-2431: on a paused workflow that accepts no signal holds only Duplicate and Delete… (row 62q)', async () => {
+  test('COR-2431: on a paused workflow holds only Duplicate and Delete… (row 62q)', async () => {
     const text = JSON.stringify({
       name: 'triage-inbox',
       title: 'Triage inbox',

@@ -10,15 +10,21 @@ import {
   parseWorkflowText,
   workflowFileDetailSchema,
   workflowFileRunsPageSchema,
+  workflowValidationSchema,
 } from '../src/lib/workflow-files.ts';
+import { documentProblemOf } from '../src/routes/workflow-definitions/workflow-issue-line.ts';
 import { workflowRunRow } from '../src/routes/workflow-definitions/workflow-run-rows.ts';
 import { runStatusWord } from '../src/routes/workflows/runs/run-rows.ts';
 import {
   asOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
+  MORNING_BRIEFING_TEXT,
   OUTSIDE_SCHEDULE_ID,
+  REFUSED_LINE,
+  refusedValidation,
   TRIAGE_SIGNAL,
+  unwritableAnswer,
   WAITING_RUN_ID,
   waitingSignalRun,
   withNoRuns,
@@ -90,6 +96,40 @@ describe('the waiting run (rows 63n, 63o)', () => {
   });
 });
 
+describe('the builder’s states (COR-2432, rows 65d, 65n, 65w, 65z, 66a)', () => {
+  test('the morning briefing parses, with step 3 of a kind the builder cannot draw', () => {
+    const document = parseWorkflowText(MORNING_BRIEFING_TEXT);
+    expect(document?.trigger).toMatchObject({
+      kind: 'schedule',
+      spec: '0 9 * * 1-5',
+      timezone: 'America/Chicago',
+    });
+    expect(document?.steps.map((step) => step.kind)).toEqual([
+      'activity',
+      'await-signal',
+      'fan-out',
+    ]);
+  });
+
+  test('the refusal parses as a validation answer and names the line the capture expects', () => {
+    const answer = workflowValidationSchema.parse(refusedValidation());
+    if (answer.status !== 'invalid') throw new Error('Expected a refusal');
+    expect(documentProblemOf(MORNING_BRIEFING_TEXT, answer.issues)?.line).toBe(REFUSED_LINE);
+  });
+
+  test('the unwritable answer is a JSON-RPC refusal the client reads as one', () => {
+    const answer = unwritableAnswer(7, 'release-notes.json');
+    expect(answer).toMatchObject({
+      jsonrpc: '2.0',
+      id: 7,
+      error: {
+        message: 'release-notes.json couldn’t be written: permission denied.',
+        data: { weftCode: 'Unprocessable', httpStatus: 422 },
+      },
+    });
+  });
+});
+
 describe('Triage inbox as drawn (rows 62q, 62r, 62s, 63l)', () => {
   test('the file parses as a detail, started by its signal, with no schedule of its own', () => {
     const detail = workflowFileDetailSchema.parse(asSignalStarted(TRIAGE_DETAIL));
@@ -101,14 +141,17 @@ describe('Triage inbox as drawn (rows 62q, 62r, 62s, 63l)', () => {
     });
   });
 
-  test('the list rewrites only Triage inbox', () => {
+  test('the list rewrites only Triage inbox, and its entry still parses', () => {
     const answer = listWithSignalStarted(
       { workflows: [{ id: 'release-notes', trigger: { kind: 'schedule' } }, TRIAGE_DETAIL] },
       'triage-inbox',
     );
     const workflows = answer['workflows'] as Array<Record<string, unknown>>;
     expect(workflows[0]?.['trigger']).toEqual({ kind: 'schedule' });
-    expect(workflows[1]?.['trigger']).toEqual({ kind: 'signal', name: TRIAGE_SIGNAL });
+    expect(workflowFileDetailSchema.parse(workflows[1]).trigger).toEqual({
+      kind: 'signal',
+      name: TRIAGE_SIGNAL,
+    });
   });
 
   test('the schedule runs it from outside its file, by name, and keeps its status', () => {

@@ -80,6 +80,70 @@ export function listWithSignalStarted(answer: JsonRecord, id: string): JsonRecor
   };
 }
 
+/**
+ * The morning briefing of board PageWorkflowBuilder ("JSON tab", row 65d, and "A step the builder
+ * doesn't model", rows 66a and 66b): a weekday schedule in Central time, a question to Assistant,
+ * a person's review, and step 3 of a kind the builder can't draw, as a person types it on the JSON
+ * tab. Line 27 is step 3's `kind`.
+ */
+export const MORNING_BRIEFING_TEXT = `${JSON.stringify(
+  {
+    name: 'morning-briefing',
+    title: 'Morning briefing',
+    description: 'Summarizes yesterday for the team.',
+    trigger: {
+      kind: 'schedule',
+      spec: '0 9 * * 1-5',
+      timezone: 'America/Chicago',
+      overlap: 'skip',
+      catchUp: false,
+    },
+    steps: [
+      {
+        kind: 'activity',
+        handler: 'agent',
+        input: { agent: 'assistant', message: 'Summarize what happened yesterday.' },
+      },
+      { kind: 'await-signal', signal: 'approve-briefing', review: true },
+      { kind: 'fan-out', over: 'teams' },
+    ],
+  },
+  null,
+  2,
+)}\n`;
+
+/** The line of {@link MORNING_BRIEFING_TEXT} the refused document is marked at (row 65z). */
+export const REFUSED_LINE = 27;
+
+/**
+ * `bureau.workflows.validate` refusing the morning briefing at step 3, whose kind the Bureau does
+ * not know, as the operation answers a draft it would not write (row 65z).
+ */
+export function refusedValidation(): JsonRecord {
+  return {
+    status: 'invalid',
+    code: 'invalid-document',
+    issues: [{ path: 'steps[2].kind', message: 'no step kind "fan-out" is registered' }],
+  };
+}
+
+/**
+ * The JSON-RPC error a write that the host could not put on disk is answered with, as the client
+ * reads a refusal (rows 65n and 65w). `file` is how the page names the file. The host does not
+ * answer this sentence today (COR-2432 reports the gap); the capture draws the state the board does.
+ */
+export function unwritableAnswer(id: unknown, file: string): JsonRecord {
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: {
+      code: -32000,
+      message: `${file} couldn’t be written: permission denied.`,
+      data: { reason: 'workflow-file-unwritable', weftCode: 'Unprocessable', httpStatus: 422 },
+    },
+  };
+}
+
 /** The identifier the outside schedule is given in place of the Bureau's own for the file. */
 export const OUTSIDE_SCHEDULE_ID = 'inbox-triage';
 

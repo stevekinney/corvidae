@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { issuePathOf, lineOfIssue } from './workflow-issue-line.ts';
+import { documentProblemOf, issuePathOf, lineOfIssue } from './workflow-issue-line.ts';
 
 const TEXT = `{
   "name": "morning-briefing",
@@ -32,7 +32,17 @@ describe('COR-2432: the line a Bureau issue names (row 65z)', () => {
 
   test('a path that goes further than the text names the last part it holds', () => {
     expect(lineOfIssue(TEXT, ['steps', 1, 'signal'])).toBe(7);
-    expect(lineOfIssue(TEXT, ['outputSchema'])).toBe(1);
+  });
+
+  test('an issue about the whole document, or a key it lacks, names no line, so the write says it', () => {
+    expect(lineOfIssue(TEXT, ['outputSchema'])).toBeUndefined();
+    expect(lineOfIssue(TEXT, issuePathOf(''))).toBeUndefined();
+    expect(
+      documentProblemOf(TEXT, [{ path: '', message: 'the description is too long' }]),
+    ).toBeUndefined();
+    expect(
+      documentProblemOf(TEXT, [{ path: 'steps[1].duration', message: 'pick a duration' }]),
+    ).toEqual({ line: 9, message: 'Pick a duration.' });
   });
 
   test('text with no object at its root names no line', () => {

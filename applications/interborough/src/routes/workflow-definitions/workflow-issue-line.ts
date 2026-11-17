@@ -199,17 +199,20 @@ function partOf(
 /**
  * The one-based line the deepest part of `path` that the text holds starts on: a path that goes
  * further than the text (a key the step lacks) names the line of the last part that is there, which
- * is where the fix goes. `undefined` for text that is not JSON with an object at its root.
+ * is where the fix goes. `undefined` when the text holds no part of the path, and for text that is
+ * not JSON with an object at its root.
  */
 export function lineOfIssue(text: string, path: IssuePath): number | undefined {
   let value = skipWhitespace(text, 0);
   if (text.charAt(value) !== '{') return undefined;
-  let mark = value;
+  let mark: number | undefined;
   for (const part of path) {
     const found = partOf(text, value, part);
     if (found === undefined) break;
     mark = found.mark;
     value = found.value;
   }
-  return text.slice(0, mark).split('\n').length;
+  // An issue about the document as a whole, or about a key it does not hold at all, names no line:
+  // the write's own failure says it (a description that is too long, say).
+  return mark === undefined ? undefined : text.slice(0, mark).split('\n').length;
 }

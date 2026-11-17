@@ -500,18 +500,19 @@ test.describe('an agent-authored type', () => {
         WORKFLOW_COPY.page.runs.emptyTitle,
       );
 
-      // History holds the versions that ran: none has, and the page does not offer to activate one.
+      // History holds the saved versions (COR-2431), and the page does not offer to activate one.
       await expect(root.getByTestId('workflow-revisions')).toHaveCount(0);
       await openTab(root, WORKFLOW_COPY.page.tabs.history);
-      await expect(root.getByTestId('workflow-revisions')).toContainText(
-        WORKFLOW_COPY.revisions.emptyTitle,
-      );
+      await expect(root.getByTestId('workflow-revisions')).toBeVisible();
       await expect(root.getByRole('button', { name: /Activate/ })).toHaveCount(0);
       await checkA11y(`an agent-authored type at ${width}px`);
     });
   }
 
-  test('lists the versions that ran, and only those', async ({ page, request }) => {
+  test('lists every saved version by its number, the one that ran with its run (COR-2431)', async ({
+    page,
+    request,
+  }) => {
     await makeWorkflow(request, 'e2e-ran', {
       trigger: { kind: 'signal', name: 'e2e-ran-go' },
       steps: [{ kind: 'await-signal', signal: 'e2e-ran-wait' }],
@@ -532,13 +533,17 @@ test.describe('an agent-authored type', () => {
     await page.goto('/workflows/e2e-ran');
     await openTab(detail(page), WORKFLOW_COPY.page.tabs.history);
     const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
-    await expect(versions).toHaveCount(1);
-    // The file was edited after that version ran, so Weft's verdict against the current one is no.
-    await expect(versions.first().getByTestId('workflow-revision-verdict')).toContainText(
-      WORKFLOW_COPY.revisions.incompatible,
+    await expect(versions).toHaveCount(2);
+    // The second version changed the signal a step waits for, which is breaking, and never ran.
+    await expect(versions.nth(0).getByTestId('workflow-revision-verdict')).toContainText(
+      WORKFLOW_COPY.history.breaking,
     );
-    await expect(versions.first().getByTestId('workflow-revision-reasons')).toContainText(
-      WORKFLOW_COPY.revisions.reason('workflow-version-incompatible'),
+    await expect(versions.nth(0).getByTestId('workflow-revision-line')).not.toContainText(
+      'on this version',
+    );
+    // The first one ran once.
+    await expect(versions.nth(1).getByTestId('workflow-revision-line')).toContainText(
+      'run on this version: 1',
     );
     // Let the instance finish, so it does not stay in the host.
     await expect
@@ -902,7 +907,12 @@ test.describe('the editor', () => {
       JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }),
     );
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
-    await expect(root).toContainText(/Couldn’t save /);
+    // Save asks the Bureau's checks first (COR-2432, row 65z): a refusal it can place is marked at
+    // its line on the JSON tab, and one it cannot is the write's own failure. Either way nothing is
+    // written.
+    await expect(
+      root.getByText(/Couldn’t save /).or(root.locator('.cinder-json-editor__problem')),
+    ).toBeVisible();
     await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
     const unchanged = await readWorkflow(request, 'e2e-refused');
     expect(unchanged.hash).toBe(before.hash);

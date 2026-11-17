@@ -17,7 +17,7 @@
  * The stubbed answers are `workflow-page-states-stubs.ts`, which a unit test checks against the
  * client's schemas. Not run on this host (the browser suites run on GitHub, `main.yml`).
  */
-import type { Page, Route } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
@@ -25,14 +25,20 @@ import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
 import {
   asOutsideSchedule,
   asSignalStarted,
   listWithSignalStarted,
+  MORNING_BRIEFING_TEXT,
+  REFUSED_LINE,
+  refusedValidation,
+  unwritableAnswer,
   waitingSignalRun,
   withNoRuns,
   withRunFirst,
 } from './workflow-page-states-stubs.ts';
+import { openJsonTab, openTab } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -40,6 +46,7 @@ const SOURCE = 'workflow-page-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
 const MENU = WORKFLOW_COPY.page.menu;
 const DELETE = WORKFLOW_COPY.deleteDialog;
+const BUILDER = WORKFLOW_COPY.builder;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -260,7 +267,7 @@ for (const width of WIDTHS) {
       ).toBeVisible();
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',
-        state: 'not found',
+        state: 'workflow not found, neutral',
         source: SOURCE,
       });
     });
@@ -277,9 +284,8 @@ for (const width of WIDTHS) {
       await expect(page.locator('.cinder-json-editor__status')).toContainText(
         WORKFLOW_COPY.builder.json.invalid,
       );
-      await expect(
-        page.getByRole('tab', { name: WORKFLOW_COPY.builder.builderTab }),
-      ).toBeDisabled();
+      // The footer names the line, which is the Builder tab's reason while it is off.
+      await expect(page.getByTestId('workflow-builder-summary')).toContainText(/^Fix line \d+/);
       await captureForDesignReview(page, {
         route: '/workflows/:workflow/edit',
         tab: 'json',
@@ -287,5 +293,191 @@ for (const width of WIDTHS) {
         source: SOURCE,
       });
     });
+
+    // COR-2432: the builder's states (board PageWorkflowBuilder). Below 640 pixels the builder is
+    // read-only and says "Open on a larger screen" (row 05n), so these are drawn on a desktop.
+    test.describe('the builder', () => {
+      test.skip(width !== 1280, 'The builder is read-only below 640 pixels (row 05n).');
+
+      test('New workflow On a schedule, on its JSON tab: every field the builder writes (65d)', async ({
+        page,
+      }) => {
+        const root = await openBuilder(page, '/workflows/new', width);
+        await root.getByRole('radio', { name: BUILDER.triggers.schedule }).click();
+        await expect(root.getByTestId('schedule-when')).toBeVisible();
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          state: 'on a schedule, the When block',
+          source: SOURCE,
+        });
+        await openJsonTab(root);
+        const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+        await expect(editor).toContainText('"timezone"');
+        await expect(editor).toContainText('"catchUp"');
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          tab: 'json',
+          state: 'a schedule, every field',
+          source: SOURCE,
+        });
+      });
+
+      test('New workflow with JSON that does not parse: Invalid JSON and Fix line N (65f)', async ({
+        page,
+      }) => {
+        const root = await openBuilder(page, '/workflows/new', width);
+        await openJsonTab(root);
+        const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+        await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT.replace('"title": ', '"title" '));
+        await expect(root.locator('.cinder-json-editor__status')).toContainText(
+          WORKFLOW_COPY.builder.json.invalid,
+        );
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          tab: 'json',
+          state: 'invalid JSON',
+          source: SOURCE,
+        });
+      });
+
+      test('New workflow the Bureau refuses: the line is marked and Create goes there (65z)', async ({
+        page,
+      }) => {
+        await page.route('**/bureau/jsonrpc', async (route: Route) => {
+          const body = JSON.parse(route.request().postData() ?? '{}') as {
+            method?: string;
+            id?: unknown;
+          };
+          if (body.method !== 'bureau.workflows.validate') {
+            await route.fallback();
+            return;
+          }
+          await route.fulfill({
+            json: { jsonrpc: '2.0', id: body.id, result: refusedValidation() },
+          });
+        });
+        const root = await openBuilder(page, '/workflows/new', width);
+        await openJsonTab(root);
+        const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+        await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT);
+        await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+        await expect(root.getByTestId('workflow-builder-summary')).toHaveText(
+          WORKFLOW_COPY.builder.json.fixLine(REFUSED_LINE),
+        );
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          tab: 'json',
+          state: 'valid JSON, not a valid workflow',
+          source: SOURCE,
+        });
+      });
+
+      test('a step the builder can’t draw is a read-only card, and the footer says so (66a, 66b)', async ({
+        page,
+      }) => {
+        const root = await openBuilder(page, '/workflows/new', width);
+        await openJsonTab(root);
+        const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+        await replaceJsonEditorText(editor, MORNING_BRIEFING_TEXT);
+        await openTab(root, BUILDER.builderTab);
+        await expect(root.getByTestId('workflow-step-other')).toContainText(BUILDER.otherStepLine);
+        await expect(root.getByTestId('workflow-builder-summary')).toContainText(
+          BUILDER.readBack.other,
+        );
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          state: 'a step the builder doesn’t model',
+          source: SOURCE,
+        });
+      });
+
+      test('Create that the host cannot write: the error at the action, nothing saved (65n)', async ({
+        page,
+      }) => {
+        await answerUnwritable(
+          page,
+          'bureau.workflows.create',
+          '~/.interborough/workflows/morning-briefing.json',
+        );
+        const root = await openBuilder(page, '/workflows/new', width);
+        await openJsonTab(root);
+        const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+        await replaceJsonEditorText(
+          editor,
+          // Step 3 a wait the Bureau knows, so the write itself is what fails.
+          MORNING_BRIEFING_TEXT.replace('"fan-out"', '"sleep"').replace(
+            '"over": "teams"',
+            '"duration": "15m"',
+          ),
+        );
+        await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+        await expect(root).toContainText(WORKFLOW_COPY.creator.nothingSaved);
+        await captureForDesignReview(page, {
+          route: '/workflows/new',
+          state: 'create failed',
+          source: SOURCE,
+        });
+      });
+
+      test('Edit Release notes: its JSON tab, a save the host cannot write, and Cancel with changes (65j, 65w, 66h)', async ({
+        page,
+      }) => {
+        const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+        await answerUnwritable(page, 'bureau.workflows.update', 'release-notes.json');
+        const path = `/workflows/${encodeURIComponent(world.workflows.releaseNotes)}/edit`;
+        const root = await openBuilder(page, `${path}?tab=json`, width);
+        await openJsonTab(root);
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow/edit',
+          tab: 'json',
+          state: 'a file-defined schedule',
+          source: SOURCE,
+        });
+
+        await openTab(root, BUILDER.builderTab);
+        const title = root.getByLabel(BUILDER.titleLabel, { exact: true });
+        await title.fill('Release notes, weekly');
+        await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
+        await expect(root).toContainText(WORKFLOW_COPY.creator.nothingSaved);
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow/edit',
+          state: 'save failed',
+          source: SOURCE,
+        });
+
+        await root.getByRole('button', { name: WORKFLOW_COPY.editor.cancelAction }).click();
+        await expect(page.getByRole('dialog', { name: BUILDER.discard.title })).toBeVisible();
+        await captureForDesignReview(page, {
+          route: '/workflows/:workflow/edit',
+          state: 'cancel with unsaved changes',
+          source: SOURCE,
+        });
+      });
+    });
+  });
+}
+
+/** Opens the builder at `path` on the sample clock at `width`, and returns its page. */
+async function openBuilder(page: Page, path: string, width: number): Promise<Locator> {
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto(path);
+  const root = page.locator('[data-page="workflow-creator"], [data-page="workflow-editor"]');
+  await expect(root.getByTestId('workflow-builder')).toBeVisible();
+  return root;
+}
+
+/** Answers the write `method` with the refusal of a file the host could not put on disk. */
+async function answerUnwritable(page: Page, method: string, file: string): Promise<void> {
+  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      id?: unknown;
+    };
+    if (body.method !== method) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: unwritableAnswer(body.id, file) });
   });
 }
