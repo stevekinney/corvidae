@@ -220,4 +220,51 @@ describe('retrying a failed document run from its failed step', () => {
     expect(bare?.status).toBe('failed');
     expect(calls).toEqual({ first: 1, second: 1 });
   });
+
+  it('records the step starting again and the run ending a second time, after the failure and in order (COR-2424)', async () => {
+    const storage = new MemoryStorage();
+    await using engine = new Engine({ storage });
+    const { control, host } = countingHost();
+    await registerWorkflowDocuments(engine, host, {
+      active: [
+        {
+          name: 'two-steps',
+          trigger: { kind: 'manual' },
+          steps: [
+            { kind: 'activity', handler: 'first' },
+            { kind: 'activity', handler: 'second' },
+          ],
+        },
+      ],
+    });
+    await engine.start('two-steps', null, { id: 'run-history' });
+    await settled(engine, 'run-history', 'failed');
+    const lifecycle = async () =>
+      (await engine.getEvents('run-history'))
+        .filter((event) => event.type.startsWith('file-workflow:'))
+        .map(
+          (event) =>
+            `${event.type.slice('file-workflow:'.length)}:${String(event.data['step'] ?? event.data['status'])}`,
+        );
+    const failedHistory = await lifecycle();
+    expect(failedHistory.filter((event) => event === 'run-terminal:failed')).toHaveLength(1);
+
+    control.failing = false;
+    await engine.retryFailed('run-history');
+    await settled(engine, 'run-history', 'completed');
+
+    const history = await lifecycle();
+    // What happened before the retry stays, and the retry's events follow it.
+    expect(history.slice(0, failedHistory.length)).toEqual(failedHistory);
+    const retried = history.slice(failedHistory.length);
+    expect(retried).toEqual([
+      'step-started:1',
+      'activity-started:1',
+      'activity-completed:1',
+      'step-completed:1',
+      'run-terminal:completed',
+    ]);
+    // The step that completed before the failure is not started again.
+    expect(history.filter((event) => event === 'step-started:0')).toHaveLength(1);
+  });
 });

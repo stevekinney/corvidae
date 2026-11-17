@@ -40,6 +40,7 @@ import {
   assertLeaseHeldForEngineWork,
   commitFencedEngineWriteAllowingPreconditionFailure,
 } from './fenced-write.ts';
+import { fileWorkflowRetryReceiptResets } from './file-workflow-history.ts';
 import type { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import { startWorkflow, type LifecycleCallbacks } from './lifecycle.ts';
@@ -368,15 +369,20 @@ async function buildReactivationCommit(
 
   const reactivatedState = buildReactivatedWorkflowState(internals, currentState);
   const currentAttributes = await loadSearchAttributes(internals, workflowId);
-  const operations = buildReactivationBatchOperations(
-    internals,
-    workflowId,
-    currentState,
-    reactivatedState,
-    checkpoint,
-    currentAttributes,
-    concurrencyStartOperations?.operations,
-  );
+  const operations = [
+    ...buildReactivationBatchOperations(
+      internals,
+      workflowId,
+      currentState,
+      reactivatedState,
+      checkpoint,
+      currentAttributes,
+      concurrencyStartOperations?.operations,
+    ),
+    // The history of a file workflow writes each event once; the failed step's starts and the run's
+    // end are written again by the retry.
+    ...(await fileWorkflowRetryReceiptResets(internals, workflowId)),
+  ];
 
   return bindReactivation(internals, currentState, {
     operations,
