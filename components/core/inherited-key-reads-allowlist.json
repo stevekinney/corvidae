@@ -12,12 +12,6 @@
       "expression": "clicks[key]",
       "count": 3,
       "reason": "a documentation demo: the keys are the data-key attributes of the demo buttons"
-    },
-    {
-      "file": "src/components/source-diff-viewer/source-diff-viewer.path-normalization.ts",
-      "expression": "escapes[next]",
-      "count": 1,
-      "reason": "the key is one character following a backslash, and no inherited name is one character long"
     }
   ]
 }

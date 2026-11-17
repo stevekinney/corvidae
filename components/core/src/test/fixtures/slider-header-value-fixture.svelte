@@ -9,7 +9,7 @@
 
 <script lang="ts">
   import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
-  import Slider from '../../components/slider/slider.svelte';
+  import Slider from '@lostgradient/slider/components/slider/slider.svelte';
 
   let {
     wrapInFormField = false,

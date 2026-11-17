@@ -227,7 +227,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     // The 1px outline of a matrix cell with no value, drawn over the page canvas.
     { declaration: 'stroke: var(--cinder-border);', category: 'hairline' },
   ],
-  'components/core/src/components/spinner/spinner.css': [
+  'components/spinner/src/components/spinner/spinner.css': [
     {
       declaration: 'stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));',
       category: 'area',
@@ -319,14 +319,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'parameter-field',
     },
   ],
-  'components/core/src/components/rating/rating.css': [
+  'components/rating/src/components/rating/rating.css': [
     {
       declaration: '--_cinder-rating-empty: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'rating',
     },
   ],
-  'components/core/src/components/resizable-panels/resizable-panels.css': [
+  'components/resizable-panels/src/components/resizable-panels/resizable-panels.css': [
     {
       declaration: 'color: var(--cinder-border-contrast);',
       category: 'area',
@@ -362,14 +362,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   // COR-2312: the selected and pressed segment's 1px ring, drawn as an inset shadow so the
   // segment keeps its size. It sits directly on the raised pill, so it composites once.
-  'components/core/src/components/segmented-control/segmented-control.css': [
+  'components/segmented-control/src/components/segmented-control/segmented-control.css': [
     {
       declaration: 'inset 0 0 0 1px var(--cinder-border-contrast);',
       category: 'hairline',
       occurrences: 2,
     },
   ],
-  'components/core/src/components/slider/slider.css': [
+  'components/slider/src/components/slider/slider.css': [
     {
       declaration: 'background: var(--cinder-border-contrast, currentColor);',
       category: 'area',

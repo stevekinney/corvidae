@@ -9,7 +9,7 @@ setupHappyDom();
 const { fireEvent, render, cleanup } = await import('@testing-library/svelte');
 const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
-const { default: Slider } = await import('./slider.svelte');
+const { default: Slider } = await import('@lostgradient/slider/components/slider/slider.svelte');
 const { default: SliderDirectionFixture } =
   await import('../../test/fixtures/slider-direction-fixture.svelte');
 const SLIDER_DIRECTION_FIXTURE_SOURCE = `${import.meta.dir}/../../test/fixtures/slider-direction-fixture.svelte`;
@@ -300,7 +300,10 @@ describe('Slider (single)', () => {
   });
 
   test('disabled state preserves text contrast and mutes only the track, without opacity', () => {
-    const styles = readFileSync(new URL('./slider.css', import.meta.url), 'utf8');
+    const styles = readFileSync(
+      new URL('../../../../slider/src/components/slider/slider.css', import.meta.url),
+      'utf8',
+    );
 
     expect(styles).toMatch(
       /\.cinder-slider\[data-cinder-disabled\] \.cinder-slider__value\s*\{[^}]*color:\s*var\(--cinder-text-default\);/,

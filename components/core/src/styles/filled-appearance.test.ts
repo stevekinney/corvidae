@@ -27,7 +27,8 @@ setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
 const { default: Input } = await import('../components/input/input.svelte');
-const { default: Textarea } = await import('../components/textarea/textarea.svelte');
+const { default: Textarea } =
+  await import('@lostgradient/textarea/components/textarea/textarea.svelte');
 const { default: Select } = await import('../components/select/select.svelte');
 
 /** A stylesheet on one line per whitespace run, so a selector the formatter wrapped still matches. */
@@ -39,7 +40,7 @@ function flatten(path: string): string {
 }
 
 const inputCss = flatten('../components/input/input.css');
-const textareaCss = flatten('../components/textarea/textarea.css');
+const textareaCss = flatten('../../../textarea/src/components/textarea/textarea.css');
 const selectCss = flatten('../components/select/select.css');
 const fieldChevronCss = flatten('../../../foundation/src/styles/components/_field-chevron.css');
 

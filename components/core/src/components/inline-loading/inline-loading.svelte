@@ -7,7 +7,7 @@
   import Check from '@lucide/svelte/icons/check';
   import X from '@lucide/svelte/icons/x';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Spinner from '../spinner/spinner.svelte';
+  import Spinner from '@lostgradient/spinner/components/spinner/spinner.svelte';
   import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
   import type { InlineLoadingProps, InlineLoadingStatus } from './inline-loading.types.ts';
 

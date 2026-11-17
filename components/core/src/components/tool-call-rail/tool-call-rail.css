@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 /* The rail's running marker and summary spinner are Spinner arcs, and its rows sit on Timeline's
  * `rows` variant, so the styles travel with it. */
-@import '../spinner/spinner.css';
+@import '@lostgradient/spinner/spinner.css';
 @import '../timeline/timeline.css';
 @layer cinder.components {
   /* ========================================

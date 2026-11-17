@@ -452,7 +452,10 @@ describe('Dropdown', () => {
   test('compound trigger caret CSS uses SVG sizing and system spacing', async () => {
     const dropdownCss = await Bun.file(new URL('./dropdown.css', import.meta.url)).text();
     const navigationItemCss = await Bun.file(
-      new URL('../navigation-item/navigation-item.css', import.meta.url),
+      new URL(
+        '../../../../navigation-item/src/components/navigation-item/navigation-item.css',
+        import.meta.url,
+      ),
     ).text();
 
     const triggerBlock = extractDeclarationBlock(
