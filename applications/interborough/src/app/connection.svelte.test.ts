@@ -5,15 +5,32 @@
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { QueryClient, QueryObserver } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { bureauClient } from '../lib/bureau-api.ts';
 import {
   askAgainAfterOutage,
   CONNECTION_MAX_ATTEMPTS,
+  CONNECTION_RETRY_LABEL,
   connectionBannerPreset,
   ConnectionMonitor,
   connectionProbeDelayMs,
 } from './connection.svelte.ts';
+import { RETRY_LABEL } from './copy/views.ts';
+
+// COR-2489: Home's banner said "Retry now" over a failed row and a full-page error that said
+// "Try again". The shell's connection banner says the app's one word for asking again.
+describe('the connection banner’s retry', () => {
+  test('has the one label the full-page error and a failed card use, and the shell passes it', () => {
+    expect(CONNECTION_RETRY_LABEL).toBe(RETRY_LABEL);
+    expect(CONNECTION_RETRY_LABEL).toBe('Try again');
+    const shell = readFileSync(new URL('./shell/shell.svelte', import.meta.url), 'utf8');
+    const start = shell.indexOf('preset={connectionBannerPreset(connection)}');
+    expect(start).toBeGreaterThan(-1);
+    const banner = shell.slice(start, shell.indexOf('/>', start));
+    expect(banner).toContain('retryLabel={CONNECTION_RETRY_LABEL}');
+  });
+});
 
 const monitors: ConnectionMonitor[] = [];
 afterEach(() => {

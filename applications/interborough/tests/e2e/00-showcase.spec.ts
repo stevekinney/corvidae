@@ -223,11 +223,12 @@ for (const name of OFFLINE_ROUTES) {
 async function expectOfflineBanner(page: Page, label: string) {
   const banner = page.getByRole('region', { name: 'Connection problem' });
   await expect(banner, label).toBeVisible();
-  // The browser, not the server, is the cause, so the banner leads with that and offers Retry now.
+  // The browser, not the server, is the cause, so the banner leads with that and offers Try again,
+  // the app's one word for asking again (COR-2489).
   await expect(banner).toContainText('You’re offline.');
   await expect(banner).toContainText('Showing what loaded as of');
   await expect(banner).toContainText('Changes are off until you’re back.');
-  await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+  await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
   return banner;
 }
 

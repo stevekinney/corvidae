@@ -18,8 +18,16 @@ import { getContext, setContext } from 'svelte';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { isNetworkFailure } from '../lib/faults.ts';
+import { RETRY_LABEL } from './copy/views.ts';
 
-/** How many probes the monitor makes before it stops and leaves Retry now as the way back. */
+/**
+ * What the connection banner's retry says: the app's one word for asking again, the same as the
+ * full-page error and a card that could not be read, so a page never says it two ways (COR-2489:
+ * Home's banner said "Retry now" over a failed row and a full-page error that said "Try again").
+ */
+export const CONNECTION_RETRY_LABEL = RETRY_LABEL;
+
+/** How many probes the monitor makes before it stops and leaves the retry as the way back. */
 export const CONNECTION_MAX_ATTEMPTS = 8;
 
 /** The wait before the probe of attempt `attempt` (counted from 1): one second, doubling to eight. */
