@@ -104,6 +104,17 @@ const NAMED: [string, string, string][] = [
     "reportPrefix: 'cinder/browser-fixtures'",
     "reportPrefix: 'core/browser-fixtures'",
   ],
+  // The resolver returns the real path of `@lostgradient/cinder`'s files, under its directory.
+  [
+    'applications/interborough/src/host/panel-build.test.ts',
+    String.raw`/cinder\/src\/panel\/index\.ts$/`,
+    String.raw`/core\/src\/panel\/index\.ts$/`,
+  ],
+  [
+    'applications/interborough/src/host/panel-build.test.ts',
+    String.raw`/cinder\/src\/index\.ts$/`,
+    String.raw`/core\/src\/index\.ts$/`,
+  ],
 ];
 
 const PATH = new RegExp(`${OLD.replace('/', '\\/')}(?![\\w-])`, 'g');
