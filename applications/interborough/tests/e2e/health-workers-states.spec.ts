@@ -15,6 +15,7 @@ import { designReviewCaptureDirectory } from '../../scripts/environment-configur
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -612,15 +613,23 @@ test('a long id wraps in the header with a Copy button, and the list cuts it fro
   await expect(title.locator('.cinder-text__tail')).toBeVisible();
   await expect(rows(page).first()).toContainText('payments, 1 running');
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Payments worker EU');
-  await expect(detail(page).getByTestId('worker-id')).toHaveText(id);
+  await expect(detail(page).getByTestId('worker-id')).toContainText(id);
   await expect(detail(page).getByRole('button', { name: 'Copy the worker ID' })).toBeVisible();
-  // Copy sits beside the id, not on a line of its own under it (79g).
-  const idBox = await detail(page).getByTestId('worker-id').boundingBox();
-  const copyBox = await detail(page)
-    .getByRole('button', { name: 'Copy the worker ID' })
-    .boundingBox();
-  expect((copyBox?.x ?? 0) >= (idBox?.x ?? 0) + (idBox?.width ?? 0) - 1).toBe(true);
-  expect((copyBox?.y ?? 1e9) < (idBox?.y ?? 0) + (idBox?.height ?? 0)).toBe(true);
+  // The id is a Cinder CopyableValue: Copy sits inside it, beside the id's last character, not on a
+  // line of its own under it (79g).
+  const { id: idBox, copy: copyBox } = await readBoxes(page, {
+    id: detail(page).getByTestId('worker-id'),
+    copy: detail(page).getByRole('button', { name: 'Copy the worker ID' }),
+  });
+  expect(copyBox.x).toBeGreaterThanOrEqual(idBox.x - 1);
+  expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(idBox.x + idBox.width + 1);
+  // The id is an inline box that spans its own lines, and the control is a taller atomic box that
+  // sits centred on the value's last line, so it overhangs the id's text box by a few pixels both
+  // ways. The control is on the value's last line when its centre is inside the id's text box: a
+  // control that wrapped onto a line of its own has its centre below it.
+  const copyCentre = copyBox.y + copyBox.height / 2;
+  expect(copyCentre).toBeGreaterThanOrEqual(idBox.y);
+  expect(copyCentre).toBeLessThanOrEqual(idBox.y + idBox.height);
   await expect(detail(page).getByTestId('worker-status-line')).toHaveText(
     'Last heard from just now',
   );

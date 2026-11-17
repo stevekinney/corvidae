@@ -138,6 +138,7 @@
   } from './chat-export.ts';
   import ChatDetails from './chat-details.svelte';
   import { approvalHoldsChat } from './chat-waiting.ts';
+  import { panelResultText } from './tool-call-panel-result.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
   import { examplePrompts } from './new-chat.ts';
   import { takeFirstMessage } from './new-chat-handoff.ts';
@@ -1546,30 +1547,21 @@
     observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
   });
-  const workflowRevisionPanels = $derived(
-    (panels.data ?? []).filter((panel) =>
-      chatToolsOf(panel).includes('bureau:workflows-propose-update'),
-    ),
+  // Every panel with a `chat-tool` placement, for any agent tool a plugin names (COR-2214).
+  const chatToolPanels = $derived(
+    (panels.data ?? []).filter((panel) => chatToolsOf(panel).length > 0),
   );
-  const revisionProposalText = (entry: ToolCallEntry): string | undefined => {
-    const serialized =
-      typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result);
-    if (serialized === undefined) return undefined;
-    try {
-      const parsed = JSON.parse(serialized) as unknown;
-      return typeof parsed === 'object' &&
-        parsed !== null &&
-        !Array.isArray(parsed) &&
-        Reflect.get(parsed, 'status') === 'ok' &&
-        typeof Reflect.get(parsed, 'id') === 'string' &&
-        typeof Reflect.get(parsed, 'baseHash') === 'string' &&
-        typeof Reflect.get(parsed, 'proposedText') === 'string'
-        ? serialized
-        : undefined;
-    } catch {
-      return undefined;
-    }
-  };
+  /** The panel placed on this call's agent tool, whether the call arrives as `plugin:name` or `plugin__name`. */
+  const chatToolPanelFor = (entry: ToolCallEntry) =>
+    chatToolPanels.find(
+      (candidate) =>
+        chatToolsOf(candidate).includes(entry.name) ||
+        chatToolsOf(candidate).includes(entry.name.replace('__', ':')),
+    );
+  // A finished call's result as the panel receives it: a plain JSON object that did not fail
+  // (`tool-call-panel-result.ts`), so an invalid or stale proposal opens no panel.
+  const structuredResultText = (entry: ToolCallEntry): string | undefined =>
+    panelResultText(entry.result);
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -2200,6 +2192,8 @@
               decided={decisionContext}
               selectedId={selectedCallId}
               onSelect={selectCall}
+              opensPanel={(entry) =>
+                chatToolPanelFor(entry) !== undefined && structuredResultText(entry) !== undefined}
               endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
               duration={group.durationMilliseconds === undefined
                 ? undefined
@@ -2244,13 +2238,9 @@
                 {/if}
               {/snippet}
               {#snippet mcpApp(entry)}
-                {@const panel = workflowRevisionPanels.find(
-                  (candidate) =>
-                    chatToolsOf(candidate).includes(entry.name) ||
-                    chatToolsOf(candidate).includes(entry.name.replace('__', ':')),
-                )}
-                {@const proposalText = revisionProposalText(entry)}
-                {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                {@const panel = chatToolPanelFor(entry)}
+                {@const resultText = structuredResultText(entry)}
+                {#if panel !== undefined && entry.state === 'done' && resultText !== undefined}
                   {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
                   {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
                   <McpApp
@@ -2263,7 +2253,7 @@
                     toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
                     toolResult={{
                       content: [],
-                      structuredContent: proposalText,
+                      structuredContent: resultText,
                     }}
                   />
                 {/if}

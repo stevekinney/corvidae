@@ -366,7 +366,15 @@ describe('the relay to Weft’s server', () => {
 describe('the built application', () => {
   test('serves index.html at every client route', async () => {
     const host = await start(await createBuild());
-    for (const path of ['/', '/chats', '/runs/abc', '/reviews']) {
+    // A plugin's page has a path of one segment or several (`/plugins/:plugin/*`).
+    for (const path of [
+      '/',
+      '/chats',
+      '/runs/abc',
+      '/reviews',
+      '/plugins/acme/overview',
+      '/plugins/acme/reviews/queue',
+    ]) {
       const response = await fetch(new URL(path, host.url));
       expect(response.status, path).toBe(200);
       expect(response.headers.get('content-type'), path).toBe('text/html; charset=utf-8');

@@ -19,6 +19,7 @@
   import type { SideNavigationItemProps } from './side-navigation-item.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { getSidebarContext } from '../../_internal/sidebar-context.ts';
+  import Badge from '../badge/badge.svelte';
   import NavigationItem from '../navigation-item/navigation-item.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
@@ -35,6 +36,7 @@
       listItemClass: _listItemClass,
       icon: _icon,
       label: _label,
+      badge: _badge,
       count: _count,
       countLabel: _countLabel,
       emptyLabel: _emptyLabel,
@@ -52,9 +54,15 @@
   const sidebar = getSidebarContext();
   const collapsed = $derived(props.collapsed ?? sidebar?.collapsed ?? false);
 
+  // A badge marks the kind of entry and is not a count, so a row that has one reports no count
+  // and no dot: the trailing edge holds one mark.
+  const badgeWord = $derived(props.badge?.trim() ? props.badge.trim() : undefined);
   // Zero, a negative number and NaN all mean "nothing to report", so the pill never reads "0".
   const countValue = $derived(
-    props.count !== undefined && Number.isFinite(props.count) && props.count > 0
+    badgeWord === undefined &&
+      props.count !== undefined &&
+      Number.isFinite(props.count) &&
+      props.count > 0
       ? props.count
       : undefined,
   );
@@ -74,11 +82,13 @@
   const composedName = $derived(
     props.label === undefined
       ? undefined
-      : countPhrase !== undefined
-        ? `${props.label}, ${countPhrase}`
-        : emptyWords !== undefined
-          ? `${props.label}, ${emptyWords}`
-          : undefined,
+      : badgeWord !== undefined
+        ? `${props.label}, ${badgeWord.toLowerCase()}`
+        : countPhrase !== undefined
+          ? `${props.label}, ${countPhrase}`
+          : emptyWords !== undefined
+            ? `${props.label}, ${emptyWords}`
+            : undefined,
   );
   const accessibleName = $derived(props['aria-label'] ?? composedName);
   // A collapsed row shows its label (and count) in a tooltip, since the label is not drawn; an
@@ -87,9 +97,11 @@
     props.label === undefined
       ? undefined
       : collapsed
-        ? (countPhrase ?? emptyWords) === undefined
-          ? props.label
-          : `${props.label}, ${countPhrase ?? emptyWords}`
+        ? badgeWord !== undefined
+          ? `${props.label}, ${badgeWord.toLowerCase()}`
+          : (countPhrase ?? emptyWords) === undefined
+            ? props.label
+            : `${props.label}, ${countPhrase ?? emptyWords}`
         : composedName,
   );
   const hasIcon = $derived(props.icon !== undefined);
@@ -128,7 +140,13 @@
 </script>
 
 {#snippet indicator()}
-  {#if props.dot !== undefined}
+  {#if badgeWord !== undefined}
+    <!-- Hidden from assistive technology: the row's name carries the word. A collapsed row hides
+         it visually too; its tooltip says it. -->
+    <span class="cinder-side-navigation-item__badge" aria-hidden="true">
+      <Badge variant="neutral" size="xs">{badgeWord}</Badge>
+    </span>
+  {:else if props.dot !== undefined}
     <!-- Hidden from assistive technology: the row's name carries the meaning. -->
     <span class="cinder-side-navigation-item__dot" aria-hidden="true">
       <StatusDot status={props.dot} size="sm" labelVisible={false} />

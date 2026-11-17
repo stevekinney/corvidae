@@ -5,9 +5,9 @@ const schema = {
   type: 'object',
   properties: {
     variant: {
-      enum: ['display', 'h1', 'h2', 'h3', 'h4', 'h5', 'caption', 'body'],
+      enum: ['display', 'h1', 'h2', 'h3', 'h4', 'h5', 'caption', 'body', 'code'],
       description:
-        'Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs.',
+        'Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs, and `code` renders an inline `code` element in the monospace face that takes the size of the text around it, for an identifier.',
       default: 'body',
     },
     as: {
@@ -19,6 +19,7 @@ const schema = {
         'h4',
         'h5',
         'caption',
+        'code',
         'a',
         'abbr',
         'address',
@@ -32,7 +33,6 @@ const schema = {
         'button',
         'canvas',
         'cite',
-        'code',
         'data',
         'datalist',
         'dd',

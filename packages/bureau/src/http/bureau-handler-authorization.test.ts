@@ -921,9 +921,12 @@ describe('identifiers grant nothing', () => {
           // for a malformed request, and not a success.
           // A list filtered by another owner's id leaves that owner's rows out: it answers
           // an empty page, which the identical-text check above shows for a random id too.
-          // So does the audit query, which filters by a resource and shows the caller only its own.
+          // So does the audit query, which filters by a resource and shows the caller only its own,
+          // and the checks list, whose `checkId` names a check, never a resource anyone owns.
           const filtersByResource =
-            operation.name === 'bureau.tasks.list' || operation.name === 'bureau.audit.query';
+            operation.name === 'bureau.tasks.list' ||
+            operation.name === 'bureau.audit.query' ||
+            operation.name === 'bureau.checks.list';
           const refused = filtersByResource ? [200] : [403, 404];
           expect([operation.name, parameter, refused.includes(real.status)]).toEqual([
             operation.name,

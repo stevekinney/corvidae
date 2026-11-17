@@ -67,6 +67,14 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
      */
     count?: number;
     /**
+     * A short word that marks the row as a kind of entry ("Plugin"), drawn as a neutral
+     * extra-small `Badge` at the trailing edge where the count sits. It is not a count: a row that
+     * sets `badge` ignores `count` and `dot`. It joins the accessible name and tooltip in lower
+     * case ("Reports, plugin"), the label ends in an ellipsis before the badge, which is never
+     * cut, and a collapsed row draws no badge (its tooltip carries the word).
+     */
+    badge?: string;
+    /**
      * The words that follow the count in the accessible name and tooltip: "need you" gives
      * "Reviews, 2 need you". The count's own name is the number plus these words.
      */

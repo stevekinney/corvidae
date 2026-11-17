@@ -23,8 +23,8 @@ import { GOALS_COPY } from '../../app/copy/goals.ts';
 import type { AgentSummary } from '../../lib/bureau-client.ts';
 import type { Goal, GoalChange, GoalInput, GoalValidatorChoice } from '../../lib/bureau-goals.ts';
 import type { GoalValidator } from '../../lib/bureau-validators.ts';
+import { checkText } from '../../lib/check-text.ts';
 import { isSameJson } from '../../lib/contributed-configuration.ts';
-import { checkText } from './goal-rows.ts';
 
 const copy = GOALS_COPY.form;
 

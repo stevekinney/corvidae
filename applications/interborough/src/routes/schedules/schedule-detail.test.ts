@@ -410,13 +410,14 @@ describe('ScheduleDetail', () => {
 
       const sentence = await waitFor(() => getByTestId('schedule-status-line'));
       expect(sentence.textContent).toContain('on cron */7 9 * * 1-5');
+      const identifiers = 'code[data-cinder-variant="code"], code.ib-identifier';
       expect(
-        Array.from(sentence.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
+        Array.from(sentence.querySelectorAll(identifiers), (code) => code.textContent),
       ).toContain('*/7 9 * * 1-5');
       const card = getByTestId('schedule-details');
-      expect(
-        Array.from(card.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
-      ).toContain('*/7 9 * * 1-5');
+      expect(Array.from(card.querySelectorAll(identifiers), (code) => code.textContent)).toContain(
+        '*/7 9 * * 1-5',
+      );
     } finally {
       await server.stop();
     }

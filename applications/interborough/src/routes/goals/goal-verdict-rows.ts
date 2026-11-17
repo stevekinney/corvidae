@@ -8,7 +8,7 @@ import type { StatusDotWordLabel } from '@lostgradient/cinder';
 
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import type { GoalVerdict } from '../../lib/bureau-goals.ts';
-import { checkText } from './goal-rows.ts';
+import { checkText } from '../../lib/check-text.ts';
 
 const copy = GOALS_COPY.detail.verdict;
 
