@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { lstat, mkdtemp, readdir, readlink, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -60,8 +60,23 @@ function publicWorkspaceName(directoryName: string): string {
     : `@lostgradient/${directoryName}`;
 }
 
+/**
+ * The packages the Cinder split (P-COR-101) extracted so far: each package `families.json` places
+ * that has a workspace under `components/`. None before the split runs.
+ */
+function extractedFamilyWorkspaceNames(): string[] {
+  const families = JSON.parse(
+    readFileSync(join(root, 'internal/component-tooling/families.json'), 'utf8'),
+  ) as { packages: Record<string, unknown> };
+  return Object.keys(families.packages)
+    .filter((name) => !['core', 'tooling'].includes(name))
+    .filter((name) => existsSync(join(root, 'components', name, 'package.json')))
+    .map((name) => `@lostgradient/${name}`);
+}
+
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
+  ...extractedFamilyWorkspaceNames(),
   '@lostgradient/weft',
   '@lostgradient/cinder',
   '@lostgradient/chat',
@@ -430,10 +445,14 @@ describe('internal workspace architecture', () => {
         browser.fileNames.filter((file) => /\.(?:test|spec)\.ts$|\/scripts\//.test(file)),
         directory,
       ).toEqual([]);
-      expect(manifest.scripts?.['typecheck'], directory).toContain(
-        '--tsconfig ./tsconfig.browser.json',
+      // svelte-check names a configuration with --tsconfig; a package with no Svelte file checks
+      // with tsc, which names it with -p.
+      expect(manifest.scripts?.['typecheck'], directory).toMatch(
+        /(?:--tsconfig|-p) \.\/tsconfig\.browser\.json/,
       );
-      expect(manifest.scripts?.['typecheck'], directory).toContain('--tsconfig ./tsconfig.json');
+      expect(manifest.scripts?.['typecheck'], directory).toMatch(
+        /(?:--tsconfig|-p) \.\/tsconfig\.json/,
+      );
     }
   });
   test('every library and component keeps the inherited-key check in lint, and its documentation checks out of lint and typecheck', async () => {

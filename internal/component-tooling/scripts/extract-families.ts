@@ -438,7 +438,20 @@ function scaffold(plan: Plan): void {
     const bunfig = join(root, core, 'bunfig.toml');
     if (existsSync(bunfig))
       writeFileSync(join(root, directory, 'bunfig.toml'), readFileSync(bunfig, 'utf8'));
+    // Every workspace has a README (workspace-contract.integration.test.ts).
+    const readme = join(root, directory, 'README.md');
+    if (!existsSync(readme)) writeFileSync(readme, packageReadme(plan, name));
   }
+}
+
+/** A new package's README: what it holds and where it came from. */
+function packageReadme(plan: Plan, name: string): string {
+  const components = plan.components.get(name) ?? [];
+  const holds =
+    kindOf(name) === 'family'
+      ? `the ${components.map((component) => `\`${component}\``).join(', ')} component${components.length === 1 ? '' : 's'}`
+      : `Cinder's ${name}`;
+  return `# ${PACKAGE_SCOPE}${name}\n\nThis package holds ${holds}, which the Cinder package split (P-COR-101) moved out of \`${CORE_PACKAGE}\`. \`${CORE_PACKAGE}\` re-exports what it holds.\n`;
 }
 
 /** The ambient module shapes a package compiles against; core keeps its own in `src/ambient.d.ts`. */
@@ -1378,6 +1391,20 @@ const ENTRY = (path: string) => ({
 });
 
 /** The dependencies a package's files import, as the version core's manifest gives each. */
+/** The names of the repository's verification workspaces, `testing/*`. */
+function testingPackages(plan: Plan): Set<string> {
+  const directory = join(plan.options.root, 'testing');
+  const names = new Set<string>();
+  if (!existsSync(directory)) return names;
+  for (const entry of readdirSync(directory)) {
+    const manifest = join(directory, entry, 'package.json');
+    if (!existsSync(manifest)) continue;
+    const { name } = JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string };
+    if (name !== undefined) names.add(name);
+  }
+  return names;
+}
+
 function scanDependencies(
   plan: Plan,
   name: string,
@@ -1391,6 +1418,7 @@ function scanDependencies(
   const devDependencies: Record<string, string> = {};
   const problems: string[] = [];
   const versions = { ...coreManifest.devDependencies, ...coreManifest.dependencies };
+  const verification = testingPackages(plan);
   for (const [path, owner] of plan.owner) {
     if (owner !== name || !CODE_FILE.test(path)) continue;
     const text = withoutComments(read(plan, currentPath(plan, name, path)));
@@ -1407,8 +1435,11 @@ function scanDependencies(
         problems.push(`${path} imports ${dependency}, which core's manifest does not list.`);
         continue;
       }
-      if (isTestFile(path) || path.startsWith('scripts/')) devDependencies[dependency] = version;
-      else dependencies[dependency] = version;
+      // A verification workspace (testing/*) is only ever a development dependency, whatever file
+      // names it: a test helper's name need not say it is one.
+      if (isTestFile(path) || path.startsWith('scripts/') || verification.has(dependency)) {
+        devDependencies[dependency] = version;
+      } else dependencies[dependency] = version;
     }
   }
   for (const dependency of Object.keys(dependencies)) delete devDependencies[dependency];
@@ -1511,9 +1542,11 @@ function writeManifests(plan: Plan): void {
     const svelte = [...plan.owner].some(
       ([file, owner]) => owner === name && file.endsWith('.svelte'),
     );
+    // Like every component workspace, the browser configuration checks the source alone (no Bun
+    // or Node types), and the full one the tests and tooling (workspace-contract).
     scripts['typecheck'] = svelte
-      ? 'svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings'
-      : 'tsc --noEmit -p ./tsconfig.json';
+      ? 'svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings'
+      : 'tsc --noEmit -p ./tsconfig.browser.json && tsc --noEmit -p ./tsconfig.json';
     Object.assign(scripts, movedScripts(plan, coreManifest, name), metadataScripts(kind));
     const next: Manifest = {
       ...manifest,

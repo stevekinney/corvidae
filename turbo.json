@@ -963,7 +963,7 @@
     },
     "@lostgradient/component-tooling#test": {
       "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -991,7 +991,7 @@
     },
     "@lostgradient/component-tooling#test:slow": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
