@@ -60,6 +60,7 @@ import {
   designSystemIndex,
   fillBrandBook,
   planPublishBatches,
+  previewReport,
   replacementCharacterPositions,
 } from './publish.ts';
 import { bundleSources, readManifestSources } from './sources.ts';
