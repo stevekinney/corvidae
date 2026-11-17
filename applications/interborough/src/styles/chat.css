@@ -359,25 +359,6 @@
   margin-inline-start: calc(-1 * var(--cinder-space-2));
 }
 
-.ib-chats__title-row {
-  display: flex;
-  gap: var(--cinder-space-2) var(--cinder-space-3);
-  align-items: center;
-  justify-content: space-between;
-}
-
-.ib-chats__title-actions {
-  display: inline-flex;
-  gap: var(--cinder-space-1);
-  align-items: center;
-}
-
-.ib-chats__title {
-  margin: 0;
-  font-size: var(--cinder-text-lg);
-  font-weight: 600;
-}
-
 /* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */
 .ib-chat-row__agent {
   color: var(--cinder-text-muted);
