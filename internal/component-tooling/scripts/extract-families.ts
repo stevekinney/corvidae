@@ -1152,6 +1152,8 @@ export interface OrderEntry {
   path: string;
   /** The comment that preceded its import, verbatim. */
   comment?: string;
+  /** The comment followed the previous import with no blank line between (the region's end). */
+  tight?: true;
 }
 
 export interface ComponentsCssOrder {
@@ -1176,10 +1178,12 @@ export function readComponentsCssOrder(text: string): ComponentsCssOrder {
         `${COMPONENTS_CSS} imports ${specifier}; create ${ORDER_FILE} from a components.css that imports by relative path.`,
       );
     }
-    const comment = text.slice(last, match.index).trim();
+    const between = text.slice(last, match.index);
+    const comment = between.trim();
     imports.push({
       path: joinVirtual(COMPONENTS_CSS, specifier),
       ...(comment === '' ? {} : { comment }),
+      ...(comment !== '' && !/^[ \t]*\n[ \t]*\n/.test(between) ? { tight: true as const } : {}),
     });
     last = (match.index ?? 0) + match[0].length;
   }
@@ -1193,12 +1197,10 @@ export function readComponentsCssOrder(text: string): ComponentsCssOrder {
 }
 
 /**
- * How core's `components.css` names an ordered stylesheet: by relative path while core holds it;
- * as `/styles` when it is the one line of a single-component family (whose stylesheet is that
- * line); otherwise by its own subpath, since a family with several lines (popover's
- * `popover-surface.css` and `popover.css` sit apart) keeps them apart.
+ * How core's `components.css` names an ordered stylesheet, as `generate-root-registries.ts`
+ * writes it: by relative path while core holds it, by the holding package's subpath once a package
+ * does, each stylesheet on its own line, so the order never changes.
  */
-/** How core's `components.css` names a stylesheet, as `generate-root-registries.ts` writes it. */
 function stylesheetSpecifier(plan: Plan, path: string): string {
   const name = plan.owner.get(path);
   if (name === undefined) throw new Error(`${ORDER_FILE} names ${path}, which no package holds.`);
@@ -1247,7 +1249,7 @@ function regenerateStylesheets(plan: Plan): void {
   }
   const lines: string[] = [];
   for (const entry of order.imports) {
-    if (entry.comment !== undefined) lines.push('', entry.comment);
+    if (entry.comment !== undefined) lines.push(...(entry.tight ? [] : ['']), entry.comment);
     lines.push(`@import '${stylesheetSpecifier(plan, entry.path)}';`);
   }
   if (order.trailer !== undefined) lines.push('', order.trailer);
