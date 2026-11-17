@@ -25,12 +25,14 @@
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, posix, relative, resolve } from 'node:path';
 
 import ts from 'typescript';
 import { prettier } from './lib/node-prettier.ts';
 
+import { cinderPackages } from './discover-component-directories.ts';
 import { exportNames } from './export-names.ts';
+import { PACKAGE_SCOPE, specifierFor } from './split-layout.ts';
 
 const DEFAULT_PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
 
@@ -148,6 +150,59 @@ function compareCodeUnits(left: string, right: string): number {
 }
 
 /**
+ * A Cinder package core depends on, which holds part of core's tree at the paths core gave it
+ * (P-COR-101): its name without the scope, its root, and its component directories.
+ */
+type Holder = { name: string; root: string; components: string[] };
+
+/** The Cinder packages of the core at `packageRoot`: tokens, foundation and each family. */
+function cinderHolders(packageRoot: string): Holder[] {
+  return cinderPackages(packageRoot).map(([name, root]) => {
+    const componentsRoot = join(root, 'src', 'components');
+    const components = existsSync(componentsRoot)
+      ? readdirSync(componentsRoot, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_'))
+          .map((entry) => entry.name)
+      : [];
+    return { name: name.slice(PACKAGE_SCOPE.length), root, components };
+  });
+}
+
+/** Every directory that holds component directories: core's own, then each Cinder package's. */
+function componentsRoots(packageRoot: string, holders: readonly Holder[]): string[] {
+  return [packageRoot, ...holders.map((holder) => holder.root)]
+    .map((root) => join(root, 'src', 'components'))
+    .filter((root) => existsSync(root));
+}
+
+/**
+ * How core's file `from` (a core-relative path) names the file core gave the path `path`: by a
+ * relative specifier while core holds it, by the holding package's specifier once a package does.
+ */
+function coreSpecifier(holders: readonly Holder[], from: string, path: string): string {
+  const holder = holders.find((candidate) => existsSync(join(candidate.root, path)));
+  if (holder === undefined) {
+    const specifier = posix.relative(posix.dirname(from), path);
+    return specifier.startsWith('.') ? specifier : `./${specifier}`;
+  }
+  return specifierFor(holder.name, path, holder.components).specifier;
+}
+
+/** Each component directory with a barrel, by name, with the components root that holds it. */
+function barrelLocations(componentsRoots: string | readonly string[]): Map<string, string> {
+  const locations = new Map<string, string>();
+  const roots = typeof componentsRoots === 'string' ? [componentsRoots] : componentsRoots;
+  for (const componentsRoot of roots) {
+    for (const entry of readdirSync(componentsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('_') || entry.name === 'icons') continue;
+      if (!existsSync(join(componentsRoot, entry.name, 'index.ts'))) continue;
+      if (!locations.has(entry.name)) locations.set(entry.name, componentsRoot);
+    }
+  }
+  return locations;
+}
+
+/**
  * The recorded evaluation order of the barrels (`scripts/root-export-order.json`, taken from the
  * hand-written `src/index.ts` before COR-2393). A barrel imports its component's CSS, so the root's
  * export order is the order of component rules inside `@layer cinder.components` for every
@@ -162,18 +217,10 @@ export const ROOT_EXPORT_ORDER_PATH = join(import.meta.dir, 'root-export-order.j
  * that each add a component change no shared file: the position is derived, not stored.
  */
 export function barrelDirectories(
-  componentsRoot: string,
+  componentsRoots: string | readonly string[],
   recorded: readonly string[] = JSON.parse(readFileSync(ROOT_EXPORT_ORDER_PATH, 'utf8')),
 ): string[] {
-  const present = readdirSync(componentsRoot, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isDirectory() &&
-        !entry.name.startsWith('_') &&
-        entry.name !== 'icons' &&
-        existsSync(join(componentsRoot, entry.name, 'index.ts')),
-    )
-    .map((entry) => entry.name);
+  const present = [...barrelLocations(componentsRoots).keys()];
   const alphabetical = present.toSorted((left, right) =>
     compareCodeUnits(`${left}/index.ts`, `${right}/index.ts`),
   );
@@ -229,8 +276,11 @@ function handAuthoredNames(source: string, indexPath: string): Set<string> {
     }
     const specifier = statement.moduleSpecifier;
     if (specifier === undefined || !ts.isStringLiteral(specifier)) continue;
-    const target = resolve(dirname(indexPath), specifier.text);
-    if (!existsSync(target)) continue;
+    // A package core depends on is read through its `exports` (P-COR-101).
+    const target = specifier.text.startsWith('.')
+      ? resolve(dirname(indexPath), specifier.text)
+      : resolvePackage(specifier.text, indexPath);
+    if (target === undefined || !existsSync(target)) continue;
     const { runtime, types } = exportNames(target);
     for (const name of [...runtime, ...types]) if (name !== 'default') names.add(name);
   }
@@ -283,11 +333,13 @@ function sortKey(claim: Claim): string {
 }
 
 function renderIndexRegion(packageRoot: string, handAuthored: Set<string>): string {
-  const componentsRoot = join(packageRoot, 'src', 'components');
-  const directories = barrelDirectories(componentsRoot);
+  const holders = cinderHolders(packageRoot);
+  const roots = componentsRoots(packageRoot, holders);
+  const locations = barrelLocations(roots);
+  const directories = barrelDirectories(roots);
   const claimsByName = new Map<string, Claim[]>();
   for (const directory of directories) {
-    for (const claim of componentClaims(componentsRoot, directory)) {
+    for (const claim of componentClaims(locations.get(directory) as string, directory)) {
       if (handAuthored.has(claim.rootName)) continue;
       const existing = claimsByName.get(claim.rootName) ?? [];
       existing.push(claim);
@@ -304,7 +356,7 @@ function renderIndexRegion(packageRoot: string, handAuthored: Set<string>): stri
     const claims = (owned.get(directory) ?? []).toSorted((left, right) =>
       compareCodeUnits(sortKey(left), sortKey(right)),
     );
-    const specifier = `'./components/${directory}/index.ts'`;
+    const specifier = `'${coreSpecifier(holders, 'src/index.ts', `src/components/${directory}/index.ts`)}'`;
     const runtime = claims.filter((claim) => !claim.type).map(specifierElement);
     const types = claims.filter((claim) => claim.type).map(specifierElement);
     const lines: string[] = [];
@@ -316,15 +368,20 @@ function renderIndexRegion(packageRoot: string, handAuthored: Set<string>): stri
 }
 
 function renderCssRegion(packageRoot: string): string {
-  const componentsRoot = join(packageRoot, 'src', 'components');
-  const stylesRoot = join(packageRoot, 'src', 'styles');
+  const holders = cinderHolders(packageRoot);
   const skipped = new Set(CSS_REACHED_THROUGH_IMPORTS);
-  const order = readdirSync(componentsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== 'icons' && entry.name !== '_internal')
-    .flatMap((entry) =>
-      readdirSync(join(componentsRoot, entry.name))
-        .filter((name) => name.endsWith('.css'))
-        .map((name) => relative(stylesRoot, join(componentsRoot, entry.name, name))),
+  // Ordered and pinned by the path core gave each stylesheet, wherever it lives now (P-COR-101).
+  const order = componentsRoots(packageRoot, holders)
+    .flatMap((componentsRoot) =>
+      readdirSync(componentsRoot, { withFileTypes: true })
+        .filter(
+          (entry) => entry.isDirectory() && entry.name !== 'icons' && entry.name !== '_internal',
+        )
+        .flatMap((entry) =>
+          readdirSync(join(componentsRoot, entry.name))
+            .filter((name) => name.endsWith('.css'))
+            .map((name) => `../components/${entry.name}/${name}`),
+        ),
     )
     .filter((specifier) => !skipped.has(specifier))
     .toSorted(compareCodeUnits);
@@ -345,7 +402,26 @@ function renderCssRegion(packageRoot: string): string {
     }
     order.splice(anchor + 1, 0, pin.import);
   }
-  return order.map((specifier) => `@import '${specifier}';`).join('\n') + '\n';
+  return (
+    order
+      .map(
+        (specifier) =>
+          `@import '${coreSpecifier(holders, STYLESHEET, posix.join(posix.dirname(STYLESHEET), specifier))}';`,
+      )
+      .join('\n') + '\n'
+  );
+}
+
+/** Core's component stylesheet aggregate, core-relative. */
+const STYLESHEET = 'src/styles/components.css';
+
+/** A package specifier, resolved from `from` through the package's `exports`, if it resolves. */
+function resolvePackage(specifier: string, from: string): string | undefined {
+  try {
+    return Bun.resolveSync(specifier, dirname(from));
+  } catch {
+    return undefined;
+  }
 }
 
 async function format(text: string, filepath: string): Promise<string> {

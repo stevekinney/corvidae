@@ -91,6 +91,9 @@ const TEXT_FILE =
 const SPECIFIER =
   /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?|\bmock\.module\(\s*)(['"])([^'"\n]+)\2/g;
 const PATH_STRING = /(['"`])(\.\.?\/[^'"`\n$*{}]+)\1/g;
+const MARKDOWN_FILE = /\.md$/;
+/** A relative Markdown link's target, without its fragment: `](../alert/README.md#usage)`. */
+const MARKDOWN_LINK = /\]\((\.\.?\/[^)\s#?]+)(?:[#?][^)\s]*)?\)/g;
 const SKIPPED_DIRECTORIES = new Set(['node_modules', '.types', '.turbo', 'coverage', '.metadata']);
 export const ORDER_FILE = 'components-css-order.json';
 const COMPONENTS_CSS = 'src/styles/components.css';
@@ -715,14 +718,85 @@ function movedWithinCore(
   return `${relativeSpecifier(importer, physicalTarget)}${query}`;
 }
 
+/**
+ * The relative paths a file writes, each with where it starts: a code file's quoted path strings
+ * (not the specifiers {@link rewriteFile} handles first), a Markdown file's link targets.
+ */
+function relativePaths(path: string, text: string): { start: number; text: string }[] {
+  if (MARKDOWN_FILE.test(path)) {
+    return [...text.matchAll(MARKDOWN_LINK)].map((match) => ({
+      start: (match.index ?? 0) + 2,
+      text: match[1] ?? '',
+    }));
+  }
+  const paths: { start: number; text: string }[] = [];
+  for (const match of text.matchAll(PATH_STRING)) {
+    // A specifier is handled apart; skip any string the specifier pattern matched.
+    const before = text.slice(Math.max(0, (match.index ?? 0) - 24), match.index);
+    if (
+      /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?|mock\.module\(\s*)$/.test(
+        before,
+      )
+    ) {
+      continue;
+    }
+    paths.push({ start: (match.index ?? 0) + 1, text: match[2] ?? '' });
+  }
+  return paths;
+}
+
+/**
+ * Where a relative path `path` writes should point now, or undefined when it still reaches its
+ * file. It is resolved from where the file is, in its own package or (written by an earlier run)
+ * another one, and rewritten when the package that holds the file it names has since moved it.
+ */
+function retargetPath(
+  plan: Plan,
+  path: string,
+  home: { name: string; virtual: string },
+  text: string,
+): string | undefined {
+  const logical = posix.join(
+    packageDirectory(plan, home.name),
+    physicalPath(plan, home.name, home.virtual),
+  );
+  const pointedPath = posix.normalize(posix.join(posix.dirname(logical), text));
+  const pointed = packageOf(plan, pointedPath);
+  if (pointed === undefined) return undefined;
+  const pointedDirectory = packageDirectory(plan, pointed.name);
+  const base = pointed.virtual;
+  const file = resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
+  let owner: string | undefined = file === undefined ? undefined : plan.owner.get(file);
+  if (owner === undefined) {
+    const owners = ownersUnder(plan, base);
+    if (owners.size === 1) owner = [...owners][0];
+    else if (
+      owners.size > 1 &&
+      [...owners].some((name) => packageDirectory(plan, name) !== pointedDirectory)
+    ) {
+      plan.result.warnings.push(`${path}: ${text} names a directory several packages share.`);
+    }
+  }
+  if (owner === undefined) return undefined;
+  const absoluteTarget = posix.join(packageDirectory(plan, owner), physicalPath(plan, owner, base));
+  if (packageDirectory(plan, owner) === pointedDirectory && absoluteTarget === pointedPath) {
+    return undefined;
+  }
+  let replacement = posix.relative(posix.dirname(logical), absoluteTarget);
+  if (text.endsWith('/') && !replacement.endsWith('/')) replacement += '/';
+  if (!replacement.startsWith('.')) replacement = `./${replacement}`;
+  return replacement;
+}
+
 function rewriteFile(plan: Plan, path: string): void {
   const home = packageOf(plan, path);
-  if (home === undefined || !CODE_FILE.test(path)) return;
+  if (home === undefined || !(CODE_FILE.test(path) || MARKDOWN_FILE.test(path))) return;
   const directory = packageDirectory(plan, home.name);
   const original = read(plan, path);
   if (isGenerated(original)) return;
   const rewritten = new Map<number, { length: number; text: string }>();
-  for (const match of original.matchAll(SPECIFIER)) {
+  const specifiers = MARKDOWN_FILE.test(path) ? [] : original.matchAll(SPECIFIER);
+  for (const match of specifiers) {
     const specifier = match[3] ?? '';
     if (!specifier.startsWith('.')) continue;
     const target = resolveVirtual(plan, home.virtual, specifier);
@@ -772,50 +846,10 @@ function rewriteFile(plan: Plan, path: string): void {
       });
     }
   }
-  for (const match of original.matchAll(PATH_STRING)) {
-    const start = (match.index ?? 0) + 1;
+  for (const { start, text } of relativePaths(path, original)) {
     if (rewritten.has(start)) continue;
-    const text = match[2] ?? '';
-    // A specifier is handled above; skip any string the specifier pattern matched.
-    const before = original.slice(Math.max(0, (match.index ?? 0) - 24), match.index);
-    if (
-      /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?|mock\.module\(\s*)$/.test(
-        before,
-      )
-    ) {
-      continue;
-    }
-    // Where the string points now, in its own package or (written by an earlier run) another one;
-    // it is rewritten when the package that holds that file has since moved it.
-    const logical = posix.join(directory, physicalPath(plan, home.name, home.virtual));
-    const pointedPath = posix.normalize(posix.join(posix.dirname(logical), text));
-    const pointed = packageOf(plan, pointedPath);
-    if (pointed === undefined) continue;
-    const pointedDirectory = packageDirectory(plan, pointed.name);
-    const base = pointed.virtual;
-    const file = resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
-    let owner: string | undefined = file === undefined ? undefined : plan.owner.get(file);
-    if (owner === undefined) {
-      const owners = ownersUnder(plan, base);
-      if (owners.size === 1) owner = [...owners][0];
-      else if (
-        owners.size > 1 &&
-        [...owners].some((name) => packageDirectory(plan, name) !== pointedDirectory)
-      ) {
-        plan.result.warnings.push(`${path}: ${text} names a directory several packages share.`);
-      }
-    }
-    if (owner === undefined) continue;
-    const absoluteTarget = posix.join(
-      packageDirectory(plan, owner),
-      physicalPath(plan, owner, base),
-    );
-    if (packageDirectory(plan, owner) === pointedDirectory && absoluteTarget === pointedPath)
-      continue;
-    let replacement = posix.relative(posix.dirname(logical), absoluteTarget);
-    if (text.endsWith('/') && !replacement.endsWith('/')) replacement += '/';
-    if (!replacement.startsWith('.')) replacement = `./${replacement}`;
-    rewritten.set(start, { length: text.length, text: replacement });
+    const replacement = retargetPath(plan, path, home, text);
+    if (replacement !== undefined) rewritten.set(start, { length: text.length, text: replacement });
   }
   if (rewritten.size === 0) return;
   let next = original;
@@ -1007,11 +1041,12 @@ function barrelHeader(name: string): string {
 }
 
 /**
- * What core's barrel says instead of a statement that re-exports a package's module. A package of
- * one component is re-exported from its barrel. A family of several components is re-exported from
- * each component's own module (`@lostgradient/<family>/components/<component>/index.ts`), keeping
- * the statement's clause: importing the family's barrel would evaluate every member's stylesheet
- * where core named its first member, and change the order of the rules in `cinder.components`.
+ * What core's barrel says instead of a statement that re-exports a package's module. A family's
+ * component module is re-exported from that module (`@lostgradient/<family>/components/<component>/
+ * index.ts`), keeping the statement's clause, which is what `generate-root-registries.ts` writes:
+ * importing a family's barrel would evaluate every member's stylesheet where core named its first
+ * member, and change the order of the rules in `cinder.components`. Anything else is re-exported
+ * by name from the package's barrel.
  */
 function coreReexport(
   plan: Plan,
@@ -1024,9 +1059,10 @@ function coreReexport(
   },
 ): string {
   const { statement, source, name, target, names } = entry;
-  const components = plan.components.get(name) ?? [];
-  if (components.length <= 1) return reexport(names, `${PACKAGE_SCOPE}${name}`);
-  const own = specifierFor(name, target, components);
+  if (kindOf(name) !== 'family' || !target.startsWith('src/components/')) {
+    return reexport(names, `${PACKAGE_SCOPE}${name}`);
+  }
+  const own = specifierFor(name, target, plan.components.get(name));
   addExportKey(plan, name, own.exportKey);
   const moduleSpecifier = statement.moduleSpecifier;
   if (statement.exportClause === undefined || moduleSpecifier === undefined) {
@@ -1150,16 +1186,13 @@ export function readComponentsCssOrder(text: string): ComponentsCssOrder {
  * line); otherwise by its own subpath, since a family with several lines (popover's
  * `popover-surface.css` and `popover.css` sit apart) keeps them apart.
  */
-function stylesheetSpecifier(plan: Plan, path: string, lines: ReadonlyMap<string, number>): string {
+/** How core's `components.css` names a stylesheet, as `generate-root-registries.ts` writes it. */
+function stylesheetSpecifier(plan: Plan, path: string): string {
   const name = plan.owner.get(path);
   if (name === undefined) throw new Error(`${ORDER_FILE} names ${path}, which no package holds.`);
   if (packageDirectory(plan, name) === plan.options.core)
     return relativeSpecifier(COMPONENTS_CSS, path);
-  const components = plan.components.get(name) ?? [];
-  if (kindOf(name) === 'family' && components.length === 1 && lines.get(name) === 1) {
-    return `${PACKAGE_SCOPE}${name}/styles`;
-  }
-  return specifierFor(name, path, components).specifier;
+  return specifierFor(name, path, plan.components.get(name)).specifier;
 }
 
 /** The order file, created from today's `components.css` on the first run, before any rewrite. */
@@ -1200,15 +1233,10 @@ function regenerateStylesheets(plan: Plan): void {
       `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} in no line of ${orderPath}: place each in "imports" (or "unlisted"), then re-run.`,
     );
   }
-  const perPackage = new Map<string, number>();
-  for (const entry of order.imports) {
-    const name = plan.owner.get(entry.path);
-    if (name !== undefined) perPackage.set(name, (perPackage.get(name) ?? 0) + 1);
-  }
   const lines: string[] = [];
   for (const entry of order.imports) {
     if (entry.comment !== undefined) lines.push('', entry.comment);
-    lines.push(`@import '${stylesheetSpecifier(plan, entry.path, perPackage)}';`);
+    lines.push(`@import '${stylesheetSpecifier(plan, entry.path)}';`);
   }
   if (order.trailer !== undefined) lines.push('', order.trailer);
   write(plan, posix.join(core, COMPONENTS_CSS), `${lines.join('\n').trim()}\n`);

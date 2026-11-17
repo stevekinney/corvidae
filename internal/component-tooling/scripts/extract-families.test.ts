@@ -176,6 +176,10 @@ const TREE: Record<string, string> = {
   [`${CORE}/src/components/card/index.ts`]:
     "import './card.css';\nimport Card from './card.svelte';\n\nexport default Card;\n",
   [`${CORE}/src/components/card/card.css`]: '.card { color: green; }\n',
+  // A README links a sibling component's README, which another package holds once both move.
+  [`${CORE}/src/components/card/README.md`]:
+    '# Card\n\nA card holds a [`Button`](../button/README.md#usage) and [notes](./notes.md).\n',
+  [`${CORE}/src/components/button/README.md`]: '# Button\n\n## Usage\n',
   [`${CORE}/src/components/card/card-surface.css`]: '.card-surface { color: teal; }\n',
   [`${CORE}/src/components/card/card.svelte`]: [
     '<script lang="ts">',
@@ -463,7 +467,7 @@ describe('extract-families', () => {
         '/* The component stylesheets. */',
         "@import '@lostgradient/foundation/components/_partial.css';",
         "@import '@lostgradient/card/components/card/card-surface.css';",
-        "@import '@lostgradient/button/styles';",
+        "@import '@lostgradient/button/button.css';",
         '',
         '/* Card sits after button. */',
         "@import '@lostgradient/card/card.css';",
@@ -483,10 +487,19 @@ describe('extract-families', () => {
     expect(read(root, `${CORE}/src/index.ts`)).toContain(
       "export { resolveTokens } from '@lostgradient/tokens';\nexport type { TokenSet } from '@lostgradient/tokens';",
     );
+    // Core re-exports a family's component from the component's module, clause unchanged, so
+    // importing core evaluates the stylesheets in the order it always did.
+    expect(read(root, `${CORE}/src/index.ts`)).toContain(
+      "export { default as Button } from '@lostgradient/button/components/button/index.ts';\nexport type { ButtonProps } from '@lostgradient/button/components/button/index.ts';",
+    );
     expect(read(root, 'scripts/check.ts')).toContain(
       "'components/button/src/components/button/button.css'",
     );
     expect(read(root, 'scripts/check.ts')).toContain("'components/core/src/components'");
+    // A README's link to a component another package holds reaches it there, fragment kept.
+    expect(read(root, 'components/card/src/components/card/README.md')).toContain(
+      '[`Button`](../../../../button/src/components/button/README.md#usage) and [notes](./notes.md)',
+    );
 
     // Core exports the same names, and the split tree derives the same map.
     expect(exportNames(join(root, CORE, 'src/index.ts'))).toEqual(namesBefore);

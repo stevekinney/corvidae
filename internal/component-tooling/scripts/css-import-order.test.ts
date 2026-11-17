@@ -39,12 +39,15 @@ describe('the root barrel’s CSS evaluation order', () => {
     const evaluated = [
       ...new Set(
         [
+          // A component's barrel, in core or (P-COR-101) in the family that holds it.
           ...index.matchAll(
-            /^export \{[^}]*\} from '(?:\.\/components\/([^/]+)\/index\.ts|@lostgradient\/([^/']+))';$/gm,
+            /^export \{[^}]*\} from '(?:\.\/|@lostgradient\/[^/']+\/)components\/([^/]+)\/index\.ts';$/gm,
           ),
-        ].map((match) => match[1] ?? match[2] ?? ''),
+        ].map((match) => match[1] ?? ''),
       ),
     ];
+    // The pattern must still find the barrels, wherever they are, or the order test passes on none.
+    expect(evaluated.length).toBeGreaterThan(200);
     const recordedSet = new Set(recorded);
     expect(evaluated.filter((name) => recordedSet.has(name))).toEqual(
       recorded.filter((name) => evaluated.includes(name)),
