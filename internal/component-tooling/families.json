@@ -2551,6 +2551,18 @@
       "because": "it imports or builds src/test/fixtures/input-button-group-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/button-group/examples/rtl.example.svelte",
+      "from": "button",
+      "to": "core",
+      "because": "it needs \"dropdown\", which depends on \"button\" (src/components/button-group/examples/rtl.example.svelte -> src/components/dropdown/index.ts)"
+    },
+    {
+      "file": "src/components/button-group/examples/split-button.example.svelte",
+      "from": "button",
+      "to": "core",
+      "because": "it needs \"dropdown\", which depends on \"button\" (src/components/button-group/examples/split-button.example.svelte -> src/components/dropdown/index.ts)"
+    },
+    {
       "file": "src/components/card/card-fixtures.ts",
       "from": "card",
       "to": "core",
@@ -2563,6 +2575,42 @@
       "because": "it mounts \"button\", whose tests mount \"card\" in turn (src/components/card/card-footer.fixture.svelte -> src/components/button/index.ts)"
     },
     {
+      "file": "src/components/card/examples/blog-post-grid.example.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "it mounts \"avatar\", whose tests mount \"card\" in turn (src/components/card/examples/blog-post-grid.example.svelte -> src/components/avatar/index.ts)"
+    },
+    {
+      "file": "src/components/card/examples/danger-zone-action.example.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"card\" in turn (src/components/card/card-footer.fixture.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/card/examples/danger-zone-toggle.example.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"card\" in turn (src/components/card/card-footer.fixture.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/card/examples/header-actions.example.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"card\" in turn (src/components/card/card-footer.fixture.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/card/examples/team-roster.example.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "it mounts \"avatar\", whose tests mount \"card\" in turn (src/components/card/examples/blog-post-grid.example.svelte -> src/components/avatar/index.ts)"
+    },
+    {
+      "file": "src/components/card/examples/testimonial-grid.example.svelte",
+      "from": "card",
+      "to": "core",
+      "because": "it mounts \"avatar\", whose tests mount \"card\" in turn (src/components/card/examples/blog-post-grid.example.svelte -> src/components/avatar/index.ts)"
+    },
+    {
       "file": "src/components/checkbox-group/checkbox-group.test.ts",
       "from": "checkbox-group",
       "to": "core",
@@ -2573,6 +2621,12 @@
       "from": "checkbox",
       "to": "core",
       "because": "it imports or builds src/test/fixtures/checkbox-indeterminate-form-reset-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/components/checkbox/examples/with-error.example.svelte",
+      "from": "checkbox",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"checkbox\" in turn (src/components/checkbox/examples/with-error.example.svelte -> src/components/button/index.ts)"
     },
     {
       "file": "src/components/code-block/code-block.bundle.test.ts",
@@ -2629,6 +2683,18 @@
       "because": "it imports or builds src/test/fixtures/command-palette-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/container/examples/call-to-action.example.svelte",
+      "from": "container",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"container\" in turn (src/components/container/examples/call-to-action.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/container/examples/hero-section.example.svelte",
+      "from": "container",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"container\" in turn (src/components/container/examples/call-to-action.example.svelte -> src/components/button/index.ts)"
+    },
+    {
       "file": "src/components/data-grid/_internal/virtualization-adapter.svelte.test.ts",
       "from": "data-grid",
       "to": "core",
@@ -2645,6 +2711,48 @@
       "from": "data-table",
       "to": "core",
       "because": "it needs \"core\", which depends on \"data-table\" (src/components/data-table/data-table.test.ts -> src/index.ts)"
+    },
+    {
+      "file": "src/components/data-table/examples/audit-log.example.svelte",
+      "from": "data-table",
+      "to": "core",
+      "because": "it mounts \"list-detail\", whose tests mount \"data-table\" in turn (src/components/data-table/examples/audit-log.example.svelte -> src/components/list-detail/index.ts)"
+    },
+    {
+      "file": "src/components/drawer/drawer-fixtures.ts",
+      "from": "drawer",
+      "to": "core",
+      "because": "it imports or builds src/components/drawer/drawer-sheet.fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/components/drawer/drawer-sheet.fixture.svelte",
+      "from": "drawer",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"drawer\" in turn (src/components/drawer/drawer-sheet.fixture.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/drawer/drawer.fixture.svelte",
+      "from": "drawer",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"drawer\" in turn (src/components/drawer/drawer-sheet.fixture.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/drawer/examples/basic.example.svelte",
+      "from": "drawer",
+      "to": "core",
+      "because": "it needs \"select\", which depends on \"drawer\" (src/components/drawer/examples/basic.example.svelte -> src/components/select/index.ts)"
+    },
+    {
+      "file": "src/components/drawer/examples/bottom-sheet.example.svelte",
+      "from": "drawer",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"drawer\" in turn (src/components/drawer/drawer-sheet.fixture.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/drawer/examples/overflowing.example.svelte",
+      "from": "drawer",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"drawer\" in turn (src/components/drawer/drawer-sheet.fixture.svelte -> src/components/button/index.ts)"
     },
     {
       "file": "src/components/dropdown-group/dropdown-group.test.ts",
@@ -2695,6 +2803,42 @@
       "because": "it imports or builds src/test/fixtures/form-field-file-upload-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/focus-trap/examples/basic.example.svelte",
+      "from": "focus-trap",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"focus-trap\" in turn (src/components/focus-trap/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/form-field/examples/basic.example.svelte",
+      "from": "form-field",
+      "to": "core",
+      "because": "it needs \"input\", which depends on \"form-field\" (src/components/form-field/examples/basic.example.svelte -> src/components/input/index.ts)"
+    },
+    {
+      "file": "src/components/form-field/examples/composed-input.example.svelte",
+      "from": "form-field",
+      "to": "core",
+      "because": "it needs \"input\", which depends on \"form-field\" (src/components/form-field/examples/composed-input.example.svelte -> src/components/input/index.ts)"
+    },
+    {
+      "file": "src/components/form-field/examples/errors.example.svelte",
+      "from": "form-field",
+      "to": "core",
+      "because": "it needs \"input\", which depends on \"form-field\" (src/components/form-field/examples/errors.example.svelte -> src/components/input/index.ts)"
+    },
+    {
+      "file": "src/components/form-field/examples/note.example.svelte",
+      "from": "form-field",
+      "to": "core",
+      "because": "it needs \"input\", which depends on \"form-field\" (src/components/form-field/examples/note.example.svelte -> src/components/input/index.ts)"
+    },
+    {
+      "file": "src/components/form-field/examples/with-error.example.svelte",
+      "from": "form-field",
+      "to": "core",
+      "because": "it needs \"input\", which depends on \"form-field\" (src/components/form-field/examples/with-error.example.svelte -> src/components/input/index.ts)"
+    },
+    {
       "file": "src/components/form-field/form-field-error-presentation.test.ts",
       "from": "form-field",
       "to": "core",
@@ -2713,10 +2857,46 @@
       "because": "it imports or builds src/test/fixtures/form-field-supporting-text-controls-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/form-section/examples/account-settings.example.svelte",
+      "from": "form-section",
+      "to": "core",
+      "because": "it mounts \"input\", whose tests mount \"form-section\" in turn (src/components/form-section/examples/account-settings.example.svelte -> src/components/input/index.ts)"
+    },
+    {
+      "file": "src/components/form-section/examples/fieldset-legend.example.svelte",
+      "from": "form-section",
+      "to": "core",
+      "because": "it mounts \"input\", whose tests mount \"form-section\" in turn (src/components/form-section/examples/account-settings.example.svelte -> src/components/input/index.ts)"
+    },
+    {
+      "file": "src/components/form-section/examples/responsive-grid.example.svelte",
+      "from": "form-section",
+      "to": "core",
+      "because": "it mounts \"input\", whose tests mount \"form-section\" in turn (src/components/form-section/examples/account-settings.example.svelte -> src/components/input/index.ts)"
+    },
+    {
       "file": "src/components/icons/index.test.ts",
       "from": "foundation",
       "to": "core",
       "because": "it needs \"core\", which depends on \"foundation\" (src/components/icons/index.test.ts -> src/index.ts)"
+    },
+    {
+      "file": "src/components/image/examples/basic.example.test.ts",
+      "from": "image",
+      "to": "core",
+      "because": "it imports or builds src/components/drawer/examples/basic.example.svelte, which core owns"
+    },
+    {
+      "file": "src/components/input/examples/newsletter-signup.example.svelte",
+      "from": "input",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"input\" in turn (src/components/input/examples/newsletter-signup.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/input/examples/sign-in.example.svelte",
+      "from": "input",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"input\" in turn (src/components/input/examples/newsletter-signup.example.svelte -> src/components/button/index.ts)"
     },
     {
       "file": "src/components/kbd/kbd-button-shortcut.fixture.svelte",
@@ -2731,10 +2911,52 @@
       "because": "it imports or builds src/components/kbd/kbd-button-shortcut.fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/list-detail/list-detail-table.fixture.svelte",
+      "from": "list-detail",
+      "to": "core",
+      "because": "it mounts \"data-table\", whose tests mount \"list-detail\" in turn (src/components/list-detail/list-detail-table.fixture.svelte -> src/components/data-table/index.ts)"
+    },
+    {
+      "file": "src/components/list-detail/list-detail.test.ts",
+      "from": "list-detail",
+      "to": "core",
+      "because": "it imports or builds src/components/list-detail/list-detail-table.fixture.svelte, which core owns"
+    },
+    {
       "file": "src/components/locale-provider/locale-provider.test.ts",
       "from": "locale-provider",
       "to": "core",
       "because": "it imports or builds src/test/fixtures/locale-provider-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/components/modal/examples/basic.example.svelte",
+      "from": "modal",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"modal\" in turn (src/components/modal/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/modal/examples/chromeless.example.svelte",
+      "from": "modal",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"modal\" in turn (src/components/modal/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/modal/examples/overflowing.example.svelte",
+      "from": "modal",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"modal\" in turn (src/components/modal/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/modal/examples/with-form.example.svelte",
+      "from": "modal",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"modal\" in turn (src/components/modal/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/modal/modal-fixtures.ts",
+      "from": "modal",
+      "to": "core",
+      "because": "it imports or builds src/components/modal/modal.fixture.svelte, which core owns"
     },
     {
       "file": "src/components/modal/modal-sheet.test.ts",
@@ -2743,16 +2965,40 @@
       "because": "it needs \"confirm-dialog\", which depends on \"modal\" (src/components/modal/modal-sheet.test.ts -> src/components/confirm-dialog/confirm-dialog.svelte)"
     },
     {
+      "file": "src/components/modal/modal.fixture.svelte",
+      "from": "modal",
+      "to": "core",
+      "because": "it mounts \"popover\", whose tests mount \"modal\" in turn (src/components/modal/modal.fixture.svelte -> src/components/popover/index.ts)"
+    },
+    {
       "file": "src/components/multi-select/multi-select.test.ts",
       "from": "multi-select",
       "to": "core",
       "because": "it imports or builds src/test/fixtures/form-field-multi-select-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/popover/examples/basic.example.svelte",
+      "from": "popover",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"popover\" in turn (src/components/popover/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/popover/examples/tooltip-over-popover.example.svelte",
+      "from": "popover",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"popover\" in turn (src/components/popover/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
       "file": "src/components/popover/popover-sheet.test.ts",
       "from": "popover",
       "to": "core",
       "because": "it imports or builds src/test/fixtures/dropdown-compound-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/components/portal/examples/basic.example.svelte",
+      "from": "portal",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"portal\" in turn (src/components/portal/examples/basic.example.svelte -> src/components/button/index.ts)"
     },
     {
       "file": "src/components/run-step-timeline/run-step-timeline.test.ts",
@@ -2785,6 +3031,12 @@
       "because": "it imports or builds src/test/fixtures/stacked-list-item-extras-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/stale-region/examples/offline-page.example.svelte",
+      "from": "stale-region",
+      "to": "core",
+      "because": "it mounts \"approval-card\", whose tests mount \"stale-region\" in turn (src/components/stale-region/examples/offline-page.example.svelte -> src/components/approval-card/index.ts)"
+    },
+    {
       "file": "src/components/steps/steps.test.ts",
       "from": "steps",
       "to": "core",
@@ -2803,6 +3055,12 @@
       "because": "it imports or builds src/test/fixtures/form-field-textarea-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/toggle/examples/group.example.svelte",
+      "from": "toggle",
+      "to": "core",
+      "because": "it mounts \"form-section\", whose tests mount \"toggle\" in turn (src/components/toggle/examples/group.example.svelte -> src/components/form-section/index.ts)"
+    },
+    {
       "file": "src/components/toggle/toggle.test.ts",
       "from": "toggle",
       "to": "core",
@@ -2813,6 +3071,30 @@
       "from": "toolbar",
       "to": "core",
       "because": "it imports or builds src/test/fixtures/toolbar-composition-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/components/tooltip/examples/basic.example.svelte",
+      "from": "tooltip",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"tooltip\" in turn (src/components/tooltip/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/tooltip/examples/placements.example.svelte",
+      "from": "tooltip",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"tooltip\" in turn (src/components/tooltip/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/tooltip/examples/transformed-ancestor.example.svelte",
+      "from": "tooltip",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"tooltip\" in turn (src/components/tooltip/examples/basic.example.svelte -> src/components/button/index.ts)"
+    },
+    {
+      "file": "src/components/visually-hidden/examples/basic.example.svelte",
+      "from": "visually-hidden",
+      "to": "core",
+      "because": "it mounts \"button\", whose tests mount \"visually-hidden\" in turn (src/components/visually-hidden/examples/basic.example.svelte -> src/components/button/index.ts)"
     },
     {
       "file": "src/test/fixtures/anchored-overlay-boundary-fixture.svelte",
