@@ -127,7 +127,7 @@ describe('ReviewEditor mounted inline controls', () => {
     textarea.setSelectionRange(4, 9);
 
     const dismiss = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Dismiss front matter warning',
+      (button) => button.getAttribute('aria-label') === 'Dismiss front matter warning',
     );
     if (!dismiss) throw new Error('Expected dismiss button.');
 
@@ -158,7 +158,7 @@ describe('ReviewEditor mounted inline controls', () => {
 
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     const firstDismiss = Array.from(first.container.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Dismiss front matter warning',
+      (button) => button.getAttribute('aria-label') === 'Dismiss front matter warning',
     );
     if (!firstDismiss) throw new Error('Expected first dismiss button.');
 
