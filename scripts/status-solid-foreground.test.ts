@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
+import { cinderComponentFile } from '../internal/component-tooling/scripts/discover-component-directories.ts';
 import { directoryGlob, workspaceParentDirectories } from './workspace-directories';
 
 /**
@@ -152,7 +153,8 @@ describe('status fills as foreground colors', () => {
       ['dropdown/dropdown.css', 3],
     ] as const;
     for (const [sheet, minimum] of sheets) {
-      const css = await Bun.file(join(root, 'components/cinder/src/components', sheet)).text();
+      // Wherever the component lives: core, or the package the split moved it into (P-COR-101).
+      const css = await Bun.file(cinderComponentFile(sheet)).text();
       const { leaves, foregroundCount } = foregroundLeaves(css);
       expect(foregroundCount).toBeGreaterThanOrEqual(minimum);
       expect([...leaves].filter((leaf) => statusSolidToken.test(leaf))).toEqual([]);
@@ -160,8 +162,7 @@ describe('status fills as foreground colors', () => {
   });
 
   test('the status rings still resolve to text tokens', async () => {
-    const read = (sheet: string) =>
-      Bun.file(join(root, 'components/cinder/src/components', sheet)).text();
+    const read = (sheet: string) => Bun.file(cinderComponentFile(sheet)).text();
     const ringLeaves = (css: string, property: RegExp): string[] =>
       declarations(css)
         .filter((declaration) => property.test(declaration.property))
@@ -202,9 +203,7 @@ describe('status fills as foreground colors', () => {
     // The toast is an inverse chip: its text is `--cinder-text-inverse`, and its icon, spinner and
     // dismiss button inherit that through `currentColor`. A status fill can tint the chip's
     // surface (the danger toast), but it is not a foreground.
-    const css = await Bun.file(
-      join(root, 'components/cinder/src/components/toast-region/toast-region.css'),
-    ).text();
+    const css = await Bun.file(cinderComponentFile('toast-region/toast-region.css')).text();
     const rule = (selector: string): string => {
       const escaped = selector.replace(/[.[\]'=-]/g, '\\$&');
       const match = css
@@ -224,18 +223,14 @@ describe('status fills as foreground colors', () => {
     const send = await Bun.file(
       join(root, 'components/chat/src/lib/components/chat/input/chat-input.svelte'),
     ).text();
-    const button = await Bun.file(
-      join(root, 'components/cinder/src/components/button/button.css'),
-    ).text();
+    const button = await Bun.file(cinderComponentFile('button/button.css')).text();
     expect(button).toMatch(
       /@media \(any-pointer: coarse\) \{\s*\.cinder-button\[data-cinder-hit-target='44'\] \{\s*position: relative;/,
     );
     expect(send).not.toMatch(
       /\.chat-input-footer :global\(\.cinder-button\)[^{]*\{[^}]*--cinder-touch-target-min/,
     );
-    const toggle = await Bun.file(
-      join(root, 'components/cinder/src/components/toggle/toggle.css'),
-    ).text();
+    const toggle = await Bun.file(cinderComponentFile('toggle/toggle.css')).text();
     expect(toggle).toContain('@media (any-pointer: coarse)');
     expect(toggle).not.toMatch(/@media \(pointer: coarse\)/);
   });

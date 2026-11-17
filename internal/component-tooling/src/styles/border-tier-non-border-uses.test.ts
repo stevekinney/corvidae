@@ -56,6 +56,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+import { cinderPackages } from '../../scripts/discover-component-directories.ts';
+
 import { describe, expect, test } from 'bun:test';
 
 type Category = 'hairline' | 'area' | 'mix' | 'occlusion' | 'alias';
@@ -160,6 +162,17 @@ const SCAN_ROOTS = [
   ['packages/components/src/styles', 'components/cinder/src/styles'],
   ['packages/chat/src', 'components/chat/src'],
   ['packages/editor/src', 'components/editor/src'],
+  // The packages the split moved Cinder's components and partials into (P-COR-101) keep core's
+  // layout, so each file is classified under the path it had in core.
+  ...cinderPackages().flatMap(([, packageRoot]) =>
+    (['components', 'styles'] as const).map(
+      (directory) =>
+        [
+          `${relative(REPOSITORY_ROOT, packageRoot)}/src/${directory}`,
+          `components/cinder/src/${directory}`,
+        ] as const,
+    ),
+  ),
 ] as const;
 
 /** `tokens-base.css` is generated from the corpus, where the aliases are already gated. */

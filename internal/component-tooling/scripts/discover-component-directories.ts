@@ -134,6 +134,19 @@ export function cinderComponentRoots(coreRoot: string = CORE_ROOT): string[] {
 }
 
 /**
+ * A file under one of Cinder's components roots, wherever it lives now (`button/button.css` is in
+ * core's `src/components` until the split moves it into `components/button`). The path in core
+ * when no root holds it.
+ */
+export function cinderComponentFile(relativePath: string, coreRoot: string = CORE_ROOT): string {
+  return (
+    cinderComponentRoots(coreRoot)
+      .map((root) => join(root, relativePath))
+      .find((path) => existsSync(path)) ?? join(coreRoot, 'src', 'components', relativePath)
+  );
+}
+
+/**
  * A file's path the way core's checks and their baselines name it: relative to core, so `src/…`
  * while core holds it and `../<package>/src/…` once a package does.
  */

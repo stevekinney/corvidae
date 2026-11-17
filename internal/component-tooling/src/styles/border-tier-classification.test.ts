@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { cinderComponentFile } from '../../scripts/discover-component-directories.ts';
+
 import { describe, expect, test } from 'bun:test';
 
 import { CLASSIFIED, allUseSites, classify } from './border-tier-non-border-uses.test.ts';
@@ -71,7 +73,8 @@ describe('CIN-245: structural border tier classification', () => {
  * a sweep, because the sweep cannot tell a button's resting edge from a card's.
  */
 describe('COR-1552: bordered button resting edges keep the control tier', () => {
-  const COMPONENTS_ROOT = join(import.meta.dirname, '../../../../components/cinder/src/components');
+  // Each component's stylesheet wherever it lives: core, or the package the split moved it into.
+  const componentFile = (...parts: string[]) => cinderComponentFile(parts.join('/'));
   const CHAT_ROOT = join(import.meta.dirname, '../../../../components/chat/src/lib/components');
   const EDITOR_ROOT = join(import.meta.dirname, '../../../../components/editor/src/lib/components');
 
@@ -107,61 +110,61 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
 
   const EDGES: Edge[] = [
     {
-      file: join(COMPONENTS_ROOT, 'load-more', 'load-more.css'),
+      file: componentFile('load-more', 'load-more.css'),
       selector: '.cinder-load-more__button',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'carousel', 'carousel.css'),
+      file: componentFile('carousel', 'carousel.css'),
       selector: '.cinder-carousel__control',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'file-upload', 'file-upload.css'),
+      file: componentFile('file-upload', 'file-upload.css'),
       selector: '.cinder-file-upload__retry',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'share-card', 'share-card.css'),
+      file: componentFile('share-card', 'share-card.css'),
       selector: '.cinder-share-card__action',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'shortcut-field', 'shortcut-field.css'),
+      file: componentFile('shortcut-field', 'shortcut-field.css'),
       selector: '.cinder-shortcut-field__clear',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'date-range-field', 'date-range-field.css'),
+      file: componentFile('date-range-field', 'date-range-field.css'),
       selector: '.cinder-date-range-field__preset-btn',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'invocation-rule-builder', 'invocation-rule-builder.css'),
+      file: componentFile('invocation-rule-builder', 'invocation-rule-builder.css'),
       selector: '.cinder-invocation-rule-builder__icon-btn',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'invocation-rule-builder', 'invocation-rule-builder.css'),
+      file: componentFile('invocation-rule-builder', 'invocation-rule-builder.css'),
       selector: '.cinder-invocation-rule-builder__add-btn',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'tree', 'tree.css'),
+      file: componentFile('tree', 'tree.css'),
       selector: '.cinder-tree-expand-all__button, .cinder-tree-select-all__button',
       property: 'border',
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'pagination', 'pagination.css'),
+      file: componentFile('pagination', 'pagination.css'),
       selector:
         '.cinder-pagination__step:hover:not(:disabled), .cinder-pagination__page:hover:not([data-cinder-current])',
       property: 'border-color',
@@ -230,7 +233,7 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
   });
 
   test('a chip is filled with no edge, resting or disabled (COR-2312)', () => {
-    const chipRules = rules(join(COMPONENTS_ROOT, 'chip', 'chip.css'));
+    const chipRules = rules(componentFile('chip', 'chip.css'));
     expect(
       chipRules.some(
         (rule) => rule.selector === "button.cinder-chip[data-cinder-variant='neutral']",
