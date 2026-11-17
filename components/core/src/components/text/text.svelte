@@ -5,7 +5,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   import Tooltip from '../tooltip/tooltip.svelte';
   import { fitMiddleHead } from './text-middle.ts';

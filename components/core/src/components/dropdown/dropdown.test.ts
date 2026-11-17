@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { createRawSnippet, flushSync } from 'svelte';
 
 import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
+import { createTransitionEndEvent } from '@lostgradient/foundation/_internal/transition-completion-test-events.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { createTransitionEndEvent } from '../../_internal/transition-completion-test-events.ts';
 
 setupHappyDom();
 
@@ -23,7 +23,8 @@ const { default: DropdownRovingFixture } =
   await import('../../test/fixtures/dropdown-roving-fixture.svelte');
 const { default: DropdownTriggerNoCaretFixture } =
   await import('../../test/fixtures/dropdown-trigger-no-caret-fixture.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 // Tests render into the shared `document.body` (see the `render` wrapper below).
 // Without unmounting between tests, prior renders linger in the DOM and leave

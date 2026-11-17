@@ -6,7 +6,7 @@
   import { untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   import {
     SegmentedControlController,

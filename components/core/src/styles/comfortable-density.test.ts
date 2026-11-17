@@ -25,7 +25,9 @@ import {
   type OklchColor,
 } from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
-const foundation = await Bun.file(new URL('./foundation.css', import.meta.url)).text();
+const foundation = await Bun.file(
+  new URL('../../../foundation/src/styles/foundation.css', import.meta.url),
+).text();
 const tokens = await Bun.file(
   new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
 ).text();

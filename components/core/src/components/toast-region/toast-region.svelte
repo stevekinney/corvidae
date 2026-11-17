@@ -18,12 +18,12 @@
   import Info from '@lucide/svelte/icons/info';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
-  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
-  import { setToastContext } from '../../_internal/toast-context.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { waitForTransitionCompletion } from '../../_internal/transition-completion.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { trackKeyboardInset } from '@lostgradient/foundation/_internal/keyboard-inset.ts';
+  import { setToastContext } from '@lostgradient/foundation/_internal/toast-context.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { waitForTransitionCompletion } from '@lostgradient/foundation/_internal/transition-completion.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import type {
     ToastItem,
     ToastOptions,

@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { resetEscapeStack, resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { installDrawerDialogStubs, installDrawerStyleProbe } from './drawer-test-helpers.ts';
 
 setupHappyDom();

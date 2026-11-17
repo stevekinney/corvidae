@@ -8,8 +8,8 @@
     dataTableClass,
     resolveChartTheme,
   } from '../../_internal/chart/chart-utilities.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
   import type { WaveformProps } from './waveform.types.ts';
 
   let {

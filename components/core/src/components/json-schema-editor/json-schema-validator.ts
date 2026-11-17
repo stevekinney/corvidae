@@ -26,7 +26,7 @@ import {
   dedupeInterpreterErrors,
   isRefResolutionSchemaError,
   stripPointerHash,
-} from '../../utilities/json-schema-interpreter.ts';
+} from '@lostgradient/foundation/utilities/json-schema-interpreter.ts';
 import type {
   JsonSchemaDraft,
   JsonSchemaKnownDraft,

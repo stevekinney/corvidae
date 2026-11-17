@@ -13,12 +13,12 @@
   import { untrack, type Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { getSequentialFocusTargets } from '../../utilities/focus.ts';
-  import { commitValue } from '../../utilities/value-change.ts';
-  import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { PHONE_VIEWPORT_BREAKPOINT } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { getSequentialFocusTargets } from '@lostgradient/foundation/utilities/focus.ts';
+  import { commitValue } from '@lostgradient/foundation/utilities/value-change.ts';
+  import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';
   import Popover from '../popover/popover.svelte';
   import type { SelectGroup, SelectOption, SelectVariant } from './select.types.ts';
 

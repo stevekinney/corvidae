@@ -11,9 +11,9 @@
   import EyeOff from '@lucide/svelte/icons/eye-off';
 
   import type { SecretValueFieldProps } from './secret-value-field.types.ts';
-  import { copyToClipboard } from '../../utilities/clipboard.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import { copyToClipboard } from '@lostgradient/foundation/utilities/clipboard.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
 
   let {
     value,

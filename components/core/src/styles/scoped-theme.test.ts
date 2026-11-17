@@ -3,7 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, test } from 'bun:test';
 
 const TOKENS_BASE_PATH = new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url);
-const FOUNDATION_CSS_PATH = new URL('./foundation.css', import.meta.url);
+const FOUNDATION_CSS_PATH = new URL(
+  '../../../foundation/src/styles/foundation.css',
+  import.meta.url,
+);
 const CODE_BLOCK_CSS_PATH = new URL('../components/code-block/code-block.css', import.meta.url);
 const SIDEBAR_CSS_PATH = new URL('../components/sidebar/sidebar.css', import.meta.url);
 const DRAWER_CSS_PATH = new URL('../components/drawer/drawer.css', import.meta.url);

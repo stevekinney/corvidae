@@ -1,6 +1,6 @@
-import { formatBytes } from '../../utilities/format-bytes.ts';
-import { formatDate, formatTimeOfDay } from '../../utilities/format-date.ts';
-import { formatNumber } from '../../utilities/format-number.ts';
+import { formatBytes } from '@lostgradient/foundation/utilities/format-bytes.ts';
+import { formatDate, formatTimeOfDay } from '@lostgradient/foundation/utilities/format-date.ts';
+import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
 import { SecretValue } from './payload-inspector-secrets.ts';
 import type { PayloadInspectorField } from './payload-inspector.types.ts';
 

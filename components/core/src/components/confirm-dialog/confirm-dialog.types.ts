@@ -1,6 +1,6 @@
 import type { Snippet } from 'svelte';
 
-import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
+import type { DialogCancelProps } from '@lostgradient/foundation/utilities/dialog-props.ts';
 
 /**
  * A thin opinionated preset over `<Modal>` for destructive-action confirmations.

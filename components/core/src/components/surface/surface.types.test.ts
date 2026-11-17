@@ -12,7 +12,7 @@ import { expect, test } from 'bun:test';
 import type { ComponentProps, Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { SurfaceTone } from '../../_internal/surface-context.ts';
+import type { SurfaceTone } from '@lostgradient/foundation/_internal/surface-context.ts';
 import Surface from './surface.svelte';
 import type { SurfaceProps } from './surface.types.ts';
 

@@ -6,10 +6,13 @@
   import type { ColorSwatch, ColorSwatchPickerProps } from './color-swatch-picker.types.ts';
   import { tick } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { hasAlpha, pickContrastColor } from '../../utilities/color-luminance.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import {
+    hasAlpha,
+    pickContrastColor,
+  } from '@lostgradient/foundation/utilities/color-luminance.ts';
+  import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
   import Check from '@lucide/svelte/icons/check';
 
   let {

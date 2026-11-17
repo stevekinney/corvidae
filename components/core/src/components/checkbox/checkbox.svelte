@@ -4,19 +4,19 @@
 
 <script lang="ts">
   import type { CheckboxProps } from './checkbox.types.ts';
-  import CheckboxIndicatorShell from '../_internal/checkbox-indicator-shell.svelte';
-  import { resolveFieldControl } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import CheckboxIndicatorShell from '@lostgradient/foundation/components/_internal/checkbox-indicator-shell.svelte';
+  import { resolveFieldControl } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
   import {
     getStaleRegionContext,
     isStaleInert,
     mergeDescribedBy,
-  } from '../../_internal/stale-region-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { commitValue } from '../../utilities/value-change.ts';
+  } from '@lostgradient/foundation/_internal/stale-region-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { commitValue } from '@lostgradient/foundation/utilities/value-change.ts';
   import { default as FormField } from '../form-field/index.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
 
   let {
     id,

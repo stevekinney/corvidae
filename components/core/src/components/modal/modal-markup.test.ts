@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs, textSnippet } from './modal-test-helpers.ts';
 
 setupHappyDom();

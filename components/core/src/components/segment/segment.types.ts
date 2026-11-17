@@ -1,10 +1,10 @@
-import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLAttributes } from 'svelte/elements';
 import type {
   DataAttributes,
   PadUnion,
   WithoutDataAttributes,
-} from '../../_internal/union-props.ts';
+} from '@lostgradient/foundation/_internal/union-props.ts';
+import type { Snippet } from 'svelte';
+import type { HTMLAnchorAttributes, HTMLAttributes } from 'svelte/elements';
 
 export type SegmentCurrentToken = 'page' | 'step' | 'location' | 'date' | 'time' | 'true';
 

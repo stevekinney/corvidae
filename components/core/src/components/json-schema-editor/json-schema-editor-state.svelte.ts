@@ -13,8 +13,14 @@
  * schema (meta-schema) and compile (debounced).
  */
 
-import { stableSerialise, useHistory } from '../../utilities/use-history.svelte.ts';
-import type { UseHistory, UseHistorySnapshot } from '../../utilities/use-history.types.ts';
+import {
+  stableSerialise,
+  useHistory,
+} from '@lostgradient/foundation/utilities/use-history.svelte.ts';
+import type {
+  UseHistory,
+  UseHistorySnapshot,
+} from '@lostgradient/foundation/utilities/use-history.types.ts';
 
 import type { CreateEditorStateOptions } from './json-schema-editor-state.types.ts';
 import type {

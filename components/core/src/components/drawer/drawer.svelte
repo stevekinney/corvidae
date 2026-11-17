@@ -7,12 +7,12 @@
   import { onDestroy, tick, untrack } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';
 
-  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
-  import { overflowFade } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { restoreFocusTo } from '../../utilities/focus.ts';
+  import { trackKeyboardInset } from '@lostgradient/foundation/_internal/keyboard-inset.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { reducedMotionFadeIn } from '@lostgradient/foundation/_internal/reduced-motion-fade.ts';
+  import { overflowFade } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { restoreFocusTo } from '@lostgradient/foundation/utilities/focus.ts';
   import { createFocusTrap } from '../focus-trap/index.ts';
   import {
     clampDragHeight,
@@ -24,11 +24,11 @@
     resolveDetent,
     stepDetent,
   } from './drawer-detents.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import {
     createSlidingDialogState,
     focusDialogBodyUnlessAutofocused,
-  } from '../_internal/create-sliding-dialog-state.svelte.ts';
+  } from '@lostgradient/foundation/components/_internal/create-sliding-dialog-state.svelte.ts';
 
   let {
     open = $bindable(false),

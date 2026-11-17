@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import type { DropdownSeparatorProps } from './dropdown-separator.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let { class: customClassName, ...rest }: DropdownSeparatorProps = $props();
 </script>

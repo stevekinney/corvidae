@@ -1,5 +1,5 @@
+import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
 import { createContext } from 'svelte';
-import type { TextDirection } from '../../_internal/locale-context.ts';
 
 export type ContextMenuContext = {
   get disabled(): boolean;

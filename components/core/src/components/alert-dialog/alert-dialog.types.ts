@@ -1,4 +1,4 @@
-import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
+import type { DialogCancelProps } from '@lostgradient/foundation/utilities/dialog-props.ts';
 
 /**
  * Cancel semantics (shared vocabulary from {@link DialogCancelProps}):

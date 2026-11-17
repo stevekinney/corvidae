@@ -6,7 +6,7 @@
   import { tick } from 'svelte';
   import { setDataListContext } from '../../_internal/data-list-context.ts';
   import { captureScrollAnchor } from '../../_internal/scroll-anchor.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { DataListGroup, DataListProps } from './data-list.types.ts';
 
   let {

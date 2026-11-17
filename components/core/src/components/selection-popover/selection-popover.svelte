@@ -10,18 +10,18 @@
   import type { SelectionPopoverProps } from './selection-popover.types.ts';
   import { onDestroy, tick, untrack } from 'svelte';
 
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { createClickOutside } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { createAnchoredOverlayExitState } from '@lostgradient/foundation/_internal/anchored-overlay-exit.svelte.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { createClickOutside } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     createRovingToolbar,
     ROVING_TOOLBAR_MUTATION_OPTIONS,
     type RovingToolbarController,
-  } from '../../utilities/roving-toolbar.ts';
-  import { useMutationObserver } from '../../utilities/use-mutation-observer.svelte.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  } from '@lostgradient/foundation/utilities/roving-toolbar.ts';
+  import { useMutationObserver } from '@lostgradient/foundation/utilities/use-mutation-observer.svelte.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import { createPortalAttachment } from '../portal/index.ts';
   import { createVirtualKeyboardDismissal } from './virtual-keyboard-dismissal.svelte.ts';
 

@@ -10,7 +10,7 @@ setupHappyDom();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: ModalRegion } = await import('./modal-region.svelte');
 const { default: ModalRegionHost } = await import('./modal-region-host.test.svelte');
-type ModalApi = import('../../_internal/modal-context.ts').ModalApi;
+type ModalApi = import('@lostgradient/foundation/_internal/modal-context.ts').ModalApi;
 
 afterEach(cleanup);
 

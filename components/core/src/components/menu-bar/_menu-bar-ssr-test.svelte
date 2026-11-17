@@ -1,7 +1,7 @@
 <script lang="ts">
   import MenuBar from './menu-bar.svelte';
   import LocaleProvider from '../locale-provider/locale-provider.svelte';
-  import type { TextDirection } from '../../_internal/locale-context.ts';
+  import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
   import { fileEditViewMenus } from './menu-bar-test-data.ts';
 
   let { providerDirection }: { providerDirection?: TextDirection } = $props();

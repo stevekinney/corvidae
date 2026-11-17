@@ -81,7 +81,7 @@ describe('command-item active state — tint and WCAG 1.4.11 ring', () => {
     // rule declares no `box-shadow` of its own that could replace or cancel it.
     const rule = findTopLevelRule(ACTIVE_SELECTOR);
     expect(declValue(rule, 'box-shadow')).toBeUndefined();
-    const shared = loadCss('../../styles/components/_row-item.css');
+    const shared = loadCss('../../../../foundation/src/styles/components/_row-item.css');
     expect(shared).toMatch(
       /\.cinder-_row-item\[data-cinder-active\][\s\S]*?box-shadow:\s*inset\s+0\s+0\s+0\s+1px\s+var\(--cinder-ring-color\)/,
     );

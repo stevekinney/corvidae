@@ -6,8 +6,8 @@
   import {
     setStaleRegionContext,
     STALE_REGION_DEFAULT_REASON,
-  } from '../../_internal/stale-region-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  } from '@lostgradient/foundation/_internal/stale-region-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { StaleRegionProps } from './stale-region.types.ts';
 
   const {

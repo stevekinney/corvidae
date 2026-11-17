@@ -10,9 +10,9 @@
   import Skeleton from '../skeleton/skeleton.svelte';
   import { resolveChartTheme } from '../../_internal/chart/chart-utilities.ts';
   import type { StatisticProps } from './statistic.types.ts';
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatNumber } from '../../utilities/format-number.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
 
   // $props.id() returns a framework-managed, SSR-stable id unique to this component
   // instance. Pass an explicit `id` prop to control the base when a specific value

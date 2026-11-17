@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 setupHappyDom();
 const { cleanup } = await import('@testing-library/svelte');
-const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');
 
 const navigationBarCss = readFileSync(new URL('./navigation-bar.css', import.meta.url), 'utf8');
 afterEach(() => {

@@ -7,7 +7,7 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/svelte');
 const { default: SelectionPopover } = await import('./selection-popover.svelte');
-const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');
 
 afterEach(() => {
   cleanup();

@@ -252,7 +252,7 @@ describe('dark json-highlight and line notes on the code block (row 07s, COR-201
 
   it('json-highlight.css colors its tokens only with those roles', () => {
     const css = readFileSync(
-      new URL('../../../core/src/styles/components/json-highlight.css', import.meta.url),
+      new URL('../../../foundation/src/styles/components/json-highlight.css', import.meta.url),
       'utf8',
     );
     const roles = new Set(

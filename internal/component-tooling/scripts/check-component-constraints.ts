@@ -23,7 +23,7 @@ import type {
   ConstraintsDocument,
   ConstraintSeverity,
   Predicate,
-} from '../../../components/core/src/_internal/constraints.ts';
+} from '../../../components/foundation/src/_internal/constraints.ts';
 import { discoverComponentDirectories } from './discover-component-directories.ts';
 import { isObjectRecord } from './validation-utilities.ts';
 

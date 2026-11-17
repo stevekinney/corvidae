@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
 
   const context = getFormFieldContext();
 </script>

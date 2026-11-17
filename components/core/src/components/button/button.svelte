@@ -9,15 +9,15 @@
     getActionEmphasisContext,
     resolveActionSize,
     resolveActionVariant,
-  } from '../../_internal/action-emphasis-context.ts';
+  } from '@lostgradient/foundation/_internal/action-emphasis-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
   import {
     getStaleRegionContext,
     isStaleInert,
     mergeDescribedBy,
-  } from '../../_internal/stale-region-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  } from '@lostgradient/foundation/_internal/stale-region-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import ShortcutHint from '../shortcut-hint/shortcut-hint.svelte';
   import type { ButtonProps } from './button.types.ts';
 

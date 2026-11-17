@@ -2,12 +2,12 @@ import {
   composedContains,
   composedFocusScopes,
   type SequentialFocusTarget,
-} from '../../utilities/composed-tree.ts';
+} from '@lostgradient/foundation/utilities/composed-tree.ts';
 import {
   findSequentialEntryTarget,
   getSequentialFocusTargets,
   getTabIndexValue,
-} from '../../utilities/focus.ts';
+} from '@lostgradient/foundation/utilities/focus.ts';
 
 export function getNavigationBarBrandFocusTargets(
   navigationBar: HTMLElement | null,

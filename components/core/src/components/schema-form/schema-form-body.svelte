@@ -8,7 +8,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';

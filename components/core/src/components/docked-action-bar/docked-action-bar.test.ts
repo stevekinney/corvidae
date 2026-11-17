@@ -10,8 +10,9 @@ const { cleanup, render } = await import('@testing-library/svelte');
 const { default: DockedActionBar } = await import('./docked-action-bar.svelte');
 const { default: Harness } = await import('./docked-action-bar-harness.test.svelte');
 const { DOCKED_BAR_HEIGHT_PROPERTY, trackDockedBar } =
-  await import('../../_internal/docked-bar-height.ts');
-const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
+  await import('@lostgradient/foundation/_internal/docked-bar-height.ts');
+const { KEYBOARD_INSET_PROPERTY } =
+  await import('@lostgradient/foundation/_internal/keyboard-inset.ts');
 const { createRawSnippet, flushSync } = await import('svelte');
 
 const cssText = await Bun.file(new URL('./docked-action-bar.css', import.meta.url)).text();

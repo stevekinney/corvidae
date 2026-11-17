@@ -1,0 +1,48 @@
+{
+  "name": "@lostgradient/foundation",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./.types/src/index.d.ts",
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./*.css": "./src/styles/*.css",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "types": "bun ../../internal/component-tooling/scripts/emit-declarations.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src && bun ../../scripts/check-inherited-key-reads.ts && bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/components && bun ../../internal/component-tooling/scripts/check-foundation-imports.ts",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' src",
+    "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts --conditions browser --conditions svelte .slow.test.ts .integration.test.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src"
+  },
+  "dependencies": {
+    "@floating-ui/dom": "catalog:",
+    "@lostgradient/markdown": "workspace:*",
+    "@lucide/svelte": "catalog:",
+    "culori": "catalog:",
+    "esm-env": "catalog:",
+    "json-schema-library": "catalog:",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/component-tooling": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/tokens": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@testing-library/svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/culori": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "postcss": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ]
+}

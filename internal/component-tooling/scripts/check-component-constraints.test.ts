@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import type { ConstraintsDocument } from '../../../components/core/src/_internal/constraints.ts';
+import type { ConstraintsDocument } from '../../../components/foundation/src/_internal/constraints.ts';
 
 import {
   checkComponentConstraints,

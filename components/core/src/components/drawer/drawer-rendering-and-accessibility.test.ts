@@ -5,11 +5,11 @@ import {
   OverflowFadeResizeObserver,
   setScrollMeasurements,
 } from '@lostgradient/component-tooling/test/overflow-fade-test-helpers.ts';
+import { resetEscapeStack, resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
-import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import {
   emptySnippet,
   installDrawerDialogStubs,

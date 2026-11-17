@@ -1,8 +1,8 @@
 import type { Snippet } from 'svelte';
 
-import type { TextDirection } from '../../_internal/locale-context.ts';
+import type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
 
-export type { TextDirection } from '../../_internal/locale-context.ts';
+export type { TextDirection } from '@lostgradient/foundation/_internal/locale-context.ts';
 
 export type LocaleProviderProps = {
   /** BCP 47 locale tag used as the default for locale-aware descendants. */

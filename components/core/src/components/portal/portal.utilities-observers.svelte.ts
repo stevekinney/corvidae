@@ -1,4 +1,4 @@
-import { resetDirectionStyleSheetIndex } from '../../_internal/text-direction-sheet-index.ts';
+import { resetDirectionStyleSheetIndex } from '@lostgradient/foundation/_internal/text-direction-sheet-index.ts';
 import {
   clearMediaQueryObservers,
   refreshMediaQueryObservers,

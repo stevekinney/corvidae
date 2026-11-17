@@ -200,6 +200,6 @@ describe('direct-subpath layer membership regression', () => {
   });
 
   test('a directly-imported partial (json-highlight.css) is fully layered', async () => {
-    await assertEveryRuleInComponentLayer('src/styles/components/json-highlight.css');
+    await assertEveryRuleInComponentLayer('../foundation/src/styles/components/json-highlight.css');
   });
 });

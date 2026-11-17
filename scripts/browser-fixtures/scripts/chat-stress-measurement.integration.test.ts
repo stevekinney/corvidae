@@ -326,7 +326,10 @@ describe('chat stress visual measurement', () => {
     // from the opposite state, and reports whether the control ended icon-only.
     const compactAfterFitting = async (width: number): Promise<boolean> => {
       const source = await Bun.file(
-        new URL('../../../components/core/src/utilities/fit-label-to-row.ts', import.meta.url),
+        new URL(
+          '../../../components/foundation/src/utilities/fit-label-to-row.ts',
+          import.meta.url,
+        ),
       ).text();
       const script = new Bun.Transpiler({ loader: 'ts' })
         .transformSync(source)
@@ -2190,7 +2193,7 @@ describe('chat stress visual measurement', () => {
 
   describe('edge fade guard', () => {
     const fadeCss = Bun.file(
-      `${import.meta.dir}/../../../components/core/src/styles/components/_scroll-edge-fade.css`,
+      `${import.meta.dir}/../../../components/foundation/src/styles/components/_scroll-edge-fade.css`,
     ).text();
 
     interface FadeOptions {

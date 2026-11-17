@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ToastApi } from '../../_internal/toast-context.ts';
+  import type { ToastApi } from '@lostgradient/foundation/_internal/toast-context.ts';
 
   /**
    * Test-only fixture that mounts a `<ToastRegion />` and exposes its API
@@ -15,7 +15,7 @@
     onInitialize?: (api: ToastApi) => void;
     maxStack?: number;
     defaultDuration?: number;
-    position?: import('../../_internal/toast-context.ts').ToastPosition;
+    position?: import('@lostgradient/foundation/_internal/toast-context.ts').ToastPosition;
   };
 </script>
 

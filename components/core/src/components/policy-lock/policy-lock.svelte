@@ -6,7 +6,7 @@
   import { Lock } from '@lucide/svelte';
   import Badge from '../badge/badge.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { PolicyLockProps } from './policy-lock.types.ts';
   let { id, reason, source, scope, class: className, ...rest }: PolicyLockProps = $props();
   const description = $derived(source ? `${reason} Source: ${source}.` : reason);

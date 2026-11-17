@@ -396,7 +396,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/core/src/components/timeline/timeline.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/core/src/styles/components/_row-item.css': [
+  'components/foundation/src/styles/components/_row-item.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
   'components/editor/src/lib/components/markdown-editor/editor-toolbar/toolbar-separator.svelte': [

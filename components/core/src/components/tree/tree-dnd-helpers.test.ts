@@ -86,8 +86,8 @@ describe('moveTreeNode', () => {
       '../table/table.fixture.svelte',
       '../virtual-list/_internal/sticky-items.ts',
       '../../convention-structural-test-helpers.ts',
-      '../../utilities/focus.ts',
-      '../../utilities/use-history.svelte.ts',
+      '../../../../foundation/src/utilities/focus.ts',
+      '../../../../foundation/src/utilities/use-history.svelte.ts',
     ];
 
     for (const sourcePath of sourcePaths) {

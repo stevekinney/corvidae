@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import type { IconComponent, IconProps } from '@lostgradient/foundation/components/icons/index.ts';
+import * as icons from '@lostgradient/foundation/components/icons/index.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import type { IconComponent, IconProps } from './index.ts';
-import * as icons from './index.ts';
 
 setupHappyDom();
 const { render, cleanup } = await import('@testing-library/svelte');
@@ -147,7 +147,9 @@ describe('icons/index', () => {
   });
 
   it('sizes and strokes by the text it sits beside: 16, 20 and 24px', async () => {
-    const css = await Bun.file(new URL('../../styles/utilities.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../foundation/src/styles/utilities.css', import.meta.url),
+    ).text();
     expect(css).toMatch(/svg\.cinder-icon-sm\s*\{[^}]*width: 1rem;[^}]*height: 1rem;/);
     expect(css).toMatch(/svg\.cinder-icon-md\s*\{[^}]*width: 1\.25rem;[^}]*height: 1\.25rem;/);
     expect(css).toMatch(/svg\.cinder-icon-lg\s*\{[^}]*width: 1\.5rem;[^}]*height: 1\.5rem;/);
