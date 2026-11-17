@@ -1218,7 +1218,8 @@ describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
   it('refuses a caller without observe-all, whose copy would observe the whole Bureau, and writes nothing', async () => {
     const { opened } = await open({ actionKinds: [pagerKind()] });
     const [declared] = await opened.bureau.hooks!.reconcileDeclared('pager', [DECLARATION]);
-    const before = (await opened.bureau.hooks!.list()).length;
+    const beforeCopy = await opened.bureau.hooks!.list();
+    const before = beforeCopy.length;
 
     const fault = await errorOf(
       opened,
@@ -1257,7 +1258,8 @@ describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
     expect(missing?.data).toMatchObject({ resource: 'hook' });
     expect(foreign?.code).toBe(missing?.code);
     // Neither reads as a hook that exists: nothing is written for the caller.
-    expect((await opened.bureau.hooks!.list()).map((hook) => hook.id)).toEqual([bobs.id]);
+    const remaining = await opened.bureau.hooks!.list();
+    expect(remaining.map((hook) => hook.id)).toEqual([bobs.id]);
   });
 
   it('refuses the copy of a hook whose plugin no longer offers its action, as create does', async () => {
@@ -1281,21 +1283,19 @@ describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
     );
 
     expect(fault?.code).toBe(-32602);
-    expect((await second.opened.bureau.hooks!.list()).map((hook) => hook.id)).toEqual([owned.id]);
+    const remaining = await second.opened.bureau.hooks!.list();
+    expect(remaining.map((hook) => hook.id)).toEqual([owned.id]);
   });
 
   it('answers UnsupportedCapability on a Bureau without hooks, and InvalidParams for an unacceptable name', async () => {
     const without = await open({ withoutHooks: true });
-    expect(
-      (
-        await errorOf(
-          without.opened,
-          'bureau.hooks.duplicate',
-          { hookId: 'any' },
-          'alice-observer-key',
-        )
-      )?.data,
-    ).toMatchObject({ capability: 'hooks' });
+    const unsupported = await errorOf(
+      without.opened,
+      'bureau.hooks.duplicate',
+      { hookId: 'any' },
+      'alice-observer-key',
+    );
+    expect(unsupported?.data).toMatchObject({ capability: 'hooks' });
 
     const { opened } = await open();
     const original = await createAs(opened, 'alice-observer-key');

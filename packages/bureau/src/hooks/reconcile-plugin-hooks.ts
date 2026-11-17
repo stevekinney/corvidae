@@ -17,7 +17,7 @@ import type { PluginHook } from '@lostgradient/interborough-plugin';
 import type { DiagnosticSink } from '../bureau-types/options';
 import type { HookInvalidPath } from '../plugins/plugin-types';
 import type { PluginRegistry } from '../plugins/plugin-registry';
-import type { BureauHooks, HookDeclaration } from './create-hooks';
+import type { BureauHooks, CreatedHooks } from './create-hooks';
 import { HookError } from './hook-types';
 
 /** The longest a hook's name is when a problem names it. */
@@ -56,7 +56,7 @@ async function reconcileOne(
   let remaining = [...declared];
   for (;;) {
     try {
-      await hooks.reconcileDeclared(plugin, remaining as readonly HookDeclaration[]);
+      await hooks.reconcileDeclared(plugin, remaining);
       return refused;
     } catch (error) {
       const issue =
@@ -83,11 +83,12 @@ async function reconcileOne(
  * known at all. Nothing here throws: the Bureau starts whatever a hook, a plugin or the store does.
  */
 export async function reconcilePluginHooks(input: {
-  readonly hooks: BureauHooks | undefined;
+  readonly hooks: Pick<CreatedHooks, 'hooks'> | undefined;
   readonly plugins: HookPluginSource;
   readonly diagnose: DiagnosticSink;
 }): Promise<void> {
-  const { hooks, plugins, diagnose } = input;
+  const { plugins, diagnose } = input;
+  const hooks = input.hooks?.hooks;
   if (hooks === undefined) return;
   try {
     const known = plugins.knownPlugins();

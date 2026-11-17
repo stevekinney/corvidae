@@ -523,11 +523,24 @@ describe('a hook the owner made that runs a plugin’s action (rows R10-10 to R1
   });
 
   test('with no key to choose the Select is disabled and says where one is saved', async () => {
-    const view = open('/hooks/owned', [OWNED], {}, [{ name: 'slack', title: 'Slack' }]);
+    // No key is saved and none is chosen: a chosen key would be a row of its own, shown as Missing.
+    const unchosen = hook('owned-unchosen', {
+      name: 'My Slack post',
+      declaredBy: null,
+      action: {
+        type: 'plugin',
+        plugin: 'slack',
+        kind: 'post-message',
+        configuration: { channel: 'ops' },
+      },
+    });
+    const view = open('/hooks/owned-unchosen', [unchosen], {}, [{ name: 'slack', title: 'Slack' }]);
 
     const action = await view.findByTestId('contributed-action');
     await waitFor(() => {
-      expect(action.querySelector('.cinder-schema-form__secret-help')).not.toBeNull();
+      if (action.querySelector('.cinder-schema-form__secret-help') === null) {
+        throw new Error('the help is not drawn');
+      }
     });
     const token = within(action).getByRole('combobox', { name: /^Token/ });
     expect(token.hasAttribute('disabled') || token.getAttribute('aria-disabled') === 'true').toBe(
@@ -653,6 +666,8 @@ describe('a new hook that runs a plugin’s action (rows R10-20 and R10-21)', ()
     const view = open('/hooks/new', []);
 
     const group = await view.findByRole('radiogroup', { name: copy.action.label });
+    // The plugin choice appears once the Bureau has listed what plugins offer.
+    await within(group).findByRole('radio', { name: copy.action.plugin });
     expect(
       [...group.querySelectorAll('[role="radio"]')].map((radio) => radio.textContent?.trim()),
     ).toEqual([
@@ -689,7 +704,7 @@ describe('a new hook that runs a plugin’s action (rows R10-20 and R10-21)', ()
     const view = open('/hooks/new', []);
 
     const group = await view.findByRole('radiogroup', { name: copy.action.label });
-    await fireEvent.click(within(group).getByRole('radio', { name: copy.action.plugin }));
+    await fireEvent.click(await within(group).findByRole('radio', { name: copy.action.plugin }));
     await view.findByRole('combobox', { name: /^Action/ });
     await fireEvent.click(view.getByRole('button', { name: copy.check.create }));
 

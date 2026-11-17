@@ -46,7 +46,7 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     const { source, reported } = registry({ slack: [settled] });
     const { diagnose, seen } = diagnostics();
 
-    await reconcilePluginHooks({ hooks: h.hooks, plugins: source, diagnose });
+    await reconcilePluginHooks({ hooks: h, plugins: source, diagnose });
 
     const listed = await h.hooks.list();
     expect(listed.map(({ name, enabled, declaredBy }) => [name, enabled, declaredBy])).toEqual([
@@ -67,9 +67,10 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     });
     const { diagnose, seen } = diagnostics();
 
-    await reconcilePluginHooks({ hooks: h.hooks, plugins: source, diagnose });
+    await reconcilePluginHooks({ hooks: h, plugins: source, diagnose });
 
-    expect((await h.hooks.list()).map(({ name }) => name)).toEqual(['Post settled runs']);
+    const listed = await h.hooks.list();
+    expect(listed.map(({ name }) => name)).toEqual(['Post settled runs']);
     expect(reported.get('slack')).toEqual([
       { hook: 'Bad configuration', path: 'configuration' },
       { hook: 'Bad scope', path: 'scope' },
@@ -82,7 +83,7 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     await h.hooks.reconcileDeclared('slack', [settled]);
     const { source } = registry({ slack: [] });
 
-    await reconcilePluginHooks({ hooks: h.hooks, plugins: source, diagnose: () => undefined });
+    await reconcilePluginHooks({ hooks: h, plugins: source, diagnose: () => undefined });
 
     const [hook] = await h.hooks.list();
     expect(hook?.enabled).toBe(false);
@@ -94,7 +95,7 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     await h.hooks.reconcileDeclared('slack', [settled]);
     const { source } = registry({}, ['slack']);
 
-    await reconcilePluginHooks({ hooks: h.hooks, plugins: source, diagnose: () => undefined });
+    await reconcilePluginHooks({ hooks: h, plugins: source, diagnose: () => undefined });
 
     const [hook] = await h.hooks.list();
     expect(hook?.enabled).toBe(true);
@@ -107,9 +108,10 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     const own = await h.hook();
     const { source } = registry({}, []);
 
-    await reconcilePluginHooks({ hooks: h.hooks, plugins: source, diagnose: () => undefined });
+    await reconcilePluginHooks({ hooks: h, plugins: source, diagnose: () => undefined });
 
-    const byName = new Map((await h.hooks.list()).map((hook) => [hook.id, hook]));
+    const listed = await h.hooks.list();
+    const byName = new Map(listed.map((hook) => [hook.id, hook]));
     expect(byName.get(own.id)?.enabled).toBe(true);
     const withdrawn = [...byName.values()].filter((hook) => hook.declaredBy !== undefined);
     expect(withdrawn.map((hook) => [hook.enabled, hook.declaredBy])).toEqual([
@@ -123,7 +125,7 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     await h.hooks.update(created!.id, { enabled: false });
     const { source } = registry({ slack: [{ ...settled, configuration: { channel: 'alerts' } }] });
 
-    await reconcilePluginHooks({ hooks: h.hooks, plugins: source, diagnose: () => undefined });
+    await reconcilePluginHooks({ hooks: h, plugins: source, diagnose: () => undefined });
 
     const [hook] = await h.hooks.list();
     expect(hook?.enabled).toBe(false);
@@ -141,7 +143,7 @@ describe('reconcilePluginHooks (COR-2180)', () => {
       ...h.hooks,
       declaredPlugins: () => Promise.reject(new Error('the store is gone')),
     };
-    await reconcilePluginHooks({ hooks: failing, plugins: source, diagnose });
+    await reconcilePluginHooks({ hooks: { hooks: failing }, plugins: source, diagnose });
     expect(seen.map(({ level, scope }) => [level, scope])).toEqual([['error', 'hooks']]);
   });
 });

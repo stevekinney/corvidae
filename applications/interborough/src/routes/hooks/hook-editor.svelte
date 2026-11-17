@@ -997,7 +997,9 @@
                     readOnly={isDefault}
                     issues={configurationIssues}
                     disabled={saving.isPending}
-                    onChange={(next) => (form.contributedConfiguration = next)}
+                    onChange={(next) => {
+                      form.contributedConfiguration = next;
+                    }}
                   />
                 </div>
               {/if}
@@ -1047,7 +1049,9 @@
                       value={form.contributedConfiguration}
                       issues={configurationIssues}
                       disabled={saving.isPending}
-                      onChange={(next) => (form.contributedConfiguration = next)}
+                      onChange={(next) => {
+                        form.contributedConfiguration = next;
+                      }}
                     />
                   {/if}
                 </div>

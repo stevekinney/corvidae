@@ -1795,11 +1795,13 @@ describe('the hooks a descriptor declares (COR-2180)', () => {
     const registry = createPluginRegistry(records);
     registry.reportHookProblems('kit', [{ hook: 'Page on settle', path: 'configuration' }]);
     registry.reportHookProblems('absent', [{ hook: 'x', path: 'name' }]);
-    expect((await registry.plugins.list())[0]?.problems).toEqual([
+    const withProblem = await registry.plugins.list();
+    expect(withProblem[0]?.problems).toEqual([
       { code: 'hook-invalid', hook: 'Page on settle', path: 'configuration' },
     ]);
     registry.reportHookProblems('kit', []);
-    expect((await registry.plugins.list())[0]?.problems).toEqual([]);
+    const cleared = await registry.plugins.list();
+    expect(cleared[0]?.problems).toEqual([]);
     expect(registry.declaredHooks()).toEqual([{ plugin: 'kit', hooks: [valid] }]);
     expect([...registry.knownPlugins()]).toEqual(['kit']);
   });

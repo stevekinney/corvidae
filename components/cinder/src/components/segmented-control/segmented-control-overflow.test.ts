@@ -125,7 +125,7 @@ describe('SegmentedControl overflow="select"', () => {
 
     Object.defineProperty(view.container, 'clientWidth', { configurable: true, get: () => 800 });
     measure();
-    await waitFor(() => expect(view.container.querySelector('select')).toBeNull());
+    await waitFor(() => expect(view.container.querySelectorAll('select')).toHaveLength(0));
     expect(screen.getAllByRole('radio')).toHaveLength(4);
   });
 

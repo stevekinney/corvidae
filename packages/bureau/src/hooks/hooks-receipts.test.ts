@@ -275,6 +275,12 @@ async function dispatched(h: Harness, hookId: string) {
   return h.deliveries(hookId);
 }
 
+/** The `problems` each listed hook carries. */
+async function listedProblems(h: Harness): Promise<unknown[]> {
+  const listed = await h.hooks.list();
+  return listed.map((hook) => hook.problems);
+}
+
 describe('a hook whose reaction is not registered (COR-2182)', () => {
   it('writes no delivery for an owner’s hook, and lists it as unavailable', async () => {
     const [before, after] = restarted({}, { registrations: NONE });
@@ -282,9 +288,7 @@ describe('a hook whose reaction is not registered (COR-2182)', () => {
     const h = after();
 
     expect(await dispatched(h, hook.id)).toEqual([]);
-    expect((await h.hooks.list()).map((listed) => listed.problems)).toEqual([
-      [{ code: 'reaction-unavailable' }],
-    ]);
+    expect(await listedProblems(h)).toEqual([[{ code: 'reaction-unavailable' }]]);
     expect(h.notices).toEqual([]);
   });
 
@@ -332,9 +336,7 @@ describe('a hook whose reaction is not registered (COR-2182)', () => {
     await before.hooks.update(hook.id, { enabled: false });
     const h = after();
 
-    expect((await h.hooks.list()).map((listed) => listed.problems)).toEqual([
-      [{ code: 'reaction-unavailable' }],
-    ]);
+    expect(await listedProblems(h)).toEqual([[{ code: 'reaction-unavailable' }]]);
   });
 
   it('keeps writing a delivery for a registered reaction, and one that needs setup waits', async () => {
@@ -345,7 +347,7 @@ describe('a hook whose reaction is not registered (COR-2182)', () => {
     const found = await dispatched(h, hook.id);
 
     expect(found.map((delivery) => delivery.status)).toEqual(['pending']);
-    expect((await h.hooks.list()).map((listed) => listed.problems)).toEqual([[]]);
+    expect(await listedProblems(h)).toEqual([[]]);
   });
 });
 
@@ -399,7 +401,7 @@ describe('a stored configuration its reaction’s schema now refuses (COR-2182)'
     const h = harness({ configuration: SECRET_CONFIGURATION });
     await h.hookWith({ channel: 'ops', token: reference('slack-token') });
 
-    expect((await h.hooks.list()).map((listed) => listed.problems)).toEqual([[]]);
+    expect(await listedProblems(h)).toEqual([[]]);
   });
 
   it('lists the reaction as unavailable and nothing else when it is not registered', async () => {
@@ -407,15 +409,13 @@ describe('a stored configuration its reaction’s schema now refuses (COR-2182)'
     await before.hookWith({ channel: 'ops', unexpected: true });
     const h = after();
 
-    expect((await h.hooks.list()).map((listed) => listed.problems)).toEqual([
-      [{ code: 'reaction-unavailable' }],
-    ]);
+    expect(await listedProblems(h)).toEqual([[{ code: 'reaction-unavailable' }]]);
   });
 
   it('lists no problem for a hook that is not a plugin hook', async () => {
     const h = harness();
     await h.created.hooks.create({ events: ['run.settled'], action: { type: 'notify' } });
 
-    expect((await h.hooks.list()).map((listed) => listed.problems)).toEqual([[]]);
+    expect(await listedProblems(h)).toEqual([[]]);
   });
 });
