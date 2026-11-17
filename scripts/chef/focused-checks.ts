@@ -373,8 +373,11 @@ export const FIXTURE_SPECS_COMMAND =
  */
 export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
 
-const cinderSource = 'components/cinder/src/';
-const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
+// Cinder is core and every package split out of it (P-COR-101): any component workspace but the
+// three that are not Cinder's.
+const cinderSource = /^components\/(?!chat\/|editor\/|terminal\/)[^/]+\/src\//;
+const cinderComponent =
+  /^components\/(?!chat\/|editor\/|terminal\/)[^/]+\/src\/components\/([^/]+)\//;
 const editorComponent = /^components\/editor\/src\/lib\/components\/([^/]+)\//;
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -410,7 +413,7 @@ export function fixtureSpecAdvice(
     const cinderName = cinderComponent.exec(path)?.[1];
     const editorName = editorComponent.exec(path)?.[1];
     if (cinderName !== undefined) cinder.add(cinderName);
-    else if (path.startsWith(cinderSource)) shared = true;
+    else if (cinderSource.test(path)) shared = true;
     else if (editorName !== undefined) others.add(editorName);
     else if (path.startsWith('components/editor/src/')) others.add('editor');
     else if (path.startsWith('components/chat/src/')) others.add('chat');

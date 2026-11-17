@@ -23,6 +23,8 @@ import { dirname, join, posix, resolve } from 'node:path';
 
 import { format } from 'prettier';
 
+import { isGenerated, PACKAGE_SCOPE, virtualPathFor } from './split-layout.ts';
+
 export interface FamilyRule {
   name: string;
   components: string[];
@@ -103,8 +105,9 @@ const SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?)(['"])([^'"\n]+)\1/g;
 const SIBLING_PACKAGE_PATH =
   /components\/(?:chat|editor|terminal)\/(?:src|components\.json)|['"]\.\.['"],\s*['"](?:chat|editor|terminal)['"],\s*['"]src['"]/;
+// The last alternative is the same path once the split names it by package (`split-layout.ts`).
 const COMPONENT_STYLESHEET_PATH =
-  /src\/components\/|components\.css|\.\.\/components\/|['"]components['"]\s*[,)]/;
+  /src\/components\/|components\.css|\.\.\/components\/|['"]components['"]\s*[,)]|@lostgradient\/(?!tokens\/|foundation\/|cinder\/)[\w-]+\/(?:components\/|[\w-]+\.css['"]|styles['"])/;
 
 export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path);
@@ -131,6 +134,45 @@ function resolveImport(
   ];
   return candidates.find((candidate) => files.has(candidate));
 }
+
+/**
+ * The files of a split tree (see `split-layout.ts`) that a specifier names: a relative one as
+ * {@link resolveImport} resolves it; a package one of the split by its virtual path, and a
+ * generated barrel or stylesheet as every file it names in turn.
+ */
+function resolveSplitImport(
+  files: ReadonlyMap<string, string>,
+  split: SplitPackages,
+  from: string,
+  specifier: string,
+  seen = new Set<string>(),
+): string[] {
+  if (specifier.startsWith('.')) {
+    const target = resolveImport(files, from, specifier);
+    return target === undefined ? [] : [target];
+  }
+  const named = virtualPathFor(specifier);
+  if (named === undefined || !split.packages.has(named.name)) return [];
+  // A package's generated barrel shares its virtual path with core's, so it is looked up first.
+  const key = `${named.name}:${named.path}`;
+  const generated = split.generated.get(key);
+  if (generated === undefined) return files.has(named.path) ? [named.path] : [];
+  if (seen.has(key)) return [];
+  seen.add(key);
+  return importSpecifiers(generated).flatMap((inner) =>
+    resolveSplitImport(files, split, named.path, inner, seen),
+  );
+}
+
+/** The packages a split tree holds and its generated files, keyed `<package>:<virtual path>`. */
+export interface SplitPackages {
+  packages: ReadonlySet<string>;
+  generated: ReadonlyMap<string, string>;
+}
+
+const UNSPLIT: SplitPackages = { packages: new Set(['tooling']), generated: new Map() };
+const CORE_PACKAGE = `${PACKAGE_SCOPE}cinder`;
+const CORE_BARREL = 'src/index.ts';
 
 function globsMatch(patterns: readonly string[], path: string): boolean {
   return patterns.some((pattern) => new Bun.Glob(pattern).match(path));
@@ -414,14 +456,24 @@ function packagesNeeded(
   return needed;
 }
 
-function buildImports(files: ReadonlyMap<string, string>): Map<string, string[]> {
+function buildImports(
+  files: ReadonlyMap<string, string>,
+  split: SplitPackages,
+): Map<string, string[]> {
   const imports = new Map<string, string[]>();
   for (const [path, content] of files) {
     if (!CODE_FILE.test(path)) continue;
     const targets = new Set<string>();
     for (const specifier of importSpecifiers(content)) {
-      const target = resolveImport(files, path, specifier);
-      if (target !== undefined && target !== path) targets.add(target);
+      // A test that imports core's own package (`@lostgradient/cinder`) needs core's barrel; a
+      // source module that names it does so in a usage comment.
+      if (specifier === CORE_PACKAGE && isTestFile(path) && files.has(CORE_BARREL)) {
+        targets.add(CORE_BARREL);
+        continue;
+      }
+      for (const target of resolveSplitImport(files, split, path, specifier)) {
+        if (target !== path) targets.add(target);
+      }
     }
     imports.set(path, [...targets]);
   }
@@ -511,7 +563,7 @@ function moveToCore(
     const next = queue.shift() as { file: string; because: string };
     const owner = owners.get(next.file);
     if (owner === undefined || owner === '' || owner === 'core') continue;
-    if (owner !== BY_IMPORTS && SHARED_PACKAGES.includes(owner as PackageKind)) continue;
+    if (owner !== BY_IMPORTS && !movesWithItsTests(owner, next.file)) continue;
     owners.set(next.file, 'core');
     testMoves.push({ file: next.file, from: owner, to: 'core', because: next.because });
     for (const importer of importersOf(context, next.file)) {
@@ -527,6 +579,16 @@ function familyOf(owner: string | undefined): owner is string {
     owner !== BY_IMPORTS &&
     !SHARED_PACKAGES.includes(owner as PackageKind)
   );
+}
+
+/**
+ * Whether a file of `owner` can move to core when a test needs it there: any file of a family,
+ * and a test or fixture of foundation or tokens. A foundation test that mounts a family (every
+ * family depends on foundation) would make the packages cycle through their test dependencies.
+ */
+function movesWithItsTests(owner: string | undefined, file: string): owner is string {
+  if (familyOf(owner)) return true;
+  return (owner === 'foundation' || owner === 'tokens') && isTestFile(file);
 }
 
 /**
@@ -570,7 +632,10 @@ function decideByImports(
   }
 }
 
-/** A family test that needs a package depending on its family goes to core; repeats to a fixpoint. */
+/**
+ * A test of a family, foundation or tokens that needs a package depending on its own goes to core;
+ * repeats to a fixpoint.
+ */
 function moveUnmountableTests(
   context: Context,
   owners: Map<string, string>,
@@ -581,7 +646,7 @@ function moveUnmountableTests(
   while (moved) {
     moved = false;
     for (const [file, owner] of [...owners].toSorted(([a], [b]) => a.localeCompare(b))) {
-      if (!isTestFile(file) || !CODE_FILE.test(file) || !familyOf(owner)) continue;
+      if (!isTestFile(file) || !CODE_FILE.test(file) || !movesWithItsTests(owner, file)) continue;
       for (const [needed, chain] of packagesNeeded(context, owners, file, owner)) {
         if (needed !== 'core' && !(graph.reach.get(needed)?.has(owner) ?? false)) continue;
         moveToCore(
@@ -594,6 +659,63 @@ function moveUnmountableTests(
         moved = true;
         break;
       }
+    }
+  }
+}
+
+/**
+ * Two packages whose tests mount each other (button's fixture mounts card, card's mounts button)
+ * cycle through their test dependencies though neither source depends on the other, and a package
+ * manager or task graph refuses the cycle. In each such cycle, the tests that mount a package of
+ * the same or a higher layer go to core; repeats to a fixpoint.
+ */
+function breakTestCycles(
+  context: Context,
+  owners: Map<string, string>,
+  graph: Graph,
+  testMoves: TestMove[],
+): void {
+  const layer = layersOf(graph.edges);
+  for (;;) {
+    const edges = new Map([...graph.edges].map(([name, targets]) => [name, new Set(targets)]));
+    const witnesses = new Map<string, { files: string[]; chain: string }>();
+    for (const [file, owner] of [...owners].toSorted(([a], [b]) => a.localeCompare(b))) {
+      if (!isTestFile(file) || !CODE_FILE.test(file) || !movesWithItsTests(owner, file)) continue;
+      for (const [needed, chain] of packagesNeeded(context, owners, file, owner)) {
+        if (needed === 'core' || !edges.has(needed)) continue;
+        edges.get(owner)?.add(needed);
+        const key = `${owner} ${needed}`;
+        const witness = witnesses.get(key) ?? { files: [], chain };
+        witness.files.push(file);
+        witnesses.set(key, witness);
+      }
+    }
+    const cycles = findCycles(edges);
+    if (cycles.length === 0) return;
+    let moved = false;
+    for (const cycle of cycles) {
+      const members = new Set(cycle);
+      for (const [key, { files, chain }] of witnesses) {
+        const [from = '', to = ''] = key.split(' ');
+        if (!members.has(from) || !members.has(to)) continue;
+        if ((layer.get(to) ?? 0) < (layer.get(from) ?? 0)) continue;
+        for (const file of files) {
+          moveToCore(
+            context,
+            owners,
+            testMoves,
+            file,
+            `it mounts "${to}", whose tests mount "${from}" in turn (${chain})`,
+          );
+        }
+        moved = true;
+      }
+    }
+    if (!moved) {
+      context.problems.push(
+        `Tests cycle through ${cycles.map((cycle) => cycle.join(', ')).join('; ')} with no test of a lower layer to move.`,
+      );
+      return;
     }
   }
 }
@@ -615,11 +737,12 @@ function checkHelpers(context: Context, placements: ReadonlyMap<string, Placemen
 export function deriveFamilies(
   files: ReadonlyMap<string, string>,
   rules: FamilyRules,
+  split: SplitPackages = UNSPLIT,
 ): DerivedFamilies {
   const context: Context = {
     files,
     rules,
-    imports: buildImports(files),
+    imports: buildImports(files, split),
     componentOf: new Map(),
     problems: [],
   };
@@ -659,6 +782,7 @@ export function deriveFamilies(
   if (graph !== undefined) {
     decideByImports(context, owners, graph, testMoves);
     moveUnmountableTests(context, owners, graph, testMoves);
+    breakTestCycles(context, owners, graph, testMoves);
     for (const owner of owners.values()) if (owner !== '') packages.add(owner);
   }
   if (graph === undefined) throw new FamilyDerivationError([...new Set(context.problems)]);
@@ -736,6 +860,50 @@ export function readPackageTree(packageRoot: string): Map<string, string> {
   return files;
 }
 
+/** A tree as the derivation reads it: its files, and what the split's packages add to them. */
+export interface RepositoryTree {
+  files: Map<string, string>;
+  split: SplitPackages;
+}
+
+/**
+ * Core's tree joined with every package already extracted from it (`split-layout.ts`): each
+ * `@lostgradient/<name>` workspace core depends on under `components/<name>`. Every package keeps
+ * core's layout, so the union is the tree the family map was derived from; a generated barrel or
+ * stylesheet is left out of it and kept to resolve the specifiers that name it.
+ */
+export function readRepositoryTree(
+  rules: FamilyRules = readRules(),
+  root: string = REPOSITORY_ROOT,
+): RepositoryTree {
+  const coreRoot = join(root, rules.packageRoot);
+  const packages = new Set<string>(['tooling']);
+  const generated = new Map<string, string>();
+  const files = new Map<string, string>();
+  const add = (name: string, tree: ReadonlyMap<string, string>) => {
+    for (const [path, content] of tree) {
+      if (isGenerated(content)) generated.set(`${name}:${path}`, content);
+      else if (files.has(path)) {
+        throw new FamilyDerivationError([`${path} is in both core and components/${name}.`]);
+      } else files.set(path, content);
+    }
+  };
+  add('core', readPackageTree(coreRoot));
+  const manifestPath = join(coreRoot, 'package.json');
+  const manifest = existsSync(manifestPath)
+    ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { dependencies?: Record<string, string> })
+    : {};
+  for (const dependency of Object.keys(manifest.dependencies ?? {}).toSorted()) {
+    if (!dependency.startsWith(PACKAGE_SCOPE)) continue;
+    const name = dependency.slice(PACKAGE_SCOPE.length);
+    const directory = join(root, 'components', name);
+    if (directory === coreRoot || !existsSync(join(directory, 'package.json'))) continue;
+    packages.add(name);
+    add(name, readPackageTree(directory));
+  }
+  return { files, split: { packages, generated } };
+}
+
 export const TOOLING_ROOT = resolve(import.meta.dir, '..');
 export const REPOSITORY_ROOT = resolve(TOOLING_ROOT, '../..');
 export const RULES_PATH = join(TOOLING_ROOT, 'family-rules.json');
@@ -760,8 +928,9 @@ export async function renderFamilies(derived: DerivedFamilies): Promise<string> 
   });
 }
 
-export function deriveFromRepository(rules = readRules()): DerivedFamilies {
-  return deriveFamilies(readPackageTree(join(REPOSITORY_ROOT, rules.packageRoot)), rules);
+export function deriveFromRepository(rules = readRules(), root = REPOSITORY_ROOT): DerivedFamilies {
+  const { files, split } = readRepositoryTree(rules, root);
+  return deriveFamilies(files, rules, split);
 }
 
 async function main(argv: readonly string[]): Promise<number> {

@@ -204,11 +204,13 @@
         "src/styles/tokens/**",
         "scripts/tokens/**",
         "src/styles/check-token-contrast-*",
+        "src/styles/token-contrast-test-readers.ts",
+        "documentation/tokens.md",
         "src/utilities/theme-transition-guard.ts",
         "src/_internal/own-entry.ts"
       ],
       "target": "tokens",
-      "note": "theme-transition-guard and own-entry (tokens never depends on foundation): coordinator, 2026-11-17"
+      "note": "theme-transition-guard and own-entry (tokens never depends on foundation): coordinator, 2026-11-17. token-contrast-test-readers: only token tests read it, so tokens' tests never need foundation (worker, assumed, 2026-11-17)."
     },
     {
       "patterns": [

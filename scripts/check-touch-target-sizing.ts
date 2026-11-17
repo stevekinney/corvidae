@@ -20,7 +20,7 @@
  * Runs from the root `lint:guards` script.
  */
 
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const root = join(import.meta.dir, '..');
@@ -28,8 +28,28 @@ const root = join(import.meta.dir, '..');
 /** Directories whose children are workspaces that consume Cinder. */
 const WORKSPACE_PARENTS = ['applications', 'components', 'plugins'];
 
-/** Cinder defines the tokens and the hit-area rule, so its own styles are not scanned. */
-const TOKEN_OWNER = 'components/cinder';
+/** Cinder's core workspace: `components/core` once COR-2082 renames it. */
+const CINDER_CORE = ['components/core', 'components/cinder'].find((directory) =>
+  existsSync(join(root, directory, 'package.json')),
+);
+
+/**
+ * Cinder defines the tokens and the hit-area rule, so its own styles are not scanned: core, and each
+ * package split out of it (P-COR-101), which core depends on as `@lostgradient/<name>`.
+ */
+function cinderWorkspaces(): Set<string> {
+  if (CINDER_CORE === undefined) return new Set();
+  const manifest = JSON.parse(readFileSync(join(root, CINDER_CORE, 'package.json'), 'utf8')) as {
+    dependencies?: Record<string, string>;
+  };
+  const packages = Object.keys(manifest.dependencies ?? {})
+    .filter((name) => name.startsWith('@lostgradient/'))
+    .map((name) => `components/${name.slice('@lostgradient/'.length)}`)
+    .filter((directory) => existsSync(join(root, directory, 'package.json')));
+  return new Set([CINDER_CORE, ...packages]);
+}
+
+const TOKEN_OWNERS = cinderWorkspaces();
 
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
@@ -77,7 +97,7 @@ function collectStyleFiles(directory: string, paths: string[]): void {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      if (relative(root, path) === TOKEN_OWNER) continue;
+      if (TOKEN_OWNERS.has(relative(root, path))) continue;
       collectStyleFiles(path, paths);
     } else if (entry.isFile() && (entry.name.endsWith('.svelte') || entry.name.endsWith('.css'))) {
       paths.push(path);
