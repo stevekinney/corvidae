@@ -2,9 +2,14 @@ import { expect, test } from 'bun:test';
 import type { ComponentProps, Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import Badge from '@lostgradient/badge/components/badge/badge.svelte';
+import type {
+  BadgeProps,
+  BadgeSize,
+  BadgeSubscriptionState,
+  BadgeVariant,
+} from '@lostgradient/badge/components/badge/badge.types.ts';
 import type { BadgeSeverity as RootBadgeSeverity } from '../../index.ts';
-import Badge from './badge.svelte';
-import type { BadgeProps, BadgeSize, BadgeSubscriptionState, BadgeVariant } from './badge.types.ts';
 
 type SnapshotBadgeBaseProps = HTMLAttributes<HTMLSpanElement> & {
   variant?: BadgeVariant;

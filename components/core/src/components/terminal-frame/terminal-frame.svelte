@@ -10,7 +10,7 @@
   import { untrack } from 'svelte';
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import { default as Grid } from '../grid/index.ts';
+  import { default as Grid } from '@lostgradient/grid/components/grid/index.ts';
   import type { TerminalFrameProps } from './terminal-frame.types.ts';
 
   let {

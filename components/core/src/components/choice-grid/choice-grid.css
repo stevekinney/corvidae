@@ -1,6 +1,6 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 
-@import '../grid/grid.css';
+@import '@lostgradient/grid/grid.css';
 @import '../choice-grid-item/choice-grid-item.css';
 
 @layer cinder.components {

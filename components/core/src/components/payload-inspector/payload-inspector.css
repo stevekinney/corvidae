@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../badge/badge.css';
+@import '@lostgradient/badge/badge.css';
 @import '../button/button.css';
 @import '../code-block/code-block.css';
 @import '../copy-button/copy-button.css';

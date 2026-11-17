@@ -426,7 +426,9 @@ describe('PropertyList', () => {
   test('renders a danger indicator on the row with nested validation errors', async () => {
     const source = await Bun.file(new URL('./property-list.svelte', import.meta.url)).text();
 
-    expect(source).toContain("import { default as Badge } from '../badge/index.ts'");
+    expect(source).toContain(
+      "import { default as Badge } from '@lostgradient/badge/components/badge/index.ts'",
+    );
     expect(source).toContain('data-cinder-invalid={childValidationErrorCount > 0');
     expect(source).toMatch(/<Badge\s+variant="danger"/);
     expect(source).toContain('validation ${childValidationErrorCount');

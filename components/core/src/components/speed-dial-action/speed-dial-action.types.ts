@@ -1,6 +1,6 @@
 import type { Snippet } from 'svelte';
 
-import type { FloatingActionButtonOnlyProps } from '../floating-action/floating-action.types.ts';
+import type { FloatingActionButtonOnlyProps } from '@lostgradient/floating-action/components/floating-action/floating-action.types.ts';
 
 /** Label placement for a SpeedDial.Action. */
 export type SpeedDialActionLabelPlacement = 'auto' | 'start' | 'end' | 'none';

@@ -8,12 +8,14 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render } = await import('@testing-library/svelte');
-const { default: FormField } = await import('./form-field.svelte');
+const { default: FormField } =
+  await import('@lostgradient/form-field/components/form-field/form-field.svelte');
 const { default: FormFieldSupportingTextControlsFixture } =
   await import('../../test/fixtures/form-field-supporting-text-controls-fixture.svelte');
-const { default: FormFieldProbe } = await import('../../test/fixtures/form-field-probe.svelte');
+const { default: FormFieldProbe } =
+  await import('@lostgradient/form-field/test/fixtures/form-field-probe.svelte');
 const { default: FormFieldContextProbe } =
-  await import('../../test/fixtures/form-field-context-probe.svelte');
+  await import('@lostgradient/form-field/test/fixtures/form-field-context-probe.svelte');
 
 const emptySnippet = createRawSnippet(() => ({
   render: () => `<span></span>`,
@@ -43,7 +45,9 @@ describe('FormField rendering', () => {
   });
 
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
-    const formFieldCss = await Bun.file(new URL('./form-field.css', import.meta.url)).text();
+    const formFieldCss = await Bun.file(
+      new URL('../../../../form-field/src/components/form-field/form-field.css', import.meta.url),
+    ).text();
     const sharedErrorCss = await Bun.file(
       new URL(
         '../../../../foundation/src/styles/components/_form-field-error.css',

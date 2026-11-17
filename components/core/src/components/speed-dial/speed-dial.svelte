@@ -15,7 +15,7 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
-  import FloatingAction from '../floating-action/floating-action.svelte';
+  import FloatingAction from '@lostgradient/floating-action/components/floating-action/floating-action.svelte';
   import { createPortalAttachment } from '../portal/index.ts';
   import {
     createInheritedPortalStyle,

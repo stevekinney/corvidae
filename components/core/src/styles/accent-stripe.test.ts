@@ -37,8 +37,8 @@ function stripeRules(css: string): string[] {
   return found;
 }
 
-const callout = load('../components/callout/callout.css');
-const calloutMarkup = load('../components/callout/callout.svelte');
+const callout = load('../../../callout/src/components/callout/callout.css');
+const calloutMarkup = load('../../../callout/src/components/callout/callout.svelte');
 const capabilityGate = load('../components/capability-gate/capability-gate.css');
 const jsonSchemaEditor = load('../components/json-schema-editor/json-schema-editor.css');
 const navigationBar = load('../components/navigation-bar/navigation-bar.css');

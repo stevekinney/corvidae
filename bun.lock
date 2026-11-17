@@ -152,6 +152,177 @@
         "typescript": "catalog:",
       },
     },
+    "components/accordion": {
+      "name": "@lostgradient/accordion",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/action-row": {
+      "name": "@lostgradient/action-row",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/alert": {
+      "name": "@lostgradient/alert",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "postcss": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/aspect-ratio": {
+      "name": "@lostgradient/aspect-ratio",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/attempts-indicator": {
+      "name": "@lostgradient/attempts-indicator",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/badge": {
+      "name": "@lostgradient/badge",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/calendar": {
+      "name": "@lostgradient/calendar",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/callout": {
+      "name": "@lostgradient/callout",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/link": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "postcss": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/card": {
+      "name": "@lostgradient/card",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "postcss": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/chat": {
       "name": "@lostgradient/chat",
       "dependencies": {
@@ -188,6 +359,80 @@
         "typescript": "catalog:",
       },
     },
+    "components/code-location": {
+      "name": "@lostgradient/code-location",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/color-swatch-picker": {
+      "name": "@lostgradient/color-swatch-picker",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/connection-indicator": {
+      "name": "@lostgradient/connection-indicator",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/container": {
+      "name": "@lostgradient/container",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/core": {
       "name": "@lostgradient/cinder",
       "dependencies": {
@@ -200,9 +445,41 @@
         "@codemirror/view": "catalog:",
         "@floating-ui/dom": "catalog:",
         "@lezer/highlight": "catalog:",
+        "@lostgradient/accordion": "workspace:*",
+        "@lostgradient/action-row": "workspace:*",
+        "@lostgradient/alert": "workspace:*",
+        "@lostgradient/aspect-ratio": "workspace:*",
+        "@lostgradient/attempts-indicator": "workspace:*",
+        "@lostgradient/badge": "workspace:*",
+        "@lostgradient/calendar": "workspace:*",
+        "@lostgradient/callout": "workspace:*",
+        "@lostgradient/card": "workspace:*",
+        "@lostgradient/code-location": "workspace:*",
+        "@lostgradient/color-swatch-picker": "workspace:*",
         "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/connection-indicator": "workspace:*",
+        "@lostgradient/container": "workspace:*",
+        "@lostgradient/diff-statistics": "workspace:*",
+        "@lostgradient/divider": "workspace:*",
+        "@lostgradient/floating-action": "workspace:*",
+        "@lostgradient/focus-trap": "workspace:*",
+        "@lostgradient/footer": "workspace:*",
+        "@lostgradient/form-field": "workspace:*",
+        "@lostgradient/form-section": "workspace:*",
         "@lostgradient/foundation": "workspace:*",
+        "@lostgradient/grid": "workspace:*",
+        "@lostgradient/image": "workspace:*",
+        "@lostgradient/kbd": "workspace:*",
+        "@lostgradient/label": "workspace:*",
+        "@lostgradient/link": "workspace:*",
+        "@lostgradient/locale-provider": "workspace:*",
+        "@lostgradient/map-marker": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
+        "@lostgradient/marquee": "workspace:*",
+        "@lostgradient/masonry": "workspace:*",
+        "@lostgradient/media-player": "workspace:*",
+        "@lostgradient/mega-menu": "workspace:*",
+        "@lostgradient/message": "workspace:*",
         "@lostgradient/tokens": "workspace:*",
         "@lucide/svelte": "catalog:",
         "@shikijs/engine-oniguruma": "catalog:",
@@ -251,6 +528,42 @@
         "typescript": "catalog:",
       },
     },
+    "components/diff-statistics": {
+      "name": "@lostgradient/diff-statistics",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/divider": {
+      "name": "@lostgradient/divider",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/editor": {
       "name": "@lostgradient/editor",
       "dependencies": {
@@ -284,6 +597,95 @@
         "typescript": "catalog:",
       },
     },
+    "components/floating-action": {
+      "name": "@lostgradient/floating-action",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/focus-trap": {
+      "name": "@lostgradient/focus-trap",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/footer": {
+      "name": "@lostgradient/footer",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/form-field": {
+      "name": "@lostgradient/form-field",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/form-section": {
+      "name": "@lostgradient/form-section",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/foundation": {
       "name": "@lostgradient/foundation",
       "dependencies": {
@@ -306,6 +708,228 @@
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
         "postcss": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/grid": {
+      "name": "@lostgradient/grid",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/card": "workspace:*",
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/container": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/image": {
+      "name": "@lostgradient/image",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/kbd": {
+      "name": "@lostgradient/kbd",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/label": {
+      "name": "@lostgradient/label",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/link": {
+      "name": "@lostgradient/link",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/locale-provider": {
+      "name": "@lostgradient/locale-provider",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/map-marker": {
+      "name": "@lostgradient/map-marker",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/marquee": {
+      "name": "@lostgradient/marquee",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/masonry": {
+      "name": "@lostgradient/masonry",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/card": "workspace:*",
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/media-player": {
+      "name": "@lostgradient/media-player",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/mega-menu": {
+      "name": "@lostgradient/mega-menu",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "@lucide/svelte": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/locale-provider": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "components/message": {
+      "name": "@lostgradient/message",
+      "dependencies": {
+        "@lostgradient/foundation": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/component-tooling": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -1410,19 +2034,49 @@
 
     "@loaderkit/resolve": ["@loaderkit/resolve@1.0.6", "", { "dependencies": { "@braidai/lang": "^1.0.0" } }, "sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg=="],
 
+    "@lostgradient/accordion": ["@lostgradient/accordion@workspace:components/accordion"],
+
+    "@lostgradient/action-row": ["@lostgradient/action-row@workspace:components/action-row"],
+
+    "@lostgradient/alert": ["@lostgradient/alert@workspace:components/alert"],
+
+    "@lostgradient/aspect-ratio": ["@lostgradient/aspect-ratio@workspace:components/aspect-ratio"],
+
+    "@lostgradient/attempts-indicator": ["@lostgradient/attempts-indicator@workspace:components/attempts-indicator"],
+
+    "@lostgradient/badge": ["@lostgradient/badge@workspace:components/badge"],
+
     "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
 
     "@lostgradient/bungalow": ["@lostgradient/bungalow@workspace:packages/bungalow"],
 
     "@lostgradient/bureau": ["@lostgradient/bureau@workspace:packages/bureau"],
 
+    "@lostgradient/calendar": ["@lostgradient/calendar@workspace:components/calendar"],
+
+    "@lostgradient/callout": ["@lostgradient/callout@workspace:components/callout"],
+
+    "@lostgradient/card": ["@lostgradient/card@workspace:components/card"],
+
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 
     "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/core"],
 
+    "@lostgradient/code-location": ["@lostgradient/code-location@workspace:components/code-location"],
+
+    "@lostgradient/color-swatch-picker": ["@lostgradient/color-swatch-picker@workspace:components/color-swatch-picker"],
+
     "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
 
+    "@lostgradient/connection-indicator": ["@lostgradient/connection-indicator@workspace:components/connection-indicator"],
+
+    "@lostgradient/container": ["@lostgradient/container@workspace:components/container"],
+
     "@lostgradient/cryptography": ["@lostgradient/cryptography@workspace:packages/cryptography"],
+
+    "@lostgradient/diff-statistics": ["@lostgradient/diff-statistics@workspace:components/diff-statistics"],
+
+    "@lostgradient/divider": ["@lostgradient/divider@workspace:components/divider"],
 
     "@lostgradient/editor": ["@lostgradient/editor@workspace:components/editor"],
 
@@ -1430,19 +2084,53 @@
 
     "@lostgradient/evaluation": ["@lostgradient/evaluation@workspace:testing/evaluation"],
 
+    "@lostgradient/floating-action": ["@lostgradient/floating-action@workspace:components/floating-action"],
+
+    "@lostgradient/focus-trap": ["@lostgradient/focus-trap@workspace:components/focus-trap"],
+
+    "@lostgradient/footer": ["@lostgradient/footer@workspace:components/footer"],
+
+    "@lostgradient/form-field": ["@lostgradient/form-field@workspace:components/form-field"],
+
+    "@lostgradient/form-section": ["@lostgradient/form-section@workspace:components/form-section"],
+
     "@lostgradient/foundation": ["@lostgradient/foundation@workspace:components/foundation"],
 
+    "@lostgradient/grid": ["@lostgradient/grid@workspace:components/grid"],
+
     "@lostgradient/groom": ["@lostgradient/groom@workspace:scripts/groom"],
+
+    "@lostgradient/image": ["@lostgradient/image@workspace:components/image"],
 
     "@lostgradient/interborough": ["@lostgradient/interborough@workspace:applications/interborough"],
 
     "@lostgradient/interborough-plugin": ["@lostgradient/interborough-plugin@workspace:packages/interborough-plugin"],
 
+    "@lostgradient/kbd": ["@lostgradient/kbd@workspace:components/kbd"],
+
+    "@lostgradient/label": ["@lostgradient/label@workspace:components/label"],
+
     "@lostgradient/lifecycle": ["@lostgradient/lifecycle@workspace:packages/lifecycle"],
+
+    "@lostgradient/link": ["@lostgradient/link@workspace:components/link"],
+
+    "@lostgradient/locale-provider": ["@lostgradient/locale-provider@workspace:components/locale-provider"],
+
+    "@lostgradient/map-marker": ["@lostgradient/map-marker@workspace:components/map-marker"],
 
     "@lostgradient/markdown": ["@lostgradient/markdown@workspace:packages/markdown"],
 
+    "@lostgradient/marquee": ["@lostgradient/marquee@workspace:components/marquee"],
+
+    "@lostgradient/masonry": ["@lostgradient/masonry@workspace:components/masonry"],
+
+    "@lostgradient/media-player": ["@lostgradient/media-player@workspace:components/media-player"],
+
+    "@lostgradient/mega-menu": ["@lostgradient/mega-menu@workspace:components/mega-menu"],
+
     "@lostgradient/memory": ["@lostgradient/memory@workspace:packages/memory"],
+
+    "@lostgradient/message": ["@lostgradient/message@workspace:components/message"],
 
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
 
@@ -1948,7 +2636,7 @@
 
     "dijkstrajs": ["dijkstrajs@1.0.3", "", {}, "sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA=="],
 
-    "dom-accessibility-api": ["dom-accessibility-api@0.5.16", "", {}, "sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg=="],
+    "dom-accessibility-api": ["dom-accessibility-api@0.6.3", "", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
 
     "dompurify": ["dompurify@3.4.17", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w=="],
 
@@ -2638,7 +3326,7 @@
 
     "@testing-library/dom/aria-query": ["aria-query@5.3.0", "", { "dependencies": { "dequal": "^2.0.3" } }, "sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A=="],
 
-    "@testing-library/jest-dom/dom-accessibility-api": ["dom-accessibility-api@0.6.3", "", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
+    "@testing-library/dom/dom-accessibility-api": ["dom-accessibility-api@0.5.16", "", {}, "sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg=="],
 
     "cli-highlight/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 

@@ -23,11 +23,11 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Alert from '../alert/alert.svelte';
+  import Alert from '@lostgradient/alert/components/alert/alert.svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import Chip from '../chip/chip.svelte';
-  import { default as Badge } from '../badge/index.ts';
+  import { default as Badge } from '@lostgradient/badge/components/badge/index.ts';
   import { default as Collapsible } from '../collapsible/index.ts';
   import { default as Table } from '../table/index.ts';
   import Input from '../input/input.svelte';

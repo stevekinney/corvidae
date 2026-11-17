@@ -1,7 +1,7 @@
 <script lang="ts">
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
 
-  import Alert from '../alert/alert.svelte';
+  import Alert from '@lostgradient/alert/components/alert/alert.svelte';
   import type { ApprovalFailure } from './approval-card.types.ts';
 
   /** Props of the internal failure message. Not part of the public API. */

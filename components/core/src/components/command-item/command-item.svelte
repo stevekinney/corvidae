@@ -8,7 +8,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Kbd from '../kbd/kbd.svelte';
+  import Kbd from '@lostgradient/kbd/components/kbd/kbd.svelte';
   import { rowDividerAttachment } from '@lostgradient/foundation/utilities/row-divider.ts';
   import {
     getCommandListContext,

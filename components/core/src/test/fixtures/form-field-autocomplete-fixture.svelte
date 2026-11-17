@@ -1,6 +1,6 @@
 <script lang="ts">
   import Autocomplete from '../../components/autocomplete/autocomplete.svelte';
-  import FormField from '../../components/form-field/form-field.svelte';
+  import FormField from '@lostgradient/form-field/components/form-field/form-field.svelte';
   import type { AutocompleteSuggestionSource } from '../../components/autocomplete/autocomplete.types.ts';
 
   type Props = {

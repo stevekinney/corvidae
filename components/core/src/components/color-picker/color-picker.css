@@ -1,5 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../color-swatch-picker/color-swatch-picker.css';
+@import '@lostgradient/color-swatch-picker/color-swatch-picker.css';
 @import '../copy-button/copy-button.css';
 
 @layer cinder.components {

@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Link from '../link/link.svelte';
+  import Link from '@lostgradient/link/components/link/link.svelte';
   import type { KeyFactsProps } from './key-facts.types.ts';
 
   let { items, label, class: className, ...rest }: KeyFactsProps = $props();

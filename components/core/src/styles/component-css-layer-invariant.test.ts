@@ -203,7 +203,7 @@ describe('direct-subpath layer membership regression', () => {
   }
 
   test('badge.css rules all live in @layer cinder.components (override precondition)', async () => {
-    await assertEveryRuleInComponentLayer('src/components/badge/badge.css');
+    await assertEveryRuleInComponentLayer('../badge/src/components/badge/badge.css');
   });
 
   test('a directly-imported partial (json-highlight.css) is fully layered', async () => {

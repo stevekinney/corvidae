@@ -12,7 +12,7 @@
   import { computeLineDiff } from '@lostgradient/markdown';
 
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import Alert from '../alert/alert.svelte';
+  import Alert from '@lostgradient/alert/components/alert/alert.svelte';
   import Button from '../button/button.svelte';
   import EmptyState from '../empty-state/empty-state.svelte';
 

@@ -7,7 +7,8 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render, cleanup } = await import('@testing-library/svelte');
-const { default: FormField } = await import('../../components/form-field/form-field.svelte');
+const { default: FormField } =
+  await import('@lostgradient/form-field/components/form-field/form-field.svelte');
 const { createRawSnippet } = await import('svelte');
 
 const sharedErrorCss = await Bun.file(
