@@ -35,7 +35,8 @@ export type ComponentDiscovery = {
  * Results are sorted alphabetically by name.
  */
 export async function discoverComponents(): Promise<ComponentDiscovery[]> {
-  return (await discoverComponentDirectories()).map(({ name, directory }) => ({
+  const components = await discoverComponentDirectories();
+  return components.map(({ name, directory }) => ({
     name,
     directory,
     hasCss: existsSync(join(directory, `${name}.css`)),

@@ -423,7 +423,8 @@ describe('extract-families', () => {
     const namesBefore = exportNames(join(root, CORE, 'src/index.ts'));
 
     // Every reader of a moved path is rewritten, so the guard behind the rewrites finds none.
-    expect((await extract(root, { kind: 'packages', names: ['tokens'] })).dead).toEqual([]);
+    const tokens = await extract(root, { kind: 'packages', names: ['tokens'] });
+    expect(tokens.dead).toEqual([]);
     expect(existsSync(join(root, CORE, 'src/tokens'))).toBe(false);
     const anchored = `${CORE}/src/exports/anchored.test.ts`;
     // Segments stay segments, so a rule that reads their shape reads the same after the move.
@@ -477,7 +478,8 @@ describe('extract-families', () => {
     );
     expect(read(root, 'scripts/check.ts')).toContain("'components/tokens/scripts/tokens/check.ts'");
 
-    expect((await extract(root, { kind: 'packages', names: ['foundation'] })).dead).toEqual([]);
+    const foundation = await extract(root, { kind: 'packages', names: ['foundation'] });
+    expect(foundation.dead).toEqual([]);
     expect(read(root, anchored)).toContain(
       '`${import.meta.dir}/../../../foundation/src/styles/components/_partial.css`',
     );
@@ -494,7 +496,8 @@ describe('extract-families', () => {
     expect(read(root, focusTest)).toContain("'../../../core/src/components/card/card.css'");
     expect(read(root, focusTest)).toContain("'..', 'core', 'src', 'components', 'card'");
 
-    expect((await extract(root, { kind: 'all' })).dead).toEqual([]);
+    const families = await extract(root, { kind: 'all' });
+    expect(families.dead).toEqual([]);
     expect(existsSync(join(root, CORE, 'src/components'))).toBe(false);
     expect(read(root, anchored)).toContain(
       "resolve(dirname(fileURLToPath(import.meta.url)), '../../../card/src/components/card/card.css')",
