@@ -327,9 +327,9 @@
   }
 </script>
 
-{#snippet rejectIcon()}<X size={28} strokeWidth={2.25} />{/snippet}
-{#snippet laterIcon()}<Clock size={22} strokeWidth={2.25} />{/snippet}
-{#snippet acceptIcon()}<Check size={28} strokeWidth={2.25} />{/snippet}
+{#snippet rejectIcon()}<X size={20} strokeWidth={2.25} />{/snippet}
+{#snippet laterIcon()}<Clock size={16} strokeWidth={2.25} />{/snippet}
+{#snippet acceptIcon()}<Check size={20} strokeWidth={2.25} />{/snippet}
 
 {#snippet leavingCopy()}
   {#if leaving !== null}
@@ -445,14 +445,18 @@
       </div>
     </div>
   {:else}
-    {#if leaving !== null}
-      <div class="cinder-decision-deck__stack">
-        {@render leavingCopy()}
+    <!-- The leaving copy is laid over the empty state (out of flow), so the empty state is in its
+         final place from the first frame and nothing moves when the copy goes away. -->
+    <div class="cinder-decision-deck__finish">
+      {#if leaving !== null}
+        <div class="cinder-decision-deck__leaving">
+          {@render leavingCopy()}
+        </div>
+      {/if}
+      <div class="cinder-decision-deck__empty" tabindex="-1">
+        <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
+        <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
       </div>
-    {/if}
-    <div class="cinder-decision-deck__empty" tabindex="-1">
-      <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
-      <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
     </div>
   {/if}
 

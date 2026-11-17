@@ -46,6 +46,8 @@ The top card is a focus stop. With it focused, `ArrowRight` accepts, `ArrowLeft`
 
 By default a card shows an `eyebrow`, a `title` and a `description`. Pass a `card` snippet to draw your own body for each item; the card's accessible name, stamps and gestures remain the deck's. A link, button or field inside a card keeps working: a drag does not start on it.
 
+A decided card leaves as a copy that plays its exit for about 200 ms, so for that moment the `card` snippet is rendered a second time for the same item (the copy is inert and hidden from assistive technology). A custom body therefore must not rely on unique ids or on one-time side effects such as a focus call or an analytics event in its markup; derive an id from the item and leave effects to `onDecision`.
+
 ## Props
 
 <!-- generated:props:start -->
