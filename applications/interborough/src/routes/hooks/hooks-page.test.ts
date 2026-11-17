@@ -1390,7 +1390,9 @@ describe('a saved hook’s header', () => {
     await waitFor(() =>
       expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('false'),
     );
-    expect(within(header).getByText(HOOKS_COPY.editor.header.off)).not.toBeNull();
+    // The switch says Off, and so does the one status line under the heading (COR-2181, row R10-02).
+    expect(within(header).getAllByText(HOOKS_COPY.editor.header.off)).toHaveLength(2);
+    expect(header.querySelector('[data-status-word="Off"]')).not.toBeNull();
     expect(within(header).queryByText(HOOKS_COPY.editor.header.on)).toBeNull();
 
     await fireEvent.click(await view.findByRole('button', { name: 'Undo' }));
@@ -1773,7 +1775,7 @@ describe('the editor for a hook it cannot change the action of', () => {
       { path: '/hooks/alpha' },
     );
     await view.findByText(HOOKS_COPY.editor.action.plugin);
-    expect(view.getByTestId('hook-sentence').textContent).toContain('run page from acme');
+    expect(view.getByTestId('hook-sentence').textContent).toContain('run Page from Acme');
     expect(view.queryByLabelText(HOOKS_COPY.editor.action.label)).toBeNull();
     // Without a test: a plugin's action is not a signed message, and this one offers none.
     expect(

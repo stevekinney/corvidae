@@ -64,6 +64,11 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'bob-observer-key': { subject: 'bob', scopes: ['bureau.events:observe-all'] },
   'hooks-reader-key': { subject: 'hooks-reader', scopes: ['bureau.hooks:read'] },
   'hooks-writer-key': { subject: 'hooks-writer', scopes: ['bureau.hooks:write'] },
+  // COR-2181: reads any owner's hook and may make one of its own, as copying a default hook does.
+  'hooks-copier-key': {
+    subject: 'hooks-copier',
+    scopes: ['bureau.hooks:read', 'bureau.events:observe-all'],
+  },
   'settings-reader-key': { subject: 'settings-reader', scopes: ['bureau.settings:read'] },
   'settings-writer-key': {
     subject: 'settings-writer',

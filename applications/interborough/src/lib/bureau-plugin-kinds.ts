@@ -31,6 +31,11 @@ const hookActionKindSchema = z.object({
   version: z.string(),
   /** Whether `hooks.test` can call the kind's `dryRun`: a hook of a kind without one cannot be tested. */
   dryRun: z.boolean(),
+  /**
+   * Whether the kind can run now: `needs-setup` while a secret its plugin declared is missing
+   * (COR-2181). Absent from an answer of a Bureau that predates it, which then reads as available.
+   */
+  availability: z.enum(['available', 'needs-setup']).default('available'),
   configuration: configurationSchema,
 });
 

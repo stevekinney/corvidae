@@ -23,6 +23,7 @@ import { isNetworkFailure } from '../../lib/faults.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { StatusWord } from '../../lib/status.ts';
 import { activityTime } from '../health/health-times.ts';
+import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 
 const COPY = HOOKS_COPY.editor;
@@ -166,7 +167,8 @@ export function actionPhrase(action: Hook['action'] | DraftAction): string {
     case 'notify':
       return words.notify;
     case 'plugin':
-      return words.plugin(action.plugin, action.kind);
+      // The plugin and its action in words, never as identifiers (COR-2181, row R10-23).
+      return words.plugin(humanizeName(action.plugin), humanizeName(action.kind));
   }
 }
 
@@ -361,7 +363,7 @@ function rowActionPhrase(action: Hook['action'], fullAddress: boolean): string {
     case 'notify':
       return HOOKS_COPY.sentence.notify;
     case 'plugin':
-      return HOOKS_COPY.sentence.plugin(action.plugin, action.kind);
+      return HOOKS_COPY.sentence.plugin(humanizeName(action.plugin), humanizeName(action.kind));
   }
 }
 

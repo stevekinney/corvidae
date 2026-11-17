@@ -331,6 +331,226 @@
         ],
         "type": "object"
       },
+      "BureauHooksCreateOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "What the hook does for each event. A hook stored before actions existed is a `webhook`.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "const": "webhook",
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "enum": [
+                      "payload",
+                      "event"
+                    ],
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "start-workflow",
+                    "type": "string"
+                  },
+                  "workflowId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "workflowId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "type": {
+                    "const": "notify",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "configuration": {
+                    "anyOf": [
+                      {},
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "plugin": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "plugin",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "plugin",
+                  "kind",
+                  "configuration"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "createdAt": {
+            "description": "Epoch milliseconds.",
+            "type": "number"
+          },
+          "declaredBy": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ownerDisabled": {
+                    "description": "The owner turned the hook off; a reconcile keeps it off.",
+                    "type": "boolean"
+                  },
+                  "plugin": {
+                    "description": "The plugin that declared the hook.",
+                    "type": "string"
+                  },
+                  "withdrawn": {
+                    "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "plugin",
+                  "ownerDisabled",
+                  "withdrawn"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "description": "The principal that owns the hook.",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Pass it back as `expectedRevision`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The one subject the hook fires for; `null` for a hook that fires for the whole Bureau. `kind` is `agent`, `workflow` or `schedule`. A stored kind this release does not know is shown as stored, and a stored value it cannot read is shown with an empty `kind`; neither fires."
+          },
+          "signingSecret": {
+            "anyOf": [
+              {
+                "description": "The signing secret the Bureau generated, `whsec_` and 24 hexadecimal digits. This is the only answer that carries it: no operation returns it again, so keep it now, or replace it later with `bureau.hooks.secret.replace`.",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The signing secret the Bureau generated for a webhook created without one, shown this once; `null` when the caller chose the secret or the action has none."
+          },
+          "updatedAt": {
+            "description": "Epoch milliseconds.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "name",
+          "action",
+          "events",
+          "scope",
+          "declaredBy",
+          "enabled",
+          "createdAt",
+          "updatedAt",
+          "revision",
+          "signingSecret"
+        ],
+        "type": "object"
+      },
       "BureauHooksDeleteInput": {
         "additionalProperties": false,
         "properties": {
@@ -768,6 +988,37 @@
             "description": "Epoch milliseconds.",
             "type": "number"
           },
+          "declaredBy": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ownerDisabled": {
+                    "description": "The owner turned the hook off; a reconcile keeps it off.",
+                    "type": "boolean"
+                  },
+                  "plugin": {
+                    "description": "The plugin that declared the hook.",
+                    "type": "string"
+                  },
+                  "withdrawn": {
+                    "description": "The plugin no longer declares the hook, so it is off and the owner cannot turn it on.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "plugin",
+                  "ownerDisabled",
+                  "withdrawn"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made."
+          },
           "enabled": {
             "type": "boolean"
           },
@@ -832,6 +1083,7 @@
           "action",
           "events",
           "scope",
+          "declaredBy",
           "enabled",
           "createdAt",
           "updatedAt",

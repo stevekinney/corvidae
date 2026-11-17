@@ -76,6 +76,20 @@ const scopeSchema = z.object({ kind: z.string(), id: z.string() });
  */
 export type HookScope = z.infer<typeof scopeSchema>;
 
+const declaredBySchema = z.object({
+  plugin: z.string(),
+  /** The owner turned the hook off. */
+  ownerDisabled: z.boolean(),
+  /** The plugin no longer declares the hook, so it is off and cannot be turned on. */
+  withdrawn: z.boolean(),
+});
+
+/**
+ * Where a default hook comes from (COR-2181): the plugin that declared it. The owner can turn it on
+ * or off and copy it, and changes nothing else about it.
+ */
+export type HookDeclaredBy = z.infer<typeof declaredBySchema>;
+
 const hookSchema = z.object({
   id: z.string(),
   owner: z.string(),
@@ -83,6 +97,8 @@ const hookSchema = z.object({
   action: actionSchema,
   events: z.array(z.string()),
   scope: scopeSchema.nullable(),
+  // Absent from an answer of a Bureau that predates default hooks, which then reads as a hook the owner made.
+  declaredBy: declaredBySchema.nullable().default(null),
   enabled: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -337,6 +353,21 @@ export async function updateHook(
   return hookSchema.parse(
     await callBureau('bureau.hooks.update', { hookId, expectedRevision, ...change }, options),
   );
+}
+
+/**
+ * Makes an off copy of a hook the caller owns and may change (`bureau.hooks.duplicate`): the same
+ * action, events and scope, named `name` (else as the hook is), with no `declaredBy`, so a default
+ * hook a plugin declared becomes one the owner can edit. A webhook's copy gets a new signing secret,
+ * shown once.
+ */
+export async function duplicateHook(
+  hookId: string,
+  name?: string,
+  options?: Options,
+): Promise<CreatedHook> {
+  const params = name === undefined ? { hookId } : { hookId, name };
+  return createdHookSchema.parse(await callBureau('bureau.hooks.duplicate', params, options));
 }
 
 /** Deletes a hook, its secret and its delivery records. */

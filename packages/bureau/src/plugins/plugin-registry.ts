@@ -477,6 +477,8 @@ export function createPluginRegistry(
                   description: kind.description,
                   version: kind.version ?? record.entry.descriptor.version,
                   dryRun: typeof kind.dryRun === 'function',
+                  availability:
+                    (record.gate?.missing().length ?? 0) > 0 ? 'needs-setup' : 'available',
                   configuration: jsonSchemaOf(kind.configuration),
                 }))
             : [],

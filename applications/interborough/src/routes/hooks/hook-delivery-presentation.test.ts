@@ -41,6 +41,7 @@ function attempt(number: number, overrides: Partial<Attempt> = {}): Attempt {
     responseExcerpt: null,
     responseTruncated: null,
     error: null,
+    receipt: null,
     ...overrides,
   };
 }

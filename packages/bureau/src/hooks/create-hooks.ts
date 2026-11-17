@@ -373,11 +373,15 @@ export interface BureauHooks {
     declarations: readonly HookDeclaration[],
   ): Promise<readonly Hook[]>;
   /**
-   * COR-2179 — a copy of a hook an owner can change: the same action, events, scope and name, disabled,
-   * and no `declaredBy`. It belongs to `principal`, else to the owner of record. Resolves `undefined`
-   * when there is no such hook; refuses as `create` does.
+   * COR-2179 — a copy of a hook an owner can change: the same action, events and scope, disabled,
+   * and no `declaredBy`. It is named `options.name` (COR-2181), else as the hook is. It belongs to
+   * `principal`, else to the owner of record. Resolves `undefined` when there is no such hook;
+   * refuses as `create` does, so the copy of a hook whose plugin no longer offers its action is refused.
    */
-  duplicate(hookId: string, options?: HookCallOptions): Promise<HookWithSigningSecret | undefined>;
+  duplicate(
+    hookId: string,
+    options?: HookCallOptions & { readonly name?: string },
+  ): Promise<HookWithSigningSecret | undefined>;
   /**
    * COR-2180 — the plugins that made a default hook, withdrawn ones included, each once. It reads
    * the hook records alone, never a delivery, so a Bureau can ask at start.
@@ -1654,9 +1658,11 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     async duplicate(hookId, options) {
       // The caller owns `options`: read before the first await.
       const principal = options?.principal;
+      const copyName = options?.name;
       const stored = await store.getHook(hookId);
       if (stored === undefined) return undefined;
-      const { action, events, scope, name } = stored.record;
+      const { action, events, scope, name: sourceName } = stored.record;
+      const name = copyName ?? sourceName;
       return hooks.create({
         action,
         events,

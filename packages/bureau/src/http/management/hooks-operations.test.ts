@@ -95,7 +95,7 @@ async function createAs(opened: OpenedBureau, key: string, params: object = {}) 
 }
 
 describe('bureau.hooks.*', () => {
-  it('serves the ten operations, each described, with only delete destructive', () => {
+  it('serves the eleven operations, each described, with only delete destructive', () => {
     expect(bureauHooksOperations.map((operation) => operation.name)).toEqual([
       'bureau.hooks.create',
       'bureau.hooks.update',
@@ -107,6 +107,7 @@ describe('bureau.hooks.*', () => {
       'bureau.hooks.draft.test',
       'bureau.hooks.deliveries',
       'bureau.hooks.deliveries.retry',
+      'bureau.hooks.duplicate',
     ]);
     for (const operation of bureauHooksOperations) {
       expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
@@ -1103,5 +1104,207 @@ describe('bureau.hooks.* problems and receipts (COR-2182)', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('bureau.hooks.duplicate and declaredBy (COR-2181)', () => {
+  const ACTION = {
+    type: 'plugin',
+    plugin: 'pager',
+    kind: 'page',
+    configuration: { channel: 'ops' },
+  } as const;
+  const DECLARATION = {
+    name: 'Page on settle',
+    events: ['run.settled'],
+    reaction: 'page',
+    configuration: { channel: 'ops' },
+  };
+
+  it('shows declaredBy on a default hook, in list and get, and null on a hook the owner made', async () => {
+    const { opened } = await open({ actionKinds: [pagerKind()] });
+    const owned = await wire(
+      opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action: ACTION },
+      'alice-observer-key',
+    );
+    const [declared] = await opened.bureau.hooks!.reconcileDeclared('pager', [DECLARATION]);
+    await opened.bureau.hooks!.update(declared!.id, { enabled: false });
+
+    const listed = await wire(opened, 'bureau.hooks.list', {}, 'hooks-reader-key');
+    const byId = new Map(
+      listed.hooks.map((hook: { id: string; declaredBy: unknown }) => [hook.id, hook.declaredBy]),
+    );
+    expect(byId.get(owned.id)).toBeNull();
+    expect(byId.get(declared!.id)).toEqual({
+      plugin: 'pager',
+      ownerDisabled: true,
+      withdrawn: false,
+    });
+    const got = await wire(
+      opened,
+      'bureau.hooks.get',
+      { hookId: declared!.id },
+      'hooks-reader-key',
+    );
+    expect(got.declaredBy).toEqual({ plugin: 'pager', ownerDisabled: true, withdrawn: false });
+    await opened.bureau.hooks!.reconcileDeclared('pager', []);
+    const withdrawn = await wire(
+      opened,
+      'bureau.hooks.get',
+      { hookId: declared!.id },
+      'hooks-reader-key',
+    );
+    expect(withdrawn.declaredBy).toMatchObject({ withdrawn: true });
+  });
+
+  it('copies a default hook into an off hook of the caller’s own, named as asked, with no declaredBy', async () => {
+    const { opened } = await open({ actionKinds: [pagerKind()] });
+    const [declared] = await opened.bureau.hooks!.reconcileDeclared('pager', [DECLARATION]);
+
+    const copy = await wire(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: declared!.id, name: 'Page on settle copy' },
+      'hooks-copier-key',
+    );
+
+    expect(copy).toMatchObject({
+      owner: 'api-key:hooks-copier',
+      name: 'Page on settle copy',
+      enabled: false,
+      declaredBy: null,
+      action: { type: 'plugin', plugin: 'pager', kind: 'page', configuration: { channel: 'ops' } },
+      events: ['run.settled'],
+      signingSecret: null,
+    });
+    expect(copy.id).not.toBe(declared!.id);
+    // The copy is the owner's: it is changed freely, which the default hook never is.
+    const changed = await wire(
+      opened,
+      'bureau.hooks.update',
+      { hookId: copy.id, action: { ...ACTION, configuration: { channel: 'alerts' } } },
+      'hooks-copier-key',
+    );
+    expect(changed.action.configuration).toEqual({ channel: 'alerts' });
+    // Named as the hook is when no name is asked for.
+    const kept = await wire(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: declared!.id },
+      'hooks-copier-key',
+    );
+    expect(kept.name).toBe('Page on settle');
+  });
+
+  it('copies a webhook with a new signing secret, shown once, and never the original’s', async () => {
+    const { opened } = await open();
+    const original = await createAs(opened, 'alice-observer-key');
+
+    const copy = await wire(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: original.id },
+      'alice-observer-key',
+    );
+
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.enabled).toBe(false);
+    expect(copy.signingSecret).toMatch(/^whsec_[0-9a-f]{24}$/);
+    expect(JSON.stringify(copy)).not.toContain(SIGNING_SECRET);
+  });
+
+  it('refuses a caller without observe-all, whose copy would observe the whole Bureau, and writes nothing', async () => {
+    const { opened } = await open({ actionKinds: [pagerKind()] });
+    const [declared] = await opened.bureau.hooks!.reconcileDeclared('pager', [DECLARATION]);
+    const before = (await opened.bureau.hooks!.list()).length;
+
+    const fault = await errorOf(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: declared!.id },
+      'hooks-reader-key',
+    );
+
+    expect(fault?.data?.['reason']).toBe('missing scope bureau.events:observe-all');
+    expect(await opened.bureau.hooks!.list()).toHaveLength(before);
+  });
+
+  it('answers another owner’s hook as a missing one, and reads any owner’s only with bureau.hooks:read', async () => {
+    const { opened } = await open({ actionKinds: [pagerKind()] });
+    const bobs = await wire(
+      opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action: ACTION },
+      'bob-observer-key',
+    );
+
+    const foreign = await errorOf(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: bobs.id },
+      'alice-observer-key',
+    );
+    const missing = await errorOf(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: 'hook-that-is-not-there' },
+      'alice-observer-key',
+    );
+
+    expect(foreign?.data).toMatchObject({ resource: 'hook' });
+    expect(missing?.data).toMatchObject({ resource: 'hook' });
+    expect(foreign?.code).toBe(missing?.code);
+    // Neither reads as a hook that exists: nothing is written for the caller.
+    expect((await opened.bureau.hooks!.list()).map((hook) => hook.id)).toEqual([bobs.id]);
+  });
+
+  it('refuses the copy of a hook whose plugin no longer offers its action, as create does', async () => {
+    const storage = new MemoryStorage();
+    const first = await open({ storage, actionKinds: [pagerKind()] });
+    const owned = await wire(
+      first.opened,
+      'bureau.hooks.create',
+      { events: ['run.settled'], action: ACTION },
+      'alice-observer-key',
+    );
+    await first.opened.dispose();
+    cleanups.splice(cleanups.length - 1, 1);
+
+    const second = await open({ storage });
+    const fault = await errorOf(
+      second.opened,
+      'bureau.hooks.duplicate',
+      { hookId: owned.id },
+      'alice-observer-key',
+    );
+
+    expect(fault?.code).toBe(-32602);
+    expect((await second.opened.bureau.hooks!.list()).map((hook) => hook.id)).toEqual([owned.id]);
+  });
+
+  it('answers UnsupportedCapability on a Bureau without hooks, and InvalidParams for an unacceptable name', async () => {
+    const without = await open({ withoutHooks: true });
+    expect(
+      (
+        await errorOf(
+          without.opened,
+          'bureau.hooks.duplicate',
+          { hookId: 'any' },
+          'alice-observer-key',
+        )
+      )?.data,
+    ).toMatchObject({ capability: 'hooks' });
+
+    const { opened } = await open();
+    const original = await createAs(opened, 'alice-observer-key');
+    const tooLong = await errorOf(
+      opened,
+      'bureau.hooks.duplicate',
+      { hookId: original.id, name: 'n'.repeat(101) },
+      'alice-observer-key',
+    );
+    expect(tooLong?.code).toBe(-32602);
   });
 });

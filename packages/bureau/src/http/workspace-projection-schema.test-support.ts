@@ -92,6 +92,7 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.schedules.skipnext',
   'bureau.schedules.unskip',
   'bureau.hooks.create',
+  'bureau.hooks.duplicate',
   'bureau.hooks.update',
   'bureau.hooks.delete',
   'bureau.hooks.get',

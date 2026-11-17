@@ -537,6 +537,12 @@ export interface PluginReactionListing {
    * a kind without one cannot be tested.
    */
   readonly dryRun: boolean;
+  /**
+   * Whether the kind can run now (COR-2181): `needs-setup` while a secret its plugin declared is
+   * missing, which is when a hook of it waits instead of running, and `available` otherwise. Read
+   * when the list is asked for, so a secret saved since is seen without a restart.
+   */
+  readonly availability: 'available' | 'needs-setup';
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }

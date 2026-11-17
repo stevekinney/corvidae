@@ -21,6 +21,7 @@
   import { SvelteSet } from 'svelte/reactivity';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import Select from '../select/select.svelte';
 
   import {
     SegmentedControlController,
@@ -44,6 +45,7 @@
     variant = 'radiogroup',
     selectionMode = 'single',
     selectionRequired = true,
+    overflow = 'scroll',
     class: customClassName,
     onValueChange,
     children,
@@ -59,6 +61,42 @@
     selectionMode === 'multiple' && variant !== 'radiogroup' ? 'radiogroup' : variant,
   );
   const rendersNavigation = $derived(effectiveVariant === 'navigation');
+
+  // `overflow="select"` applies to a single-choice radio group: a tab list and a navigation are
+  // places, and a multiple selection is many values, which a Select does not hold.
+  const overflowsToSelect = $derived(
+    overflow === 'select' && selectionMode === 'single' && effectiveVariant === 'radiogroup',
+  );
+  let containerElement = $state<HTMLElement | null>(null);
+  let stripElement = $state<HTMLElement | null>(null);
+  /**
+   * Whether the segments are wider than the room the control has, so a Select stands in for them.
+   * It is measured from the strip's own width, which does not change with what is shown (the strip
+   * stays in the document, hidden, while the Select shows), against the room of the container's
+   * parent, so showing the Select cannot make the strip fit again and flip the control back.
+   */
+  let overflowing = $state(false);
+
+  $effect(() => {
+    const container = containerElement;
+    const strip = stripElement;
+    if (!overflowsToSelect || container === null || strip === null) {
+      overflowing = false;
+      return;
+    }
+    const parent = container.parentElement;
+    const measure = () => {
+      const available = parent?.clientWidth ?? 0;
+      const natural = strip.offsetWidth;
+      overflowing = available > 0 && natural > available;
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    if (parent) observer.observe(parent);
+    return () => observer.disconnect();
+  });
 
   const controller = new SegmentedControlController({
     selectionMode: () => selectionMode,
@@ -90,6 +128,16 @@
   };
 
   setSegmentedControlContext(contextValue);
+
+  // What the Select shows when the segments do not fit: the same options, read from the segments.
+  const selectOptions = $derived(
+    controller.segments.map((segment) => ({
+      value: segment.value,
+      label: segment.node.textContent?.trim() || segment.value,
+      disabled: segment.disabled,
+    })),
+  );
+  const selectedValue = $derived(typeof value === 'string' ? value : undefined);
 
   // See documentation/decisions/segmented-control-tablist-variant.md for why tablist remains a SegmentedControl variant.
   const groupRole = $derived(
@@ -148,13 +196,29 @@
   });
 </script>
 
-<div class="cinder-segmented-control-container">
-  <span
-    id={`${id}-label`}
-    class={classNames('cinder-segmented-control-label', !labelVisible && 'cinder-sr-only')}
-  >
-    {label}
-  </span>
+<div
+  bind:this={containerElement}
+  class="cinder-segmented-control-container"
+  data-cinder-overflowing={overflowing ? '' : undefined}
+>
+  {#if overflowing}
+    <Select
+      id={`${id}-select`}
+      {label}
+      {labelVisible}
+      {disabled}
+      options={selectOptions}
+      {...selectedValue === undefined ? {} : { value: selectedValue }}
+      onValueChange={(next) => controller.toggle(next)}
+    />
+  {:else}
+    <span
+      id={`${id}-label`}
+      class={classNames('cinder-segmented-control-label', !labelVisible && 'cinder-sr-only')}
+    >
+      {label}
+    </span>
+  {/if}
   {#if rendersNavigation}
     <nav
       {...rest}
@@ -176,7 +240,11 @@
     <div
       {...rest}
       {id}
+      bind:this={stripElement}
       role={groupRole}
+      aria-hidden={overflowing ? 'true' : undefined}
+      inert={overflowing ? true : undefined}
+      data-cinder-measuring={overflowing ? '' : undefined}
       aria-labelledby={`${id}-label`}
       aria-disabled={disabled ? 'true' : undefined}
       aria-orientation={selectionMode === 'single' ? orientation : undefined}

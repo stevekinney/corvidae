@@ -76,6 +76,7 @@ function hook(overrides: Partial<Hook> = {}): Hook {
     action: { type: 'webhook', url: 'https://example.com/a' },
     events: ['review.requested'],
     scope: null,
+    declaredBy: null,
     enabled: true,
     createdAt: 1,
     updatedAt: 1,
@@ -111,6 +112,7 @@ const attempt = (overrides: Partial<HookDelivery['attempts'][number]>) => ({
   responseExcerpt: null,
   responseTruncated: null,
   error: null,
+  receipt: null,
   ...overrides,
 });
 
@@ -265,7 +267,7 @@ describe('a hook as a sentence', () => {
       'When Review requested, notify me',
     );
     expect(hookSentence(hook({ action: { type: 'plugin', plugin: 'acme', kind: 'page' } }))).toBe(
-      'When Review requested, run page from acme',
+      'When Review requested, run Page from Acme',
     );
   });
 
@@ -436,7 +438,7 @@ function summary(overrides: Partial<HookDeliverySummary> = {}): HookDeliverySumm
 }
 
 function listed(overrides: Partial<ListedHook> = {}): ListedHook {
-  return { ...hook(), lastDelivery: null, ...overrides };
+  return { ...hook(), lastDelivery: null, problems: [], ...overrides };
 }
 
 describe('an event as a clause of a row’s sentence', () => {

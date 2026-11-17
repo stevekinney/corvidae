@@ -37,6 +37,7 @@ function attempt(overrides: Partial<Attempt> = {}): Attempt {
     responseExcerpt: null,
     responseTruncated: null,
     error: null,
+    receipt: null,
     ...overrides,
   };
 }
@@ -115,7 +116,7 @@ describe('a hook as the editor’s sentence', () => {
         { events: ['run.error'], action: { type: 'plugin', plugin: 'pager', kind: 'page' } },
         undefined,
       ),
-    ).toBe('When a run fails, run page from pager.');
+    ).toBe('When a run fails, run Page from Pager.');
     expect(
       editorSentence({ events: ['run.error'], action: { type: 'webhook', url: '' } }, undefined),
     ).toBe('When a run fails, send a webhook.');
@@ -273,12 +274,12 @@ describe('what a test event came to', () => {
     expect(ran).toEqual({
       tone: 'success',
       link: 'log',
-      text: 'Test ran. page checked the event without doing it; nothing was sent.',
+      text: 'Test ran. Page checked the event without doing it; nothing was sent.',
     });
     expect(pluginTestOutcome(delivery('pending', [], { test: true }), 'pager', 'page')).toEqual({
       tone: 'warning',
       link: 'log',
-      text: 'pager needs setup before this test can run. It runs once setup is done.',
+      text: 'Pager needs setup before this test can run. It runs once setup is done.',
     });
     for (const status of ['exhausted', 'failed', 'aborted'] as const) {
       expect(pluginTestOutcome(delivery(status, [], { test: true }), 'pager', 'page')).toEqual({

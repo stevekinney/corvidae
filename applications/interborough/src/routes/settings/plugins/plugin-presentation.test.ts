@@ -318,6 +318,21 @@ describe('heldBackAgents', () => {
 });
 
 describe('problemView', () => {
+  test('words a hook the plugin declared badly by its name and the field, never by a reason in text (COR-2180)', () => {
+    const view = problemView({ code: 'hook-invalid', hook: 'Page on settle', path: 'events' });
+    expect(view.title).toBe('A hook the plugin adds was skipped');
+    expect(view.body).toBe(
+      'The hook “Page on settle” was skipped because its events is not valid. The plugin’s other hooks run.',
+    );
+    expect(view.status).toEqual({ label: 'Loaded, a hook was skipped', dot: 'warning' });
+    expect(problemView({ code: 'hook-invalid', hook: '', path: 'reaction' }).body).toBe(
+      'The hook with no name was skipped because its action is not valid. The plugin’s other hooks run.',
+    );
+    expect(problemView({ code: 'hook-invalid', hook: 'x', path: 'surprise' }).body).toContain(
+      'its declaration',
+    );
+  });
+
   test('names what waits for a missing secret as a person reads it, given the plugin', () => {
     const gemini = standing({
       name: 'gemini',

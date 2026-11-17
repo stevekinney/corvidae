@@ -19,6 +19,7 @@ import type {
 } from '../../lib/bureau-hooks.ts';
 import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
 import { clockTime, dayLabel } from '../health/health-times.ts';
+import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 import {
   eventClauses,
@@ -61,7 +62,7 @@ function actionClause(action: EditorHook['action']): string {
     case 'notify':
       return HOOKS_COPY.sentence.notify;
     case 'plugin':
-      return HOOKS_COPY.sentence.plugin(action.plugin, action.kind);
+      return HOOKS_COPY.sentence.plugin(humanizeName(action.plugin), humanizeName(action.kind));
   }
 }
 
@@ -279,12 +280,36 @@ export function pluginTestOutcome(
 ): TestOutcome {
   const copy = COPY.check;
   if (delivery.status === 'delivered') {
-    return { tone: 'success', text: copy.testPluginRan(kind), link: 'log' };
+    return { tone: 'success', text: copy.testPluginRan(humanizeName(kind)), link: 'log' };
   }
   if (delivery.status === 'pending') {
-    return { tone: 'warning', text: copy.testPluginWaiting(plugin), link: 'log' };
+    return { tone: 'warning', text: copy.testPluginWaiting(humanizeName(plugin)), link: 'log' };
   }
   return { tone: 'danger', text: copy.testPluginFailed, link: 'log' };
+}
+
+/**
+ * What a refusal says is wrong at a field of a plugin action's configuration (COR-2181, row R10-22):
+ * each issue the Bureau named under `action.configuration`, as the path inside the configuration and
+ * the Bureau's own message, so the field it belongs to can show it. An issue anywhere else, and a
+ * failure that is no refusal, is none.
+ */
+export function configurationIssuesOf(
+  error: unknown,
+): { readonly path: readonly string[]; readonly message: string }[] {
+  if (!(error instanceof HttpClientError)) return [];
+  const issues: unknown = error.data?.['issues'];
+  if (!Array.isArray(issues)) return [];
+  const found: { path: readonly string[]; message: string }[] = [];
+  for (const issue of issues as unknown[]) {
+    if (typeof issue !== 'object' || issue === null) continue;
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (!Array.isArray(path) || typeof message !== 'string') continue;
+    const [first, second, ...rest] = path as unknown[];
+    if (first !== 'action' || second !== 'configuration') continue;
+    found.push({ path: rest.map(String), message });
+  }
+  return found;
 }
 
 /**

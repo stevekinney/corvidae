@@ -8,7 +8,6 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { PLUGIN_KINDS_COPY } from '../../app/copy/plugins.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   StubFault,
@@ -128,22 +127,42 @@ async function chooseEvent(view: ReturnType<typeof open>, search: string, name: 
   await fireEvent.mouseDown(option);
 }
 
+/** Chooses "Run an action from a plugin", then the action titled `title` from the Action Select. */
+async function choosePluginAction(view: ReturnType<typeof open>, title: string) {
+  const group = await view.findByRole('radiogroup', { name: HOOKS_COPY.editor.action.label });
+  await waitFor(() => expect(within(group).getAllByRole('radio').length).toBe(4));
+  await fireEvent.click(
+    within(group).getByRole('radio', { name: HOOKS_COPY.editor.action.plugin }),
+  );
+  await fireEvent.click(await view.findByRole('combobox', { name: /^Action/ }));
+  const option = await waitFor(() => {
+    const found = Array.from(document.body.querySelectorAll('[role="option"]')).find(
+      (element) => element.querySelector('.cinder-select__option-label')?.textContent === title,
+    );
+    if (found === undefined) throw new Error(`no action ${title}`);
+    return found;
+  });
+  await fireEvent.click(option);
+}
+
 describe('a contributed hook action under Then', () => {
   test('is offered beside the built-in actions, and its schema fields render when chosen', async () => {
     const view = open('/hooks/new');
-    // The built-in actions are a segmented control until a plugin adds one; then they are this select.
-    const select = (await view.findByRole('combobox', {
-      name: HOOKS_COPY.editor.action.label,
-    })) as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(4));
-    expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
+    // A plugin adds one more choice beside the built-in actions: "Run an action from a plugin".
+    const group = await view.findByRole('radiogroup', { name: HOOKS_COPY.editor.action.label });
+    await waitFor(() => expect(within(group).getAllByRole('radio').length).toBe(4));
+    expect(
+      within(group)
+        .getAllByRole('radio')
+        .map((radio) => radio.textContent?.trim()),
+    ).toEqual([
       HOOKS_COPY.editor.action.webhook,
       HOOKS_COPY.editor.action.startWorkflow,
       HOOKS_COPY.editor.action.notify,
-      PLUGIN_KINDS_COPY.hookAction('pager', 'page'),
+      HOOKS_COPY.editor.action.plugin,
     ]);
 
-    await fireEvent.change(select, { target: { value: 'pager:page' } });
+    await choosePluginAction(view, 'Page');
     await waitFor(() => expect(view.getByLabelText(/team/i)).toBeTruthy());
     expect(view.getByTestId('contributed-action').textContent).toContain(
       'Pages the on-call person.',
@@ -154,13 +173,8 @@ describe('a contributed hook action under Then', () => {
 
   test('creates a hook with a plugin action holding the configuration typed into its fields', async () => {
     const view = open('/hooks/new');
-    // The built-in actions are a segmented control until a plugin adds one; then they are this select.
-    const select = (await view.findByRole('combobox', {
-      name: HOOKS_COPY.editor.action.label,
-    })) as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(4));
     await chooseEvent(view, 'review', 'A review is waiting');
-    await fireEvent.change(select, { target: { value: 'pager:page' } });
+    await choosePluginAction(view, 'Page');
     await fireEvent.input(await waitFor(() => view.getByLabelText(/team/i)), {
       target: { value: 'ops' },
     });
@@ -190,13 +204,8 @@ describe('a contributed hook action under Then', () => {
         ],
       }),
     });
-    // The built-in actions are a segmented control until a plugin adds one; then they are this select.
-    const select = (await view.findByRole('combobox', {
-      name: HOOKS_COPY.editor.action.label,
-    })) as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(4));
     await chooseEvent(view, 'review', 'A review is waiting');
-    await fireEvent.change(select, { target: { value: 'pager:page' } });
+    await choosePluginAction(view, 'Page');
     await view.findByTestId('contributed-configuration');
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
@@ -274,7 +283,13 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
   /** The button is off but reachable: `aria-disabled`, focusable, described by the reason, and pressing it does nothing. */
   async function expectOff(view: ReturnType<typeof open>, reason: string) {
     const test = await testButton(view);
-    const text = await view.findByText(reason);
+    // The reason may hold a link ("Settings"), so it is read whole from its own element.
+    const text = await waitFor(() => {
+      const found = view.getByTestId('hook-test-reason');
+      if (found.textContent?.trim() !== reason)
+        throw new Error(`The reason reads ${found.textContent ?? ''}`);
+      return found;
+    });
     await waitFor(() => expect(test.getAttribute('aria-disabled')).toBe('true'));
     expect(test.disabled).toBe(false);
     expect(test.getAttribute('aria-describedby')).toBe(text.id);
@@ -298,9 +313,9 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
 
     await fireEvent.click(test);
     const result = await view.findByTestId('hook-test-result');
-    expect(result.textContent).toContain(copy.testPluginRan('page'));
+    expect(result.textContent).toContain(copy.testPluginRan('Page'));
     expect(result.textContent).toContain(
-      'Test ran. page checked the event without doing it; nothing was sent.',
+      'Test ran. Page checked the event without doing it; nothing was sent.',
     );
     expect(result.textContent).not.toContain('Test event sent');
     expect(result.textContent).not.toMatch(/dry run/i);
@@ -344,7 +359,7 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
     await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
     await fireEvent.click(test);
     const result = await view.findByTestId('hook-test-result');
-    expect(result.textContent).toContain('pager needs setup before this test can run.');
+    expect(result.textContent).toContain('Pager needs setup before this test can run.');
     expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('warning');
     expectOneLogLink(result);
   });
@@ -366,7 +381,7 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
     await waitFor(() => expect(test.getAttribute('aria-disabled')).toBeNull());
     await fireEvent.click(test);
     const result = await view.findByTestId('hook-test-result');
-    expect(result.textContent).toContain('pager needs setup before this action can be tested.');
+    expect(result.textContent).toContain('Pager needs setup before this action can be tested.');
     expect(result.textContent).not.toContain('hook action kind');
     expect(alertOf(result)?.getAttribute('data-cinder-variant')).toBe('warning');
     // Nothing to read in the log, so no link and no actions box.
@@ -392,10 +407,8 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
 
   test('says a reaction that cannot be tested would do its work for real', async () => {
     const view = open('/hooks/pager-hook', { 'bureau.hooks.get': () => PAGER_HOOK });
-    await expectOff(
-      view,
-      'A test of this action would do what it does for real, so it has no test.',
-    );
+    // R10-19: exactly this sentence.
+    await expectOff(view, 'This action would do what it does for real, so it has no test.');
     expect(view.queryByText(/dry run/i)).toBeNull();
   });
 
@@ -404,7 +417,7 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
       'bureau.hooks.get': () => PAGER_HOOK,
       'bureau.plugins.contributions': () => ({ triggers: [], reactions: [] }),
     });
-    await expectOff(view, 'Turn on pager in Settings to test this action.');
+    await expectOff(view, 'Turn on Pager in Settings to test this action.');
   });
 
   test('says it could not check when the list of plugin actions failed to load', async () => {
@@ -419,25 +432,14 @@ describe('Send a test event on a saved plugin hook (COR-2183, reactions-2 matrix
 
   test('says to save first for a new hook whose action offers a test, and says a reaction without one would run for real', async () => {
     const offered = open('/hooks/new', { 'bureau.plugins.contributions': TESTABLE });
-    const select = (await offered.findByRole('combobox', {
-      name: HOOKS_COPY.editor.action.label,
-    })) as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(4));
-    await fireEvent.change(select, { target: { value: 'pager:page' } });
+    await choosePluginAction(offered, 'Page');
     await expectOff(offered, 'Save hook, then send a test.');
     cleanup();
     stub?.restore();
 
     const refused = open('/hooks/new');
-    const other = (await refused.findByRole('combobox', {
-      name: HOOKS_COPY.editor.action.label,
-    })) as HTMLSelectElement;
-    await waitFor(() => expect(other.options.length).toBe(4));
-    await fireEvent.change(other, { target: { value: 'pager:page' } });
-    await expectOff(
-      refused,
-      'A test of this action would do what it does for real, so it has no test.',
-    );
+    await choosePluginAction(refused, 'Page');
+    await expectOff(refused, 'This action would do what it does for real, so it has no test.');
     // The built-in sentence no longer claims that only a webhook is tested.
     expect(refused.queryByText(copy.testWebhookOnly)).toBeNull();
   });

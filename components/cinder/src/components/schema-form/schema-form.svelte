@@ -23,6 +23,9 @@
     SchemaFormOutput,
     SchemaFormProps,
     SchemaFormSchema,
+    SchemaFormSecretCopy,
+    SchemaFormSecretKey,
+    SchemaFormSecrets,
     SchemaFormSubmitHandler,
     SchemaFormVariant,
   } from './schema-form.types.ts';

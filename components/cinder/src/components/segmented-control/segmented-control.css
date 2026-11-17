@@ -40,6 +40,25 @@
     display: none;
   }
 
+  /* COR-2181: with `overflow="select"` the options are a Select when the segments do not fit. The
+     strip stays in the document at its own width, out of the layout and out of sight, so the control
+     can tell when they fit again; the Select takes the room the strip had. */
+  .cinder-segmented-control-container[data-cinder-overflowing] {
+    position: relative;
+    inline-size: calc(100% + 2 * var(--_cinder-segmented-control-ring-room));
+    overflow: visible;
+  }
+
+  .cinder-segmented-control[data-cinder-measuring] {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    block-size: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .cinder-segmented-control-container:has([data-cinder-full-width]) {
     display: flex;
     /* Logical, not physical `width` — mixing the two for the same axis on one

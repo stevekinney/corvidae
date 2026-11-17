@@ -195,6 +195,22 @@ const hookSchema = z.object({
     .describe(
       'The one subject the hook fires for; `null` for a hook that fires for the whole Bureau. `kind` is `agent`, `workflow` or `schedule`. A stored kind this release does not know is shown as stored, and a stored value it cannot read is shown with an empty `kind`; neither fires.',
     ),
+  declaredBy: z
+    .object({
+      plugin: z.string().describe('The plugin that declared the hook.'),
+      ownerDisabled: z
+        .boolean()
+        .describe('The owner turned the hook off; a reconcile keeps it off.'),
+      withdrawn: z
+        .boolean()
+        .describe(
+          'The plugin no longer declares the hook, so it is off and the owner cannot turn it on.',
+        ),
+    })
+    .nullable()
+    .describe(
+      'Where a default hook comes from: the plugin that declared it (COR-2179). The owner can turn it on or off and copy it, and changes nothing else about it. `null` for a hook the owner made.',
+    ),
   enabled: z.boolean(),
   createdAt: z.number().describe('Epoch milliseconds.'),
   updatedAt: z.number().describe('Epoch milliseconds.'),
@@ -402,6 +418,14 @@ function hookViewOf(hook: Hook): z.infer<typeof hookSchema> {
           : { ...hook.action },
     events: [...hook.events],
     scope: hook.scope === undefined ? null : { kind: hook.scope.kind, id: hook.scope.id },
+    declaredBy:
+      hook.declaredBy === undefined
+        ? null
+        : {
+            plugin: hook.declaredBy.plugin,
+            ownerDisabled: hook.declaredBy.ownerDisabled === true,
+            withdrawn: hook.declaredBy.withdrawn === true,
+          },
     enabled: hook.enabled,
     createdAt: hook.createdAt,
     updatedAt: hook.updatedAt,
@@ -1195,7 +1219,65 @@ export const hooksRetryDeliveryOperation = defineOperation<
   },
 });
 
-/** The ten `bureau.hooks.*` operations. */
+const duplicateInput = z.object({
+  hookId,
+  name: z
+    .string()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('The copy’s label, 1 to 100 characters. Omitted, it keeps the hook’s own.'),
+});
+
+export const hooksDuplicateOperation = defineOperation<
+  typeof duplicateInput,
+  typeof createdHookSchema,
+  BureauHooksOperationHost
+>({
+  name: 'bureau.hooks.duplicate',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.duplicate'),
+  mcpExposable: false,
+  summary: 'Copy a hook',
+  description:
+    'Makes a hook of the caller’s own from one the caller may read (COR-2181): the same action, events and scope, off, with no `declaredBy`, so a default hook a plugin declared becomes a hook the owner can change. `name` labels the copy, else it keeps the hook’s own label. The copy is owned by the caller, whoever owned the original, and is checked as `bureau.hooks.create` checks a hook, so it needs `bureau.events:observe-all` (a hook observes the whole Bureau’s events), and a copy of a `start-workflow` hook needs a caller allowed to start workflows. A webhook’s copy gets a signing secret the Bureau generates, shown once as `signingSecret` on the answer (`null` otherwise) and never copied from the original. A caller copies its own hooks, and `bureau.hooks:read` reads any owner’s to copy; another owner’s hook the caller may not read answers `NotFound`, as `bureau.hooks.get` does, and in a workspace a hook of another owner is copied only when it is a webhook for events shared to the workspace. A hook whose plugin no longer offers its action is `InvalidParams` on `action.kind`, because a copy would be checked against a schema that is gone.',
+  destructive: false,
+  tags: ['Hooks'],
+  inputSchema: duplicateInput,
+  outputSchema: createdHookSchema,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { hooks, hook } = await hookFor(host, principal, input.hookId, 'bureau.hooks:read');
+    const owner = ownerFor(principal);
+    // A copy is a hook of the caller's, so it is held to what writing one is held to.
+    requireObserveAll(principal);
+    if (hook.action.type === 'start-workflow') requireWorkflowAuthority(host, principal);
+    const workspace = principal.method !== 'unauthenticated' && principal.workspace !== undefined;
+    if (workspace && owner !== hook.owner && !isSharedWebhook(hook.action, hook.events)) {
+      throw resourceNotFound('hook', input.hookId);
+    }
+    try {
+      const copy = await hooks.duplicate(input.hookId, {
+        principal: owner,
+        ...(input.name === undefined ? {} : { name: input.name }),
+      });
+      if (copy === undefined) throw resourceNotFound('hook', input.hookId);
+      return {
+        ...hookViewOf(copy),
+        signingSecret: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? (copy.signingSecret ?? null)
+          : null,
+      };
+    } catch (error) {
+      return faultOf(error);
+    }
+  },
+});
+
+/** The eleven `bureau.hooks.*` operations. */
 export const bureauHooksOperations = [
   hooksCreateOperation,
   hooksUpdateOperation,
@@ -1207,4 +1289,5 @@ export const bureauHooksOperations = [
   hooksDraftTestOperation,
   hooksDeliveriesOperation,
   hooksRetryDeliveryOperation,
+  hooksDuplicateOperation,
 ] as const;

@@ -79,6 +79,11 @@ const kindsOutput = z.object({
           .describe(
             'Whether the kind has a `dryRun`, which `bureau.hooks.test` calls instead of the action: a hook of a kind without one cannot be tested.',
           ),
+        availability: z
+          .enum(['available', 'needs-setup'])
+          .describe(
+            'Whether the kind can run now: `needs-setup` while a secret its plugin declared is missing, when a hook of it waits instead of running, and `available` otherwise. Read each time, so a secret saved since is seen without a restart.',
+          ),
         configuration: configurationSchema,
       }),
     )

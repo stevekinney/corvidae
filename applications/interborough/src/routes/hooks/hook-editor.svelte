@@ -39,6 +39,7 @@
   import {
     Alert,
     Button,
+    Callout,
     ConfirmDialog,
     EmptyState,
     ErrorState,
@@ -55,7 +56,6 @@
   import { tick, untrack } from 'svelte';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { PLUGIN_KINDS_COPY } from '../../app/copy/plugins.ts';
   import { RETRY_LABEL, STALE_COPY } from '../../app/copy/views.ts';
   import NotFoundState from '../../app/not-found-state.svelte';
   import { showFault, showToast } from '../../app/toast-host.svelte';
@@ -63,6 +63,7 @@
   import {
     createHook,
     deleteHook,
+    duplicateHook,
     getHook,
     listHookDeliveries,
     listHookEventKinds,
@@ -76,14 +77,16 @@
     type HookActionType,
   } from '../../lib/bureau-hooks.ts';
   import { hookActionKindId, listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
-  import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { classifyFault, faultTreatment } from '../../lib/faults.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
   import { hookPath } from '../../lib/identifier-paths.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { listWorkflowFiles } from '../../lib/workflow-files.ts';
+  import SecretDialog, { type SecretTarget } from '../settings/plugins/secret-dialog.svelte';
+  import HookConfiguration from './hook-configuration.svelte';
   import { HOOKS_COPY } from './hook-copy.ts';
   import HookEditorHeader from './hook-editor-header.svelte';
   import {
@@ -92,6 +95,7 @@
     editorTitle,
     hookWriteReason,
     latestDelivery,
+    configurationIssuesOf,
     isNeedsSetupRefusal,
     pluginTestOutcome,
     testOutcome,
@@ -107,6 +111,7 @@
     type HookProblemField,
   } from './hook-form-state.svelte.ts';
   import HookOnlyFor from './hook-only-for.svelte';
+  import { actionTitleOf, hookStanding, pluginTitleOf } from './hook-standing.ts';
   import {
     eventOptionLabel,
     eventRefusal,
@@ -193,6 +198,21 @@
     () => ({
       queryKey: queryKeys.pluginKinds(),
       queryFn: ({ signal }: { signal: AbortSignal }) => listContributedKinds({ signal }),
+      enabled: isNew || existing.data?.action.type === 'plugin',
+      retry: false,
+    }),
+    undefined,
+  );
+  /**
+   * The plugins the host loaded (COR-2181): the title of the plugin a saved plugin hook runs, whether
+   * it is disabled, and which of its secrets are saved. A new hook reads it only for the titles its
+   * action choices are grouped by. A host that cannot say leaves each of those unknown, and nothing
+   * is guessed from what is not known.
+   */
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getPlugins({ signal }),
       enabled: isNew || existing.data?.action.type === 'plugin',
       retry: false,
     }),
@@ -302,6 +322,24 @@
   }
 
   const isPlugin = $derived(hook?.action.type === 'plugin');
+  /** A default hook: one a plugin declared. The owner turns it on or off and copies it, and changes nothing else. */
+  const declared = $derived(hook?.declaredBy ?? null);
+  const isDefault = $derived(declared !== null);
+  /** Where the hook stands: the one status its header and its list row say (COR-2181). */
+  const standing = $derived(
+    hook === undefined
+      ? undefined
+      : hookStanding(hook, {
+          plugins: plugins.data?.plugins,
+          reactions: contributed.isSuccess ? contributed.data.reactions : undefined,
+        }),
+  );
+  /** The title of the plugin a default hook came from, for the note above its steps. */
+  const declaringTitle = $derived(
+    declared === null ? undefined : pluginTitleOf(declared.plugin, plugins.data?.plugins),
+  );
+  /** The key the header's Add the key dialog is for, or `null` while it is closed. */
+  let addingKey = $state<SecretTarget | null>(null);
   /** The kinds of subject the chosen events narrow by, which say what "any" covers in the sentence. */
   const allowedScopes = $derived(scopeKindsFor(form.events, kinds.data ?? []));
   const draftSentence = $derived(
@@ -332,17 +370,26 @@
   const latest = $derived(deliveries.isSuccess ? latestDelivery(deliveries.data, now) : undefined);
 
   const contributedKinds = $derived(contributed.data?.reactions ?? []);
-  const actionOptions = $derived([
+  /** The choices under Then: the built-in actions, and "Run an action from a plugin" once a plugin offers one. */
+  const actionChoices = $derived([
     ...HOOK_ACTION_TYPES.map((type) => ({
-      value: type,
+      value: type as HookActionType | 'plugin',
       label: actionLabel(type),
       disabled: remote && type === 'webhook',
     })),
-    ...contributedKinds.map((kind) => ({
-      value: hookActionKindId(kind),
-      label: PLUGIN_KINDS_COPY.hookAction(kind.plugin, kind.kind),
-    })),
+    ...(contributedKinds.length === 0
+      ? []
+      : [{ value: 'plugin' as const, label: copy.action.plugin, disabled: false }]),
   ]);
+  /** The plugin's actions, grouped by the plugin's title; one whose plugin needs setup can still be chosen. */
+  const pluginActionOptions = $derived(
+    contributedKinds.map((kind) => ({
+      value: hookActionKindId(kind),
+      label: actionTitleOf(kind.kind),
+      group: pluginTitleOf(kind.plugin, plugins.data?.plugins),
+      ...(kind.availability === 'needs-setup' ? { note: copy.action.needsSetup } : {}),
+    })),
+  );
   /** The contributed kind the form has chosen, with its description and configuration schema. */
   const chosenKind = $derived(
     form.contributedKind === null
@@ -352,18 +399,24 @@
             kind.plugin === form.contributedKind?.plugin && kind.kind === form.contributedKind.kind,
         ),
   );
-  const actionValue = $derived(
-    form.contributedKind === null ? form.actionType : hookActionKindId(form.contributedKind),
-  );
+  /** What the choice under Then shows: a built-in action, or `plugin` while the action is one a plugin offers. */
+  const actionValue = $derived(form.effectiveType);
 
-  function chooseAction(value: string): void {
-    const kind = contributedKinds.find((candidate) => hookActionKindId(candidate) === value);
-    if (kind === undefined) {
-      form.contributedKind = null;
-      form.contributedConfiguration = {};
-      form.actionType = value as HookActionType;
+  function chooseAction(value: HookActionType | 'plugin'): void {
+    form.contributedKind = null;
+    form.contributedConfiguration = {};
+    if (value === 'plugin') {
+      form.choosePlugin = true;
       return;
     }
+    form.choosePlugin = false;
+    form.actionType = value;
+  }
+
+  /** Chooses which of a plugin's actions a new hook runs, which starts its configuration empty. */
+  function choosePluginAction(id: string): void {
+    const kind = contributedKinds.find((candidate) => hookActionKindId(candidate) === id);
+    if (kind === undefined) return;
     form.contributedKind = { plugin: kind.plugin, kind: kind.kind };
     form.contributedConfiguration = {};
   }
@@ -423,11 +476,19 @@
   }
 
   /** The order the steps ask for things in, which decides the problem that takes focus first. */
-  const FIELD_ORDER: readonly HookProblemField[] = ['event', 'only-for', 'url', 'workflow', 'name'];
+  const FIELD_ORDER: readonly HookProblemField[] = [
+    'event',
+    'only-for',
+    'action',
+    'url',
+    'workflow',
+    'name',
+  ];
   /** The control each field's problem moves focus to. */
   const FIELD_IDS: Readonly<Record<HookProblemField, string>> = {
     event: 'ib-hook-event',
     'only-for': 'ib-hook-only-for',
+    action: 'ib-hook-plugin-action',
     url: 'ib-hook-url',
     workflow: 'ib-hook-workflow',
     name: 'ib-hook-name',
@@ -458,6 +519,7 @@
   }
   /** An address that cannot be sent is said as it is typed; an empty one waits for Save hook. */
   const urlError = $derived(form.urlProblem ?? problemOf('url'));
+  const pluginActionError = $derived(problemOf('action'));
   /** A workflow that was deleted is said at once, beside the old name the field keeps. */
   const workflowError = $derived(workflowDeleted ? copy.workflow.deleted : problemOf('workflow'));
   const nameError = $derived(problemOf('name'));
@@ -465,8 +527,9 @@
   /** On a phone the When and Then steps of a saved hook are summaries until they are opened. */
   let whenOpen = $state(false);
   let thenOpen = $state(false);
-  const compactWhen = $derived(phoneViewport.current && !isNew && !whenOpen);
-  const compactThen = $derived(phoneViewport.current && !isNew && !thenOpen);
+  // A default hook has nothing to open: its steps are text, with no Edit button (COR-2181).
+  const compactWhen = $derived(phoneViewport.current && !isNew && !isDefault && !whenOpen);
+  const compactThen = $derived(phoneViewport.current && !isNew && !isDefault && !thenOpen);
 
   /** Moves focus to the control of a problem, opening the step it is in first when the phone folded it. */
   async function focusProblem(problem: HookProblem): Promise<void> {
@@ -482,6 +545,8 @@
 
   /** The write that failed, said beside what was typed, so it is not also a toast. */
   let failure = $state<string | null>(null);
+  /** What the Bureau refused at a field of the plugin action's configuration, shown on that field. */
+  let configurationIssues = $state<{ path: readonly string[]; message: string }[]>([]);
   let stale = $state(false);
 
   const saving = createMutation(() => ({
@@ -491,6 +556,7 @@
         : updateHook(hook.id, loadedRevision, form.toChange(hook)),
     onMutate: () => {
       failure = null;
+      configurationIssues = [];
       stale = false;
     },
     onSuccess: async (saved) => {
@@ -509,9 +575,33 @@
         void queryClient.invalidateQueries({ queryKey: queryKeys.hooks.detail(hookId) });
         return;
       }
+      configurationIssues = configurationIssuesOf(error);
       failure = `${copy.saveFailed} ${hookWriteReason(error)} ${copy.saveFailedKept}`;
     },
   }));
+
+  /** Makes an off copy the owner can change from a default hook, and opens it. */
+  const duplicating = createMutation(() => ({
+    mutationFn: (source: Hook) =>
+      duplicateHook(source.id, HOOKS_COPY.defaultHook.copyName(source.name ?? title).slice(0, 100)),
+    onSuccess: async (copy) => {
+      await queryClient.invalidateQueries({ queryKey: ['hooks'] });
+      router.navigate(hookPath(copy.id));
+      showToast(HOOKS_COPY.defaultHook.duplicated);
+    },
+    onError: (error: unknown) => {
+      const treatment = faultTreatment(error);
+      showFault({
+        ...treatment,
+        message: `${HOOKS_COPY.defaultHook.duplicateFailed}. ${treatment.message}`,
+      });
+    },
+  }));
+
+  /** Opens the dialog that saves the one secret a plugin lacks, from the header's Add the key. */
+  function addKey(plugin: string, key: string): void {
+    addingKey = { plugin, key };
+  }
 
   /**
    * Keeps what a write that changed the hook alone answered (the switch, a new secret) as the hook
@@ -596,7 +686,10 @@
           // The listing does not say a plugin needs setup, so the Bureau's refusal does: it is said
           // in the editor's words, and as a wait, not a failure.
           if (isNeedsSetupRefusal(error)) {
-            return { tone: 'warning', text: copy.check.testPluginNeedsSetup(plugin) };
+            return {
+              tone: 'warning',
+              text: copy.check.testPluginNeedsSetup(pluginTitleOf(plugin, plugins.data?.plugins)),
+            };
           }
           throw error;
         }
@@ -653,7 +746,8 @@
   const testReason = $derived.by((): string | undefined => {
     if (isNew) {
       if (form.effectiveType === 'webhook') return undefined;
-      if (form.contributedKind === null) return copy.check.testWebhookOnly;
+      if (form.contributedKind === null && !form.choosePlugin) return copy.check.testWebhookOnly;
+      if (form.contributedKind === null) return undefined;
       if (chosenKind === undefined) return undefined;
       return chosenKind.dryRun ? copy.check.testSaveFirst : copy.check.testNotOffered;
     }
@@ -662,8 +756,41 @@
     // The Bureau lists the kinds a running plugin contributes: one that is not listed is off.
     if (contributed.isPending) return undefined;
     if (contributed.isError) return copy.check.testPluginUnknown;
-    if (savedKind === undefined) return copy.check.testPluginOff(hook.action.plugin);
+    const title = pluginTitleOf(hook.action.plugin, plugins.data?.plugins);
+    if (savedKind === undefined) {
+      // A plugin that is on and no longer offers the action needs its own sentence: "turn it on" is wrong for it.
+      return testReasonKind === 'not-offered'
+        ? copy.check.testNoLongerOffered(title)
+        : copy.check.testPluginOff(title);
+    }
+    // Read from what the action says of itself (COR-2181), so the button is off before it is pressed.
+    if (savedKind.availability === 'needs-setup') return copy.check.testPluginNeedsSetup(title);
     return savedKind.dryRun ? undefined : copy.check.testNotOffered;
+  });
+  /** Which of the two causes of an action that is not listed it is: its plugin is on and dropped it, or its plugin is off. */
+  const testReasonKind = $derived.by((): 'plugin-off' | 'not-offered' => {
+    if (hook?.action.type !== 'plugin') return 'plugin-off';
+    const { plugin } = hook.action;
+    const state = plugins.data?.plugins.find((candidate) => candidate.descriptor.name === plugin);
+    // Only a plugin the host says is on can have dropped the action; anything else is "turn it on".
+    return state?.status === 'running' || state?.status === 'needs-setup'
+      ? 'not-offered'
+      : 'plugin-off';
+  });
+  /** The reason in the parts the page draws it from, when "Settings" is a link: the plugin is off. */
+  const testReasonParts = $derived.by(() => {
+    if (
+      hook?.action.type !== 'plugin' ||
+      !contributed.isSuccess ||
+      savedKind !== undefined ||
+      testReasonKind !== 'plugin-off'
+    ) {
+      return undefined;
+    }
+    return {
+      ...copy.check.testPluginOffParts(pluginTitleOf(hook.action.plugin, plugins.data?.plugins)),
+      path: `/settings/plugins?plugin=${encodeURIComponent(hook.action.plugin)}`,
+    };
   });
   /** Whether Send a test event can be pressed: a webhook sends one, and a saved plugin action that offers a test runs it. */
   const canTest = $derived(
@@ -730,15 +857,19 @@
   >
     {#if isNew}
       <PageHeader title={copy.newTitle} description={copy.newDescription} headingLevel={1} />
-    {:else if hook !== undefined}
+    {:else if hook !== undefined && standing !== undefined}
       <HookEditorHeader
         {hook}
         {title}
         sentence={savedSentence}
         {latest}
+        {standing}
         togglePending={switching.isPending}
+        duplicating={duplicating.isPending}
         onToggle={toggle}
         onDelete={() => (confirmingDelete = true)}
+        onDuplicate={() => duplicating.mutate(hook)}
+        onAddKey={addKey}
         onJumpToLog={jumpToLog}
       />
     {/if}
@@ -776,6 +907,21 @@
     {:else}
       <div class="ib-hook-editor__layout" class:ib-hook-editor__layout--single={isNew}>
         <form class="ib-hook-editor__steps" onsubmit={submit} novalidate>
+          {#if isDefault && declared !== null && declaringTitle !== undefined}
+            <!-- Said once: the plugin that added the hook, and what the owner can do with it. -->
+            <Callout semantic="note" data-testid="hook-provenance">
+              <Link
+                href={router.href(
+                  `/settings/plugins?plugin=${encodeURIComponent(declared.plugin)}`,
+                )}
+                onclick={(event) =>
+                  leave(event, `/settings/plugins?plugin=${encodeURIComponent(declared.plugin)}`)}
+                >{declaringTitle}</Link
+              >{declared.withdrawn
+                ? HOOKS_COPY.defaultHook.provenance.withdrawn
+                : HOOKS_COPY.defaultHook.provenance.untouched}
+            </Callout>
+          {/if}
           <section class="ib-hook-step" aria-labelledby="ib-hook-step-when">
             <h2 id="ib-hook-step-when" class="ib-hook-step__title">
               <span class="ib-hook-step__number" aria-hidden="true">{copy.steps.when.number}</span>
@@ -787,6 +933,10 @@
                 <Button variant="ghost" size="sm" onclick={() => (whenOpen = true)}
                   >{copy.steps.edit}</Button
                 >
+              </p>
+            {:else if isDefault && hook !== undefined}
+              <p class="ib-hook-editor__plain" data-testid="hook-when-readonly">
+                {whenSummary(hook, anyScopeOf(savedScopes))}
               </p>
             {:else}
               <HookEventPicker
@@ -827,58 +977,82 @@
                   >{copy.steps.edit}</Button
                 >
               </p>
-            {:else if isPlugin && hook !== undefined}
+            {:else if isPlugin && hook !== undefined && hook.action.type === 'plugin'}
+              <!-- A saved plugin hook: its action is fixed and shown as text, and its configuration is
+                   the form below (read only for a default hook, which the owner cannot change). -->
               <p class="ib-hook-editor__plain">{copy.action.plugin}</p>
+              <p class="ib-hook-editor__plain" data-testid="hook-plugin-action">
+                {copy.action.pluginFixed(
+                  actionTitleOf(hook.action.kind),
+                  pluginTitleOf(hook.action.plugin, plugins.data?.plugins),
+                )}
+              </p>
+              {#if savedKind !== undefined}
+                <div class="ib-hook-editor__contributed" data-testid="contributed-action">
+                  <p class="ib-hook-editor__plain">{savedKind.description}</p>
+                  <HookConfiguration
+                    kindId={hookActionKindId(savedKind)}
+                    schema={savedKind.configuration}
+                    value={form.contributedConfiguration}
+                    readOnly={isDefault}
+                    issues={configurationIssues}
+                    disabled={saving.isPending}
+                    onChange={(next) => (form.contributedConfiguration = next)}
+                  />
+                </div>
+              {/if}
             {:else}
-              {#if contributedKinds.length > 0}
+              <SegmentedControl
+                id="ib-hook-action"
+                label={copy.action.label}
+                {...hiddenLabel}
+                overflow="select"
+                value={actionValue}
+                disabled={!isNew}
+                onValueChange={(next: HookActionType | 'plugin') => chooseAction(next)}
+              >
+                {#each actionChoices as choice (choice.value)}
+                  <Segment value={choice.value} disabled={choice.disabled}>{choice.label}</Segment>
+                {/each}
+              </SegmentedControl>
+              <p class="ib-hook-editor__plain">
+                {isNew
+                  ? remote
+                    ? copy.action.chooseRemote
+                    : copy.action.choose
+                  : copy.action.fixed}
+              </p>
+              {#if form.choosePlugin}
                 <Select
-                  id="ib-hook-action"
-                  label={copy.action.label}
-                  description={isNew
-                    ? remote
-                      ? copy.action.chooseRemote
-                      : copy.action.choose
-                    : copy.action.fixed}
-                  disabled={!isNew}
-                  options={actionOptions}
-                  value={actionValue}
-                  onchange={(event) => chooseAction(event.currentTarget.value)}
+                  id="ib-hook-plugin-action"
+                  presentation="listbox"
+                  label={copy.action.pluginLabel}
+                  placeholder={copy.action.pluginPlaceholder}
+                  required
+                  {...pluginActionError === undefined ? {} : { error: pluginActionError }}
+                  options={pluginActionOptions}
+                  {...form.contributedKind === null
+                    ? {}
+                    : { value: hookActionKindId(form.contributedKind) }}
+                  onValueChange={choosePluginAction}
                 />
-              {:else}
-                <SegmentedControl
-                  id="ib-hook-action"
-                  label={copy.action.label}
-                  {...hiddenLabel}
-                  value={form.actionType}
-                  disabled={!isNew}
-                  onValueChange={(next: HookActionType) => chooseAction(next)}
-                >
-                  {#each HOOK_ACTION_TYPES as type (type)}
-                    <Segment value={type} disabled={remote && type === 'webhook'}
-                      >{actionLabel(type)}</Segment
-                    >
-                  {/each}
-                </SegmentedControl>
-                <p class="ib-hook-editor__plain">
-                  {isNew
-                    ? remote
-                      ? copy.action.chooseRemote
-                      : copy.action.choose
-                    : copy.action.fixed}
-                </p>
               {/if}
               {#if form.contributedKind !== null}
                 <div class="ib-hook-editor__contributed" data-testid="contributed-action">
                   {#if chosenKind !== undefined}
                     <p class="ib-hook-editor__plain">{chosenKind.description}</p>
-                    <ContributedConfigurationForm
+                    <HookConfiguration
                       kindId={hookActionKindId(chosenKind)}
                       schema={chosenKind.configuration}
                       value={form.contributedConfiguration}
+                      issues={configurationIssues}
+                      disabled={saving.isPending}
                       onChange={(next) => (form.contributedConfiguration = next)}
                     />
                   {/if}
                 </div>
+              {:else if form.choosePlugin}
+                <!-- The action is chosen above; its fields come with it. -->
               {:else if form.actionType === 'webhook'}
                 <Input
                   id="ib-hook-url"
@@ -951,13 +1125,15 @@
               <span class="ib-hook-step__number" aria-hidden="true">{copy.steps.check.number}</span>
               {copy.steps.check.title}
             </h2>
-            <Input
-              id="ib-hook-name"
-              label={copy.check.nameLabel}
-              description={copy.check.nameDescription}
-              {...nameError === undefined ? {} : { error: nameError }}
-              bind:value={form.name}
-            />
+            {#if !isDefault}
+              <Input
+                id="ib-hook-name"
+                label={copy.check.nameLabel}
+                description={copy.check.nameDescription}
+                {...nameError === undefined ? {} : { error: nameError }}
+                bind:value={form.name}
+              />
+            {/if}
             {#if isNew && form.events.length === 0}
               <p class="ib-hook-editor__quiet" data-testid="hook-check-summary">
                 {copy.check.pickEvent}
@@ -998,9 +1174,11 @@
               </Alert>
             {/if}
             <div class="ib-hook-editor__actions">
-              <Button type="submit" variant="primary" disabled={saving.isPending}
-                >{isNew ? copy.check.create : copy.check.save}</Button
-              >
+              {#if !isDefault}
+                <Button type="submit" variant="primary" disabled={saving.isPending}
+                  >{isNew ? copy.check.create : copy.check.save}</Button
+                >
+              {/if}
               <!-- Off is `aria-disabled`, not `disabled`: the button stays in the tab order, so the
                    reason below it can be read from the button itself, and Cinder ignores the press. -->
               <Button
@@ -1008,6 +1186,7 @@
                 variant="secondary"
                 aria-disabled={canTest ? undefined : 'true'}
                 aria-describedby={testReason === undefined ? undefined : TEST_REASON_ID}
+                loading={testing.isPending}
                 onclick={() => void sendTest()}
               >
                 {#snippet leadingIcon()}<Play aria-hidden="true" />{/snippet}
@@ -1033,7 +1212,15 @@
             {/if}
             {#if testReason !== undefined}
               <p class="ib-hook-editor__hint" id={TEST_REASON_ID} data-testid="hook-test-reason">
-                {testReason}
+                {#if testReasonParts !== undefined}
+                  {testReasonParts?.before}<Link
+                    href={router.href(testReasonParts?.path ?? '')}
+                    onclick={(event) => leave(event, testReasonParts?.path ?? '')}
+                    >{testReasonParts?.link}</Link
+                  >{testReasonParts?.after}
+                {:else}
+                  {testReason}
+                {/if}
               </p>
             {/if}
           </section>
@@ -1045,6 +1232,8 @@
     {/if}
   </section>
 {/if}
+
+<SecretDialog bind:target={addingKey} />
 
 <ConfirmDialog
   bind:open={confirmingDelete}

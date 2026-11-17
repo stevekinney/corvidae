@@ -12,16 +12,27 @@
    * changed since is refused and the list is read again, and nothing was changed. The switch follows
    * the list once it has been read again, not the press.
    */
-  import { Alert, DataList, StackedListItem, StatusDot, Toggle } from '@lostgradient/cinder';
-  import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import {
+    Alert,
+    Badge,
+    DataList,
+    StackedListItem,
+    StatusDot,
+    Toggle,
+    Tooltip,
+  } from '@lostgradient/cinder';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { STALE_COPY } from '../../app/copy/views.ts';
   import { showFault } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { updateHook, type ListedHook } from '../../lib/bureau-hooks.ts';
+  import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
   import { hookPath } from '../../lib/identifier-paths.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import {
@@ -29,9 +40,9 @@
     hookFailing,
     hookRowSentence,
     hookRowText,
-    hookStatusWord,
     hookTime,
   } from './hook-presentation.ts';
+  import { hookStanding, pluginTitleOf } from './hook-standing.ts';
 
   interface Props {
     /** The hooks to show, each with its newest delivery. */
@@ -43,6 +54,33 @@
   const queryClient = useQueryClient();
 
   const ordered = $derived(failingFirst(hooks, hookFailing));
+
+  // What the plugins are and offer, read only when a hook of one is listed: a row says one status
+  // word (Off, Unavailable, Needs setup, then its latest delivery), and a plugin's hooks can be
+  // told from the rest. A host that cannot say leaves it unknown, and no state is guessed.
+  const runsPlugin = $derived(hooks.some((hook) => hook.action.type === 'plugin'));
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getPlugins({ signal }),
+      enabled: runsPlugin,
+      retry: false,
+    }),
+    undefined,
+  );
+  const contributed = createQuery(
+    () => ({
+      queryKey: queryKeys.pluginKinds(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listContributedKinds({ signal }),
+      enabled: runsPlugin,
+      retry: false,
+    }),
+    undefined,
+  );
+  const context = $derived({
+    plugins: plugins.data?.plugins,
+    reactions: contributed.isSuccess ? contributed.data.reactions : undefined,
+  });
   // The clock the times are counted from, read again whenever the hooks are.
   const now = $derived.by(() => {
     void hooks;
@@ -86,7 +124,9 @@
     aria-label={HOOKS_COPY.rowsLabel}
   >
     {#snippet children(hook)}
-      {@const word = hookStatusWord(hook)}
+      {@const standing = hookStanding(hook, context)}
+      {@const word = standing.word}
+      {@const withdrawn = hook.declaredBy?.withdrawn === true}
       {@const delivered = hookTime(hook, now)}
       {@const text = hookRowText(hook, now)}
       {@const whole = hookRowText(hook, now, true)}
@@ -105,7 +145,10 @@
             <StatusDot status="pending" label={HOOKS_COPY.row.noDelivery} size="sm" />
           {/if}
         {/snippet}
-        {#snippet title()}{text.title}{/snippet}
+        {#snippet title()}{text.title}{#if hook.declaredBy !== null}
+            <Badge variant="neutral" size="xs" data-testid="hook-plugin-badge"
+              >{HOOKS_COPY.pluginBadge}</Badge
+            >{/if}{/snippet}
         {#snippet time()}
           {#if delivered !== undefined}<span data-last-delivery>{delivered}</span>{/if}
         {/snippet}
@@ -113,22 +156,36 @@
           {#if text.line !== ''}<span class="ib-hooks__line">{text.line}</span>{/if}
         {/snippet}
         {#snippet trailing()}
-          <Toggle
-            {...{ 'data-changes': true }}
-            id={`hook-${hook.id}-on`}
-            label={hook.enabled ? HOOKS_COPY.row.on : HOOKS_COPY.row.off}
-            nameDetail={hookRowSentence(hook)}
-            mutating
-            checked={hook.enabled}
-            disabled={switching.isPending}
-            onValueChangeRequest={(next) => {
-              switching.mutate({ hook, enabled: next });
-              // The switch follows the list once it has been read again, not the press. Cinder takes
-              // the returned boolean as the value to show, so hand back the saved one: a refused
-              // change must keep reading as it was.
-              return hook.enabled;
-            }}
-          />
+          {#snippet theSwitch()}
+            <Toggle
+              {...{ 'data-changes': true }}
+              id={`hook-${hook.id}-on`}
+              label={hook.enabled ? HOOKS_COPY.row.on : HOOKS_COPY.row.off}
+              nameDetail={hookRowSentence(hook)}
+              mutating
+              checked={hook.enabled}
+              disabled={switching.isPending || withdrawn}
+              onValueChangeRequest={(next) => {
+                switching.mutate({ hook, enabled: next });
+                // The switch follows the list once it has been read again, not the press. Cinder takes
+                // the returned boolean as the value to show, so hand back the saved one: a refused
+                // change must keep reading as it was.
+                return hook.enabled;
+              }}
+            />
+          {/snippet}
+          {#if withdrawn && hook.declaredBy !== null}
+            <!-- A hook its plugin withdrew stays off: the switch is held, and the tooltip says why. -->
+            <Tooltip
+              text={HOOKS_COPY.standing.withdrawnSwitch(
+                pluginTitleOf(hook.declaredBy.plugin, context.plugins),
+              )}
+            >
+              {@render theSwitch()}
+            </Tooltip>
+          {:else}
+            {@render theSwitch()}
+          {/if}
         {/snippet}
       </StackedListItem>
     {/snippet}

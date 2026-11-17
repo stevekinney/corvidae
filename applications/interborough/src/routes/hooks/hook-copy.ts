@@ -111,6 +111,52 @@ export const HOOKS_COPY = {
     newActionOffReason: 'New hook is off until Interborough answers.',
   },
   toggleFailed: 'The hook was not changed',
+  /** The mark on a hook a plugin declared (COR-2181): what a plugin made, never what you made with one. */
+  pluginBadge: 'Plugin',
+  /**
+   * What a hook's one status line says after its word (COR-2181, rows R10-02 and R10-07). The first
+   * state that applies wins: off, then unavailable, then needs setup, then the latest delivery.
+   */
+  standing: {
+    ownerOff: 'You turned this hook off. It won’t run until you turn it on.',
+    disabled: (plugin: string): string => `${plugin} is disabled, so this hook can’t run.`,
+    openPlugin: (plugin: string): string => `Open ${plugin} in Settings`,
+    notOffered: (plugin: string, action: string): string =>
+      `${plugin} no longer offers ${action}, so this hook can’t run.`,
+    needsSetup: (plugin: string): string => `${plugin} needs setup before this hook can run.`,
+    addKey: 'Add the key',
+    /** The tooltip of the disabled switch of a default hook its plugin withdrew. */
+    withdrawnSwitch: (plugin: string): string =>
+      `${plugin} no longer offers this hook, so it can’t be turned on.`,
+  },
+  /** A default hook's own page (COR-2181): read only, with Duplicate beside the switch. */
+  defaultHook: {
+    duplicate: 'Duplicate',
+    /** A copy is named as agents' copies are. */
+    copyName: (name: string): string => `${name} copy`,
+    duplicated: 'Copied. Your copy is off until you turn it on.',
+    duplicateFailed: 'The hook was not duplicated',
+    /** The one line above step 1: the plugin (a link) then this. */
+    provenance: {
+      untouched:
+        ' adds this hook, so you can turn it off but not change it. Duplicate it to make a copy you can change.',
+      withdrawn:
+        ' no longer offers this hook, so it stays off. Duplicate it to keep a copy you can change.',
+    },
+  },
+  /** The words of a secret field in a hook's configuration (COR-2181, rows R10-11 to R10-16). */
+  secrets: {
+    help: 'Pick a saved secret. The hook keeps its name, never its value.',
+    placeholder: 'Choose a secret',
+    emptyPlaceholder: 'No secrets to choose',
+    emptyHelp: 'Plugins name the secrets they use. Save one in',
+    manage: 'Settings › Plugins',
+    emptyHelpEnd: '.',
+    failed: 'Couldn’t load the saved secrets.',
+    retry: 'Try again',
+    missing: (key: string): string => `${key} isn’t saved yet, so deliveries fail until it is.`,
+    addKey: 'Add the key',
+  },
   /** What a home that keeps hooks off says in place of the page. */
   unavailable: {
     title: 'Hooks are off on this home',
@@ -264,6 +310,14 @@ export const HOOKS_COPY = {
       webhook: 'Send a webhook',
       startWorkflow: 'Start a workflow',
       notify: 'Notify me',
+      /** The label of the Select that chooses which plugin action a new hook runs (row R10-21). */
+      pluginLabel: 'Action',
+      pluginPlaceholder: 'Choose an action',
+      pluginRequired: 'Choose an action.',
+      /** The note on an option whose plugin needs a secret; it can still be chosen. */
+      needsSetup: 'Needs setup',
+      /** What a saved plugin hook says in place of a choice: its kind is fixed. */
+      pluginFixed: (action: string, plugin: string): string => `${action} from ${plugin}`,
       /** What a hook that notifies says in place of fields. */
       notifyNote: 'You get a notification in Interborough, in the bell at the top right.',
       plugin: 'Run an action from a plugin',
@@ -321,9 +375,18 @@ export const HOOKS_COPY = {
       /** Why Send a test event is off, one sentence for each cause of a hook that runs a plugin's action. */
       testPluginOff: (plugin: string): string =>
         `Turn on ${plugin} in Settings to test this action.`,
+      /** The same sentence in the parts the page draws it from, so "Settings" is a link. */
+      testPluginOffParts: (plugin: string): { before: string; link: string; after: string } => ({
+        before: `Turn on ${plugin} in `,
+        link: 'Settings',
+        after: ' to test this action.',
+      }),
+      /** Why a plugin that is on cannot test an action it no longer offers (an upgrade dropped it). */
+      testNoLongerOffered: (plugin: string): string =>
+        `${plugin} no longer offers this action, so it can’t be tested.`,
       testPluginUnknown: 'Couldn’t check whether this action can be tested.',
       testSaveFirst: 'Save hook, then send a test.',
-      testNotOffered: 'A test of this action would do what it does for real, so it has no test.',
+      testNotOffered: 'This action would do what it does for real, so it has no test.',
       testPluginNeedsSetup: (plugin: string): string =>
         `${plugin} needs setup before this action can be tested.`,
       /** The result under the buttons: what answered, how, and that nothing was saved when it was not. */
