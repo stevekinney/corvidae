@@ -96,7 +96,7 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
-  import { getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { enableAgent, getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
@@ -425,17 +425,35 @@
     () => ({
       queryKey: queryKeys.agents.definition(agent),
       queryFn: ({ signal }) => getAgentDefinition(agent, { signal }),
-      enabled: !choosing && agent.includes(':'),
+      // COR-2429: an agent the list leaves out may also be one a person disabled, which the
+      // definition says.
+      enabled:
+        !choosing &&
+        (agent.includes(':') ||
+          (agents.data !== undefined && !agents.data.some((entry) => entry.name === agent))),
       retry: false,
     }),
     undefined,
   );
   const agentUnavailable = $derived(definition.data?.state === 'unavailable');
+  // COR-2429: a person disabled the agent, so the chat is read-only until it is enabled again.
+  const agentDisabled = $derived(definition.data?.state === 'disabled');
   // What the agent is called where a person reads it: its display name, in words (`tool-runner`
   // reads "Tool runner"). An agent held back by a plugin is not in the catalog, so its name is the
   // definition's, without the plugin's prefix.
   const unavailableName = $derived(agentLabel(definition.data?.name ?? agent, undefined));
-  const agentShown = $derived(agentUnavailable ? unavailableName : agentLabel(agent, agents.data));
+  const agentShown = $derived(
+    agentUnavailable || agentDisabled ? unavailableName : agentLabel(agent, agents.data),
+  );
+  /** Enables the disabled agent, from the composer, and reads the agent again. */
+  async function enableDisabledAgent(): Promise<void> {
+    try {
+      await enableAgent(agent);
+    } finally {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(agent) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+    }
+  }
   // The server stopped the chat when it restarted, so its run cannot continue.
   const endedByRestart = $derived(context.data?.endReason === 'host-stopped');
   // What the catalog says of each tool, for its name as a person reads it and for what an
@@ -553,6 +571,9 @@
             plugin: pluginTitle,
             enable: () => (confirmingEnable = true),
           }
+        : undefined,
+      disabledAgent: agentDisabled
+        ? { agent: unavailableName, enable: () => void enableDisabledAgent() }
         : undefined,
       ended: endedByRestart,
       // A missing model provider is Chat's `unconfigured` availability here (COR-2285 V4), not the
