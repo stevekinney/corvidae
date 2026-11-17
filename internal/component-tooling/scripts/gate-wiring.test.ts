@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,13 +21,24 @@ import {
 const REPOSITORY_ROOT = join(import.meta.dirname, '../../..');
 const PACKAGE_ROOT = join(REPOSITORY_ROOT, 'components/cinder');
 const SCRIPTS_DIRECTORY = import.meta.dirname;
-/** The packages whose gates run the tooling's checks. */
+/** The packages whose gates run the tooling's checks: the tooling and every component workspace. */
 const GATED_PACKAGES = [
-  'components/cinder',
-  'components/chat',
-  'components/editor',
-  'internal/component-tooling',
-].map((path) => join(REPOSITORY_ROOT, path));
+  join(REPOSITORY_ROOT, 'internal/component-tooling'),
+  ...readdirSync(join(REPOSITORY_ROOT, 'components'))
+    .map((name) => join(REPOSITORY_ROOT, 'components', name))
+    .filter((directory) => existsSync(join(directory, 'package.json'))),
+];
+/**
+ * Checks `extract-families.ts` wires into the gates of a package it creates (foundation's
+ * `check-foundation-imports.ts`): wired before that package exists.
+ */
+const WIRED_BY_EXTRACTION = new Set(
+  [
+    ...readFileSync(join(SCRIPTS_DIRECTORY, 'extract-families.ts'), 'utf8').matchAll(
+      /component-tooling\/scripts\/(check-[\w-]+\.ts)/g,
+    ),
+  ].map((match) => match[1]),
+);
 
 function readPackageScripts(packageRoot = PACKAGE_ROOT): Record<string, string> {
   const manifest: unknown = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
@@ -111,7 +130,11 @@ describe("Cinder's own gates", () => {
         ),
     );
     const [first = new Set<string>(), ...rest] = uninvoked;
-    expect([...first].filter((name) => rest.every((set) => set.has(name)))).toEqual([]);
+    expect(
+      [...first].filter(
+        (name) => rest.every((set) => set.has(name)) && !WIRED_BY_EXTRACTION.has(name),
+      ),
+    ).toEqual([]);
   });
 
   test('no gate runs a check in its report-only mode', () => {
