@@ -112,12 +112,18 @@ test.describe('Time-led row fit', () => {
     await page.goto(fixtureRoute('grouped-list'), { waitUntil: 'load' });
     const row = page.getByTestId('timed-long-meta');
     // A pane too narrow for the name's 10rem beside the lead and the meta, wide enough for a row
-    // that is not the phone's grid.
+    // that is not the phone's grid: the row measures its own content box (the pane less its 16px
+    // insets), which must reach 26rem (416px), so a 430px pane is still the phone's grid.
     await row.evaluate((element) => {
       (
         element.closest('[data-testid="grouped-list-timed-phone"]') as HTMLElement
-      ).style.inlineSize = '430px';
+      ).style.inlineSize = '460px';
     });
+    // The wide form is in force: the row is not the phone's grid.
+    await expect(row.locator('.cinder-grouped-list-item__content')).not.toHaveCSS(
+      'display',
+      'grid',
+    );
     const measured = await row.evaluate((element) => {
       const name = element
         .querySelector('.cinder-grouped-list-item__title')!
