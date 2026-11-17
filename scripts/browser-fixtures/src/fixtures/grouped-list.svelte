@@ -40,8 +40,9 @@
     <GroupedListItem
       href="/places/rooftop"
       timeWindow="3–6 pm"
-      timeCaption="45 min left"
+      timeCaption="12 min left"
       urgency="urgent"
+      data-testid="timed-urgent"
     >
       {#snippet title()}The Rooftop{/snippet}
       {#snippet subtitle()}Half-price wells until 8:00 pm{/snippet}
@@ -52,6 +53,7 @@
       timeWindow="10 pm–1 am"
       timeCaption="starts in 1 h"
       urgency="soon"
+      data-testid="timed-soon"
     >
       {#snippet title()}Lantern Room, which has a much longer name that wraps onto a second line{/snippet}
       {#snippet subtitle()}Two-dollar drafts{/snippet}
@@ -61,7 +63,12 @@
       {#snippet title()}The Pier{/snippet}
       {#snippet subtitle()}Oysters and rosé{/snippet}
     </GroupedListItem>
-    <GroupedListItem href="/places/corner" timeWindow="11 pm–2 am" timeCaption="Sun to Tue">
+    <GroupedListItem
+      href="/places/corner"
+      timeWindow="11 pm–2 am"
+      timeCaption="Sun to Tue"
+      data-testid="timed-plain"
+    >
       {#snippet title()}Corner Bar{/snippet}
     </GroupedListItem>
   </GroupedList>
@@ -90,6 +97,66 @@
         {#snippet title()}Lantern Room{/snippet}
         {#snippet subtitle()}Two-dollar drafts{/snippet}
         {#snippet trailing()}Closed Mondays and Tuesdays{/snippet}
+      </GroupedListItem>
+      <!-- A photo sits at the end, after the distance; nothing else in the row moves. -->
+      <GroupedListItem
+        href="/places/photo"
+        timeWindow="3–6 pm"
+        timeCaption="45 min left"
+        data-testid="timed-photo-phone"
+      >
+        {#snippet title()}Larimer Lantern{/snippet}
+        {#snippet subtitle()}Eight-dollar classics and six-dollar house wine{/snippet}
+        {#snippet trailing()}0.2 mi{/snippet}
+        {#snippet photo()}<span
+            role="img"
+            aria-label="Photo of Larimer Lantern"
+            style="display: block; inline-size: 100%; block-size: 100%; background: var(--cinder-accent-solid);"
+          ></span>{/snippet}
+      </GroupedListItem>
+    </GroupedList>
+  </div>
+
+  <!-- The desktop list (about 570px wide): the window two steps over the name in a 104px lead, the
+       distance in a trailing column, two deals at once, a stale row past midnight with its
+       distance, and a photo at the end. -->
+  <div style="inline-size: 570px; max-inline-size: 100%;" data-testid="grouped-list-timed-wide">
+    <GroupedList header="Open now">
+      <GroupedListItem
+        href="/places/two"
+        timeWindow="5–7 pm"
+        timeCaption="1 h 45 min left"
+        data-testid="timed-wide-two-deals"
+      >
+        {#snippet title()}The Gilded Pickle{/snippet}
+        {#snippet subtitle()}Half-price oysters<br />Seven-dollar spritzes{/snippet}
+        {#snippet trailing()}0.4 mi{/snippet}
+      </GroupedListItem>
+      <GroupedListItem
+        href="/places/stale"
+        timeWindow="11 pm–2 am"
+        timeCaption="1 h 30 min left"
+        staleAge="11 wk"
+        data-testid="timed-wide-stale"
+      >
+        {#snippet title()}Sunken Ship{/snippet}
+        {#snippet subtitle()}Late night: three-dollar PBR{/snippet}
+        {#snippet trailing()}1.3 mi{/snippet}
+      </GroupedListItem>
+      <GroupedListItem
+        href="/places/photo-wide"
+        timeWindow="3–6 pm"
+        timeCaption="45 min left"
+        data-testid="timed-photo-wide"
+      >
+        {#snippet title()}Larimer Lantern{/snippet}
+        {#snippet subtitle()}Eight-dollar classics and six-dollar house wine{/snippet}
+        {#snippet trailing()}0.2 mi{/snippet}
+        {#snippet photo()}<span
+            role="img"
+            aria-label="Photo of Larimer Lantern"
+            style="display: block; inline-size: 100%; block-size: 100%; background: var(--cinder-accent-solid);"
+          ></span>{/snippet}
       </GroupedListItem>
     </GroupedList>
   </div>

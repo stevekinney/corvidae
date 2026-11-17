@@ -144,11 +144,13 @@
         <span class="cinder-sr-only">Stale, </span>{staleAge}
       </span>
     {/if}
-    {#if photo}
-      <div class="cinder-grouped-list-item__photo">{@render photo()}</div>
-    {/if}
     {#if trailing}
       <div class="cinder-grouped-list-item__trailing">{@render trailing()}</div>
+    {/if}
+    <!-- The photo sits at the end of the row, after the trailing value: a row with a photo and one
+         without keep everything else in the same place. -->
+    {#if photo}
+      <div class="cinder-grouped-list-item__photo">{@render photo()}</div>
     {/if}
     {#if showChevron}
       <span class="cinder-grouped-list-item__chevron" aria-hidden="true">

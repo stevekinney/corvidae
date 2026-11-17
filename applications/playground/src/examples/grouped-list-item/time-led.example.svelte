@@ -12,7 +12,7 @@
   <GroupedListItem
     href="/places/rooftop"
     timeWindow="3–6 pm"
-    timeCaption="45 min left"
+    timeCaption="12 min left"
     urgency="urgent"
   >
     {#snippet title()}The Rooftop{/snippet}
