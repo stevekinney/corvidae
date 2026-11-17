@@ -48,11 +48,19 @@ import { parseArgs } from 'node:util';
 
 import ts from 'typescript';
 
+import {
+  coreExportTargets,
+  coreNamedImports,
+  type CoreNamedImport,
+  type ExportTarget,
+  type ModuleReader,
+} from './core-exports.ts';
 import { createPackage, packageManifest } from './create-package.ts';
 import {
   type DerivedFamilies,
   type FamilyRules,
   deriveFromRepository,
+  EXAMPLE_FILE,
   FAMILIES_PATH,
   findCycles,
   isTestFile,
@@ -71,6 +79,7 @@ import {
   resolutionCandidates,
   specifierFor,
   TOOLING_PACKAGE,
+  virtualPathFor,
 } from './split-layout.ts';
 
 /** The packages core never hands over: core itself, and the tooling, which is already a workspace. */
@@ -208,6 +217,8 @@ interface Plan {
   originals: Map<string, string | undefined>;
   /** Whether no family is left in core after this run, so core's tests leave its components path. */
   relocateCoreTests: boolean;
+  /** Where each name core's barrel exports comes from, read once before anything moves. */
+  coreExports?: Map<string, ExportTarget>;
 }
 
 function packageDirectory(plan: Plan, name: string): string {
@@ -508,8 +519,103 @@ function importedPackages(
       if (!packages.has(owner)) packages.set(owner, `${path} imports ${specifier}`);
       imported.set(name, packages);
     }
+    // An example's names from core's barrel need the packages that hold them (item 4).
+    if (!EXAMPLE_FILE.test(path)) continue;
+    for (const statement of coreNamedImports(text)) {
+      for (const element of statement.elements) {
+        const owner = exampleImportSource(plan, element.name)?.owner ?? 'core';
+        if (owner === name || owner === 'tooling') continue;
+        const packages = imported.get(name) ?? new Map<string, string>();
+        if (!packages.has(owner)) {
+          packages.set(owner, `${path} imports ${element.name} from @lostgradient/cinder`);
+        }
+        imported.set(name, packages);
+      }
+    }
   }
   return imported;
+}
+
+/**
+ * Reads modules for {@link coreExportTargets} by virtual path, wherever they are now; a package's
+ * generated barrel is read as `generated:<package>:src/index.ts`.
+ */
+function planReader(plan: Plan): ModuleReader {
+  const virtual = (file: string) => file.replace(/^generated:[^:]+:/, '');
+  return {
+    read: (file) => {
+      if (file.startsWith('generated:')) {
+        const [, name = ''] = file.split(':');
+        const path = posix.join('components', name, virtual(file));
+        return existsSync(join(plan.options.root, path)) ? read(plan, path) : undefined;
+      }
+      const owner = plan.owner.get(file);
+      if (owner === undefined) return undefined;
+      const path = currentPath(plan, owner, file);
+      return plan.pending.has(path) || existsSync(join(plan.options.root, path))
+        ? read(plan, path)
+        : undefined;
+    },
+    resolve: (from, specifier) => {
+      if (specifier.startsWith('.')) return resolveVirtual(plan, virtual(from), specifier);
+      const named = virtualPathFor(specifier);
+      if (named === undefined) return undefined;
+      if (named.path === 'src/index.ts') return `generated:${named.name}:src/index.ts`;
+      return plan.owner.has(named.path) ? named.path : undefined;
+    },
+  };
+}
+
+/** Where an example imports one of core's barrel names from instead (item 4). */
+function exampleImportSource(
+  plan: Plan,
+  name: string,
+): { owner: string; specifier: string; imported: string } | undefined {
+  plan.coreExports ??= coreExportTargets('src/index.ts', planReader(plan));
+  const target = plan.coreExports.get(name);
+  if (target === undefined) return undefined;
+  const first = target.firstSpecifier;
+  if (first.startsWith(PACKAGE_SCOPE) && !first.slice(PACKAGE_SCOPE.length).includes('/')) {
+    return { owner: first.slice(PACKAGE_SCOPE.length), specifier: first, imported: name };
+  }
+  const firstOwner =
+    target.firstModule === undefined ? undefined : plan.owner.get(target.firstModule);
+  if (firstOwner !== undefined && firstOwner !== 'core') {
+    // Core's barrel statement for the name moves to that package's barrel, which exports it.
+    return { owner: firstOwner, specifier: `${PACKAGE_SCOPE}${firstOwner}`, imported: name };
+  }
+  const file = target.file.replace(/^generated:[^:]+:/, '');
+  const owner = plan.owner.get(file);
+  if (owner === undefined || owner === 'core')
+    return { owner: 'core', specifier: '', imported: name };
+  const named = specifierFor(owner, file, plan.components.get(owner));
+  addExportKey(plan, owner, named.exportKey);
+  return { owner, specifier: named.specifier, imported: target.imported };
+}
+
+/**
+ * An example's `import { … } from '@lostgradient/cinder'` as imports from the packages that hold
+ * the names, or undefined while one of them is core's or still in core.
+ */
+function rewriteExampleImport(plan: Plan, statement: CoreNamedImport): string | undefined {
+  const bySpecifier = new Map<string, string[]>();
+  for (const element of statement.elements) {
+    const source = exampleImportSource(plan, element.name);
+    if (source === undefined || source.owner === 'core' || !plan.extracted.has(source.owner)) {
+      return undefined;
+    }
+    const imported =
+      source.imported === element.local ? element.local : `${source.imported} as ${element.local}`;
+    const elements = bySpecifier.get(source.specifier) ?? [];
+    elements.push(`${element.typeOnly && !statement.typeOnly ? 'type ' : ''}${imported}`);
+    bySpecifier.set(source.specifier, elements);
+  }
+  return [...bySpecifier]
+    .map(
+      ([specifier, elements]) =>
+        `import ${statement.typeOnly ? 'type ' : ''}{ ${elements.join(', ')} } from '${specifier}';`,
+    )
+    .join('\n');
 }
 
 /**
@@ -648,6 +754,22 @@ function rewriteFile(plan: Plan, path: string): void {
           ? posix.join('internal/component-tooling', target)
           : posix.join(packageDirectory(plan, name), physicalPath(plan, name, target)),
     });
+  }
+  // An example a package holds imports each core barrel name from its package instead (item 4).
+  if (home.name !== 'core' && EXAMPLE_FILE.test(path)) {
+    for (const statement of coreNamedImports(original)) {
+      const replacement = rewriteExampleImport(plan, statement);
+      if (replacement === undefined) {
+        plan.result.warnings.push(
+          `${path} imports from @lostgradient/cinder what no package of it holds.`,
+        );
+        continue;
+      }
+      rewritten.set(statement.start, {
+        length: statement.end - statement.start,
+        text: replacement,
+      });
+    }
   }
   for (const match of original.matchAll(PATH_STRING)) {
     const start = (match.index ?? 0) + 1;

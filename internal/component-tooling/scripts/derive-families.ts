@@ -23,6 +23,13 @@ import { dirname, join, posix, resolve } from 'node:path';
 
 import { format } from 'prettier';
 
+import {
+  coreBarrelMentions,
+  coreExportTargets,
+  coreNamedImports,
+  type ExportTarget,
+  type ModuleReader,
+} from './core-exports.ts';
 import { isGenerated, PACKAGE_SCOPE, virtualPathFor } from './split-layout.ts';
 
 export interface FamilyRule {
@@ -107,8 +114,11 @@ const BY_IMPORTS = 'by-imports';
 const COMPANION = 'companion';
 
 const CODE_FILE = /\.(?:ts|svelte|js|mjs|css)$/;
+// A component's examples (`examples/*.example.svelte`, COR-2081) are documentation the playground
+// renders, placed and depended on the way tests are.
+export const EXAMPLE_FILE = /\.example\.svelte$/;
 const TEST_FILE =
-  /(?:^|\/)(?:test|__test-helpers__|__fixtures__)\/|\.(?:test|bench)\.|-test\.svelte$|-test-|(?:^|[./_-])(?:fixtures?|test-helpers|test-support|test-utilities|test-harness)(?:[./-]|$)/;
+  /(?:^|\/)(?:test|__test-helpers__|__fixtures__)\/|\.(?:test|bench)\.|-test\.svelte$|-test-|\.example\.svelte$|(?:^|[./_-])(?:fixtures?|test-helpers|test-support|test-utilities|test-harness)(?:[./-]|$)/;
 const SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|@import\s+(?:url\(\s*)?)(['"])([^'"\n]+)\1/g;
 const SIBLING_PACKAGE_PATH =
@@ -476,14 +486,28 @@ function buildImports(
   split: SplitPackages,
 ): Map<string, string[]> {
   const imports = new Map<string, string[]>();
+  let coreExports: Map<string, ExportTarget> | undefined;
   for (const [path, content] of files) {
     if (!CODE_FILE.test(path)) continue;
     const targets = new Set<string>();
-    for (const specifier of importSpecifiers(content)) {
+    const specifiers = importSpecifiers(content);
+    // An example that imports names from core's barrel needs the modules that define them
+    // (P-COR-101 item 4); a test that imports the barrel tests the barrel, and needs core.
+    const named = EXAMPLE_FILE.test(path) ? coreNamedImports(content) : [];
+    const byName = named.length > 0 && named.length === coreBarrelMentions(specifiers);
+    if (byName) {
+      coreExports ??= coreExportTargets(CORE_BARREL, splitReader(files, split));
+      for (const element of named.flatMap((statement) => statement.elements)) {
+        const file = coreExports.get(element.name)?.file;
+        const target = file === undefined ? CORE_BARREL : file.replace(/^generated:[^:]+:/, '');
+        if (target !== path && files.has(target)) targets.add(target);
+      }
+    }
+    for (const specifier of specifiers) {
       // A test that imports core's own package (`@lostgradient/cinder`) needs core's barrel; a
       // source module that names it does so in a usage comment.
       if (specifier === CORE_PACKAGE && isTestFile(path) && files.has(CORE_BARREL)) {
-        targets.add(CORE_BARREL);
+        if (!byName) targets.add(CORE_BARREL);
         continue;
       }
       for (const target of resolveSplitImport(files, split, path, specifier)) {
@@ -493,6 +517,29 @@ function buildImports(
     imports.set(path, [...targets]);
   }
   return imports;
+}
+
+/**
+ * Reads the tree's modules for {@link coreExportTargets}: a relative or package specifier names a
+ * virtual path, and a package's generated barrel is read as `generated:<package>:<path>`.
+ */
+function splitReader(files: ReadonlyMap<string, string>, split: SplitPackages): ModuleReader {
+  const virtual = (file: string) => file.replace(/^generated:[^:]+:/, '');
+  return {
+    read: (file) =>
+      file.startsWith('generated:')
+        ? split.generated.get(file.slice('generated:'.length))
+        : files.get(file),
+    resolve: (from, specifier) => {
+      if (specifier.startsWith('.'))
+        return resolveImport(files, virtual(from), specifier, split.alias);
+      const named = virtualPathFor(specifier);
+      if (named === undefined || !split.packages.has(named.name)) return undefined;
+      const key = `${named.name}:${named.path}`;
+      if (split.generated.has(key)) return `generated:${key}`;
+      return files.has(named.path) ? named.path : undefined;
+    },
+  };
 }
 
 /** Test files that import `file` or name it by path (a test that builds it). */

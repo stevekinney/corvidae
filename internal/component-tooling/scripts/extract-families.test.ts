@@ -159,6 +159,13 @@ const TREE: Record<string, string> = {
   ].join('\n'),
   [`${CORE}/scripts/raw-color-baseline.json`]:
     '[\n  { "filePath": "src/components/button/button.css", "allowedCount": 1 },\n  { "filePath": "src/styles/components.css", "allowedCount": 1 }\n]\n',
+  // An example imports what it shows from core's barrel; its family imports each from its package.
+  [`${CORE}/src/components/card/examples/basic.example.svelte`]: [
+    '<script lang="ts">',
+    "  import { Button, Card, focus, type ButtonProps } from '@lostgradient/cinder';",
+    '</script>',
+    '',
+  ].join('\n'),
   // A button test that needs core's barrel: the map gives it to core, which keeps it under
   // src/component-tests once every family has left.
   [`${CORE}/src/components/button/button-root.test.ts`]: [
@@ -403,6 +410,16 @@ describe('extract-families', () => {
 
     await extract(root, { kind: 'all' });
     expect(existsSync(join(root, CORE, 'src/components'))).toBe(false);
+    expect(read(root, 'components/card/src/components/card/examples/basic.example.svelte')).toBe(
+      [
+        '<script lang="ts">',
+        "  import { Button, type ButtonProps } from '@lostgradient/button';",
+        "import { Card } from '@lostgradient/card';",
+        "import { focus } from '@lostgradient/foundation';",
+        '</script>',
+        '',
+      ].join('\n'),
+    );
     // A baseline entry follows its file, named relative to core as the checks name it.
     expect(read(root, `${CORE}/scripts/raw-color-baseline.json`)).toBe(
       '[\n  { "filePath": "../button/src/components/button/button.css", "allowedCount": 1 },\n  { "filePath": "src/styles/components.css", "allowedCount": 1 }\n]\n',
