@@ -55,6 +55,11 @@ on:
 permissions:
   contents: read
 
+# A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
+concurrency:
+  group: targeted-checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
 env:
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
