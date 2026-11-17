@@ -218,7 +218,10 @@ test('bureau.workflows.runs.retry executes all six authenticated actor cases', a
   });
   const runId = started.body?.result?.['runId'];
   if (typeof runId !== 'string') throw new Error('Expected seeded run');
-  const statusOf = async () => (await served.bureau.workflows!.getRun(runId))?.status;
+  const statusOf = async () => {
+    const run = await served.bureau.workflows!.getRun(runId);
+    return run?.status;
+  };
   await waitForCondition(async () => (await statusOf()) === 'failed', 'seeded run fails');
   control.writerDown = false;
   // The owner's refusal changes nothing: the step it names is not one the run has.

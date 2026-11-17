@@ -65,10 +65,10 @@ const serve = (
 async function failedDigestRun(served: Served): Promise<string> {
   writerDown = true;
   await served.bureau.durableEngine()!.start('digest', null, { id: 'failed-digest-run' });
-  await waitForCondition(
-    async () => (await served.bureau.workflows!.getRun('failed-digest-run'))?.status === 'failed',
-    'the digest run fails',
-  );
+  await waitForCondition(async () => {
+    const run = await served.bureau.workflows!.getRun('failed-digest-run');
+    return run?.status === 'failed';
+  }, 'the digest run fails');
   writerDown = false;
   return 'failed-digest-run';
 }
