@@ -96,6 +96,7 @@ function recordsFromArtifacts(
         sourceId: source.id,
         code: 'admission-failed',
         message: `Skill '${name}' from source '${source.id}' could not be parsed.`,
+        directoryName: name,
       });
       continue;
     }
@@ -371,6 +372,7 @@ async function readCandidate(
         sourceId: candidate.source.id,
         code: 'admission-failed',
         message: `Skill directory '${candidate.directoryName}' was refused.`,
+        directoryName: candidate.directoryName,
         admission: admission.diagnostics,
       },
     };
@@ -384,6 +386,7 @@ async function readCandidate(
         sourceId: candidate.source.id,
         code: 'admission-failed',
         message: `Skill directory '${candidate.directoryName}' has no SKILL.md.`,
+        directoryName: candidate.directoryName,
       },
     };
   }
@@ -410,6 +413,7 @@ async function readCandidate(
           error instanceof SkillParseError
             ? `Skill directory '${candidate.directoryName}': ${error.message}`
             : `Skill directory '${candidate.directoryName}' could not be parsed.`,
+        directoryName: candidate.directoryName,
       },
     };
   }

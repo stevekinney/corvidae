@@ -169,6 +169,8 @@ export const queryKeys = {
   },
   /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.contributions`). */
   pluginKinds: () => ['plugin-kinds'] as const,
+  /** The embedding memory uses, the switch to another and the embedders registered (`bureau.memory.embedding`). */
+  memoryEmbedding: () => ['embedding', 'status'] as const,
   /** The catalog rows that can answer decisions, with their availability and the row that answers (`bureau.decisions.models`). */
   decisionModels: () => ['decisions', 'models'] as const,
   /** The model providers running plugins contribute, with their plugins' configuration schemas (`bureau.plugins.contributions`). */

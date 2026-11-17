@@ -145,7 +145,7 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
       HTMLElement,
     );
     expect(error.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Couldn’t save. Your value is still in the field. Retry',
+      'Couldn’t save. Your value is still in the field. Try again',
     );
     await fireEvent.click(requiredInstance(error.querySelector('button'), HTMLButtonElement));
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -153,10 +153,10 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
 
   test('retryLabel renames the action', () => {
     const { container } = render(Fixture, {
-      props: { error: 'Couldn’t save.', onRetry: () => undefined, retryLabel: 'Try again' },
+      props: { error: 'Couldn’t save.', onRetry: () => undefined, retryLabel: 'Retry switch' },
     });
     expect(container.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
-      'Try again',
+      'Retry switch',
     );
   });
 
@@ -175,7 +175,7 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
       HTMLElement,
     );
     expect(warning.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Couldn’t load the models. Retry',
+      'Couldn’t load the models. Try again',
     );
     expect(container.textContent).not.toContain('Another advisory.');
     expect(container.querySelector('[aria-invalid="true"]')).toBeNull();
@@ -186,7 +186,18 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
     expect(input.getAttribute('aria-describedby')).toContain(warning.id);
     await fireEvent.click(requiredInstance(warning.querySelector('button'), HTMLButtonElement));
     expect(onRetry).toHaveBeenCalledTimes(1);
-    expect(warning.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe('Retry');
+    expect(warning.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
+      'Try again',
+    );
+  });
+
+  test('a failed save and a failed read share one default retry word, "Try again"', () => {
+    const { container } = render(Fixture, {
+      props: { error: 'Couldn’t save.', onRetry: () => undefined },
+    });
+    expect(container.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
+      'Try again',
+    );
   });
 
   test('a load error without onRetry has no Retry, and retryLabel renames it when there is one', () => {
@@ -194,10 +205,10 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
     expect(plain.container.querySelector('.cinder-setting-row__retry')).toBeNull();
     plain.unmount();
     const { container } = render(Fixture, {
-      props: { loadError: 'Couldn’t load.', onRetry: () => undefined, retryLabel: 'Try again' },
+      props: { loadError: 'Couldn’t load.', onRetry: () => undefined, retryLabel: 'Retry switch' },
     });
     expect(container.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
-      'Try again',
+      'Retry switch',
     );
   });
 

@@ -132,8 +132,6 @@ export const MODELS_COPY = {
       `The agents could not be read, so which ones use ${name} models is not known. Chats and runs stay.`,
     trimmedNote: (agents: readonly string[], name: string): string =>
       `${nameList(agents)} still ${agents.length === 1 ? 'answers' : 'answer'}, but ${agents.length === 1 ? 'loses' : 'lose'} ${name} models from the ones ${agents.length === 1 ? 'it' : 'they'} can be switched to.`,
-    embedderNote:
-      'If a memory embedder from this provider is selected, memory needs setup again until you connect it or choose another.',
     confirm: 'Remove key',
     busy: 'Removing…',
     cancel: 'Cancel',
