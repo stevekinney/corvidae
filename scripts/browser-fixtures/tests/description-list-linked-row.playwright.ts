@@ -47,6 +47,17 @@ async function layer(page: Page, testId: string): Promise<Layer> {
   }, testId);
 }
 
+/** Whether a click on the linked row's label lands on its link: the whole row is the target. */
+async function labelHitsLink(page: Page, testId: string): Promise<boolean> {
+  return page.evaluate((id) => {
+    const row = document.querySelector(`[data-testid="${id}"] [data-cinder-linked]`);
+    const term = row?.querySelector('dt')?.getBoundingClientRect();
+    if (!row || !term) return false;
+    const hit = document.elementFromPoint(term.left + 4, term.top + term.height / 2);
+    return hit !== null && hit.closest('.cinder-description-list__link') !== null;
+  }, testId);
+}
+
 async function token(page: Page, property: string, name: string): Promise<string> {
   return page.evaluate(
     ([cssProperty, tokenName]) => {
@@ -65,7 +76,9 @@ test('a flat linked row tints from 12px before its label, rounded like a control
   page,
 }) => {
   await open(page, 1280);
-  await page.getByTestId('description-list-fields-flat').locator('dt').first().hover();
+  // The link's hit area covers the whole row, so hovering the row lands on the link.
+  await page.getByTestId('description-list-fields-flat').locator('[data-cinder-linked]').hover();
+  expect(await labelHitsLink(page, 'description-list-fields-flat')).toBe(true);
   const flat = await layer(page, 'description-list-fields-flat');
   expect(flat.background).toBe(await token(page, 'background-color', '--cinder-surface-hover'));
   expect(flat.term - flat.tintStart).toBeCloseTo(12, 0);
@@ -76,7 +89,8 @@ test('a framed linked row tints from the group edge, leaving no untinted strip',
   page,
 }) => {
   await open(page, 1280);
-  await page.getByTestId('description-list-fields-framed').locator('dt').first().hover();
+  await page.getByTestId('description-list-fields-framed').locator('[data-cinder-linked]').hover();
+  expect(await labelHitsLink(page, 'description-list-fields-framed')).toBe(true);
   const framed = await layer(page, 'description-list-fields-framed');
   expect(framed.background).toBe(await token(page, 'background-color', '--cinder-surface-hover'));
   expect(Math.abs(framed.tintStart - framed.list)).toBeLessThan(1);
