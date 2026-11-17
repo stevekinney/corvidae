@@ -65,6 +65,7 @@ import { constants } from 'node:os';
 import { join } from 'node:path';
 import { SELECTION_VARIABLE, writeManifest, type Manifest } from '../affected-tests-manifest.ts';
 import { ISOLATED_SUFFIXES } from '../affected-tests.ts';
+import { poolWaitVariable } from '../bun-test-pool.ts';
 import { terminateProcessGroup } from '../run-exclusively.ts';
 import { directoryGlob, workspaceParentDirectories } from '../workspace-directories.ts';
 import {
@@ -300,7 +301,15 @@ export function planSteps(input: PlanInput): PlannedStep[] {
   const lanes = (isolated: boolean) => {
     const suffix = isolated ? ':isolated' : '';
     const extra = isolated ? ['--concurrency=1'] : [];
-    const select = ['env', `${SELECTION_VARIABLE}=${direct.digest}`, 'bunx', 'turbo', 'run'];
+    // A worker's direct tests wait at most five minutes for a pool slot, then run without one.
+    const select = [
+      'env',
+      `${SELECTION_VARIABLE}=${direct.digest}`,
+      `${poolWaitVariable}=300`,
+      'bunx',
+      'turbo',
+      'run',
+    ];
     if (filters.length > 0)
       steps.push({
         name: `tests${suffix}`,

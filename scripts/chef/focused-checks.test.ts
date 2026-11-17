@@ -111,6 +111,7 @@ describe('planSteps', () => {
         command: [
           'env',
           'CORVIDAE_TEST_SELECTION=dig',
+          'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
           'bunx',
           'turbo',
           'run',
@@ -123,6 +124,7 @@ describe('planSteps', () => {
         command: [
           'env',
           'CORVIDAE_TEST_SELECTION=dig',
+          'CORVIDAE_TEST_POOL_WAIT_SECONDS=300',
           'bunx',
           'turbo',
           'run',
@@ -499,7 +501,7 @@ describe('runChecks', () => {
     const result = await runChecks('/repo', options, deps);
     expect(written[0]?.workspaces['testing/testing']?.files).toEqual(['src/c.slow.test.ts']);
     expect(deps.executed.at(-1)).toBe(
-      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
+      'env CORVIDAE_TEST_SELECTION=digest CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bunx turbo run test:slow --filter=@lostgradient/testing --concurrency=1',
     );
     expect(result.output).toContain(
       'testing/testing/src/probe.integration.test.ts launch a browser',
@@ -539,7 +541,7 @@ describe('runChecks', () => {
     expect(calls[0]).toEqual(['git', 'merge-base', 'origin/main', 'HEAD']);
     expect(deps.executed.some((command) => command.includes('affected-tests'))).toBe(false);
     expect(deps.executed.at(-1)).toBe(
-      'env CORVIDAE_TEST_SELECTION=digest bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
+      'env CORVIDAE_TEST_SELECTION=digest CORVIDAE_TEST_POOL_WAIT_SECONDS=300 bunx turbo run test:slow --filter=@lostgradient/weft --concurrency=1',
     );
   });
 

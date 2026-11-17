@@ -24,6 +24,17 @@ describe('failingTests', () => {
       ]),
     );
   });
+
+  test('reads Playwright failure headings, not the progress lines', () => {
+    const log = [
+      'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:03Z [129/354] [chromium] › tests/e2e/settings.spec.ts:69:3 › draws a control',
+      'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:03Z   1) [chromium] › tests/e2e/settings.spec.ts:69:3 › draws a control ',
+      'E2E (4/4)\tUNKNOWN STEP\t2026-11-17T00:03:03Z     Error: expect(locator).toBeVisible() failed',
+    ].join('\n');
+    expect(failingTests(log)).toEqual(
+      new Map([['E2E (4/4)', ['tests/e2e/settings.spec.ts:69:3 › draws a control']]]),
+    );
+  });
 });
 
 describe('compare', () => {
@@ -42,6 +53,22 @@ describe('compare', () => {
     );
     expect(result.hasNew).toBe(false);
     expect(result.jobs.map((job) => job.seenIn)).toEqual([['10'], ['11']]);
+  });
+
+  test('a test job whose log names no failing test is unknown, never known by its name', () => {
+    const result = compare(failures('1', [['E2E (2/4)', []]]), main);
+    expect(result.jobs[0]?.unknown).toBe(true);
+    expect(result.hasNew).toBe(true);
+    expect(renderComparison(result)).toContain('UNKNOWN job E2E (2/4)');
+  });
+
+  test('a non-test job is judged by its name', () => {
+    expect(compare(failures('1', [['Test durations', []]]), main).hasNew).toBe(false);
+    expect(
+      compare(failures('1', [['Workspace lint and type-check', []]]), [
+        failures('12', [['Workspace lint and type-check', []]]),
+      ]).hasNew,
+    ).toBe(false);
   });
 
   test('a job main never failed is new', () => {

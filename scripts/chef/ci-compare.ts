@@ -50,6 +50,8 @@ export interface JudgedJob {
   tests: JudgedTest[];
   /** True when the job, or any of its failing tests, never failed in the compared main runs. */
   isNew: boolean;
+  /** A test job whose log named no failing test: judge it by reading the log, never as known. */
+  unknown: boolean;
 }
 
 export interface Comparison {
@@ -70,11 +72,16 @@ function gh(runner: Runner, args: string[]): string {
   return result.stdout;
 }
 
+/** A Bun `(fail) <name> [12ms]` line. */
+const BUN_FAILURE = /^([^\t]+)\t.*?\(fail\) (.+?)(?: \[[\d.]+m?s\])?\s*$/;
+/** A Playwright failure heading, `  1) [chromium] › tests/e2e/x.spec.ts:69:3 › title`. */
+const PLAYWRIGHT_FAILURE = /^([^\t]+)\t.*?\s\d+\) \[[\w-]+\] › (.+?)\s*$/;
+
 /** The failing test names in a `--log-failed` dump, keyed by the job name each line starts with. */
 export function failingTests(log: string): Map<string, string[]> {
   const byJob = new Map<string, Set<string>>();
   for (const line of log.split('\n')) {
-    const match = /^([^\t]+)\t.*?\(fail\) (.+?)(?: \[[\d.]+m?s\])?\s*$/.exec(line);
+    const match = BUN_FAILURE.exec(line) ?? PLAYWRIGHT_FAILURE.exec(line);
     if (match === null) continue;
     const [, job = '', test = ''] = match;
     let tests = byJob.get(job);
@@ -137,6 +144,9 @@ export function recentMainRuns(
     .slice(0, count);
 }
 
+/** A job that runs tests, so its failures should name them. */
+const TEST_JOB = /(^|\s)tests\b|end-to-end|e2e|fixtures|integration/i;
+
 /** Judge each failure of `target` against the failures of `main` runs. */
 export function compare(target: RunFailures, main: RunFailures[]): Comparison {
   const jobs = target.jobs.map((job): JudgedJob => {
@@ -145,8 +155,11 @@ export function compare(target: RunFailures, main: RunFailures[]): Comparison {
       name,
       seenIn: main.filter((m) => m.jobs.some((j) => j.tests.includes(name))).map((m) => m.id),
     }));
-    const isNew = seenIn.length === 0 || tests.some((test) => test.seenIn.length === 0);
-    return { name: job.name, seenIn, tests, isNew };
+    // A test job whose log names no failing test cannot be judged by its name alone: a new failure
+    // in a shard that is already red on main would read as known.
+    const unknown = tests.length === 0 && TEST_JOB.test(job.name);
+    const isNew = unknown || seenIn.length === 0 || tests.some((test) => test.seenIn.length === 0);
+    return { name: job.name, seenIn, tests, isNew, unknown };
   });
   const complete = target.status === 'completed';
   return {
@@ -166,7 +179,11 @@ export function renderComparison(comparison: Comparison): string {
   if (!comparison.complete) lines.push('NOT COMPLETE: wait for the run before judging it.');
   for (const job of comparison.jobs) {
     const where = job.seenIn.length === 0 ? 'NEW' : `seen on main in ${job.seenIn.join(', ')}`;
-    lines.push(`${job.isNew ? 'NEW' : 'known'} job ${job.name}: ${where}`);
+    lines.push(
+      job.unknown
+        ? `UNKNOWN job ${job.name}: its log names no failing test; read it (${where})`
+        : `${job.isNew ? 'NEW' : 'known'} job ${job.name}: ${where}`,
+    );
     for (const test of job.tests)
       lines.push(
         `  ${test.seenIn.length === 0 ? 'NEW' : 'known'} test ${test.name}${test.seenIn.length === 0 ? '' : ` (main ${test.seenIn.join(', ')})`}`,

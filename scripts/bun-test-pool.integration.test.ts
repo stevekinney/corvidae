@@ -18,6 +18,7 @@ import {
   isTestWorkerCommand,
   memoryStatusLine,
   poolSize,
+  poolWaitLimitMs,
   readProcessTable,
   requestedWorkers,
   runPooledBunTest,
@@ -454,6 +455,32 @@ const runsWithoutASlotWhenThePoolIsUnusable = await inScratchDirectory(async (di
   expect(reports.join('\n')).toContain('bun-test-pool: running without a test slot');
 });
 
+const runsWithoutASlotPastTheWaitBound = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  // This process holds the only slot for the whole run, so the second run can only wait.
+  const holder = await acquireTestSlots({
+    poolDirectory: pool,
+    size: 1,
+    slots: 1,
+    holder: { pid: process.pid, command: 'holder', cwd: directory, acquiredAt: '' },
+  });
+  try {
+    const reports: string[] = [];
+    const code = await runPooledBunTest({
+      bunTestArguments: [],
+      command: ['sh', '-c', 'exit 7'],
+      environment: { CORVIDAE_TEST_POOL_WAIT_SECONDS: '1' },
+      poolDirectory: pool,
+      size: 1,
+      report: (line) => reports.push(line),
+    });
+    expect(code).toBe(7);
+    expect(reports.join('\n')).toContain('no test slot within 1s');
+  } finally {
+    await holder.release();
+  }
+});
+
 const pooledRunIgnoresTheHostLock = await inScratchDirectory(async (directory) => {
   const lock = await acquireHostLock({
     lockDirectory: join(directory, 'host-lock'),
@@ -736,6 +763,12 @@ describe('the pool size', () => {
     expect(poolSize({ CORVIDAE_TEST_SLOTS: 'many' }, host)).toBe(10);
   });
 
+  test('reads the wait bound in seconds, and none when unset or invalid', () => {
+    expect(poolWaitLimitMs({ CORVIDAE_TEST_POOL_WAIT_SECONDS: '300' })).toBe(300_000);
+    expect(poolWaitLimitMs({})).toBeUndefined();
+    expect(poolWaitLimitMs({ CORVIDAE_TEST_POOL_WAIT_SECONDS: '0' })).toBeUndefined();
+  });
+
   test('counts workers from --parallel, bare --parallel, and its absence', () => {
     expect(requestedWorkers(['src'], 12)).toBe(1);
     expect(requestedWorkers(['--parallel=1', 'src'], 12)).toBe(1);
@@ -855,6 +888,9 @@ describe('running a pooled bun test', () => {
 
   test('runs without a slot, with a warning, when the pool cannot be used', () =>
     rethrow(runsWithoutASlotWhenThePoolIsUnusable));
+
+  test('runs without a slot, with a warning, once the wait bound passes', () =>
+    rethrow(runsWithoutASlotPastTheWaitBound));
 
   test('a pooled run never waits on the host lock', () => rethrow(pooledRunIgnoresTheHostLock));
 

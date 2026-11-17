@@ -159,6 +159,22 @@ export function poolSize(
   return defaultPoolSize(host);
 }
 
+/**
+ * Bounds how long a run waits for its slots, in seconds; unset, it waits as long as the holders
+ * run. The focused checks set it: a worker's handful of direct tests that wait hours behind other
+ * sessions' suites cost more (a session resumed again and again) than the load they would add, so
+ * past the bound the run goes ahead without a slot, as it does when the pool cannot be used.
+ */
+export const poolWaitVariable = 'CORVIDAE_TEST_POOL_WAIT_SECONDS';
+
+/** The wait bound of {@link poolWaitVariable} in milliseconds, or undefined for none. */
+export function poolWaitLimitMs(
+  environment: Readonly<Record<string, string | undefined>>,
+): number | undefined {
+  const value = environment[poolWaitVariable];
+  return value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) * 1000 : undefined;
+}
+
 const parallelArgument = /^--parallel(?:=(\d+))?$/;
 
 /** The Bun workers a `bun test` argument list starts: `--parallel=k`, the processors for a bare `--parallel`, else one. */
@@ -790,6 +806,7 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
   };
   clampTo(size, 'the size of the pool');
   const read = options.readProcessTable ?? readProcessTable;
+  const waitLimit = poolWaitLimitMs(environment);
   let held: HeldTestSlots | undefined;
   try {
     const poolDirectory = await (options.poolDirectory ?? defaultPoolDirectory());
@@ -812,10 +829,15 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
         readProcessTable: read,
         ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
         onWait: (line) => report(`bun-test-pool: ${line}`),
+        ...(waitLimit === undefined ? {} : { signal: AbortSignal.timeout(waitLimit) }),
       });
     }
   } catch (error) {
-    report(`bun-test-pool: running without a test slot: ${(error as Error).message}`);
+    report(
+      (error as Error).name === 'TimeoutError'
+        ? `bun-test-pool: no test slot within ${(waitLimit ?? 0) / 1000}s (${poolWaitVariable}); running without one`
+        : `bun-test-pool: running without a test slot: ${(error as Error).message}`,
+    );
   }
   // Bun starts workers only under `--parallel`; without it the leader runs the tests itself.
   const tracker = argumentsList.some((argument) => parallelArgument.test(argument))
