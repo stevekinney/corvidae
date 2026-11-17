@@ -3,6 +3,11 @@
  * over (a listed component with no schema or no accessible name), validation
  * against the vendored A2UI v0.9.1 schemas, the integrity of those vendored
  * files, and drift between the checked-in catalog and Cinder's schemas.
+ *
+ * The generator belongs to the component tooling, but these tests read Cinder's generated
+ * `.metadata`, so they live in Cinder, whose test task waits for its metadata task: the tooling's
+ * own test task then reads no component workspace's output, and an example edit does not reach it
+ * (COR-2081).
  */
 
 import { createHash } from 'node:crypto';
@@ -28,8 +33,8 @@ import {
   validateA2uiCatalog,
   VENDORED_DIRECTORY,
   type VendoredSchemas,
-} from './generate-a2ui-catalog.ts';
-import { parseJsonFile } from './lib/read-json-file.ts';
+} from '@lostgradient/component-tooling/scripts/generate-a2ui-catalog.ts';
+import { parseJsonFile } from '@lostgradient/component-tooling/scripts/lib/read-json-file.ts';
 
 describe('the catalog allowlist file', () => {
   it('reads a deleted empty allowlist as the empty list it held', async () => {

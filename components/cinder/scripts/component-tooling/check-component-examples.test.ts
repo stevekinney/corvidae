@@ -1,16 +1,35 @@
+/**
+ * Tests for the component tooling's examples check. They read Cinder's generated `.metadata`, so
+ * they live in Cinder, whose test task waits for its metadata task: the tooling's own test task
+ * then reads no component workspace's output, and an example edit does not reach it (COR-2081).
+ */
+
 import Ajv from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'bun:test';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import type { ExampleArtifact } from './check-component-examples.ts';
+import type { ExampleArtifact } from '@lostgradient/component-tooling/scripts/check-component-examples.ts';
 import {
   checkCommittedExamples,
   validateExampleArtifactValue,
-} from './check-component-examples.ts';
-import type { Manifest } from './generate-manifest.ts';
-import { readJsonFile } from './lib/read-json-file.ts';
+} from '@lostgradient/component-tooling/scripts/check-component-examples.ts';
+import type { Manifest } from '@lostgradient/component-tooling/scripts/generate-manifest.ts';
+import { readJsonFile } from '@lostgradient/component-tooling/scripts/lib/read-json-file.ts';
 
-const PACKAGE_ROOT = `${import.meta.dir}/../../../components/cinder`;
-const COMPONENT_SCHEMA_PATH = `${import.meta.dir}/../src/schemas/examples.schema.json`;
+/** Cinder's directory: this file is in its `scripts/component-tooling/`. */
+const PACKAGE_ROOT = join(import.meta.dir, '..', '..');
+const COMPONENT_SCHEMA_PATH = join(
+  dirname(
+    fileURLToPath(
+      import.meta.resolve('@lostgradient/component-tooling/scripts/check-component-examples.ts'),
+    ),
+  ),
+  '..',
+  'src',
+  'schemas',
+  'examples.schema.json',
+);
 const MANIFEST_PATH = `${PACKAGE_ROOT}/.metadata/components.json`;
 
 const validArtifact = {

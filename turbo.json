@@ -963,12 +963,13 @@
     },
     "@lostgradient/component-tooling#test": {
       "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
+      "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/components/*/src/**",
+        "!$TURBO_ROOT$/components/*/src/**/examples/**",
         "$TURBO_ROOT$/components/*/browser/fixtures/**",
         "$TURBO_ROOT$/components/*/*.json",
         "$TURBO_ROOT$/components/*/README.md",

@@ -57,6 +57,7 @@ import {
   type ModuleReader,
 } from './core-exports.ts';
 import { createPackage, packageManifest } from './create-package.ts';
+import { ensureExampleMountTests, writtenPaths } from './example-mount-tests.ts';
 import {
   type DerivedFamilies,
   type FamilyRules,
@@ -1979,6 +1980,10 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
       (path) => readFileSync(join(root, path), 'utf8') !== plan.originals.get(path),
     );
     await syncExampleArtifacts(plan);
+    // Every package that now holds examples, core included, runs the test that mounts them.
+    for (const path of writtenPaths(ensureExampleMountTests(root))) {
+      if (!plan.result.written.includes(path)) plan.result.written.push(path);
+    }
     plan.result.dead = deadPaths(plan);
   }
   return plan.result;

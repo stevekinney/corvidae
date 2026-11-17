@@ -22,6 +22,9 @@
  *   - a moved module imports a package the destination workspace does not declare (a Cinder
  *     example importing chat would be a dependency cycle).
  *
+ * After the move, each workspace that holds examples gets the one test that mounts every one of
+ * them (`ensureExampleMountTests` in the component tooling's `example-mount-tests.ts`).
+ *
  * A run with nothing left to move prints `Nothing to move.`, so it can run again after a merge
  * brings in examples written at the old path.
  */
@@ -35,6 +38,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+
+import { ensureExampleMountTests } from '@lostgradient/component-tooling/scripts/example-mount-tests.ts';
 
 /** The old examples directory, built from segments so a path search does not find this script. */
 const OLD_EXAMPLES = ['applications', 'playground', 'src', 'examples'].join('/');
@@ -263,6 +268,8 @@ export function run(root: string, dryRun: boolean): string[] {
   for (const file of plan.duplicates) git(root, 'rm', '--quiet', file);
   removeEmptyDirectories(join(root, OLD_EXAMPLES));
   log.push(...addDevelopmentDependencies(root, plan.additions));
+  // Every workspace that now holds examples runs the test that mounts each of them.
+  log.push(...ensureExampleMountTests(root));
   return log;
 }
 
