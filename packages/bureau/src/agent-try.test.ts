@@ -403,7 +403,12 @@ describe('deleting a tried chat (COR-1911)', () => {
    *   (COR-1986), so a start that names the id is refused rather than recreating the chat.
    * - `appmbx:`: the chat's purged input mailbox keeps its header, sealed, so an admission that
    *   raced the purge is refused rather than recreating the mailbox.
+   * - `steering-log:v1:…:head`: the session's sealed steering log head, which the boot sweep
+   *   removes (COR-2098); only the head, never a log entry.
    */
+  const isKept = (key: string) =>
+    KEPT.some((prefix) => key.startsWith(prefix)) ||
+    (key.startsWith('steering-log:v1:') && key.endsWith(':head'));
   const KEPT = [
     'audit:v1:',
     'audit-sequence:v1:',
@@ -453,8 +458,10 @@ describe('deleting a tried chat (COR-1911)', () => {
     await deleted(bureau, tried.contextId);
 
     const left = await keysAddedSince(storage, keysBefore);
-    expect(left.filter((key) => !KEPT.some((prefix) => key.startsWith(prefix)))).toEqual([]);
-    expect(left.filter((key) => GONE.some((prefix) => key.startsWith(prefix)))).toEqual([]);
+    expect(left.filter((key) => !isKept(key))).toEqual([]);
+    expect(
+      left.filter((key) => !isKept(key) && GONE.some((prefix) => key.startsWith(prefix))),
+    ).toEqual([]);
     expect(await filesIn(directory)).toEqual(filesBefore);
     expect(await bureau.contexts.get(tried.contextId)).toBeUndefined();
     expect(await bureau.tasks.get(tried.taskId)).toBeUndefined();
@@ -543,7 +550,7 @@ describe('deleting a tried chat (COR-1911)', () => {
 
     expect(report.deleted).toBe(true);
     const left = await keysAddedSince(storage, keysBefore);
-    expect(left.filter((key) => !KEPT.some((prefix) => key.startsWith(prefix)))).toEqual([]);
+    expect(left.filter((key) => !isKept(key))).toEqual([]);
     expect(await bureau.tasks.get(tried.taskId)).toBeUndefined();
   });
 
