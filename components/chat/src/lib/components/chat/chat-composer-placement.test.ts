@@ -109,3 +109,50 @@ describe('Chat composer placement and footer', () => {
     expect(hint.compareDocumentPosition(drawn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+/**
+ * COR-2327: the docked composer area (the composer, and the approval reminder and blocked row
+ * stacked above it) marks itself with Cinder's `dockedToBottom()`, so a toast sits above it rather
+ * than over it. A centred composer sits in the middle of the surface and is not counted.
+ */
+describe('Chat composer area and the toast region', () => {
+  const DOCKED_PROPERTY = '--_cinder-docked-action-bar-height';
+  const originalRect = HTMLElement.prototype.getBoundingClientRect;
+
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect;
+    document.documentElement.style.removeProperty(DOCKED_PROPERTY);
+  });
+
+  /** happy-dom lays nothing out: the composer area is given a 150px box at the viewport's bottom. */
+  function layOutComposerAtTheBottom(): void {
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (!this.classList.contains('chat-input-area')) return originalRect.call(this);
+      const bottom = window.innerHeight;
+      return { top: bottom - 150, bottom, height: 150 } as DOMRect;
+    };
+  }
+
+  test('a docked composer area lifts the toasts above its top, and stops when it unmounts', () => {
+    layOutComposerAtTheBottom();
+    const { unmount } = render(Chat, {
+      id: 'chat-placement-toasts',
+      conversation: appendUserMessage(createConversationHistory({ id: 'toasts' }), 'hello'),
+    });
+
+    expect(document.documentElement.style.getPropertyValue(DOCKED_PROPERTY)).toBe('150px');
+    unmount();
+    expect(document.documentElement.style.getPropertyValue(DOCKED_PROPERTY)).toBe('');
+  });
+
+  test('a centred composer is not counted', () => {
+    layOutComposerAtTheBottom();
+    render(Chat, {
+      id: 'chat-placement-centered-toasts',
+      conversation: createConversationHistory({ id: 'centered-toasts' }),
+      composerPlacement: 'centered',
+    });
+
+    expect(document.documentElement.style.getPropertyValue(DOCKED_PROPERTY)).toBe('');
+  });
+});

@@ -66,11 +66,11 @@
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
   import {
     approvalActionRow,
-    approvalActionRowShift,
-    approvalReviewBox,
+    approvalArrivalBox,
+    approvalArrivalShift,
     approvalRowVisible,
-    approvalVisibleBox,
     focusPendingApproval,
+    PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
   } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
@@ -103,6 +103,7 @@
   import {
     Button,
     ConfirmDialog,
+    dockedToBottom,
     EmptyState,
     MessageSquare,
     Quote,
@@ -1321,13 +1322,12 @@
   const scrollAttachment = scrollState.createScrollAttachment();
   // Independent of the scroll/history-anchor attachments above — this owns
   // no chat scroll behavior, it only reads position to drive the shared
-  // cinder scroll-fade recipe's fallback attributes. Only active when
-  // scrollFadeVisible is set AND surfaceMode is 'default' (see chat.types.ts
-  // for why 'transparent' mode stays inert). $derived so its identity is
-  // stable across unrelated re-renders (Svelte tears down and re-runs an
-  // attachment whenever its reference changes).
+  // cinder scroll-fade recipe's fallback attributes, which the transparent surface's mask fade
+  // reads too. Only active when scrollFadeVisible is set (see chat.types.ts). $derived so its
+  // identity is stable across unrelated re-renders (Svelte tears down and re-runs an attachment
+  // whenever its reference changes).
   const timelineScrollFadeAttachment = $derived(
-    scrollFadeVisible && surfaceMode === 'default' ? overflowFadeEdges() : noopAttachment,
+    scrollFadeVisible ? overflowFadeEdges() : noopAttachment,
   );
   // ==========================================================================
   // Actions
@@ -1595,15 +1595,13 @@
   const composerWaitsForHistory = $derived(
     availability?.kind === 'loading' ? availabilityLabels(availability).sendWaits : undefined,
   );
+  // A canceled read is said once, by the state that stands in the transcript's place with its Retry:
+  // the composer draws no notice of its own, and the reason Send is off sits beside Send
+  // (COR-2327 B6).
+  const composerSendDisabledReason = $derived(
+    availability?.kind === 'canceled' ? availabilityLabels(availability).sendBlocked : undefined,
+  );
   const availabilityComposerStatus = $derived.by<ChatComposerStatus | undefined>(() => {
-    if (availability?.kind === 'canceled') {
-      return {
-        kind: 'drawer-notice',
-        text: availabilityLabels(availability).canceledComposer,
-        tone: 'neutral',
-        sendDisabledReason: availabilityLabels(availability).sendBlocked,
-      };
-    }
     if (availability?.kind === 'unconfigured' && unconfiguredWithHistory) {
       const words = availabilityLabels(availability);
       return {
@@ -1643,10 +1641,15 @@
       !isComposerNoticeStatus(composerStatus),
   );
   let approvalFullyVisible = $state(false);
+  // Whether the waiting approval's arrival placement has settled; the reminder is drawn only from
+  // a settled placement, so it never takes room from the transcript while the card is being placed.
+  let approvalArrivalSettled = $state(false);
   // The room the reminder takes from the transcript (its height and margins), last read while it
   // was on screen; the estimate holds until the first read. It is not state: nothing renders from
   // it, and it only keeps the box the row is judged against the same with the reminder on and off.
-  let approvalReminderBlockSize = 48;
+  // One row of the neutral Callout: a small button (28px) between its 12px insets and a hairline
+  // each way, 4px of margin above and the docked stack's 12px gap below.
+  let approvalReminderBlockSize = 70;
   /**
    * Reads the reminder from the page, not from state: what the transcript's box excludes is what is
    * drawn now, and a state update the page has not yet drawn would count the reminder twice.
@@ -1701,18 +1704,15 @@
           return;
         }
         // The reminder is for a card whose decision buttons are out of reach: while its action
-        // row is wholly in view there is nothing to point to. A card that draws no row falls back
-        // to the whole card.
+        // row is wholly in view there is nothing to point to. It is judged on the row alone, not
+        // on the card's bottom and the clearance the arrival lift keeps under it: on a 320 by 640
+        // phone the card is nearly as tall as the transcript, and requiring its bottom too kept
+        // the reminder over Deny and Approve while both were in view (COR-2327 B1). A card that
+        // draws no row falls back to the whole card.
         const actionRow = approvalActionRow(card);
         const reminder = readApprovalReminder();
         approvalFullyVisible = approvalRowVisible(
-          actionRow === null
-            ? cardBox
-            : approvalReviewBox(
-                actionRow.getBoundingClientRect(),
-                cardBox,
-                viewportBox.bottom - viewportBox.top + (reminder.shown ? reminder.blockSize : 0),
-              ),
+          actionRow === null ? cardBox : actionRow.getBoundingClientRect(),
           viewportBox,
           reminder.shown,
           reminder.blockSize,
@@ -1744,53 +1744,74 @@
     };
   });
 
-  // When an approval arrives the transcript scrolls so the card's row of decision buttons clears
-  // the composer and any notice above it, and keeps doing so as the layout settles (the notice
-  // itself shrinks the transcript) until the person scrolls, wheels, touches or presses a key
-  // there, or focus is inside the card. A card taller than the transcript is the lift's to place.
-  // The row is judged against the box the transcript has without the reminder, the same box that
-  // decides whether the reminder shows.
+  // When an approval arrives the transcript settles it into view once: the whole card when it fits
+  // the transcript, and otherwise its bottom, Deny and Approve, on the transcript's bottom with the
+  // clearance to spare (COR-2327). The placement is judged against the box the transcript has
+  // WITHOUT the reminder, the same box that decides whether the reminder shows, and the reminder is
+  // drawn only once the placement has settled, so the reminder (which takes room from the
+  // transcript) and the placement can never feed each other into a state that depends on timing.
+  // The placement runs again whenever the transcript, the card or the fonts change its layout,
+  // until a pass moves nothing, and never on a timer; it stops when the person scrolls, wheels,
+  // touches or presses a key there, or when focus is inside the card.
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
+    approvalArrivalSettled = false;
     if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
     let released = false;
     let frame = 0;
+    let observedCard: HTMLElement | null = null;
+    // Where the card stood before the last scroll this placement made.
+    let movedFrom: number | undefined;
+    const settled = (): void => {
+      approvalArrivalSettled = true;
+    };
     const settle = (): void => {
       frame = 0;
-      if (released) return;
+      if (released) return settled();
       const card = pendingApprovalCard(containerRef, messageId);
       const actionRow = card === null ? null : approvalActionRow(card);
-      if (card === null || actionRow === null) return;
-      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
-      // The same box the reminder is judged against, so a row this puts in view is one the
-      // reminder agrees is in view, with it on screen or not.
-      const reminder = readApprovalReminder();
-      const viewportBox = approvalVisibleBox(
-        scroller.getBoundingClientRect(),
-        reminder.shown,
-        reminder.blockSize,
-      );
-      const cardBox = card.getBoundingClientRect();
-      if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
-      const shift = approvalActionRowShift(
-        approvalReviewBox(
-          actionRow.getBoundingClientRect(),
-          cardBox,
-          viewportBox.bottom - viewportBox.top,
-        ),
-        viewportBox,
-        0,
-      );
-      if (shift !== 0) {
-        scroller.scrollTop += shift;
+      // Nothing drawn to place (a row not yet mounted, or a card with no decision row): the
+      // reminder follows what is in view.
+      if (card === null || actionRow === null) return settled();
+      if (card !== observedCard) {
+        if (observedCard !== null) resizes?.unobserve(observedCard);
+        observedCard = card;
+        resizes?.observe(card);
       }
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return settled();
+      // The placement, not the person, holds the transcript off its end, so Jump to latest stays
+      // hidden, as it does after a lift: its band would shrink the transcript under the card and
+      // feed the placement as the reminder did (COR-2327).
+      attentionLifted = true;
+      attentionLiftedTop = scroller.scrollTop;
+      const viewportBox = approvalArrivalBox(scroller);
+      const cardBox = card.getBoundingClientRect();
+      // A layout not yet measured (zero-sized boxes) says nothing about where the card stands, so
+      // the reminder stays available; the resize that measures it places the card.
+      if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
+      const shift = approvalArrivalShift(cardBox, viewportBox);
+      if (shift === 0) {
+        movedFrom = undefined;
+        return settled();
+      }
+      // The last scroll did not move the card: the transcript is at its end or its start, where it
+      // rests. Judged by the card, not by `scrollTop`, which a transcript may report unclamped.
+      if (movedFrom !== undefined && Math.abs(cardBox.top - movedFrom) < 0.5) return settled();
+      movedFrom = cardBox.top;
+      const before = scroller.scrollTop;
+      scroller.scrollTop += shift;
+      attentionLiftedTop = scroller.scrollTop;
+      if (Math.abs(scroller.scrollTop - before) < 0.5) return settled();
+      // Look once more after the scroll lands, until a pass moves nothing.
+      schedule();
     };
     const schedule = (): void => {
-      if (frame === 0 && !released) frame = requestAnimationFrame(settle);
+      if (frame === 0) frame = requestAnimationFrame(settle);
     };
     const release = (): void => {
       released = true;
+      settled();
     };
     const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
     for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
@@ -1799,8 +1820,15 @@
     resizes?.observe(scroller);
     const changes = new MutationObserver(schedule);
     changes.observe(scroller, { childList: true, subtree: true });
+    // Web fonts change every line's height once they load; place the card again then.
+    let disposed = false;
+    void scroller.ownerDocument.fonts?.ready.then(() => {
+      if (!disposed) schedule();
+      return undefined;
+    });
     schedule();
     return () => {
+      disposed = true;
       if (frame !== 0) cancelAnimationFrame(frame);
       resizes?.disconnect();
       changes.disconnect();
@@ -1817,6 +1845,9 @@
   // Whether the transcript sits where a waiting item's lift put it, and not where the person did.
   // Jump to latest stays hidden then: the lift is the end of what there is to read (C#7).
   let attentionLifted = $state(false);
+  // Where the lift, or the arrival placement, left the transcript; moving away from it gives Jump
+  // to latest back. Not state: nothing renders from it.
+  let attentionLiftedTop = 0;
   // Whether Jump to latest is drawn. The transcript gives up the band the button floats in while
   // it shows, so the button never lies on a line of text; the band is not there otherwise.
   const jumpButtonShown = $derived(scrollState.showJumpButton && !attentionLifted);
@@ -1826,7 +1857,6 @@
     let target: HTMLElement | null = null;
     let released = false;
     let frame = 0;
-    let liftedTop = 0;
     const reveal = (): void => {
       frame = 0;
       const next = findAttentionTarget(scroller);
@@ -1849,6 +1879,9 @@
       );
       if (!pinned) return;
       const targetBox = target.getBoundingClientRect();
+      // A waiting approval the arrival placement owns is placed there alone, by one rule against
+      // one box; a lift by a second rule would pull against it (COR-2327).
+      if (untrack(() => approvalWaiting) && target.matches(PENDING_APPROVAL_CARD_SELECTOR)) return;
       const shift = revealTopShift(
         {
           viewportTop: scroller.getBoundingClientRect().top,
@@ -1859,14 +1892,14 @@
       );
       if (shift !== 0) {
         scroller.scrollTop += shift;
-        liftedTop = scroller.scrollTop;
+        attentionLiftedTop = scroller.scrollTop;
         attentionLifted = true;
       }
     };
     // Only the transcript moving away from where the lift left it gives Jump to latest back, so a
     // press inside the lifted card never brings the control in under the finger mid-press.
     const followScroll = (): void => {
-      if (untrack(() => attentionLifted) && Math.abs(scroller.scrollTop - liftedTop) > 2) {
+      if (untrack(() => attentionLifted) && Math.abs(scroller.scrollTop - attentionLiftedTop) > 2) {
         attentionLifted = false;
       }
     };
@@ -2800,7 +2833,10 @@
         id={timelineId}
         class={classNames(
           'chat-timeline',
-          scrollFadeVisible && 'cinder-_scroll-fade cinder-_scroll-fade-start',
+          scrollFadeVisible &&
+            (surfaceMode === 'default'
+              ? 'cinder-_scroll-fade cinder-_scroll-fade-start'
+              : 'chat-timeline-mask-fade'),
         )}
         role="log"
         aria-label={chatLabels.messages}
@@ -2835,7 +2871,11 @@
         {/if}
 
         {#if messages.length === 0 && typingIndicatorState.participantCount === 0}
-          {#if empty}
+          <!-- An availability state stands where the transcript is: an empty transcript then says
+               nothing about the conversation, so no empty state is drawn behind it. -->
+          {#if transcriptHidden}
+            <!-- Nothing: the availability state is the conversation for now. -->
+          {:else if empty}
             {@render empty()}
           {:else}
             <div class="chat-empty" role="status">
@@ -2914,10 +2954,12 @@
         onJumpToLatest={handleJumpToLatest}
       />
 
-      <!-- Input Area -->
+      <!-- Input Area: docked at the bottom (the composer, and the reminder and blocked row above
+           it), so a toast sits above it; a centred composer is in the middle and not counted. -->
       <div
         class="chat-input-area"
         data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+        {@attach composerCentered ? undefined : dockedToBottom()}
       >
         {#if quotes.quotes.length > 0}
           <ChatQuoteChips
@@ -2933,7 +2975,7 @@
             {@render composerLead()}
           </div>
         {/if}
-        {#if approvalWaiting && !approvalFullyVisible}
+        {#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}
           <ChatApprovalDrawer
             labels={chatLabels}
             draft={composerDraft.trim() !== ''}
@@ -2994,6 +3036,7 @@
           disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
           {pausedReason}
+          sendDisabledReason={composerSendDisabledReason}
           sending={composerSending}
           starting={composerStarting ?? composerWaitsForHistory}
           clearOnSubmit={clearComposerOnSubmit}
@@ -3339,6 +3382,41 @@
     --_cinder-scroll-fade-color: var(--_cinder-chat-shared-surface);
   }
 
+  /* A transparent surface paints no background, so it has no colour an opaque overlay could fade
+   * toward; it masks instead. The mask is right here, where the overlay's rule against masks is not
+   * at stake: the timeline paints nothing of its own, so the faded content shows the host's own
+   * background behind it, whatever that is. An edge fades only while there is content past it (the
+   * `data-cinder-overflows` attributes `overflowFadeEdges` sets), so a transcript at its end never
+   * dims its last message (COR-2327). */
+  .chat-timeline-mask-fade {
+    --_chat-timeline-fade-size: var(--cinder-space-6);
+    --_chat-timeline-fade-start: 0px;
+    --_chat-timeline-fade-end: 0px;
+
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black var(--_chat-timeline-fade-start),
+      black calc(100% - var(--_chat-timeline-fade-end)),
+      transparent
+    );
+  }
+
+  .chat-timeline-mask-fade[data-cinder-overflows-start] {
+    --_chat-timeline-fade-start: var(--_chat-timeline-fade-size);
+  }
+
+  .chat-timeline-mask-fade[data-cinder-overflows] {
+    --_chat-timeline-fade-end: var(--_chat-timeline-fade-size);
+  }
+
+  /* Reduced transparency and forced colours keep a plain edge rather than a dimmed one. */
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    .chat-timeline-mask-fade {
+      mask-image: none;
+    }
+  }
+
   /* Prevent non-last messages from being scroll anchors */
   .chat-timeline > :not(:last-child) {
     overflow-anchor: none;
@@ -3590,19 +3668,15 @@
     }
   }
 
+  /* A narrow conversation, however wide the screen (a tablet's pane beside the list), gives the
+     composer the transcript's own inset: the wrapper takes the whole width and the input area's
+     narrow padding matches the timeline's, so the two share one left edge (COR-2327 B4). */
   @container (max-width: 480px) {
     .chat-input-wrapper,
     .chat-container[data-composer-placement='centered'] .chat-input-wrapper,
     .chat-container[data-surface-mode='default'] .chat-input-wrapper,
     .chat-container[data-surface-mode='default'] > :global(.chat-availability) {
       inline-size: 100%;
-    }
-  }
-
-  @media (min-width: 481px) and (max-width: 64rem) {
-    .chat-input-wrapper,
-    .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
-      inline-size: calc(100% - 2rem);
     }
   }
 

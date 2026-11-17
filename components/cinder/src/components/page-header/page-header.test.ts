@@ -519,3 +519,65 @@ describe('PageHeader', () => {
     });
   });
 });
+
+describe('PageHeader narrowActions (COR-2327 B2)', () => {
+  test('by default draws no narrow-actions attribute, so the narrow layout is the one it was', () => {
+    const { container } = render(PageHeader, { props: { title: 'Plan the week' } });
+    const root = container.querySelector('.cinder-page-header');
+    expect(root?.hasAttribute('data-cinder-narrow-actions')).toBe(false);
+    const ownRow = render(PageHeader, { props: { title: 'Plan', narrowActions: 'own-row' } });
+    expect(
+      ownRow.container
+        .querySelector('.cinder-page-header')
+        ?.hasAttribute('data-cinder-narrow-actions'),
+    ).toBe(false);
+  });
+
+  test('beside-status marks the header, and its layout is scoped to that mark inside the narrow query', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Plan the week', narrowActions: 'beside-status' },
+    });
+    expect(
+      container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-narrow-actions'),
+    ).toBe('beside-status');
+
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 32rem)'),
+    );
+    const scoped = /\.cinder-page-header\[data-cinder-narrow-actions='beside-status'\]/gu;
+    // Every new rule is under the mark, so a header without it keeps today's narrow layout.
+    expect(narrow.match(scoped)?.length ?? 0).toBeGreaterThanOrEqual(6);
+    expect(stylesheet.slice(0, stylesheet.indexOf('@container cinder-page-header'))).not.toContain(
+      'data-cinder-narrow-actions',
+    );
+    expect(narrow).toMatch(
+      /\[data-cinder-narrow-actions='beside-status'\] \.cinder-page-header__row \{[^}]*display: grid;/u,
+    );
+    expect(narrow).toMatch(
+      /\.cinder-page-header__actions:not\(\.cinder-page-header__create-slot\) \{[^}]*grid-column: 2;[^}]*grid-row: 2;/u,
+    );
+  });
+
+  test('beside-status with no status puts the actions on the title line, not alone on a second row', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Hello', narrowActions: 'beside-status', overflow: [{ label: 'Archive' }] },
+    });
+    expect(container.querySelector('.cinder-page-header__status')).toBeNull();
+    expect(container.querySelector('.cinder-page-header__actions')).not.toBeNull();
+
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 32rem)'),
+    );
+    const noStatus =
+      "[data-cinder-narrow-actions='beside-status']\n      .cinder-page-header__row:not(:has(.cinder-page-header__status))";
+    expect(narrow).toContain(
+      `${noStatus}\n      .cinder-page-header__title {\n      grid-column: 1;`,
+    );
+    expect(narrow).toContain(
+      `${noStatus}\n      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {\n      grid-row: 1;`,
+    );
+    expect(narrow).toContain(
+      `${noStatus}\n      .cinder-page-header__description {\n      grid-row: 2;`,
+    );
+  });
+});

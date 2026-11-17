@@ -77,10 +77,26 @@ async function open(page: Page, path: string): Promise<void> {
   await expect(page.getByRole('link', { name: 'Reviews, 2 need you' })).toBeAttached();
 }
 
-/** Opens the palette with its key, once the shell has registered it. */
+/**
+ * Waits until the palette lists what waits on the person. Those rows come from the shell's
+ * notification store, which is fed by its own reads of the Bureau (`notification-feed.svelte.ts`),
+ * not by the reviews count `open` waits for, so a palette opened as the page settles can list only
+ * the actions for a moment; reading its groups or first row then reads that moment.
+ */
+async function expectWaitingListed(page: Page): Promise<void> {
+  await expect(
+    palette(page)
+      .getByRole('group', { name: PALETTE_COPY.groups.waiting, exact: true })
+      .getByRole('option')
+      .first(),
+  ).toBeVisible();
+}
+
+/** Opens the palette with its key, once the shell has registered it, and waits for its rows. */
 async function openPalette(page: Page): Promise<void> {
   await page.keyboard.press('Control+k');
   await expect(palette(page)).toBeVisible();
+  await expectWaitingListed(page);
 }
 
 test.describe('the search palette on the sample world', () => {
@@ -246,6 +262,7 @@ test.describe('the search palette on the sample world', () => {
       .getByRole('button', { name: /^Search everything/ })
       .click();
     await expect(palette(page)).toBeVisible();
+    await expectWaitingListed(page);
     await expect(palette(page).locator('.cinder-command-palette__escape')).toHaveCount(0);
     const rows = palette(page).getByRole('option');
     expect(await rowText(rows.nth(0))).toEqual([
