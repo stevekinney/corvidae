@@ -2,9 +2,38 @@
  * CSS test helpers. Internal — not part of the public package surface.
  */
 
+import { dirname, join } from 'node:path';
+
 import { parse, type AtRule } from 'postcss';
 
 import { COMPONENT_LAYER_NAME } from '../../scripts/check-component-css.ts';
+
+/**
+ * The file a stylesheet's `@import` names: a relative path from the importing file, or a package
+ * specifier (`@lostgradient/tokens/tokens.css`, as the split names a file another package holds)
+ * resolved through that package's `exports` from the importing file's directory.
+ */
+export function resolveStylesheetImport(fromFile: string, specifier: string): string {
+  if (specifier.startsWith('.') || specifier.startsWith('/')) {
+    return join(dirname(fromFile), specifier);
+  }
+  return Bun.resolveSync(specifier, dirname(fromFile));
+}
+
+/**
+ * Matches an `@import` of a component stylesheet, `checkbox/checkbox.css`, however the importing
+ * file names it: by a relative path (`'../checkbox/checkbox.css'`, `'../components/…'`) while one
+ * package holds both, or by the specifier of the package that holds it after the split
+ * (`'@lostgradient/checkbox/checkbox.css'`, `'@lostgradient/x/components/checkbox/checkbox.css'`).
+ */
+export function stylesheetImportPattern(path: string): RegExp {
+  const segments = path.split('/').slice(-2);
+  const file = (segments.at(-1) ?? '').replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const directory = segments.length === 2 ? (segments[0] ?? '') : '';
+  // A component's own stylesheet is `@lostgradient/<package>/<file>` when the package is named for it.
+  const tail = directory === '' ? file : `(?:${directory}/)?${file}`;
+  return new RegExp(String.raw`@import\s+['"](?:[^'"]*/)?${tail}['"]`);
+}
 
 /**
  * Strip the outer `@layer cinder.components { … }` wrapper from a component CSS

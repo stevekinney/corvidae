@@ -147,6 +147,24 @@ export function cinderComponentFile(relativePath: string, coreRoot: string = COR
 }
 
 /**
+ * A file under one of Cinder's package roots (`src/styles/tokens-base.css` is core's until the
+ * split moves it into `components/tokens`), wherever it lives now: core's first, then each Cinder
+ * package's. The path in core when no package holds it.
+ */
+export function cinderPackageFile(relativePath: string, coreRoot: string = CORE_ROOT): string {
+  return (
+    [coreRoot, ...cinderPackages(coreRoot).map(([, root]) => root)]
+      .map((root) => join(root, relativePath))
+      .find((path) => existsSync(path)) ?? join(coreRoot, relativePath)
+  );
+}
+
+/** A file under one of Cinder's `src` directories (`styles/tokens-base.css`), wherever it lives now. */
+export function cinderSourceFile(relativePath: string, coreRoot: string = CORE_ROOT): string {
+  return cinderPackageFile(join('src', relativePath), coreRoot);
+}
+
+/**
  * A file's path the way core's checks and their baselines name it: relative to core, so `src/…`
  * while core holds it and `../<package>/src/…` once a package does.
  */

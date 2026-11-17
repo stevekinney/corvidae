@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
 import {
@@ -41,6 +41,11 @@ export function cinderComponentRoots(manifestPath: string): string[] {
     }
     roots.add(dirname(resolve(coreRoot, packageRoot, directory)));
   }
+  // Once the split empties core's components directory, core keeps the fixtures that mount
+  // components of several packages in its tests directory (`coreTestsDirectory` in the tooling's
+  // family rules), under each component's name, as Modal's are (COR-2091).
+  const coreTests = resolve(coreRoot, 'src', 'component-tests');
+  if (existsSync(coreTests)) roots.add(coreTests);
   return [...roots].toSorted();
 }
 

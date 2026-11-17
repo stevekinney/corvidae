@@ -6,7 +6,7 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
 import type { Component } from 'svelte';
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
 import { defaultManifestLayout } from './prepare-manifest.ts';
@@ -64,13 +64,16 @@ test('native fixture routes preserve hash, snapshot, asset, and readiness contra
   }
 });
 
-test('the generated fixture map contains exactly the two owning component directories', async () => {
+test('the generated fixture map contains exactly the fixtures of every component root of the layout', async () => {
   const { fixtureModules } = await import('../.playwright/fixture-modules.ts');
   const sourceRoot = resolve(import.meta.dirname, '../src');
-  const expected = [
-    '../../../components/cinder/src/components/*/*-fixtures.ts',
-    '../../../components/chat/src/lib/components/*/*-fixtures.ts',
-  ].flatMap((pattern) => Array.from(new Bun.Glob(pattern).scanSync({ cwd: sourceRoot })));
+  // Core's and chat's components roots, and once the split moves them, each family package's and
+  // core's tests directory: the roots the layout reads from core's manifest.
+  const expected = defaultManifestLayout.fixtureRoots.flatMap((root) =>
+    Array.from(new Bun.Glob('*/*-fixtures.ts').scanSync({ cwd: root }), (path) =>
+      relative(sourceRoot, resolve(root, path)),
+    ),
+  );
   const paths = Object.keys(fixtureModules);
   expect(paths.toSorted()).toEqual(expected.toSorted());
   expect(paths.length).toBeGreaterThan(0);
