@@ -37,7 +37,7 @@ import {
   test,
   type PageErrorLog,
 } from './fixtures.ts';
-import { bureauCall } from './task-support.ts';
+import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -1546,22 +1546,17 @@ test.describe('trigger state', () => {
     test(`trigger state: the run page of a trigger-started run, with Started by, at ${width} pixels`, async ({
       page,
       request,
+      pageErrors,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
-      // A task shaped as the Bureau shapes one, from one the host lists, started by a trigger.
-      let listed = (await bureauCall(request, 'bureau.tasks.list', { limit: 1 })) as {
-        tasks: Record<string, unknown>[];
-      };
-      if (listed.tasks.length === 0) {
-        await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('trigger-state-run'), 'Hello');
-        listed = (await bureauCall(request, 'bureau.tasks.list', { limit: 1 })) as {
-          tasks: Record<string, unknown>[];
-        };
-      }
-      // The run page reads the task by its own id, so the id is the real task's and only what the
-      // trigger changes is patched over the host's answer: the agent and the origin.
-      const taskId = String(listed.tasks[0]?.['id']);
+      // The run page of a chat's run reads the engine for it, which this suite's engine does not hold.
+      expectEngineMissesForRuns(pageErrors);
+      // A run the harness can fully serve: a chat of this test's own, whose thread and task exist,
+      // so the page's reads of its messages answer. Only the agent and the origin are patched.
+      const threadId = newThreadId('trigger-state-run');
+      await runToEnd(request, TEXT_ECHO_AGENT_NAME, threadId, 'Hello');
+      const taskId = (await taskOfSession(request, threadId)).id;
       const triggered = {
         agentName: null,
         origin: { kind: 'trigger', plugin: 'github', workflowId: TRIGGER_FILE },
