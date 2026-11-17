@@ -238,7 +238,7 @@ test.describe('the sample world', () => {
       '3 need attention, Storage, Schedules, Providers',
     );
     await expect(advanced.locator('[data-section="checks"]')).not.toContainText('Plugins');
-    await expect(advanced.getByText('Open checks ›')).toBeVisible();
+    await expect(advanced.getByText('Open system checks ›')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',
       state: 'advanced-expanded',

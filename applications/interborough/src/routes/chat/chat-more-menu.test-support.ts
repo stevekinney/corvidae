@@ -32,12 +32,14 @@ export type Answers = Record<string, (params: Record<string, unknown>) => unknow
 
 /**
  * A Bureau holding the session `session-1`, whose transcript is `messages`. A run started on it
- * answers with `runResponse`, or, without one, starts and finishes at once.
+ * answers with `runResponse`, or, without one, starts and finishes at once. A page that joins the
+ * chat's run is answered with `joinResponse`, or, without one, told no run is going.
  */
 export function serve(
   messages: readonly unknown[] = TURNS,
   answers: Answers = {},
   runResponse?: () => Response,
+  joinResponse?: () => Response,
 ) {
   const runs: Array<Record<string, unknown>> = [];
   const served = bureau(
@@ -70,6 +72,7 @@ export function serve(
         );
       }
       if (url.includes('/threads/')) {
+        if (joinResponse !== undefined) return joinResponse();
         return new Response(
           `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
           { headers: { 'content-type': 'text/event-stream' } },
@@ -105,3 +108,12 @@ export async function openMenu(view: Mounted): Promise<void> {
 
 export const callsTo = (served: ReturnType<typeof serve>, method: string) =>
   served.calls.filter((call) => call.method === method);
+
+/** The text a menu item is described by (`aria-describedby`): a disabled item's reason line. */
+export function describedBy(item: HTMLElement): string {
+  return (item.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+    .join(' ');
+}

@@ -25,6 +25,7 @@ import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolver,
   DurableComposition,
+  RuntimeComposition,
   RuntimeCompositionDependencies,
   RuntimeCompositionOptions,
   ScheduleFireEventMap,
@@ -111,6 +112,8 @@ export interface CompositionCore {
   readonly configuredGenerate: GenerateFunction | undefined;
   /** COR-2106: what a Bureau-owned run hands the children it dispatches. */
   readonly bureauChildInvariants: BureauChildInvariants;
+  /** {@link RuntimeComposition.withPendingApprovalPersist}: a rebuilt run's Bureau tier, completed. */
+  readonly withPendingApprovalPersist: RuntimeComposition['withPendingApprovalPersist'];
 
   // Read-only accessors: `let`s the returned composition reassigns, read live.
 

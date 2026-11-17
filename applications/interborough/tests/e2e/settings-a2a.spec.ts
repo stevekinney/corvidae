@@ -89,10 +89,13 @@ test.describe('Settings › A2A', () => {
     const card = settingRow(page, 'agent-card-url');
     await expect(card).toContainText('Agent card URL');
     await expect(card).toContainText(A2A_COPY.cardUrl.description);
-    await expect(card.getByTestId('a2a-card-url')).toHaveValue(
+    // The address is a Cinder CopyableValue: its text, and the copy button inside it.
+    await expect(card.getByTestId('a2a-card-url')).toContainText(
       `http://127.0.0.1:${E2E_SHOWCASE_PORT}/bureau/a2a/.well-known/agent-card.json`,
     );
-    await expect(card.getByRole('button', { name: A2A_COPY.cardUrl.copy })).toBeVisible();
+    await expect(
+      card.getByTestId('a2a-card-url').getByRole('button', { name: A2A_COPY.cardUrl.copy }),
+    ).toBeVisible();
 
     const agents = settingRow(page, 'a2a.agents');
     await expect(agents).toContainText('Shared agents');

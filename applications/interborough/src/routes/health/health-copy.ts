@@ -271,12 +271,14 @@ export const HEALTH_ADVANCED_COPY = {
     action: 'Open alerts',
   },
   checks: {
-    title: 'Checks',
+    // "Checks" is the page of every check's results (`/checks`); this panel is the server's own
+    // self-checks, so it says so.
+    title: 'System checks',
     line: (needAttention: number, areas: readonly string[]): string =>
       needAttention === 0
         ? 'Every check passes'
         : `${needAttention} need${needAttention === 1 ? 's' : ''} attention, ${areas.join(', ')}`,
-    action: 'Open checks',
+    action: 'Open system checks',
     /** What an area says when it found nothing. */
     passes: 'No problem found',
   },

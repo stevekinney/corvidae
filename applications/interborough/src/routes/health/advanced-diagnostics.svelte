@@ -2,7 +2,7 @@
   /**
    * Advanced: the diagnostics that are not on a tab (rows 76o, 77e, 77f). It is a disclosure row at
    * the foot of Overview, collapsed, reading "Advanced, Metrics, alerts and checks". Opened, it
-   * lists Metrics, Alerts and Checks, each with its own link on the right, and the one that is
+   * lists Metrics, Alerts and System checks, each with its own link on the right, and the one that is
    * opened shows its panel beneath the list. A link from elsewhere ("Open Diagnostics") opens it
    * expanded: the address carries `?advanced=` (`open`, or the section's name), so the state is
    * linkable and survives a reload. Realms is a fourth row only when the engine runs them.

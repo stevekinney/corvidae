@@ -304,6 +304,7 @@ import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
 import { createContexts } from './contexts/create-contexts';
 import { createTasks } from './tasks/create-tasks';
+import { readFailedHooks } from './tasks/failed-hooks';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -348,7 +349,7 @@ import {
   composeHooks,
   resumeHooks,
 } from './bureau-construction-support';
-import { NotifyingReviewIdSet } from './approval-state-records';
+import { createPendingApprovalPersistHook, NotifyingReviewIdSet } from './approval-state-records';
 import { validateAgentRunInput, createTasksRespondLedger } from './run-request-validation';
 import {
   type BureauCore,
@@ -3292,6 +3293,17 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
   // Every later step that fails is stopped the same way, by `createBureau`.
   construction.abandon = abandonConstruction;
+  // COR-2115 — a run rebuilt after a restart registers the pending-approval persist hook a started
+  // run does (`run-creation.ts`), so an approval a step takes after the restart is recorded on its
+  // session. Wired ahead of the resolver below, which every such run waits for.
+  runtime.setPendingApprovalPersistHook((runId, sessionId) =>
+    createPendingApprovalPersistHook(
+      runId,
+      sessionId,
+      pendingApprovalOverrides,
+      persistPendingApprovalOverrideWithRetry,
+    ),
+  );
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
   // about it (see `RuntimeCompositionOptions`'s doc comment), so this is the
@@ -4746,6 +4758,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
     steps: async (runId) => (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
+    // COR-2115: a live run's plan is the one its run holds (a recovered run's included), and the
+    // hooks that threw are the audit trail's, which store runs and catalog runs both write.
+    hookPlan: (runId) => store.getRun(runId)?.activeRun.describeHookPlan(),
+    failedHooks: (runId) => readFailedHooks(auditTrailInstance, runId),
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
     responder: {
       reviews,

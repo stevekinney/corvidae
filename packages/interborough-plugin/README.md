@@ -393,7 +393,7 @@ export default definePlugin({
 });
 ```
 
-An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
+An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. A `name-clash` skips the whole plugin, never just the panel: none of its contributions register. Every `allowedTools` entry begins `bureau.`, and setup refuses a panel that lists any other name. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
 
 ```ts
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
@@ -416,11 +416,27 @@ export default definePlugin({
 });
 ```
 
-A panel that renders Cinder components imports `mountPanel` from `@lostgradient/cinder/panel` and mounts its Svelte component with it. The kit carries Cinder's stylesheet and reads the host's theme: each `--cinder-*` token the MCP Apps spec maps is `var(--color-…, <Cinder default>)`, so the panel follows the owner's light or dark theme inside Interborough, adapts to another host that sends a different palette, and looks like Cinder where the host sends none. The panel build resolves `svelte` and `@lostgradient/cinder` from the host's own install, never from the plugin's, so list Cinder as a `devDependency` only and the version always matches the application. A panel is a document in a sandboxed frame, and three limits follow from that. Dialogs, popovers and toasts render inside the frame and never above the host's own interface. Keyboard focus does not flow between the host and the panel: a person tabs out of the frame as they would out of any embedded document. Navigation, links, resizing and notifications go through the MCP Apps bridge, and Interborough's bridge refuses `ui/open-link` and `ui/message`, so a panel cannot open a link or post a message into the conversation.
+Every `PluginPanel` field:
+
+| Field | Required | What it holds |
+| --- | --- | --- |
+| `name` | yes | The panel's name, unique within the plugin. |
+| `version` | no | The panel's own version; a record that pins it uses the plugin's version without one. |
+| `title` | yes | The panel's title, which the host shows wherever it names the panel. |
+| `description` | no | What the panel shows. |
+| `uri` | yes | The `ui://<plugin>/…` resource the page is served at. Unique across plugins; a clash skips the whole plugin. |
+| `entry` | yes | The browser entry module (a `URL`) the host bundles into the page. |
+| `styles` | no | CSS inlined into the page's `<style>` element. |
+| `allowedTools` | yes | The Bureau tools the panel may call, every one beginning `bureau.`. |
+| `hostOnlyTools` | no | Operations only a host panel may call. Each is one of `allowedTools` and one the Bureau lists as open to host panels; setup refuses any other. |
+| `placements` | no | Where the panel appears: `page`, `run` or `chat-tool` (below). |
+| `opensFromTool` | no | The one `allowedTools` entry a client runs to open the page; unique across plugins. |
+
+A panel that renders Cinder components imports `mountPanel` from `@lostgradient/cinder/panel` and mounts its Svelte component with it. The kit carries Cinder's stylesheet and reads the host's theme: each `--cinder-*` token the MCP Apps spec maps is `var(--color-…, <Cinder default>)`, so the panel follows the owner's light or dark theme inside Interborough, adapts to another host that sends a different palette, and looks like Cinder where the host sends none. The panel build resolves `svelte` and `@lostgradient/cinder` from the host's own install, never from the plugin's, so list Cinder as a `devDependency` only and the version always matches the application. A panel is a document in a sandboxed frame, and three limits follow from that. Dialogs, popovers and toasts render inside the frame and never above the host's own interface. Keyboard focus does not flow between the host and the panel: a person tabs out of the frame as they would out of any embedded document. Navigation, links, resizing and notifications go through the MCP Apps bridge, and Interborough's bridge refuses `ui/message` everywhere, so a panel cannot post a message into the conversation, and it refuses `ui/open-link` too except on a panel's own page (a `page` placement), where a link that stays inside Interborough opens in the same tab and any other address is blocked.
 
 A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
 
-- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.
+- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router, at `/plugins/<plugin>/<path>`. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`. The host draws the page's header (the panel's `title` and "From" the plugin's title) and fills the rest of the page with your app, so do not repeat the title in the app. The entry sits after the group's built-in entries, in load order, labelled with the panel's `title` and marked "Plugin"; it has no keyboard shortcut. `icon` is one of `puzzle`, `plug`, `blocks`, `chart-line`, `list-checks`, `bell`, `workflow` and `book-open`, and any other name draws `puzzle`. A page with no `sidebar` entry is reachable from the command palette and its address. When a plugin is disabled its pages are gone, and its address says the plugin is disabled.
 - `{ kind: 'run' }`: the panel shows on a run's page. Two plugins can both place a panel there.
 - `{ kind: 'chat-tool', agentTool }`: Chat opens the panel inline when the agent tool `agentTool` is called. A Bureau given its agent tools refuses an id it does not hold, except the workflow tools it adds itself.
 

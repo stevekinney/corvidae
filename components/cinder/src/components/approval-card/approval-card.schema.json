@@ -343,11 +343,11 @@
     },
     "inputLabel": {
       "type": "string",
-      "description": "What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card."
+      "description": "What the payload is called, such as `Runs with`: the name of the input rows in the row and decision layouts and of the Input block on the detail page (default `Input`), and of the arguments in the card (default `<tool> arguments`)."
     },
     "view": {
       "enum": ["fields", "json"],
-      "description": "Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`.",
+      "description": "Which view of the arguments the card and the detail page show, Fields or JSON; the row and decision layouts write the input as rows in the open. Bindable, so one switch can govern every payload on a page. Default `fields`.",
       "default": "fields"
     },
     "class": {

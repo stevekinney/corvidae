@@ -43,9 +43,10 @@ export interface ChatAvailabilityLabels {
   readonly connectProvider: string;
   /** What Send reads while the conversation loads and Send waits for it. Default `Loading…`. */
   readonly sendWaits: string;
-  /** The visible composer notice after a canceled read. Default `Conversation loading stopped.`. */
-  readonly canceledComposer: string;
-  /** The visible reason Send is unavailable after a canceled read. */
+  /**
+   * Why Send is off after a canceled read, beside Send. The canceled state above says what
+   * happened, so the composer draws no notice of its own. Default `Retry to send messages.`.
+   */
   readonly sendBlocked: string;
 }
 
@@ -65,8 +66,7 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   unconfiguredDescription: 'The agent needs a model to answer. An admin adds one in Settings.',
   connectProvider: 'Connect provider',
   sendWaits: 'Loading…',
-  canceledComposer: 'Conversation loading stopped.',
-  sendBlocked: 'Load the conversation to send messages.',
+  sendBlocked: 'Retry to send messages.',
 };
 
 /** The seconds after which a read counts as slow, when the host sets none. */
@@ -79,7 +79,8 @@ export const DEFAULT_SLOW_AFTER_SECONDS = 10;
  *   conversation…` with the seconds so far, the composer stays and Send waits for the history, and
  *   once the read is slow the line says so, with the elapsed time and Cancel (`onCancel`).
  * - `canceled`: the read was canceled. The same placeholders give way to a state with a primary
- *   Retry (`onRetry`), and the composer still waits.
+ *   Retry (`onRetry`). The editor stays open and Send is off, with `sendBlocked` beside it; the
+ *   composer draws no notice of its own, since the state already says what happened.
  * - `error`: the read failed. A Cinder `ErrorState` replaces the transcript and the composer. It names
  *   the `cause`, with a primary Retry (`onRetry`) and a secondary `allConversations`.
  * - `deleted`: the conversation no longer exists. A neutral `ErrorState` replaces the transcript and
