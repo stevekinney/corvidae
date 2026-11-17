@@ -43,7 +43,9 @@ import {
   type WorkflowFileProblem,
   type WorkflowFileStep,
   type WorkflowFileTrigger,
+  WorkflowFileWriteError,
   workflowVersionOf,
+  workflowWriteFailureCauseOf,
 } from './workflow-file';
 
 /** One workflow in {@link WorkflowFileCatalog.list}. */
@@ -302,12 +304,17 @@ export function createWorkflowFileCatalog(
         );
   }
 
-  async function throughSource<T>(work: () => Promise<T>): Promise<T> {
+  async function throughSource<T>(id: string, work: () => Promise<T>): Promise<T> {
     try {
       return await work();
     } catch (error) {
       if (error instanceof SourceReadOnlyError) throw readOnly(error.id, error.plugin);
-      throw error instanceof SourceConflictError ? conflictOf(error) : error;
+      if (error instanceof SourceConflictError) throw conflictOf(error);
+      // The file system refused the write (COR-2432): said as a closed cause on the file's own
+      // name, never in the operating system's words, which name absolute paths.
+      const failure = workflowWriteFailureCauseOf(error);
+      if (failure !== undefined) throw new WorkflowFileWriteError(id, failure, { cause: error });
+      throw error;
     }
   }
 
@@ -383,7 +390,7 @@ export function createWorkflowFileCatalog(
     // and again with the one the source returns (the same hash for a source that stores the bytes
     // as given). A write that then fails leaves a hash no file holds, which names nothing.
     observer?.onWritten?.(hashDefinitionBytes(bytes));
-    const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
+    const written = await throughSource(id, () => source.write(id, bytes, { expectedHash }));
     observer?.onWritten?.(written.hash);
     await watched.reload();
     return { id, hash: written.hash };
@@ -536,7 +543,7 @@ export function createWorkflowFileCatalog(
     delete(id, { expectedHash }) {
       return exclusive(async () => {
         checkIdentifier(id);
-        await throughSource(() => source.delete(id, { expectedHash }));
+        await throughSource(id, () => source.delete(id, { expectedHash }));
         await watched.reload();
         return { id, hash: expectedHash };
       });

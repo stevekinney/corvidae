@@ -161,6 +161,8 @@ There is no cross-process file lock. A different process writing the same file i
 
 Over the wire a taken identifier is a `Conflict` fault (`data.reason` is `workflow-file-exists`), and a stale `expectedHash` is Weft's `StaleRevision` fault, because `Conflict` carries no hash: `data.expectedRevision` is the hash the caller sent and `data.currentRevision` the hash now on disk. A document that would not load is `Unprocessable` with the problem code as `data.reason` and every issue in the message.
 
+A write the file system refuses (COR-2432) throws `WorkflowFileWriteError`, and over the wire it is `Unprocessable` with `data.reason` `write-failed`, `data.file` the file's name in the workflows directory (`release-notes.json`), and `data.cause` one of `permission-denied` (`EACCES`, `EPERM`), `no-space` (`ENOSPC`, `EDQUOT`), `read-only` (`EROFS`), or `other` (any other file system error). The message is Bureau's own sentence, "release-notes.json couldn’t be written: permission denied.", never the operating system's, which names absolute paths. Nothing is written: the temporary file is removed, the file on disk is what it was, and its hash still guards the next write.
+
 ## Revisions
 
 A **revision** is a document's content as Weft hashes it (`workflowVersion`), computed after `description`, `agent`, and `paused` are stripped, so it covers `inputSchema` and `outputSchema` when the file has them. Pausing or resuming changes neither, so it adds no revision.

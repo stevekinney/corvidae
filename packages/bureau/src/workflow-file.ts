@@ -798,6 +798,61 @@ export type WorkflowFileErrorCode =
   | 'workflow-file-changed'
   | 'workflow-file-read-only';
 
+/**
+ * COR-2432 — why the file system refused to write a workflow file, as a closed set: the process
+ * may not write there, the disk is full, the file system is read-only, or anything else. The
+ * operating system's own words and paths are never carried.
+ */
+export const WORKFLOW_WRITE_FAILURE_CAUSES = [
+  'permission-denied',
+  'no-space',
+  'read-only',
+  'other',
+] as const;
+
+/** One of {@link WORKFLOW_WRITE_FAILURE_CAUSES}. */
+export type WorkflowWriteFailureCause = (typeof WORKFLOW_WRITE_FAILURE_CAUSES)[number];
+
+/** Each cause as the sentence that says it, after "couldn't be written: ". */
+const WRITE_FAILURE_WORDS: Readonly<Record<WorkflowWriteFailureCause, string>> = {
+  'permission-denied': 'permission denied',
+  'no-space': 'no space left on the disk',
+  'read-only': 'the disk is read-only',
+  other: 'the file system refused it',
+};
+
+/**
+ * The cause of a file system error, by its Node `code` (`EACCES`, `ENOSPC`, …), or `undefined` for
+ * an error that is not the file system's, which is not a write failure to report.
+ */
+export function workflowWriteFailureCauseOf(error: unknown): WorkflowWriteFailureCause | undefined {
+  const code = typeof error === 'object' && error !== null ? Reflect.get(error, 'code') : undefined;
+  if (typeof code !== 'string' || !/^E[A-Z]+$/.test(code)) return undefined;
+  if (code === 'EACCES' || code === 'EPERM') return 'permission-denied';
+  if (code === 'ENOSPC' || code === 'EDQUOT') return 'no-space';
+  if (code === 'EROFS') return 'read-only';
+  return 'other';
+}
+
+/**
+ * COR-2432 — the file system refused to write the workflow file `file` (its name in the workflows
+ * directory, `<id>.json`): nothing was saved, and the file on disk is what it was. The message is
+ * Bureau's own sentence, "release-notes.json couldn’t be written: permission denied.", never the
+ * operating system's, which names absolute paths.
+ */
+export class WorkflowFileWriteError extends Error {
+  readonly file: string;
+  readonly failure: WorkflowWriteFailureCause;
+
+  constructor(id: string, failure: WorkflowWriteFailureCause, options?: { cause?: unknown }) {
+    const file = `${id}.json`;
+    super(`${file} couldn’t be written: ${WRITE_FAILURE_WORDS[failure]}.`, options);
+    this.name = 'WorkflowFileWriteError';
+    this.file = file;
+    this.failure = failure;
+  }
+}
+
 /** A write or read of a workflow file that was refused. `problem` carries the detail, if any. */
 export class WorkflowFileError extends Error {
   readonly code: WorkflowFileErrorCode;

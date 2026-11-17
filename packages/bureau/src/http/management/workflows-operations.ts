@@ -47,7 +47,11 @@ import { z } from 'zod';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
 import { BureauError } from '../../bureau-errors.ts';
-import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
+import {
+  WorkflowFileConflictError,
+  WorkflowFileError,
+  WorkflowFileWriteError,
+} from '../../workflow-file.ts';
 import {
   type BureauWorkflows,
   type WorkflowCodeDetail,
@@ -277,7 +281,9 @@ const runSummarySchema = z.object({
   awaitingSignal: z
     .string()
     .nullable()
-    .describe('The signal an unfinished instance waits for, or `null`.'),
+    .describe(
+      'The signal an unfinished instance waits for, or `null`. A wait for a person (an `await-signal` step written with `"review": true`) is a review, listed by `bureau.reviews.list`, and reads `null` here.',
+    ),
   failure: z
     .string()
     .nullable()
@@ -438,6 +444,15 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
       data: { reason: error.code },
     } satisfies OperationFault;
   }
+  if (error instanceof WorkflowFileWriteError) {
+    // COR-2432: nothing was saved. The file is named as it sits in the workflows directory and the
+    // cause is a closed set, never the operating system's words or an absolute path.
+    throw {
+      code: 'Unprocessable',
+      message: error.message,
+      data: { reason: 'write-failed', file: error.file, cause: error.failure },
+    } satisfies OperationFault;
+  }
   if (error instanceof WorkflowFileError) {
     if (error.code === 'workflow-file-not-found') throw resourceNotFound('workflow', id);
     if (error.code === 'invalid-identifier') {
@@ -497,7 +512,7 @@ export const workflowsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a workflow file',
   description:
-    'Writes a new workflow file for `id`, the workflow’s identifier: a lowercase letter, then letters, digits, and hyphens, at most 64 characters. `definition` is the workflow document without its `name` (Bureau sets it to `id`) plus the optional `description` (a sentence on what the workflow is for), the optional `agent` that wrote it, and `paused`. The file is written to a temporary file and renamed into place, and the workflow is registered and its schedule created before the call returns. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows. A taken identifier is a `Conflict` (`workflow-file-exists`); a document that would not load is `Unprocessable`, its message listing every issue, and nothing is written.',
+    'Writes a new workflow file for `id`, the workflow’s identifier: a lowercase letter, then letters, digits, and hyphens, at most 64 characters. `definition` is the workflow document without its `name` (Bureau sets it to `id`) plus the optional `description` (a sentence on what the workflow is for), the optional `agent` that wrote it, and `paused`. The file is written to a temporary file and renamed into place, and the workflow is registered and its schedule created before the call returns. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows. A taken identifier is a `Conflict` (`workflow-file-exists`); a document that would not load is `Unprocessable`, its message listing every issue, and nothing is written. A file the file system refuses to write is `Unprocessable` with `data.reason` `write-failed`, `data.file` the file’s name in the workflows directory, and `data.cause` one of `permission-denied`, `no-space`, `read-only`, or `other`; nothing is written.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: createInput,
@@ -613,7 +628,7 @@ export const workflowsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace a workflow file',
   description:
-    'Replaces the workflow file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+    'Replaces the workflow file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing. A file the file system refuses to write is `Unprocessable` with `data.reason` `write-failed`, `data.file` the file’s name in the workflows directory, and `data.cause` one of `permission-denied`, `no-space`, `read-only`, or `other`; the file on disk is left as it was. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: updateInput,

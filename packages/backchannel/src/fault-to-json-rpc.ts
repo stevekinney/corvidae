@@ -76,7 +76,8 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   EngineFailure: () => EMPTY,
   Unauthorized: (data) => ({ reason: data.reason }),
   Forbidden: (data) => ({ reason: data.reason }),
-  Unprocessable: (data) => ({ reason: data.reason }),
+  Unprocessable: (data) =>
+    filterDefined({ reason: data.reason, file: data.file, cause: data.cause }),
   Conflict: dataForConflict,
   NotFound: dataForNotFound,
   Timeout: dataForTimeout,

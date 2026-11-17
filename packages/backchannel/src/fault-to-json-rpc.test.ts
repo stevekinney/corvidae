@@ -234,6 +234,21 @@ describe('faultToJsonRpcError', () => {
       data: { reason: 'workflow terminal' },
     });
     expect(error.code).toBe(-32022);
+    expect('file' in error.data).toBe(false);
+    expect('cause' in error.data).toBe(false);
+  });
+
+  it('Unprocessable carries a refused write’s file and closed cause when given (COR-2432)', () => {
+    const error = faultToJsonRpcError({
+      code: 'Unprocessable',
+      message: 'release-notes.json couldn’t be written: permission denied.',
+      data: { reason: 'write-failed', file: 'release-notes.json', cause: 'permission-denied' },
+    });
+    expect(error.data).toMatchObject({
+      reason: 'write-failed',
+      file: 'release-notes.json',
+      cause: 'permission-denied',
+    });
   });
 
   it('Timeout -> -32023', () => {

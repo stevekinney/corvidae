@@ -28,6 +28,7 @@ import { rpc, type RpcBody } from './management-fixtures.test-support.ts';
 import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test-support.ts';
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import { nodeAgentFileOperations } from '../../sources/agent-file-operations';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -953,6 +954,25 @@ describe('results', () => {
       awaitingSignal: 'notes-approved',
       failure: null,
     });
+
+    // A wait for a person is a review that waits on its owner, never published as a signal wait.
+    await served.bureau.workflows!.create('review', {
+      trigger: { kind: 'signal', name: 'begin-review' },
+      steps: [AGENT_STEP, { kind: 'await-signal', signal: 'release-approved', review: true }],
+    });
+    await served.bureau.durableEngine()!.start('review', null, { id: 'review-run' });
+    await waitForCondition(async () => {
+      const state = await served.bureau.durableEngine()!.get('review-run');
+      return state?.waitingForSignals?.includes('release-approved') === true;
+    }, 'the review run waits for its person');
+    const review = await ownerRpc(served.owner, 'bureau.workflows.runs.get', {
+      runId: 'review-run',
+    });
+    expect(review.result).toMatchObject({ steps: { total: 2, at: 2 }, awaitingSignal: null });
+    const reviews = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
+      workflow: 'review',
+    });
+    expect(listOf(reviews, 'runs')[0]).toMatchObject({ id: 'review-run', awaitingSignal: null });
   });
 
   it('answers a run that is not an instance of a workflow file as it answers a missing run', async () => {
@@ -1116,6 +1136,62 @@ describe('faults', () => {
     });
     expect(response.error?.data?.httpStatus).toBe(409);
     expect(response.error?.data).toMatchObject({ reason: 'workflow-file-exists' });
+  });
+
+  it('COR-2432: Unprocessable write-failed for a file the file system refuses, naming the file and a closed cause, and writes nothing', async () => {
+    const served = await serve();
+    const created = await seed(served);
+    const before = await readFile(join(served.directory, 'digest.json'), 'utf8');
+    const refuse = (code: string) =>
+      spyOn(nodeAgentFileOperations, 'writeTemporary').mockRejectedValue(
+        Object.assign(new Error(`${code}: refused, open '/private/var/secret/.digest.json.tmp'`), {
+          code,
+        }),
+      );
+
+    let spy = refuse('EACCES');
+    const createRefused = await ownerRpc(served.owner, 'bureau.workflows.create', {
+      id: 'morning-briefing',
+      definition: DEFINITION,
+    });
+    spy.mockRestore();
+    expect(createRefused.error?.data?.httpStatus).toBe(422);
+    expect(createRefused.error?.data).toMatchObject({
+      reason: 'write-failed',
+      file: 'morning-briefing.json',
+      cause: 'permission-denied',
+    });
+    expect(createRefused.error?.message).toBe(
+      'morning-briefing.json couldn’t be written: permission denied.',
+    );
+    // Neither the operating system's words nor its absolute path reach the caller.
+    expect(JSON.stringify(createRefused.error)).not.toContain('/private/var/secret');
+    expect(JSON.stringify(createRefused.error)).not.toContain('EACCES');
+    expect(
+      (await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'morning-briefing' })).error?.data
+        ?.httpStatus,
+    ).toBe(404);
+
+    spy = refuse('ENOSPC');
+    const updateRefused = await ownerRpc(served.owner, 'bureau.workflows.update', {
+      id: 'digest',
+      expectedHash: created.hash,
+      definition: { ...DEFINITION, description: 'Changed.' },
+    });
+    spy.mockRestore();
+    expect(updateRefused.error?.data).toMatchObject({
+      reason: 'write-failed',
+      file: 'digest.json',
+      cause: 'no-space',
+    });
+    // The file is what it was, so its hash still guards the next write.
+    expect(await readFile(join(served.directory, 'digest.json'), 'utf8')).toBe(before);
+    const retried = await ownerRpc(served.owner, 'bureau.workflows.update', {
+      id: 'digest',
+      expectedHash: created.hash,
+      definition: { ...DEFINITION, description: 'Changed.' },
+    });
+    expect(retried.result?.['id']).toBe('digest');
   });
 
   it('StaleRevision for a stale expectedHash, carrying the hash on disk, and writes nothing', async () => {

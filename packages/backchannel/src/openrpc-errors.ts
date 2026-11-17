@@ -24,7 +24,13 @@ export const NotFoundDataSchema = z.object({
   identifier: z.string().optional(),
 });
 export const ConflictDataSchema = z.object({ reason: z.string() });
-export const UnprocessableDataSchema = z.object({ reason: z.string() });
+export const UnprocessableDataSchema = z.object({
+  reason: z.string(),
+  /** For a write the file system refused: the file's name as the caller knows it. */
+  file: z.string().optional(),
+  /** For a write the file system refused: a closed-set cause, such as `permission-denied`. */
+  cause: z.string().optional(),
+});
 export const TimeoutDataSchema = z.object({
   operationName: z.string().optional(),
   updateId: z.string().optional(),

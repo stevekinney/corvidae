@@ -161,6 +161,44 @@ export function stepOf(
   return typeof index === 'number' && Number.isSafeInteger(index) && index >= 0 ? index + 1 : null;
 }
 
+function isReviewStep(step: unknown): boolean {
+  return (
+    typeof step === 'object' &&
+    step !== null &&
+    Reflect.get(step, 'kind') === 'await-signal' &&
+    Reflect.get(step, 'review') === true
+  );
+}
+
+/**
+ * The signal an unfinished instance waits for, as a run's row says it, or `null` when it waits for
+ * none or for a person. A wait for a person (`"review": true`, the builder's "Wait for a person") is
+ * a review that waits on the workflow's owner, so it is never published as a signal wait. The step
+ * the history names (`at`, from one, in canonical order) decides; with none named, a signal that
+ * only reviews wait for is a review. `ordered` is the version's steps in canonical order, or
+ * `undefined` when they are no longer recorded.
+ */
+export function awaitedSignalOf(
+  waiting: string | null,
+  ordered: readonly { readonly step: unknown }[] | undefined,
+  at: number | null,
+): string | null {
+  if (waiting === null || ordered === undefined) return waiting;
+  const waitsOn = ordered.filter(
+    ({ step }) =>
+      typeof step === 'object' &&
+      step !== null &&
+      Reflect.get(step, 'kind') === 'await-signal' &&
+      Reflect.get(step, 'signal') === waiting,
+  );
+  const current = at === null ? undefined : ordered[at - 1]?.step;
+  const review =
+    current !== undefined && waitsOn.some(({ step }) => step === current)
+      ? isReviewStep(current)
+      : waitsOn.length > 0 && waitsOn.every(({ step }) => isReviewStep(step));
+  return review ? null : waiting;
+}
+
 /** Builds the engine's runs as tasks. */
 export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): EngineRunTasks {
   const { diagnose } = dependencies;
@@ -241,8 +279,9 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
   ): Promise<TaskView> {
     const { origin, scheduleId } = instanceStartOf(state.input, run.id);
     const revision = await dependencies.revisionSteps(run.type, state.versionTuple.workflowVersion);
-    const total =
-      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
+    const ordered =
+      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps);
+    const total = ordered?.length;
     const finished = state.status === 'completed';
     const reached =
       total === undefined
@@ -261,7 +300,8 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
       scheduleName: null,
       tick: null,
       steps: total === undefined ? null : { total, at: reached },
-      awaitingSignal: waiting,
+      // A wait for a person is a review, listed with the reviews, never a signal wait.
+      awaitingSignal: awaitedSignalOf(waiting, ordered, reached),
     };
     return viewOf(run, state, await owned(run, state), origin, workflow);
   }

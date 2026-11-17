@@ -108,7 +108,7 @@ import type { WorkflowRevisionSteps } from './workflow-review-waits';
 import { createWorkflowScheduleHolds, type WorkflowScheduleHolds } from './workflow-schedule-holds';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, isMappedWeftName, weftNameOf } from './namespaced-identifier';
-import { boundedStatusMessage, stepOf } from './engine-run-tasks';
+import { awaitedSignalOf, boundedStatusMessage, stepOf } from './engine-run-tasks';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import {
   createWorkflowTriggerSupervisor,
@@ -273,7 +273,10 @@ export interface WorkflowRunSummary {
    * when the version's steps are no longer recorded.
    */
   readonly steps: { readonly total: number; readonly at: number | null } | null;
-  /** COR-2431 — the signal an unfinished instance waits for, or `null` when it waits for none. */
+  /**
+   * COR-2431 — the signal an unfinished instance waits for, or `null` when it waits for none. A
+   * wait for a person (`"review": true`) is a review, not a signal wait, and reads `null`.
+   */
   readonly awaitingSignal: string | null;
   /**
    * COR-2431 — why a failed or timed-out instance ended, in the engine's words, bounded to 1,000
@@ -2158,8 +2161,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       return { steps: null, awaitingSignal: null, failure: null };
     }
     const revision = await revisionOf(bureauNameOf(type), workflowVersion);
-    const total =
-      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
+    const ordered =
+      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps);
+    const total = ordered?.length;
     const at =
       total === undefined
         ? null
@@ -2169,9 +2173,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     // The engine reports a wait on a signal while the run is `running` as well as `suspended`.
     const unfinished = IN_FLIGHT_STATUSES.includes(state.status);
     const failed = state.status === 'failed' || state.status === 'timed-out';
+    const waiting = unfinished ? (state.waitingForSignals?.[0] ?? null) : null;
     return {
       steps: total === undefined ? null : { total, at },
-      awaitingSignal: unfinished ? (state.waitingForSignals?.[0] ?? null) : null,
+      // A wait for a person is a review, never published as a signal wait.
+      awaitingSignal: awaitedSignalOf(waiting, ordered, at),
       failure: failed && state.error !== undefined ? boundedStatusMessage(state.error) : null,
     };
   }
