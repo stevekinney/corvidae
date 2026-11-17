@@ -278,6 +278,17 @@
     list-style: none;
   }
 
+  /* A past run and a band are stacked-list-item rows, which inset their content by their own inline
+   * padding. The rows around them (an upcoming marker, the Now pill, a separator rule) start flush
+   * at the list's inline start, so the row's inline padding is zero and every row shares one left
+   * edge. The class is repeated so this beats the status-first row's padding rule, which is
+   * stronger than a single class whatever order the sheets load in. */
+  .cinder-timeline
+    :is(.cinder-timeline-item__run, .cinder-timeline-item__band)
+    > .cinder-stacked-list-item.cinder-stacked-list-item {
+    padding-inline: 0;
+  }
+
   .cinder-timeline-item__duration {
     color: var(--cinder-text-subtle);
     font-size: var(--cinder-text-sm);

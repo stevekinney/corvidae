@@ -89,7 +89,7 @@
     overflow: hidden;
   }
 
-  /* The line under a clamped run: "Show all", then whatever the page puts beside it. */
+  /* The line under a clamped run: "Show more", then whatever the page puts beside it. */
   .cinder-text__footer {
     display: flex;
     flex-wrap: wrap;
@@ -109,6 +109,7 @@
     background: none;
     color: var(--cinder-accent-text);
     font: inherit;
+    font-weight: var(--cinder-font-medium);
     cursor: pointer;
   }
 
@@ -123,11 +124,14 @@
     }
   }
 
-  /* The comma ends "Show all", so it takes back the footer's gap and sits against it. */
-  .cinder-text__toggle + .cinder-text__actions::before {
-    content: ',' / '';
-    margin-inline: calc(var(--cinder-space-2) * -1) var(--cinder-space-2);
-    opacity: 0.6;
+  /* The page's own action sits after "Show more" with a space and a weight and colour step ("Show
+     more" is medium weight in the accent colour, the action is regular weight in the text's own
+     colour, unless it brings its own, as a link does), and no glyph between them: no comma and no
+     dot. The footer's own gap (space 2) is topped up to a space-3 step, so an action that is itself
+     an accent link does not run on from "Show more" as one run of links. */
+  .cinder-text__toggle + .cinder-text__actions {
+    margin-inline-start: calc(var(--cinder-space-3) - var(--cinder-space-2));
+    font-weight: var(--cinder-font-normal);
   }
 
   /* The tooltip's wrapper fills the line and may shrink, so the head can give way inside it. */

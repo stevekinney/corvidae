@@ -8,6 +8,7 @@
   import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
   import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
   import {
+    PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
   } from '../../_internal/viewport-below.svelte.ts';
@@ -49,7 +50,7 @@
     dismissOnBackdropClick = true,
     dismissOnEscape = true,
     closeButtonVisible = true,
-    sheetBelow = false,
+    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     class: className,
     children,
     footer,
@@ -89,13 +90,15 @@
 
   const reducedMotion = useReducedMotion();
 
-  // Below `sheetBelow` the modal is a bottom sheet (row 05d). Opt-in: a modal that is not told
-  // otherwise stays a centred card. A chromeless modal owns the whole surface, so never docks.
+  // Below `sheetBelow` (the phone breakpoint unless told otherwise) the modal is a bottom sheet
+  // (row 05d), the one phone presentation every dialog shares, ConfirmDialog and a form modal
+  // alike (COR-2448 AC5). `false` keeps a centred card. A chromeless modal owns the whole
+  // surface, so never docks.
   const sheetBreakpoint = $derived(readViewportBreakpoint(sheetBelow, 'Modal', 'sheetBelow'));
   const narrowViewport = useViewportBelow(() => sheetBreakpoint);
   const sheet = $derived(narrowViewport.current && !isChromeless);
 
-  const bodyOverflowFade = overflowFade();
+  const bodyOverflowFade = overflowFade({ markScrollable: true });
   // Owns focus capture/restore, body scroll lock, escape-stack participation
   // (a no-op handler — Modal handles Escape via the native <dialog> `cancel`
   // event, but still needs a stack entry so non-dialog overlays above it

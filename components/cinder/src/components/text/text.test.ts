@@ -151,8 +151,14 @@ describe('Text clamp', () => {
   }
 
   afterEach(() => {
-    if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
-    if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight);
+    // happy-dom defines these on `Element.prototype`, so `HTMLElement.prototype` has no own
+    // descriptor to put back: the stub is removed instead, or it leaks into every later file in
+    // the worker (a Drawer or Modal body would then measure as scrolling).
+    const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+    if (scrollHeight) Object.defineProperty(prototype, 'scrollHeight', scrollHeight);
+    else delete prototype['scrollHeight'];
+    if (clientHeight) Object.defineProperty(prototype, 'clientHeight', clientHeight);
+    else delete prototype['clientHeight'];
   });
 
   test('holds the run to its lines through a custom property the stylesheet clamps with', () => {
@@ -167,7 +173,7 @@ describe('Text clamp', () => {
     );
   });
 
-  test('offers Show all only while the run is cut off', () => {
+  test('offers Show more only while the run is cut off', () => {
     measure({ scroll: 100, client: 100 });
     const { container } = render(Text, { clamp: 5, children: textSnippet('short reply') });
 
@@ -180,7 +186,7 @@ describe('Text clamp', () => {
     const root = container.querySelector('.cinder-text') as HTMLElement;
     const toggle = container.querySelector('.cinder-text__toggle') as HTMLButtonElement;
 
-    expect(toggle.textContent?.trim()).toBe('Show all');
+    expect(toggle.textContent?.trim()).toBe('Show more');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.getAttribute('aria-controls')).toBe(root.id);
 
@@ -201,7 +207,7 @@ describe('Text clamp', () => {
     expect(root.querySelector('button')).toBeNull();
   });
 
-  test("puts the page's own action beside Show all, after a comma in the stylesheet", () => {
+  test("puts the page's own action beside Show more, a space and a colour step apart", () => {
     measure({ scroll: 140, client: 100 });
     const { container } = render(Text, {
       clamp: 5,
@@ -210,9 +216,23 @@ describe('Text clamp', () => {
     });
     const footer = container.querySelector('.cinder-text__footer');
 
-    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show all Show raw payloads');
+    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show more Show raw payloads');
     expect(footer?.querySelector('.cinder-text__toggle + .cinder-text__actions')).not.toBeNull();
-    expect(textCss).toContain('.cinder-text__toggle + .cinder-text__actions::before');
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle \+ \.cinder-text__actions\s*\{[^}]*font-weight:\s*var\(--cinder-font-normal\)/,
+    );
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle\s*\{[^}]*font-weight:\s*var\(--cinder-font-medium\)/,
+    );
+    // A clear step between two accent-coloured controls: the footer's gap is space 2, and the
+    // action's margin tops it up to space 3, so the two do not read as one run of links.
+    expect(textCss).toMatch(/\.cinder-text__footer\s*\{[^}]*gap:\s*var\(--cinder-space-2\)/);
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle \+ \.cinder-text__actions\s*\{[^}]*margin-inline-start:\s*calc\(var\(--cinder-space-3\) - var\(--cinder-space-2\)\)/,
+    );
+    expect(textCss).not.toContain('.cinder-text__actions::before');
+    expect(footer?.textContent).not.toContain(',');
+    expect(footer?.textContent).not.toContain(String.fromCodePoint(0xb7));
   });
 
   test('shows the action alone when the run fits', () => {

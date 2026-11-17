@@ -31,6 +31,7 @@
     readViewportBreakpoint,
     useViewportBelow,
   } from '../../_internal/viewport-below.svelte.ts';
+  import { getFramedSurfaceContext } from '../../_internal/framed-surface-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
@@ -44,7 +45,8 @@
     density = 'comfortable',
     selectable = false,
     scrollable = true,
-    frameless = false,
+    frameless: framelessProp = false,
+    framed = false,
     fit = false,
     scrollContainerProps,
     stackBelow,
@@ -52,6 +54,10 @@
     children,
     ...rest
   }: TableProps = $props();
+
+  // Inside a Card the card is the frame, so the table draws none unless `framed` keeps it.
+  const insideFramedSurface = getFramedSurfaceContext() === true;
+  const frameless = $derived(framelessProp || (insideFramedSurface && !framed));
 
   let hasFillControls = $state(false);
   // A `fit` table that stacks as flat rows (no control fills its cell) reads well down to a narrow
@@ -112,7 +118,8 @@
     };
     update(container.getBoundingClientRect().width);
     const observer = new ResizeObserver((entries) => {
-      const entry = entries[entries.length - 1];
+      // No entries (an empty list, or none passed): measure the container itself.
+      const entry = (entries as ResizeObserverEntry[] | undefined)?.at(-1);
       update(entry ? entry.contentRect.width : container.getBoundingClientRect().width);
     });
     observer.observe(container);

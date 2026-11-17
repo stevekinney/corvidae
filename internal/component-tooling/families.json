@@ -4,7 +4,7 @@
     "packages": 188,
     "multiComponentFamilies": 23,
     "singleComponentFamilies": 162,
-    "layerSizes": [2, 79, 24, 13, 38, 18, 9, 3, 1, 1]
+    "layerSizes": [2, 78, 25, 13, 37, 16, 7, 6, 3, 1]
   },
   "layers": [
     ["foundation", "tokens"],
@@ -65,7 +65,6 @@
       "secret-value-field",
       "section",
       "section-heading",
-      "segmented-control",
       "selectable-row",
       "slider",
       "source-diff-viewer",
@@ -106,6 +105,7 @@
       "navigation-bar",
       "quota-meter",
       "schema-view",
+      "segmented-control",
       "selection-popover",
       "shortcut-field",
       "shortcut-hint",
@@ -166,13 +166,11 @@
       "select",
       "setting-row",
       "side-navigation",
-      "skeleton",
       "sortable-list",
       "zoom-pan-viewer"
     ],
     [
       "color-field",
-      "combobox",
       "command-palette",
       "context-menu",
       "data-list",
@@ -187,22 +185,19 @@
       "restart-state",
       "run-step-timeline",
       "table",
-      "tabs",
-      "tool-picker"
+      "tabs"
     ],
     [
       "chart",
       "data-table",
-      "invocation-rule-builder",
       "json-schema-editor",
-      "list-detail",
       "payload-inspector",
-      "schedule-builder",
       "schema-form",
+      "skeleton",
       "timeline"
     ],
-    ["approval-card", "statistic", "tool-call-rail"],
-    ["tool-call-panel"],
+    ["approval-card", "combobox", "list-detail", "statistic", "tool-call-rail", "tool-picker"],
+    ["invocation-rule-builder", "schedule-builder", "tool-call-panel"],
     ["core"]
   ],
   "packages": {
@@ -544,7 +539,7 @@
     },
     "combobox": {
       "kind": "family",
-      "layer": 5,
+      "layer": 7,
       "components": ["combobox"],
       "dependencies": ["button", "foundation", "popover", "search-field", "skeleton"],
       "modules": []
@@ -1122,6 +1117,7 @@
         "src/_internal/anchored-overlay-prefetch.test.ts",
         "src/_internal/anchored-overlay.svelte.ts",
         "src/_internal/anchored-overlay.test.ts",
+        "src/_internal/collapsible-nesting-context.ts",
         "src/_internal/collection.test.ts",
         "src/_internal/collection.ts",
         "src/_internal/compact-actions.svelte",
@@ -1139,6 +1135,7 @@
         "src/_internal/form-field-context.ts",
         "src/_internal/form-field-frame.svelte",
         "src/_internal/form-field-provider.svelte",
+        "src/_internal/framed-surface-context.ts",
         "src/_internal/guidance-context.test.ts",
         "src/_internal/guidance-context.ts",
         "src/_internal/header-actions-harness.test.svelte",
@@ -1462,7 +1459,7 @@
     },
     "invocation-rule-builder": {
       "kind": "family",
-      "layer": 6,
+      "layer": 8,
       "components": ["invocation-rule-builder"],
       "dependencies": ["combobox", "foundation"],
       "modules": []
@@ -1556,7 +1553,7 @@
     },
     "list-detail": {
       "kind": "family",
-      "layer": 6,
+      "layer": 7,
       "components": ["list-detail"],
       "dependencies": [
         "button",
@@ -1866,7 +1863,7 @@
     },
     "schedule-builder": {
       "kind": "family",
-      "layer": 6,
+      "layer": 8,
       "components": ["schedule-builder"],
       "dependencies": [
         "chip",
@@ -1950,9 +1947,9 @@
     },
     "segmented-control": {
       "kind": "family",
-      "layer": 1,
+      "layer": 2,
       "components": ["segment", "segmented-control"],
-      "dependencies": ["foundation"],
+      "dependencies": ["form-field", "foundation", "radio-group"],
       "modules": ["src/test/fixtures/segmented-control-fixture.svelte"]
     },
     "select": {
@@ -2023,9 +2020,9 @@
     },
     "skeleton": {
       "kind": "family",
-      "layer": 4,
+      "layer": 6,
       "components": ["skeleton"],
-      "dependencies": ["button", "foundation", "visually-hidden"],
+      "dependencies": ["button", "data-list", "foundation", "status-dot", "visually-hidden"],
       "modules": []
     },
     "skip-link": {
@@ -2278,6 +2275,7 @@
         "src/tokens/dark-shadow-color.test.ts",
         "src/tokens/index.json",
         "src/tokens/literal-replacement-tokens.test.ts",
+        "src/tokens/modal-surface-pairing.test.ts",
         "src/tokens/modes/motion-default.tokens.json",
         "src/tokens/modes/motion-forced-reduced.tokens.json",
         "src/tokens/modes/motion-reduced.tokens.json",
@@ -2392,7 +2390,7 @@
     },
     "tool-picker": {
       "kind": "family",
-      "layer": 5,
+      "layer": 7,
       "components": ["tool-picker"],
       "dependencies": ["button", "checkbox", "foundation", "input", "modal", "skeleton"],
       "modules": []
@@ -2717,6 +2715,12 @@
       "from": "slider",
       "to": "core",
       "because": "it imports or builds src/test/fixtures/slider-direction-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/components/stacked-list-item/stacked-list-item-container.test.ts",
+      "from": "data-list",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/stacked-list-item-extras-fixture.svelte, which core owns"
     },
     {
       "file": "src/components/stacked-list-item/stacked-list-item-phone.test.ts",

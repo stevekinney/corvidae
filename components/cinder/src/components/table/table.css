@@ -85,6 +85,18 @@
     --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
   }
 
+  /* In a Card the table is frameless by default and sits on the card's raised fill, not the page
+   * canvas, so its pinned header and its scroll fade take that fill. */
+  .cinder-card[data-cinder-variant='card'] .cinder-table-scroll[data-cinder-frameless] {
+    --_cinder-scroll-fade-color: var(--cinder-surface-raised);
+  }
+
+  .cinder-card[data-cinder-variant='card']
+    .cinder-table[data-cinder-frameless][data-cinder-sticky-header]
+    > .cinder-table__header {
+    background: var(--cinder-surface-raised);
+  }
+
   .cinder-table-scroll > .cinder-table {
     /* The frame is the scroll box's. */
     border: 0;

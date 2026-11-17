@@ -26,9 +26,21 @@ describe('Modal', () => {
     expect(css).toMatch(/\.cinder-modal\s*\{[^}]*overflow:\s*visible;/s);
     expect(css).toMatch(/\.cinder-modal__panel\s*\{[^}]*overflow:\s*hidden;/s);
   });
-  test('body uses the panel surface beneath header and footer', async () => {
+  // COR-2448 AC6: the modal is the popover's raised surface; header, body and footer share it so
+  // no band shows between them.
+  test('body, header and footer use the panel surface (raised)', async () => {
     const css = await Bun.file(new URL('./modal.css', import.meta.url)).text();
-    expect(css).toMatch(/\.cinder-modal__body\s*\{[^}]*background:\s*var\(--cinder-surface\)/s);
+    for (const part of ['body', 'header', 'footer']) {
+      expect(css).toMatch(
+        new RegExp(
+          `\\.cinder-modal__${part}\\s*\\{[^}]*background:\\s*var\\(--cinder-surface-raised\\)`,
+          's',
+        ),
+      );
+    }
+    expect(css).toMatch(
+      /\.cinder-modal__panel\s*\{[^}]*background:\s*var\(--cinder-surface-raised\)/s,
+    );
   });
 
   // Regression guard: the backdrop previously had no `transition` at all (it

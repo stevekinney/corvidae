@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { Skeleton } from '@lostgradient/cinder';
+  import { DataList, Skeleton, StackedListItem, StatusDot } from '@lostgradient/cinder';
+
+  const schedules = [
+    { id: 'daily-summary', title: 'Daily summary', next: 'Next Tue 3:00 AM' },
+    { id: 'weekly-refund-audit', title: 'Weekly refund audit', next: 'Next Mon 11:00 AM' },
+  ];
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -39,6 +44,39 @@
       stillLoadingLabel="Still loading runs. This is taking longer than usual."
       onCancel={() => {}}
     />
+  </div>
+  <!-- The list placeholder beside the list it stands for (COR-2449): a two-line pair and a
+       three-line pair, each as tall as the rows that load, and flat on the canvas. -->
+  <div style="display: flex; flex-direction: column; gap: 1rem;" data-testid="skeleton-footprint">
+    {#each [{ name: 'two', detail: false }, { name: 'three', detail: true }] as pair (pair.name)}
+      <div data-testid={`skeleton-footprint-${pair.name}`}>
+        <div data-testid="footprint-placeholder">
+          <Skeleton variant="list" rows={2} statusMarker="dot" detailLine={pair.detail} />
+        </div>
+        <div data-testid="footprint-loaded">
+          <DataList items={schedules} key={(schedule) => schedule.id} statusColumn>
+            {#snippet children(schedule)}
+              {#if pair.detail}
+                <StackedListItem href={`#${schedule.id}`}>
+                  {#snippet status()}<StatusDot word="Active" size="sm" />{/snippet}
+                  {#snippet title()}{schedule.title}{/snippet}
+                  {#snippet time()}{schedule.next}{/snippet}
+                  {#snippet meta()}Workflow, Order refund, Every day at 3:00 AM{/snippet}
+                  {#snippet detail()}Won't start{/snippet}
+                </StackedListItem>
+              {:else}
+                <StackedListItem href={`#${schedule.id}`}>
+                  {#snippet status()}<StatusDot word="Active" size="sm" />{/snippet}
+                  {#snippet title()}{schedule.title}{/snippet}
+                  {#snippet time()}{schedule.next}{/snippet}
+                  {#snippet meta()}Workflow, Order refund, Every day at 3:00 AM{/snippet}
+                </StackedListItem>
+              {/if}
+            {/snippet}
+          </DataList>
+        </div>
+      </div>
+    {/each}
   </div>
   <!-- A page's own placeholder whose first block holds the line, beside the same page before the
        line appears: the real text and the blocks after it are in the same places. -->

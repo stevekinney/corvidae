@@ -19,6 +19,7 @@
     items,
     variant = 'default',
     stack = false,
+    framed = false,
     class: className,
     actions,
     ...rest
@@ -105,6 +106,7 @@
   class={classNames('cinder-description-list', className)}
   data-cinder-variant={variant}
   data-cinder-stacked={stack || undefined}
+  data-cinder-framed={framed || undefined}
 >
   {#each items as item (item.id ?? item.term)}
     <div class="cinder-description-list__row" data-cinder-wide={item.wide || undefined}>

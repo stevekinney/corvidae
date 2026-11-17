@@ -69,6 +69,14 @@
     observer.observe(element, { childList: true, characterData: true, subtree: true });
     return () => observer.disconnect();
   };
+
+  // A caller can show a shorter form of a value than the one it passes as `title` (a storage key
+  // with its UUID cut to eight characters). That value is cut by the page, not by the cell's width,
+  // so it keeps the tooltip and the tab stop even when the short form fits.
+  const shortened = $derived(
+    title !== undefined && renderedText !== undefined && title.trim() !== renderedText,
+  );
+  const fullTextShown = $derived(textCut.cut || shortened);
 </script>
 
 <!-- The detail follows the content with no whitespace between them, so the cell's text has no stray space. -->
@@ -87,12 +95,12 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
     <span
       class="cinder-table__cell-text"
-      tabindex={textCut.tabbable ? 0 : undefined}
+      tabindex={fullTextShown && textCut.inner === null ? 0 : undefined}
       {@attach readRenderedText}
       {@attach textCut.attach}
     >
       {@render children?.()}
-    </span>{#if textCut.cut}<FullTextTooltip
+    </span>{#if fullTextShown}<FullTextTooltip
         text={title ?? renderedText ?? ''}
         triggerRef={textCut.trigger}
       />{/if}
