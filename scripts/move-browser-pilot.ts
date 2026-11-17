@@ -3,8 +3,9 @@
  *
  * Moves the browser-pilot specs of the Cinder package split (COR-2080) out of
  * `scripts/browser-fixtures` into the chat, editor and terminal packages, moves the fixtures,
- * helpers, scripts and baselines they own beside them, moves the shared browser helpers and the
- * reusable harness modules into `@lostgradient/testing` (`src/browser/`), and rewrites every import
+ * helpers, scripts and baselines they own beside them, moves the shared Playwright helpers
+ * (`src/playwright/`) and the reusable harness modules (`src/browser/`) into
+ * `@lostgradient/testing`, and rewrites every import
  * in the tree that names one of those files. There is no re-export left behind: every importer is
  * pointed at the new path.
  *
@@ -28,6 +29,7 @@ const fixtures = 'scripts/browser-fixtures';
 const tests = `${fixtures}/tests`;
 const appFixtures = `${fixtures}/src/fixtures`;
 const testingBrowser = 'testing/testing/src/browser';
+const testingPlaywright = 'testing/testing/src/playwright';
 const testingSource = 'testing/testing/src';
 
 /** A file or a whole directory, repository-relative, and where it goes. */
@@ -107,9 +109,10 @@ export const MOVES: Move[] = [
     `${fixtures}/scripts/browser-ports.integration.test.ts`,
     `${fixtures}/scripts/fixture-port.ts`,
   ]),
-  // Shared browser helpers: specs in more than one package, or a package and the root suite, import
-  // them, and no component package may import another for test code.
-  ...into(testingBrowser, [
+  // Shared Playwright helpers: specs in more than one package, or a package and the root suite,
+  // import them, and no component package may import another for test code. They sit apart from
+  // the harness because the deadline guard reads them as Playwright code, not as Bun tests.
+  ...into(testingPlaywright, [
     `${tests}/overlay-fixture.ts`,
     `${tests}/editors-complex-support.ts`,
     `${tests}/review-editor-browser-errors.ts`,

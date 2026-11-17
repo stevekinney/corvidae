@@ -1,13 +1,18 @@
-import type { VisualFixture } from '../index.ts';
 import type { Component } from 'svelte';
-import { declaredAppFixtureNames } from '../../../../scripts/browser-fixtures/src/app-fixture-declarations.ts';
+import type { VisualFixture } from '../index.ts';
 
 export type LazyModule<Value> = () => Promise<{ default: Value }>;
 
+/**
+ * What a fixture host's generated module map (`.playwright/fixture-modules.ts`, written by
+ * `prepareManifest`) exports: the lazy fixture, host and application-fixture modules, and the
+ * application fixtures each component declares.
+ */
 export type FixtureModuleMaps = {
   fixtureModules: Record<string, LazyModule<VisualFixture[]>>;
   hostModules: Record<string, LazyModule<Component<any>>>;
   appHostModules: Record<string, LazyModule<Component<any>>>;
+  appFixtureDeclarations: Readonly<Record<string, readonly string[]>>;
 };
 
 export type LoadedFixture = {
@@ -21,14 +26,21 @@ function hostPath(sourcePath: string | undefined, host: string): string {
   return `${sourcePath.slice(0, sourcePath.lastIndexOf('/'))}/${host.slice(2)}`;
 }
 
+function declaredAppFixtureNames(
+  declarations: FixtureModuleMaps['appFixtureDeclarations'],
+  component: string,
+): readonly string[] {
+  return Object.hasOwn(declarations, component) ? (declarations[component] ?? []) : [];
+}
+
 function appFixture(
   component: string,
   name: string,
-  appHostModules: FixtureModuleMaps['appHostModules'],
+  modules: FixtureModuleMaps,
 ): VisualFixture | undefined {
   if (
-    !declaredAppFixtureNames(component).includes(name) ||
-    appHostModules[`./fixtures/${component}.svelte`] === undefined
+    !declaredAppFixtureNames(modules.appFixtureDeclarations, component).includes(name) ||
+    modules.appHostModules[`./fixtures/${component}.svelte`] === undefined
   ) {
     return undefined;
   }
@@ -49,7 +61,7 @@ export async function loadFixture(
   const source = sourceModule?.default;
   const fixture =
     source?.find((candidate) => candidate.name === (name ?? source[0]?.name)) ??
-    appFixture(component, name ?? 'assertion', modules.appHostModules);
+    appFixture(component, name ?? 'assertion', modules);
   if (fixture === undefined) throw new Error(`Fixture '${component}/${name}' was not found.`);
 
   if (typeof fixture.host !== 'string') return { fixture };

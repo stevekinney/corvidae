@@ -1,7 +1,7 @@
 import type { ComponentEntry, Viewport } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
-import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 
 // Real-browser authority for MarkdownEditor's plain-Tab bindings. The happy-dom
 // tests in components/editor/src/lib/editor/editor.tab-escape-keymap.test.ts

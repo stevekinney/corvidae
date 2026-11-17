@@ -27,7 +27,7 @@ import {
 } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { environmentConfiguration } from '@lostgradient/testing/environment-configuration';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 const chatEntry = loadManifest().find((entry) => entry.slug === 'chat');

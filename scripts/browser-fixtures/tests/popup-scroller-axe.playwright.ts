@@ -1,6 +1,6 @@
 import { runAxe } from '@lostgradient/testing';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 // COR-1999. axe's `scrollable-region-focusable` rule fails a scrolling element that
 // neither is in the tab order, holds something that is, nor is the popup of a

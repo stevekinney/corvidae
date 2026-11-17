@@ -1,6 +1,6 @@
 import { VIEWPORTS } from '@lostgradient/testing';
 import { expect, type Page } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 type Box = {
   x: number;

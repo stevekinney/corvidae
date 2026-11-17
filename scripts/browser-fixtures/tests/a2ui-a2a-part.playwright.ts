@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 test.describe('A2UI surface from an A2A data part', () => {
   test('renders the part Bureau sends and returns the action with its surface and revision', async ({

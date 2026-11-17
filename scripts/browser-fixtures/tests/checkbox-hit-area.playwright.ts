@@ -12,7 +12,7 @@
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { boxOf } from './first-line-alignment.ts';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const BOX = 18;
 const TASK_BOX = 20;

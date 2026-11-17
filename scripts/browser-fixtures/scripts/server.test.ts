@@ -1,3 +1,7 @@
+import { loadFixture } from '@lostgradient/testing/browser/fixture-loader';
+import { assertUniqueFixtureNames, readManifest } from '@lostgradient/testing/browser/manifest';
+import { manifestOutputPaths } from '@lostgradient/testing/browser/prepare-manifest';
+import { createFixtureServer, handleFixtureRequest } from '@lostgradient/testing/browser/server';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -5,9 +9,10 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import type { Component } from 'svelte';
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
-import { loadFixture } from '@lostgradient/testing/browser/fixture-loader';
-import { assertUniqueFixtureNames, manifestFilePath, readManifest } from '@lostgradient/testing/browser/manifest';
-import { createFixtureServer, handleFixtureRequest } from '@lostgradient/testing/browser/server';
+import { defaultManifestLayout } from './prepare-manifest.ts';
+
+const manifestPath = manifestOutputPaths(defaultManifestLayout).manifest;
+const noDeclarations = { appFixtureDeclarations: {} };
 
 test('native fixture routes preserve hash, snapshot, asset, and readiness contracts', async () => {
   const outputDirectory = await mkdtemp(resolve(tmpdir(), 'corvidae-native-fixtures-'));
@@ -18,12 +23,12 @@ test('native fixture routes preserve hash, snapshot, asset, and readiness contra
   await Bun.write(resolve(outputDirectory, 'fixture.css'), '.fixture { color: red; }');
   const server = createFixtureServer({
     outputDirectory,
-    manifestPath: manifestFilePath(),
+    manifestPath: manifestPath,
     port: 0,
     development: false,
   });
   try {
-    const manifest = readManifest();
+    const manifest = readManifest(manifestPath);
     const entry = manifest.entries.find((candidate) => candidate.fixtures?.length);
     if (!entry?.fixtures?.[0]) throw new Error('Expected an actual fixture entry');
     const fixture = entry.fixtures[0];
@@ -73,7 +78,7 @@ test('the generated fixture map contains exactly the two owning component direct
 });
 
 test('the generated manifest has one identity per component fixture name', () => {
-  const manifest = readManifest();
+  const manifest = readManifest(manifestPath);
   expect(() => assertUniqueFixtureNames(manifest.entries)).not.toThrow();
 });
 
@@ -121,6 +126,7 @@ test('every declared app fixture resolves and unknown names are rejected', async
         fixtureModules: {},
         hostModules: {},
         appHostModules,
+        appFixtureDeclarations,
       });
       expect(loaded.fixture).toMatchObject({
         name,
@@ -132,7 +138,12 @@ test('every declared app fixture resolves and unknown names are rejected', async
 
   expect(
     await throwingRejectionOf(
-      loadFixture('dropdown', 'unknown', { fixtureModules: {}, hostModules: {}, appHostModules }),
+      loadFixture('dropdown', 'unknown', {
+        fixtureModules: {},
+        hostModules: {},
+        appHostModules,
+        appFixtureDeclarations,
+      }),
     ),
   ).toThrow("Fixture 'dropdown/unknown' was not found.");
 });
@@ -149,6 +160,7 @@ test('lazy fixture loading reports a missing selected host', async () => {
     },
     hostModules: {},
     appHostModules: {},
+    ...noDeclarations,
   }).catch((caught: unknown) => caught);
   expect(error).toBeInstanceOf(Error);
   expect(error instanceof Error ? error.message : String(error)).toBe(
@@ -159,7 +171,7 @@ test('lazy fixture loading reports a missing selected host', async () => {
 test('returns 400 for malformed component URI escapes', async () => {
   const response = await handleFixtureRequest(
     new Request('http://localhost/page/%E0%A4%A'),
-    manifestFilePath(),
+    manifestPath,
     async () => '<html lang="en"></html>',
   );
   expect(response?.status).toBe(400);
@@ -198,6 +210,7 @@ test('source fixtures resolve hosts beside their owning package', async () => {
         async () => ({ default: host }),
     },
     appHostModules: {},
+    ...noDeclarations,
   });
   expect(loaded.fixture).toEqual(fixture);
   expect(loaded.component).toBe(host);
@@ -215,6 +228,7 @@ test('ambiguous source component owners fail rather than selecting a package', a
         },
         hostModules: {},
         appHostModules: {},
+        ...noDeclarations,
       }),
     ),
   ).toThrow("Multiple fixture owners for 'example'.");

@@ -13,7 +13,7 @@
  */
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { fixtureRoute } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 type PreviewType = 'html' | 'svg';
 

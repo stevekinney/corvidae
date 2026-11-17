@@ -5,7 +5,7 @@ import {
   type Viewport,
 } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { productOracles, type ProductOracle } from './remaining-public-mount-oracles.ts';
 
 type InteractiveBehavior = NonNullable<ProductOracle['behavior']>;

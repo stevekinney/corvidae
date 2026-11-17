@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 
 import { loadManifest } from '@lostgradient/testing';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const desktopViewport = { name: 'desktop', width: 1280, height: 900 } as const;
 const lightTheme = 'light' as const;

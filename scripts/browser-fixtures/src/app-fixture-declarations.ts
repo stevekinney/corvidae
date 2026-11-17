@@ -1,10 +1,18 @@
-import { TERMINAL_FIXTURE_NAMES } from '../../../components/terminal/browser/fixtures/terminal/scenarios.ts';
+import { chatAppFixtureDeclarations } from '../../../components/chat/browser/fixture-declarations.ts';
+import { editorAppFixtureDeclarations } from '../../../components/editor/browser/fixture-declarations.ts';
+import { terminalAppFixtureDeclarations } from '../../../components/terminal/browser/fixture-declarations.ts';
 
+/**
+ * The application fixtures the root suite serves. The chat, editor and terminal packages own theirs
+ * (`components/<package>/browser/fixture-declarations.ts`, COR-2080); the root suite still serves
+ * them, so its component sweep keeps covering them.
+ */
 export const appFixtureDeclarations = {
+  ...chatAppFixtureDeclarations,
+  ...editorAppFixtureDeclarations,
+  ...terminalAppFixtureDeclarations,
   'a2ui-a2a-part': ['assertion'],
   'a2ui-surface': ['assertion'],
-  chat: ['assertion'],
-  'chat-mcp-app': ['assertion'],
   'chat-navigation-rail': ['assertion'],
   'chat-stress': ['assertion'],
   'chat-sub-session': ['assertion'],
@@ -26,7 +34,6 @@ export const appFixtureDeclarations = {
   'setting-row': ['assertion'],
   'shortcut-field': ['assertion'],
   stack: ['assertion'],
-  terminal: TERMINAL_FIXTURE_NAMES,
   'terminal-frame': ['assertion'],
   'terminal-output': ['assertion'],
   'zoom-pan-viewer': ['assertion'],
@@ -59,7 +66,6 @@ export const appFixtureDeclarations = {
   'number-input': ['assertion'],
   'phone-input': ['assertion'],
   popover: ['assertion'],
-  'review-editor': ['assertion'],
   'selectable-row': ['assertion'],
   'segmented-control': ['assertion'],
   'schema-form': ['assertion'],
@@ -77,18 +83,9 @@ export const appFixtureDeclarations = {
   'sortable-list': ['assertion'],
   steps: ['assertion'],
   'selection-popover': ['assertion'],
-  'markdown-editor': ['assertion'],
-  'markdown-editor-template-placeholders': ['assertion'],
-  'conversation-markdown': ['assertion'],
   'token-computation': ['assertion'],
   'theme-surfaces': ['assertion'],
   'functional-residual': ['assertion'],
-  'review-editor-accessibility': ['assertion'],
-  'review-editor-comments': ['assertion'],
-  'review-editor-diff-comments': ['assertion'],
-  'review-editor-malformed-front-matter': ['assertion'],
-  'review-editor-readonly': ['assertion'],
-  'review-editor-scroll': ['assertion'],
   banner: ['assertion'],
   toggle: ['assertion'],
   'floating-action': ['assertion'],
@@ -203,9 +200,6 @@ export const appFixtureDeclarations = {
   waveform: ['assertion'],
   'chat-composer-popover': ['assertion'],
   'chat-conversation-header': ['assertion'],
-  'chat-conversation-list': ['assertion'],
-  'diff-viewer': ['assertion'],
-  'diff-review': ['assertion'],
 } as const satisfies Record<string, readonly string[]>;
 
 export function declaredAppFixtureNames(component: string): readonly string[] {

@@ -10,7 +10,7 @@
  */
 import { loadManifest, type Theme, type Viewport } from '@lostgradient/testing';
 import { PNG } from 'pngjs';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 type Rgb = { r: number; g: number; b: number };
 

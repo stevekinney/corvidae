@@ -1,7 +1,7 @@
 import { THEMES, VIEWPORTS } from '@lostgradient/testing';
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
-import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 import { measureCloseButton } from './link-popover-close-support.ts';
 
 const markdownEditorEntry = fixtureEntry('markdown-editor');

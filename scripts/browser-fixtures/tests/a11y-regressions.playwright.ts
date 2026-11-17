@@ -4,7 +4,7 @@ import {
   type ComponentEntry,
   type ManifestFixtureEntry,
 } from '@lostgradient/testing';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const entriesBySlug = new Map(loadManifest().map((entry) => [entry.slug, entry] as const));
 const desktopViewport = { name: 'desktop', width: 1440, height: 1080 } as const;

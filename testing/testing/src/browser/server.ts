@@ -86,7 +86,7 @@ export function createFixtureServer(options: FixtureServerOptions) {
       );
     },
     error(error) {
-      console.error('[fixture host]', error);
+      process.stderr.write(`[fixture host] ${error.stack ?? error.message}\n`);
       return response(500, error.message);
     },
   });

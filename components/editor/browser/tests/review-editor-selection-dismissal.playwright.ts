@@ -12,7 +12,7 @@
  * advanced explicitly instead of being waited out.
  */
 import { reviewEditorCommentsRoute } from './review-editor-accessibility-route.ts';
-import { expect, test } from '@lostgradient/testing/browser/review-editor-browser-errors';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 const MOUNT = '#example-mount-with-comments';
 

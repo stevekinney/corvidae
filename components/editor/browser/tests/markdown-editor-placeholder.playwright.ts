@@ -29,7 +29,7 @@
  * clear on), not as a second proof of this issue.
  */
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 const ROUTE = fixtureRoute('markdown-editor');
 // packages/playground/src/examples/markdown-editor/empty.example.svelte

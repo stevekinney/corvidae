@@ -6,7 +6,7 @@
  * preview opening and closing without a request.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 type Representation = 'structured' | 'positional';
 

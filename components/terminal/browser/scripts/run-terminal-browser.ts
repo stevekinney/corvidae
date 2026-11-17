@@ -1,8 +1,8 @@
 /**
- * `bun run test:browser:terminal [-- playwright args]`
+ * `bun run test:browser:engines [-- playwright args]` (in `components/terminal`)
  *
- * Runs only the terminal Playwright files (`tests/terminal-*.playwright.ts`) in Chromium, Firefox
- * and WebKit through the browser-fixtures harness. It lists the selection first and fails when a
+ * Runs the terminal Playwright files (`tests/terminal-*.playwright.ts`) in Chromium, Firefox and
+ * WebKit through the terminal package's browser suite, outside every gate. It lists the selection first and fails when a
  * required cell is absent, runs it, and fails again if any selected test did not pass. The checks
  * are in `terminal-browser-selection.ts`.
  */
@@ -24,8 +24,9 @@ import {
   type TitleManifest,
 } from './terminal-browser-selection.ts';
 
-const root = resolve(import.meta.dirname, '..', '..', '..');
-const configuration = resolve(root, 'scripts', 'browser-fixtures', 'playwright.config.ts');
+// The terminal package's `browser/` suite (COR-2080).
+const root = resolve(import.meta.dirname, '..');
+const configuration = resolve(root, 'playwright.config.ts');
 const selection = [
   ...TERMINAL_PROJECTS.flatMap((project) => [`--project=${project}`]),
   TERMINAL_FILE_FILTER,
@@ -45,10 +46,11 @@ function playwright(args: string[], environment: Record<string, string> = {}) {
 }
 
 async function main(): Promise<number> {
-  const prepare = Bun.spawn(
-    [process.execPath, resolve(root, 'scripts/browser-fixtures/scripts/prepare-manifest.ts')],
-    { cwd: root, stdout: 'inherit', stderr: 'inherit' },
-  );
+  const prepare = Bun.spawn([process.execPath, resolve(root, 'harness.ts'), 'prepare'], {
+    cwd: root,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
   if ((await prepare.exited) !== 0) return 1;
 
   const listing = playwright([...selection, '--list', '--reporter=json']);

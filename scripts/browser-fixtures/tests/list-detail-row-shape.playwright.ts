@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const RADIUS = '6px';
 const INSET = 8;

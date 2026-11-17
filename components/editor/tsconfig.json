@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "coverage", "**/.cinder-ssr-*", "**/.editor-ssr-*"]
+  "include": ["src", "scripts", "browser"],
+  "exclude": ["node_modules", "coverage", "browser/.playwright", "**/.cinder-ssr-*", "**/.editor-ssr-*"]
 }

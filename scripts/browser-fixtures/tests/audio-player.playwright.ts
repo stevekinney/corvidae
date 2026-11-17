@@ -1,6 +1,6 @@
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const entries = loadManifest();
 

@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 export function isSnapshotMode(search: URLSearchParams): boolean {
   return search.get('snapshot') === '1';
 }

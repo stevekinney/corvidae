@@ -10,7 +10,7 @@ import { expect, type Browser, type Locator, type Page } from '@playwright/test'
 
 import { environmentConfiguration } from '../environment-configuration.ts';
 import { FIXTURE_ORIGIN } from '@lostgradient/testing/browser/fixture-port';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 export type Theme = 'light' | 'dark';
 export const THEMES: readonly Theme[] = ['light', 'dark'];

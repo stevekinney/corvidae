@@ -28,8 +28,8 @@
 import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
 import { THEMES, VIEWPORTS } from '@lostgradient/testing';
 import type { CDPSession, Locator, Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
-import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 
 const entry = fixtureEntry('markdown-editor-template-placeholders');
 const VIEWPORT: Viewport = { name: 'desktop', width: 1280, height: 800 };

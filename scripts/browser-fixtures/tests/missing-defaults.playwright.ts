@@ -1,6 +1,6 @@
 import { loadManifest, type ComponentEntry, type Viewport } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const entries = new Map(loadManifest().map((entry) => [entry.slug, entry] as const));
 const themes = ['light', 'dark'] as const;

@@ -1,6 +1,6 @@
-import { colorAlpha, openTouchPage, TOUCH_TARGET_MIN } from '@lostgradient/testing/browser/editors-complex-support';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
-import { expect, test } from '@lostgradient/testing/browser/review-editor-browser-errors';
+import { colorAlpha, openTouchPage, TOUCH_TARGET_MIN } from '@lostgradient/testing/playwright/editors-complex-support';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 const CHAT_ROUTE = fixtureRoute('chat');
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 test.describe('conversation Markdown root API', () => {
   test('round-trips ordered messages, IDs, and metadata through YAML Markdown', async ({

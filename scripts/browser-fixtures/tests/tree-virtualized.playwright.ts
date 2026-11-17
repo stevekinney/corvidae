@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { runAxe, type AxeBuckets } from '@lostgradient/testing';
 
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const TREE_ROUTE = fixtureRoute('tree');
 const EXAMPLE = '#example-mount-virtualized';

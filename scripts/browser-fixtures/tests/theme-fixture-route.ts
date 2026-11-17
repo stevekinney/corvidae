@@ -1,4 +1,4 @@
-import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 
 const entry = fixtureEntry('theme-surfaces');
 const fixture = entry.fixtures?.find((candidate) => candidate.name === 'assertion');

@@ -1,5 +1,5 @@
 import { parseFrontMatter } from '../../../../packages/markdown/src/pipeline/frontmatter.ts';
-import { expect, test } from '@lostgradient/testing/browser/review-editor-browser-errors';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 type Box = {
   x: number;

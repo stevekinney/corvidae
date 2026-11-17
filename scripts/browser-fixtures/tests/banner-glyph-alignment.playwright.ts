@@ -9,7 +9,7 @@
 
 import { loadManifest } from '@lostgradient/testing';
 import { expect } from '@playwright/test';
-import { test } from '@lostgradient/testing/browser/component-page-fixture';
+import { test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { ALIGNMENT_TOLERANCE } from './first-line-alignment.ts';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'banner');

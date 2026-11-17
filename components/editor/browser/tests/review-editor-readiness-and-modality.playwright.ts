@@ -21,7 +21,7 @@
  * checked against the computed tree instead of just attribute presence.
  */
 import type { Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/review-editor-browser-errors';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 import { runAxe } from '@lostgradient/testing';
 

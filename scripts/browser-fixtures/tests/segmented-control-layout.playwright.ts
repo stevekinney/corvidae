@@ -22,8 +22,8 @@
 
 import { loadManifest, THEMES, VIEWPORTS } from '@lostgradient/testing';
 import { type Locator, type Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
-import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 
 const manifest = loadManifest();
 function fixtureRoute(slug: string): string {

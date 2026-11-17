@@ -1,4 +1,4 @@
-import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/editor-fixture';
 
 export function reviewEditorRoute(slug: string): string {
   const entry = fixtureEntry(slug);

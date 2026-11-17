@@ -1,5 +1,5 @@
 /**
- * What `bun run test:browser:terminal` must select and run (COR-474).
+ * What the terminal's `test:browser:engines` must select and run (COR-474).
  *
  * Playwright already fails a run that selects nothing, but not one that quietly loses a browser or
  * one spec in one browser. These checks compare the selection, and then the results, with the

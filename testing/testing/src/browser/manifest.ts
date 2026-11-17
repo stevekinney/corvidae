@@ -1,19 +1,15 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
+import type { ComponentEntry, ManifestFixtureEntry } from '../helpers/manifest.ts';
 import {
   FIXTURE_CATEGORIES,
   InteractionStepSchema,
   MaskRuleSchema,
-  type ComponentEntry,
   type FixtureCategory,
-  type ManifestFixtureEntry,
-} from '../index.ts';
+} from '../visual-fixtures.ts';
 
 export type FixtureManifest = { digest: string; entries: ComponentEntry[] };
-
-const manifestPath = resolve(import.meta.dirname, '..', '.playwright', 'manifest.json');
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -72,7 +68,8 @@ function isComponentEntry(value: unknown): value is ComponentEntry {
   );
 }
 
-export function readManifest(path = manifestPath): FixtureManifest {
+/** Reads and checks the manifest a fixture host's `prepareManifest` wrote at `path`. */
+export function readManifest(path: string): FixtureManifest {
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
   if (
     parsed === null ||
@@ -103,8 +100,4 @@ export function assertUniqueFixtureNames(entries: ComponentEntry[]): void {
       names.add(fixture.name);
     }
   }
-}
-
-export function manifestFilePath(): string {
-  return manifestPath;
 }

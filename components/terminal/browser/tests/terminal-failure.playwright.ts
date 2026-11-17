@@ -20,7 +20,7 @@ import {
 
 const terminalSource = resolve(
   import.meta.dirname,
-  '../../../components/terminal/src/lib/components/terminal/terminal.svelte',
+  '../../src/lib/components/terminal/terminal.svelte',
 );
 
 // The server render runs in a child process that compiles Svelte for development unless NODE_ENV

@@ -34,7 +34,7 @@
 import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 import type { Page } from '@playwright/test';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const sideNavigationEntry: ComponentEntry =
   loadManifest().find((entry) => entry.slug === 'side-navigation') ??

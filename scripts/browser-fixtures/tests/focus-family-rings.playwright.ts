@@ -28,7 +28,7 @@
 
 import type { Locator, Page } from '@playwright/test';
 import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
-import { expect, test } from '@lostgradient/testing/browser/review-editor-browser-errors';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 const PIXEL_TOLERANCE = 1;
 

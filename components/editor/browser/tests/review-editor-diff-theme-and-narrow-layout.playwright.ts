@@ -11,7 +11,7 @@
  * the recorded provenance of the reported COR-511 human-acceptance waiver.
  */
 import { loadManifest, runAxe, type ComponentEntry } from '@lostgradient/testing';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const desktopViewport = { name: 'desktop', width: 1440, height: 1080 } as const;
 const narrowViewport = { name: 'mobile', width: 320, height: 900 } as const;

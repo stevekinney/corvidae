@@ -43,7 +43,7 @@
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const TREE_ROUTE = fixtureRoute('tree');
 // Each playground example mounts into a container keyed by its scenario slug.

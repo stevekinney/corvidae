@@ -17,7 +17,7 @@
  * announcements below are verified with DOM/live-region assertions only.
  */
 import { loadManifest, runAxe, type ComponentEntry } from '@lostgradient/testing';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const desktopViewport = { name: 'desktop', width: 1440, height: 1080 } as const;
 // `name` is only an artifact-path label (`ViewportName` is a closed union of

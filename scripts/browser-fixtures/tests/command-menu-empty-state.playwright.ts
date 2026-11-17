@@ -1,5 +1,5 @@
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
-import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 // Regression for cinder#776: with zero matching commands, the `<ul
 // role="listbox">` has no `<li>` children and used to collapse to a

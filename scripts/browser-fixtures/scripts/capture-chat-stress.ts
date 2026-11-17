@@ -41,6 +41,8 @@ import {
 import { measureGeometry } from '@lostgradient/testing/design-review-geometry-probe';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 
+import { prepareManifest } from '@lostgradient/testing/browser/prepare-manifest';
+import { createFixtureServer } from '@lostgradient/testing/browser/server';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import casesData from '../src/fixtures/chat-stress.json';
 import {
@@ -51,7 +53,6 @@ import {
   type StressStep,
   type StressStepCondition,
 } from '../src/fixtures/chat-stress/stress-cases.ts';
-import { createFixtureServer } from '@lostgradient/testing/browser/server';
 import {
   RUN_DIRECTORY_PREFIX,
   composerEdgeProblems,
@@ -73,7 +74,7 @@ import {
   type SourceIdentity,
   type StressProfile,
 } from './chat-stress-plan.ts';
-import { prepareManifest } from './prepare-manifest.ts';
+import { defaultManifestLayout } from './prepare-manifest.ts';
 
 /** The one deadline every wait of the run shares. */
 const DEADLINE = HANG_GUARD_MILLISECONDS;
@@ -4330,7 +4331,7 @@ async function main(): Promise<number> {
   const directory = await mkdtemp(join(outputRoot, RUN_DIRECTORY_PREFIX));
 
   // Build the host into this run's own directory, so no other server's rebuild can change it.
-  await prepareManifest();
+  await prepareManifest(defaultManifestLayout);
   const buildDirectory = join(directory, 'build');
   await buildBrowser({
     entrypoints: [resolve(fixtureRoot, 'index.html')],

@@ -4,7 +4,7 @@
  * 44 px targets at the trailing edge, the primary last, and the composer's Attach and Send are 44 px targets on both sides.
  */
 import { loadManifest, type Viewport } from '@lostgradient/testing';
-import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 
 const phone = { name: 'mobile', width: 390, height: 844 } as const satisfies Viewport;
 

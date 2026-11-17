@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openFixture } from '@lostgradient/testing/browser/overlay-fixture';
+import { openFixture } from '@lostgradient/testing/playwright/overlay-fixture';
 
 /**
  * CIN-376: runs only under the `chromium-reduced-motion` Playwright project
