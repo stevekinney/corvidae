@@ -35,6 +35,8 @@ test.describe('a panel placed on a run’s page', () => {
     await expect(trigger).toBeVisible();
     if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    // The panels are on How it ran's Inspector tab (COR-2424, row 54i); Steps opens first.
+    await page.getByRole('tab', { name: 'Inspector' }).click();
     return task.id;
   }
 
