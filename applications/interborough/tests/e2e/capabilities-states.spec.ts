@@ -10,6 +10,15 @@
 import type { Page, Route } from '@playwright/test';
 
 import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
+import {
+  DEMO_PLUGIN,
+  githubNotLoaded,
+  LEDGER_EDITING,
+  LEDGER_PROBE,
+  RELEASE_NOTES_INSTRUCTIONS,
+  RELEASE_NOTES_SKILLS,
+  SIGN_IN_START,
+} from './capabilities-states-stubs.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
