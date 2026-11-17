@@ -57,7 +57,9 @@ export function validateBudgetRecord(
       value.allowanceTokens.provenance === '')
   )
     throw new Error('Malformed budget record.');
-  for (const [identity, operation] of Object.entries(value.operations))
+  let settledTotal = 0;
+  let hasUnknownSettlement = false;
+  for (const [identity, operation] of Object.entries(value.operations)) {
     if (
       identity === '' ||
       !operation ||
@@ -66,6 +68,20 @@ export function validateBudgetRecord(
       (operation.actual !== undefined && operation.actual !== 'unknown' && !valid(operation.actual))
     )
       throw new Error('Malformed budget record.');
+    if (operation.state === 'settled' && operation.actual === undefined)
+      throw new Error('Malformed budget record.');
+    if (operation.state !== 'settled' && operation.actual !== undefined)
+      throw new Error('Malformed budget record.');
+    if (operation.state === 'settled') {
+      if (operation.actual === 'unknown') hasUnknownSettlement = true;
+      else settledTotal += operation.actual!;
+    }
+  }
+  if (
+    (hasUnknownSettlement && value.spentTokens !== 'unknown') ||
+    (!hasUnknownSettlement && (value.spentTokens === 'unknown' || value.spentTokens !== settledTotal))
+  )
+    throw new Error('Malformed budget record.');
 }
 async function readExisting(path: string, outcomeId: string): Promise<BudgetRecord> {
   if (!existsSync(path)) throw new Error('Budget record does not exist.');
@@ -106,6 +122,7 @@ export async function initialize(
 ): Promise<BudgetRecord> {
   if (!outcomeId || (allowance && (!valid(allowance.amount) || allowance.provenance === '')))
     throw new Error('Invalid allowance.');
+  const allowanceTokens = allowance && { amount: allowance.amount, provenance: allowance.provenance };
   await mkdir(dirname(path), { recursive: true });
   const lock = await acquireHostLock({
     lockDirectory: `${path}.lock`,
@@ -121,7 +138,7 @@ export async function initialize(
     const record: BudgetRecord = {
       version: 1,
       outcomeId,
-      ...(allowance ? { allowanceTokens: allowance } : {}),
+      ...(allowanceTokens ? { allowanceTokens } : {}),
       spentTokens: 0,
       operations: Object.create(null),
       hardLimitEnforced: false,
