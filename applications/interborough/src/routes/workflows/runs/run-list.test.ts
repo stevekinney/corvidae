@@ -358,7 +358,7 @@ describe('the runs a schedule missed', () => {
     ).toBe('/schedules/daily-summary');
   });
 
-  test('say how many in the status, as "Missed runs, 2" and never with a middle dot (row 09q)', async () => {
+  test('say how many in the status, named "Missed runs, 2", the count its own piece with no separator (row 09q)', async () => {
     const view = open('/runs', { schedules: [DAILY_SUMMARY] });
     const row = await waitFor(() => {
       const found = view.container.querySelector<HTMLElement>(
@@ -368,7 +368,9 @@ describe('the runs a schedule missed', () => {
       return found;
     });
     const status = within(row).getByRole('img', { name: 'Missed runs, 2' });
-    expect(status.textContent?.trim()).toBe('Missed runs, 2');
+    // The word, then the count as its own muted piece: no comma, no middle dot in what shows.
+    expect(status.querySelector('.cinder-status-dot__qualifier')?.textContent).toBe('2');
+    expect(status.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Missed runs 2');
     expect(status.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(status.getAttribute('data-cinder-status')).toBe('warning');
   });
