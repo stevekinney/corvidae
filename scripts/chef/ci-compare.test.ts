@@ -107,14 +107,22 @@ describe('failingTests', () => {
     expect(failingSteps(log)).toEqual(new Map([['Root checks', ['bun run lint:root']]]));
   });
 
-  test('keeps a test launcher without a qualified failed test unknown', () => {
-    const log = [
-      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run bun test src/x.test.ts',
-      'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[error]Process completed with exit code 1.',
-    ].join('\n');
-    expect(failureRecords(log).get('Tests')).toEqual([
-      { kind: 'unknown', job: 'Tests', command: 'bun test src/x.test.ts' },
-    ]);
+  test('keeps every workflow test launcher without a qualified failed test unknown', () => {
+    for (const command of [
+      'bun test src/x.test.ts',
+      'bun run test:self',
+      'bun run test:browser-fixtures',
+      'bun run test:slow --continue',
+      'bunx turbo run test:slow --concurrency=1',
+    ]) {
+      const log = [
+        `Tests\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run ${command}`,
+        'Tests\tUNKNOWN STEP\t2026-11-17T19:18:58Z ##[error]Process completed with exit code 1.',
+      ].join('\n');
+      expect(failureRecords(log).get('Tests')).toEqual([
+        { kind: 'unknown', job: 'Tests', command },
+      ]);
+    }
   });
 });
 
@@ -289,6 +297,17 @@ describe('compare', () => {
       );
     expect(comparison('error: script "lint:root" exited with code 1').hasNew).toBe(true);
     expect(comparison(undefined).hasNew).toBe(true);
+  });
+
+  test('a non-test command with only Bun script-exit wrapper evidence stays unknown', () => {
+    const log = [
+      'Root\tUNKNOWN STEP\t2026-11-17T19:18:57Z ##[group]Run bun run lint:root',
+      'Root\tUNKNOWN STEP\t2026-11-17T19:18:58Z error: script "lint:root" exited with code 1',
+      'Root\tUNKNOWN STEP\t2026-11-17T19:18:59Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    expect(failureRecords(log).get('Root')).toEqual([
+      { kind: 'unknown', job: 'Root', command: 'bun run lint:root' },
+    ]);
   });
 
   test('a file-qualified test seen under a different control topology is known', () => {

@@ -109,6 +109,7 @@ const BUN_ASSERTION = /^([^\t]+)\t.*?error: (expect\(.+\))\s*$/;
 /** The assertion's specific expected value, which makes its file-qualified identity stable. */
 const BUN_EXPECTED = /^([^\t]+)\t.*?Expected to contain: (.+)\s*$/;
 const BUN_ERROR = /^([^\t]+)\t.*?error: /;
+const BUN_SCRIPT_EXIT = /^script ".+" exited with code \d+$/;
 /** Turbo's per-workspace task heading in a failed GitHub Actions log. */
 const TURBO_TASK = /^([^\t]+)\t.*?##\[group\](@lostgradient\/[^\s:]+):[^\s]+\s*$/;
 /** A GitHub Actions step boundary. */
@@ -206,7 +207,9 @@ function stepFailures(log: string): FailureRecord[] {
     }
     const error = BUN_ERROR.exec(line);
     if (error !== null && steps.has(error[1] ?? '')) {
-      steps.get(error[1] ?? '')!.diagnostic = line.split('error: ').at(-1)?.trim();
+      const diagnostic = line.split('error: ').at(-1)?.trim();
+      if (diagnostic !== undefined && !BUN_SCRIPT_EXIT.test(diagnostic))
+        steps.get(error[1] ?? '')!.diagnostic = diagnostic;
       continue;
     }
     const failed = STEP_FAILURE.exec(line);
@@ -219,7 +222,9 @@ function stepFailures(log: string): FailureRecord[] {
 }
 
 function isTestLauncher(command: string): boolean {
-  return /\b(?:bun(?:\s+--bun)?\s+(?:test|playwright)|run-gated-browser-suite)\b/.test(command);
+  return /\b(?:bun(?:x)?(?:\s+--bun)?\s+(?:test|playwright)|bun(?:x)?\s+(?:\S+\s+)?run\s+test(?::|\s|$)|run-gated-browser-suite)\b/.test(
+    command,
+  );
 }
 
 /** Parse all failure roles; unqualified launchers and diagnostics remain explicit unknown evidence. */
