@@ -26,7 +26,7 @@ import {
   PluginNeedsSetupError,
 } from './plugins/plugin-secret-gate';
 import { createScorerSampler, type ScorerSampler } from './scorers';
-import type { WebhookNotifier } from './webhook-notifier';
+import { projectBureauEvent } from './bureau-event-feed';
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -70,10 +70,12 @@ interface AuditEntry {
   detail: Record<string, unknown>;
 }
 
+/**
+ * A breach as the event feed publishes it (COR-2251). COR-2201 retired the webhook alert this
+ * matrix read before, so a row that asserted the alert's `detail` asserts this payload.
+ */
 interface Alert {
   runId: string;
-  subjectId: string;
-  trigger: string;
   detail: Record<string, unknown>;
 }
 
@@ -120,7 +122,8 @@ interface Harness {
 interface HarnessOptions {
   readonly list: PluginScorer[];
   readonly ownerSignal?: boolean;
-  readonly notifier?: boolean;
+  /** `false` builds the sampler with no event sink, as a direct caller that has none does. */
+  readonly published?: boolean;
   readonly auditTrail?: AuditTrail;
   readonly rng?: () => number;
   readonly bureau?: ReturnType<typeof stubBureau>;
@@ -156,21 +159,26 @@ function harness(options: HarnessOptions): Harness {
     },
     async dispose() {},
   };
-  const webhookNotifier =
-    options.notifier === false
-      ? undefined
-      : ({
-          notify(input: Alert) {
-            alerts.push(input);
+  const sampler = createScorerSampler(
+    bureau,
+    auditTrail,
+    {
+      list: options.list,
+      sampleRate: 1,
+      rng: options.rng ?? (() => 0),
+      ...(options.ownerSignal === false ? {} : { signal: owner.signal }),
+      clock,
+    },
+    undefined,
+    options.published === false
+      ? {}
+      : {
+          published: (event) => {
+            const payload = projectBureauEvent(event)?.payload ?? {};
+            alerts.push({ runId: event.runId, detail: { ...payload } });
           },
-        } as unknown as WebhookNotifier);
-  const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
-    list: options.list,
-    sampleRate: 1,
-    rng: options.rng ?? (() => 0),
-    ...(options.ownerSignal === false ? {} : { signal: owner.signal }),
-    clock,
-  });
+        },
+  );
   cleanups.push(async () => {
     owner.abort(new Error('test cleanup'));
     await sampler.dispose();
@@ -233,10 +241,26 @@ function digestOf(name: string, version: string): string {
   return sha256HexSync(JSON.stringify({ identity: { name, version } }));
 }
 
+/** The fields COR-2200 added to the record, which `scorers.test.ts` checks and this matrix does not. */
+const COR_2200_FIELDS = [
+  'runKind',
+  'definitionId',
+  'definitionVersion',
+  'judgedBy',
+  'sampleRate',
+  'durationMs',
+  'decisions',
+] as const;
+
+/** The detail of a record as COR-2199 recorded it: the matrix pins its outcome fields. */
 function detailOf(harnessUnderTest: Harness, index = 0): Record<string, unknown> {
   const record = harnessUnderTest.records[index];
   if (record === undefined) throw new Error(`no audit record at ${index}`);
-  return record.detail;
+  return Object.fromEntries(
+    Object.entries(record.detail).filter(
+      ([key]) => !(COR_2200_FIELDS as readonly string[]).includes(key),
+    ),
+  );
 }
 
 // ── The matrix ───────────────────────────────────────────────────────
@@ -267,7 +291,7 @@ row(1, 'pass with no score records outcome and message only, and does not alert'
   const h = harness({ list: [returning({ outcome: 'pass', message: 'matched' })] });
   h.complete();
   await h.sampler.flush();
-  expect(h.records[0]?.type).toBe('eval.sample.recorded');
+  expect(h.records[0]?.type).toBe('scorer.recorded');
   expect(h.records[0]?.runId).toBe('run-1');
   expect(detailOf(h)).toEqual({
     judgeName: 'judge',
@@ -291,7 +315,7 @@ row(2, 'pass with a score at the threshold does not alert', async () => {
   expect(h.alerts).toHaveLength(0);
 });
 
-row(3, 'pass with a score below the threshold alerts with outcome and digest', async () => {
+row(3, 'pass with a score below the threshold alerts with outcome and score', async () => {
   const h = harness({
     list: [
       returning(
@@ -304,12 +328,11 @@ row(3, 'pass with a score below the threshold alerts with outcome and digest', a
   await h.sampler.flush();
   expect(h.alerts).toHaveLength(1);
   expect(h.alerts[0]?.detail).toEqual({
-    judgeName: 'quality-judge',
-    judgeVersion: '1.0.0',
-    judgeDigest: digestOf('quality-judge', '1.0.0'),
+    runId: 'run-1',
+    scorerName: 'quality-judge',
+    scorerVersion: '1.0.0',
     outcome: 'pass',
     score: 0.2,
-    threshold: 0.5,
   });
   expect(Object.hasOwn(h.alerts[0]!.detail, 'message')).toBe(false);
 });
@@ -321,7 +344,6 @@ row(4, 'fail with no threshold alerts', async () => {
   h.complete();
   await h.sampler.flush();
   expect(h.alerts).toHaveLength(1);
-  expect(h.alerts[0]?.trigger).toBe('eval.threshold-breached');
 });
 
 row(5, 'fail with a score at or above the threshold still alerts', async () => {
@@ -378,7 +400,7 @@ row(9, 'a score with no threshold alerts only on fail', async () => {
   h.complete();
   await h.sampler.flush();
   expect(h.records).toHaveLength(3);
-  expect(h.alerts.map((alert) => alert.detail['judgeName'])).toEqual(['c']);
+  expect(h.alerts.map((alert) => alert.detail['scorerName'])).toEqual(['c']);
 });
 
 // Rows 10-12: a throw and a plugin that needs setup.
@@ -750,7 +772,7 @@ row(
       },
       async dispose() {},
     };
-    const sampler = createScorerSampler(bureau.bureau, auditTrail, undefined, {
+    const sampler = createScorerSampler(bureau.bureau, auditTrail, {
       list: [
         {
           name: 'self-aborting',
@@ -912,7 +934,6 @@ row(29, 'a run the RNG roll skips is observed and not sampled', async () => {
         records.push(entry as AuditEntry);
       },
     } as unknown as AuditTrail,
-    undefined,
     { list: [passing('judge')], sampleRate: 0.5, rng: () => 0.9, clock: deadlineClock() },
   );
   cleanups.push(() => sampler.dispose());
@@ -938,12 +959,17 @@ row(30, 'a detail that is not a RunResult is skipped', async () => {
   expect(h.records).toHaveLength(0);
 });
 
-row(31, 'a run that ends in error or tripwire is scored like any run.completed', async () => {
+// COR-2251, COR-2202 and COR-2205 changed this row: it pinned main, which scored a run that ended in
+// a failure finish reason like any other `run.completed`, and the issues require that only a run
+// that settles `completed` is scored. The task registry settles such a run `failed`.
+row(31, 'a run that ends in error or tripwire is not scored; a normal stop is', async () => {
   const h = harness({ list: [passing('judge')] });
   h.complete('run-error', runResult({ finishReason: 'error' as never }));
   h.complete('run-tripwire', runResult({ finishReason: 'tripwire' as never }));
+  h.complete('run-stop', runResult({ finishReason: 'stop-condition' as never }));
   await h.sampler.flush();
-  expect(h.records.map((record) => record.runId)).toEqual(['run-error', 'run-tripwire']);
+  expect(h.records.map((record) => record.runId)).toEqual(['run-stop']);
+  expect(h.sampler.observedCount()).toBe(1);
 });
 
 row(32, 'a run.aborted action is not sampled', async () => {
@@ -1135,7 +1161,7 @@ row(
   },
 );
 
-row(42, 'the alert carries the outcome and digest and no score when there is none', async () => {
+row(42, 'the alert carries the outcome and no score when there is none', async () => {
   const h = harness({
     list: [
       returning(
@@ -1147,24 +1173,23 @@ row(42, 'the alert carries the outcome and digest and no score when there is non
   h.complete();
   await h.sampler.flush();
   expect(Object.keys(h.alerts[0]!.detail).toSorted()).toEqual(
-    ['judgeDigest', 'judgeName', 'judgeVersion', 'outcome', 'threshold'].toSorted(),
+    ['outcome', 'runId', 'scorerName', 'scorerVersion'].toSorted(),
   );
 });
 
-row(43, 'the alert subject id is unchanged', async () => {
+row(43, 'the alert names the run it is about', async () => {
   const h = harness({
     list: [returning({ outcome: 'fail', message: 'no' }, { name: 'quality-judge' })],
   });
   h.complete();
   await h.sampler.flush();
-  expect(h.alerts[0]?.subjectId).toBe('eval:run-1:quality-judge@1.0.0');
   expect(h.alerts[0]?.runId).toBe('run-1');
 });
 
-row(44, 'a breach with no notifier is recorded and not delivered', async () => {
+row(44, 'a breach with no event sink is recorded and not published', async () => {
   const h = harness({
     list: [returning({ outcome: 'fail', message: 'bad', score: 0.1 }, { alertThreshold: 0.5 })],
-    notifier: false,
+    published: false,
   });
   h.complete();
   await h.sampler.flush();

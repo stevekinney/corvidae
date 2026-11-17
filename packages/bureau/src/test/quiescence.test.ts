@@ -803,7 +803,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       },
     ];
     const engine = createFaultEngine(plan, runtime);
-    const storage = faultedAuditStorageFixture(engine, 'eval.sample.recorded');
+    const storage = faultedAuditStorageFixture(engine, 'scorer.recorded');
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),

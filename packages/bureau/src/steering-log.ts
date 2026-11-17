@@ -83,10 +83,23 @@ export type SteeringLogEvent =
       readonly now: string;
     };
 
-/** The log head as last read: its exact stored value (the append precondition) and sequence. */
+/**
+ * The log head as last read: its exact stored value (the append precondition), its sequence, and
+ * whether the log is sealed (COR-2097): the session it belongs to ended, and no append is
+ * accepted after the process that ended it read what the log held.
+ */
 export interface SteeringLogHead {
   readonly raw: string | null;
   readonly sequence: number;
+  readonly sealed?: boolean | undefined;
+}
+
+/** Thrown when a log is sealed: its session ended, so nothing may be appended to it or admitted through it. */
+export class SteeringLogSealedError extends Error {
+  constructor(sessionId: string) {
+    super(`The steering log of session "${sessionId}" is sealed: the session has ended.`);
+    this.name = 'SteeringLogSealedError';
+  }
 }
 
 /** Where a bureau-wide `(principal, id)` idempotency key was admitted. */
@@ -377,7 +390,35 @@ export async function readSteeringLogHead(
   if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence < 0) {
     throw new SteeringLogCorruptError(`Steering log head for session "${sessionId}" is malformed.`);
   }
-  return { raw, sequence };
+  return {
+    raw,
+    sequence,
+    ...(isRecord(parsed) && parsed['sealed'] === true ? { sealed: true } : {}),
+  };
+}
+
+/**
+ * Seals the log whose head was read as `head`, with one write conditioned on that head (COR-2097).
+ * The process that ended the session seals the log before it announces what the ending did to the
+ * commands still accepted, so the log arbitrates a race with the process hosting a run: an append
+ * that committed before the seal is in what was read, and one that comes after it finds the head
+ * moved and, on reading it again, a sealed log, and is refused. Answers the sealed head, or
+ * `undefined` when the head had moved (the caller reads it again). A log already sealed is answered
+ * as it is.
+ */
+export async function sealSteeringLog(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  incarnation: string,
+  head: SteeringLogHead,
+): Promise<SteeringLogHead | undefined> {
+  if (head.sealed === true) return head;
+  const sealedHead = JSON.stringify({ sequence: head.sequence, sealed: true });
+  const sealed = await kv.conditionalBatch(
+    [{ key: headKey(sessionId, incarnation), expectedValue: head.raw }],
+    [{ type: 'set', key: headKey(sessionId, incarnation), value: sealedHead }],
+  );
+  return sealed ? { raw: sealedHead, sequence: head.sequence, sealed: true } : undefined;
 }
 
 /**
@@ -454,6 +495,8 @@ export async function appendSteeringLogEvent(
       `Steering log event "${event.type}" for session "${sessionId}" could not be read back, so it was not appended.`,
     );
   }
+  // A sealed head is final: appending against it would write an unsealed head over the seal.
+  if (head.sealed === true) throw new SteeringLogSealedError(sessionId);
   const sequence = head.sequence + 1;
   const nextHead = JSON.stringify({ sequence });
   const conditions: { key: string; expectedValue: string | null }[] = [

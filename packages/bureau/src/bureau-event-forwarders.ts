@@ -1,6 +1,8 @@
 /**
  * COR-1721 — the sources that reach the bureau emitter from outside it: diagnostics, the asset
- * service, the agent and workflow file catalogs, and the durable engine's missed-fire signal. Each
+ * service, the agent and workflow file catalogs, the durable engine's missed-fire signal and its
+ * workflow-version mismatches (COR-2097), and the plugin and secret changes a host reports
+ * (COR-2098). Each
  * forwarder is a function of the source and a dispatch, so `createBureau` holds only the wiring and
  * each family is tested against the real forwarder.
  *
@@ -10,6 +12,7 @@
 import { ScheduleMissedFireEvent } from '@lostgradient/weft';
 
 import type { GovernedMemory } from '@lostgradient/memory';
+import type { WorkflowVersionMismatchEvent } from '@lostgradient/operative';
 
 import type { AssetEvent } from './assets/types';
 import {
@@ -20,10 +23,20 @@ import {
   type DefinitionCatalogKind,
   DiagnosticEvent,
   MemoryGovernanceEvent,
+  PluginSecretRemovedEvent,
+  PluginSecretSetEvent,
+  PluginSettingsChangedEvent,
+  PluginStatusChangedEvent,
   ScheduleMissedEvent,
 } from './events';
 import { markEventSource } from './event-source';
-import type { DiagnosticSink } from './bureau-types/options';
+import {
+  publishablePluginStatus,
+  publishableProblemCodes,
+  publishableSecretKey,
+  publishableToken,
+} from './published-error-names';
+import type { BureauHostEvents, DiagnosticSink } from './bureau-types/options';
 
 /** The Bureau's one diagnostic choke point; see {@link createDiagnosticDispatcher}. */
 export interface DiagnosticDispatcher {
@@ -230,6 +243,166 @@ export function forwardMissedFires(
     stopped = true;
     engine.removeEventListener(ScheduleMissedFireEvent.type, listener);
   };
+}
+
+/**
+ * What the durable engine reported about a recovered run's workflow version (COR-2097), held until
+ * the Bureau can announce it. The engine reports it from a callback while recovery runs, and the
+ * Bureau's own event emitter is not built until the rest of its composition is.
+ */
+export interface WorkflowVersionMismatchBuffer {
+  /** Delivers `event` to the listener, or holds it until one is added. */
+  push(event: WorkflowVersionMismatchEvent): void;
+  /**
+   * Starts delivering: every event held so far, in order, then each later one. Returns the
+   * function that stops it. Only the first listener receives what was held.
+   */
+  listen(listener: (event: WorkflowVersionMismatchEvent) => void): () => void;
+}
+
+/** Builds a {@link WorkflowVersionMismatchBuffer} that holds events until its first listener. */
+export function bufferWorkflowVersionMismatches(): WorkflowVersionMismatchBuffer {
+  let held: WorkflowVersionMismatchEvent[] | undefined = [];
+  const listeners = new Set<(event: WorkflowVersionMismatchEvent) => void>();
+  return {
+    push(event) {
+      if (held !== undefined) {
+        held.push(event);
+        return;
+      }
+      for (const listener of listeners) listener(event);
+    },
+    listen(listener) {
+      listeners.add(listener);
+      const replay = held;
+      held = undefined;
+      for (const event of replay ?? []) listener(event);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+/**
+ * Forwards the durable engine's `workflow.version-mismatch` to the Bureau's feed (COR-2097). The
+ * check only observes: the recovered run resumes against the registered code whatever it finds, so
+ * nothing has been committed that the event could run ahead of. A dispatch that throws is
+ * diagnosed and the next event still goes.
+ */
+export function forwardWorkflowVersionMismatches(
+  mismatches: WorkflowVersionMismatchBuffer,
+  dispatch: (event: WorkflowVersionMismatchEvent) => void,
+  diagnose: DiagnosticSink,
+): () => void {
+  return mismatches.listen((event) => {
+    try {
+      dispatch(event);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'events',
+        message: `[bureau] Dispatching "workflow.version-mismatch" for workflow "${event.runId}" threw:`,
+        cause: error,
+      });
+    }
+  });
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** An own property of `record`, or `undefined`: a payload only inherits what is not its own. */
+function ownField(record: Readonly<Record<string, unknown>>, name: string): unknown {
+  return Object.hasOwn(record, name) ? record[name] : undefined;
+}
+
+/**
+ * The Bureau event for one thing a host reported (COR-2098), or `undefined` when it is not one of
+ * the four published shapes. The port is an exported boundary and its listener a host's code, so
+ * nothing is trusted: the kind must be one of the four, `plugin` one token, `key` a secret key as
+ * Bungalow stores one, the statuses members of the status list, the problem codes members of the
+ * code list, and the flags booleans. The event is built from the fields checked, never from the
+ * payload it came in, so a field the host adds (a value, a message) goes nowhere.
+ */
+export function hostEventOf(
+  reported: unknown,
+):
+  | PluginSecretSetEvent
+  | PluginSecretRemovedEvent
+  | PluginSettingsChangedEvent
+  | PluginStatusChangedEvent
+  | undefined {
+  if (!isRecord(reported)) return undefined;
+  const payload = ownField(reported, 'payload');
+  if (!isRecord(payload)) return undefined;
+  const plugin = publishableToken(ownField(payload, 'plugin'));
+  if (plugin === undefined) return undefined;
+  switch (ownField(reported, 'kind')) {
+    case 'secret.set':
+    case 'secret.removed': {
+      const key = publishableSecretKey(ownField(payload, 'key'));
+      if (key === undefined) return undefined;
+      return ownField(reported, 'kind') === 'secret.set'
+        ? new PluginSecretSetEvent(plugin, key)
+        : new PluginSecretRemovedEvent(plugin, key);
+    }
+    case 'plugin.settings-changed': {
+      const enabled = ownField(payload, 'enabled');
+      const restartRequired = ownField(payload, 'restartRequired');
+      if (typeof enabled !== 'boolean' || typeof restartRequired !== 'boolean') return undefined;
+      return new PluginSettingsChangedEvent(plugin, enabled, restartRequired);
+    }
+    case 'plugin.status-changed': {
+      const previousStatus = publishablePluginStatus(ownField(payload, 'previousStatus'));
+      const status = publishablePluginStatus(ownField(payload, 'status'));
+      const problemCodes = publishableProblemCodes(ownField(payload, 'problemCodes'));
+      if (previousStatus === undefined || status === undefined || problemCodes === undefined) {
+        return undefined;
+      }
+      return new PluginStatusChangedEvent(plugin, previousStatus, status, problemCodes);
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Forwards what the host reports through `BureauOptions.hostEvents` as `secret.set`,
+ * `secret.removed`, `plugin.settings-changed` and `plugin.status-changed` (COR-2098), and returns
+ * the unsubscribe. A report that is not one of the four published shapes is dropped with a warning
+ * that names none of its contents (a careless host could have put a value in it), and a dispatch
+ * that throws is diagnosed: neither stops the reports after it, or reaches the host that sent them.
+ */
+export function forwardHostEvents(
+  hostEvents: BureauHostEvents | undefined,
+  dispatch: (event: Event) => void,
+  diagnose: DiagnosticSink,
+): () => void {
+  if (hostEvents === undefined) return () => undefined;
+  return hostEvents.subscribe((reported) => {
+    try {
+      const event = hostEventOf(reported);
+      if (event === undefined) {
+        diagnose({
+          level: 'warn',
+          scope: 'events',
+          message:
+            '[bureau] A host event that is not one of the published plugin and secret event shapes was dropped.',
+        });
+        return;
+      }
+      dispatch(event);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'events',
+        message: '[bureau] Dispatching a host event threw:',
+        cause: error,
+      });
+    }
+  });
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   designLinks,
   designRowIds,
   pathsIn,
+  pushRule,
   renderBrief,
   rowCarriage,
   run,
@@ -281,6 +282,18 @@ describe('charter rules', () => {
     const rules = charterRules.join('\n');
     expect(rules).not.toContain('merge-gate.ts --pr');
     expect(rules).toContain('you do not merge');
+  });
+
+  test('tell a worker to push its own branch after every commit, never to main', () => {
+    const rule = charterRules.find((candidate) => candidate.startsWith('**Push:**')) ?? '';
+    expect(rule).toContain('after every commit, push your own branch to origin');
+    expect(rule).toContain('never to `main`');
+    expect(rule).toContain('do not wait for the focused checks before that push');
+    expect(rule).toContain('still gate ready-for-review');
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
+      expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
+    }
   });
 
   // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a

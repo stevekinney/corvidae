@@ -22,6 +22,7 @@ import type { DurableEventProducer } from '../durable-event-history';
 import type { ReviewDecisionAuditPayload } from '../resolved-review-record';
 import { auditTrailSessionOwnerId } from '../audit-trail';
 import { serializeUnknownError } from '../serialization';
+import { SteeringLogCorruptError } from '../steering-log';
 import {
   REGENERATE_RECEIPT_OUTBOX_NAMESPACE,
   parseRegenerateReceipt,
@@ -41,6 +42,19 @@ export interface OutboxPeers {
   readonly claimSessionAssets: (session: AgentSession) => Promise<void>;
   /** Whether the deletion owner record of a session incarnation is held. */
   readonly loadSessionDeletionOwner: (sessionId: string, incarnation: string) => Promise<boolean>;
+  /**
+   * Announces what an expired session's ending did to its accepted steering commands, for a Bureau
+   * with no durable steering log, whose own gate is the only record of them (COR-2097).
+   */
+  readonly settleExpiredSessionSteering: (session: AgentSession) => Promise<void>;
+  /**
+   * Folds and seals an ended session incarnation's steering log, and announces what the ending did
+   * to its accepted commands when this drainer won the seal (COR-2097). Throws when the log cannot
+   * be read or sealed.
+   */
+  readonly announceEndedSessionSteering: (sessionId: string, incarnation: string) => Promise<void>;
+  /** Removes an ended session incarnation's steering log; never rejects (COR-2097). */
+  readonly removeEndedSessionSteeringLog: (sessionId: string, incarnation: string) => Promise<void>;
   /** Releases the generated assets a session holds. */
   readonly releaseSessionGeneratedAssets: (session: AgentSession) => Promise<void>;
   /** Removes the deletion owner record of a session incarnation. */
@@ -506,6 +520,19 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
     if (expired === undefined) return;
     expiringSessions.delete(key);
     try {
+      // COR-2097: the expiry has committed, so a Bureau with no durable log announces what it did to
+      // the accepted steering commands. A durable one announces from the log, in `drainOutboxEntry`,
+      // whichever process drains the entry.
+      await peers.settleExpiredSessionSteering(expired);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Could not settle the steering commands of expired session "${entry.sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+    try {
       await peers.releaseSessionGeneratedAssets(expired);
     } catch (error) {
       diagnose({
@@ -535,6 +562,28 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
       !(await peers.loadSessionDeletionOwner(entry.sessionId, entry.incarnation))
     ) {
       return 'stop';
+    }
+    // COR-2097: a deletion or an expiry ends the session's accepted steering commands, and the
+    // drainer of this entry announces that, from the session's log, which it seals so that a second
+    // drainer, or a boundary after it, decides nothing. Before the acknowledgement: a drain that
+    // stops here leaves the entry, and the log unsealed, for the next.
+    if (entry.kind === 'session.deleted') {
+      try {
+        await peers.announceEndedSessionSteering(entry.sessionId, entry.incarnation);
+      } catch (error) {
+        // A corrupt log stays unfoldable for every drainer, so it must not hold back the entries
+        // behind this one: its commands are not announced, and the entry drains.
+        const corrupt = error instanceof SteeringLogCorruptError;
+        diagnose({
+          level: 'error',
+          scope: 'steering',
+          message: corrupt
+            ? `[bureau] The steering log of ended session "${entry.sessionId}" cannot be folded; the commands still accepted in it are not announced: ${serializeUnknownError(error)}`
+            : `[bureau] Could not settle the steering log of ended session "${entry.sessionId}" (outbox entry ${entry.ordinal}); leaving the entry pending for a later drain to retry: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        if (!corrupt) return 'stop';
+      }
     }
     // COR-713: every row that enters a session's history arrived in a commit this drain replays,
     // so this is where the rows' claims on the assets they reference are taken, and they are
@@ -733,6 +782,11 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
     // record has done its work.
     if (entry.kind === 'session.deleted') {
       await peers.removeSessionDeletionOwner(entry.sessionId, entry.incarnation);
+      // COR-2097: no drainer needs the session's steering log any more. Beside the drain, not in
+      // it: a slow removal must not hold back the entries behind this one.
+      const removal = peers.removeEndedSessionSteeringLog(entry.sessionId, entry.incarnation);
+      runtimeServices.deferred.track(removal, 'steering-log-removal');
+      peers.trackSessionInputSettlement(removal);
     }
     return 'continue';
   }

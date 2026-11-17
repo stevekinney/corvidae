@@ -627,6 +627,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.hooks.test',
         'bureau.hooks.update',
         'bureau.memory.correct',
+        'bureau.memory.embedding',
+        'bureau.memory.embedding.cancel',
         'bureau.memory.export',
         'bureau.memory.forget',
         'bureau.memory.get',

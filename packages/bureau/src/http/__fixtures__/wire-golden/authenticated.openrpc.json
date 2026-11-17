@@ -20781,6 +20781,13 @@
                       "budget.threshold",
                       "tool.policy-denied",
                       "tool.error",
+                      "multiagent.child-workflow.started",
+                      "multiagent.child-workflow.completed",
+                      "multiagent.child-workflow.failed",
+                      "multiagent.child-workflow.aborted",
+                      "multiagent.handoff.occurred",
+                      "steering.applied",
+                      "hook-plan.failed",
                       "run.registered",
                       "run.settled",
                       "run.completed",
@@ -20818,10 +20825,16 @@
                       "review.canceled",
                       "review.superseded",
                       "steering.accepted",
+                      "steering.rejected",
+                      "steering.superseded",
+                      "steering.failed",
+                      "workflow.version-mismatch",
                       "goal.started",
                       "goal.attempt.started",
                       "goal.attempt.evaluating",
                       "goal.attempt.validated",
+                      "goal.feedback.recorded",
+                      "goal.retrying",
                       "goal.succeeded",
                       "goal.exhausted",
                       "goal.canceled",
@@ -20837,7 +20850,12 @@
                       "notification.created",
                       "diagnostic",
                       "memory.governance",
-                      "decision.made"
+                      "decision.made",
+                      "secret.set",
+                      "secret.removed",
+                      "plugin.settings-changed",
+                      "plugin.status-changed",
+                      "scorer.threshold-breached"
                     ],
                     "type": "string"
                   },
@@ -20859,6 +20877,13 @@
                         "budget.threshold",
                         "tool.policy-denied",
                         "tool.error",
+                        "multiagent.child-workflow.started",
+                        "multiagent.child-workflow.completed",
+                        "multiagent.child-workflow.failed",
+                        "multiagent.child-workflow.aborted",
+                        "multiagent.handoff.occurred",
+                        "steering.applied",
+                        "hook-plan.failed",
                         "run.registered",
                         "run.settled",
                         "run.completed",
@@ -20896,10 +20921,16 @@
                         "review.canceled",
                         "review.superseded",
                         "steering.accepted",
+                        "steering.rejected",
+                        "steering.superseded",
+                        "steering.failed",
+                        "workflow.version-mismatch",
                         "goal.started",
                         "goal.attempt.started",
                         "goal.attempt.evaluating",
                         "goal.attempt.validated",
+                        "goal.feedback.recorded",
+                        "goal.retrying",
                         "goal.succeeded",
                         "goal.exhausted",
                         "goal.canceled",
@@ -20915,7 +20946,12 @@
                         "notification.created",
                         "diagnostic",
                         "memory.governance",
-                        "decision.made"
+                        "decision.made",
+                        "secret.set",
+                        "secret.removed",
+                        "plugin.settings-changed",
+                        "plugin.status-changed",
+                        "scorer.threshold-breached"
                       ],
                       "type": "string"
                     },
@@ -20995,6 +21031,13 @@
                       "budget.threshold",
                       "tool.policy-denied",
                       "tool.error",
+                      "multiagent.child-workflow.started",
+                      "multiagent.child-workflow.completed",
+                      "multiagent.child-workflow.failed",
+                      "multiagent.child-workflow.aborted",
+                      "multiagent.handoff.occurred",
+                      "steering.applied",
+                      "hook-plan.failed",
                       "run.registered",
                       "run.settled",
                       "run.completed",
@@ -21032,10 +21075,16 @@
                       "review.canceled",
                       "review.superseded",
                       "steering.accepted",
+                      "steering.rejected",
+                      "steering.superseded",
+                      "steering.failed",
+                      "workflow.version-mismatch",
                       "goal.started",
                       "goal.attempt.started",
                       "goal.attempt.evaluating",
                       "goal.attempt.validated",
+                      "goal.feedback.recorded",
+                      "goal.retrying",
                       "goal.succeeded",
                       "goal.exhausted",
                       "goal.canceled",
@@ -21051,7 +21100,12 @@
                       "notification.created",
                       "diagnostic",
                       "memory.governance",
-                      "decision.made"
+                      "decision.made",
+                      "secret.set",
+                      "secret.removed",
+                      "plugin.settings-changed",
+                      "plugin.status-changed",
+                      "scorer.threshold-breached"
                     ],
                     "type": "string"
                   },
@@ -21073,6 +21127,13 @@
                         "budget.threshold",
                         "tool.policy-denied",
                         "tool.error",
+                        "multiagent.child-workflow.started",
+                        "multiagent.child-workflow.completed",
+                        "multiagent.child-workflow.failed",
+                        "multiagent.child-workflow.aborted",
+                        "multiagent.handoff.occurred",
+                        "steering.applied",
+                        "hook-plan.failed",
                         "run.registered",
                         "run.settled",
                         "run.completed",
@@ -21110,10 +21171,16 @@
                         "review.canceled",
                         "review.superseded",
                         "steering.accepted",
+                        "steering.rejected",
+                        "steering.superseded",
+                        "steering.failed",
+                        "workflow.version-mismatch",
                         "goal.started",
                         "goal.attempt.started",
                         "goal.attempt.evaluating",
                         "goal.attempt.validated",
+                        "goal.feedback.recorded",
+                        "goal.retrying",
                         "goal.succeeded",
                         "goal.exhausted",
                         "goal.canceled",
@@ -21129,7 +21196,12 @@
                         "notification.created",
                         "diagnostic",
                         "memory.governance",
-                        "decision.made"
+                        "decision.made",
+                        "secret.set",
+                        "secret.removed",
+                        "plugin.settings-changed",
+                        "plugin.status-changed",
+                        "scorer.threshold-breached"
                       ],
                       "type": "string"
                     },
@@ -29824,6 +29896,236 @@
       }
     },
     {
+      "description": "Returns the embedding recall and admission use as `active` (its `embedder`, `dimension` and `model`; `model` is `null` for a profile stored before models were recorded that no process has adopted one for), a `problem` (`embedder-unavailable` while that embedder is not loaded, is loaded with another dimension or model than made its vectors, or needs setup; recall then scores by text alone), the `job`, the switch to another embedder that is running or that last failed or was cancelled (`target`, `state`, `done` of `total` memories, and `error`, a code: `target-unavailable`, `target-missing`, `embedder-failed` or `embedder-timeout`, never an embedder’s own text), and every registered `embedders` entry with its `dimension` and whether it is `available` or `needs-setup`. Each of `problem` and `job` is `null` when there is none. A switch is started by writing the `memory.embedder` setting and cancelled by `bureau.memory.embedding.cancel`. Requires `bureau.settings:read`; a caller without it is `Forbidden`, whatever the Bureau holds.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.memory.embedding",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "additionalProperties": false,
+              "properties": {
+                "dimension": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "embedder": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "embedder",
+                "dimension",
+                "model"
+              ],
+              "type": "object"
+            },
+            "embedders": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "availability": {
+                    "enum": [
+                      "available",
+                      "needs-setup"
+                    ],
+                    "type": "string"
+                  },
+                  "dimension": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "dimension",
+                  "availability"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "job": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "done": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "target-unavailable",
+                            "target-missing",
+                            "embedder-failed",
+                            "embedder-timeout"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "enum": [
+                        "running",
+                        "failed",
+                        "cancelled"
+                      ],
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "state",
+                    "done",
+                    "total",
+                    "error"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "embedder-unavailable"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "active",
+            "problem",
+            "job",
+            "embedders"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read the embedding memory uses, and the switch to another",
+      "tags": [
+        {
+          "name": "Memory"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.memory.embedding.cancel",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "cancelled"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Cancel the running switch to another embedder",
+      "tags": [
+        {
+          "name": "Memory"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
       "description": "Returns audit records, oldest first (or newest first with `order: 'newest'`), as metadata only: `timestamp`, `type`, `resource` (what the record is about), `principal` (the actor), and a few scalar fields in `detail`. No record carries a secret, transcript, tool argument, tool result, or memory content. A caller sees the records about the resources it owns; a caller holding `bureau.audit:read` sees every record, and a record about a resource with no owner is read only through that scope. `runId` narrows to one resource, `type` to one kind, `types` to any of several kinds, `principal` to one actor, and `since` and `until` to a time range (both ends inclusive). `format: 'jsonl'` returns the page as JSON Lines in `body` (one record per line, with the same redaction) instead of `records`, for export. `includeTotal: true` also returns `total`, how many records match and the caller may see. Pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page, and a page is filled from the records the caller may see, so a cursor advances across any number of records it may not.",
       "errors": [
         {
@@ -33000,6 +33302,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -33037,10 +33346,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -33056,7 +33371,12 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -33446,6 +33766,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -33483,10 +33810,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -33502,7 +33835,12 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -33716,6 +34054,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -33753,10 +34098,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -33772,7 +34123,12 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },
@@ -34184,6 +34540,13 @@
                 "budget.threshold",
                 "tool.policy-denied",
                 "tool.error",
+                "multiagent.child-workflow.started",
+                "multiagent.child-workflow.completed",
+                "multiagent.child-workflow.failed",
+                "multiagent.child-workflow.aborted",
+                "multiagent.handoff.occurred",
+                "steering.applied",
+                "hook-plan.failed",
                 "run.registered",
                 "run.settled",
                 "run.completed",
@@ -34221,10 +34584,16 @@
                 "review.canceled",
                 "review.superseded",
                 "steering.accepted",
+                "steering.rejected",
+                "steering.superseded",
+                "steering.failed",
+                "workflow.version-mismatch",
                 "goal.started",
                 "goal.attempt.started",
                 "goal.attempt.evaluating",
                 "goal.attempt.validated",
+                "goal.feedback.recorded",
+                "goal.retrying",
                 "goal.succeeded",
                 "goal.exhausted",
                 "goal.canceled",
@@ -34240,7 +34609,12 @@
                 "notification.created",
                 "diagnostic",
                 "memory.governance",
-                "decision.made"
+                "decision.made",
+                "secret.set",
+                "secret.removed",
+                "plugin.settings-changed",
+                "plugin.status-changed",
+                "scorer.threshold-breached"
               ],
               "type": "string"
             },

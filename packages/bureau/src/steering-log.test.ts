@@ -10,7 +10,9 @@ import {
   readSteeringKeyBinding,
   readSteeringLogEntries,
   readSteeringLogHead,
+  sealSteeringLog,
   SteeringLogCorruptError,
+  SteeringLogSealedError,
   type SteeringLogEvent,
   listSteeringLogIncarnations,
   steeringSessionRunTag,
@@ -81,6 +83,62 @@ describe('steering log', () => {
       status: 'head-moved',
     });
     expect(await readSteeringKeyBinding(kv, 'alice', 'cmd-1')).toBeUndefined();
+  });
+
+  // COR-2097: a session's ending seals its log with one conditional write on the head, so the log
+  // arbitrates the ending against a boundary that is appending at the same moment.
+  describe('sealing', () => {
+    it('seals the head the caller read, reads back as sealed, and keeps every entry', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const empty = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+      const first = await appendSteeringLogEvent(kv, 'session-1', 'inc-1', empty, admit());
+      if (first.status !== 'appended') throw new Error('expected appended');
+
+      const sealed = await sealSteeringLog(kv, 'session-1', 'inc-1', first.head);
+
+      expect(sealed).toEqual({ raw: '{"sequence":1,"sealed":true}', sequence: 1, sealed: true });
+      expect(await readSteeringLogHead(kv, 'session-1', 'inc-1')).toEqual(sealed!);
+      expect(await readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).toEqual([admit()]);
+    });
+
+    it('does not seal a head another append has moved, and the next read finds the new entry', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const empty = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+      await appendSteeringLogEvent(kv, 'session-1', 'inc-1', empty, admit());
+
+      expect(await sealSteeringLog(kv, 'session-1', 'inc-1', empty)).toBeUndefined();
+      const head = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+      expect(head.sealed).toBeUndefined();
+    });
+
+    it('answers a second seal with the sealed head it finds, and writes nothing', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const empty = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+      const sealed = await sealSteeringLog(kv, 'session-1', 'inc-1', empty);
+      if (sealed === undefined) throw new Error('expected a sealed head');
+
+      expect(await sealSteeringLog(kv, 'session-1', 'inc-1', sealed)).toEqual(sealed);
+      expect(await readSteeringLogHead(kv, 'session-1', 'inc-1')).toEqual(sealed);
+    });
+
+    it('refuses an append decided before the seal as moved, and one decided against the seal as sealed', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const empty = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+      const sealed = await sealSteeringLog(kv, 'session-1', 'inc-1', empty);
+
+      // A boundary that read the log just before the seal.
+      expect(await appendSteeringLogEvent(kv, 'session-1', 'inc-1', empty, applied)).toEqual({
+        status: 'head-moved',
+      });
+      // One that re-read it after: the head it holds is final.
+      expect(
+        await throwingRejectionOf(
+          appendSteeringLogEvent(kv, 'session-1', 'inc-1', sealed!, applied),
+        ),
+      ).toThrow(SteeringLogSealedError);
+      expect(await readSteeringLogHead(kv, 'session-1', 'inc-1')).toEqual(sealed!);
+      expect(await readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 0)).toEqual([]);
+    });
   });
 
   it('refuses to bind a key another session already bound', async () => {

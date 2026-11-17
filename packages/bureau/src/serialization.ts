@@ -217,10 +217,39 @@ export function findRunAgentName(runState: {
  * persisted `lastRunOwningPrincipals` map when the run was dispatched with
  * one (AB-359); it stays `undefined` only when the run was never dispatched
  * with a principal in the first place, matching AB-313's fail-closed rule.
+ *
+ * `definitionRevision` (COR-2200) is the revision the agent's definition had when the run started,
+ * for a run whose agent has one: the online scorer sampler records it with each score. It is not
+ * serialized into a run summary.
  */
 export interface RunAttribution {
   agentName?: string;
   principal?: string;
+  definitionRevision?: number;
+  /**
+   * `chat` for a run started on a chat (`createRun`, and such a run recovered after a restart), the
+   * only kind the scorer sampler can place today (COR-2203). A run started any other way leaves it
+   * unset, and the sampler's `kinds` filter then excludes it.
+   */
+  kind?: 'chat';
+}
+
+/**
+ * The attribution of a run started on a chat (COR-2200, COR-2203): its agent and owner, the kind
+ * `chat`, and the revision of the agent's definition when it has one.
+ */
+export function chatRunAttribution(
+  agentName: string,
+  principal: string,
+  sessionAgent: { readonly definitionRevision?: number | undefined } | undefined,
+): RunAttribution {
+  const definitionRevision = sessionAgent?.definitionRevision;
+  return {
+    agentName,
+    principal,
+    kind: 'chat',
+    ...(definitionRevision === undefined ? {} : { definitionRevision }),
+  };
 }
 
 /**

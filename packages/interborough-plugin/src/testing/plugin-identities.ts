@@ -327,7 +327,8 @@ export async function pluginIdentities(
     ),
     ...entriesOf(
       contributions.embedders,
-      (embedder) => named(embedder, 'embedder', { dimensions: embedder.dimensions }),
+      (embedder) =>
+        named(embedder, 'embedder', { dimensions: embedder.dimensions, model: embedder.model }),
       descriptor,
     ),
     ...entriesOf(

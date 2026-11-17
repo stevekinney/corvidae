@@ -263,6 +263,40 @@ function attemptEvaluatingEvent(record: GoalState): GoalLifecycleEvent | undefin
 }
 
 /**
+ * The live-only event a failing verdict implies (COR-2097): the validator judged the attempt `fail`
+ * and its feedback is kept for the next attempt. It carries the digest `goal.attempt.validated`
+ * does, never the feedback, and is derived for every commit that decides on a `fail` verdict
+ * (a retry and a goal that ran out of attempts alike). Nothing records it, for the reason
+ * `goal.attempt.evaluating` is not recorded: the verdict is in the goal's history already.
+ */
+function feedbackRecordedEvent(record: GoalState): GoalLifecycleEvent | undefined {
+  const attempt = record.attempts.at(-1);
+  const outcome = attempt?.validation?.outcome;
+  if (record.currentTransition.from !== 'evaluating' || attempt === undefined) return undefined;
+  if (outcome?.kind !== 'fail') return undefined;
+  return new GoalLifecycleEvent('goal.feedback.recorded', {
+    goalRunId: record.goalRunId,
+    attemptId: attempt.attemptId,
+    feedbackDigest: sha256HexSync(outcome.feedback),
+  });
+}
+
+/**
+ * The live-only event a transition into `retrying` implies (COR-2097): the last attempt did not
+ * pass and the goal will start another. `retryReason` is that attempt's status, `failed` or
+ * `aborted`: a status from a closed list, never the validator's words or the attempt's error.
+ */
+function retryingEvent(record: GoalState): GoalLifecycleEvent | undefined {
+  const attempt = record.attempts.at(-1);
+  if (record.currentTransition.to !== 'retrying' || attempt === undefined) return undefined;
+  return new GoalLifecycleEvent('goal.retrying', {
+    goalRunId: record.goalRunId,
+    attemptIndex: attempt.attemptIndex,
+    retryReason: attempt.status,
+  });
+}
+
+/**
  * COR-1903 — what lets shutdown wait for the goal history writes already under way and keep
  * the controller from starting another: `track` registers a write, and `close` stops the gate
  * accepting writes and settles once every tracked write has.
@@ -309,7 +343,9 @@ export function createHistoryWriteGate(): HistoryWriteGate {
  * With `dispatch` (COR-1721), each projected event is also dispatched live
  * after its history write is attempted, whether or not that write succeeded:
  * the goal store has already committed the transition. A transition into
- * `evaluating` dispatches `goal.attempt.evaluating`, which records nothing.
+ * `evaluating` dispatches `goal.attempt.evaluating`, a decision on a `fail` verdict dispatches
+ * `goal.feedback.recorded` and a transition into `retrying` dispatches `goal.retrying` (COR-2097):
+ * none of the three records anything.
  * Without `history`, it only dispatches. The boot pass builds its recorder with
  * neither dispatch nor a live observation, so a replay writes history and
  * dispatches nothing.
@@ -346,10 +382,19 @@ export function createGoalEventRecorder(
       if (isGoalEventKind(draft.kind)) {
         dispatchGuarded(new GoalLifecycleEvent(draft.kind, draft.payload), observation.record);
       }
+      // Right behind the verdict it keeps the feedback of, and ahead of the terminal decision.
+      if (draft.kind === 'goal.attempt.validated' && observation.kind === 'transitioned') {
+        const feedback = feedbackRecordedEvent(observation.record);
+        if (feedback !== undefined) dispatchGuarded(feedback, observation.record);
+      }
     }
     if (observation.kind === 'transitioned') {
-      const evaluating = attemptEvaluatingEvent(observation.record);
-      if (evaluating !== undefined) dispatchGuarded(evaluating, observation.record);
+      for (const live of [
+        retryingEvent(observation.record),
+        attemptEvaluatingEvent(observation.record),
+      ]) {
+        if (live !== undefined) dispatchGuarded(live, observation.record);
+      }
     }
   };
 

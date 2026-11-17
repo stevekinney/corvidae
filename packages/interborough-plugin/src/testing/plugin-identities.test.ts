@@ -438,3 +438,35 @@ describe('a declared event (COR-2223)', () => {
     expect(await digestOf(z.object({ greetingId: z.enum(['a']) }))).not.toBe(before);
   });
 });
+
+describe('a contributed embedder (COR-2184)', () => {
+  const embedderPlugin = (model: string, dimensions = 4) =>
+    definePlugin({
+      ...base,
+      setup: () => ({
+        embedders: [{ name: 'embed', model, dimensions, embed: async () => [] }],
+      }),
+    });
+  const digestOf = async (model: string, dimensions?: number) => {
+    const identities = await pluginIdentities(embedderPlugin(model, dimensions));
+    return identities.entries.find(({ kind }) => kind === 'embedder');
+  };
+
+  test('is an embedder entry named plugin:name, at the plugin version', async () => {
+    expect(await digestOf('model-a')).toEqual({
+      kind: 'embedder',
+      id: 'example:embed',
+      version: '1.2.0',
+      schema: expect.stringMatching(/^sha256:/),
+    });
+  });
+
+  test('digests the model with the dimensions, so a changed model changes the digest', async () => {
+    const before = await digestOf('model-a');
+    expect(await digestOf('model-a')).toEqual(before);
+    const otherModel = await digestOf('model-b');
+    expect(otherModel?.schema).not.toBe(before?.schema);
+    const otherDimensions = await digestOf('model-a', 8);
+    expect(otherDimensions?.schema).not.toBe(before?.schema);
+  });
+});

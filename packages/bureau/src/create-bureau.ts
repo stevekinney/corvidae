@@ -117,14 +117,17 @@ import {
   forwardAssetEvents,
   forwardDefinitionChanges,
   forwardMemoryGovernance,
+  forwardHostEvents,
   forwardMissedFires,
+  forwardWorkflowVersionMismatches,
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
 import { publishWorkflowScheduleOutcomes } from './workflow-schedule-outcomes';
+import { announceTransitions } from './steering-transition-events';
 import { auditMemoryCorrections } from './memory-correction-audit.ts';
 import { createSessionPersistence } from './bureau-session-persistence';
 import { type BureauChildren, type ChildTopology, createChildTopology } from './child-topology';
-import { childActionOf } from './child-announcement';
+import { announceChildOnParent } from './child-announcement';
 import { createChildTopologyStore } from './child-topology-store';
 import { createRunCreationLedger, type RunCreationObservation } from './command-ledger';
 import {
@@ -269,6 +272,7 @@ import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
   type SteeringCommandAdmissionOutcome,
+  type SteeringGateTransition,
 } from './steering';
 import type { Bureau, BureauRecoveryReport, BureauShutdownReport } from './bureau-types/facade';
 import type { BureauOptions } from './bureau-types/options';
@@ -1428,6 +1432,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   const sessionDeletionOwners = new Map<string, SessionDeletionRecord>();
   /** Sessions the store is about to expire, held until their `session.deleted` entry drains. */
   const expiringSessions = new Map<string, AgentSession>();
+  /**
+   * COR-2097 — what settling an expiring session's gate left to announce, until the session's
+   * `session.deleted` entry drains: for a Bureau with no durable steering log, whose gate is the
+   * only record of the commands it ended.
+   */
+  const expiredSteeringTransitions = new Map<string, readonly SteeringGateTransition[]>();
   const core: BureauCore<D> = {
     options,
     workspace,
@@ -2065,8 +2075,17 @@ async function constructBureau<const D extends AgentDefinitions>(
     get retireSessionInputs() {
       return retireSessionInputs;
     },
-    get forgetSessionSteering() {
-      return forgetSessionSteering;
+    get releaseEndedSessionSteering() {
+      return releaseEndedSessionSteering;
+    },
+    get announceEndedSessionSteering() {
+      return announceEndedSessionSteering;
+    },
+    get removeEndedSessionSteeringLog() {
+      return removeEndedSessionSteeringLog;
+    },
+    get settleExpiredSessionSteering() {
+      return settleExpiredSessionSteering;
     },
     get discardTriedRuns() {
       return discardTriedRuns;
@@ -2493,7 +2512,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     asSubmittedRetry,
     catchUpSteering,
     pollSessionSteering,
-    forgetSessionSteering,
+    releaseEndedGate,
+    releaseEndedSessionSteering,
+    announceEndedSessionSteering,
+    removeEndedSessionSteeringLog,
     appendThenApplySteering,
     logRunBoundarySteering,
     recoverRunSteering,
@@ -2656,6 +2678,10 @@ async function constructBureau<const D extends AgentDefinitions>(
         ),
       );
     });
+    // COR-2098 — the plugin and secret changes the host reports, each after the host committed it.
+    stopForwarding.push(
+      forwardHostEvents(options.hostEvents, (event) => emitter.dispatch(event), diagnose),
+    );
     // COR-1723 — the supplied governed memory's notifications, so its writes, forgets, and
     // corrections reach the emitter whoever constructed it.
     if (runtime.memory !== undefined) {
@@ -2675,6 +2701,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-2009: a run a workflow file's schedule started publishes its outcome, as a fire does.
       stopForwarding.push(
         publishWorkflowScheduleOutcomes(runtime.durable.engine, (event) => emitter.dispatch(event)),
+      );
+      // COR-2097: a recovered run resuming under another workflow version, found while recovery ran.
+      stopForwarding.push(
+        forwardWorkflowVersionMismatches(
+          runtime.durable.versionMismatches,
+          (event) => emitter.dispatch(event),
+          diagnose,
+        ),
       );
       stopForwarding.push(
         forwardMissedFires(
@@ -4384,10 +4418,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
     // parent this process does not hold has no action log here, and the record is dropped.
     announce: async (announcement) => {
-      const action = childActionOf(announcement);
-      if (action !== undefined) {
-        store.recordAction(announcement.record.parentRunId, action.type, action.detail);
-      }
+      // COR-2097: a parent that is not on the store (another child, a goal attempt, a step) has
+      // no action log, so its children reach the event feed directly.
+      announceChildOnParent(
+        announcement,
+        store,
+        (event) => emitter.dispatch(event),
+        runtimeServices.clock.now,
+      );
       if (announcement.kind === 'settled') {
         void runtime.durable?.engine
           .signal(
@@ -4989,14 +5027,51 @@ async function constructBureau<const D extends AgentDefinitions>(
     // and a terminal save queued behind it would deadlock.
     for (const session of sessions) {
       const { steeringGate } = abandonSessionRuns(session.id);
-      steeringGate?.settleForDeletion(runtimeServices.clock.nowISO());
-      steeringGate?.purgeFromLedger();
-      if (steeringGates.get(session.id) === steeringGate) steeringGates.delete(session.id);
-      if (steeringCursors.get(session.id)?.incarnation === session.incarnation) {
-        forgetSessionSteering(session.id);
+      const forget = () => {
+        steeringGate?.purgeFromLedger();
+        if (steeringGates.get(session.id) === steeringGate) steeringGates.delete(session.id);
+      };
+      if (durableSteeringStore() !== undefined) {
+        // COR-2097: the gate releases its runs, and this process stops writing to the session's
+        // log, in the session's queue, so an append already under way commits and announces what
+        // it decided first. Not awaited: the queue may wait on the store this hook runs inside.
+        // What the expiry did to the accepted commands is announced from the log by whichever
+        // process drains the session's `session.deleted` entry (`announceEndedSessionSteering`).
+        const released = enqueueSteering(session.id, async () => {
+          releaseEndedGate(session.id, session.incarnation, steeringGate);
+          forget();
+        });
+        runtimeServices.deferred.track(released, 'steering-expiry-release');
+        detachBestEffortPromise(released);
+        continue;
       }
+      steeringGate?.settleForDeletion(runtimeServices.clock.nowISO());
+      // COR-2097: with no durable log, this gate is the only record of the commands the expiry
+      // ended. It releases its runs now and announces nothing yet: the expiry has not committed.
+      // They are announced once the session's `session.deleted` entry drains
+      // (`settleExpiredSessionSteering`); with no log there is no second process to drain it.
+      if (steeringGate !== undefined) {
+        expiredSteeringTransitions.set(
+          `${session.id}\u0000${session.incarnation}`,
+          steeringGate.drainTransitions(),
+        );
+      }
+      forget();
     }
   });
+
+  /**
+   * COR-2097 — once an expired session's `session.deleted` entry drains, which is after the store
+   * removed it, a Bureau with no durable steering log announces the commands its gate settled when
+   * the expiry ran. A durable Bureau keeps nothing here: the drainer announces from the log.
+   */
+  async function settleExpiredSessionSteering(session: AgentSession): Promise<void> {
+    const key = `${session.id}\u0000${session.incarnation}`;
+    const settledTransitions = expiredSteeringTransitions.get(key);
+    expiredSteeringTransitions.delete(key);
+    if (settledTransitions === undefined) return;
+    announceTransitions(session.id, settledTransitions, (event) => emitter.dispatch(event));
+  }
 
   // COR-718: a schedule fire's run is owned by its schedule's owner, and the scheduler is
   // only the actor on the `schedule.fired` entry. The fire's services are rebuilt on
@@ -5137,24 +5212,60 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
   scheduledFireServicesHandler.resolve(registerScheduledFireReviews);
 
-  // Wire the online eval sampler (AB-53) now that the audit trail and webhook
-  // notifier exist (a sampled score is recorded to the former; a threshold
-  // breach is delivered through the latter). Only created when at least one
-  // judge is configured with a positive sample rate — the common case (no
-  // `options.scorers`) costs nothing beyond the `undefined` check inside
-  // `createScorerSampler`.
-  if (options.scorers && options.scorers.list.length > 0 && options.scorers.sampleRate > 0) {
+  // Wire the online eval sampler (AB-53) now that the audit trail exists (a sampled score is
+  // recorded to it; a threshold breach is published on the event feed, COR-2251). Created when at
+  // least one judge is configured, whatever the rate (COR-2202): the `scorers.sampleRate` setting
+  // is read as each run finishes, so a rate of 0 now can be raised later without a restart. The
+  // common case (no `options.scorers`) costs nothing beyond the `undefined` check.
+  const scorerOptions = options.scorers;
+  if (scorerOptions && scorerOptions.list.length > 0) {
     scorerSamplerInstance = createScorerSampler(
       bureau,
       auditTrailInstance,
-      webhookNotifierInstance,
       {
-        ...options.scorers,
+        ...scorerOptions,
         // AB-207: same bounded-abort wiring as the webhook notifier above, for
         // an in-flight judge invocation.
-        signal: withBackgroundShutdownSignal(options.scorers.signal),
+        signal: withBackgroundShutdownSignal(scorerOptions.signal),
       },
       runtimeServices,
+      {
+        // COR-2202: the code option is the setting's default, so a stored value replaces it.
+        sampleRate: () => currentSettings()['scorers.sampleRate'] ?? scorerOptions.sampleRate,
+        // COR-2205: no limit unless the setting holds one; the count is kept in the Bureau's store,
+        // so a restart or a second Bureau on that store continues it.
+        dailyBudget: () => currentSettings()['scorers.dailyBudget'],
+        ...(runtime.kv === undefined ? {} : { budgetStore: runtime.kv }),
+        diagnose: (message, cause) =>
+          diagnose({
+            level: 'error',
+            scope: 'scorers',
+            message,
+            ...(cause === undefined ? {} : { cause }),
+          }),
+        // COR-2200: the agent and the revision of its definition the run started with.
+        // COR-2203: only a run started on a chat is labeled `chat`. A goal's attempts and a
+        // workflow's steps run as catalog runs, which `catalogRunIds` keeps off the action stream
+        // (probed: a goal's attempt never reaches the sampler), and a run started any other way
+        // has no kind, so a non-empty `kinds` filter leaves it out rather than guess.
+        describeRun: (runId) => {
+          const attribution = runAttribution.get(runId);
+          return attribution === undefined
+            ? undefined
+            : {
+                agentName: attribution.agentName,
+                definitionRevision: attribution.definitionRevision,
+                kind: attribution.kind,
+              };
+        },
+        // COR-2251: a breach reaches the event feed, where a user's hook routes it.
+        published: (event) => emitter.dispatch(event),
+        // COR-2200: a plugin's scorers are in the contribution catalog under the plugin's source.
+        sourceOf: (name, version) => {
+          const found = options.contributionCatalog?.resolve('scorer', { name, version });
+          return found?.ok === true ? found.entry.source : undefined;
+        },
+      },
     );
   }
 
