@@ -7,12 +7,18 @@ const schema = {
     variant: {
       enum: ['default', 'striped', 'two-column', 'narrow', 'facts', 'fields'],
       description:
-        'Controls the visual layout:\n- `default`: stacked rows with visible terms.\n- `striped`: alternating row backgrounds.\n- `two-column`: a muted term on the left and the value on the right, with no row dividers;\n  collapses to stacked at narrow widths.\n- `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when\n  surrounding context already labels the value. NOT a general compact mode.\n- `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value\n  beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text;\n  stacks below 28rem.\n- `facts`: one row of equal columns, each a muted term above its value, between two quiet\n  rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the\n  container narrows.',
+        'Controls the visual layout:\n- `default`: stacked rows with visible terms.\n- `striped`: alternating row backgrounds.\n- `two-column`: a muted term on the left and the value on the right, with no row dividers;\n  collapses to stacked at narrow widths.\n- `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when\n  surrounding context already labels the value. NOT a general compact mode.\n- `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value\n  beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group);\n  stacks below 28rem.\n- `facts`: one row of equal columns, each a muted term above its value, between two quiet\n  rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the\n  container narrows.',
     },
     stack: {
       type: 'boolean',
       description:
         'Puts every term above its value at any width. The `two-column` variant\nalready stacks once its own container is narrower than 28rem; `stack`\nstacks it regardless, for a list whose page has already chosen its phone\nlayout. Has no effect on `narrow`, whose terms stay visually hidden.',
+      default: false,
+    },
+    framed: {
+      type: 'boolean',
+      description:
+        'Keeps the tinted, rounded frame around the `fields` variant. The variant is flat by default, so\na record inside a pane or a card never draws a box inside a box; set this where the list stands\nalone on the page canvas. Has no effect on any other variant.',
       default: false,
     },
     class: {
