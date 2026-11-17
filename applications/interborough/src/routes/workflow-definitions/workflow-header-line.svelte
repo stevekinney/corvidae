@@ -30,7 +30,11 @@
     <span class="ib-workflow-line__part">
       {#each part as run, position (position)}
         {#if run.word !== undefined}
-          <StatusDot word={run.word} size="sm" />
+          <StatusDot
+            word={run.word}
+            size="sm"
+            {...run.qualifier === undefined ? {} : { qualifier: run.qualifier }}
+          />
         {:else if run.href !== undefined}
           {@const target = run.href}
           <a href={router.href(target)} onclick={(event) => go(event, target)}>{run.text}</a>

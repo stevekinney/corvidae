@@ -23,6 +23,8 @@ export type HeaderRun = {
   readonly href?: string;
   /** The run is a status word beside its dot, and `text` is empty. */
   readonly word?: StatusWord;
+  /** What follows a status word as its own muted piece: "at step 2" after Failed. */
+  readonly qualifier?: string;
 };
 
 /** One fact of a header line: runs that read together. The facts of a line are joined with commas. */
@@ -86,6 +88,10 @@ export type LastRun = {
   readonly status: WorkflowStatus;
   /** When it began, in milliseconds. */
   readonly createdAt: number;
+  /** The step it is at or failed at, from one, when the Bureau says (COR-2431). */
+  readonly step?: number | null;
+  /** The signal it waits for, when it waits for one (COR-2431). */
+  readonly awaitingSignal?: string | null;
 };
 
 /**
@@ -110,11 +116,33 @@ export function lastRunLine(input: {
   if (last === null) {
     parts.push([{ text: copy.neverRun }]);
   } else if (last !== undefined) {
+    // A run from today says so before its time: "Last run today, 10:05 AM" (row 63n).
+    const today = calendarDay(last.createdAt, zone) >= calendarDay(now, zone);
     parts.push([
       { text: `${copy.lastRunLabel} ` },
-      { text: listDate(last.createdAt, now, zone), href: input.runHref(last.id) },
+      {
+        text: today
+          ? copy.today(clockTime(last.createdAt, zone))
+          : listDate(last.createdAt, now, zone),
+        href: input.runHref(last.id),
+      },
     ]);
-    parts.push([{ text: '', word: workflowRunStatusWord(last.status) }]);
+    const waiting = last.awaitingSignal ?? null;
+    const going =
+      last.status === 'pending' || last.status === 'running' || last.status === 'suspended';
+    if (going && waiting !== null) {
+      // A run parked at a signal says which one it waits for (row 63n), not a status word.
+      parts.push([{ text: copy.waitingForSignal }, { text: waiting, code: true }]);
+    } else {
+      const word = workflowRunStatusWord(last.status);
+      const step = last.step ?? null;
+      // "Failed at step 2" (row 62c): the step a failed run stopped at follows its word.
+      parts.push([
+        word === 'Failed' && step !== null
+          ? { text: '', word, qualifier: copy.atStep(step) }
+          : { text: '', word },
+      ]);
+    }
   }
   if (input.fileName !== null) {
     parts.push([{ text: `${copy.fileLabel} ` }, { text: input.fileName, code: true }]);

@@ -17,6 +17,7 @@ import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
   codeDefinition,
   emptyWorld,
+  historyEntry,
   installWorkflowWorld,
   invalidFile,
   readyFile,
@@ -70,6 +71,8 @@ function open(path: string, overrides: Partial<World> = {}) {
         scheduleFixture('elsewhere', 'something-else'),
       ],
       revisions: { digest: [REVISION] },
+      // Every saved version, which the History tab lists and counts (COR-2431).
+      history: { digest: [historyEntry({ version: '1.0.0', workflowVersion: 'version-ran' })] },
       // Weft has an installed version that never ran; the Bureau's history must not show it.
       installedRevisions: { digest: [{ revision: 'version-saved-never-ran' }] },
       ...overrides,
@@ -507,24 +510,28 @@ describe('an agent-authored type', () => {
     expect(signals?.textContent).not.toContain('pause-it');
   });
 
-  test('keeps the versions that have run on the History tab, shows none the engine merely installed, and cannot activate', async () => {
+  test('keeps the saved versions on the History tab, shows none the engine merely installed, and cannot activate', async () => {
     const { container } = open('/workflows/digest');
     const root = await ready(container);
     expect(testId(root, 'workflow-revisions')).toBeNull();
 
     await openTab(root, TABS.history);
     await waitFor(() =>
-      expect(testId(root, 'workflow-revisions')?.textContent).toContain('version-ran'),
+      expect(testId(root, 'workflow-revisions')?.textContent).toContain(
+        WORKFLOW_COPY.history.versionTitle('1.0.0', true),
+      ),
     );
 
     const revisions = testId(root, 'workflow-revisions');
     expect(revisions?.textContent).not.toContain('version-saved-never-ran');
+    // A version is named by its number, never by the engine's hash (COR-2431).
+    expect(revisions?.textContent).not.toContain('version-ran');
     expect(stub?.callsTo('weft.workflows.revisions.list')).toEqual([]);
     // The page reads the versions once, for the tab's count, and the tab shows that same list.
-    expect(stub?.callsTo('bureau.workflows.revisions')).toHaveLength(1);
-    expect(stub?.callsTo('bureau.workflows.revisions')[0]?.params).toEqual({ id: 'digest' });
-    // The only control on a version is the one that copies its hash; nothing activates it.
-    expect(revisions?.querySelector('button:not([aria-label^="Copy version"])')).toBeNull();
+    expect(stub?.callsTo('bureau.workflows.history')).toHaveLength(1);
+    expect(stub?.callsTo('bureau.workflows.history')[0]?.params).toEqual({ id: 'digest' });
+    // Nothing on a version activates it.
+    expect(revisions?.querySelector('button')).toBeNull();
     expect(root.textContent).not.toContain('Activate');
   });
 
@@ -1026,16 +1033,16 @@ describe('a part of the page that fails', () => {
     expect(testId(root, 'workflow-definition')).not.toBeNull();
   });
 
-  test('says the revision history could not be loaded, and shows the rest', async () => {
+  test('says the saved versions could not be loaded, and shows the rest', async () => {
     const { container } = open('/workflows/digest');
-    stub?.on('bureau.workflows.revisions', () => {
+    stub?.on('bureau.workflows.history', () => {
       throw workflowFaults.unprocessable('No history.');
     });
     const root = await ready(container);
     await openTab(root, TABS.history);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
-        WORKFLOW_COPY.revisions.failed,
+        WORKFLOW_COPY.history.failed,
       ),
     );
     expect(testId(root, 'workflow-revisions')).not.toBeNull();

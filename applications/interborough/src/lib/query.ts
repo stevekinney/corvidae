@@ -153,6 +153,8 @@ export const queryKeys = {
     savedSteps: (type: string) => ['workflow-catalog', 'saved-steps', type] as const,
     /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
+    /** Every saved version of one agent-authored workflow, run or not (`bureau.workflows.history`). */
+    history: (type: string) => ['workflow-catalog', 'history', type] as const,
   },
   /** The caller's goals (`bureau.goals.list`). */
   goals: {

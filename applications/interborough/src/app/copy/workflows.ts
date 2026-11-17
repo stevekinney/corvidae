@@ -229,6 +229,12 @@ export const WORKFLOW_COPY = {
       lastRun: (when: string): string => `Last run ${when}`,
       /** The last run of a type Interborough runs itself, said as the day it began. */
       lastRunToday: (clock: string): string => `Last run today, ${clock}`,
+      /** A file's last run from today, which links to the run: "today, 10:05 AM" (row 63n). */
+      today: (clock: string): string => `today, ${clock}`,
+      /** A last run parked at a signal, whose name follows in monospace (row 63n). */
+      waitingForSignal: 'Waiting for the signal ',
+      /** After Failed, the step the last run stopped at: "Failed at step 2" (row 62c). */
+      atStep: (step: number): string => `at step ${String(step)}`,
       neverRun: 'Never run',
       /** "file" and the file's name, which is set in monospace, follow each other. */
       fileLabel: 'file',
@@ -928,6 +934,58 @@ export const WORKFLOW_COPY = {
       keep: 'Keep editing',
       confirm: 'Discard changes',
     },
+  },
+  /**
+   * The History tab (board PageWorkflow, "History tab", rows 62o and 62p): every saved version,
+   * newest first, with its verdict, what changed, what it meant for the runs, and when it was saved.
+   */
+  history: {
+    heading: 'Saved versions',
+    caption: 'Saved versions of this workflow, newest first',
+    /** "Version 1.3.0, current version". */
+    versionTitle: (version: string, current: boolean): string =>
+      `Version ${version}, ${current ? 'current version' : 'older version'}`,
+    /** The neutral verdict word: amber is kept for what waits on you. */
+    compatible: 'Compatible',
+    breaking: 'Breaking',
+    /** A save from the builder says so before what it changed. */
+    editedInBuilder: (changes: string): string => `Edited in the builder: ${changes}`,
+    /** What a version meant for the runs, after what changed. */
+    inFlightKeepGoing: 'runs in flight keep going',
+    runsOnVersion: (count: number, lastDay: string): string =>
+      count === 1
+        ? `run on this version: 1 (${lastDay})`
+        : `runs on this version: ${String(count)} (last ${lastDay})`,
+    finishedOn: (previous: string): string => `runs already going finished on ${previous}`,
+    /** What changed from the version before, as verbs and what they act on. */
+    changes: {
+      created: 'created',
+      unchanged: 'saved with no change to what runs',
+      added: 'added',
+      removed: 'removed',
+      replaced: 'replaced',
+      renamed: 'renamed',
+      reworded: 'reworded',
+      changed: 'changed',
+      theWorkflow: 'the workflow',
+      theDescription: 'the description',
+      whatStartsIt: 'what starts it',
+      theInput: 'the workflow input',
+      theOutput: 'the output',
+      /** "step 4 (Wait for approval)", or "step 2" for a step with no title. */
+      step: (step: number, title: string | null): string =>
+        title === null ? `step ${String(step)}` : `step ${String(step)} (${title})`,
+      stepAgent: (step: number): string => `step ${String(step)}’s agent`,
+      stepInput: (step: number): string => `step ${String(step)}’s input`,
+      stepSignal: (step: number): string => `the signal step ${String(step)} waits for`,
+      stepReview: (step: number): string => `whether step ${String(step)} waits for a person`,
+      stepDuration: (step: number): string => `how long step ${String(step)} waits`,
+    },
+    footnote:
+      'Compatibility says whether a run started on one version can continue after the next is saved. Scheduled and chat runs always start on the current version.',
+    emptyTitle: 'No version of this workflow is saved yet',
+    emptyDescription: 'A version appears here each time the file is saved.',
+    failed: 'The saved versions could not be loaded.',
   },
   revisions: {
     heading: 'Revisions that have run',

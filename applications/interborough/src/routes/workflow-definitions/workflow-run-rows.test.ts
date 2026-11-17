@@ -179,3 +179,68 @@ describe('the rows of a workflow', () => {
     expect(rows.map((row) => row.id)).toEqual(['newer', 'older']);
   });
 });
+
+describe('COR-2431: how far an instance got, what it waits for, and why it failed', () => {
+  const FILE = {
+    ...CONTEXT,
+    agentName: null,
+    type: 'release-notes',
+    scheduleNames: new Map([['schedule-1', 'Release notes digest']]),
+  } as const;
+  const LINE = { now: 1_760_000_010_000, zone: 'America/Chicago', agentLabel: (n: string) => n };
+
+  test('a failed scheduled run names its schedule, the step it failed at, and what it said (row 62n)', () => {
+    const row = workflowRunRow(
+      summary({
+        status: 'failed',
+        origin: { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-1' },
+        steps: { total: 4, at: 2 },
+        failure: 'GitHub didn’t answer',
+      }),
+      FILE,
+    );
+    expect(runStatusWord(row)).toBe('Failed');
+    expect(runLineTwo(row, LINE)).toBe(
+      [
+        TASK_COPY.list.kinds.schedule,
+        'Release notes digest',
+        TASK_COPY.list.failedAtStep(2, 4),
+        'GitHub didn’t answer',
+        '3 s',
+      ].join(TASK_COPY.list.separator),
+    );
+  });
+
+  test('a run parked at a signal reads Waiting, counts under the signal segment, and names the signal (row 63o)', () => {
+    const rows = workflowRunRows(
+      [
+        summary({
+          status: 'suspended',
+          origin: { kind: 'person', principal: 'local', surface: 'web' },
+          steps: { total: 4, at: 4 },
+          awaitingSignal: 'notes-approved',
+        }),
+      ],
+      FILE,
+    );
+    const [row] = rows;
+    if (row === undefined) throw new Error('Expected one row');
+    expect(runStatusWord(row)).toBe('Waiting');
+    const counts = runSegmentCounts(rows);
+    expect(counts.signal).toBe(1);
+    expect(counts.waiting).toBe(0);
+    expect(counts.running).toBe(0);
+    const line = runLineTwo(row, LINE);
+    expect(line).toContain(TASK_COPY.list.waitingForSignal('notes-approved'));
+    expect(line).toContain(TASK_COPY.list.stepOf(4, 4));
+  });
+
+  test('a row with no workflow type says none of them, as before', () => {
+    const row = workflowRunRow(
+      summary({ status: 'failed', steps: { total: 4, at: 2 }, failure: 'boom' }),
+      CONTEXT,
+    );
+    expect(row.workflow).toBeUndefined();
+    expect(runLineTwo(row, LINE)).not.toContain(TASK_COPY.list.failedAtStep(2, 4));
+  });
+});

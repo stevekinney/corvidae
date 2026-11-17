@@ -68,9 +68,19 @@
     canStart: boolean;
     /** Whether the workflow is a paused file, whose empty state says why nothing starts it. */
     paused: boolean;
+    /** The name of each schedule that starts the workflow, by its identifier: line two names it. */
+    scheduleNames?: ReadonlyMap<string, string>;
   }
 
-  let { type, kind, title, agentName, canStart, paused }: Props = $props();
+  let {
+    type,
+    kind,
+    title,
+    agentName,
+    canStart,
+    paused,
+    scheduleNames = new Map<string, string>(),
+  }: Props = $props();
 
   const copy = WORKFLOW_COPY.page.runs;
   const client = getClient();
@@ -89,6 +99,9 @@
             createdAt: Date.parse(run.createdAt),
             updatedAt: Date.parse(run.updatedAt),
             origin: run.origin ?? null,
+            steps: run.steps ?? null,
+            awaitingSignal: run.awaitingSignal ?? null,
+            failure: run.failure ?? null,
           }));
         }
         const page = await client.list({ type, limit: RECENT_LIMIT });
@@ -114,7 +127,14 @@
   // A run a trigger started names its plugin by its title.
   const pluginTitle = usePluginTitle();
 
-  const everyRun = $derived<RunRow[]>(workflowRunRows(runs.data ?? [], { title, agentName }));
+  // A file's instances read as the Runs page's own rows: the schedule that fired one, how far it
+  // got, and what it waits for or why it failed (COR-2431). A code type's say none of them.
+  const everyRun = $derived<RunRow[]>(
+    workflowRunRows(
+      runs.data ?? [],
+      kind === 'agent-authored' ? { title, agentName, type, scheduleNames } : { title, agentName },
+    ),
+  );
 
   // The tab's own filters: a status segment, and what started the run.
   let filter = $state<RunFilter>({});

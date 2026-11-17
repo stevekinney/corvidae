@@ -14,13 +14,13 @@ import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
   codeDefinition,
   emptyWorld,
+  historyEntry,
   installWorkflowWorld,
   invalidFile,
   readyFile,
   runFixture,
   sourceDefinition,
   workflowFaults,
-  type RevisionFixture,
   type WorkflowStub,
   type World,
 } from '../../lib/workflow-world.test-support.ts';
@@ -40,19 +40,6 @@ afterEach(() => {
 });
 
 const TABS = WORKFLOW_COPY.page.tabs;
-
-function revision(
-  version: string,
-  compatibility: NonNullable<RevisionFixture['compatibility']> | null,
-): RevisionFixture {
-  return {
-    workflowVersion: version,
-    firstRunAt: '2026-10-19T08:00:00.000Z',
-    lastRunAt: '2026-10-19T09:00:00.000Z',
-    document: { name: 'digest', trigger: { kind: 'schedule', spec: '0 6 * * *' }, steps: [] },
-    compatibility,
-  };
-}
 
 function open(path: string, overrides: Partial<World> = {}) {
   stub = installWorkflowWorld(
@@ -229,72 +216,76 @@ describe('the Code tab of a code-defined workflow', () => {
 });
 
 describe('the History tab', () => {
-  test('shows each version’s verdict against the current revision, and the reasons it is not compatible', async () => {
-    const { container } = open('/workflows/digest', {
-      revisions: {
-        digest: [
-          revision('version-current', { compatible: true }),
-          revision('version-old', {
-            compatible: false,
-            reasons: ['workflow-version-incompatible', 'artifact-revision-mismatch'],
-          }),
-        ],
+  // COR-2431, rows 62o, 62p and 62v: every saved version, run or not, with its number, verdict, what
+  // changed, what it meant for the runs, and when it was saved; the tab counts them.
+  const HISTORY = [
+    historyEntry({
+      version: '1.2.0',
+      current: true,
+      savedAt: '2026-11-01T22:30:00.000Z',
+      origin: 'write',
+      surface: 'web',
+      previousVersion: '1.1.0',
+      changes: [{ kind: 'step-reworded', step: 2, breaking: false }],
+      compatibility: 'compatible',
+    }),
+    historyEntry({
+      version: '1.1.0',
+      current: false,
+      savedAt: '2026-10-29T14:15:00.000Z',
+      previousVersion: '1.0.0',
+      steps: [{ kind: 'sleep' }, { kind: 'await-signal', title: 'Wait for approval' }],
+      changes: [{ kind: 'step-added', step: 2, breaking: false }],
+      compatibility: 'compatible',
+      runs: {
+        count: 1,
+        firstRunAt: '2026-10-30T16:00:00.000Z',
+        lastRunAt: '2026-10-30T16:00:00.000Z',
       },
-    });
+    }),
+    historyEntry({ version: '1.0.0', current: false }),
+  ];
+
+  test('lists every saved version with its number, verdict, change and runs, and counts them', async () => {
+    const { container } = open('/workflows/digest', { history: { digest: HISTORY } });
     const root = await ready(container);
+    await waitFor(() =>
+      expect(
+        [...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim()),
+      ).toContain(WORKFLOW_COPY.page.tabWithCount(TABS.history, 3)),
+    );
     await openTab(root, TABS.history);
-    await waitFor(() => expect(root.querySelectorAll('[data-version]').length).toBe(2));
+    await waitFor(() => expect(root.querySelectorAll('[data-version]').length).toBe(3));
 
     const rows = [...root.querySelectorAll<HTMLElement>('[data-version]')];
-    // A version is named by the day it first ran and a short hash, with the full one in a copy control.
-    expect(rows[0]?.querySelector('[data-testid="workflow-revision-title"]')?.textContent).toMatch(
-      /^\s*(Mon, )?Oct 19, .*, version version-, (current|older) version/,
+    const title = (row: HTMLElement | undefined) =>
+      row?.querySelector('[data-testid="workflow-revision-title"]')?.textContent;
+    const line = (row: HTMLElement | undefined) =>
+      row?.querySelector('[data-testid="workflow-revision-line"]')?.textContent?.trim();
+    expect(title(rows[0])).toContain(WORKFLOW_COPY.history.versionTitle('1.2.0', true));
+    expect(title(rows[0])).toContain(WORKFLOW_COPY.history.compatible);
+    expect(line(rows[0])).toBe(
+      `Edited in the builder: reworded step 2, ${WORKFLOW_COPY.history.inFlightKeepGoing}`,
     );
-    expect(rows[0]?.querySelector('button')?.getAttribute('aria-label')).toBe(
-      WORKFLOW_COPY.revisions.copyVersion('version-'),
+    expect(title(rows[1])).toContain(WORKFLOW_COPY.history.versionTitle('1.1.0', false));
+    expect(line(rows[1])).toBe(
+      'Added step 2 (Wait for approval), run on this version: 1 (Fri, Oct 30)',
     );
-    // The verdict and the last run read as one sentence: the comma keeps its space.
-    expect(
-      rows[0]?.querySelector('[data-testid="workflow-revision-verdict"]')?.textContent,
-    ).toMatch(/, last run /);
-    expect(rows[0]?.textContent).toContain(WORKFLOW_COPY.revisions.compatible);
-    expect(rows[0]?.querySelector('[data-testid="workflow-revision-reasons"]')).toBeNull();
-    expect(rows[1]?.textContent).toContain(WORKFLOW_COPY.revisions.incompatible);
-    const reasons = [
-      ...(rows[1]?.querySelectorAll('[data-testid="workflow-revision-reasons"] li') ?? []),
-    ].map((reason) => reason.textContent);
-    expect(reasons).toEqual([
-      WORKFLOW_COPY.revisions.reason('workflow-version-incompatible'),
-      WORKFLOW_COPY.revisions.reason('artifact-revision-mismatch'),
-    ]);
+    // The first version has nothing before it, so it carries no verdict.
+    expect(rows[2]?.querySelector('[data-testid="workflow-revision-verdict"]')).toBeNull();
+    expect(testId(root, 'workflow-revisions-footnote')?.textContent?.trim()).toBe(
+      WORKFLOW_COPY.history.footnote,
+    );
+    expect(stub?.callsTo('bureau.workflows.revisions')).toEqual([]);
   });
 
-  test('says there is no current revision to compare with when the Bureau gives no verdict', async () => {
-    const { container } = open('/workflows/digest', {
-      revisions: { digest: [revision('version-gone', null)] },
-    });
+  test('is an empty state when no version is saved', async () => {
+    const { container } = open('/workflows/digest', { history: { digest: [] } });
     const root = await ready(container);
     await openTab(root, TABS.history);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
-        WORKFLOW_COPY.revisions.noCurrent,
-      ),
-    );
-  });
-
-  test('names a reason it does not know rather than hiding it', () => {
-    expect(WORKFLOW_COPY.revisions.reason('from-the-future')).toBe(
-      'Unknown reason: from-the-future',
-    );
-  });
-
-  test('is an empty state when no version has run', async () => {
-    const { container } = open('/workflows/digest', { revisions: { digest: [] } });
-    const root = await ready(container);
-    await openTab(root, TABS.history);
-    await waitFor(() =>
-      expect(testId(root, 'workflow-revisions')?.textContent).toContain(
-        WORKFLOW_COPY.revisions.emptyTitle,
+        WORKFLOW_COPY.history.emptyTitle,
       ),
     );
     expect(testId(root, 'workflow-revisions')?.querySelector('.cinder-empty-state')).not.toBeNull();
@@ -483,9 +474,9 @@ describe('a part of the tabs that fails', () => {
   });
 
   test('reads the history again on retry', async () => {
-    const { container } = open('/workflows/digest', { revisions: { digest: [] } });
+    const { container } = open('/workflows/digest', { history: { digest: [] } });
     let reads = 0;
-    stub?.on('bureau.workflows.revisions', () => {
+    stub?.on('bureau.workflows.history', () => {
       reads += 1;
       // The page reads the versions when it loads, for the History count, and the tab, which asks
       // for the same list, reads again as it opens: both fail, and the retry is the third read.
@@ -498,7 +489,7 @@ describe('a part of the tabs that fails', () => {
     await fireEvent.click(retry(root) as HTMLElement);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
-        WORKFLOW_COPY.revisions.emptyTitle,
+        WORKFLOW_COPY.history.emptyTitle,
       ),
     );
   });

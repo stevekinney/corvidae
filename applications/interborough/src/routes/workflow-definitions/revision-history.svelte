@@ -1,65 +1,59 @@
 <script lang="ts">
   /**
-   * The versions of an agent-authored workflow that have run, most recently run first
-   * (`bureau.workflows.revisions`). It is the Bureau's list and not the engine's: a version that
-   * was saved and never ran is not on it, and nothing here activates a version, because the file
-   * is what runs next. Each version is named, says whether it is the current one, and carries
-   * Weft's verdict on whether it is compatible with the current one (a neutral dot and the word,
-   * because amber is for what waits on you) and the reasons when it is breaking. A footnote under
-   * the list says what compatibility means.
+   * The History tab of an agent-authored workflow (board PageWorkflow, "History tab", rows 62o and
+   * 62p): every saved version, newest first, from `bureau.workflows.history`, run or not. Each is
+   * named by its number and whether the file holds it now ("Version 1.3.0, current version"), with
+   * its compatibility verdict as a neutral dot and word (amber is kept for what waits on you), what
+   * changed from the version before and what it meant for the runs ("Run on this version: 1 (Fri,
+   * Oct 30)"), and when it was saved. Nothing here activates a version: the file is what runs next.
+   * A footnote under the list says what compatibility means.
    */
-  import { Alert, Button, CopyButton, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
+  import { Alert, Button, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
-  import { dayAndTime } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { CATALOG_STALE_TIME_MS } from '../../lib/workflow-catalog.ts';
-  import { listWorkflowRevisions } from '../../lib/workflow-files.ts';
+  import { listWorkflowHistory } from '../../lib/workflow-files.ts';
+  import { historyRows } from './workflow-history.ts';
 
   interface Props {
     /** The workflow's identifier, which is its file's. */
     id: string;
-    /** The version the file is at now, or `null` when the Bureau does not say. */
-    currentVersion: string | null;
   }
 
-  let { id, currentVersion }: Props = $props();
+  let { id }: Props = $props();
 
-  const copy = WORKFLOW_COPY.revisions;
+  const copy = WORKFLOW_COPY.history;
 
-  /** The hash a person can tell versions apart by: a `sha256:` prefix is dropped and the rest cut short. */
-  function shortVersionOf(version: string): string {
-    const bare = version.replace(/^sha256:/, '');
-    return bare.length > 12 ? bare.slice(0, 8) : bare;
-  }
-
-  const revisions = createQuery(
+  const history = createQuery(
     () => ({
-      queryKey: queryKeys.workflowCatalog.revisions(id),
-      queryFn: ({ signal }) => listWorkflowRevisions(id, { signal }),
+      queryKey: queryKeys.workflowCatalog.history(id),
+      queryFn: ({ signal }) => listWorkflowHistory(id, { signal }),
       // The page already read this list for the tab's count, so mounting the tab does not ask again.
       staleTime: CATALOG_STALE_TIME_MS,
       retry: false,
     }),
     undefined,
   );
+
+  const rows = $derived(historyRows(history.data ?? []));
 </script>
 
 <section class="weft-workflow-revisions" data-testid="workflow-revisions" aria-label={copy.heading}>
-  {#if revisions.isError}
+  {#if history.isError}
     <Alert variant="danger">
       <p class="weft-workflow-revisions__failure">{copy.failed}</p>
-      <Button variant="secondary" size="sm" onclick={() => void revisions.refetch()}
+      <Button variant="secondary" size="sm" onclick={() => void history.refetch()}
         >{RETRY_LABEL}</Button
       >
     </Alert>
-  {:else if revisions.isPending}
+  {:else if history.isPending}
     <div role="status" aria-busy="true" aria-label={copy.heading}>
       <Skeleton height="2rem" />
     </div>
-  {:else if revisions.data.length === 0}
+  {:else if rows.length === 0}
     <EmptyState
       kind="first-use"
       size="compact"
@@ -69,37 +63,25 @@
     />
   {:else}
     <ul class="weft-workflow-revisions__list" aria-label={copy.caption}>
-      {#each revisions.data as revision (revision.workflowVersion)}
-        {@const shortVersion = shortVersionOf(revision.workflowVersion)}
-        <li class="weft-workflow-revisions__row" data-version={revision.workflowVersion}>
-          <p class="weft-workflow-revisions__version" data-testid="workflow-revision-title">
-            <span title={revision.workflowVersion}
-              >{copy.versionTitle(
-                dayAndTime(Date.parse(revision.firstRunAt), Date.now()),
-                shortVersion,
-                revision.workflowVersion === currentVersion,
-              )}</span
-            >
-            <CopyButton value={revision.workflowVersion} label={copy.copyVersion(shortVersion)} />
-          </p>
-          <p class="weft-workflow-revisions__line" data-testid="workflow-revision-verdict">
-            {#if revision.compatibility === null}
-              <StatusDot status="neutral" label={copy.noCurrent} />
-            {:else if revision.compatibility.compatible}
-              <StatusDot status="neutral" label={copy.compatible} />
-            {:else}
-              <StatusDot status="neutral" label={copy.incompatible} />
-            {/if}{', '}<time datetime={revision.lastRunAt}
-              >{copy.lastRun(dayAndTime(Date.parse(revision.lastRunAt), Date.now()))}</time
-            >
-          </p>
-          {#if revision.compatibility?.compatible === false}
-            <ul class="weft-workflow-revisions__reasons" data-testid="workflow-revision-reasons">
-              {#each revision.compatibility.reasons as reason (reason)}
-                <li>{copy.reason(reason)}</li>
-              {/each}
-            </ul>
-          {/if}
+      {#each rows as row (row.version)}
+        <li class="weft-workflow-revisions__row" data-version={row.version}>
+          <div class="weft-workflow-revisions__main">
+            <p class="weft-workflow-revisions__version" data-testid="workflow-revision-title">
+              {#if row.verdict !== null}
+                <span
+                  class="weft-workflow-revisions__verdict"
+                  data-testid="workflow-revision-verdict"
+                  ><StatusDot status="neutral" label={row.verdict} size="sm" /></span
+                >
+              {/if}
+              <span>{row.title}</span>
+            </p>
+            <p class="weft-workflow-revisions__line" data-testid="workflow-revision-line">
+              {row.line}
+            </p>
+          </div>
+          <time class="weft-workflow-revisions__saved" datetime={row.savedAtIso}>{row.savedAt}</time
+          >
         </li>
       {/each}
     </ul>
@@ -129,10 +111,13 @@
     list-style: none;
   }
 
+  /* A flat row: the version and what changed at the start, when it was saved at the inline end. */
   .weft-workflow-revisions__row {
     display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cinder-space-1) var(--cinder-space-4);
     padding-block: var(--cinder-space-3);
     border-block-end: 1px solid var(--cinder-border-faint);
   }
@@ -141,26 +126,41 @@
     border-block-end: 0;
   }
 
+  .weft-workflow-revisions__main {
+    display: flex;
+    flex: 1 1 20rem;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-width: 0;
+  }
+
   .weft-workflow-revisions__version {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
     min-width: 0;
     margin: 0;
     font-weight: 600;
     overflow-wrap: anywhere;
   }
 
-  /* Prose, not a flex row: a flex item drops the space that follows the comma after the verdict. */
+  .weft-workflow-revisions__verdict {
+    font-weight: 400;
+  }
+
   .weft-workflow-revisions__line {
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+    overflow-wrap: anywhere;
   }
 
-  .weft-workflow-revisions__reasons {
-    margin: 0;
-    padding-inline-start: var(--cinder-space-5);
-    color: var(--cinder-text-secondary);
+  .weft-workflow-revisions__saved {
+    color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .weft-workflow-revisions__footnote {

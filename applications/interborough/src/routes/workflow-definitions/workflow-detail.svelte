@@ -5,8 +5,8 @@
    * what it is for, what starts it, when it last ran and how that ended, and its file and schedule.
    * Overview leads with its steps (for a file) and its input and output. Code is the file's source,
    * or, for a type code defined, the description and contract it registered. Runs is its newest
-   * runs and a link to all of them, with their number after the label. History is the versions that
-   * have run, each with whether it is compatible with the current one; a type the Bureau registers
+   * runs and a link to all of them, with their number after the label. History is every saved
+   * version, each with whether it is compatible with the one before it; a type the Bureau registers
    * for itself has neither Code nor History, and says so on its Overview. The header holds start
    * run, which opens the run setup page and which every type but the Bureau's own has, or Resume in
    * its place for a paused file; Edit, which only a file has; and a "⋯" menu (board PageWorkflow,
@@ -75,7 +75,7 @@
     getLatestSavedSteps,
     isApplyFailure,
     listWorkflowFileRuns,
-    listWorkflowRevisions,
+    listWorkflowHistory,
     parseWorkflowText,
     pauseWorkflowFile,
     resumeWorkflowFile,
@@ -181,6 +181,8 @@
                     id: newest.id,
                     status: newest.status,
                     createdAt: Date.parse(newest.createdAt),
+                    step: newest.steps?.at ?? null,
+                    awaitingSignal: newest.awaitingSignal ?? null,
                   },
           };
         }
@@ -200,12 +202,13 @@
     undefined,
   );
 
-  // The versions that have run, for the History tab's count. The tab reads the same key, and a
-  // fresh read is not asked for again when the tab mounts, so the list is asked for once.
-  const revisions = createQuery(
+  // Every saved version, run or not, for the History tab's count ("History 4", row 62v). The tab
+  // reads the same key, and a fresh read is not asked for again when the tab mounts, so the list is
+  // asked for once.
+  const history = createQuery(
     () => ({
-      queryKey: queryKeys.workflowCatalog.revisions(type),
-      queryFn: ({ signal }) => listWorkflowRevisions(type, { signal }),
+      queryKey: queryKeys.workflowCatalog.history(type),
+      queryFn: ({ signal }) => listWorkflowHistory(type, { signal }),
       staleTime: CATALOG_STALE_TIME_MS,
       enabled: resolution.data?.kind === 'agent-authored',
       retry: false,
@@ -547,7 +550,7 @@
   // ran, which is the last the Bureau could read), or the schedules the engine has for a code type.
   const starts = $derived.by(() => {
     if (file === undefined) return schedulesSummary(schedules.data ?? null);
-    const trigger = document?.trigger ?? revisions.data?.[0]?.document.trigger ?? null;
+    const trigger = document?.trigger ?? history.data?.[0]?.trigger ?? null;
     // A trigger a plugin contributes says what starts it in its kind's own description.
     return triggerSummary(trigger) ?? pluginTriggerSummary(trigger, pluginKinds.data?.triggers);
   });
@@ -628,6 +631,15 @@
     const named = fileSchedule ? document?.trigger['name'] : undefined;
     return typeof named === 'string' ? named : undefined;
   });
+  /** The name a person reads for each schedule that starts the workflow, which a run's row names. */
+  const scheduleNames = $derived(
+    new Map(
+      (schedules.data ?? []).map((schedule) => [
+        schedule.id,
+        scheduleName ?? schedule.description ?? schedule.id,
+      ]),
+    ),
+  );
   const headerSchedules = $derived<HeaderSchedule[]>(
     (schedules.data ?? []).map((schedule) => ({
       label: scheduleName ?? schedule.description ?? schedule.id,
@@ -685,11 +697,7 @@
   function tabName(tab: TabValue): string {
     const label = copy.page.tabs[tab];
     const count =
-      tab === 'runs'
-        ? headline.data?.total
-        : tab === 'history'
-          ? revisions.data?.length
-          : undefined;
+      tab === 'runs' ? headline.data?.total : tab === 'history' ? history.data?.length : undefined;
     return count === undefined ? label : copy.page.tabWithCount(label, count);
   }
 
@@ -954,6 +962,7 @@
             agentName={file?.agent ?? null}
             {canStart}
             paused={file?.paused === true}
+            {scheduleNames}
           />
         </Tabs.Panel>
         {#if tabs.includes('history')}
@@ -961,7 +970,7 @@
             {#if resolved.kind === 'code'}
               <WorkflowRevisionsPanel workflowName={type} />
             {:else}
-              <RevisionHistory id={type} currentVersion={file?.version ?? null} />
+              <RevisionHistory id={type} />
             {/if}
           </Tabs.Panel>
         {/if}

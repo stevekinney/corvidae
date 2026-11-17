@@ -294,6 +294,58 @@ export async function getLatestSavedSteps(
   return revisions[0]?.steps;
 }
 
+/** One change between two saved versions, as `bureau.workflows.history` lists it. */
+const historyChangeSchema = z.looseObject({
+  kind: z.string(),
+  /** The step it touches, from one, for a change to one step. */
+  step: z.number().optional(),
+  breaking: z.boolean(),
+});
+
+/**
+ * Every saved version of a workflow (`bureau.workflows.history`), newest first: its number, when
+ * and how it was saved, what changed from the version before, whether a run started on that one
+ * can carry on under it, and the runs started while it was the newest. Exported so a capture's
+ * stubbed answer is checked against the schema the page parses it with.
+ */
+export const workflowHistorySchema = z.object({
+  revisions: z.array(
+    z.object({
+      version: z.string(),
+      current: z.boolean(),
+      savedAt: z.string(),
+      workflowVersion: z.string(),
+      origin: z.enum(['write', 'file']),
+      surface: z.enum(['web', 'palette', 'api']).nullable(),
+      title: z.string().nullable(),
+      trigger: z.record(z.string(), z.unknown()),
+      steps: z.array(z.record(z.string(), z.unknown())),
+      previousVersion: z.string().nullable(),
+      changes: z.array(historyChangeSchema),
+      compatibility: z.enum(['compatible', 'breaking']).nullable(),
+      runs: z
+        .object({
+          count: z.number(),
+          firstRunAt: z.string().nullable(),
+          lastRunAt: z.string().nullable(),
+        })
+        .nullable(),
+    }),
+  ),
+});
+
+/** One saved version of a workflow, as the History tab reads it. */
+export type WorkflowHistoryEntry = z.infer<typeof workflowHistorySchema>['revisions'][number];
+
+/** Every saved version of a workflow, newest first, run or not (COR-2431, rows 62o and 62v). */
+export async function listWorkflowHistory(
+  id: string,
+  options?: Options,
+): Promise<readonly WorkflowHistoryEntry[]> {
+  return workflowHistorySchema.parse(await callBureau('bureau.workflows.history', { id }, options))
+    .revisions;
+}
+
 const versionLabelsSchema = z.object({
   revisions: z.array(
     z.object({
@@ -415,15 +467,35 @@ const runSummarySchema = z.object({
     ])
     .nullable()
     .default(null),
+  /**
+   * COR-2431: how many steps the version the instance runs has and the one it is at, failed at, or
+   * finished on (from one); the signal it waits for; and why it failed. A Bureau before them says
+   * none, which reads as `null`.
+   */
+  steps: z.object({ total: z.number(), at: z.number().nullable() }).nullable().default(null),
+  awaitingSignal: z.string().nullable().default(null),
+  failure: z.string().nullable().default(null),
 });
 
 /** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
 type ParsedWorkflowFileRun = z.infer<typeof runSummarySchema>;
 /** One workflow-file run summary returned by the Bureau list operation. */
-export type WorkflowFileRun = Omit<ParsedWorkflowFileRun, 'origin'> & {
-  /** Older fixtures and Bureau versions omit this field; the decoder defaults it to `null`. */
+export type WorkflowFileRun = Omit<
+  ParsedWorkflowFileRun,
+  'origin' | 'steps' | 'awaitingSignal' | 'failure'
+> & {
+  /** Older fixtures and Bureau versions omit these fields; the decoder defaults them to `null`. */
   readonly origin?: ParsedWorkflowFileRun['origin'];
+  readonly steps?: ParsedWorkflowFileRun['steps'];
+  readonly awaitingSignal?: ParsedWorkflowFileRun['awaitingSignal'];
+  readonly failure?: ParsedWorkflowFileRun['failure'];
 };
+
+/**
+ * One page of `bureau.workflows.runs.list` as the client reads it, exported so a capture's stubbed
+ * answer is checked against the schema the page parses it with.
+ */
+export const workflowFileRunsPageSchema = z.object({ runs: z.array(runSummarySchema) });
 
 const runDetailSchema = runSummarySchema.extend({
   trigger: z.unknown(),
@@ -438,8 +510,14 @@ const runDetailSchema = runSummarySchema.extend({
 /** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
 type ParsedWorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
 /** One workflow-file run detail returned by the Bureau get operation. */
-export type WorkflowFileRunDetail = Omit<ParsedWorkflowFileRunDetail, 'origin'> & {
+export type WorkflowFileRunDetail = Omit<
+  ParsedWorkflowFileRunDetail,
+  'origin' | 'steps' | 'awaitingSignal' | 'failure'
+> & {
   readonly origin?: ParsedWorkflowFileRunDetail['origin'];
+  readonly steps?: ParsedWorkflowFileRunDetail['steps'];
+  readonly awaitingSignal?: ParsedWorkflowFileRunDetail['awaitingSignal'];
+  readonly failure?: ParsedWorkflowFileRunDetail['failure'];
 };
 
 /**
@@ -518,9 +596,9 @@ export async function listWorkflowFileRuns(
   limit: number,
   options?: Options,
 ): Promise<readonly WorkflowFileRun[]> {
-  const page = z
-    .object({ runs: z.array(runSummarySchema) })
-    .parse(await callBureau('bureau.workflows.runs.list', { workflow: id, limit }, options));
+  const page = workflowFileRunsPageSchema.parse(
+    await callBureau('bureau.workflows.runs.list', { workflow: id, limit }, options),
+  );
   return page.runs;
 }
 

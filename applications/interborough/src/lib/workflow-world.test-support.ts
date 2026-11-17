@@ -19,7 +19,7 @@ import {
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
-import type { SignalResult } from './workflow-files.ts';
+import type { SignalResult, WorkflowHistoryEntry } from './workflow-files.ts';
 
 export type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
@@ -115,6 +115,29 @@ export type RunFixture = {
   updatedAt: number;
   origin?: Record<string, unknown> | null;
 };
+
+/** One saved version as `bureau.workflows.history` lists it (COR-2431). */
+export type HistoryFixture = WorkflowHistoryEntry;
+
+/** A saved version of `digest` with the fields a test does not name filled in. */
+export function historyEntry(overrides: Partial<HistoryFixture> = {}): HistoryFixture {
+  return {
+    version: '1.0.0',
+    current: true,
+    savedAt: '2026-10-19T08:00:00.000Z',
+    workflowVersion: 'version-1',
+    origin: 'write',
+    surface: null,
+    title: null,
+    trigger: { kind: 'schedule', spec: '0 6 * * *' },
+    steps: [],
+    previousVersion: null,
+    changes: [],
+    compatibility: null,
+    runs: { count: 0, firstRunAt: null, lastRunAt: null },
+    ...overrides,
+  };
+}
 
 export type RevisionFixture = {
   workflowVersion: string;
@@ -400,6 +423,12 @@ export type World = {
   >;
   /** The steps of the newest saved version of a workflow's file, by identifier, as `bureau.workflows.history` lists them. */
   savedSteps: Record<string, Array<Record<string, unknown>>>;
+  /**
+   * Every saved version of a workflow, by identifier, as `bureau.workflows.history` lists them
+   * (COR-2431). A workflow not here answers its `savedSteps` as one version, a file with none
+   * answers no version, and anything else is not found.
+   */
+  history: Record<string, HistoryFixture[]>;
   /** The model each code agent names, by identifier (`provider/model`), or `null` for a scripted one. */
   agentModels: Record<string, string | null>;
   /**
@@ -447,6 +476,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     attention: [],
     scheduleBlockers: {},
     savedSteps: {},
+    history: {},
     agentModels: {},
     impacts: {},
     maxConcurrentRuns: null,
@@ -580,9 +610,13 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       checks: [],
     }),
     'bureau.workflows.history': (params) => {
-      const steps = world.savedSteps[String(params['id'])];
-      if (steps === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
-      return { revisions: [{ current: false, steps }] };
+      const id = String(params['id']);
+      const history = world.history[id];
+      if (history !== undefined) return { revisions: history };
+      const steps = world.savedSteps[id];
+      if (steps !== undefined) return { revisions: [historyEntry({ current: false, steps })] };
+      if (find(id) !== undefined) return { revisions: [] };
+      throw workflowFaults.notFound(`workflow ${id}`);
     },
     'bureau.agents.definitions.get': (params) => {
       const id = String(params['id']);

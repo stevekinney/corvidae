@@ -97,6 +97,38 @@ describe('the last run of a workflow', () => {
     ]);
   });
 
+  test('COR-2431: a failed run says the step it stopped at after its word (row 62c)', () => {
+    const line = lastRunLine({
+      lastRun: { ...failed, step: 2 },
+      fileName: 'release-notes.json',
+      runHref: (id) => `/runs/${id}`,
+      now: NOW,
+      zone: ZONE,
+    });
+    expect(line?.parts[1]).toEqual([{ text: '', word: 'Failed', qualifier: 'at step 2' }]);
+  });
+
+  test('COR-2431: a run from today parked at a signal says today and names the signal (row 63n)', () => {
+    const line = lastRunLine({
+      lastRun: {
+        id: 'run-2',
+        status: 'suspended',
+        createdAt: Date.parse('2026-11-02T10:05:00-06:00'),
+        step: 4,
+        awaitingSignal: 'notes-approved',
+      },
+      fileName: 'release-notes.json',
+      runHref: (id) => `/runs/${id}`,
+      now: NOW,
+      zone: ZONE,
+    });
+    expect(line?.parts).toEqual([
+      [{ text: 'Last run ' }, { text: 'today, 10:05 AM', href: '/runs/run-2' }],
+      [{ text: 'Waiting for the signal ' }, { text: 'notes-approved', code: true }],
+      [{ text: 'file ' }, { text: 'release-notes.json', code: true }],
+    ]);
+  });
+
   test('says Never run only once the engine says there is no run, and nothing while it has not said', () => {
     const never = lastRunLine({
       lastRun: null,
