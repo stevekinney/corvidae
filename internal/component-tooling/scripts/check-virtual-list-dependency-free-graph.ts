@@ -15,7 +15,7 @@ import { isComponentExample } from './component-source-filter.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
+const packageRoot = resolve(scriptDirectory, '../../../components/core');
 const packageJsonPath = join(packageRoot, 'package.json');
 const virtualListRoot = join(packageRoot, 'src', 'components', 'virtual-list');
 const fixedVirtualWindowFile = join(packageRoot, 'src', 'utilities', 'fixed-virtual-window.ts');
@@ -27,7 +27,7 @@ function isRelativeSpecifier(specifier: string): boolean {
 
 type PackageManifest = { dependencies?: Record<string, string> };
 
-/** Reads `components/cinder/package.json`'s `dependencies` keys. */
+/** Reads `components/core/package.json`'s `dependencies` keys. */
 export async function loadDeclaredDependencyNames(
   manifestPath: string = packageJsonPath,
 ): Promise<Set<string>> {

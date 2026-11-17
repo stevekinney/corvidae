@@ -1,6 +1,6 @@
 # @lostgradient/terminal
 
-`@lostgradient/terminal` is the browser terminal component for Corvidae. It renders terminal sessions with the engine the [terminal contract](../../documentation/terminal/contract.md) selected, `@xterm/xterm`, composed with [Cinder](../cinder/README.md) components. Its entry exports the [`Terminal` component](./src/lib/components/terminal/README.md), the engine identity and the WebSocket client described below; the session controller arrives in a later issue.
+`@lostgradient/terminal` is the browser terminal component for Corvidae. It renders terminal sessions with the engine the [terminal contract](../../documentation/terminal/contract.md) selected, `@xterm/xterm`, composed with [Cinder](../core/README.md) components. Its entry exports the [`Terminal` component](./src/lib/components/terminal/README.md), the engine identity and the WebSocket client described below; the session controller arrives in a later issue.
 
 ## Workspace usage
 

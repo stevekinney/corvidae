@@ -29,7 +29,7 @@
  * The audit prose claimed to enumerate these twice and was wrong twice. Both
  * misses were the same mistake -- a sweep narrow enough to only find sites
  * shaped like the ones already found. The first looked for
- * `background: var(--cinder-border*)` in `components/cinder`, and missed
+ * `background: var(--cinder-border*)` in `components/core`, and missed
  * `background-image` gradients, `color:`, inset `box-shadow`, and the
  * component-token alias hop. The second widened the properties but stayed in
  * one package, and missed the `.svelte` `<style>` blocks in Chat, Editor, and
@@ -149,17 +149,17 @@ type Classification = {
 export const REPOSITORY_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
 
 /**
- * Every place cinder styles are authored. `components/cinder/src/styles`
+ * Every place cinder styles are authored. `components/core/src/styles`
  * carries the shared partials; the sibling workspaces render with the same
  * tokens, so a tier used as a fill there changed rendering just as much.
  */
 const SCAN_ROOTS = [
-  ['components/cinder/src/components', 'components/cinder/src/components'],
-  ['components/cinder/src/styles', 'components/cinder/src/styles'],
+  ['components/core/src/components', 'components/core/src/components'],
+  ['components/core/src/styles', 'components/core/src/styles'],
   ['components/chat/src', 'components/chat/src'],
   ['components/editor/src', 'components/editor/src'],
-  ['packages/components/src/components', 'components/cinder/src/components'],
-  ['packages/components/src/styles', 'components/cinder/src/styles'],
+  ['packages/components/src/components', 'components/core/src/components'],
+  ['packages/components/src/styles', 'components/core/src/styles'],
   ['packages/chat/src', 'components/chat/src'],
   ['packages/editor/src', 'components/editor/src'],
   // The packages the split moved Cinder's components and partials into (P-COR-101). The split
@@ -220,14 +220,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/chat/src/lib/components/chat/artifact/artifact-panel.svelte': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/components/button-group/button-group.css': [
+  'components/core/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border-strong);', category: 'hairline' },
   ],
-  'components/cinder/src/components/matrix-chart/matrix-chart.css': [
+  'components/core/src/components/matrix-chart/matrix-chart.css': [
     // The 1px outline of a matrix cell with no value, drawn over the page canvas.
     { declaration: 'stroke: var(--cinder-border);', category: 'hairline' },
   ],
-  'components/cinder/src/components/spinner/spinner.css': [
+  'components/core/src/components/spinner/spinner.css': [
     {
       declaration: 'stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));',
       category: 'area',
@@ -243,49 +243,49 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       occurrences: 2,
     },
   ],
-  'components/cinder/src/components/chip/chip.css': [
+  'components/core/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
   ],
-  'components/cinder/src/components/color-field/color-field.css': [
+  'components/core/src/components/color-field/color-field.css': [
     { declaration: 'var(--cinder-border) 45%,', category: 'area', audit: 'color-field' },
     { declaration: 'var(--cinder-border) 55%,', category: 'area', audit: 'color-field' },
   ],
-  'components/cinder/src/components/data-grid/data-grid.css': [
+  'components/core/src/components/data-grid/data-grid.css': [
     { declaration: 'inset -1px 0 0 var(--cinder-border),', category: 'hairline' },
     { declaration: 'inset 1px 0 0 var(--cinder-border),', category: 'hairline' },
   ],
-  'components/cinder/src/components/divider/divider.css': [
+  'components/core/src/components/divider/divider.css': [
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },
     { declaration: 'background-color: var(--cinder-border-strong);', category: 'hairline' },
   ],
-  'components/cinder/src/components/command-palette/command-palette.css': [
+  'components/core/src/components/command-palette/command-palette.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'command-palette',
     },
   ],
-  'components/cinder/src/components/inspector-row/inspector-row.css': [
+  'components/core/src/components/inspector-row/inspector-row.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'inspector-row',
     },
   ],
-  'components/cinder/src/components/modal/modal.css': [
+  'components/core/src/components/modal/modal.css': [
     { declaration: 'background: var(--cinder-border-contrast);', category: 'area', audit: 'modal' },
   ],
-  'components/cinder/src/components/drawer/drawer.css': [
+  'components/core/src/components/drawer/drawer.css': [
     {
       declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'drawer',
     },
   ],
-  'components/cinder/src/components/feed-boundary/feed-boundary.css': [
+  'components/core/src/components/feed-boundary/feed-boundary.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/components/feed-event/feed-event.css': [
+  'components/core/src/components/feed-event/feed-event.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
       declaration: 'background: var(--cinder-border-contrast);',
@@ -293,17 +293,17 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'feed-event',
     },
   ],
-  'components/cinder/src/components/kbd/kbd.css': [
+  'components/core/src/components/kbd/kbd.css': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/components/_internal/media-controls.css': [
+  'components/core/src/components/_internal/media-controls.css': [
     {
       declaration: 'background-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'media-controls',
     },
   ],
-  'components/cinder/src/components/mega-menu/mega-menu.css': [
+  'components/core/src/components/mega-menu/mega-menu.css': [
     // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.contrast`.
     {
       declaration: 'background: var(--cinder-border-contrast);',
@@ -311,7 +311,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'mega-menu',
     },
   ],
-  'components/cinder/src/components/parameter-field/parameter-field.css': [
+  'components/core/src/components/parameter-field/parameter-field.css': [
     // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.contrast`.
     {
       declaration: 'background: var(--cinder-border-contrast);',
@@ -319,21 +319,21 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'parameter-field',
     },
   ],
-  'components/cinder/src/components/rating/rating.css': [
+  'components/core/src/components/rating/rating.css': [
     {
       declaration: '--_cinder-rating-empty: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'rating',
     },
   ],
-  'components/cinder/src/components/resizable-panels/resizable-panels.css': [
+  'components/core/src/components/resizable-panels/resizable-panels.css': [
     {
       declaration: 'color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'resizable-panels',
     },
   ],
-  'components/cinder/src/components/run-step-timeline/run-step-timeline.css': [
+  'components/core/src/components/run-step-timeline/run-step-timeline.css': [
     // The item's connector and the rail-through segment past a nested row: both 1px wide.
     {
       declaration: 'background: var(--cinder-border-muted);',
@@ -346,14 +346,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'run-step-timeline',
     },
   ],
-  'components/cinder/src/components/attempts-indicator/attempts-indicator.css': [
+  'components/core/src/components/attempts-indicator/attempts-indicator.css': [
     {
       declaration: '--_cinder-attempts-indicator-fill: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'attempts-indicator',
     },
   ],
-  'components/cinder/src/components/connection-indicator/connection-indicator.css': [
+  'components/core/src/components/connection-indicator/connection-indicator.css': [
     {
       declaration: '--_cinder-connection-indicator-dot-color: var(--cinder-border-contrast);',
       category: 'area',
@@ -362,41 +362,41 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   // COR-2312: the selected and pressed segment's 1px ring, drawn as an inset shadow so the
   // segment keeps its size. It sits directly on the raised pill, so it composites once.
-  'components/cinder/src/components/segmented-control/segmented-control.css': [
+  'components/core/src/components/segmented-control/segmented-control.css': [
     {
       declaration: 'inset 0 0 0 1px var(--cinder-border-contrast);',
       category: 'hairline',
       occurrences: 2,
     },
   ],
-  'components/cinder/src/components/slider/slider.css': [
+  'components/core/src/components/slider/slider.css': [
     {
       declaration: 'background: var(--cinder-border-contrast, currentColor);',
       category: 'area',
       audit: 'slider',
     },
   ],
-  'components/cinder/src/components/statistic-group/statistic-group.css': [
+  'components/core/src/components/statistic-group/statistic-group.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'occlusion' },
   ],
-  'components/cinder/src/components/status-dot/status-dot.css': [
+  'components/core/src/components/status-dot/status-dot.css': [
     {
       declaration: '--cinder-status-dot-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'status-dot',
     },
   ],
-  'components/cinder/src/components/steps/steps.css': [
+  'components/core/src/components/steps/steps.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
       declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',
       category: 'hairline',
     },
   ],
-  'components/cinder/src/components/timeline/timeline.css': [
+  'components/core/src/components/timeline/timeline.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/styles/components/_row-item.css': [
+  'components/core/src/styles/components/_row-item.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
   'components/editor/src/lib/components/markdown-editor/editor-toolbar/toolbar-separator.svelte': [

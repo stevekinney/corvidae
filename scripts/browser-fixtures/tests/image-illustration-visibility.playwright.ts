@@ -15,7 +15,7 @@ import { PNG } from 'pngjs';
 type Rgb = { r: number; g: number; b: number };
 
 const authoredExampleUrl = new URL(
-  '../../../components/cinder/src/components/image/examples/basic.example.svelte',
+  '../../../components/core/src/components/image/examples/basic.example.svelte',
   import.meta.url,
 );
 const themes: Theme[] = ['light', 'dark'];

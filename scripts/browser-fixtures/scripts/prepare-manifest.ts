@@ -14,7 +14,7 @@ const componentsDirectory = resolve(repositoryRoot, 'components');
 const chatComponentsRoot = resolve(componentsDirectory, 'chat', 'src', 'lib', 'components');
 
 /** Core's manifest, which lists every Cinder component and where its source lives (COR-2085). */
-export const CORE_MANIFEST = 'components/cinder/.metadata/components.json';
+export const CORE_MANIFEST = 'components/core/.metadata/components.json';
 
 type CoreManifest = {
   components?: { source?: { packageRoot?: unknown; directory?: unknown } }[];

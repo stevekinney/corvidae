@@ -228,7 +228,7 @@ describe('newestSourceMtimeMs', () => {
       expect(() =>
         newestSourceMtimeMs(REPOSITORY_ROOT, {
           statFile: (path) => {
-            if (path.endsWith('components/cinder/package.json')) throw statFailure(code, path);
+            if (path.endsWith('components/core/package.json')) throw statFailure(code, path);
             return statSync(path);
           },
         }),
@@ -239,7 +239,7 @@ describe('newestSourceMtimeMs', () => {
   test('still skips an input file that is absent, as in a branch being assembled', () => {
     const withoutManifest = newestSourceMtimeMs(REPOSITORY_ROOT, {
       statFile: (path) => {
-        if (path.endsWith('components/cinder/package.json')) throw statFailure('ENOENT', path);
+        if (path.endsWith('components/core/package.json')) throw statFailure('ENOENT', path);
         return statSync(path);
       },
     });
@@ -260,7 +260,7 @@ describe('newestSourceMtimeMs', () => {
   });
 
   test('includes package manifests that control discovery and bundling', () => {
-    expect(FINGERPRINT_SOURCE_FILES).toContain('components/cinder/.metadata/components.json');
+    expect(FINGERPRINT_SOURCE_FILES).toContain('components/core/.metadata/components.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/package.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/.metadata/components.json');
   });
@@ -270,7 +270,7 @@ describe('newestSourceMtimeMs', () => {
     // `scripts` trees. An edit to the server/bundler code must move the
     // fingerprint too, or a running server with the old server code loaded
     // looks fresh.
-    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('components/cinder/scripts');
+    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('components/core/scripts');
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('internal/component-tooling/scripts');
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('applications/playground/scripts');
   });
@@ -279,7 +279,7 @@ describe('newestSourceMtimeMs', () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'source-fingerprint-upstream-'));
     try {
       const playgroundSourceDirectory = join(repoRoot, 'applications/playground/src');
-      const componentsSourceDirectory = join(repoRoot, 'components/cinder/src');
+      const componentsSourceDirectory = join(repoRoot, 'components/core/src');
       const markdownSourceDirectory = join(repoRoot, 'packages/markdown/src');
       mkdirSync(playgroundSourceDirectory, { recursive: true });
       mkdirSync(componentsSourceDirectory, { recursive: true });

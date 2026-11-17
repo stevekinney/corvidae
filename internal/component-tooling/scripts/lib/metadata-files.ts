@@ -67,7 +67,7 @@ export function readComponentMetadata<T>(
   return readMetadataFile<T>(componentMetadataPath(packageRoot, id, kind), packageRoot);
 }
 
-const CINDER_PACKAGE_ROOT = join(import.meta.dir, '../../../../components/cinder');
+const CINDER_PACKAGE_ROOT = join(import.meta.dir, '../../../../components/core');
 
 /** A component's generated props schema (cinder's unless `packageRoot` names another package). */
 export function readComponentSchema(

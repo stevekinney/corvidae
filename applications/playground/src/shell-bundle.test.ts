@@ -169,7 +169,7 @@ describe('the shared shell bundle (CIN-588 preservation)', () => {
     const barrelFile = join(PLAYGROUND_ROOT, barrelPath!);
     const starts: string[] = [];
     for (const [path, input] of Object.entries(shell.inputs)) {
-      if (path.endsWith(BARREL_SUFFIX) || path.includes('components/cinder/src/')) continue;
+      if (path.endsWith(BARREL_SUFFIX) || path.includes('components/core/src/')) continue;
       if (!input.imports.some((edge) => edge.original === CINDER_ROOT)) continue;
       for (const name of namedCinderImports(readFileSync(join(PLAYGROUND_ROOT, path), 'utf8'))) {
         const module = resolveExport(barrelFile, name);

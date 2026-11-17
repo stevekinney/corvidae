@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { corePackagePath, cssImportOrder } from './css-import-order.ts';
 import { barrelDirectories, ROOT_EXPORT_ORDER_PATH } from './generate-root-registries.ts';
 
-const packageRoot = join(import.meta.dir, '../../../components/cinder');
+const packageRoot = join(import.meta.dir, '../../../components/core');
 const roots: string[] = [];
 
 afterEach(() => {

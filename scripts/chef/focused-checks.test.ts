@@ -285,7 +285,7 @@ describe('fixture spec advice', () => {
     ['markdown-editor-toolbar.playwright.ts', 'test("toolbar")'],
   ]);
   const cinder = (name: string, file = `${name}.svelte`) =>
-    `components/cinder/src/components/${name}/${file}`;
+    `components/core/src/components/${name}/${file}`;
 
   test('is silent for a change outside Cinder, Chat and Editor source', () => {
     expect(fixtureSpecAdvice(['packages/weft/src/a.ts', 'scripts/a.ts'], specs)).toBeUndefined();
@@ -327,10 +327,7 @@ describe('fixture spec advice', () => {
 
   test('asks for the whole suite when Cinder styles, tokens or shared code change', () => {
     for (const path of ['styles/foundation.css', 'tokens/space.ts', '_internal/frame.svelte']) {
-      const advice = fixtureSpecAdvice(
-        [`components/cinder/src/${path}`, cinder('citation')],
-        specs,
-      );
+      const advice = fixtureSpecAdvice([`components/core/src/${path}`, cinder('citation')], specs);
       expect(advice).toContain(`\`${FIXTURE_SUITE_COMMAND}\``);
       expect(advice).not.toContain(FIXTURE_SPECS_COMMAND);
     }
@@ -588,7 +585,7 @@ describe('runChecks', () => {
 
   test('a component change warns with its fixture specs and runs no browser step', async () => {
     const { runner } = fakeRunner({
-      changed: ['components/cinder/src/components/citation/citation.svelte'],
+      changed: ['components/core/src/components/citation/citation.svelte'],
     });
     const deps = {
       ...dependencies(runner),

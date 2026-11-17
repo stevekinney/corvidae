@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 // Cinder's token sheet, by its path in the repository, which the package split moves with the
 // file into the package that holds it (P-COR-101).
 const TOKEN_SHEET = fileURLToPath(
-  new URL('../../../components/cinder/src/styles/tokens-base.css', import.meta.url),
+  new URL('../../../components/core/src/styles/tokens-base.css', import.meta.url),
 );
 
 const expectedImportedSelectors = [

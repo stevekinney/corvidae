@@ -1,0 +1,364 @@
+/**
+ * Builds Cinder's design system for Claude Design: a publishable `project/` folder holding the
+ * token files, the brand book, a guideline page per component, a live preview card for every
+ * component with playground examples, `components/bundle.css` and `components/bundle.js` (which
+ * exposes every component as `window.Cinder` for a design canvas to mount), `recipe.md`, the
+ * class-level markup for a canvas that writes HTML, and a full-page preview card per page
+ * archetype under the "Page archetypes" group.
+ *
+ * Usage: bun scripts/design-system/build.ts [--out <directory>] [--note <text>]
+ *
+ * The folder lands in `<out>/project/` (default `tmp/cinder-design-system/out/project/`), with
+ * `<out>/publish-batches.json` listing the publishes that upload it. Intermediates go to
+ * `<out>/work/`. The build exits non-zero when any preview fails to build or render.
+ * `components/core/README.md` ("Design system") explains how to republish.
+ */
+
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
+
+import { withHostSlots, withMemoryAdmission } from '../../../../scripts/host-slots.ts';
+import { readArchetypePreviews } from './archetypes.ts';
+import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
+import { buildComponentBundle } from './bundle-build.ts';
+import {
+  componentReadme,
+  livePreviewHtml,
+  type PreviewMeasurement,
+  staticPreviewHtml,
+  type StaticSnapshot,
+} from './components.ts';
+import { buildBundleCss, componentStylesheets } from './css.ts';
+import { type ManifestSource, mergeManifests } from './manifest.ts';
+import {
+  archetypesRoot,
+  assetsRoot,
+  cinderRoot,
+  defaultOutputRoot,
+  playgroundRoot,
+  repositoryRoot,
+} from './paths.ts';
+import {
+  partition,
+  planPreview,
+  type PreviewPlan,
+  SHARD_COUNT,
+  type ShardReport,
+} from './previews.ts';
+import {
+  designSystemIndex,
+  fillBrandBook,
+  planPublishBatches,
+  replacementCharacterPositions,
+} from './publish.ts';
+import { bundleSources, componentsDirectoryOf, readManifestSources } from './sources.ts';
+import { buildTokens, type ResolvedContext } from './tokens.ts';
+
+const { values: options } = parseArgs({
+  args: Bun.argv.slice(2),
+  options: { out: { type: 'string' }, note: { type: 'string' } },
+});
+
+const outputRoot = resolve(options.out ?? defaultOutputRoot);
+const projectDirectory = join(outputRoot, 'project');
+const workDirectory = join(outputRoot, 'work');
+const previewsDirectory = join(workDirectory, 'previews');
+const componentsDirectory = join(projectDirectory, 'components');
+
+function readJson<T>(path: string): T {
+  return JSON.parse(readFileSync(path, 'utf8')) as T;
+}
+
+function git(...args: string[]): string {
+  const result = Bun.spawnSync(['git', ...args], { cwd: repositoryRoot });
+  return result.success ? result.stdout.toString().trim() : '';
+}
+
+function step(message: string): void {
+  console.log(`- ${message}`);
+}
+
+/**
+ * Bundles the previews in parallel shard processes, one per shard, with ids as argv entries. The
+ * shards run at once, so the build holds one host slot per shard while they run
+ * (`scripts/host-slots.ts`), and runs no more shards than the slots it was granted.
+ */
+async function buildPreviews(plans: PreviewPlan[], shardCount: number): Promise<ShardReport> {
+  // The entry modules live in the playground so `svelte` resolves to the same copy the examples
+  // import; a second copy would mount the examples with a runtime they were not compiled for.
+  const entryDirectory = join(playgroundRoot, '.tmp', `design-system-entries-${process.pid}`);
+  rmSync(entryDirectory, { recursive: true, force: true });
+  mkdirSync(entryDirectory, { recursive: true });
+  try {
+    const plansFile = join(workDirectory, 'plans.json');
+    writeFileSync(plansFile, JSON.stringify(plans, null, 2));
+    const shards = partition(
+      plans.map((plan) => plan.id),
+      shardCount,
+    );
+    const shardScript = join(import.meta.dir, 'preview-shard.ts');
+    const outcomes = await Promise.all(
+      shards.map(async (ids, index) => {
+        const reportFile = join(workDirectory, `shard-${index}.json`);
+        const child = Bun.spawn(
+          ['bun', shardScript, plansFile, entryDirectory, previewsDirectory, reportFile, ...ids],
+          // From the playground, as the original generator ran: Svelte records each component's
+          // file name relative to the working directory, so this keeps the bundles byte-stable.
+          { cwd: playgroundRoot, stdout: 'inherit', stderr: 'inherit' },
+        );
+        const exitCode = await child.exited;
+        const report = existsSync(reportFile)
+          ? readJson<ShardReport>(reportFile)
+          : { built: {}, failures: [`shard ${index} exited ${exitCode} without a report`] };
+        if (exitCode !== 0 && report.failures.length === 0) {
+          report.failures.push(`shard ${index} exited ${exitCode}`);
+        }
+        return report;
+      }),
+    );
+    const merged: ShardReport = { built: {}, failures: [] };
+    for (const report of outcomes) {
+      Object.assign(merged.built, report.built);
+      merged.failures.push(...report.failures);
+    }
+    return merged;
+  } finally {
+    rmSync(entryDirectory, { recursive: true, force: true });
+  }
+}
+
+/** Every file under a directory, by path relative to `root`, with its size. */
+function listFiles(directory: string, root: string): Array<{ path: string; bytes: number }> {
+  return readdirSync(directory, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const absolute = join(entry.parentPath, entry.name);
+      return { path: relative(root, absolute), bytes: statSync(absolute).size };
+    });
+}
+
+async function main(): Promise<number> {
+  rmSync(outputRoot, { recursive: true, force: true });
+  mkdirSync(componentsDirectory, { recursive: true });
+  mkdirSync(previewsDirectory, { recursive: true });
+
+  const manifestSources = await readManifestSources();
+  const [cinderSource] = manifestSources;
+  if (cinderSource === undefined) throw new Error('no Cinder manifest');
+  // Cinder's components and the editor's, in that order; each keeps its own folder and module.
+  const { manifest, sources } = mergeManifests(manifestSources);
+  const sourceOf = (id: string): ManifestSource => sources.get(id) ?? cinderSource;
+  const sha = git('rev-parse', '--short=9', 'HEAD');
+  if (!sha) throw new Error('could not read the current commit');
+
+  step('tokens');
+  const tokens = buildTokens({
+    light: readJson<ResolvedContext>(join(cinderRoot, 'src/tokens/resolved/light.json')),
+    dark: readJson<ResolvedContext>(join(cinderRoot, 'src/tokens/resolved/dark.json')),
+    // The tokens are Cinder's, so their component namespaces come from Cinder's manifest alone.
+    manifest: cinderSource.manifest,
+    sha,
+    synced: new Date().toLocaleDateString('sv'),
+  });
+  writeFileSync(join(projectDirectory, 'tokens.json'), JSON.stringify(tokens.document, null, 1));
+  writeFileSync(join(projectDirectory, 'tokens.css'), tokens.css);
+  for (const skipped of tokens.skipped) console.log(`  skipped token ${skipped}`);
+
+  step('bundle.css');
+  // Cinder's `all.css` carries every Cinder component's styles; the other libraries' components
+  // import theirs from script, which a bundled preview drops, so they are inlined after it.
+  const componentStyles = manifestSources
+    .filter((source) => source !== cinderSource)
+    .flatMap((source) =>
+      componentStylesheets(
+        source.componentsDirectory,
+        source.manifest.components.map((component) => component.id),
+      ),
+    );
+  writeFileSync(
+    join(componentsDirectory, 'bundle.css'),
+    buildBundleCss(join(cinderRoot, 'src/styles/all.css'), componentStyles),
+  );
+
+  step('bundle.js');
+  writeFileSync(
+    join(componentsDirectory, 'bundle.js'),
+    await buildComponentBundle(bundleSources(manifestSources), join(workDirectory, 'bundle')),
+  );
+
+  const plans = new Map<string, PreviewPlan>();
+  for (const component of manifest.components) {
+    const plan = planPreview(
+      component.id,
+      componentsDirectoryOf(sourceOf(component.id), component.id),
+    );
+    if (plan) plans.set(component.id, plan);
+  }
+  step(`previews: bundling ${plans.size} in ${SHARD_COUNT} shards`);
+  const built = await withHostSlots(SHARD_COUNT, (slots) =>
+    buildPreviews([...plans.values()], slots.count),
+  );
+  // A preview over the script cap was rebuilt with fewer examples; its card names only those.
+  for (const [id, entry] of Object.entries(built.built)) {
+    const plan = plans.get(id);
+    if (plan) plans.set(id, { ...plan, examples: plan.examples.slice(0, entry.examples) });
+  }
+  const oversized = Object.entries(built.built)
+    .filter(([, entry]) => entry.file === 'preview.full.js')
+    .map(([id]) => id);
+
+  step(`static renditions: ${oversized.length}`);
+  // Each browser phase runs one headless Chromium, so it holds one host slot.
+  const snapshots: Map<string, StaticSnapshot> = await withHostSlots(1, () =>
+    captureStaticSnapshots(previewsDirectory, join(componentsDirectory, 'bundle.css'), oversized),
+  );
+
+  const live: string[] = [];
+  const staticNames: string[] = [];
+  const withoutCard: string[] = [];
+  const writeComponents = (measurements: Map<string, PreviewMeasurement>) => {
+    for (const component of manifest.components) {
+      const name = component.exportName;
+      if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) throw new Error(`bad export name ${name}`);
+      const directory = join(componentsDirectory, name);
+      mkdirSync(directory, { recursive: true });
+      const leaf = join(
+        componentsDirectoryOf(sourceOf(component.id), component.id),
+        component.id,
+        'README.md',
+      );
+      const leafReadme = existsSync(leaf) ? readFileSync(leaf, 'utf8') : undefined;
+      writeFileSync(
+        join(directory, 'README.md'),
+        componentReadme(component, manifest, leafReadme, relative(repositoryRoot, leaf)),
+      );
+      const plan = plans.get(component.id);
+      const script = join(previewsDirectory, component.id, 'preview.js');
+      const snapshot = snapshots.get(component.id);
+      if (plan && existsSync(script)) {
+        copyFileSync(script, join(directory, 'preview.js'));
+        const measurement = measurements.get(`${name}:light`);
+        writeFileSync(
+          join(directory, 'preview.html'),
+          livePreviewHtml(component, manifest, plan, measurement),
+        );
+        live.push(name);
+      } else if (plan && snapshot) {
+        writeFileSync(
+          join(directory, 'preview.html'),
+          staticPreviewHtml(component, manifest, plan, snapshot),
+        );
+        staticNames.push(name);
+      } else {
+        withoutCard.push(name);
+      }
+    }
+  };
+
+  step('components');
+  writeComponents(new Map());
+  const cover = join(componentsDirectory, 'Cover');
+  mkdirSync(cover, { recursive: true });
+  copyFileSync(join(assetsRoot, 'cover.html'), join(cover, 'preview.html'));
+
+  step('recipe and archetypes');
+  copyFileSync(join(assetsRoot, 'recipe.md'), join(projectDirectory, 'recipe.md'));
+  const archetypes = readArchetypePreviews(archetypesRoot);
+  for (const archetype of archetypes) {
+    const directory = join(componentsDirectory, archetype.exportName);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'preview.html'), archetype.html);
+  }
+
+  step('brand book');
+  writeFileSync(
+    join(projectDirectory, 'README.md'),
+    fillBrandBook(readFileSync(join(assetsRoot, 'brand-book.md'), 'utf8'), {
+      staticComponents: staticNames,
+      componentsWithoutCard: withoutCard.length,
+    }),
+  );
+
+  step(`render check: ${live.length + staticNames.length} cards in light and dark`);
+  const cards = [...live, ...staticNames];
+  const check = await withHostSlots(1, () =>
+    checkRenders(projectDirectory, join(workDirectory, 'check'), cards),
+  );
+  // The card heights come from the light render, so the live previews' cards are written again
+  // with them; only the `@dsCard` line changes.
+  live.length = 0;
+  staticNames.length = 0;
+  withoutCard.length = 0;
+  writeComponents(check.results);
+
+  step(`render check: ${archetypes.length} archetypes in light and dark, at phone and desktop`);
+  const archetypeProblems = await withHostSlots(1, () =>
+    checkArchetypeRenders(
+      projectDirectory,
+      join(workDirectory, 'check-archetypes'),
+      archetypes.map((archetype) => archetype.exportName),
+    ),
+  );
+
+  const problems = [
+    ...archetypeProblems.map((problem) => `archetype ${problem}`),
+    ...built.failures.map((failure) => `build ${failure}`),
+    ...[...snapshots].flatMap(([id, snapshot]) =>
+      snapshot.errors.map((error) => `snapshot ${id} ${error}`),
+    ),
+    ...check.problems.map((problem) => `render ${problem}`),
+  ];
+  const previewCount = live.length + staticNames.length;
+  const note =
+    options.note ??
+    `Generated from components/core: ${tokens.count} tokens, ${manifest.components.length} components, ${previewCount} previews, ${archetypes.length} page archetypes.`;
+  writeFileSync(
+    join(projectDirectory, 'design-system.json'),
+    JSON.stringify(
+      designSystemIndex({
+        sha,
+        author: git('config', 'user.name') || 'Corvidae',
+        note,
+        at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      }),
+      null,
+      1,
+    ),
+  );
+  const files = listFiles(projectDirectory, outputRoot);
+  // The artifact service refuses a text file holding U+FFFD; every published file is text.
+  for (const file of files) {
+    const positions = replacementCharacterPositions(
+      readFileSync(join(outputRoot, file.path), 'utf8'),
+    );
+    if (positions.length > 0) {
+      problems.push(`output ${file.path} holds U+FFFD at ${positions.slice(0, 5).join(', ')}`);
+    }
+  }
+  const batches = planPublishBatches(files);
+  writeFileSync(join(outputRoot, 'publish-batches.json'), JSON.stringify(batches, null, 2));
+
+  console.log(
+    `\n${tokens.count} tokens, ${manifest.components.length} guideline pages, ${live.length} live previews, ${staticNames.length} static (${staticNames.join(', ')}), ${withoutCard.length} without a card.`,
+  );
+  console.log(`${batches.length} publishes; see ${join(outputRoot, 'publish-batches.json')}.`);
+  if (problems.length > 0) {
+    console.error(`\n${problems.length} problems:`);
+    for (const problem of problems) console.error(`  ${problem}`);
+    return 1;
+  }
+  console.log(`Wrote ${projectDirectory}`);
+  return 0;
+}
+
+process.exit(await withMemoryAdmission(() => main()));

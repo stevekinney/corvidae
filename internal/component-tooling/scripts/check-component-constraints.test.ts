@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import type { ConstraintsDocument } from '../../../components/cinder/src/_internal/constraints.ts';
+import type { ConstraintsDocument } from '../../../components/core/src/_internal/constraints.ts';
 
 import {
   checkComponentConstraints,
@@ -44,7 +44,7 @@ describe('the constraints prop cross-check', () => {
 
   test('knows the HTML attributes and snippets a props type takes', () => {
     const names = componentPropNames(
-      join(import.meta.dir, '../../../components/cinder/src/components/button'),
+      join(import.meta.dir, '../../../components/core/src/components/button'),
       'button',
     );
     for (const name of ['label', 'iconOnly', 'children', 'leadingIcon', 'aria-label']) {

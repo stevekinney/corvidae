@@ -1175,7 +1175,7 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
     const name = target(virtual.replace(/\/$/, ''));
     return name === undefined ? whole : `${quote}../${name}/${virtual}${quote}`;
   });
-  // A path an earlier run pointed into core (`'../cinder/src/…'`) follows the file when it moves on.
+  // A path an earlier run pointed into core (`'../core/src/…'`) follows the file when it moves on.
   next = next.replace(SIBLING_SINGLE, (whole, quote: string, sibling: string, virtual: string) => {
     if (sibling !== coreName) return whole;
     const name = target(virtual.replace(/\/$/, ''));

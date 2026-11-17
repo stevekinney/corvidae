@@ -12,7 +12,7 @@
   operation={{
     kind: 'command',
     command: 'bun run --filter=@lostgradient/cinder validate',
-    filesTouched: ['components/cinder/src/components/approval-card/approval-card.svelte'],
+    filesTouched: ['components/core/src/components/approval-card/approval-card.svelte'],
     argsPreview: {
       package: '@lostgradient/cinder',
       dryRun: false,

@@ -242,11 +242,11 @@ test('generated declaration contracts are separate from authored declaration lin
 
 const scenario8 = await outcomeOf(async () => {
   const source = 'export function read(value: unknown) { return value as { name: string }; }\n';
-  const production = await lintImport(source, 'components/cinder/src/consumer.ts', true);
+  const production = await lintImport(source, 'components/core/src/consumer.ts', true);
   expect(production.exitCode).toBe(1);
   expect(production.output).toContain('no-unsafe-type-assertion');
 
-  const fixture = await lintImport(source, 'components/cinder/src/consumer.test.ts', true);
+  const fixture = await lintImport(source, 'components/core/src/consumer.test.ts', true);
   expect(fixture.output).not.toContain('no-unsafe-type-assertion');
   expect(fixture.exitCode).toBe(0);
 });
@@ -286,11 +286,11 @@ test('worker messaging preserves its API while window messaging requires an orig
 const scenario11 = await outcomeOf(async () => {
   const diagnostic = await lintImport(
     "console.warn('Invalid component usage');\n",
-    'components/cinder/src/consumer.ts',
+    'components/core/src/consumer.ts',
   );
   expect(diagnostic.exitCode).toBe(0);
 
-  const debug = await lintImport("console.log('debug');\n", 'components/cinder/src/consumer.ts');
+  const debug = await lintImport("console.log('debug');\n", 'components/core/src/consumer.ts');
   expect(debug.exitCode).toBe(1);
   expect(debug.output).toContain('no-console');
 });
@@ -377,13 +377,13 @@ const scenario18 = await outcomeOf(async () => {
     '<script>import Recursive from "./_json-viewer-node.svelte";</script><Recursive />\n';
   const recursive = await lintImport(
     source,
-    'components/cinder/src/components/json-viewer/_json-viewer-node.svelte',
+    'components/core/src/components/json-viewer/_json-viewer-node.svelte',
   );
   expect(recursive.exitCode).toBe(0);
 
   const accidental = await lintImport(
     source,
-    'components/cinder/src/components/fixture/_json-viewer-node.svelte',
+    'components/core/src/components/fixture/_json-viewer-node.svelte',
   );
   expect(accidental.exitCode).toBe(1);
   expect(accidental.output).toContain('no-self-import');

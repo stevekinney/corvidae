@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { cinderComponentRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder/src/components');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core/src/components');
 
 /**
  * Phrases whose presence in a README indicates placeholder or stale documentation.
@@ -347,7 +347,7 @@ export async function placeholderDocumentFiles(
 async function main(): Promise<void> {
   const violations: Violation[] = [];
   const inventory = await Bun.file(
-    resolve(scriptDirectory, '../../../components/cinder/.metadata/components.json'),
+    resolve(scriptDirectory, '../../../components/core/.metadata/components.json'),
   ).json();
   const inventoryComponents = Array.isArray(inventory?.components)
     ? inventory.components.filter(

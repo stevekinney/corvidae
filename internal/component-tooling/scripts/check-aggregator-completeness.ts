@@ -211,7 +211,7 @@ export function checkAggregatorCompleteness(
 
 function main(): void {
   const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-  const componentsSource = join(resolve(scriptDirectory, '../../../components/cinder'), 'src');
+  const componentsSource = join(resolve(scriptDirectory, '../../../components/core'), 'src');
   const aggregatorFile = join(componentsSource, 'styles', 'components.css');
 
   const violations = checkAggregatorCompleteness(
