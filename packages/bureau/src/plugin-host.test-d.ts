@@ -15,6 +15,17 @@ declare const bureau: Bureau;
 // `publish` is the one call Bureau does not carry: it is bound to the plugin that makes it.
 export const hostApi: Omit<PluginHost, 'publish'> = bureau;
 
+// `decisions.decide` (COR-2204) takes the options a plugin may set, and Bureau's own options carry
+// every one of them, so `hostApi` above holds. The principal is the host's, so a plugin has none.
+type DecideOptions = NonNullable<Parameters<PluginHost['decisions']['decide']>[1]>;
+export const decideOptions: DecideOptions = {
+  taskId: 'task-1',
+  requireKinds: ['boolean'],
+  signal: new AbortController().signal,
+};
+// @ts-expect-error -- a plugin cannot decide as another principal
+export const principalOption: DecideOptions = { principal: 'agent-run:x' };
+
 // A host whose `goals.create` requires a field `PluginGoalRequest` lacks is not a `PluginHost`.
 declare const strictGoals: Omit<PluginHost, 'goals'> & {
   goals: {

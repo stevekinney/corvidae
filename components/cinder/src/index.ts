@@ -305,6 +305,9 @@ export type { ContextMenuProps } from './components/context-menu/index.ts';
 export { default as CopyButton } from './components/copy-button/index.ts';
 export type { CopyButtonProps } from './components/copy-button/index.ts';
 
+export { default as CopyableValue } from './components/copyable-value/index.ts';
+export type { CopyableValueProps } from './components/copyable-value/index.ts';
+
 export {
   default as DataGrid,
   parseDelimitedText,

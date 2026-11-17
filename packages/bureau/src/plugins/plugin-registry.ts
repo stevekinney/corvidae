@@ -438,6 +438,7 @@ export function createPluginRegistry(
                   id: `${record.entry.descriptor.name}:${kind.name}`,
                   description: kind.description,
                   version: kind.version ?? record.entry.descriptor.version,
+                  receives: typeof kind.receive === 'function',
                   configuration: jsonSchemaOf(kind.configuration),
                 }))
             : [],
@@ -604,6 +605,8 @@ export function lateHostApi(plugin: string): {
       },
       goals: { create: async (request) => host().goals.create(request) },
       publish: async (name, payload) => host().publish(name, payload),
+      // A plain object, so a helper built during `setup` reads it before the host has started.
+      decisions: { decide: async (request, options) => host().decisions.decide(request, options) },
     },
     bind: (given) => {
       bound = given;

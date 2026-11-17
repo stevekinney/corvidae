@@ -35,6 +35,7 @@
  * | scorer (`score`) | refuses with {@link PluginNeedsSetupError}; the sampler records the sample as `unavailable`, with the error's message, and raises no alert | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | `host.publish` (COR-2224) | rejects {@link PluginNeedsSetupError}; nothing is published | works | rejects |
+ * | `host.decisions.decide` (COR-2204) | rejects {@link PluginNeedsSetupError}; no model is asked and nothing is recorded | works | rejects |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
  * | provider, panel | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for a panel, which the host serves as a static page from `bureau.plugins.panels()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
  *

@@ -45,6 +45,8 @@ const AREAS: Readonly<Record<string, string>> = {
   skill: 'Skills',
   steering: 'Chats',
   task: 'Tasks',
+  // COR-2250: what a workflow file's plugin trigger did, and each fire.
+  trigger: 'Triggers',
 };
 
 /** Words an event kind uses for something a person knows by another name. */

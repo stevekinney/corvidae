@@ -140,6 +140,66 @@ export const WORKFLOW_COPY = {
     recentRuns: 'Recent runs',
     runsFailed: 'The runs could not be loaded.',
     trigger: 'Trigger',
+    /**
+     * What a file's plugin trigger is doing (COR-2171): its state as a badge, a sentence beside
+     * it, Retry now for a failed one, and the address a trigger that receives is sent deliveries at.
+     */
+    listener: {
+      /** The name of the section, for the screen reader. */
+      label: 'Trigger status',
+      /** The status word beside its dot: Cinder's StatusDot owns each word's tone. */
+      states: {
+        listening: 'Listening',
+        ready: 'Ready',
+        standby: 'Standby',
+        'waiting-for-secret': 'Waiting for a secret',
+        failed: 'Failed',
+        stopped: 'Stopped',
+      },
+      /**
+       * What follows the word, saying only what the word does not. Each begins with the joiner that
+       * follows the word ("Listening since 10:02 AM", "Failed, the trigger could not start.") and
+       * ends with a full stop.
+       */
+      after: {
+        /** `time` is a clock time: "10:02 AM". */
+        listening: (time: string): string => ` since ${time}.`,
+        ready: (time: string): string => ` to receive deliveries since ${time}.`,
+        standby:
+          ', another Interborough that shares this storage runs this trigger. This one takes over if that one stops.',
+        stopped: ' while the workflow is paused.',
+        startFailed: ', the trigger could not start.',
+        /** `when` is `nextTryWords`: "59 minutes". */
+        startFailedRetrying: (when: string): string =>
+          `, the trigger could not start. Next try in ${when}.`,
+        configurationRefused:
+          ', the plugin refused this trigger’s settings, so it is not tried again until they change.',
+      },
+      /**
+       * A trigger waiting for a secret says whose it is and leads to where it is added, "Waiting for a
+       * secret. GitHub needs one: add it in Plugins settings." `plugin` is the plugin's title, and
+       * `undefined` until the host has said, which reads "The plugin".
+       */
+      waitingForSecret: {
+        before: (plugin: string | undefined): string => `. ${plugin ?? 'The plugin'} needs one: `,
+        link: 'add it in Plugins settings',
+        after: '.',
+      },
+      /** `time` is a clock time: "10:02 AM". */
+      lastStartedRun: (time: string): string => `Last started a run at ${time}.`,
+      /** The code of a failed trigger, last on the line: "(code start-failed)". */
+      code: 'code',
+      retry: 'Retry now',
+      /** A refused configuration is not tried again until it changes, so the page offers Edit, not Retry now. */
+      edit: 'Edit',
+      retrying: 'Retrying the trigger…',
+      retryFailed: 'The trigger could not be retried.',
+      retryForbidden: 'You don’t have permission to retry this trigger.',
+      /** Before the address a trigger that receives is sent its deliveries at. */
+      address: 'Deliveries go to',
+      copyAddress: 'Copy the address',
+      copiedAddress: 'Address copied',
+    },
     schedulesHeading: 'Schedules',
     schedulesFailed: 'The schedules could not be loaded.',
     scheduleActive: 'Active',
@@ -158,6 +218,8 @@ export const WORKFLOW_COPY = {
       starts: (when: string): string => `Starts ${when}`,
       /** The words around a signal's identifier, which is set in monospace between them. */
       startsOnSignal: { before: 'Starts when a signal arrives (', after: ')' },
+      /** "Starts when GitHub sends a push": `what` is a plugin trigger kind's own description, in the words of `pluginTriggerSummary`. */
+      startsOnPlugin: (what: string): string => `Starts when ${what}`,
       /** Several schedules start a type that code registered. */
       startsFromMany: (count: number): string => `Starts from ${String(count)} schedules`,
       startYourself: 'you can also start it yourself',

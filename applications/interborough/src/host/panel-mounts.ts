@@ -4,15 +4,93 @@
  * metadata that links a tool to the page, merged into the one pair the adapter accepts.
  */
 import type { BureauPlugins } from '@lostgradient/bureau';
-import type { PluginPanelPlacement } from '@lostgradient/interborough-plugin';
+import type { PluginPanel, PluginPanelPlacement } from '@lostgradient/interborough-plugin';
 import type { Storage } from '@lostgradient/storage';
 import type { OperationMcpResource } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { buildPanelPage, type BuiltPanel } from './panel-build.ts';
+import { createPanelBuildCache, type PanelBuildCache } from './panel-build-cache.ts';
+import {
+  buildPanelPage,
+  digestOf,
+  panelBuildCodeDigest,
+  panelBuildVersions,
+  withPanelBuildDeadline,
+  type BuiltPanel,
+  type PanelBuildClock,
+  type PanelPageBuilder,
+} from './panel-build.ts';
 
-/** Environment variable naming the archive's prebuilt built-in MCP app directory. */
+/**
+ * Environment variable naming the archive's prebuilt workspace-plugin panel directory: one
+ * `<panel name>.json` per panel, each a {@link PrebuiltPanel}.
+ */
 export const PANEL_PREBUILT_DIRECTORY_VARIABLE = 'INTERBOROUGH_PANEL_DIRECTORY';
+
+/**
+ * A panel the release built before it shipped (COR-2217), as `<panel name>.json` holds it: the page,
+ * its digest, and the `ui://` URI it was built for. The URI is what ties the file to one panel, since
+ * a panel's name is unique only within its plugin and the file is named by it alone.
+ */
+export const prebuiltPanelSchema = z.object({
+  uri: z.string().min(1),
+  html: z.string().min(1),
+  contentDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+
+/** What {@link prebuiltPanelSchema} parses. */
+export type PrebuiltPanel = z.infer<typeof prebuiltPanelSchema>;
+
+/**
+ * The text of the file a release writes for the panel at `uri`. It is checked with the same schema
+ * and digest the host checks it with, so a release cannot ship a file the host would refuse.
+ */
+export function prebuiltPanelFile(uri: string, page: BuiltPanel): string {
+  const prebuilt = prebuiltPanelSchema.parse({
+    uri,
+    html: page.html,
+    contentDigest: page.contentDigest,
+  });
+  if (digestOf(prebuilt.html) !== prebuilt.contentDigest) {
+    throw new Error(`The page built for ${uri} does not match its contentDigest`);
+  }
+  return JSON.stringify(prebuilt);
+}
+
+/**
+ * The prebuilt page for `app`, or why it cannot be used. `undefined` for both answers means there is
+ * no file for it, which is the ordinary state of a panel a release did not build, such as a folder
+ * plugin's. A file that is there and is not this panel's page, in bytes or in identity, gives a
+ * reason and never a page: the host builds the panel itself, so the reason is for a person to read.
+ */
+async function prebuiltPage(
+  directory: string,
+  app: Pick<PluginPanel, 'name' | 'uri'>,
+): Promise<{ readonly page?: BuiltPanel; readonly reason?: string }> {
+  const file = Bun.file(`${directory}/${app.name}.json`);
+  if (!(await file.exists())) return {};
+  let parsed: unknown;
+  try {
+    parsed = await file.json();
+  } catch (error) {
+    return { reason: `${app.name}.json is not JSON: ${failureMessage(error)}` };
+  }
+  const shaped = prebuiltPanelSchema.safeParse(parsed);
+  if (!shaped.success) {
+    return {
+      reason: `${app.name}.json is not a prebuilt panel: ${shaped.error.issues
+        .map((issue) => `${issue.path.join('.') || 'it'} ${issue.message}`)
+        .join('; ')}`,
+    };
+  }
+  if (shaped.data.uri !== app.uri) {
+    return { reason: `${app.name}.json was built for ${shaped.data.uri}, not ${app.uri}` };
+  }
+  if (digestOf(shaped.data.html) !== shaped.data.contentDigest) {
+    return { reason: `${app.name}.json does not match its own contentDigest` };
+  }
+  return { page: { html: shaped.data.html, contentDigest: shaped.data.contentDigest } };
+}
 
 /** The MCP App media type. */
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
@@ -138,6 +216,16 @@ export type PanelFailure = {
   readonly message: string;
 };
 
+/** A panel whose prebuilt page the host could not use, so it built the panel itself (COR-2217). */
+export type PanelFallback = {
+  /** The contributing plugin's name. */
+  readonly plugin: string;
+  /** The app's name within the plugin. */
+  readonly app: string;
+  /** Why the prebuilt file was not used. */
+  readonly reason: string;
+};
+
 /** An app whose page is not the bytes an earlier start served under its URI (COR-2210). */
 export type PanelChange = {
   /** The contributing plugin's name. */
@@ -183,6 +271,20 @@ export function reportPanelChanges(
   }
 }
 
+/** What {@link panelMounts} reads besides the contributed panels and the digest storage. */
+export type PanelMountOptions = {
+  /** The release's prebuilt pages, one `<panel name>.json` each (COR-2217). */
+  readonly prebuiltDirectory?: string;
+  /** The host's `node_modules`, which a build resolves `svelte` and Cinder from (COR-2216). */
+  readonly dependencies?: string;
+  /** Where built pages are kept between starts (COR-2219). Without one, every start builds. */
+  readonly cache?: PanelBuildCache;
+  /** What builds a page, `buildPanelPage` unless a test counts or stalls the build. */
+  readonly build?: PanelPageBuilder;
+  /** The timer that bounds a build, the platform's unless a test fires it. */
+  readonly clock?: PanelBuildClock;
+};
+
 /**
  * Build every contributed app once and merge their resources and tool metadata. An app is linked
  * from its `opensFromTool`, which Bureau composition keeps to one app (a second plugin's app is
@@ -199,38 +301,64 @@ export function reportPanelChanges(
 export async function panelMounts(
   contributed: ContributedPanels,
   storage: Storage,
-  prebuiltDirectory?: string,
+  options: PanelMountOptions = {},
 ) {
+  const { prebuiltDirectory, dependencies } = options;
+  const build = options.build ?? buildPanelPage;
+  // Without a directory nothing is stored, and two builds of one panel at once still share one.
+  const cache = options.cache ?? createPanelBuildCache();
+  // What a build depends on besides the panel's files: the root it resolves svelte and Cinder from,
+  // what those are, and the host's own build code (COR-2219).
+  const versions = { ...panelBuildVersions(dependencies), buildCode: panelBuildCodeDigest() };
   const built = await Promise.all(
     contributed.map(async ({ plugin, app }) => {
+      let reason: string | undefined;
+      // What a build reads of the plugin's panel, copied before the first await: the object is the
+      // plugin's, and a build that outlasts a change to it must still build what was contributed.
+      const { name, uri, title, entry } = { ...app, entry: app.entry.href };
+      const styles = app.styles ?? '';
       try {
         const prebuilt =
-          prebuiltDirectory === undefined ||
-          prebuiltDirectory.trim() === '' ||
-          plugin !== 'inspectors'
-            ? undefined
-            : await Bun.file(`${prebuiltDirectory}/${app.name}.json`)
-                .json()
-                .catch(() => undefined as BuiltPanel | undefined);
+          prebuiltDirectory === undefined || prebuiltDirectory.trim() === ''
+            ? {}
+            : await prebuiltPage(prebuiltDirectory, { name, uri });
+        reason = prebuilt.reason;
         const page =
-          prebuilt ??
-          (await buildPanelPage({
-            entry: app.entry.href,
-            title: app.title,
-            styles: app.styles ?? '',
-          }));
-        return { plugin, app, page };
+          prebuilt.page ??
+          // A build that does not finish in time is a failure of this panel, and the host starts.
+          (await withPanelBuildDeadline(
+            cache.serve(`${plugin}/${name}`, { entry, title, styles, ...versions }, () =>
+              build({
+                entry,
+                title,
+                styles,
+                ...(dependencies === undefined ? {} : { dependencies }),
+              }),
+            ),
+            title,
+            options.clock,
+          ));
+        return { plugin, app, page, ...(reason === undefined ? {} : { reason }) };
       } catch (error) {
         const message = failureMessage(error);
-        return { plugin, app, failure: { plugin, app: app.name, message } satisfies PanelFailure };
+        return {
+          plugin,
+          app,
+          failure: { plugin, app: app.name, message } satisfies PanelFailure,
+          ...(reason === undefined ? {} : { reason }),
+        };
       }
     }),
   );
   const toolMeta: Record<string, Readonly<Record<string, unknown>>> = {};
   const resources: (OperationMcpResource & { readonly text: string })[] = [];
   const failures: PanelFailure[] = [];
+  const fallbacks: PanelFallback[] = [];
   const apps: ServedPanel[] = [];
   for (const entry of built) {
+    if (entry.reason !== undefined) {
+      fallbacks.push({ plugin: entry.plugin, app: entry.app.name, reason: entry.reason });
+    }
     if ('failure' in entry) {
       failures.push(entry.failure);
       continue;
@@ -292,6 +420,7 @@ export async function panelMounts(
     toolMeta,
     defaultToolMeta: MODEL_ONLY_TOOL_META,
     failures,
+    fallbacks,
     apps,
     changes,
     pendingDigests,

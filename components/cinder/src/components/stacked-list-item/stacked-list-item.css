@@ -200,9 +200,13 @@
   }
 
   /* Narrow container query — trailing drops below body. A phone's one menu button (the collapsed
-     actions) is compact and stays beside the body. */
+     actions) and a non-interactive trailing glyph such as a chevron are compact and stay beside
+     the body. */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--has-trailing:not(.cinder-stacked-list-item--collapsed-actions)
+    .cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph
+      )
       .cinder-stacked-list-item__layout {
       grid-template-columns: 1fr;
       grid-template-areas:
@@ -211,7 +215,8 @@
     }
 
     .cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
-        .cinder-stacked-list-item--collapsed-actions
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph
       )
       .cinder-stacked-list-item__layout {
       grid-template-columns: auto 1fr;
