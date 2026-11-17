@@ -1,12 +1,26 @@
 import type { PluginPanel } from '@lostgradient/interborough-plugin';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { digestOf } from './panel-build.ts';
+import {
+  createPanelBuildCache,
+  type PanelBuildCache,
+  type PanelBuildInputs,
+} from './panel-build-cache.ts';
+import {
+  PANEL_BUILD_DEADLINE_MILLISECONDS,
+  digestOf,
+  panelBuildCodeDigest,
+  panelBuildVersions,
+  withPanelBuildDeadline,
+} from './panel-build.ts';
 import {
   MCP_APP_MIME_TYPE,
   MCP_APP_UI_META,
@@ -14,11 +28,16 @@ import {
   commitPanelDigests,
   panelMounts as mountOnly,
   type ContributedPanels,
+  type PanelMountOptions,
 } from './panel-mounts.ts';
 
 /** `mountOnly` over storage of its own: a start that has served nothing before. */
 const panelMounts = (contributed: ContributedPanels, prebuiltDirectory?: string) =>
-  mountOnly(contributed, new MemoryStorage(), prebuiltDirectory);
+  mountOnly(
+    contributed,
+    new MemoryStorage(),
+    prebuiltDirectory === undefined ? {} : { prebuiltDirectory },
+  );
 
 const directories: string[] = [];
 
@@ -70,34 +89,120 @@ describe('the MCP apps the host serves', () => {
     });
   });
 
-  it('uses a prebuilt built-in page without changing its HTML digest contract', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'panel-prebuilt-'));
-    directories.push(directory);
-    const candidate = await app('one');
+  describe('the prebuilt pages of a release (COR-2217)', () => {
     const html = '<meta charset="utf-8"><div id="root"></div>';
-    await writeFile(
-      join(directory, 'one.json'),
-      JSON.stringify({ html, contentDigest: digestOf(html) }),
-    );
-    const { resources } = await panelMounts(
-      [{ plugin: 'inspectors', version: '1.0.0', app: candidate }],
-      directory,
-    );
-    expect(resources[0]?.text).toBe(html);
-    expect(resources[0]?._meta).toMatchObject({ contentDigest: digestOf(html) });
-  });
 
-  it('falls back to runtime building when the prebuilt page is absent or invalid', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'panel-prebuilt-fallback-'));
-    directories.push(directory);
-    const candidate = await app('fallback');
-    await writeFile(join(directory, 'fallback.json'), '{not-json');
-    const { resources } = await panelMounts(
-      [{ plugin: 'inspectors', version: '1.0.0', app: candidate }],
-      directory,
-    );
-    expect(resources[0]?.text).toContain('fallback');
-    expect(resources[0]?.text).not.toBe('{not-json');
+    async function prebuiltDirectory(files: Readonly<Record<string, string>>): Promise<string> {
+      const directory = await mkdtemp(join(tmpdir(), 'panel-prebuilt-'));
+      directories.push(directory);
+      for (const [name, contents] of Object.entries(files)) {
+        await writeFile(join(directory, name), contents);
+      }
+      return directory;
+    }
+
+    it('uses a prebuilt page for any plugin, without changing its HTML digest contract', async () => {
+      const candidate = await app('one');
+      const directory = await prebuiltDirectory({
+        'one.json': JSON.stringify({ uri: candidate.uri, html, contentDigest: digestOf(html) }),
+      });
+      // A folder plugin's name, not the one workspace plugin a condition used to name.
+      for (const plugin of ['folder-plugin', 'inspectors', 'test']) {
+        const { resources, fallbacks } = await panelMounts(
+          [{ plugin, version: '1.0.0', app: candidate }],
+          directory,
+        );
+        expect(resources[0]?.text, plugin).toBe(html);
+        expect(resources[0]?._meta, plugin).toMatchObject({ contentDigest: digestOf(html) });
+        expect(fallbacks, plugin).toEqual([]);
+      }
+    });
+
+    it('names no plugin in the source that chooses between a prebuilt and a built page', async () => {
+      const source = await Bun.file(new URL('./panel-mounts.ts', import.meta.url)).text();
+      expect(source).not.toContain("'inspectors'");
+      expect(source).not.toMatch(/plugin\s*[!=]==?\s*'/);
+    });
+
+    it('builds a panel with no prebuilt file, and has no reason to give', async () => {
+      const directory = await prebuiltDirectory({});
+      const { resources, fallbacks } = await panelMounts(
+        contributed(await app('absent')),
+        directory,
+      );
+      expect(resources[0]?.text).toContain('absent');
+      expect(fallbacks).toEqual([]);
+    });
+
+    const invalid: ReadonlyArray<{
+      readonly name: string;
+      readonly file: (uri: string) => string;
+      readonly reason: RegExp;
+    }> = [
+      { name: 'is not JSON', file: () => '{not-json', reason: /not JSON/ },
+      { name: 'is not an object', file: () => '[]', reason: /not a prebuilt panel/ },
+      {
+        name: 'has no uri',
+        file: () => JSON.stringify({ html, contentDigest: digestOf(html) }),
+        reason: /uri/,
+      },
+      {
+        name: 'has a digest that is not a sha256',
+        file: (uri) => JSON.stringify({ uri, html, contentDigest: 'sha256:fixture' }),
+        reason: /contentDigest/,
+      },
+      {
+        name: 'holds bytes its digest does not name',
+        file: (uri) =>
+          JSON.stringify({ uri, html: `${html}<!-- edited -->`, contentDigest: digestOf(html) }),
+        reason: /does not match its own contentDigest/,
+      },
+      {
+        name: 'was built for another panel, one with the same name',
+        file: () =>
+          JSON.stringify({ uri: 'ui://other/one/v1', html, contentDigest: digestOf(html) }),
+        reason: /was built for ui:\/\/other\/one\/v1, not ui:\/\/test\/one\/v1/,
+      },
+    ];
+
+    for (const { name, file, reason } of invalid) {
+      it(`builds the panel and reports why when the prebuilt file ${name}`, async () => {
+        const candidate = await app('one');
+        const directory = await prebuiltDirectory({ 'one.json': file(candidate.uri) });
+        const { resources, fallbacks, failures } = await panelMounts(
+          contributed(candidate),
+          directory,
+        );
+        expect(failures).toEqual([]);
+        expect(resources[0]?.text).toContain('<style>body{margin:0}</style>');
+        expect(resources[0]?.text).not.toBe(html);
+        expect(fallbacks).toHaveLength(1);
+        expect(fallbacks[0]).toMatchObject({ plugin: 'test', app: 'one' });
+        expect(fallbacks[0]?.reason).toMatch(reason);
+      });
+    }
+
+    it('keeps the reason when the fallback build fails too', async () => {
+      const candidate = await app('broken', {
+        entry: pathToFileURL(join(tmpdir(), 'panel-mounts-no-such-entry.ts')),
+      });
+      const directory = await prebuiltDirectory({ 'broken.json': '{not-json' });
+      const { failures, fallbacks } = await panelMounts(contributed(candidate), directory);
+      expect(failures).toHaveLength(1);
+      expect(fallbacks).toHaveLength(1);
+      expect(fallbacks[0]?.reason).toMatch(/not JSON/);
+    });
+
+    it('lists the reasons in the order the panels were contributed', async () => {
+      const first = await app('first');
+      const second = await app('second');
+      const directory = await prebuiltDirectory({
+        'first.json': '{',
+        'second.json': '{',
+      });
+      const { fallbacks } = await panelMounts(contributed(first, second), directory);
+      expect(fallbacks.map(({ app: name }) => name)).toEqual(['first', 'second']);
+    });
   });
 
   it('declares deny-by-default security on every app', async () => {
@@ -232,6 +337,7 @@ describe('the MCP apps the host serves', () => {
       toolMeta: {},
       defaultToolMeta: { ui: { visibility: ['model'] } },
       failures: [],
+      fallbacks: [],
       apps: [],
       changes: [],
       pendingDigests: [],
@@ -257,6 +363,364 @@ describe('the MCP apps the host serves', () => {
   it('reports nothing when every app builds', async () => {
     const { failures } = await panelMounts(contributed(await app('one')));
     expect(failures).toEqual([]);
+  });
+});
+
+/** A clock whose timers fire only when the test says so. */
+function manualClock() {
+  const timers = new Map<number, { callback: () => void; milliseconds: number }>();
+  const cleared: number[] = [];
+  let next = 1;
+  return {
+    timers,
+    cleared,
+    clock: {
+      setTimeout: (callback: () => void, milliseconds: number) => {
+        const handle = next++;
+        timers.set(handle, { callback, milliseconds });
+        return handle;
+      },
+      clearTimeout: (handle: unknown) => {
+        cleared.push(handle as number);
+        timers.delete(handle as number);
+      },
+    },
+  };
+}
+
+/** `mountOnly` over storage of its own, with the build, cache, clock or dependencies a test gives it. */
+const panelMounts_ = (contributed: ContributedPanels, options: PanelMountOptions) =>
+  mountOnly(contributed, new MemoryStorage(), options);
+
+/**
+ * The product's build deadline and the build cache, through `panelMounts` (COR-2219). The build is a
+ * counting or never-settling double, and the clock is one the test fires itself: nothing here waits
+ * on a real timer. The cache's own rows are in `panel-build-cache.test.ts`.
+ *
+ * | Row | Situation | Required result |
+ * | --- | --- | --- |
+ * | warm hit | a second start, inputs unchanged | the build double is not called again |
+ * | each input | entry bytes, a graph file, Bun, Svelte or Cinder version changes | the build double is called again |
+ * | over the bound | a build that never settles, then the clock fires | `failures` names the panel, the other panels are served |
+ * | in time | a build that settles | its timer is cleared, nothing fires |
+ * | the constant | | `PANEL_BUILD_DEADLINE_MILLISECONDS` is 30,000 and the timer is set to it |
+ * | failure | a build that rejects | not cached, built again by the next start |
+ */
+describe('bounded and cached panel builds (COR-2219)', () => {
+  /** A build double that counts its runs and reports the entry as the one file it read. */
+  function countingBuild() {
+    const counter = { runs: 0 };
+    const build = async (options: { readonly entry: string; readonly title: string }) => {
+      counter.runs += 1;
+      const html = `<html>${options.title} ${counter.runs}</html>`;
+      return { html, contentDigest: digestOf(html), inputs: [fileURLToPath(options.entry)] };
+    };
+    return { counter, build };
+  }
+
+  async function cacheDirectory(): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), 'panel-mounts-cache-'));
+    directories.push(directory);
+    return directory;
+  }
+
+  /** A host `node_modules` that holds only the two packages whose versions key a build. */
+  async function dependenciesAt(svelte: string, cinder: string): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), 'panel-mounts-dependencies-'));
+    directories.push(directory);
+    await mkdir(join(directory, 'svelte'), { recursive: true });
+    await mkdir(join(directory, '@lostgradient', 'cinder'), { recursive: true });
+    await writeFile(join(directory, 'svelte', 'package.json'), JSON.stringify({ version: svelte }));
+    await writeFile(
+      join(directory, '@lostgradient', 'cinder', 'package.json'),
+      JSON.stringify({ version: cinder }),
+    );
+    return directory;
+  }
+
+  it('the deadline is 30 seconds, and the build is bounded by exactly that', async () => {
+    expect(PANEL_BUILD_DEADLINE_MILLISECONDS).toBe(30_000);
+    const { timers, clock } = manualClock();
+    const { build } = countingBuild();
+    const gate = Promise.withResolvers<void>();
+    const slow = async (options: Parameters<typeof build>[0]) => {
+      await gate.promise;
+      return build(options);
+    };
+    const mounting = panelMounts_(contributed(await app('one')), { build: slow, clock });
+    // The timer is set to the product constant before the build is waited on.
+    expect([...timers.values()].map(({ milliseconds }) => milliseconds)).toEqual([
+      PANEL_BUILD_DEADLINE_MILLISECONDS,
+    ]);
+    gate.resolve();
+    await mounting;
+  });
+
+  it('serves an unchanged panel from the cache on the next start, without building it', async () => {
+    const directory = await cacheDirectory();
+    const candidate = await app('one');
+    const { counter, build } = countingBuild();
+    const first = await panelMounts_(contributed(candidate), {
+      build,
+      cache: createPanelBuildCache({ directory, now: () => Date.now() + 60_000 }),
+    });
+    expect(counter.runs).toBe(1);
+    // A restart: a new cache over the same directory.
+    const second = await panelMounts_(contributed(candidate), {
+      build,
+      cache: createPanelBuildCache({ directory, now: () => Date.now() + 60_000 }),
+    });
+    expect(counter.runs).toBe(1);
+    expect(second.resources[0]?.text).toBe(first.resources[0]?.text);
+    expect(second.resources[0]?._meta).toEqual(first.resources[0]?._meta);
+  });
+
+  it('builds again when the entry bytes change', async () => {
+    const directory = await cacheDirectory();
+    const candidate = await app('one');
+    const { counter, build } = countingBuild();
+    const cache = () => createPanelBuildCache({ directory, now: () => Date.now() + 60_000 });
+    await panelMounts_(contributed(candidate), { build, cache: cache() });
+    await writeFile(fileURLToPath(candidate.entry), 'document.body.textContent = "edited";\n');
+    await panelMounts_(contributed(candidate), { build, cache: cache() });
+    expect(counter.runs).toBe(2);
+  });
+
+  it('builds again when the resolved Svelte or Cinder version changes, and passes Bun’s', async () => {
+    const directory = await cacheDirectory();
+    const candidate = await app('one');
+    const { counter, build } = countingBuild();
+    const cache = () => createPanelBuildCache({ directory, now: () => Date.now() + 60_000 });
+    // One host install whose packages are upgraded in place: the same root, other versions.
+    const root = await dependenciesAt('5.57.0', '0.1.0');
+    const mount = async (svelte: string, cinder: string) => {
+      await writeFile(join(root, 'svelte', 'package.json'), JSON.stringify({ version: svelte }));
+      await writeFile(
+        join(root, '@lostgradient', 'cinder', 'package.json'),
+        JSON.stringify({ version: cinder }),
+      );
+      return panelMounts_(contributed(candidate), { build, cache: cache(), dependencies: root });
+    };
+    await mount('5.57.0', '0.1.0');
+    await mount('5.57.0', '0.1.0');
+    expect(counter.runs).toBe(1);
+    await mount('5.58.0', '0.1.0');
+    expect(counter.runs).toBe(2);
+    await mount('5.58.0', '0.2.0');
+    expect(counter.runs).toBe(3);
+  });
+
+  /** A host `node_modules` whose Cinder has no version and whose kit stylesheet is `kitCss`. */
+  async function unversionedRoot(kitCss: string): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), 'panel-mounts-root-'));
+    directories.push(directory);
+    await mkdir(join(directory, 'svelte'), { recursive: true });
+    await mkdir(join(directory, '@lostgradient', 'cinder', 'src', 'panel'), { recursive: true });
+    await writeFile(
+      join(directory, 'svelte', 'package.json'),
+      JSON.stringify({ version: '5.57.0' }),
+    );
+    await writeFile(
+      join(directory, '@lostgradient', 'cinder', 'package.json'),
+      JSON.stringify({ name: '@lostgradient/cinder' }),
+    );
+    await writeFile(
+      join(directory, '@lostgradient', 'cinder', 'src', 'panel', 'panel.css'),
+      kitCss,
+    );
+    return directory;
+  }
+
+  it('never serves a page built from another root’s kit: two roots, one home, different kit', async () => {
+    const directory = await cacheDirectory();
+    const candidate = await app('external');
+    const rootA = await unversionedRoot(':root{--kit:a}');
+    const rootB = await unversionedRoot(':root{--kit:b}');
+    let builds = 0;
+    // What a real build records: the entry, and the kit file under the root it was given.
+    const build = async (request: { readonly entry: string; readonly dependencies?: string }) => {
+      builds += 1;
+      const kit = join(
+        request.dependencies!,
+        '@lostgradient',
+        'cinder',
+        'src',
+        'panel',
+        'panel.css',
+      );
+      const html = `<style>${await Bun.file(kit).text()}</style>`;
+      return { html, contentDigest: digestOf(html), inputs: [fileURLToPath(request.entry), kit] };
+    };
+    const mount = (dependencies: string) =>
+      panelMounts_(contributed(candidate), {
+        dependencies,
+        build,
+        cache: createPanelBuildCache({ directory, now: () => Date.now() + 60_000 }),
+      });
+    const first = await mount(rootA);
+    const second = await mount(rootB);
+    expect(builds).toBe(2);
+    expect(first.resources[0]?.text).toContain('--kit:a');
+    expect(second.resources[0]?.text).toContain('--kit:b');
+    expect(second.resources[0]?.text).not.toContain('--kit:a');
+  });
+
+  it('gives an unversioned Cinder a digest of what the build resolves, and a versioned one its version', async () => {
+    const [rootA, rootB] = [await unversionedRoot(':root{}'), await unversionedRoot(':root{}')];
+    const a = panelBuildVersions(rootA);
+    const b = panelBuildVersions(rootB);
+    expect(a.cinderVersion).toMatch(/^unversioned:[0-9a-f]{64}$/);
+    expect(a.cinderVersion).not.toBe(b.cinderVersion);
+    expect(a.dependencies).not.toBe(b.dependencies);
+    expect(a.dependencies).toBe(realpathSync(rootA));
+    const versioned = panelBuildVersions(await dependenciesAt('5.57.0', '0.1.0'));
+    expect(versioned.cinderVersion).toBe('0.1.0');
+    expect(versioned.svelteVersion).toBe('5.57.0');
+  });
+
+  it('keys a build by the host’s own build code too', async () => {
+    const seen: PanelBuildInputs[] = [];
+    const recording: PanelBuildCache = {
+      serve: async (_panel, inputs, build) => {
+        seen.push(inputs);
+        return build();
+      },
+    };
+    const { build } = countingBuild();
+    await panelMounts_(contributed(await app('one')), { build, cache: recording });
+    expect(seen[0]?.buildCode).toBe(panelBuildCodeDigest());
+    expect(seen[0]?.buildCode).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('keys a build by the running Bun and the host’s resolved versions', async () => {
+    const seen: PanelBuildInputs[] = [];
+    const recording: PanelBuildCache = {
+      serve: async (_panel, inputs, build) => {
+        seen.push(inputs);
+        return build();
+      },
+    };
+    const { build } = countingBuild();
+    await panelMounts_(contributed(await app('one')), {
+      build,
+      cache: recording,
+      dependencies: await dependenciesAt('5.57.0', '0.1.0'),
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      bunVersion: Bun.version,
+      svelteVersion: '5.57.0',
+      cinderVersion: '0.1.0',
+    });
+  });
+
+  it('reports a build that does not finish as that panel’s failure, and serves the others', async () => {
+    const { timers, clock } = manualClock();
+    const { build } = countingBuild();
+    const hung = await app('hung', { title: 'Hung' });
+    const fine = await app('fine');
+    const stalling = (options: Parameters<typeof build>[0]) =>
+      options.entry === hung.entry.href ? new Promise<never>(() => {}) : build(options);
+    const mounting = panelMounts_(contributed(hung, fine), { build: stalling, clock });
+    // `fine` settles and clears its timer; only the hung build keeps one.
+    await waitUntil(() => timers.size === 1, { message: 'only the stalled build holds a timer' });
+    [...timers.values()][0]!.callback();
+    const { failures, resources } = await mounting;
+    expect(failures).toEqual([
+      {
+        plugin: 'test',
+        app: 'hung',
+        message: 'The Hung page did not finish building within 30 seconds',
+      },
+    ]);
+    expect(resources.map(({ name }) => name)).toEqual(['fine']);
+  });
+
+  it('does not serve a build that finishes after its deadline, and stores it for the next start', async () => {
+    const directory = await cacheDirectory();
+    const candidate = await app('late', { title: 'Late' });
+    const { timers, clock } = manualClock();
+    const { counter, build } = countingBuild();
+    const gate = Promise.withResolvers<void>();
+    const late = async (options: Parameters<typeof build>[0]) => {
+      await gate.promise;
+      return build(options);
+    };
+    const cache = () => createPanelBuildCache({ directory, now: () => Date.now() + 60_000 });
+    const mounting = panelMounts_(contributed(candidate), { build: late, clock, cache: cache() });
+    [...timers.values()][0]!.callback();
+    const first = await mounting;
+    expect(first.failures).toHaveLength(1);
+    expect(first.resources).toEqual([]);
+    gate.resolve();
+    const stored = async (): Promise<boolean> => {
+      const names = await readdir(directory);
+      return names.some((name) => name.endsWith('.json'));
+    };
+    await waitUntil(stored, { message: 'the late build is stored' });
+    const second = await panelMounts_(contributed(candidate), { build, cache: cache() });
+    expect(counter.runs).toBe(1);
+    expect(second.failures).toEqual([]);
+    expect(second.resources).toHaveLength(1);
+  });
+
+  it('clears the timer of a build that finishes, or fails, in time', async () => {
+    const { timers, cleared, clock } = manualClock();
+    const { build } = countingBuild();
+    const failing = (options: Parameters<typeof build>[0]) =>
+      options.title.includes('bad') ? Promise.reject(new Error('did not build')) : build(options);
+    const { failures } = await panelMounts_(contributed(await app('good'), await app('bad')), {
+      build: failing,
+      clock,
+    });
+    expect(failures.map(({ app: name }) => name)).toEqual(['bad']);
+    expect(timers.size).toBe(0);
+    expect(cleared).toHaveLength(2);
+  });
+
+  it('does not store a build that failed, so the next start builds it again', async () => {
+    const directory = await cacheDirectory();
+    const candidate = await app('one');
+    let runs = 0;
+    const failing = async (): Promise<never> => {
+      runs += 1;
+      throw new Error('did not build');
+    };
+    const cache = () => createPanelBuildCache({ directory, now: () => Date.now() + 60_000 });
+    const first = await panelMounts_(contributed(candidate), { build: failing, cache: cache() });
+    const second = await panelMounts_(contributed(candidate), { build: failing, cache: cache() });
+    expect(first.failures).toHaveLength(1);
+    expect(second.failures).toHaveLength(1);
+    expect(runs).toBe(2);
+  });
+});
+
+describe('withPanelBuildDeadline', () => {
+  it('clears its timer when the work settles, either way', async () => {
+    const resolved = manualClock();
+    expect(await withPanelBuildDeadline(Promise.resolve('page'), 'One', resolved.clock)).toBe(
+      'page',
+    );
+    expect(resolved.cleared).toHaveLength(1);
+    const rejected = manualClock();
+    expect(
+      await throwingRejectionOf(
+        withPanelBuildDeadline(Promise.reject(new Error('no')), 'One', rejected.clock),
+      ),
+    ).toThrow('no');
+    expect(rejected.cleared).toHaveLength(1);
+  });
+
+  it('rejects when the timer fires first, and ignores what the work does afterwards', async () => {
+    const stalled = manualClock();
+    const gate = Promise.withResolvers<string>();
+    const bounded = withPanelBuildDeadline(gate.promise, 'One', stalled.clock);
+    [...stalled.timers.values()][0]!.callback();
+    expect(await throwingRejectionOf(bounded)).toThrow(
+      'The One page did not finish building within 30 seconds',
+    );
+    gate.resolve('late');
+    await gate.promise;
   });
 });
 

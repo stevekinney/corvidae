@@ -101,6 +101,12 @@ function field(name: string, type: BureauEventFieldType): BureauEventField {
 type FieldList = readonly (readonly [name: string, type: BureauEventFieldType])[];
 
 const RUN: FieldList = [['runId', 'string']];
+// COR-2250: the file, the contributed kind (`plugin:name`) and its version.
+const TRIGGER: FieldList = [
+  ['workflowId', 'string'],
+  ['trigger', 'string'],
+  ['version', 'string'],
+];
 // COR-2096: what a guardrail event names; the flagged text and the guardrail's detail never cross.
 const GUARDRAIL: FieldList = [
   ['runId', 'string'],
@@ -780,7 +786,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
   'definitions.changed': entry(
     'definitions.changed',
     'unattributed',
-    'A rescan of the agent or workflow files changed what the catalog holds. `rejected` names the added or changed definitions that are invalid now. A change that only the built-in `bureau` workflow tools wrote carries `source: "bureau"`.',
+    'A rescan of the agent, workflow, validator or guardrail files, or of the skill directories, changed what the catalog holds (`catalog` is `agents`, `workflows`, `validators`, `guardrails` or `skills`). `rejected` names the added or changed definitions that are invalid now, and for skills also a directory whose `SKILL.md` cannot be parsed, which is named as its directory. A change that only the built-in `bureau` workflow tools wrote carries `source: "bureau"`.',
     [
       ['catalog', 'string'],
       ['added', 'string[]'],
@@ -788,6 +794,33 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['removed', 'string[]'],
       ['rejected', 'string[]'],
     ],
+  ),
+  // COR-2250: unattributed, like `definitions.changed`. A run can write the file that starts or
+  // stops a listener, and can cause the delivery that fires one, and none of these names a run on
+  // every event, so a `start-workflow` hook cannot follow it.
+  'trigger.started': entry(
+    'trigger.started',
+    'unattributed',
+    'A workflow file’s contributed trigger started in this Bureau: its listener is `listening`, `waiting-for-secret`, or `ready` for a kind that only receives, from any other state. It is published at boot, when the file is added or resumed, when a failed listener starts, and when this Bureau takes the listener over from another sharing its storage. An edit that restarts a listener publishes nothing.',
+    TRIGGER,
+  ),
+  'trigger.stopped': entry(
+    'trigger.stopped',
+    'unattributed',
+    'A workflow file’s contributed trigger stopped in this Bureau: its file was paused or removed, or another Bureau sharing the storage took its listener over (it is `standby` here). Closing the Bureau publishes nothing.',
+    TRIGGER,
+  ),
+  'trigger.failed': entry(
+    'trigger.failed',
+    'unattributed',
+    'A workflow file’s contributed trigger became `failed`: `errorCode` is `START_FAILED` when its `start` threw or its storage could not be made, and `CONFIGURATION_REFUSED` when its kind refused the file’s configuration. The message is read from the plugin’s `trigger-failed` problem, never from the event.',
+    [...TRIGGER, ['errorCode', 'string']],
+  ),
+  'trigger.fired': entry(
+    'trigger.fired',
+    'unattributed',
+    'A contributed trigger fired. `outcome` is `started` or `duplicate` with the run as `runId`, `skipped` when the listener was stopped, the file is paused or the Bureau closed, or `refused` when the fire rejected, with `errorCode` an identifier naming why: `INPUT_INVALID` for a payload the file’s `inputSchema` refuses, `WORKFLOW_APPLY_FAILED` while the last change to the files has not applied, the failure’s own code when it is an identifier (such as `BAD_REQUEST` or `CONFLICT`), and `INTERNAL_ERROR` otherwise. The payload, the idempotency key and the error’s text are never on the event.',
+    [...TRIGGER, ['outcome', 'string'], ['runId?', 'string'], ['errorCode?', 'string']],
   ),
   // external: downtime or a daylight-saving gap swallowed the occurrences; a run cannot make time pass or skip.
   'schedule.missed': entry(
@@ -820,6 +853,28 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     [
       ['notificationId', 'string'],
       ['kind', 'string'],
+    ],
+  ),
+  'hook.delivery.failed': entry(
+    'hook.delivery.failed',
+    'unattributed',
+    'A hook’s delivery attempt failed and its failure is written. The payload names the hook, the delivery, the attempt number and how it failed (response, network-error, refused, error or rejected), with the HTTP status of a response. It carries no error text, URL or owner. Nothing is published for an interrupted or aborted attempt, a test delivery, or a delivery of a hook.delivery.* event. A hook that writes notifications cannot match this kind.',
+    [
+      ['hookId', 'string'],
+      ['deliveryId', 'string'],
+      ['attempt', 'number'],
+      ['outcome', 'string'],
+      ['status?', 'number'],
+    ],
+  ),
+  'hook.delivery.gave-up': entry(
+    'hook.delivery.gave-up',
+    'unattributed',
+    'A hook’s delivery was given up after its last retry, after the hook.delivery.failed event of that attempt. The payload names the hook and the delivery and counts the attempts the delivery’s record holds. Nothing is published for a test delivery or a delivery of a hook.delivery.* event. A hook that writes notifications cannot match this kind.',
+    [
+      ['hookId', 'string'],
+      ['deliveryId', 'string'],
+      ['attempts', 'number'],
     ],
   ),
   diagnostic: entry(

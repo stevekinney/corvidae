@@ -50,6 +50,7 @@ export { default as containerVariables } from '../components/container/container
 export { default as contextMenuTriggerVariables } from '../components/context-menu-trigger/context-menu-trigger.variables.ts';
 export { default as contextMenuVariables } from '../components/context-menu/context-menu.variables.ts';
 export { default as copyButtonVariables } from '../components/copy-button/copy-button.variables.ts';
+export { default as copyableValueVariables } from '../components/copyable-value/copyable-value.variables.ts';
 export { default as dataGridVariables } from '../components/data-grid/data-grid.variables.ts';
 export { default as dataListVariables } from '../components/data-list/data-list.variables.ts';
 export { default as dataTableVariables } from '../components/data-table/data-table.variables.ts';

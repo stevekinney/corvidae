@@ -151,6 +151,19 @@ export function forwardDefinitionChanges(
   });
 }
 
+/**
+ * Forwards the skill changes a host reports (COR-2100, `BureauOptions.skillChanges`) as
+ * `definitions.changed` with `catalog: 'skills'`. Returns the unsubscribe; a Bureau whose host
+ * reports none forwards nothing.
+ */
+export function forwardSkillChanges(
+  skillChanges: Parameters<typeof forwardDefinitionChanges>[1] | undefined,
+  dispatch: (event: DefinitionsChangedEvent) => void,
+): () => void {
+  if (skillChanges === undefined) return () => undefined;
+  return forwardDefinitionChanges('skills', skillChanges, dispatch);
+}
+
 /** Where {@link forwardMissedFires} listens: the engine itself, or a {@link bufferMissedFires} view. */
 export interface MissedFireSource {
   addEventListener(type: string, listener: (event: Event) => void): void;

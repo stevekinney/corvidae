@@ -33,12 +33,20 @@ export type {
   PluginTriggerOutcome,
   PluginWorkflow,
 } from './contributions.ts';
+export {
+  decisionScorer,
+  decisionValidator,
+  type DecisionScorerContent,
+  type PluginDecisionScorerOptions,
+  type PluginDecisionValidatorOptions,
+} from './decision-helpers.ts';
 export { definePlugin } from './define-plugin.ts';
 export { defineTrigger } from './define-trigger.ts';
 export { guardrailId, isGuardrailFactory } from './guardrail-family.ts';
 export type { GuardrailFamily } from './guardrail-family.ts';
 export type {
   PluginAgentListing,
+  PluginDecideOptions,
   PluginGoalRequest,
   PluginHost,
   PluginScheduleDefinition,
@@ -57,6 +65,7 @@ export type {
   PluginScore,
   PluginScoreDecision,
   PluginScoreOutcome,
+  PluginScoredRun,
   PluginScorer,
 } from './scorer.ts';
 export { verifyHmacSignature } from './verify-hmac-signature.ts';

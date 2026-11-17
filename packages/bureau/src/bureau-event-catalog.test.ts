@@ -57,8 +57,11 @@ import {
   DiagnosticEvent,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   NotificationCreatedEvent,
   SessionTaintEvent,
+  TriggerLifecycleEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
@@ -197,6 +200,9 @@ const SKILL = (
  * `PUBLISHED_BUREAU_EVENT_KINDS` is a compile error here until it has a builder. `fullest` is given
  * where a kind has optional fields, so a field the catalog does not declare is found too.
  */
+/** What every trigger event names. */
+const TRIGGER_BASE = { workflowId: 'w-1', trigger: 'x:watch', version: '1.0.0' } as const;
+
 const EVENTS: Record<
   PublishedBureauEventKind,
   { readonly sparsest: () => unknown; readonly fullest?: () => unknown }
@@ -475,11 +481,48 @@ const EVENTS: Record<
     sparsest: () =>
       new DefinitionsChangedEvent('agents', { added: [], changed: [], removed: [], rejected: [] }),
   },
+  'trigger.started': { sparsest: () => new TriggerLifecycleEvent('trigger.started', TRIGGER_BASE) },
+  'trigger.stopped': { sparsest: () => new TriggerLifecycleEvent('trigger.stopped', TRIGGER_BASE) },
+  'trigger.failed': {
+    sparsest: () =>
+      new TriggerLifecycleEvent('trigger.failed', { ...TRIGGER_BASE, errorCode: 'START_FAILED' }),
+  },
+  'trigger.fired': {
+    sparsest: () =>
+      new TriggerLifecycleEvent('trigger.fired', { ...TRIGGER_BASE, outcome: 'skipped' }),
+    fullest: () =>
+      new TriggerLifecycleEvent('trigger.fired', {
+        ...TRIGGER_BASE,
+        outcome: 'refused',
+        runId: 'run-1',
+        errorCode: 'INPUT_INVALID',
+      }),
+  },
   'schedule.missed': { sparsest: () => new ScheduleMissedEvent('s-1', 1, 10, 20, 'late') },
   'task.cleanup-acknowledged': {
     sparsest: () => new TaskCleanupAcknowledgedEvent('task-1', 'cleaned-up'),
   },
   'notification.created': { sparsest: () => new NotificationCreatedEvent('n-1', 'run.failed') },
+  'hook.delivery.failed': {
+    sparsest: () =>
+      new HookDeliveryFailedEvent({
+        hookId: 'hook-1',
+        deliveryId: 'hook-delivery-1',
+        attempt: 1,
+        outcome: 'network-error',
+      }),
+    fullest: () =>
+      new HookDeliveryFailedEvent({
+        hookId: 'hook-1',
+        deliveryId: 'hook-delivery-1',
+        attempt: 2,
+        outcome: 'response',
+        status: 500,
+      }),
+  },
+  'hook.delivery.gave-up': {
+    sparsest: () => new HookDeliveryGaveUpEvent('hook-1', 'hook-delivery-1', 3),
+  },
   diagnostic: { sparsest: () => new DiagnosticEvent('warn', 'hooks') },
   'memory.governance': {
     sparsest: () =>
@@ -633,6 +676,8 @@ describe('the Bureau event catalog', () => {
         'decision.made',
         'definitions.changed',
         'diagnostic',
+        'hook.delivery.failed',
+        'hook.delivery.gave-up',
         'memory.governance',
         'notification.created',
         'plugin.settings-changed',
@@ -658,6 +703,10 @@ describe('the Bureau event catalog', () => {
         'steering.failed',
         'steering.rejected',
         'steering.superseded',
+        'trigger.failed',
+        'trigger.fired',
+        'trigger.started',
+        'trigger.stopped',
         'workflow.version-mismatch',
       ].toSorted(),
     );
@@ -713,6 +762,57 @@ describe('the Bureau event catalog', () => {
         expect(Object.keys(payload).toSorted()).toEqual([...declared.keys()].toSorted());
       }
     });
+  });
+});
+
+describe('the trigger kinds (COR-2250)', () => {
+  const TRIGGER_KINDS = ['trigger.started', 'trigger.stopped', 'trigger.failed', 'trigger.fired'];
+
+  it('are in the published catalog', () => {
+    for (const kind of TRIGGER_KINDS) {
+      expect(PUBLISHED_BUREAU_EVENT_KINDS as readonly string[]).toContain(kind);
+      expect(BUREAU_EVENT_CATALOG[kind as PublishedBureauEventKind].kind as string).toBe(kind);
+    }
+  });
+
+  it('are unattributed with no scope: a run can write the file or cause the delivery, and runId is optional', () => {
+    for (const kind of TRIGGER_KINDS) {
+      expect(BUREAU_EVENT_CATALOG[kind as PublishedBureauEventKind]).toMatchObject({
+        origin: 'unattributed',
+        scopes: [],
+      });
+    }
+  });
+
+  it('name exactly the file, the kind, its version, the outcome, the run and a code: never the payload or the key', () => {
+    const fields = (kind: string) =>
+      BUREAU_EVENT_CATALOG[kind as PublishedBureauEventKind].payload.map((field) => [
+        field.name,
+        field.optional,
+      ]);
+    const base = [
+      ['workflowId', false],
+      ['trigger', false],
+      ['version', false],
+    ];
+    expect(fields('trigger.started')).toEqual(base);
+    expect(fields('trigger.stopped')).toEqual(base);
+    expect(fields('trigger.failed')).toEqual([...base, ['errorCode', false]]);
+    expect(fields('trigger.fired')).toEqual([
+      ...base,
+      ['outcome', false],
+      ['runId', true],
+      ['errorCode', true],
+    ]);
+    const payload = wirePayload(EVENTS['trigger.fired'].fullest!(), 'trigger.fired');
+    expect(Object.keys(payload)).toEqual([
+      'workflowId',
+      'trigger',
+      'version',
+      'outcome',
+      'runId',
+      'errorCode',
+    ]);
   });
 });
 

@@ -62,6 +62,7 @@
     onRetryClick,
     retryLabel = 'Try again',
     trailing,
+    trailingGlyph = false,
     actions,
     actionsLabel = 'More actions',
     phoneActions = 'menu',
@@ -118,8 +119,12 @@
   const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
   const phone = $derived(phoneViewport.current);
   const hasActions = $derived(actions !== undefined && actions.length > 0);
-  // On a phone the actions are one menu button, unless the row asks to keep them as buttons.
-  const actionsAsMenu = $derived(hasActions && phone && phoneActions !== 'buttons');
+  // On a phone two or more actions are one menu button, unless the row asks to keep them as
+  // buttons. One action stays its own compact secondary button: a menu holding one item is a
+  // glyph that hides the only thing the row can do.
+  const actionsAsMenu = $derived(
+    hasActions && phone && phoneActions !== 'buttons' && (actions?.length ?? 0) >= 2,
+  );
   const actionsAsPhoneButtons = $derived(hasActions && phone && phoneActions === 'buttons');
   const detailsId = $derived(`${generatedId}-details`);
   const errorId = $derived(`${generatedId}-error`);
@@ -187,6 +192,7 @@
     leading && 'cinder-stacked-list-item--has-leading',
     leading && leadingTone && 'cinder-stacked-list-item--has-leading-tile',
     (trailing || hasActions) && 'cinder-stacked-list-item--has-trailing',
+    trailing && trailingGlyph && !hasActions && 'cinder-stacked-list-item--trailing-glyph',
     isLines && 'cinder-stacked-list-item--lines',
     isLines && reservesStatusColumn && 'cinder-stacked-list-item--status-column',
     isLines && status && 'cinder-stacked-list-item--has-status',
