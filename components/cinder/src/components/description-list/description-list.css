@@ -125,7 +125,8 @@
    * term is a regular-weight muted label in a fixed 140px column, the value beside it in the default
    * color, and each row is at least 44px tall, with a quiet rule under each row. It is flat by
    * default, so it never draws a box inside a pane or a card; `framed` puts the rows in one tinted
-   * group. It stacks below 28rem. */
+   * group, on the raised fill on a phone as an Inspector's group is. A row with an `href` ends in a
+   * trailing chevron. It stacks below 23rem of its own width. */
   .cinder-description-list[data-cinder-variant='fields'] {
     container-type: inline-size;
     display: grid;
@@ -161,17 +162,115 @@
     font-weight: var(--cinder-font-normal);
   }
 
+  /* The value is set in the body size, as an InspectorRow's value is. */
   .cinder-description-list[data-cinder-variant='fields'] dd {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+  }
+
+  /* A linked row keeps InspectorRow's end inset, so its chevron lands where an InspectorRow's does. */
+  .cinder-description-list[data-cinder-variant='fields']
+    .cinder-description-list__row[data-cinder-linked] {
+    padding-inline-end: var(--cinder-space-2);
+  }
+
+  /* On a phone a framed group takes the raised fill of a grouped list, as an Inspector's does. */
+  @media (width < 700px) {
+    .cinder-description-list[data-cinder-variant='fields'][data-cinder-framed] {
+      background: var(--cinder-surface-raised);
+    }
+  }
+
+  /* Below 23rem (368px) of the list's own width, too narrow for the 140px label, its 12px gap and a
+   * readable value beside them, the term stacks above its value: a phone-width list at 375 does, a
+   * rail or a drawer at desktop width does not. The list is the container, so the query restyles
+   * its rows: each leaves the shared track list for one column of its own. */
+  @container (width < 23rem) {
+    .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--cinder-space-1);
+    }
+  }
+
+  /* ----------------------------------------
+   * Linked rows
+   * ---------------------------------------- */
+
+  /* A row with an `href` ends in a trailing chevron, the PropertyRow affordance, and the whole row is
+   * the link's target: the link's `::before` stretches over the row as its hit area, under any
+   * control the row holds, and its `::after` lies behind the row's text to draw the hover tint and
+   * the focus ring. A row without one draws no chevron and no hover tint, so read-only facts never
+   * look linked. The row isolates, so the tint sits above the group's fill and below the text. */
+  .cinder-description-list__row[data-cinder-linked] {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .cinder-description-list__link {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    margin-inline-start: auto;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-description-list__link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  /* The tint and the ring: on a flat list they reach a little past the row's start, rounded like a
+   * control, so the tint never starts at the text and the ring never crosses the label's first
+   * glyph. */
+  .cinder-description-list__link::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline: calc(var(--cinder-space-3) * -1) 0;
+    z-index: -1;
+    border-radius: var(--cinder-radius-control);
+    pointer-events: none;
+  }
+
+  /* On a framed list they reach the group's start edge, so no untinted strip is left there; the
+   * group clips them to its own corners. */
+  .cinder-description-list[data-cinder-framed] .cinder-description-list__link::after {
+    inset-inline-start: calc(var(--cinder-space-4) * -1);
+    border-radius: 0;
+  }
+
+  .cinder-description-list__row[data-cinder-linked]
+    :is(button, input, select, textarea, a[href]:not(.cinder-description-list__link)) {
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (hover: hover) {
+    .cinder-description-list__row[data-cinder-linked]:hover .cinder-description-list__link::after {
+      background: var(--cinder-surface-hover);
+    }
+
+    .cinder-description-list__row[data-cinder-linked]:hover .cinder-description-list__link {
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-description-list__link:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
     color: var(--cinder-text-default);
   }
 
-  @container (max-width: 28rem) {
-    .cinder-description-list[data-cinder-variant='fields'] {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  /* The ring is drawn inside the tint's box, because a framed group clips its rows. */
+  .cinder-description-list__link:focus-visible::after {
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
 
-    .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
-      gap: var(--cinder-space-1);
+  @media (forced-colors: active) {
+    .cinder-description-list__link:focus-visible::after {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
     }
   }
 
