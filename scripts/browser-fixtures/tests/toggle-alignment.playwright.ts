@@ -9,7 +9,7 @@
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { ALIGNMENT_TOLERANCE, boxOf, firstLineOf } from './first-line-alignment.ts';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 
 async function openAlignment(page: Page): Promise<void> {
   await page.goto(fixtureRoute('toggle', { fixtureName: 'alignment' }), { waitUntil: 'load' });

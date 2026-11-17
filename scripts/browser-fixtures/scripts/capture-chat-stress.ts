@@ -51,7 +51,7 @@ import {
   type StressStep,
   type StressStepCondition,
 } from '../src/fixtures/chat-stress/stress-cases.ts';
-import { createFixtureServer } from '../src/server.ts';
+import { createFixtureServer } from '@lostgradient/testing/browser/server';
 import {
   RUN_DIRECTORY_PREFIX,
   composerEdgeProblems,

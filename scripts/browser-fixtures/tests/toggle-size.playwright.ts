@@ -12,7 +12,7 @@
 
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 
 const TOGGLE = 'button.cinder-toggle';
 const TRACK = { width: 32, height: 18 };

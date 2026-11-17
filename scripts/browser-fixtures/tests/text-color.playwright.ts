@@ -1,7 +1,7 @@
 import type { Theme } from '@lostgradient/testing';
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
 
 const entries = loadManifest();
 const themes: Theme[] = ['light', 'dark'];

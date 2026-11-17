@@ -8,7 +8,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { ALIGNMENT_TOLERANCE, boxOf, firstLineOf } from './first-line-alignment.ts';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 
 const CIRCLE = 18;
 

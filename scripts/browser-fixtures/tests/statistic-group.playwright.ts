@@ -2,7 +2,7 @@ import type { ComponentEntry, Theme, Viewport } from '@lostgradient/testing';
 import { loadManifest, VIEWPORTS } from '@lostgradient/testing';
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
 
 /**
  * Computed-style coverage for StatisticGroup's container-query column collapse

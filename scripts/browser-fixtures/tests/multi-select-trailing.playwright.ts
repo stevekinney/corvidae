@@ -9,7 +9,7 @@
 
 import { THEME_STORAGE_KEY } from '@lostgradient/testing';
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 
 /** Centring and inset tolerance: half a pixel, the brief's bound. */
 const TOLERANCE = 0.5;

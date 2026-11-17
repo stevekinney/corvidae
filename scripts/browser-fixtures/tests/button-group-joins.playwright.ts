@@ -9,7 +9,7 @@
 
 import { loadManifest } from '@lostgradient/testing';
 import { expect, type Page } from '@playwright/test';
-import { test } from './component-page-fixture.ts';
+import { test } from '@lostgradient/testing/browser/component-page-fixture';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'button-group');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'joins');

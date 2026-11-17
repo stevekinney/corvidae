@@ -1,5 +1,5 @@
 import { fillJson, openFirstEditor, openJsonEditor } from './editors-json-schema-support.ts';
-import { expect, test } from './review-editor-browser-errors.ts';
+import { expect, test } from '@lostgradient/testing/browser/review-editor-browser-errors';
 
 test.describe('JSON schema editor form and view contracts', () => {
   test('Diff tab shows "Diff" without a raw bullet and carries accessible change markup', async ({

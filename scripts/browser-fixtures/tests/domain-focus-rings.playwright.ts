@@ -1,4 +1,4 @@
-import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
+import { FIXTURE_ORIGIN } from '@lostgradient/testing/browser/fixture-port';
 /// <reference lib="dom" />
 /** Browser proof for dense domain focus rings in the application-owned Chat fixture. */
 import {
@@ -9,7 +9,7 @@ import {
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const HARNESS = '[data-testid="chat-private-harness"]';

@@ -17,7 +17,7 @@
 
 import { boxShadowLayerCount, resolvedTokenColor, tabUntilFocused } from '@lostgradient/testing';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 test.describe('input-frame danger ring — focused invalid-state error affordance (#409)', () => {

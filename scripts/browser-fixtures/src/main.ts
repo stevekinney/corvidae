@@ -27,12 +27,12 @@ import {
   VirtualList,
 } from '@lostgradient/cinder';
 import type { VisualFixture } from '@lostgradient/testing';
-import type { FixtureModuleMaps } from './fixture-loader.ts';
+import type { FixtureModuleMaps } from '@lostgradient/testing/browser/fixture-loader';
 
 import * as generatedModules from '../.playwright/fixture-modules.ts';
 import CodeHighlighterRoot from './code-highlighter-root.svelte';
-import { loadFixture } from './fixture-loader.ts';
-import { applySnapshotMode, isSnapshotMode } from './snapshot-mode.ts';
+import { loadFixture } from '@lostgradient/testing/browser/fixture-loader';
+import { applySnapshotMode, isSnapshotMode } from '@lostgradient/testing/browser/snapshot-mode';
 
 const { appHostModules, fixtureModules, hostModules } =
   generatedModules as unknown as FixtureModuleMaps;

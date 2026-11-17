@@ -2,7 +2,7 @@ import { loadManifest } from '@lostgradient/testing';
 import type { Browser, BrowserContext, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { FIXTURE_ORIGIN } from '../scripts/fixture-port.ts';
+import { FIXTURE_ORIGIN } from '@lostgradient/testing/browser/fixture-port';
 
 type Theme = 'light' | 'dark';
 type Styles = Record<

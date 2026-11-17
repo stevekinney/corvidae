@@ -5,7 +5,7 @@ import { relative, resolve, sep } from 'node:path';
 import { extractFixtures } from '@lostgradient/testing';
 
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
-import { assertUniqueFixtureNames } from '../src/manifest.ts';
+import { assertUniqueFixtureNames } from '@lostgradient/testing/browser/manifest';
 
 /**
  * Where the manifest's inputs live and where its outputs go. The defaults describe this

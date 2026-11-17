@@ -1,4 +1,4 @@
-import { fixtureEntry } from './editor-fixture.ts';
+import { fixtureEntry } from '@lostgradient/testing/browser/editor-fixture';
 
 const entry = fixtureEntry('functional-residual');
 const fixture = entry.fixtures?.find((candidate) => candidate.name === 'assertion');

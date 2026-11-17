@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { HANG_GUARD_MILLISECONDS } from '../../testing/testing/src/hang-guard.ts';
 import { TEST_TIMEOUT_MILLISECONDS } from '../test-deadlines.ts';
 import { environmentConfiguration } from './environment-configuration.ts';
-import { FIXTURE_ORIGIN, FIXTURE_PORT } from './scripts/fixture-port.ts';
+import { FIXTURE_ORIGIN, FIXTURE_PORT } from '@lostgradient/testing/browser/fixture-port';
 
 // Playwright forces color in its workers and web servers. Remove the conflicting
 // inherited opt-out in this test process before those children are created.

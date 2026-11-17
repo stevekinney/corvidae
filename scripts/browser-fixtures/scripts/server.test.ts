@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import type { Component } from 'svelte';
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
-import { loadFixture } from '../src/fixture-loader.ts';
-import { assertUniqueFixtureNames, manifestFilePath, readManifest } from '../src/manifest.ts';
-import { createFixtureServer, handleFixtureRequest } from '../src/server.ts';
+import { loadFixture } from '@lostgradient/testing/browser/fixture-loader';
+import { assertUniqueFixtureNames, manifestFilePath, readManifest } from '@lostgradient/testing/browser/manifest';
+import { createFixtureServer, handleFixtureRequest } from '@lostgradient/testing/browser/server';
 
 test('native fixture routes preserve hash, snapshot, asset, and readiness contracts', async () => {
   const outputDirectory = await mkdtemp(resolve(tmpdir(), 'corvidae-native-fixtures-'));

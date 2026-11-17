@@ -11,8 +11,8 @@ import {
 
 import { resolve } from 'node:path';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { expect, test } from './component-page-fixture.ts';
-import { runFixtureSweep } from './component-sweep.ts';
+import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
+import { runFixtureSweep } from '@lostgradient/testing/browser/component-sweep';
 
 type LiveManifest = { digest: string; entries: unknown[] };
 type ComponentPage = {

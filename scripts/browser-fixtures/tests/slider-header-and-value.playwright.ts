@@ -15,7 +15,7 @@
 
 import { loadManifest, THEMES, VIEWPORTS } from '@lostgradient/testing';
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
 import { fixtureRoute } from './layout-fixture.ts';
 
 const SLIDER_ROUTE = fixtureRoute('slider');

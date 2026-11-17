@@ -38,7 +38,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 import {
   assertRingUnclipped,
   HORIZONTAL_LIST,

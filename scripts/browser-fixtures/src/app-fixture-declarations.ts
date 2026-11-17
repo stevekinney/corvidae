@@ -1,4 +1,4 @@
-import { TERMINAL_FIXTURE_NAMES } from './fixtures/terminal/scenarios.ts';
+import { TERMINAL_FIXTURE_NAMES } from '../../../components/terminal/browser/fixtures/terminal/scenarios.ts';
 
 export const appFixtureDeclarations = {
   'a2ui-a2a-part': ['assertion'],

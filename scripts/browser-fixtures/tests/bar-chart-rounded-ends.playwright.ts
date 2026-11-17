@@ -7,7 +7,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 
 const R = '3px';
 const CLIP = {

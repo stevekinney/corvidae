@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { fixtureRoute } from './overlay-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/browser/overlay-fixture';
 import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const AVATAR_GROUP_ROUTE = fixtureRoute('avatar-group');

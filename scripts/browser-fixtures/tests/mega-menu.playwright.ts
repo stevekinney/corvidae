@@ -1,5 +1,5 @@
 import { captureScreenshot, loadManifest, VIEWPORTS } from '@lostgradient/testing';
-import { expect, test } from './component-page-fixture.ts';
+import { expect, test } from '@lostgradient/testing/browser/component-page-fixture';
 
 const desktop = VIEWPORTS.find((viewport) => viewport.name === 'desktop');
 const mobile = VIEWPORTS.find((viewport) => viewport.name === 'mobile');
