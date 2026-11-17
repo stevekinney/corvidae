@@ -33,7 +33,11 @@
  * queues one pass under the serialization lock: a standby is attempted again, and a holder whose
  * record names another process goes standby and is stopped. Every fire reads the record first and
  * answers `skipped: 'stopped'` when this process no longer holds it. A holder's listener that stops
- * gives its record back, after the stop, in one chain of lease writes per workflow.
+ * gives its record back, after the stop, in one chain of lease writes per workflow. With a lease or
+ * without one, the listeners of one workflow never overlap in this process: no attempt calls
+ * `start` until every earlier attempt's `start` has settled and every listener it produced has
+ * finished `stop`. The lease fences fires, not a plugin's trigger storage: a listener another
+ * process took over keeps running until its next tick or fence finds the record gone.
  *
  * @module workflow-trigger-supervisor
  */
@@ -311,6 +315,12 @@ interface RunningTrigger {
   holding: boolean;
   /** COR-2167 — whether this entry is `standby`: another process runs, or may run, the listener. */
   standby: boolean;
+  /**
+   * COR-2167 — the workflow's listener lifecycle as it was when this attempt was created: every
+   * earlier attempt and every stop begun before it. Its `start` waits for it. Absent when nothing
+   * was pending.
+   */
+  readonly predecessors: Promise<void> | undefined;
 }
 
 /** What the supervisor knows about one file's listener. */
@@ -343,9 +353,11 @@ const NOT_JSON_PAYLOAD = Symbol('a payload that was not JSON');
 /**
  * What a fire's payload is once it has been read, before the fence awaits: a copy when it is JSON,
  * since the plugin still owns it, and {@link NOT_JSON_PAYLOAD} otherwise, so the JSON or not-JSON
- * decision is taken at the call and cannot change afterwards.
+ * decision is taken at the call and cannot change afterwards. No payload stays no payload, which
+ * the runtime starts with `null`, as it does a fire with no lease.
  */
 function snapshotOf(payload: unknown): unknown {
+  if (payload === undefined) return undefined;
   return z.json().safeParse(payload).success ? structuredClone(payload) : NOT_JSON_PAYLOAD;
 }
 
@@ -363,6 +375,16 @@ export function createWorkflowTriggerSupervisor(
    * Separate from the serialization lock, and never taken by a fire.
    */
   const leaseTails = new Map<string, Promise<void>>();
+  /**
+   * COR-2167 — the invariant: for one workflow, no attempt calls `start` until every earlier
+   * attempt's `start` has settled and every listener it produced has finished `stop`. This is each
+   * workflow's listener lifecycle, joined by every attempt when it is created (until it has
+   * settled, its stale-settle stop included) and by every stop of a listener when it begins. An
+   * attempt that will call `start` first waits for the lifecycle as it was before it joined, so it
+   * never waits on itself; a stop joins and waits for nothing, so a stop cannot queue behind a
+   * start. Never taken by a fire.
+   */
+  const lifecycles = new Map<string, Promise<void>>();
   /** Whether a tick's pass is queued behind the serialization lock and has not begun. */
   let tickQueued = false;
   const unsubscribeTick = lease?.onTick(() => onTick());
@@ -380,6 +402,28 @@ export function createWorkflowTriggerSupervisor(
       return undefined;
     });
     return result;
+  }
+
+  /** Add `work`, an attempt or a listener's stop, to workflow `id`'s listener lifecycle. */
+  function joinLifecycle(id: string, work: Promise<unknown>): void {
+    const done = work.then(
+      () => undefined,
+      () => undefined,
+    );
+    const prior = lifecycles.get(id);
+    const tail = prior === undefined ? done : Promise.all([prior, done]).then(() => undefined);
+    lifecycles.set(id, tail);
+    void tail.then(() => {
+      if (lifecycles.get(id) === tail) lifecycles.delete(id);
+      return undefined;
+    });
+  }
+
+  /** Stop a listener of workflow `id`, as part of its lifecycle: the next `start` waits for it. */
+  function stopListener(id: string, stop: (() => void | Promise<void>) | undefined): Promise<void> {
+    const stopping = stopQuietly(id, stop);
+    joinLifecycle(id, stopping);
+    return stopping;
   }
 
   /**
@@ -579,6 +623,7 @@ export function createWorkflowTriggerSupervisor(
       await trigger.stopping;
       await stopQuietly(id, trigger.stop);
     })();
+    joinLifecycle(id, stopped);
     if (lease === undefined || !trigger.holding) {
       await stopped;
       return;
@@ -612,8 +657,9 @@ export function createWorkflowTriggerSupervisor(
   /**
    * COR-2167 — a holder found its record no longer names this process, at a fire or at a tick: it
    * is `standby`, writes no record, and its listener stops in the background, held as the entry's
-   * `stopping` so the next stop of the workflow, or `close`, awaits it. A `start` still in flight
-   * is stopped by its attempt when it settles. Only the current entry, once, does any of this.
+   * `stopping` so the next stop of the workflow awaits it, and in the workflow's lifecycle so the
+   * next `start` of it, and `close`, await it. A `start` still in flight is stopped by its attempt
+   * when it settles. Only the current entry, once, does any of this.
    */
   function lostLease(id: string, entry: RunningTrigger): void {
     if (!isCurrent(id, entry) || entry.standby) return;
@@ -627,6 +673,7 @@ export function createWorkflowTriggerSupervisor(
       await prior;
       await stopQuietly(id, stop);
     })();
+    joinLifecycle(id, entry.stopping);
   }
 
   /** A fire that started a run: remember when, on the listener and on its record. */
@@ -656,7 +703,7 @@ export function createWorkflowTriggerSupervisor(
     const stop = entry.stop;
     entry.stop = undefined;
     fail(id, entry, 'start-failed', messageOf(report.error));
-    entry.stopping = stopQuietly(id, stop);
+    entry.stopping = stopListener(id, stop);
     void releaseHeld(id, entry, entry.stopping);
   }
 
@@ -686,9 +733,11 @@ export function createWorkflowTriggerSupervisor(
       failures,
       holding: false,
       standby: false,
+      predecessors: lifecycles.get(id),
     };
     running.set(id, entry);
     entry.attempt = attemptOf(id, entry);
+    joinLifecycle(id, entry.attempt);
     return entry.attempt;
   }
 
@@ -731,6 +780,17 @@ export function createWorkflowTriggerSupervisor(
       entry.settled = true;
       record(id, entry, { state: 'ready', code: null });
       return;
+    }
+    // COR-2167 — the one place `start` is reached, so every attempt, a reconcile's, a tick's, a
+    // timer's and a retry's, obeys the invariant: nothing starts until every earlier listener of
+    // this workflow is over. The wait comes before the lease, so this process holds no record it
+    // cannot use yet, and a close or a replacement during it starts nothing.
+    if (entry.predecessors !== undefined) {
+      await entry.predecessors;
+      if (!isCurrent(id, entry)) {
+        entry.settled = true;
+        return;
+      }
     }
     // COR-2167 — the lease is taken last, immediately before `start`: a paused file, a refused
     // configuration and storage that cannot be made read and write no record.
@@ -840,7 +900,7 @@ export function createWorkflowTriggerSupervisor(
     if (!isCurrent(id, entry) || entry.standby) {
       const stop = entry.stop;
       entry.stop = undefined;
-      await stopQuietly(id, stop);
+      await stopListener(id, stop);
       return;
     }
     const report = entry.pendingReport;
@@ -850,9 +910,10 @@ export function createWorkflowTriggerSupervisor(
   }
 
   /**
-   * Start `id`'s failed listener again, in place of `entry`, which is over: the new attempt is the
-   * trigger of `id` from the first line, and the old status stays until it settles. The serialization
-   * lock is the caller's.
+   * Start `id`'s failed or `standby` listener again, in place of `entry`, which is over: the new
+   * attempt is the trigger of `id` from the first line, and the old status stays until it settles.
+   * Its `start` waits for `entry`'s listener to have stopped, as every `start` waits for the
+   * workflow's earlier listeners (see `lifecycles`). The serialization lock is the caller's.
    */
   async function replaceAttempt(
     id: string,
@@ -861,9 +922,7 @@ export function createWorkflowTriggerSupervisor(
   ): Promise<void> {
     entry.retired = true;
     cancelTimer(id, entry);
-    const next = startTrigger(id, entry.desired, entry.key, failures);
-    await entry.stopping;
-    await next;
+    await startTrigger(id, entry.desired, entry.key, failures);
   }
 
   /** The retry timer of `entry` fired: queue the attempt, unless something else already did. */
@@ -997,10 +1056,16 @@ export function createWorkflowTriggerSupervisor(
     async close() {
       closed = true;
       unsubscribeTick?.();
-      for (const [id, trigger] of running) await stopTrigger(id, trigger);
+      // Every listener is stopped at once: a `start` that never settles, and ignores its signal,
+      // holds `close`, but no other listener, and no other record.
+      await Promise.all(Array.from(running, ([id, trigger]) => stopTrigger(id, trigger)));
       // Every record this process gives back is deleted before `close` resolves, so before the
       // process lease is released: an attempt that took one as `close` landed queues its delete.
-      while (leaseTails.size > 0) await Promise.all(leaseTails.values());
+      // Every stop and every `start` this process began has settled by then too, a fenced stop of
+      // an entry that a later attempt replaced included.
+      while (leaseTails.size > 0 || lifecycles.size > 0) {
+        await Promise.all([...leaseTails.values(), ...lifecycles.values()]);
+      }
     },
   };
 }
