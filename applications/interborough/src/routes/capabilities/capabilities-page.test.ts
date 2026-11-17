@@ -1143,6 +1143,15 @@ describe('a skill’s page', () => {
     expect(
       detail.querySelector('[data-testid="capability-users-empty"]')?.textContent?.trim(),
     ).toBe(copy.tool.lost.noUsers);
+    // The count rule: the Tools tab lists the catalog's tools and then the lost ones, each once,
+    // and its count is that many. A lost row is marked, and is never one the catalog holds.
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-tool-row]')];
+    const lostRows = rows.filter((row) => row.hasAttribute('data-lost'));
+    expect(lostRows.map((row) => row.dataset['toolRow'])).toEqual(['github__create_issue']);
+    expect(rows.length - lostRows.length).toBe(TOOLS.length);
+    expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent?.trim()).toBe(
+      String(TOOLS.length + lostRows.length),
+    );
     await fireEvent.click(reconnect!);
     expect(router.search.get('tab')).toBe('sources');
     expect(router.search.get('source')).toBe('github');

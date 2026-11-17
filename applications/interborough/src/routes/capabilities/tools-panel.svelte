@@ -161,6 +161,7 @@
             selectedState="current"
             onclick={row.open}
             data-tool-row={tool.name}
+            data-lost={tool.lost === undefined ? undefined : ''}
           >
             {#snippet title()}
               <span class="ib-capabilities__row-title">

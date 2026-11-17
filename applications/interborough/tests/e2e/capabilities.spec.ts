@@ -31,9 +31,14 @@ test.describe('the Tools tab', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/capabilities');
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await expect(toolRows(page)).toHaveCount(tools.length);
+    // The count rule: the list is the catalog's tools plus the lost ones (a failed source's or a
+    // disabled plugin's last listing, marked `data-lost`), so a lost tool never inflates the catalog
+    // count: the catalog's tools are exactly the rows that are not lost, and the tab counts both.
+    const lostRows = await page.locator('[data-tool-row][data-lost]').count();
+    await expect(page.locator('[data-tool-row]:not([data-lost])')).toHaveCount(tools.length);
+    await expect(toolRows(page)).toHaveCount(tools.length + lostRows);
     for (const tool of tools) {
-      const row = page.locator(`[data-tool-row="${tool.name}"]`);
+      const row = page.locator(`[data-tool-row="${tool.name}"]:not([data-lost])`);
       await expect(row).toHaveCount(1);
       // Line one: the name for a person and the muted risk word. Line two: the source, then the sentence.
       await expect(row.getByTestId('tool-row-name')).not.toBeEmpty();
@@ -44,7 +49,7 @@ test.describe('the Tools tab', () => {
       await expect(row.getByTestId('tool-row-summary')).not.toBeEmpty();
     }
     // The count is in the tab, not in the list; the list shows one only while something is typed.
-    await expect(page.getByTestId('tab-count-tools')).toHaveText(String(tools.length));
+    await expect(page.getByTestId('tab-count-tools')).toHaveText(String(tools.length + lostRows));
     await expect(page.getByTestId('tools-count')).toHaveCount(0);
   });
 
@@ -81,9 +86,11 @@ test.describe('the Tools tab', () => {
 
   test('filters by name and says so when nothing matches', async ({ page, request }) => {
     const { tools } = await readCatalog(request);
-    const total = tools.length;
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/capabilities');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    // The catalog's tools and the lost ones, as the count rule of the first test says.
+    const total = tools.length + (await page.locator('[data-tool-row][data-lost]').count());
     await expect(toolRows(page)).toHaveCount(total);
     await page.getByRole('searchbox', { name: copy.filterLabel.tools }).fill('zzz-no-such-tool');
     await expect(page.getByText(copy.tool.filtered.title)).toBeVisible();
