@@ -77,7 +77,7 @@ describe('moveTreeNode', () => {
       '../../_internal/tree-drag-controller.svelte.ts',
       '../../../../choice-grid/src/components/choice-grid/choice-grid.svelte',
       '../../../../data-grid/src/components/data-grid/data-grid.svelte',
-      '../../../../core/src/components/json-schema-editor/enum-editor.svelte',
+      '../../../../json-schema-editor/src/components/json-schema-editor/enum-editor.svelte',
       '../../../../pagination/src/components/pagination/pagination.svelte',
       '../../../../slider/src/components/slider/slider.svelte',
       '../../../../chart/src/components/spectrogram/spectrogram.svelte',

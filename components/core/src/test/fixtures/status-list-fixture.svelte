@@ -26,8 +26,8 @@
 </script>
 
 <script lang="ts">
-  import DataList from '../../components/data-list/data-list.svelte';
-  import StackedListItem from '../../components/stacked-list-item/stacked-list-item.svelte';
+  import DataList from '@lostgradient/data-list/components/data-list/data-list.svelte';
+  import StackedListItem from '@lostgradient/data-list/components/stacked-list-item/stacked-list-item.svelte';
   import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
 
   let {

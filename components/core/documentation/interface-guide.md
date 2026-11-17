@@ -14,20 +14,20 @@ There are eight archetypes. Each names its components and its focal element; the
 
 | Archetype | Components | Focal element |
 | --- | --- | --- |
-| Focus list: the few things that need a person now | [`Section`](../../section/src/components/section/README.md), [`GroupedList`](../../grouped-list/src/components/grouped-list/README.md) or [`DataList`](../src/components/data-list/README.md) with [`StackedListItem`](../src/components/stacked-list-item/README.md), optionally one [`Spotlight`](../../spotlight/src/components/spotlight/README.md) | The first row, or the `Spotlight` value above the list |
-| Collection: many like records to scan, filter and open | [`FilterBar`](../src/components/filter-bar/README.md), `DataList` with `StackedListItem` (or [`DataTable`](../src/components/data-table/README.md)), [`LoadMore`](../../load-more/src/components/load-more/README.md) or [`Pagination`](../../pagination/src/components/pagination/README.md), [`EmptyState`](../../empty-state/src/components/empty-state/README.md) | The list, with one labelled primary action |
-| Detail with inspector: one record, read and edited in place | [`PageHeader`](../src/components/page-header/README.md), `Section`, [`Inspector`](../../inspector/src/components/inspector/README.md), [`DescriptionList`](../../description-list/src/components/description-list/README.md), [`Timeline`](../src/components/timeline/README.md) | The record's title and content, with the inspector kept quiet |
-| Conversation: a turn-by-turn exchange | [`Message`](../../message/src/components/message/README.md), [`ToolCallPanel`](../src/components/tool-call-panel/README.md), [`ApprovalCard`](../src/components/approval-card/README.md), [`MarkdownEditor`](../../editor/src/lib/components/markdown-editor/README.md) as the composer | The latest message, then the composer |
+| Focus list: the few things that need a person now | [`Section`](../../section/src/components/section/README.md), [`GroupedList`](../../grouped-list/src/components/grouped-list/README.md) or [`DataList`](../../data-list/src/components/data-list/README.md) with [`StackedListItem`](../../data-list/src/components/stacked-list-item/README.md), optionally one [`Spotlight`](../../spotlight/src/components/spotlight/README.md) | The first row, or the `Spotlight` value above the list |
+| Collection: many like records to scan, filter and open | [`FilterBar`](../../filter-bar/src/components/filter-bar/README.md), `DataList` with `StackedListItem` (or [`DataTable`](../../data-table/src/components/data-table/README.md)), [`LoadMore`](../../load-more/src/components/load-more/README.md) or [`Pagination`](../../pagination/src/components/pagination/README.md), [`EmptyState`](../../empty-state/src/components/empty-state/README.md) | The list, with one labelled primary action |
+| Detail with inspector: one record, read and edited in place | [`PageHeader`](../../page-header/src/components/page-header/README.md), `Section`, [`Inspector`](../../inspector/src/components/inspector/README.md), [`DescriptionList`](../../description-list/src/components/description-list/README.md), [`Timeline`](../../timeline/src/components/timeline/README.md) | The record's title and content, with the inspector kept quiet |
+| Conversation: a turn-by-turn exchange | [`Message`](../../message/src/components/message/README.md), [`ToolCallPanel`](../../tool-call-panel/src/components/tool-call-panel/README.md), [`ApprovalCard`](../../approval-card/src/components/approval-card/README.md), [`MarkdownEditor`](../../editor/src/lib/components/markdown-editor/README.md) as the composer | The latest message, then the composer |
 | Flow: one task in steps | [`Steps`](../../steps/src/components/steps/README.md), [`FormSection`](../../form-section/src/components/form-section/README.md), [`FormField`](../../form-field/src/components/form-field/README.md), [`FormActions`](../../form-actions/src/components/form-actions/README.md) or [`DockedActionBar`](../../docked-action-bar/src/components/docked-action-bar/README.md) | The current step's one question |
 | Queue: items that each need a decision | [`SegmentedControl`](../../segmented-control/src/components/segmented-control/README.md) for the filter, `DataList` with status-first `StackedListItem` rows, `ApprovalCard` | The item at the head of the queue and its decision buttons |
-| Overview: a whole system at a glance | `Spotlight`, [`StatisticGroup`](../src/components/statistic-group/README.md) of [`Statistic`](../src/components/statistic/README.md) tiles, [`Card`](../../card/src/components/card/README.md), [`Sparkbar`](../../chart/src/components/sparkbar/README.md), [`Meter`](../../meter/src/components/meter/README.md) | The `Spotlight`; it is the only archetype with stat tiles or cards |
+| Overview: a whole system at a glance | `Spotlight`, [`StatisticGroup`](../../statistic/src/components/statistic-group/README.md) of [`Statistic`](../../statistic/src/components/statistic/README.md) tiles, [`Card`](../../card/src/components/card/README.md), [`Sparkbar`](../../chart/src/components/sparkbar/README.md), [`Meter`](../../meter/src/components/meter/README.md) | The `Spotlight`; it is the only archetype with stat tiles or cards |
 | Browse: finding and reading records | [`SearchField`](../../search-field/src/components/search-field/README.md), `SegmentedControl`, `GroupedList` rows with an optional photo at the end, [`KeyFacts`](../../key-facts/src/components/key-facts/README.md), [`WeekSchedule`](../../week-schedule/src/components/week-schedule/README.md), [`Image`](../../image/src/components/image/README.md) | The record being read, or the results while searching; rows, not a grid of cards |
 
 Two choices recur across them. History and audit lists are a `Timeline`, not a hand-drawn list. Prototype text entry is a `MarkdownEditor`, not a textarea.
 
 ## Operational surfaces
 
-Use [`ApprovalCard`](../src/components/approval-card/README.md) for a pending operation that needs a human decision. It is controlled and deliberately has no execution authority: the host records the resolution and performs the operation.
+Use [`ApprovalCard`](../../approval-card/src/components/approval-card/README.md) for a pending operation that needs a human decision. It is controlled and deliberately has no execution authority: the host records the resolution and performs the operation.
 
 ```svelte
 <script lang="ts">
@@ -54,7 +54,7 @@ Use [`ApprovalCard`](../src/components/approval-card/README.md) for a pending op
 
 Pass environment variable names through `env`; values are intentionally discarded. A pending card exposes actions only when `onResolve` exists. An expired request becomes read-only from `expiresAt`, so a host should persist the terminal state it receives and remove the card only after the decision is recorded.
 
-For structured tool arguments, compose [`PayloadInspector`](../src/components/payload-inspector/README.md) rather than inventing another JSON tree. It accepts JSON values or serialized strings, defaults to a one-level opening depth and a 1 MB byte cap, and turns parse failures, circular values, and oversized payloads into visible states. Redact secrets before passing `value`; the component renders what it receives.
+For structured tool arguments, compose [`PayloadInspector`](../../payload-inspector/src/components/payload-inspector/README.md) rather than inventing another JSON tree. It accepts JSON values or serialized strings, defaults to a one-level opening depth and a 1 MB byte cap, and turns parse failures, circular values, and oversized payloads into visible states. Redact secrets before passing `value`; the component renders what it receives.
 
 ## Bounded output and previews
 
@@ -78,7 +78,7 @@ Do not treat a terminal frame as a process manager. If the connection drops, upd
 
 ## Forms, policy, and confirmation
 
-[`SettingRow`](../src/components/setting-row/README.md) publishes the form-field context that its composed control consumes. This keeps labels, descriptions, warnings, errors, and managed-policy text aligned across settings screens.
+[`SettingRow`](../../setting-row/src/components/setting-row/README.md) publishes the form-field context that its composed control consumes. This keeps labels, descriptions, warnings, errors, and managed-policy text aligned across settings screens.
 
 ```svelte
 <script lang="ts">
@@ -109,7 +109,7 @@ Two shared exit-transition lifecycles govern how an overlay leaves the DOM, and 
 
 ## Editing and review
 
-[`JsonSchemaEditor`](../src/components/json-schema-editor/README.md) supports both local and controlled ownership for [JSON Schema](https://json-schema.org/). Use `defaultSchema` for a form that owns edits; use `schema` with `onValueChangeRequest` when the parent or server is authoritative. The editor's form, JSON, diff, undo, and validation views share one state model, so a rejected controlled update should return the authoritative schema rather than mutating a second copy.
+[`JsonSchemaEditor`](../../json-schema-editor/src/components/json-schema-editor/README.md) supports both local and controlled ownership for [JSON Schema](https://json-schema.org/). Use `defaultSchema` for a form that owns edits; use `schema` with `onValueChangeRequest` when the parent or server is authoritative. The editor's form, JSON, diff, undo, and validation views share one state model, so a rejected controlled update should return the authoritative schema rather than mutating a second copy.
 
 ```svelte
 <script lang="ts">

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { LocaleProvider } from '@lostgradient/locale-provider/components/locale-provider/index.ts';
   import { NumberInput } from '@lostgradient/number-input/components/number-input/index.ts';
-  import { PhoneInput } from '../../components/phone-input/index.ts';
+  import { PhoneInput } from '@lostgradient/phone-input/components/phone-input/index.ts';
   import { Slider } from '@lostgradient/slider/components/slider/index.ts';
-  import { Statistic } from '../../components/statistic/index.ts';
+  import { Statistic } from '@lostgradient/statistic/components/statistic/index.ts';
   import type { TextDirection } from '@lostgradient/locale-provider/components/locale-provider/index.ts';
 
   let {

@@ -1,0 +1,501 @@
+<script lang="ts" module>
+  export type {
+    ListDetailHeaderContext,
+    ListDetailListBodyContext,
+    ListDetailProps,
+    ListDetailRowContext,
+    ListDetailSelectionLocation,
+    ListDetailStorage,
+  } from './list-detail.types.ts';
+</script>
+
+<script lang="ts" generics="T">
+  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
+  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
+  import { tick, untrack } from 'svelte';
+
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
+  import { Button } from '@lostgradient/button/components/button/index.ts';
+  import { DataList } from '@lostgradient/data-list/components/data-list/index.ts';
+  import { EmptyState } from '@lostgradient/empty-state/components/empty-state/index.ts';
+  import { ChevronLeft } from '@lostgradient/foundation/components/icons/index.ts';
+  import { ResizablePanels } from '@lostgradient/resizable-panels/components/resizable-panels/index.ts';
+  import { Skeleton } from '@lostgradient/skeleton/components/skeleton/index.ts';
+  import type {
+    ResizablePanelDefinition,
+    ResizablePanelsResizeEvent,
+  } from '@lostgradient/resizable-panels/components/resizable-panels/index.ts';
+  import {
+    createBrowserSelectionLocation,
+    clampListWidth,
+    DETAIL_PANE_MINIMUM_WIDTH,
+    LIST_PANE_MINIMUM_WIDTH,
+    moveCursor,
+    ownsTypedKeys,
+    readStoredListCollapsed,
+    readStoredListWidth,
+    resolveStorage,
+    writeStoredListCollapsed,
+    writeStoredListWidth,
+  } from './list-detail-state.ts';
+  import { Tooltip } from '@lostgradient/tooltip/components/tooltip/index.ts';
+  import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
+  import type { ListDetailProps } from './list-detail.types.ts';
+
+  // The region declares the keys it handles from the same list an application's shortcut map reads.
+  const LIST_DETAIL_KEY_SHORTCUTS = LIST_DETAIL_SHORTCUTS.map((shortcut) =>
+    shortcut.keys.join('+'),
+  ).join(' ');
+
+  let {
+    items,
+    key,
+    label,
+    list,
+    listBody,
+    groupBy,
+    loading = false,
+    loadingLabel = 'Loading',
+    onLoadingCancel,
+    detail,
+    empty,
+    listEmpty,
+    listFooter,
+    header,
+    openFirst = false,
+    selectedKey = $bindable(null),
+    onSelectedKeyChange,
+    selectionParameter = 'selected',
+    selectionLocation,
+    storageKey,
+    storage,
+    pushBelow = 600,
+    stackBelow = 0,
+    defaultListWidth = 280,
+    maximumListWidth = 560,
+    flushDetail = false,
+    listCollapsible = false,
+    listCollapsed = $bindable(false),
+    collapseListLabel = 'Hide list',
+    expandListLabel = 'Show list',
+    backLabel = 'Back',
+    backVisible = true,
+    detailLabel = 'Details',
+    emptyTitle = 'Nothing selected',
+    emptyDescription = 'Choose an item from the list to see it here.',
+    class: className,
+    ...rest
+  }: ListDetailProps<T> = $props();
+
+  // A row is an `<li>` ListDetail draws, or any element a `listBody` draws that carries the row's
+  // key in `data-cinder-row-id` (a DataTable row does).
+  const ROW_KEY_ATTRIBUTES = ['data-cinder-list-detail-key', 'data-cinder-row-id'] as const;
+  const ROW_SELECTOR = ROW_KEY_ATTRIBUTES.map((attribute) => `[${attribute}]`).join(', ');
+  // How long the placeholder waits before it appears, so a fast load never flickers.
+  const LOADING_DELAY_MILLISECONDS = 300;
+  // How long a load runs before the placeholder says it is taking longer than usual.
+  const STILL_LOADING_MILLISECONDS = 10_000;
+
+  function rowKeyAttribute(row: Element): string | null {
+    for (const attribute of ROW_KEY_ATTRIBUTES) {
+      const value = row.getAttribute(attribute);
+      if (value !== null) return value;
+    }
+    return null;
+  }
+
+  let rootElement: HTMLDivElement | undefined = $state();
+  let rootWidth = $state(0);
+  let activeKey = $state<string | null>(null);
+
+  const keys = $derived(items.map((item) => key(item)));
+  // An entry, not the item, so an item that is itself `undefined` is still found.
+  const selectedEntry = $derived.by(() => {
+    const index = selectedKey === null ? -1 : keys.indexOf(selectedKey);
+    return index === -1 ? undefined : { item: items[index] as T };
+  });
+  // An unmeasured root (the server, the first paint) is treated as wide, so the stacked layout
+  // never flashes before the width is known.
+  const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
+  // Wide enough to show both panes, too narrow to put them side by side: the detail sits under the list.
+  const below = $derived(!narrow && rootWidth > 0 && rootWidth < stackBelow);
+
+  // A hidden list is remembered beside the divider, and the remembered choice wins on mount.
+  untrack(() => {
+    if (!listCollapsible) return;
+    const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
+    if (stored !== null) listCollapsed = stored;
+  });
+  // The list is hidden only beside an open item, where both panes could show: one pane at a time
+  // has nothing to hide, and with nothing open the list is all there is to choose from.
+  const toggleShown = $derived(listCollapsible && !narrow && selectedEntry !== undefined);
+  const collapsed = $derived(toggleShown && listCollapsed);
+
+  /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
+  async function setListCollapsed(next: boolean): Promise<void> {
+    listCollapsed = next;
+    writeStoredListCollapsed(resolveStorage(storage), storageKey, next);
+    await tick();
+    rootElement?.querySelector<HTMLElement>('.cinder-list-detail__list-toggle')?.focus();
+  }
+
+  // The divider starts where it was left. This is read when the panels mount, not on every render:
+  // later drags are the person's, not a prop's, so a new `defaultListWidth` does not move a divider
+  // that is already placed, and changing it while mounted would reset the layout mid-drag.
+  let initialListWidth = $state(
+    untrack(() =>
+      clampListWidth(
+        readStoredListWidth(resolveStorage(storage), storageKey, maximumListWidth) ??
+          defaultListWidth,
+        maximumListWidth,
+      ),
+    ),
+  );
+  // The last width the person dragged to, for a remount when there is no storage to read it from.
+  let draggedListWidth: number | null = null;
+  let wasNarrow = false;
+  // Narrowing unmounts the panels and widening mounts new ones, which start from
+  // `initialListWidth`, so refresh it from where the divider was left before they do.
+  $effect.pre(() => {
+    const isNarrow = narrow;
+    untrack(() => {
+      if (wasNarrow && !isNarrow) {
+        const stored = readStoredListWidth(resolveStorage(storage), storageKey, maximumListWidth);
+        const width = stored ?? draggedListWidth;
+        if (width !== null) initialListWidth = clampListWidth(width, maximumListWidth);
+      }
+      wasNarrow = isNarrow;
+    });
+  });
+  const panes = $derived<ResizablePanelDefinition[]>([
+    {
+      id: 'list',
+      label,
+      defaultSize: { value: initialListWidth, unit: 'px' },
+      minSize: { value: LIST_PANE_MINIMUM_WIDTH, unit: 'px' },
+      maxSize: { value: Math.max(maximumListWidth, LIST_PANE_MINIMUM_WIDTH), unit: 'px' },
+    },
+    {
+      id: 'detail',
+      label: detailLabel,
+      // Zero, so the detail asks for only its minimum and takes whatever the list leaves. Without a
+      // default it would ask for an equal share, and a list wider than half the container would be
+      // squeezed to make room for it.
+      defaultSize: { value: 0, unit: 'px' },
+      minSize: { value: DETAIL_PANE_MINIMUM_WIDTH, unit: 'px' },
+    },
+  ]);
+
+  function measureRoot(): void {
+    if (rootElement) rootWidth = rootElement.getBoundingClientRect().width;
+  }
+
+  const resizeAttachment = useResizeObserver(() => {
+    measureRoot();
+  });
+
+  $effect(() => {
+    if (rootElement) measureRoot();
+  });
+
+  function commitLayout(event: ResizablePanelsResizeEvent): void {
+    // A rebase is the container changing size, not the person moving the divider.
+    if (event.reason === 'rebase') return;
+    const listSize = event.sizes.find((size) => size.id === 'list');
+    if (!listSize) return;
+    draggedListWidth = listSize.pixelSize;
+    writeStoredListWidth(resolveStorage(storage), storageKey, listSize.pixelSize);
+  }
+
+  // The selection and the URL. On the first run an empty selection is filled from the URL, while an
+  // explicit one is kept and written to it; after that the URL follows the selection, and only when
+  // it differs, so a reload lands where it left.
+  let urlReady = false;
+  $effect(() => {
+    const parameter = selectionParameter;
+    const current = selectedKey;
+    if (parameter === null) return;
+    const location = selectionLocation ?? createBrowserSelectionLocation();
+    if (!urlReady) {
+      urlReady = true;
+      if (current === null) {
+        const fromUrl = location.read(parameter);
+        if (fromUrl === null || fromUrl === '') return;
+        untrack(() => {
+          selectedKey = fromUrl;
+          activeKey = fromUrl;
+          onSelectedKeyChange?.(fromUrl);
+        });
+        return;
+      }
+    }
+    if (location.read(parameter) !== current) location.write(parameter, current);
+  });
+
+  // With `openFirst`, an empty selection beside a list becomes the first item, once the width is
+  // known to be wide. It follows the effect above, so a key the URL names has been read by then.
+  $effect(() => {
+    if (!openFirst || narrow || rootWidth === 0 || selectedKey !== null) return;
+    const first = keys[0];
+    if (first === undefined) return;
+    untrack(() => setSelection(first));
+  });
+
+  function rowElements(): HTMLElement[] {
+    return rootElement ? [...rootElement.querySelectorAll<HTMLElement>(ROW_SELECTOR)] : [];
+  }
+
+  function rowElementFor(rowKey: string): HTMLElement | undefined {
+    return rowElements().find((row) => rowKeyAttribute(row) === rowKey);
+  }
+
+  function rowKeyOf(target: EventTarget | null): string | null {
+    if (!(target instanceof Element)) return null;
+    const row = target.closest(ROW_SELECTOR);
+    return row ? rowKeyAttribute(row) : null;
+  }
+
+  function isRowPrimaryAction(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest('.cinder-selectable-row__primary') !== null;
+  }
+
+  async function focusRow(rowKey: string): Promise<void> {
+    await tick();
+    const row = rowElementFor(rowKey);
+    const control =
+      row?.querySelector<HTMLElement>('.cinder-selectable-row__primary') ??
+      row?.querySelector<HTMLElement>('a[href], button:not(:disabled)') ??
+      // A table row that opens on Enter takes focus itself.
+      (row?.hasAttribute('tabindex') ? row : null);
+    control?.focus();
+  }
+
+  function setSelection(next: string | null): void {
+    if (next === selectedKey) return;
+    selectedKey = next;
+    if (next !== null) activeKey = next;
+    onSelectedKeyChange?.(next);
+  }
+
+  async function open(rowKey: string): Promise<void> {
+    setSelection(rowKey);
+    if (!narrow) {
+      // A list left hidden hides again once an item is open, taking the row that had focus with it,
+      // so focus moves to the toggle that brings the list back.
+      if (!collapsed) return;
+      await tick();
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__list-toggle')?.focus();
+      return;
+    }
+    // The list is gone below `pushBelow`, so focus moves to the first control of the detail.
+    await tick();
+    (
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__back button') ??
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__detail')
+    )?.focus();
+  }
+
+  async function back(): Promise<void> {
+    const returnTo = selectedKey;
+    setSelection(null);
+    if (returnTo !== null) await focusRow(returnTo);
+  }
+
+  function handleClick(event: MouseEvent): void {
+    const rowKey = rowKeyOf(event.target);
+    if (rowKey !== null && isRowPrimaryAction(event.target)) void open(rowKey);
+  }
+
+  function handleKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === 'Enter') {
+      const rowKey = rowKeyOf(event.target);
+      if (rowKey !== null && isRowPrimaryAction(event.target)) void open(rowKey);
+      return;
+    }
+    const step =
+      event.key === 'j' || event.key === 'J'
+        ? 1
+        : event.key === 'k' || event.key === 'K'
+          ? -1
+          : null;
+    if (step === null || ownsTypedKeys(event.target)) return;
+    const next = moveCursor(keys, activeKey ?? selectedKey, step);
+    if (next === null) return;
+    event.preventDefault();
+    activeKey = next;
+    void focusRow(next);
+  }
+</script>
+
+{#snippet listPane()}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <section
+    class="cinder-list-detail__list"
+    aria-label={label}
+    aria-keyshortcuts={LIST_DETAIL_KEY_SHORTCUTS}
+    onclick={handleClick}
+    onkeydown={handleKeydown}
+  >
+    {#if header}
+      <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
+      <header class="cinder-list-detail__header">
+        {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+      </header>
+    {:else if toggleShown}
+      <header class="cinder-list-detail__header" data-cinder-list-toggle="">
+        {@render listToggle()}
+      </header>
+    {/if}
+    <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
+      {#if loading}
+        <Skeleton
+          variant="list"
+          rows={5}
+          framed={false}
+          label={loadingLabel}
+          delay={LOADING_DELAY_MILLISECONDS}
+          stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+          {...onLoadingCancel === undefined ? {} : { onCancel: onLoadingCancel }}
+          class="cinder-list-detail__loading"
+        />
+      {:else if listBody}
+        {@render listBody({ items, selectedKey, open: (rowKey) => void open(rowKey) })}
+      {:else}
+        <DataList
+          {items}
+          {key}
+          {...groupBy ? { groupBy } : {}}
+          {...listEmpty ? { empty: listEmpty } : {}}
+        >
+          {#snippet children(item)}
+            {@const rowKey = key(item)}
+            <li
+              class="cinder-list-detail__row"
+              data-cinder-list-detail-key={rowKey}
+              data-cinder-active={activeKey === rowKey ? '' : undefined}
+            >
+              {@render list?.(item, {
+                selected: selectedKey === rowKey,
+                active: activeKey === rowKey,
+                open: () => void open(rowKey),
+              })}
+            </li>
+          {/snippet}
+        </DataList>
+      {/if}
+      <!-- Outside `items`: not a row, so it neither hides `listEmpty` nor takes part in J and K. -->
+      {#if listFooter && !loading}
+        <div class="cinder-list-detail__footer">
+          {@render listFooter()}
+        </div>
+      {/if}
+    </div>
+  </section>
+{/snippet}
+
+{#snippet listToggle()}
+  {@const label = collapsed ? expandListLabel : collapseListLabel}
+  <Tooltip text={label} describe={false}>
+    <Button
+      variant="ghost"
+      size="sm"
+      iconOnly
+      aria-label={label}
+      class="cinder-list-detail__list-toggle"
+      onclick={() => void setListCollapsed(!collapsed)}
+    >
+      {#if collapsed}
+        <PanelLeftOpen class="cinder-icon-md" aria-hidden="true" />
+      {:else}
+        <PanelLeftClose class="cinder-icon-md" aria-hidden="true" />
+      {/if}
+    </Button>
+  </Tooltip>
+{/snippet}
+
+{#snippet detailPane()}
+  <!-- Without a Back button the region is where focus lands when an item opens, so it takes a
+       programmatic tab stop of -1 (never a stop of the tab order). -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <section
+    class="cinder-list-detail__detail"
+    aria-label={detailLabel}
+    tabindex={backVisible ? undefined : -1}
+  >
+    {#if narrow && backVisible}
+      <div class="cinder-list-detail__back">
+        <Button variant="ghost" size="sm" onclick={() => void back()}>
+          {#snippet leadingIcon()}<ChevronLeft
+              class="cinder-icon-sm"
+              aria-hidden="true"
+            />{/snippet}
+          {backLabel}
+        </Button>
+      </div>
+    {/if}
+    <div class="cinder-list-detail__detail-body">
+      {#if loading}
+        <div class="cinder-list-detail__loading-detail" aria-hidden="true">
+          <Skeleton lines={5} delay={LOADING_DELAY_MILLISECONDS} />
+        </div>
+      {:else if selectedEntry}
+        {@render detail(selectedEntry.item)}
+      {:else if empty}
+        {@render empty()}
+      {:else}
+        <EmptyState title={emptyTitle} description={emptyDescription} />
+      {/if}
+    </div>
+  </section>
+{/snippet}
+
+<div
+  {...rest}
+  bind:this={rootElement}
+  {@attach resizeAttachment}
+  class={classNames('cinder-list-detail', className)}
+  data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
+  data-cinder-flush-detail={flushDetail ? '' : undefined}
+  data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
+  data-cinder-list-collapsed={collapsed ? '' : undefined}
+>
+  {#if narrow}
+    {#if selectedEntry}
+      {@render detailPane()}
+    {:else}
+      {@render listPane()}
+    {/if}
+  {:else if below}
+    <div class="cinder-list-detail__below">
+      {#if collapsed}
+        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {:else}
+        {@render listPane()}
+      {/if}
+      {@render detailPane()}
+    </div>
+  {:else}
+    <!-- Hiding the list keeps the panels, and the open item in them, mounted: the list pane and
+         the divider are out of the layout and the list is not drawn, so nothing in it can take
+         focus, and the rail beside them keeps the way back. An open item that mounted again
+         would read its data again and could take focus for itself. -->
+    <div class="cinder-list-detail__split">
+      {#if collapsed}
+        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {/if}
+      <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
+        {#snippet children(pane)}
+          {#if pane.id === 'list'}
+            {#if !collapsed}
+              {@render listPane()}
+            {/if}
+          {:else}
+            {@render detailPane()}
+          {/if}
+        {/snippet}
+      </ResizablePanels>
+    </div>
+  {/if}
+</div>
