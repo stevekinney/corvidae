@@ -131,7 +131,8 @@ test('the package root still exports every recorded name, each of the same kind'
   const types = new Set(current.types);
   expect(recordedRuntime.filter((name) => !runtime.has(name))).toEqual([]);
   expect(recordedTypes.filter((name) => !types.has(name))).toEqual([]);
-  // A name the snapshot lacks must come from a component barrel (a component added since).
+  // A name the snapshot lacks must come from a component added since: its barrel, or the root
+  // metadata exports generated for it.
   const componentNames = new Set<string>();
   const componentsRoot = join(packageRoot, 'src', 'components');
   for (const directory of readdirSync(componentsRoot)) {
@@ -141,6 +142,13 @@ test('the package root still exports every recorded name, each of the same kind'
     componentNames.add(
       directory.replaceAll(/(?:^|-)(\w)/g, (_, letter: string) => letter.toUpperCase()),
     );
+    for (const name of [...names.runtime, ...names.types]) componentNames.add(name);
+  }
+  // A new component also gains the root metadata exports `generate-root-metadata-exports.ts`
+  // writes for it (`<component>Schema`, `<component>Variables`, `<component>Examples`).
+  const exportsRoot = join(packageRoot, 'src', 'exports');
+  for (const file of readdirSync(exportsRoot).filter((name) => name.startsWith('metadata-'))) {
+    const names = exportNames(join(exportsRoot, file));
     for (const name of [...names.runtime, ...names.types]) componentNames.add(name);
   }
   const recordedNames = new Set([...recordedRuntime, ...recordedTypes]);
