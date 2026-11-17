@@ -313,6 +313,19 @@ export interface GoalStore {
     now: string,
   ): Promise<GoalConfigurationResult>;
   /**
+   * Gives back the edit `consumePromptEdit` took for attempt `attemptIndex` when that start ended
+   * without creating the attempt's run (it adopted a run another try created, or stood down): one
+   * compare-and-swap sets `objective.promptPending` again and restores `previousMarker`, the
+   * marker the record held before the consume, so the record never says an attempt was given a
+   * prompt it never got. A record whose marker is no longer `attemptIndex` is `unchanged`.
+   */
+  restorePromptEdit(
+    goalRunId: string,
+    attemptIndex: number,
+    previousMarker: number | undefined,
+    now: string,
+  ): Promise<GoalConfigurationResult>;
+  /**
    * Increments `controllerRestarts`. A terminal goal is `rejected`. With
    * `expectedCount`, the increment is a compare-and-swap on the count: a record
    * already at another count is `stale`, so of several recoveries that observed
@@ -634,6 +647,34 @@ export function createGoalStore(
                       ? {}
                       : { instructions: current.objective.instructions }),
                     promptRevisedAtAttempt: attemptIndex,
+                  },
+                  updatedAt: now,
+                },
+              }
+            : { outcome: 'done', result: { status: 'unchanged', record: current } },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
+    restorePromptEdit(goalRunId, attemptIndex, previousMarker, now) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) =>
+          current.objective.promptRevisedAtAttempt === attemptIndex
+            ? {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  objective: {
+                    agentName: current.objective.agentName,
+                    prompt: current.objective.prompt,
+                    ...(current.objective.instructions === undefined
+                      ? {}
+                      : { instructions: current.objective.instructions }),
+                    ...(previousMarker === undefined
+                      ? {}
+                      : { promptRevisedAtAttempt: previousMarker }),
+                    promptPending: true,
                   },
                   updatedAt: now,
                 },

@@ -454,9 +454,28 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     }
     const seated =
       taken.status === 'updated' || taken.status === 'unchanged' ? taken.record : record;
+    // The edit this try took was meant for the run it creates. A try that ends without creating
+    // it (it adopts a run another try created, stands down, or fails the attempt) gives the edit
+    // back, so the record never says an attempt was given a prompt it never got. A try that throws
+    // keeps it: its retry finds the marker as its own attempt's and seats the same turn.
+    const giveBackEdit = async (): Promise<void> => {
+      if (taken.status !== 'updated') return;
+      await store.restorePromptEdit(
+        request.goalRunId,
+        request.attemptIndex,
+        record.objective.promptRevisedAtAttempt,
+        runtime.clock.nowISO(),
+      );
+    };
     const seat = await conversations.seat(seated, request);
-    if (seat.status === 'failed') return failed(seat.detail);
-    if (await mustStandDown(true)) return standDown();
+    if (seat.status === 'failed') {
+      await giveBackEdit();
+      return failed(seat.detail);
+    }
+    if (await mustStandDown(true)) {
+      await giveBackEdit();
+      return standDown();
+    }
     let started: GoalAttemptRun;
     try {
       started = startAttemptRun({
@@ -479,10 +498,18 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       // activity, which the controller treats as its own failure and recovery
       // restarts, rather than ending the goal over a transient fault.
       const raced = await adopt();
-      if (raced !== undefined) return raced;
+      if (raced !== undefined) {
+        // The run is another try's, seated from the prompt that try read: this attempt was not
+        // given the edit this start took.
+        await giveBackEdit();
+        return raced;
+      }
       // The goal tombstoned this attempt's claim between this start's read of the
       // goal and its own claim: it ended over the attempt, so nothing starts.
-      if (error instanceof GoalAttemptTombstonedError) return standDown();
+      if (error instanceof GoalAttemptTombstonedError) {
+        await giveBackEdit();
+        return standDown();
+      }
       // A permanent property of the agent is a verdict on the attempt, not a
       // fault to retry.
       if (
@@ -490,6 +517,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         error instanceof GoalAttemptInvalidCostEstimationError ||
         error instanceof DefinitionDriftedError
       ) {
+        await giveBackEdit();
         return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(`${error.reason}: ${error.message}`));
       }
       throw error;
