@@ -97,6 +97,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/storage-web-extension',
   '@lostgradient/testing',
   '@lostgradient/typescript',
+  '@lostgradient/component-tooling',
   '@lostgradient/interborough',
   '@lostgradient/playground',
   '@lostgradient/terminal',
