@@ -546,13 +546,22 @@ function splitReader(files: ReadonlyMap<string, string>, split: SplitPackages): 
 function importersOf(context: Context, file: string): string[] {
   const name = posix.basename(file);
   // A test builds a fixture by naming its file in a path string; a test file is never built.
-  const named = /\.test\./.test(name)
-    ? undefined
-    : new RegExp(`[/'"\`]${name.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`);
+  const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // A path names the file wherever it is; a bare name (`'basic.example.svelte'`) names the file
+  // beside the test when the test has one of that name, so a test that reads its own examples does
+  // not build another component's example of the same name. With none beside it, the name is one
+  // the test joins to a directory of its own (`join(FIXTURES, 'x.ts')`) and may name this file.
+  const byPath = /\.test\./.test(name) ? undefined : new RegExp(`/${escaped}['"\`]`);
+  const byName = /\.test\./.test(name) ? undefined : new RegExp(`['"\`]${escaped}['"\`]`);
   const importers: string[] = [];
   for (const [path, content] of context.files) {
     if (path === file || !isTestFile(path) || !CODE_FILE.test(path)) continue;
-    if ((context.imports.get(path) ?? []).includes(file) || named?.test(content) === true) {
+    const named =
+      byPath?.test(content) === true ||
+      (byName?.test(content) === true &&
+        (posix.dirname(path) === posix.dirname(file) ||
+          !context.files.has(posix.join(posix.dirname(path), name))));
+    if ((context.imports.get(path) ?? []).includes(file) || named) {
       importers.push(path);
     }
   }

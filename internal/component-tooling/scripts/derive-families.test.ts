@@ -136,6 +136,21 @@ describe('deriveFamilies', () => {
     expectNoPackageCycle(derived);
   });
 
+  test('a bare file name names the file beside the test that has one, not a namesake elsewhere', () => {
+    const tree = baseTree();
+    // Button's fixture goes to core; card's test reads its own fixture of the same name.
+    tree.set('src/components/button/in-card.fixture.svelte', svelte('../card/card.svelte'));
+    tree.set('src/components/card/in-card.fixture.svelte', '<p>card</p>\n');
+    tree.set(
+      'src/components/card/card-fixture.test.ts',
+      "const source = await Bun.file(join(import.meta.dir, 'in-card.fixture.svelte')).text();\n",
+    );
+    const derived = derive(tree);
+    expect(derived.testMoves.map(({ file }) => file)).toEqual([
+      'src/components/button/in-card.fixture.svelte',
+    ]);
+  });
+
   test('tests that mount each other move the one that mounts a higher layer to core', () => {
     const tree = baseTree();
     // card (layer 2) uses button (layer 1); button's fixture mounts card and card's mounts button.
