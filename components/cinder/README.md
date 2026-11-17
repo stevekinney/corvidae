@@ -198,7 +198,7 @@ bun run tokens:check
 
 After editing component source under `src/components/<component-id>/`, run `bun scripts/generate-component-artifacts.ts --fix` to refresh the README's generated regions and the root registries; the `metadata` task regenerates schemas, variables, examples and the manifest in `.metadata/`. Token corpus changes use `bun run tokens:generate`.
 
-From the Corvidae root, `bunx turbo run lint typecheck test --filter=@lostgradient/cinder` checks this workspace and `bun run validate` checks the complete repository. Browser fixtures and interaction tests live in `scripts/browser-fixtures`. Cinder has no library build or publishing step.
+From the Corvidae root, `bunx turbo run lint typecheck test --filter=@lostgradient/cinder` checks this workspace and `bun run validate` checks the complete repository. Browser fixtures and interaction tests live in each package's `browser/` suite; core's holds the host every suite mounts its fixtures with (`browser/host.ts`). Cinder has no library build or publishing step.
 
 ### Component authoring checklist
 

@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const DECISION_DECK_ROUTE = fixtureRoute('decision-deck');
 const TOP_CARD = '#example-mount-basic [data-cinder-decision-card][data-depth="0"]';

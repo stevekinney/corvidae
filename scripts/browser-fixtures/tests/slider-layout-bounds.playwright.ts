@@ -13,8 +13,8 @@
  * resolve to min/max.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const SLIDER_ROUTE = fixtureRoute('slider');
 

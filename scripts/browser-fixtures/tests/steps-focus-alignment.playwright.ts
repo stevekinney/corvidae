@@ -47,13 +47,13 @@
  * companion fast unit suite (`steps.test.ts`) pins the CSS contract directly.
  */
 
-import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import {
   FIRST_INTERACTIVE,
   resetFocus,
   tabToFirstInteractiveStep,
-} from './steps-focus-alignment-helpers.ts';
+} from '@lostgradient/testing/playwright/steps-focus-alignment-helpers';
+import { expect, test } from '@playwright/test';
 
 const STEPS_ROUTE = fixtureRoute('steps');
 const PIXEL_TOLERANCE = 0.5;

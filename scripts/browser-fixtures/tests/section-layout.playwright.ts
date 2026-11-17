@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 test.describe('Section layout', () => {
   test('a tall Section keeps every child inside a short flex scroll parent', async ({ page }) => {

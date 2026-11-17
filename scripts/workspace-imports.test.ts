@@ -170,8 +170,6 @@ async function readWorkspaceSources(directory: string, sourceDirectory = directo
   return sources;
 }
 
-const browserFixturesDirectory = 'scripts/browser-fixtures';
-
 describe('workspace imports', () => {
   test('import scanning finds former package names without treating text fixtures as imports', () => {
     const source = `
@@ -235,7 +233,6 @@ describe('workspace imports', () => {
   });
   test.each([
     './package.json',
-    'scripts/browser-fixtures/package.json',
     'scripts/groom/package.json',
     ...new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/*/package.json`).scanSync({
       cwd: root,
@@ -245,24 +242,13 @@ describe('workspace imports', () => {
     async (path) => {
       const directory = path.slice(0, -'/package.json'.length);
       const manifest = await readManifest(directory);
-      let dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
-      if (directory === browserFixturesDirectory) {
-        // The fixtures workspace declares the workspaces it imports, which keeps them out of the
-        // root manifest and so out of every task's cache key. Its external tooling still resolves
-        // from the root, where the root's own browser commands need it too.
-        const rootManifest = await readManifest('.');
-        dependencies = {
-          ...rootManifest.dependencies,
-          ...rootManifest.devDependencies,
-          ...dependencies,
-        };
-      }
+      const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
       const sources = await readWorkspaceSources(
         directory,
         directory === '.' ? 'scripts' : directory,
       );
       for (const { file, source } of sources.filter(
-        ({ file }) =>
+        ({ file }) => // The root suite's files wait under `browser-fixtures/` for `move-browser-specs.ts` (COR-2092).
           directory !== '.' || !(file.startsWith('browser-fixtures/') || file.startsWith('groom/')),
       )) {
         expect(source, `${directory}/${file} suppresses TypeScript checking`).not.toMatch(

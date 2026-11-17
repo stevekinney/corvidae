@@ -38,6 +38,12 @@ export function packageSuiteConfiguration(
     '.playwright',
     'manifest.json',
   );
+  // The slugs this package owns, which its component sweep covers (`defineComponentSweep`).
+  process.env['BROWSER_FIXTURE_OWNED'] = resolve(
+    configuration.root,
+    '.playwright',
+    'owned-slugs.json',
+  );
   return defineConfig({
     testDir: resolve(configuration.root, 'tests'),
     outputDir: resolve(configuration.root, 'test-results'),

@@ -1,18 +1,10 @@
 /**
- * The terminal's browser suite (COR-2080): `bun harness.ts prepare` writes the fixture manifest,
- * and `bun harness.ts serve --port <port>` builds and serves the fixtures, which
- * `playwright.config.ts` starts. The suite serves the application fixtures in `fixtures/`; the
- * terminal's fixture names come from `fixtures/terminal/scenarios.ts`, so those modules are
- * manifest inputs too.
+ * This package's browser suite (COR-2080, COR-2092): `bun browser/harness.ts prepare` writes the
+ * fixture manifest and the slugs the package owns, `build` bundles the fixture page every package
+ * serves, and `serve --port <port>`, which `playwright.config.ts` starts, builds and serves it.
  */
-import { packageSuite } from '@lostgradient/testing/browser/package-suite';
+import { repositoryPackageSuite } from '@lostgradient/testing/browser/package-suite';
 
-import { terminalAppFixtureDeclarations } from './fixture-declarations.ts';
-
-export const suite = packageSuite({
-  root: import.meta.dirname,
-  appFixtureDeclarations: terminalAppFixtureDeclarations,
-  codeInputs: ['components/terminal/browser/fixtures/terminal/*.ts'],
-});
+export const suite = await repositoryPackageSuite(import.meta.dirname);
 
 if (import.meta.main) await suite.main(Bun.argv.slice(2));

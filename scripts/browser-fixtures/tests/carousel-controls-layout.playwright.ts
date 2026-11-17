@@ -6,8 +6,8 @@
  * area (44px on a coarse pointer) that is a pseudo-element, not its painted size.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const ROUTE = fixtureRoute('carousel');
 

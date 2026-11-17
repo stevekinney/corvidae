@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { functionalResidualRoute } from './functional-residual-route.ts';
+import { functionalResidualRoute } from '@lostgradient/testing/playwright/functional-residual-route';
 
 /**
  * Follow-latest scrolling for Feed's log arm (`kind="log"`).

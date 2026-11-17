@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const FOOTER_ROUTE = fixtureRoute('footer');
 const containerWidths = [20, 40, 43, 48, 64, 90] as const;

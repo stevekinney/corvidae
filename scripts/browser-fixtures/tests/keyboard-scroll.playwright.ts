@@ -1,6 +1,6 @@
 import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { fixtureEntry } from '@lostgradient/testing/playwright/layout-fixture';
 import type { Locator, Page } from '@playwright/test';
-import { fixtureEntry } from './layout-fixture.ts';
 
 const viewport = { name: 'desktop', width: 900, height: 900 } as const;
 

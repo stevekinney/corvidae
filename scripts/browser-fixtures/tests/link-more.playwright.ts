@@ -9,8 +9,8 @@
  * and `isMobile`, not from `page.emulateMedia`.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 /** The sides of the link's center on which a tap `distance` pixels away still lands on the link. */
 async function reachedSides(link: Locator, distance: number): Promise<string[]> {

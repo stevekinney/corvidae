@@ -308,65 +308,6 @@ const scenario5 = await outcomeOf(async () => {
 });
 test('test tasks preserve and hash the benchmark runner environment', () => rethrow(scenario5));
 
-const scenario6 = await outcomeOf(async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'corvidae-browser-cache-'));
-  try {
-    await createWorkspace(directory);
-    await Bun.write(
-      join(directory, '.gitignore'),
-      'node_modules/\n.turbo/\n.playwright/\nexecutions.txt\n',
-    );
-    // The fixtures' own workspace owns their package dependencies, so the root does not: a
-    // workspace the root depends on is folded into every task's global hash.
-    const manifestPath = join(directory, 'package.json');
-    const manifest = await Bun.file(manifestPath).json();
-    await Bun.write(
-      manifestPath,
-      JSON.stringify({
-        ...manifest,
-        workspaces: [...manifest.workspaces, 'scripts/browser-fixtures'],
-        scripts: { 'test:browser-fixtures': 'bun scripts/generate.ts' },
-      }),
-    );
-    await Bun.write(
-      join(directory, 'scripts/browser-fixtures/package.json'),
-      JSON.stringify({
-        name: '@lostgradient/browser-fixtures',
-        private: true,
-        devDependencies: { '@fixture/library': 'workspace:*' },
-      }),
-    );
-    const outputs = ['manifest.json', 'fixture-modules.ts', 'manifest-inputs.sha256'].map((file) =>
-      join('scripts/browser-fixtures/.playwright', file),
-    );
-    await Bun.write(
-      join(directory, 'scripts/generate.ts'),
-      `
-const executions = Bun.file('executions.txt');
-await Bun.write(executions, String((await executions.exists() ? Number(await executions.text()) : 0) + 1));
-for (const output of ${JSON.stringify(outputs)}) await Bun.write(output, 'generated input');
-`,
-    );
-    await run(directory, [process.execPath, 'install']);
-    const command = [join(root, 'node_modules/.bin/turbo'), 'run', 'test:browser-fixtures'];
-    await run(directory, command);
-    expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('1');
-    for (const output of outputs) await rm(join(directory, output));
-    await run(directory, command);
-    expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('1');
-    for (const output of outputs) {
-      expect(await Bun.file(join(directory, output)).text()).toBe('generated input');
-    }
-    await Bun.write(join(directory, 'packages/base/source.ts'), 'export const value = 2;\n');
-    await run(directory, command);
-    expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('2');
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-test('root browser test caches restore their generated catalogs and follow provider source', () =>
-  rethrow(scenario6));
-
 function taskHash(output: string, taskId: string): string {
   const summary = JSON.parse(output) as { tasks: Array<{ taskId: string; hash: string }> };
   const task = summary.tasks.find((candidate) => candidate.taskId === taskId);
@@ -407,204 +348,39 @@ const scenario7 = await outcomeOf(async () => {
 test('a change leaves the cache keys of packages it cannot affect untouched', () =>
   rethrow(scenario7));
 
-const scenario8 = await outcomeOf(async () => {
-  // The root browser-fixtures task once hashed every tracked file of the repository (about 14,700
-  // inputs), so an edit to AGENTS.md or to an application the fixtures never import re-ran it, and
-  // each distinct TMPDIR (declared in `env`) was a different key. Its key is now what it reads:
-  // the fixtures' own files, the root scripts it runs, and the providers `transit` folds in.
-  const directory = await mkdtemp(join(tmpdir(), 'corvidae-browser-fixtures-keys-'));
-  try {
-    await createWorkspace(directory);
-    await Bun.write(
-      join(directory, '.gitignore'),
-      'node_modules/\n.turbo/\n.playwright/\ntest-results/\n.DS_Store\n*.log\n',
-    );
-    const manifestPath = join(directory, 'package.json');
-    const manifest = await Bun.file(manifestPath).json();
-    await Bun.write(
-      manifestPath,
-      JSON.stringify({
-        ...manifest,
-        workspaces: [...manifest.workspaces, 'scripts/browser-fixtures'],
-        scripts: { 'test:browser-fixtures': 'bun --eval "void 0"' },
-      }),
-    );
-    await Bun.write(
-      join(directory, 'scripts/browser-fixtures/package.json'),
-      JSON.stringify({
-        name: '@lostgradient/browser-fixtures',
-        private: true,
-        devDependencies: { '@fixture/cinder': 'workspace:*' },
-      }),
-    );
-    await Bun.write(
-      join(directory, 'components/cinder/package.json'),
-      JSON.stringify({ name: '@fixture/cinder', private: true }),
-    );
-    for (const [path, text] of [
-      ['components/cinder/src/index.ts', 'export const value = 1;\n'],
-      ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 1;\n'],
-      ['scripts/bun-test-junit.ts', 'export const runner = 1;\n'],
-      ['scripts/tool.ts', 'export const tool = 1;\n'],
-      ['AGENTS.md', '# Agents\n'],
-    ] as const) {
-      await Bun.write(join(directory, path), text);
-    }
-    await run(directory, [process.execPath, 'install']);
-    const command = [
-      join(root, 'node_modules/.bin/turbo'),
-      'run',
-      'test:browser-fixtures',
-      '--dry=json',
-    ];
-    const fixturesKey = async (environment: Record<string, string | undefined> = process.env) =>
-      taskHash(await run(directory, command, environment), '//#test:browser-fixtures');
-    const before = await fixturesKey();
-
-    // Two TMPDIR values are one key: the task passes it through without hashing it.
-    expect(await fixturesKey({ ...process.env, TMPDIR: join(directory, 'one') })).toBe(before);
-    expect(await fixturesKey({ ...process.env, TMPDIR: join(directory, 'two') })).toBe(before);
-
-    // Files the task cannot read leave its key alone.
-    await Bun.write(join(directory, 'AGENTS.md'), '# Agents, edited\n');
-    expect(await fixturesKey()).toBe(before);
-    await Bun.write(
-      join(directory, 'applications/application/source.ts'),
-      'export const value = 2;\n',
-    );
-    expect(await fixturesKey()).toBe(before);
-    await Bun.write(join(directory, 'scripts/tool.ts'), 'export const tool = 2;\n');
-    expect(await fixturesKey()).toBe(before);
-    // Generated output and machine-local files under the fixtures' own directory are ignored by
-    // Git but not by an explicit glob, so each would key the task per machine and per run.
-    for (const ignoredFile of [
-      'scripts/browser-fixtures/test-results/report.txt',
-      'scripts/browser-fixtures/.playwright/manifest.json',
-      'scripts/browser-fixtures/snapshots/.DS_Store',
-      'scripts/browser-fixtures/scripts/debug.log',
-    ]) {
-      await Bun.write(join(directory, ignoredFile), 'x\n');
-      expect(await fixturesKey(), ignoredFile).toBe(before);
-    }
-
-    // Provider source, the fixtures' own files, and the root runner it executes each move it.
-    const changes: Array<[string, string]> = [
-      ['components/cinder/src/index.ts', 'export const value = 2;\n'],
-      ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 2;\n'],
-      ['scripts/bun-test-junit.ts', 'export const runner = 2;\n'],
-    ];
-    let previous = before;
-    for (const [path, text] of changes) {
-      await Bun.write(join(directory, path), text);
-      const after = await fixturesKey();
-      expect(after, path).not.toBe(previous);
-      previous = after;
-    }
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-test('the browser-fixtures key follows the files it reads, never the host or the rest of the repository', () =>
-  rethrow(scenario8));
-
-test('the browser-fixtures task declares every root file its commands read, and no host variable', async () => {
-  // Inputs that are not `$TURBO_DEFAULT$` must name each root script the lane runs or imports,
-  // or a change to one replays a cached pass. The lane is the root `test:browser-fixtures`
-  // script: it runs `scripts/bun-test-junit.ts` over `scripts/browser-fixtures/scripts`, so every
-  // code file the fixtures workspace holds is an entrypoint, and so is every script the command
-  // names. Data the runner and the tests read directly cannot be found by import, so they are
-  // listed here.
-  const { discoverWorkspaces, listTree } = await import('./affected-tests.ts');
-  const { analyzeSource, resolveSpecifier, isCodeFile } = await import('./affected-tests-graph.ts');
+test('the package browser task keys on the fixture page every package serves, and no host variable', async () => {
+  // Every component package's browser suite serves the same page, built from every component's
+  // source and fixtures and the testing harness (COR-2092), so its key must follow all of them; the
+  // harness reads core's generated manifest, so the task waits for core's metadata.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const task: {
+    dependsOn?: string[];
     env?: string[];
     passThroughEnv?: string[];
     inputs?: string[];
-    outputs?: string[];
-  } = configuration.tasks['//#test:browser-fixtures'];
-  const manifest = await Bun.file(join(root, 'package.json')).json();
-  const command: string = manifest.scripts['test:browser-fixtures'];
-  const workspaces = discoverWorkspaces(root);
-  const { paths } = listTree(root);
-  const fixturesDirectory = 'scripts/browser-fixtures/';
-  const isRootCode = (path: string) =>
-    path.startsWith('scripts/') && !path.startsWith(fixturesDirectory);
-
-  const seen = new Set<string>();
-  const pending = [
-    ...[...paths].filter(
-      (path) =>
-        path.startsWith(fixturesDirectory) && isCodeFile(path) && !path.endsWith('.playwright.ts'),
-    ),
-    ...command.split(/[\s&|;'"]+/).filter((token) => paths.has(token) && isCodeFile(token)),
-  ];
-  for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
-    if (seen.has(current)) continue;
-    seen.add(current);
-    const source = readFileSync(join(root, current), 'utf8');
-    const analysis = analyzeSource(current, source);
-    for (const specifier of analysis.specifiers) {
-      const target = resolveSpecifier(current, specifier, paths, workspaces);
-      if (target !== null && (target.startsWith(fixturesDirectory) || isRootCode(target))) {
-        pending.push(target);
-      }
-    }
-  }
-  const reached = [...seen].filter(isRootCode);
-  expect(reached).toContain('scripts/bun-test-junit.ts');
-
-  const inputs = task.inputs ?? [];
-  expect(inputs, 'the key must not fall back to every file in the repository').not.toContain(
+  } = configuration.tasks['test:browser'];
+  expect(task.dependsOn).toEqual(['transit', '@lostgradient/cinder#metadata']);
+  for (const input of [
     '$TURBO_DEFAULT$',
-  );
-  const covers = (path: string) =>
-    inputs.some((input) => input === `$TURBO_ROOT$/${path}` || input === path);
-  const required = [
-    ...reached,
-    // Read by `bun-test-junit.ts` through `check-test-durations.ts`.
-    'scripts/test-duration-allowlist.json',
-    // Bun's own configuration for a run from the repository root. `tsconfig.json` is a global
-    // dependency, and the lockfile's Playwright pin that the provenance test reads moves the
-    // root's resolved-dependency hash, so neither belongs here: either would only widen the key.
-    'bunfig.toml',
-  ];
-  expect(
-    required.filter((path) => !covers(path)).toSorted(),
-    'root files the lane reads that its inputs omit',
-  ).toEqual([]);
-  expect(inputs).toContain('scripts/browser-fixtures/**');
-
-  // Globs that include ignored directories hash generated output, so the key would drift.
-  const exclusion = inputs.find((input) => input.startsWith('!scripts/browser-fixtures/'));
-  expect(exclusion, 'generated and installed directories must be excluded').toBeDefined();
-  const ignored = inputs.filter((input) => input.startsWith('!scripts/browser-fixtures/'));
-  for (const generated of ['.playwright', 'node_modules', 'test-results', 'test-output']) {
-    expect(ignored.join(' '), generated).toContain(generated);
+    '$TURBO_ROOT$/components/*/src/**',
+    '$TURBO_ROOT$/components/*/browser/host.ts',
+    '$TURBO_ROOT$/components/*/browser/fixture-declarations.ts',
+    '$TURBO_ROOT$/components/*/browser/fixtures/**',
+    '$TURBO_ROOT$/testing/testing/src/**',
+  ]) {
+    expect(task.inputs ?? []).toContain(input);
   }
-  // Editor, log and secret files a developer's machine adds under the glob.
-  for (const local of ['.DS_Store', '*.log', '.env']) {
-    expect(ignored.join(' '), local).toContain(local);
-  }
-
-  // The host's temporary directory differs per machine and per session and does not change what
-  // the lane produces, so it must reach the process without keying the task.
+  // The host's temporary directory differs per machine and does not change the result.
   expect(task.env ?? []).not.toContain('TMPDIR');
   expect(task.passThroughEnv ?? []).toContain('TMPDIR');
-
-  // `prepare-manifest.ts` skips regeneration when the hash it recorded still matches its inputs,
-  // so a cache restore must bring the record back together with the files it vouches for.
-  const generated = ['manifest.json', 'fixture-modules.ts', 'manifest-inputs.sha256'].map(
-    (file) => `scripts/browser-fixtures/.playwright/${file}`,
-  );
-  expect(task.outputs ?? []).toEqual(expect.arrayContaining(generated));
+  expect(configuration.tasks['//#test:browser-fixtures']).toBeUndefined();
 });
 
 test('the root package depends on no workspace but its compiler configuration', async () => {
   // Turbo hashes the files of every workspace the root package depends on, transitively, into
   // the global hash that every task key includes. A workspace the root depends on therefore
   // invalidates every cached task in the repository whenever it changes. Tooling that needs a
-  // workspace belongs in a workspace of its own, as `scripts/browser-fixtures` is.
+  // workspace belongs in a workspace of its own.
   const manifest = await Bun.file(join(root, 'package.json')).json();
   const workspaceDependencies = Object.entries({
     ...manifest.dependencies,
@@ -778,9 +554,7 @@ test('the validate gate runs every suite through the same `test` task the per-pu
   }
 
   const { scripts = {} } = await Bun.file(join(root, 'package.json')).json();
-  expect(scripts['validate']).toContain(
-    'turbo run lint typecheck test:self test test:browser-fixtures',
-  );
+  expect(scripts['validate']).toContain('turbo run lint typecheck test:self test');
   expect(scripts['coverage']).toBe(
     "bun scripts/run-exclusively.ts --shared 'turbo run test:coverage'",
   );
@@ -831,7 +605,7 @@ test('the tasks the selector narrows declare the selection variable, so no resul
   const tasks: Record<string, { env?: string[] }> = configuration.tasks;
   for (const [name, definition] of Object.entries(tasks)) {
     const task = name.slice(name.lastIndexOf('#') + 1);
-    const narrowed = ['test', 'test:slow', 'test:self', 'test:self:slow', 'test:browser-fixtures'];
+    const narrowed = ['test', 'test:slow', 'test:self', 'test:self:slow'];
     if (narrowed.includes(task)) {
       expect(definition.env ?? [], name).toContain(SELECTION_VARIABLE);
     }
@@ -852,7 +626,7 @@ test('a package task keys on every root script it runs and every root script tho
   const tasks: Record<string, { inputs?: string[] }> = configuration.tasks;
   const workspaces = discoverWorkspaces(root);
   const { paths } = listTree(root);
-  const isRootScript = (path: string) => /^scripts\/(?!browser-fixtures\/).+\.ts$/.test(path);
+  const isRootScript = (path: string) => /^scripts\/.+\.ts$/.test(path);
   const isScript = (path: string) =>
     /(?:^|\/)scripts\/.+\.ts$/.test(path) && !/\.test\./.test(path);
 

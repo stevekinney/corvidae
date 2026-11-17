@@ -4,7 +4,11 @@ import { expect, test, type Browser, type Locator, type Page } from '@playwright
 
 import { THEME_STORAGE_KEY } from '@lostgradient/testing';
 
-import { readOnePixel, readPixelRegion, type Rgb } from './pixel-probe.ts';
+import {
+  readOnePixel,
+  readPixelRegion,
+  type Rgb,
+} from '@lostgradient/testing/playwright/pixel-probe';
 
 const DEVICE_SCALE_FACTOR = 2;
 

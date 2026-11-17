@@ -631,16 +631,13 @@ export function turboTasks(failedTasks: string[]): { task: string; package: stri
 
 /** Each workspace's package name and its directory relative to `repository`. */
 export function workspaceDirectories(repository: string): Map<string, string> {
-  const directories = [
-    ...workspaceParentDirectories.flatMap((parent) => {
-      const root = join(repository, parent);
-      if (!existsSync(root)) return [];
-      return readdirSync(root, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => `${parent}/${entry.name}`);
-    }),
-    'scripts/browser-fixtures',
-  ];
+  const directories = workspaceParentDirectories.flatMap((parent) => {
+    const root = join(repository, parent);
+    if (!existsSync(root)) return [];
+    return readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => `${parent}/${entry.name}`);
+  });
   const byName = new Map<string, string>();
   for (const directory of directories.toSorted()) {
     const manifest = join(repository, directory, 'package.json');

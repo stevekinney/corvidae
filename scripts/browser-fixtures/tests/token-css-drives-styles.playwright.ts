@@ -24,8 +24,8 @@
  * anything, and a context-level preference cannot be flipped mid-test.
  */
 
+import { tokenFixtureRoute } from '@lostgradient/testing/playwright/token-fixture-route';
 import { expect, test } from '@playwright/test';
-import { tokenFixtureRoute } from './token-fixture-route.ts';
 
 type Page = import('@playwright/test').Page;
 type Locator = import('@playwright/test').Locator;

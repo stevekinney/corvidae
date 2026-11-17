@@ -9,8 +9,11 @@ import {
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import {
+  outerBands,
+  parseBoxShadow,
+} from '@lostgradient/testing/playwright/quiet-focus-rings-support';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 const FIXTURE_ROUTE = fixtureRoute('chat', { fixtureName: 'private-harness' });

@@ -1,6 +1,6 @@
 /**
  * Runs Interborough's end-to-end Playwright suite (`tests/e2e`, the `chromium` project) the way a
- * browser gate runs it (`bun run test:browser:interborough` at the repository root).
+ * browser gate runs it (`bun run e2e:interborough` at the repository root).
  *
  * Playwright reuses a server already listening on the end-to-end port outside CI, and on a shared
  * host that is often another checkout's build, or a design-review capture's, on the default port
@@ -123,7 +123,7 @@ export async function runGatedBrowserSuite(
 }
 
 // The suite runs one Playwright worker (`playwright.config.ts`), so one browser at a time: one host
-// slot, taken whether this script runs under the host lock (`test:browser:interborough`) or
+// slot, taken whether this script runs under the host lock (`e2e:interborough`) or
 // directly, as an agent runs one end-to-end spec, after the host is checked for memory.
 if (import.meta.main) {
   process.exitCode = await withMemoryAdmission(() =>

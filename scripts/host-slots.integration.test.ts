@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
-import { CONTAINER_CPUS } from './browser-fixtures/scripts/docker-baseline-runner.ts';
+import { CONTAINER_CPUS } from '../testing/testing/visual-baselines/docker-baseline-runner.ts';
 import {
   isHolderAlive,
   slotDirectory,

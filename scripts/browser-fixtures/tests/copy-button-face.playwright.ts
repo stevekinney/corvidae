@@ -5,8 +5,8 @@
  * nothing beside the button moves.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 test('the icon face shows its name in a tooltip and both faces keep their width', async ({
   browser,

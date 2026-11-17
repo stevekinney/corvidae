@@ -26,8 +26,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { tokenFixtureRoute } from '@lostgradient/testing/playwright/token-fixture-route';
 import { expect, test } from '@playwright/test';
-import { tokenFixtureRoute } from './token-fixture-route.ts';
 
 type RegistryEntry = {
   path: string;

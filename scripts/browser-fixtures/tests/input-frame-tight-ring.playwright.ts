@@ -28,8 +28,16 @@
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-import { readPixelRegion, type PositionedRgb, type Rgb } from './pixel-probe.ts';
-import { THEMES, focusByKeyboard, openThemedFixture } from './quiet-focus-rings-support.ts';
+import {
+  readPixelRegion,
+  type PositionedRgb,
+  type Rgb,
+} from '@lostgradient/testing/playwright/pixel-probe';
+import {
+  THEMES,
+  focusByKeyboard,
+  openThemedFixture,
+} from '@lostgradient/testing/playwright/quiet-focus-rings-support';
 
 const CHANNEL_TOLERANCE = 2;
 const DEVICE_PIXEL = 0.5;

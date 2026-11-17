@@ -4,8 +4,8 @@
  * address's last line instead of landing alone on a row below it (COR-2171).
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 test('the address breaks across lines and the control sits on the last of them', async ({
   browser,

@@ -362,11 +362,14 @@ export function sizeWarnings(size: DiffSize): string[] {
 
 /** Above this many fixture specs for one change, the advice is the whole Chromium suite. */
 export const FIXTURE_SPEC_LIMIT = 8;
-/** Runs the whole Chromium fixture suite. */
-export const FIXTURE_SUITE_COMMAND = 'bun run test:browser:chromium';
-/** Runs the named Chromium fixture specs, which follow it. */
+/** Runs every component package's Chromium browser suite (COR-2092). */
+export const FIXTURE_SUITE_COMMAND = 'bun run validate:batch';
+/**
+ * Runs the named Chromium fixture specs, which follow it, in whichever package's suite holds them;
+ * a package that holds none of them passes.
+ */
 export const FIXTURE_SPECS_COMMAND =
-  'bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun scripts/host-slots.ts --slots=1 -- bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts --project=chromium';
+  "bunx turbo run test:browser --filter='./components/*' -- --pass-with-no-tests";
 /**
  * The sweep that mounts every Cinder component from the manifest. It takes about 20 minutes on one
  * slot, so the named specs leave it out; the whole suite runs it.
@@ -437,13 +440,13 @@ export function fixtureSpecAdvice(
   return `${subject}; ${reason}, so whoever runs the design-review capture runs these fixture specs first: \`${FIXTURE_SPECS_COMMAND} ${[...selected].toSorted().join(' ')}\`.`;
 }
 
-/** Each Chromium fixture spec's file name and source; empty where the directory is missing. */
+/** Each package's Chromium fixture spec, by file name, and its source. */
 export function readFixtureSpecs(root: string): Map<string, string> {
-  const directory = join(root, 'scripts/browser-fixtures/tests');
   const specs = new Map<string, string>();
-  if (!existsSync(directory)) return specs;
-  for (const name of new Bun.Glob('*.playwright.ts').scanSync({ cwd: directory }))
-    specs.set(name, readFileSync(join(directory, name), 'utf8'));
+  for (const path of new Bun.Glob('components/*/browser/tests/*.playwright.ts').scanSync({
+    cwd: root,
+  }))
+    specs.set(path.split('/').at(-1)!, readFileSync(join(root, path), 'utf8'));
   return specs;
 }
 
@@ -504,7 +507,6 @@ export interface FocusedDependencies {
 export function discoverWorkspaceReferences(root: string): WorkspaceReference[] {
   const patterns = [
     `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
-    'scripts/browser-fixtures/package.json',
     'scripts/groom/package.json',
   ];
   const found: WorkspaceReference[] = [];

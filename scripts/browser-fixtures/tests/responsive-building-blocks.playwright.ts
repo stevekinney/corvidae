@@ -1,5 +1,5 @@
+import { fixtureEntry, fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { fixtureEntry, fixtureRoute } from './layout-fixture.ts';
 
 /**
  * COR-1831: Cinder's responsive building blocks at a phone (375px) and a

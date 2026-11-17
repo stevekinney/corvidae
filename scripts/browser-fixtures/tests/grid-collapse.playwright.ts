@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const GRID_ROUTE = fixtureRoute('grid');
 const itemLeftOffsets = async (page: import('@playwright/test').Page, selector: string) => {

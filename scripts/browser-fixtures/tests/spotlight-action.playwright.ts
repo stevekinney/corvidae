@@ -5,8 +5,8 @@
  * and drops to the next line only when the two do not fit side by side.
  */
 
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 
 async function parts(spotlight: Locator) {
   const [root, value, action] = await Promise.all([
