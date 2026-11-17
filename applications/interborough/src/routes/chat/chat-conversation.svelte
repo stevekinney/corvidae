@@ -768,6 +768,30 @@
   }
 
   let route = $state<HTMLElement | undefined>();
+  let head = $state<HTMLElement | undefined>();
+  // The header is laid over the top of the conversation on a translucent ground, so the transcript
+  // scrolls under it. Its height is the transcript's top inset (`--cinder-chat-overlay-inset-start`,
+  // read by Chat for the first row, for scrolling to a row and for placing an approval), kept as
+  // the header grows and shrinks with its banners and alerts.
+  $effect(() => {
+    const element = head;
+    const owner = route;
+    if (element === undefined || owner === undefined || typeof ResizeObserver === 'undefined')
+      return;
+    const write = (): void => {
+      owner.style.setProperty(
+        '--cinder-chat-overlay-inset-start',
+        `${element.getBoundingClientRect().height}px`,
+      );
+    };
+    write();
+    const observer = new ResizeObserver(write);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      owner.style.removeProperty('--cinder-chat-overlay-inset-start');
+    };
+  });
   /** The frames to wait for the approval's row to be drawn before giving up on bringing the person to it. */
   const ARRIVAL_FRAMES = 20;
   /**
@@ -2006,7 +2030,7 @@
     <!-- The header, the runs line and the alerts sit in the conversation's own column, at the
          transcript's inset, so the title, each line under it, the transcript and the composer share
          one left edge at every width (COR-2327 B4). -->
-    <div class="weft-chat-head">
+    <div class="weft-chat-head cinder-translucent-surface" bind:this={head}>
       <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
          contrast, and the shared restart preset says what is happening above the heading (row 20e):
          no action while the restart is asked for, Retry now once the host stopped answering. A
