@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { queryKeys } from '../../../lib/query.ts';
@@ -205,6 +206,36 @@ describe('a run of a workflow file the engine does not hold', () => {
     expect(lineage.querySelector('a')?.getAttribute('href')).toBe(
       router.href('/runs/calling-run-1'),
     );
+  });
+
+  test('names the run a person started between the person and "This run", with its day and time (row 54l)', async () => {
+    const id = 'f3a9c0de-0000-4000-8000-000000000009';
+    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
+      id,
+      workflow: 'e2e-approval',
+      workflowVersion: 'sha256:abc',
+      status: 'running',
+      createdAt: '2026-10-31T11:26:19.437Z',
+      updatedAt: '2026-10-31T11:26:20.437Z',
+      trigger: { kind: 'signal', name: 'e2e-begin', payload: null },
+      result: null,
+      error: null,
+      finishReason: null,
+      origin: { kind: 'person', principal: 'someone', surface: 'web' },
+    });
+
+    const view = mount(id);
+
+    const lineage = await view.findByTestId('run-lineage');
+    await waitFor(() => expect(lineage.innerHTML).toContain('data-started-run'), { timeout: 2000 });
+    const rows = [...lineage.querySelectorAll('li')].map((row) =>
+      (row.textContent ?? '').replaceAll(/\s+/g, ' ').trim(),
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toMatch(/^Run .+, [A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$/);
+    expect(rows[1]).toContain(workflowTypeName('e2e-approval'));
+    expect(rows[2]).toBe(`Run ${RUN_DETAIL_COPY.lineage.thisRun}`);
   });
 
   test('says the run could not be loaded when the Bureau fails, rather than that it is missing', async () => {

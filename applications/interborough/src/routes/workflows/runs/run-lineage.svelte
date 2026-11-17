@@ -19,6 +19,7 @@
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';
+  import { dayStamp, viewerTimeZone } from '../../../lib/format/clock.ts';
   import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
   import { cadenceClauseOf } from './run-schedule-cadence.ts';
@@ -47,6 +48,11 @@
     recordOrigin?: object | null | undefined;
     /** Who is viewing the page, the principal's subject. */
     viewer?: string | null | undefined;
+    /**
+     * The run a person started, as the chain names it between the person and "This run" (row 54l):
+     * "Run Release notes, Mon, Nov 2, 10:45 AM". Drawn only after a person, for a run with no task.
+     */
+    startedRun?: { readonly title: string; readonly startedAt: number } | undefined;
   }
 
   /** How many origins the list follows, this run's included. */
@@ -66,6 +72,7 @@
     schedule,
     recordOrigin = undefined,
     viewer = undefined,
+    startedRun = undefined,
   }: RunLineageProps = $props();
 
   function rowOf(
@@ -161,9 +168,18 @@
     <RunOrigin origin={ancestor.origin} {viewer} {pluginTitle} />
   </li>
 {/each}
+{#if origin.kind === 'person' && task === undefined && startedRun !== undefined}
+  <li class="ib-run-lineage__item" data-depth="2" data-started-run>
+    <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
+    {startedRun.title}, {dayStamp(startedRun.startedAt, viewerTimeZone())}
+  </li>
+{/if}
 <!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal, a schedule or a person, which are what the chain names (rows 55f, 55i, 54y, 54l). -->
 {#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule' || (origin.kind === 'person' && task === undefined)}
-  <li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
+  <li
+    class="ib-run-lineage__self"
+    data-depth={(ancestors.data?.length ?? 0) + (startedRun === undefined ? 2 : 3)}
+  >
     <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
     {RUN_DETAIL_COPY.lineage.thisRun}
   </li>

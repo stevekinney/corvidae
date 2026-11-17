@@ -255,7 +255,18 @@
     </span>
   {:else}
     <ol class="ib-run-lineage" data-testid="run-lineage">
-      <RunLineage {runId} {task} {goal} {chat} {schedule} {recordOrigin} {viewer} />
+      <RunLineage
+        {runId}
+        {task}
+        {goal}
+        {chat}
+        {schedule}
+        {recordOrigin}
+        {viewer}
+        startedRun={workflowType === undefined || startedAt === undefined
+          ? undefined
+          : { title: workflowTypeName(workflowType), startedAt }}
+      />
     </ol>
   {/if}
 {/snippet}
