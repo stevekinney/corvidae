@@ -17,6 +17,44 @@ function textSnippet(text: string) {
   }));
 }
 
+describe('SelectableRow description clamp', () => {
+  function descriptionOf(container: Element) {
+    return container.querySelector('.cinder-selectable-row__description');
+  }
+
+  test('clamps the description to two lines by default, in a button and in a link row', async () => {
+    const css = await Bun.file(new URL('./selectable-row.css', import.meta.url)).text();
+    const button = render(SelectableRow, {
+      props: { title: textSnippet('Title'), description: textSnippet('A long description') },
+    });
+    const link = render(SelectableRow, {
+      props: {
+        href: '/x',
+        title: textSnippet('Title'),
+        description: textSnippet('A long description'),
+      },
+    });
+
+    expect(descriptionOf(button.container)?.hasAttribute('data-cinder-clamp')).toBe(true);
+    expect(descriptionOf(link.container)?.hasAttribute('data-cinder-clamp')).toBe(true);
+    expect(css).toMatch(
+      /\.cinder-selectable-row__description\[data-cinder-clamp\]\s*\{[^}]*-webkit-line-clamp:\s*2;[^}]*overflow:\s*hidden;/,
+    );
+  });
+
+  test('clampDescription={false} shows the whole description', () => {
+    const { container } = render(SelectableRow, {
+      props: {
+        clampDescription: false,
+        title: textSnippet('Title'),
+        description: textSnippet('A long description'),
+      },
+    });
+
+    expect(descriptionOf(container)?.hasAttribute('data-cinder-clamp')).toBe(false);
+  });
+});
+
 describe('SelectableRow', () => {
   test('centers leading content and trailing actions on the row axis', async () => {
     const css = await Bun.file(new URL('./selectable-row.css', import.meta.url)).text();

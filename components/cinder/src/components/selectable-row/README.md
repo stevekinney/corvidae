@@ -61,6 +61,7 @@ Choose `ActionRow` when the entire row is one button and its trailing content is
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional classes merged with `.cinder-selectable-row`. |
+| `clampDescription` | `boolean` | no | `true` | Holds the description to two lines with an ellipsis, so a long one does not make the row grow. Set `false` to show the whole description. |
 | `currentValue` | `"page"` \| `"step"` \| `"location"` \| `"date"` \| `"time"` \| `"true"` | no | `"true"` | `aria-current` value emitted for a selected link or a selected button using `selectedState="current"`. |
 | `density` | `"comfortable"` \| `"condensed"` | no | `"comfortable"` | Density token surfaced as `data-cinder-density`. |
 | `href` | `string` | no | — | Destination that renders the primary action as a native anchor. |

@@ -35,6 +35,7 @@
 
   let {
     density = 'comfortable',
+    clampDescription = true,
     selected = false,
     selectedState = 'pressed',
     href,
@@ -111,7 +112,10 @@
       <span class="cinder-selectable-row__body">
         <span class="cinder-selectable-row__title">{@render title()}</span>
         {#if description}
-          <span class="cinder-selectable-row__description">{@render description()}</span>
+          <span
+            class="cinder-selectable-row__description"
+            data-cinder-clamp={clampDescription ? '' : undefined}>{@render description()}</span
+          >
         {/if}
         {#if meta}<span class="cinder-selectable-row__meta">{@render meta()}</span>{/if}
       </span>
@@ -130,7 +134,10 @@
       <span class="cinder-selectable-row__body">
         <span class="cinder-selectable-row__title">{@render title()}</span>
         {#if description}
-          <span class="cinder-selectable-row__description">{@render description()}</span>
+          <span
+            class="cinder-selectable-row__description"
+            data-cinder-clamp={clampDescription ? '' : undefined}>{@render description()}</span
+          >
         {/if}
         {#if meta}<span class="cinder-selectable-row__meta">{@render meta()}</span>{/if}
       </span>
