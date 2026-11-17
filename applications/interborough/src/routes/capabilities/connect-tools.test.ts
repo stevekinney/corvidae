@@ -227,9 +227,12 @@ describe('the Connect tools page', () => {
     expect(container.textContent).toContain(copy.connect.authentication.oauthNote);
 
     await choose('connect-authentication-oauth');
-    expect(container.querySelector('[data-testid="connect-oauth-help"]')?.textContent).toContain(
-      copy.connect.authentication.oauthHelp,
+    // OAuth signs in before the source is saved (COR-2436): "Sign in to …", with a key icon.
+    const signIn = container.querySelector('[data-testid="connect-sign-in-start"]');
+    expect(signIn?.textContent?.trim()).toBe(
+      copy.connect.authentication.signIn.action(copy.connect.authentication.signIn.provider),
     );
+    expect(signIn?.querySelector('svg')).not.toBeNull();
     expect(container.querySelector('#connect-secret')).toBeNull();
   });
 

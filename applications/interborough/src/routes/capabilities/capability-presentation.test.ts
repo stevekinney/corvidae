@@ -9,6 +9,8 @@ import {
   defaultAsks,
   groupToolsBySource,
   isUntrusted,
+  lostTools,
+  lostToolWarning,
   matchesFilter,
   matchesSkillFilter,
   matchesSourceFilter,
@@ -26,6 +28,7 @@ import {
   sourceStateVariant,
   sourceStatusFacts,
   sourceStatusTone,
+  sourceTableTools,
   sourceToolApproval,
   sourceToolHeading,
   sourceToolStanding,
@@ -43,6 +46,7 @@ import {
   toolSummary,
   trustLabel,
   unavailableText,
+  userAsks,
   type CatalogTool,
 } from './capability-presentation.ts';
 
@@ -392,5 +396,109 @@ describe('a tool source', () => {
     );
     // A host that reports nothing about it reads the tool as on, and nothing waits.
     expect(sourceToolWaitsForRestart({ ...SOURCE_TOOL, savedEnabled: true })).toBe(false);
+  });
+});
+
+describe('the tools that cannot run now (COR-2435)', () => {
+  const remembered = {
+    name: 'github__create_issue',
+    tool: 'create_issue',
+    acceptsSecrets: false,
+    savedAcceptsSecrets: false,
+    enabled: true,
+    savedEnabled: true,
+    tier: 'mutating' as const,
+    title: 'Create issue',
+    description: 'Opens an issue in a GitHub repository.',
+    shortDescription: null,
+    inputSchema: null,
+  };
+  const github = (state: ToolSourceStanding['state']): ToolSourceStanding => ({
+    id: 'github',
+    kind: 'mcp',
+    name: 'GitHub',
+    localCommand: false,
+    state,
+    tools: [],
+    skipped: [],
+    unmatchedSettings: [],
+    credentials: [],
+    lastListing: {
+      listedAt: '2026-11-16T08:00:00.000Z',
+      truncated: false,
+      tools: [
+        remembered,
+        {
+          ...remembered,
+          name: 'github__delete_branch',
+          tool: 'delete_branch',
+          savedEnabled: false,
+        },
+      ],
+    },
+  });
+
+  test('lists a source’s last listing while it is not loaded, the tools that are on, with no user', () => {
+    const [lost, ...rest] = lostTools([TOOL], [github('failed')], []);
+    expect(rest).toEqual([]);
+    expect(lost).toMatchObject({
+      name: 'github__create_issue',
+      title: 'Create issue',
+      tier: 'mutating',
+      source: 'host',
+      users: [],
+      lost: { kind: 'source', id: 'github', name: 'GitHub', state: 'failed' },
+    });
+    expect(asksLabel(lost!)).toBe('Asks: On changes');
+    expect(lostToolWarning(lost!.lost!)).toBe(
+      'GitHub is disconnected. Agents can’t use this tool until it is reconnected.',
+    );
+    // A loaded source's tools are the catalog's, and a tool the catalog holds is never listed twice.
+    expect(lostTools([TOOL], [github('loaded')], [])).toEqual([]);
+    expect(lostTools([{ ...TOOL, name: 'github__create_issue' }], [github('failed')], [])).toEqual(
+      [],
+    );
+  });
+
+  test('lists a disabled plugin’s last listing with Enable and restart’s warning', () => {
+    const [lost] = lostTools(
+      [],
+      [],
+      [
+        {
+          descriptor: { name: 'demo', title: 'Demo' },
+          status: 'disabled',
+          lastListing: {
+            listedAt: '2026-11-16T08:00:00.000Z',
+            truncated: false,
+            tools: [{ ...remembered, name: 'draft-release-notes', tool: 'draft-release-notes' }],
+          },
+        },
+      ],
+    );
+    expect(lost).toMatchObject({ source: 'plugin', plugin: 'demo', lost: { kind: 'plugin' } });
+    expect(lostToolWarning(lost!.lost!)).toBe(
+      'The Demo plugin is disabled. Enabling it restarts the server.',
+    );
+  });
+
+  test('a source’s table shows its last listing only when it lists nothing now', () => {
+    expect(sourceTableTools(github('needs-authorization'))).toMatchObject({ remembered: true });
+    const loaded: ToolSourceTool = {
+      ...remembered,
+      name: 'github__list_issues',
+      tool: 'list_issues',
+    };
+    expect(sourceTableTools({ ...github('loaded'), tools: [loaded] })).toEqual({
+      tools: [loaded],
+      remembered: false,
+    });
+  });
+});
+
+describe('an agent defined in code in Used by', () => {
+  test('reads “set in code” rather than claiming the default, which its code may not use', () => {
+    expect(userAsks(TOOL, 'assistant', new Set(['assistant'])).text).toBe('Asks: set in code');
+    expect(userAsks(TOOL, 'writer', new Set(['assistant'])).text).toBe('Asks: Never (the default)');
   });
 });

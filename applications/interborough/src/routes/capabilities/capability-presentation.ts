@@ -121,6 +121,11 @@ export function asksWord(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): s
 export function userAsks(
   tool: Pick<CatalogTool, 'tier' | 'defaultApproval' | 'userApprovals'>,
   user: string,
+  /**
+   * The agents defined in code: the catalog carries no level for one, because its code sets it,
+   * so it reads "set in code" rather than claiming the default.
+   */
+  codeAgents: ReadonlySet<string> = new Set(),
 ): { readonly text: string; readonly blocked: boolean } {
   const copy = TOOL.userAsks;
   const stated =
@@ -128,6 +133,7 @@ export function userAsks(
       ? tool.userApprovals[user]
       : undefined;
   if (stated === 'blocked') return { text: copy.blocked, blocked: true };
+  if (stated === undefined && codeAgents.has(user)) return { text: copy.inCode, blocked: false };
   const words = AGENT_PAGE_COPY.access.approvals;
   return stated === undefined
     ? { text: copy.defaulted(words[defaultAsks(tool)]), blocked: false }

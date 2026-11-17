@@ -37,9 +37,10 @@
    * never put in a message: the host words a refusal in terms of the field, and a probe answers in
    * words that hold no address, command or value.
    *
-   * Signing in with OAuth before the source is saved needs a host operation that does not exist yet
-   * (the host signs in to a saved source only), so an OAuth source is connected first and opened on
-   * its page in Capabilities › Sources to sign in, as the line under the choice says.
+   * An OAuth source is signed in to before it is saved (COR-2436, `connect-sign-in.svelte`): the
+   * host keeps the sign-in and hands this page a reference, which Test connection and Connect name,
+   * so no token reaches the page. One connected without signing in is opened on its page in
+   * Capabilities › Sources to sign in there.
    */
   import {
     Alert,
@@ -103,6 +104,7 @@
     type ChooseToolsMode,
   } from './connect-choose-tools.svelte';
   import ConnectGiveToAgent from './connect-give-to-agent.svelte';
+  import ConnectSignIn from './connect-sign-in.svelte';
   import {
     ConnectFlow,
     connectFooterLine,
@@ -198,6 +200,8 @@
    * first line, cut to what a saved description may hold. Empty until a test has listed it.
    */
   let serverDescription = $state('');
+  /** The host's reference to an OAuth sign-in made before the source is saved (COR-2436). */
+  let signIn = $state<string | undefined>();
 
   /** The name an address's host reads as, before the source is named: `mcp.github.example` is `github`. */
   function serverLabelOf(address: string): string {
@@ -288,7 +292,8 @@
   const signature = $derived.by(() => {
     if (!('request' in built)) return '';
     const { name: _name, description: _description, ...contacted } = built.request;
-    return JSON.stringify(contacted);
+    // A sign-in made since the last test is a new test: it may list what the server hid before.
+    return JSON.stringify({ ...contacted, signIn: signIn ?? null });
   });
   const taken = $derived(form.id !== '' && existing.includes(form.id));
   const fileTooLarge = $derived(fileError !== '');
@@ -508,7 +513,11 @@
     submitted = true;
     if (!('request' in built) || taken || locked) return undefined;
     const id = built.id;
-    const request = built.request;
+    // An OAuth source signed in to before it is saved is tested and saved with that sign-in.
+    const request =
+      signIn !== undefined && activeAuthentication === 'oauth'
+        ? { ...built.request, signIn }
+        : built.request;
     return {
       signature,
       kind: form.kind,
@@ -992,7 +1001,17 @@
               {/each}
             </RadioGroup>
           {/if}
-          {#if activeAuthentication === 'oauth'}
+          {#if activeAuthentication === 'oauth' && editId === undefined}
+            <!-- Signed in before it is saved (COR-2436): the page holds the host's reference only. -->
+            <ConnectSignIn
+              provider={name}
+              target={'request' in built
+                ? { id: built.id, source: built.request.source }
+                : undefined}
+              disabled={connecting || locked}
+              bind:signIn
+            />
+          {:else if activeAuthentication === 'oauth'}
             <p class="ib-connect__help" data-testid="connect-oauth-help">
               {copy.authentication.oauthHelp}
             </p>

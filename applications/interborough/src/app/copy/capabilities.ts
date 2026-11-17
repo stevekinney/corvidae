@@ -51,6 +51,8 @@ export const CAPABILITIES_COPY = {
       level: (level: string): string => `Asks: ${level}`,
       defaulted: (level: string): string => `Asks: ${level} (the default)`,
       blocked: 'Blocked on this agent',
+      /** An agent defined in code: its code sets the level, which the catalog does not carry. */
+      inCode: 'Asks: set in code',
     },
     /** The note under the detail when an agent has the tool blocked (row 31x): Allow all never overrides Blocked. */
     blockedNote:
@@ -446,6 +448,48 @@ export const CAPABILITIES_COPY = {
         'api-key': 'API key in a header',
         oauthHelp:
           'You sign in to the provider from the source’s page once it is connected. Interborough keeps the tokens it receives.',
+        /**
+         * Signing in before the source is saved (rows 33g, 34k, 34l, 34y, COR-2436): the provider
+         * is named by the source's name, or "the provider" before it has one.
+         */
+        signIn: {
+          provider: 'the provider',
+          action: (provider: string): string => `Sign in to ${provider}`,
+          waiting: (provider: string): string => `Waiting for ${provider}…`,
+          cancel: 'Cancel',
+          approve: (provider: string): string =>
+            `Approve in the ${provider} window. Closing it cancels the sign-in.`,
+          signedIn: 'Signed in as you',
+          canceled: (provider: string): string =>
+            `Sign-in canceled. You closed the ${provider} window before approving. Nothing was saved.`,
+          declined: (provider: string): string =>
+            `Sign-in canceled. You declined in the ${provider} window. Nothing was saved.`,
+          refused: (provider: string, why: string): string =>
+            `Couldn’t sign in. ${provider} refused the request: ${why}. Check the OAuth app’s settings, then try again.`,
+          failed: (why: string): string => `Couldn’t sign in: ${why}. Nothing was saved.`,
+          tryAgain: 'Try again',
+          blocked:
+            'Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.',
+          notNeeded: 'This server asks for no sign-in.',
+          /** Why a provider refused, from the closed set the host reports; never its own words. */
+          reasons: {
+            invalid_request: 'the redirect address or the request wasn’t allowed',
+            unauthorized_client: 'this app isn’t allowed to sign in that way',
+            unsupported_response_type: 'it doesn’t offer this kind of sign-in',
+            invalid_scope: 'it didn’t accept the access asked for',
+            server_error: 'it had a problem of its own',
+            temporarily_unavailable: 'it is busy right now',
+            'provider-error': 'it answered with an error',
+          } as Readonly<Record<string, string>>,
+          /** Why the host could not finish a sign-in. */
+          failures: {
+            'exchange-failed': 'the sign-in couldn’t be finished',
+            'not-allowed': 'you may no longer manage this workspace',
+            expired: 'the sign-in took too long',
+            used: 'the sign-in was already used',
+            unknown: 'the host didn’t say why',
+          } as Readonly<Record<string, string>>,
+        },
       },
       secret: {
         bearer: { label: 'Token' },

@@ -260,6 +260,11 @@ export type ToolSourceRequest = {
    * source; left out, a new source's tools are all on at the level their tier gives.
    */
   readonly tools?: Readonly<Record<string, ToolSourceToolSettings>>;
+  /**
+   * For a probe or a connect: a sign-in of this source that succeeded before it is saved
+   * (COR-2436), by reference. The host uses the tokens it holds for it; the page never has them.
+   */
+  readonly signIn?: string;
 };
 
 /**
@@ -518,6 +523,7 @@ export async function connectToolSource(
         ...(request.name === undefined ? {} : { name: request.name }),
         ...(request.description === undefined ? {} : { description: request.description }),
         ...(request.tools === undefined ? {} : { tools: request.tools }),
+        ...(request.signIn === undefined ? {} : { signIn: request.signIn }),
       }),
     ),
   );
@@ -547,8 +553,76 @@ function jsonRequest(
       source: request.source,
       credentials: request.credentials,
       ...(request.create === true ? { create: true } : {}),
+      ...(request.signIn === undefined ? {} : { signIn: request.signIn }),
     }),
   };
+}
+
+/** The `type` of the message a sign-in's callback page posts to this page (COR-2436). */
+export const TOOL_SOURCE_SIGN_IN_MESSAGE = 'interborough:tool-source-sign-in';
+
+/** The route that starts a sign-in of a source that is not saved, and its reads. */
+export const HOST_TOOL_SOURCE_SIGN_INS_ROUTE = '/host/tool-source-sign-ins';
+
+const signInStartSchema = z.union([
+  z.object({ authorized: z.literal(true) }),
+  z.object({ authorized: z.literal(false), signIn: z.string(), authorizationUrl: z.string() }),
+]);
+
+const signInStandingSchema = z.object({
+  signIn: z.string(),
+  outcome: z.enum(['waiting', 'succeeded', 'canceled', 'refused', 'expired']),
+  reason: z.string().optional(),
+});
+
+/** What starting a sign-in of a source that is not saved answered. */
+export type ToolSourceSignInStart = z.infer<typeof signInStartSchema>;
+
+/** Where a sign-in of a source that is not saved stands, and why it did not succeed. */
+export type ToolSourceSignInStanding = z.infer<typeof signInStandingSchema>;
+
+/** The message a sign-in's callback page posts, when `data` is one. */
+export function signInMessageOf(data: unknown): ToolSourceSignInStanding | undefined {
+  if (typeof data !== 'object' || data === null) return undefined;
+  if (Reflect.get(data, 'type') !== TOOL_SOURCE_SIGN_IN_MESSAGE) return undefined;
+  const parsed = signInStandingSchema.safeParse(data);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Starts an OAuth sign-in of a source that is not saved yet (COR-2436): the host answers the
+ * provider's address to open and the reference a probe and a save name. No token reaches the page.
+ *
+ * @throws {HostToolSourceError} When the host refuses it (a source already saved is `exists`).
+ */
+export async function startToolSourceSignIn(
+  id: string,
+  source: Readonly<Record<string, unknown>>,
+  options: Options = {},
+): Promise<ToolSourceSignInStart> {
+  const response = await send(
+    HOST_TOOL_SOURCE_SIGN_INS_ROUTE,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operationId: crypto.randomUUID(), id, source }),
+    },
+    options,
+  );
+  return readJson(response, signInStartSchema);
+}
+
+/** Where the sign-in `signIn` stands, as the host holds it. */
+export async function getToolSourceSignIn(
+  signIn: string,
+  options: Options = {},
+): Promise<ToolSourceSignInStanding> {
+  const response = await send(
+    `${HOST_TOOL_SOURCE_SIGN_INS_ROUTE}/${encodeURIComponent(signIn)}`,
+    { method: 'GET' },
+    options,
+  );
+  return readJson(response, signInStandingSchema);
 }
 
 /**

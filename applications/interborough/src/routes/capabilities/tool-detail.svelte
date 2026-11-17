@@ -10,7 +10,11 @@
   import { Chip, SchemaView, SectionHeading, Tooltip } from '@lostgradient/cinder';
   import { Eye, Hand, Pencil, Shield } from '@lucide/svelte';
 
+  import { createQuery } from '@tanstack/svelte-query';
+
   import { usePageLeaf } from '../../app/breadcrumbs.svelte.ts';
+  import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import AgentUsers from './agent-users.svelte';
   import {
@@ -43,6 +47,22 @@
   const RiskIcon = $derived(tier === 'read-only' ? Eye : tier === 'dangerous' ? Shield : Pencil);
 
   usePageLeaf(() => ({ path: '/capabilities', label: heading }));
+
+  // The agents defined in code, whose level their code sets: Used by says so rather than claiming
+  // the default. A read that fails leaves the set empty.
+  const definitions = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.definitions(),
+      queryFn: ({ signal }) => listAgentDefinitions({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const codeAgents = $derived(
+    new Set(
+      (definitions.data ?? []).filter((agent) => agent.source === 'code').map((agent) => agent.id),
+    ),
+  );
 </script>
 
 <article class="ib-capability" data-testid="tool-detail" data-tool={tool.name} data-tier={tier}>
@@ -85,7 +105,7 @@
   <AgentUsers
     heading={copy.users}
     users={tool.users}
-    note={(user) => userAsks(tool, user).text}
+    note={(user) => userAsks(tool, user, codeAgents).text}
     empty={tool.lost === undefined ? copy.noUsers : { line: copy.lost.noUsers }}
   />
 
