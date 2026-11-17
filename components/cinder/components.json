@@ -1939,6 +1939,36 @@
       }
     },
     {
+      "name": "DisclosureTrigger",
+      "id": "disclosure-trigger",
+      "import": "@lostgradient/cinder",
+      "exportName": "DisclosureTrigger",
+      "category": "action",
+      "status": "stable",
+      "purpose": "The one disclosure trigger: a chevron that turns down when its region opens, at one size, colour and label weight.",
+      "tags": ["disclosure", "toggle"],
+      "useWhen": [
+        "Words show and hide a region elsewhere in the layout, such as a step group's calls or an error's details.",
+        "Several kinds of folded content on one surface must read as one control."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The trigger and its region are one self-contained block — use collapsible."
+        },
+        {
+          "reason": "Several sections where opening one closes the others — use accordion."
+        }
+      ],
+      "related": ["collapsible", "accordion"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/disclosure-trigger/disclosure-trigger.schema.json",
+        "variables": "src/components/disclosure-trigger/disclosure-trigger.variables.json",
+        "examples": "src/components/disclosure-trigger/disclosure-trigger.examples.json"
+      }
+    },
+    {
       "name": "Divider",
       "id": "divider",
       "import": "@lostgradient/cinder",
