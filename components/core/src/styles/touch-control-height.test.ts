@@ -14,7 +14,10 @@ const tokens = await Bun.file(
   new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
 ).text();
 const stackedListItem = await Bun.file(
-  new URL('../components/stacked-list-item/stacked-list-item.css', import.meta.url),
+  new URL(
+    '../../../data-list/src/components/stacked-list-item/stacked-list-item.css',
+    import.meta.url,
+  ),
 ).text();
 
 /** The body of the one `@media (pointer: coarse)` block in foundation.css. */

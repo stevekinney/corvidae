@@ -4,7 +4,7 @@
    * trailing `actions`, or has a third line (`detail`), so the disclosure, the phone menu and the third line can be asserted through the real
    * component.
    */
-  import type { StackedListItemAction } from '../../components/stacked-list-item/stacked-list-item.types.ts';
+  import type { StackedListItemAction } from '@lostgradient/data-list/components/stacked-list-item/stacked-list-item.types.ts';
 
   export type StackedListItemExtrasFixtureProps = {
     mode: 'group' | 'actions' | 'detail';
@@ -16,7 +16,7 @@
 </script>
 
 <script lang="ts">
-  import StackedListItem from '../../components/stacked-list-item/stacked-list-item.svelte';
+  import StackedListItem from '@lostgradient/data-list/components/stacked-list-item/stacked-list-item.svelte';
   import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
 
   let {

@@ -48,7 +48,7 @@ describe('selected vertical NavigationItem fill', () => {
   test('is the same fill a selected StackedListItem paints, so the app has one selected recipe', async () => {
     const stackedListItemCss = await Bun.file(
       new URL(
-        '../../../../core/src/components/stacked-list-item/stacked-list-item.css',
+        '../../../../data-list/src/components/stacked-list-item/stacked-list-item.css',
         import.meta.url,
       ),
     ).text();

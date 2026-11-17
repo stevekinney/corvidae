@@ -31,9 +31,9 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'checkbox/basic': () =>
       import('../../../../components/checkbox/src/components/checkbox/examples/basic.example.svelte'),
     'checkbox/with-error': () =>
-      import('../../../../components/core/src/components/checkbox/examples/with-error.example.svelte'),
+      import('../../../../components/core/src/component-tests/checkbox/examples/with-error.example.svelte'),
     'tabs/basic': () =>
-      import('../../../../components/core/src/components/tabs/examples/basic.example.svelte'),
+      import('../../../../components/tabs/src/components/tabs/examples/basic.example.svelte'),
     'callout/variants': () =>
       import('../../../../components/callout/src/components/callout/examples/variants.example.svelte'),
     'table/basic': () =>
@@ -41,7 +41,7 @@ export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promis
     'line-chart/multi-series': () =>
       import('../../../../components/chart/src/components/line-chart/examples/multi-series.example.svelte'),
     'modal/with-form': () =>
-      import('../../../../components/core/src/components/modal/examples/with-form.example.svelte'),
+      import('../../../../components/core/src/component-tests/modal/examples/with-form.example.svelte'),
     'popover/basic': () =>
-      import('../../../../components/core/src/components/popover/examples/basic.example.svelte'),
+      import('../../../../components/core/src/component-tests/popover/examples/basic.example.svelte'),
   };

@@ -123,13 +123,13 @@ const select: ControlRow = {
   frame: 0,
 };
 const combobox: ControlRow = {
-  path: '../components/combobox/combobox.css',
+  path: '../../../combobox/src/components/combobox/combobox.css',
   base: '.cinder-combobox__input',
   property: 'min-height',
   frame: 0,
 };
 const multiSelect: ControlRow = {
-  path: '../components/multi-select/multi-select.css',
+  path: '../../../multi-select/src/components/multi-select/multi-select.css',
   base: '.cinder-multi-select__trigger',
   property: 'min-height',
   frame: 0,
