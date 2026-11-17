@@ -2,13 +2,10 @@ import type { Storage } from '@lostgradient/storage';
 import { UndeclaredWorkflowMessageError, type Engine } from '../../core/engine.ts';
 import type { WeftErrorCode } from '../../core/weft-error.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
-import {
-  shapeRestFaultAsJson,
-  type OperationFault,
-  type RestFaultResponseOptions,
-} from '../operation-fault.ts';
+import type { OperationFault, RestFaultResponseOptions } from '../operation-fault.ts';
 import type { RestInputContext } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
+import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 /** Type guard distinguishing an `OperationFault` from a value type. */
@@ -84,7 +81,7 @@ export function shapeRestFault(
   fault: OperationFault,
   options?: RestFaultResponseOptions,
 ): Response {
-  return shapeRestFaultAsJson(fault, options);
+  return shapeWeftRestFaultAsJson(fault, options);
 }
 
 export function faultMessage(error: unknown): string {

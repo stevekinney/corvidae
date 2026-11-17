@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { z } from 'zod';
-import type { FaultCode } from '../core/fault-code.ts';
+import type { FaultCode } from './fault-code.ts';
 import {
   buildOpenRpcComponentsErrors,
   ConflictDataSchema,

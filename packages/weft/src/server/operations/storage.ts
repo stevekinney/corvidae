@@ -10,7 +10,7 @@ import {
   type Storage,
 } from '@lostgradient/storage';
 import type { AccessPolicy } from '../authorization.ts';
-import { raiseFault } from '../operation-catalog.ts';
+import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import { isAuthenticated, type Principal } from '../principal.ts';
 import {

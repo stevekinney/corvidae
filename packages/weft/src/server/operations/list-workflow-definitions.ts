@@ -3,7 +3,7 @@
 import { z } from 'zod';
 
 import { listWorkflowDefinitions } from '../../core/engine/definition-listing.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import {
@@ -96,5 +96,5 @@ export const listWorkflowDefinitionsRestBinding: UnknownRestBinding = {
     };
   },
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };

@@ -7,7 +7,8 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
-import { failureCategoryForFaultCode, isFaultCode } from '../core/fault-code.ts';
+import { failureCategoryForFaultCode } from '../core/fault-code.ts';
+import { isFaultCode } from './fault-code.ts';
 import type { FailureCategory } from '../core/types/identity.ts';
 import { faultToHttpResponse } from './fault-to-http.ts';
 import { faultToJsonRpcError } from './fault-to-json-rpc.ts';

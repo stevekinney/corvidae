@@ -16,7 +16,8 @@ import { z } from 'zod';
 import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerDrainMutationResult, WorkerRegistry } from '../../worker/registry.ts';
 import type { AccessPolicy } from '../authorization.ts';
-import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
+import { type OperationFault } from '../operation-fault.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
@@ -305,7 +306,7 @@ function createWorkerDrainRestBinding(method: 'POST' | 'DELETE', operationName: 
       ...(method === 'POST' ? await readDrainBody(request, context) : {}),
     }),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   } satisfies UnknownRestBinding;
 }
 
@@ -332,7 +333,7 @@ function createDeploymentDrainRestBinding(method: 'POST' | 'DELETE', operationNa
         : readBuildQuery(new URL(request.url))),
     }),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   } satisfies UnknownRestBinding;
 }
 

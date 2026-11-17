@@ -142,12 +142,8 @@ export type {
   WorkflowRecoverySkippedReason,
   WorkflowTeardownStatus,
 } from './events.ts';
-export {
-  FAULT_CODE_TO_FAILURE_CATEGORY,
-  failureCategoryForFaultCode,
-  isFaultCode,
-} from './fault-code.ts';
-export type { FaultCode } from './fault-code.ts';
+export { FAULT_CODE_TO_FAILURE_CATEGORY, failureCategoryForFaultCode } from './fault-code.ts';
+export { isFaultCode, type FaultCode } from '../server/fault-code.ts';
 export {
   composeActivityInterceptors,
   composeWorkflowInterceptors,

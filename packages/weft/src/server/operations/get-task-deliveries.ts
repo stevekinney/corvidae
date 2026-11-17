@@ -50,7 +50,7 @@
  */
 
 import type { Storage } from '@lostgradient/storage';
-import type { FaultCode } from '../../core/fault-code.ts';
+import type { FaultCode } from '../fault-code.ts';
 import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
   decodeRemoteTaskRecord,

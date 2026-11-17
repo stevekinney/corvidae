@@ -9,13 +9,10 @@
  * @module server/operation-catalog
  */
 
-export type { FaultCode } from '../../core/fault-code.ts';
-export { catalogActivities, catalogActivity } from './activity-adapter.ts';
-export type { CatalogActivityDefinition } from './activity-adapter.ts';
+export type { FaultCode } from '../fault-code.ts';
 export { DISPATCH_ALLOWLIST } from './dispatch-allowlist.ts';
 export { classifyEngineError } from './pipeline-helpers.ts';
 export { executeOperation } from './pipeline.ts';
-export { raiseFault } from './raise-fault.ts';
 export { createOperationRegistry } from './registry.ts';
 export {
   SubscriptionElementValidationError,
@@ -49,5 +46,3 @@ export {
   type UnknownKeyPolicy,
 } from './types.ts';
 export { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
-export { catalogWorkflow } from './workflow-adapter.ts';
-export type { CatalogWorkflowOptions } from './workflow-adapter.ts';

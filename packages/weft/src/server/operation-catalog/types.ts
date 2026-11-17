@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import type { FaultCode } from '../../core/fault-code.ts';
 import type { AccessPolicy } from '../authorization.ts';
+import type { FaultCode } from '../fault-code.ts';
 import type { OperationFault, TransportKind } from '../operation-fault.ts';
 import type { Principal } from '../principal.ts';
 
@@ -429,6 +429,11 @@ export type FaultPolicy = {
    * the generic message heuristics.
    */
   readonly classifyError?: (error: unknown) => OperationFault | undefined;
+  /**
+   * Whether a string is one of the host's fine-grained error codes. A fault's `data.weftCode`
+   * reaches a REST body only when this accepts it; omitted, every string passes.
+   */
+  readonly isKnownErrorCode?: (value: string) => boolean;
 };
 
 export type DispatchContext<Host = unknown> = {

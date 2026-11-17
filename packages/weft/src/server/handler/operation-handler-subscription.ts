@@ -23,6 +23,8 @@ export type SubscriptionRouteContext = {
   readonly principal: Principal;
   readonly maxStreamDurationMs: number;
   readonly heartbeat: ServerSentEventHeartbeatOptions | undefined;
+  /** The host's error-code vocabulary (see `FaultPolicy.isKnownErrorCode`). */
+  readonly isKnownErrorCode?: ((value: string) => boolean) | undefined;
 };
 
 /**
@@ -151,6 +153,13 @@ export async function handleSubscriptionRequest(
     transport: 'http-rest',
     registry: context.registry,
   });
-  if (!result.ok) return faultToHttpResponse(result.fault);
+  if (!result.ok) {
+    return faultToHttpResponse(
+      result.fault,
+      context.isKnownErrorCode === undefined
+        ? undefined
+        : { isKnownErrorCode: context.isKnownErrorCode },
+    );
+  }
   return streamResponse(result.value, request, context);
 }

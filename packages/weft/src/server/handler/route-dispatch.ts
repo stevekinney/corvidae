@@ -10,7 +10,6 @@ import { generateApiCatalog, originFromRequest, warnIfPublicOriginUnset } from '
 import { generateAsyncApiDocument } from '../asyncapi.ts';
 import type { AuthContext } from '../authentication.ts';
 import type { DiscoveryInfo } from '../discovery-info.ts';
-import { faultToHttpResponse } from '../fault-to-http.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import { generateMcpDiscovery } from '../mcp-discovery.ts';
 import { generateOpenApiDocument, type OpenApiSecuritySchemeName } from '../openapi.ts';
@@ -32,6 +31,7 @@ import {
 import type { ConnectionLease } from '../runtime/context.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import { weftDiscoveryInfo } from '../weft-documents.ts';
+import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 import {
   defaultShapeSuccess,
@@ -340,7 +340,9 @@ export async function dispatchViaExecuteOperation(
       ? binding.shapeSuccess(result.value, request)
       : defaultShapeSuccess(result.value, binding.success);
   }
-  return binding.shapeFault ? binding.shapeFault(result.fault) : faultToHttpResponse(result.fault);
+  return binding.shapeFault
+    ? binding.shapeFault(result.fault)
+    : weftFaultToHttpResponse(result.fault);
 }
 
 type RestBindingInputResult =
@@ -368,7 +370,9 @@ async function extractRestBindingInput(
     return { ok: true, input };
   } catch (error) {
     if (isOperationFaultLike(error)) {
-      const response = binding.shapeFault ? binding.shapeFault(error) : faultToHttpResponse(error);
+      const response = binding.shapeFault
+        ? binding.shapeFault(error)
+        : weftFaultToHttpResponse(error);
       return { ok: false, response };
     }
     const message = error instanceof Error ? error.message : String(error);

@@ -7,8 +7,15 @@
  * accidentally exposing a broader nested payload or raw EngineFailure detail.
  */
 
-import { shapeRestFaultAsJson, type OperationFault } from './operation-fault.ts';
+import {
+  shapeRestFaultAsJson,
+  type OperationFault,
+  type RestFaultResponseOptions,
+} from './operation-fault.ts';
 
-export function faultToHttpResponse(fault: OperationFault): Response {
-  return shapeRestFaultAsJson(fault);
+export function faultToHttpResponse(
+  fault: OperationFault,
+  options?: RestFaultResponseOptions,
+): Response {
+  return shapeRestFaultAsJson(fault, options);
 }

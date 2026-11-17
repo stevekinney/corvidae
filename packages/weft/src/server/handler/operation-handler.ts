@@ -454,5 +454,6 @@ function routeSubscription<Host>(catalog: CatalogRequest<Host>): Promise<Respons
     principal: catalog.principal,
     maxStreamDurationMs: options.maxStreamDurationMs ?? DEFAULT_MAX_STREAM_DURATION_MS,
     heartbeat: options.heartbeat,
+    isKnownErrorCode: options.faultPolicy?.isKnownErrorCode,
   });
 }

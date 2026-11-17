@@ -1,5 +1,6 @@
 import { resolveConnection } from '../connection.ts';
-import { failureCategoryForFaultCode, type FaultCode } from '../core/fault-code.ts';
+import { failureCategoryForFaultCode } from '../core/fault-code.ts';
+import type { FaultCode } from '../server/fault-code.ts';
 import type { FailureCategory } from '../core/types/identity.ts';
 import { isWeftErrorCode, WeftError, type WeftErrorCode } from '../core/weft-error.ts';
 import type { WorkflowEventTransport } from './event-stream-options.ts';

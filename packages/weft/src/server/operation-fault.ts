@@ -35,10 +35,7 @@
  * serialized consistently across REST and JSON-RPC transports.
  */
 
-import type { WorkflowCompatibilityReason } from '../core/contract/compatibility.ts';
-import type { FaultCode } from '../core/fault-code.ts';
-import type { WorkflowSourceRejectionReason } from '../core/source/errors.ts';
-import { isWeftErrorCode, type WeftErrorCode } from '../core/weft-error.ts';
+import type { FaultCode } from './fault-code.ts';
 
 /** Transports `executeOperation` sees; `mcp` (a catalog MCP mount) admits `mcpExposable` ones. */
 export type TransportKind =
@@ -70,7 +67,7 @@ export type OperationFault =
       // via `isWeftFault`; the coarse `NotFound` code alone cannot distinguish a
       // missing workflow from a missing schedule. Set only at sites holding the
       // typed error, never defaulted, so existing faults stay byte-identical.
-      data: { resource: string; identifier?: string | undefined; weftCode?: WeftErrorCode };
+      data: { resource: string; identifier?: string | undefined; weftCode?: string };
     }
   | {
       code: 'Conflict';
@@ -82,7 +79,7 @@ export type OperationFault =
         // See the `NotFound.weftCode` note: `Conflict` collapses several typed
         // errors (`WorkflowAlreadyExistsError`, `StartOrSignalConflictError`,
         // `IdempotencyKeyPurgedError`), and `weftCode` recovers which one.
-        weftCode?: WeftErrorCode;
+        weftCode?: string;
         missingTypes?: readonly string[] | undefined;
         missingWorkflowCount?: number | undefined;
         samplesTruncated?: boolean | undefined;
@@ -93,12 +90,12 @@ export type OperationFault =
         // WFT-11: the `incompatible` refusal variant's full, ordered list of
         // `WorkflowCompatibilityReason`s — a caller branching on why
         // activation was refused needs every reason, not just the first.
-        compatibilityReasons?: readonly WorkflowCompatibilityReason[] | undefined;
+        compatibilityReasons?: readonly string[] | undefined;
         // WFT-15/16: `engine.workflows.preload()`'s loaded-module-fails-
         // validation refusal — `WorkflowSourceValidationError`'s own full,
         // ordered `reasons` array (distinct from `compatibilityReasons`,
         // which is manifest-compatibility-specific).
-        sourceValidationReasons?: readonly WorkflowSourceRejectionReason[] | undefined;
+        sourceValidationReasons?: readonly string[] | undefined;
       };
     }
   | { code: 'Unprocessable'; message: string; data: { reason: string } }
@@ -132,7 +129,7 @@ export type OperationFault =
       // See the `NotFound.weftCode` note: `WorkflowNotRegisteredError` maps to
       // `InvalidParams`, and `weftCode` recovers that originating code for
       // transport-uniform branching.
-      data: { issues: ReadonlyArray<FlattenedZodIssue>; weftCode?: WeftErrorCode };
+      data: { issues: ReadonlyArray<FlattenedZodIssue>; weftCode?: string };
     }
   | { code: 'MethodNotFound'; message: string; data: { method: string } }
   // The caller's optimistic-concurrency precondition no longer holds: the
@@ -211,10 +208,12 @@ export type RestFaultResponseOptions = {
   readonly status?: number;
   /** REST-only public message override for a binding with an established response message. */
   readonly message?: string;
+  /** The host's error codes; a `data.weftCode` this rejects is dropped. Omitted, any string passes. */
+  readonly isKnownErrorCode?: (value: string) => boolean;
 };
 
 /**
- * The REST fault body. `weftCode` is the fine-grained {@link WeftErrorCode} of
+ * The REST fault body. `weftCode` is the fine-grained error code of
  * the originating error class, present only when the fault carried one; the
  * coarse {@link FaultCode} is not in the body at all. The HTTP status is
  * derived from it, but that mapping is not injective (`NotFound` and
@@ -225,7 +224,7 @@ export type RestFaultResponseOptions = {
  */
 export type RestFaultBody = {
   readonly error: string;
-  readonly weftCode?: WeftErrorCode;
+  readonly weftCode?: string;
   readonly data?: Readonly<Record<string, unknown>>;
 };
 
@@ -304,7 +303,7 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
 /**
  * Map an `OperationFault` to the canonical additive REST body:
  * `{ error, weftCode?, data? }`. The existing string `error` and optional
- * fine-grained `weftCode` (a {@link WeftErrorCode}, never a {@link FaultCode})
+ * fine-grained `weftCode` (the host's error code, never a {@link FaultCode})
  * remain unchanged; `data` contains only fields from the audited allowlist
  * above. JSON-RPC uses its own broader projection, whose `data.weftCode` is the
  * coarse `FaultCode`.
@@ -328,7 +327,7 @@ export function shapeRestFaultAsJson(
   options: RestFaultResponseOptions = {},
 ): Response {
   const safeFault = wireSafeFault(fault);
-  const body = shapeRestFaultBody(safeFault, options.message);
+  const body = shapeRestFaultBody(safeFault, options);
   const status =
     safeFault.code === 'EngineFailure'
       ? 500
@@ -428,20 +427,20 @@ export function usableRetryAfterSeconds(seconds: number | undefined): number | u
 }
 
 /** Build the audited canonical REST body. */
-function shapeRestFaultBody(fault: OperationFault, message?: string): RestFaultBody {
+function shapeRestFaultBody(
+  fault: OperationFault,
+  options: RestFaultResponseOptions,
+): RestFaultBody {
   if (fault.code === 'EngineFailure') return { error: 'Internal server error' };
 
-  const error = message ?? fault.message;
-  const weftCode = weftCodeFromFaultData(fault.data);
+  const error = options.message ?? fault.message;
+  const weftCode = weftCodeFromFaultData(fault.data, options.isKnownErrorCode);
   const data = restDataFromFault(fault);
-  const body: {
-    error: string;
-    weftCode?: WeftErrorCode;
-    data?: Readonly<Record<string, unknown>>;
-  } = { error };
-  if (weftCode !== undefined) body.weftCode = weftCode;
-  if (Object.keys(data).length > 0) body.data = data;
-  return body;
+  return {
+    error,
+    ...(weftCode === undefined ? {} : { weftCode }),
+    ...(Object.keys(data).length > 0 ? { data } : {}),
+  };
 }
 
 function restDataFromFault(fault: RestProjectableFault): Readonly<Record<string, unknown>> {
@@ -454,9 +453,16 @@ function restDataFromFault(fault: RestProjectableFault): Readonly<Record<string,
   return extractor(fault.data);
 }
 
-function weftCodeFromFaultData(data: OperationFault['data']): WeftErrorCode | undefined {
-  if (typeof data !== 'object' || data === null || !('weftCode' in data)) return undefined;
-  return isWeftErrorCode(data.weftCode) ? data.weftCode : undefined;
+function weftCodeFromFaultData(
+  data: OperationFault['data'],
+  isKnownErrorCode: ((value: string) => boolean) | undefined,
+): string | undefined {
+  const weftCode: unknown =
+    typeof data === 'object' && data !== null
+      ? (data as { weftCode?: unknown }).weftCode
+      : undefined;
+  if (typeof weftCode !== 'string') return undefined;
+  return isKnownErrorCode === undefined || isKnownErrorCode(weftCode) ? weftCode : undefined;
 }
 
 function filterDefined(input: Record<string, unknown>): Record<string, unknown> {

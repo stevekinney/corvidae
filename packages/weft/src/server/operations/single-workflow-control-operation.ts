@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 
 import type { Engine } from '../../core/engine.ts';
-import type { FaultCode } from '../../core/fault-code.ts';
+import type { FaultCode } from '../fault-code.ts';
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import type { SchemaOperationDefinition } from '../operation-registry.ts';

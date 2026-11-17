@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import type { FaultCode } from '../core/fault-code.ts';
+import type { FaultCode } from './fault-code.ts';
 import { buildErrorResponses } from './openapi-error-responses.ts';
 import { generateOpenApiDocument } from './openapi.ts';
 import type { ErasedOperation } from './operation-catalog.ts';

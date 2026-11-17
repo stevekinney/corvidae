@@ -1,4 +1,4 @@
-import type { FaultCode } from '../core/fault-code.ts';
+import type { FaultCode } from './fault-code.ts';
 import { compareStrings, normalizeJsonObject } from './json-schema-utilities.ts';
 import type { ErasedOperation, OperationKind, TransportAvailability } from './operation-catalog.ts';
 import type { ParamSource, ResponseShape, RestBindingDescription } from './rest-binding.ts';

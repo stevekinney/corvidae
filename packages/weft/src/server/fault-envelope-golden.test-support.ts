@@ -6,7 +6,7 @@
 
 import { join } from 'node:path';
 
-import type { FaultCode } from '../core/fault-code.ts';
+import type { FaultCode } from './fault-code.ts';
 import { faultToHttpResponse } from './fault-to-http.ts';
 import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { formatGoldenJson, writeGoldenDirectory } from './golden-files.test-support.ts';

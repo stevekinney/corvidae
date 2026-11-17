@@ -20,7 +20,7 @@
 import { z } from 'zod';
 
 import type { MetricsCollector, MetricsSnapshot } from '../../observability/metrics.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
@@ -83,6 +83,6 @@ export function createGetSystemMetricsRestBinding(): UnknownRestBinding {
     inputSources: {},
     extractInput: async () => ({}),
     success: { kind: 'json', status: 200 },
-    shapeFault: shapeOperationFaultAsJson,
+    shapeFault: shapeWeftOperationFaultAsJson,
   };
 }

@@ -33,7 +33,7 @@ import type {
   ConformanceTargetSummary,
 } from '../../conformance/targets.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
@@ -188,7 +188,7 @@ export const listConformanceTargetsRestBinding: UnknownRestBinding = {
   inputSources: {},
   extractInput: async () => ({}),
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };
 
 /**
@@ -204,5 +204,5 @@ export const runConformanceReportRestBinding: UnknownRestBinding = {
   inputSources: { target: { kind: 'path', pathParam: 'target' } },
   extractInput: async (_request, pathParams) => ({ target: pathParams['target'] ?? '' }),
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };

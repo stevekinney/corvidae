@@ -20,7 +20,7 @@
 import { z } from 'zod';
 
 import { Engine, getWorkflowRevisionDiagnostics } from '../../core/engine.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
@@ -137,5 +137,5 @@ export const getCatalogDiagnosticsRestBinding: UnknownRestBinding = {
     revision: pathParams['revision'] ?? '',
   }),
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };

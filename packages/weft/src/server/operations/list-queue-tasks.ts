@@ -19,7 +19,7 @@ import {
   decodeRemoteTaskRecord,
   type RemoteTaskRecord,
 } from '../../core/task-ledger/task-ledger.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { invalidParamsFault, requireOperationStorage } from './operation-helpers.ts';
@@ -230,5 +230,5 @@ export const listQueueTasksRestBinding: UnknownRestBinding = {
     };
   },
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };

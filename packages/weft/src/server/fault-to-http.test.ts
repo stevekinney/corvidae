@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import type { FaultCode } from '../core/fault-code.ts';
+import type { FaultCode } from './fault-code.ts';
 import { faultToHttpResponse } from './fault-to-http.ts';
 import { FAULT_CODE_TO_HTTP_STATUS, type OperationFault } from './operation-fault.ts';
 

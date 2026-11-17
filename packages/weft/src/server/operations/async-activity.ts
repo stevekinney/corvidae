@@ -11,7 +11,7 @@ import {
 import { PayloadSizeExceededError } from '../../core/payload-size.ts';
 import type { PendingAsyncActivityPage } from '../../core/types.ts';
 import type { AccessPolicy } from '../authorization.ts';
-import { raiseFault } from '../operation-catalog.ts';
+import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';

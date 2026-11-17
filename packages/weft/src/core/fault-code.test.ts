@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import {
-  FAULT_CODE_TO_FAILURE_CATEGORY,
-  failureCategoryForFaultCode,
-  isFaultCode,
-  type FaultCode,
-} from './fault-code.ts';
+import { isFaultCode, type FaultCode } from '../server/fault-code.ts';
+import { FAULT_CODE_TO_FAILURE_CATEGORY, failureCategoryForFaultCode } from './fault-code.ts';
 
 const ALL_FAULT_CODES: readonly FaultCode[] = [
   'Unauthorized',
