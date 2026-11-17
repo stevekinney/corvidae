@@ -94,8 +94,9 @@ describe('adjacent compact icon-only header buttons on a coarse pointer (COR-238
     const next = declarationsFor(buttonCss, `${COMPACT} + ${COMPACT}`);
     // Header actions are spaced by space-2 (8px); the margin tops the pitch up so the two
     // extensions, (44 - 24) / 2 on each side of each button, do not overlap.
-    expect(next.get('margin-inline-start')).toBe(
-      'calc(var(--cinder-touch-target-min) - var(--_cinder-compact-control-height) - var(--cinder-space-2))',
+    // The formatter breaks the calc over lines, so compare it with its whitespace removed.
+    expect(next.get('margin-inline-start')?.replaceAll(/\s+/g, '')).toBe(
+      'calc(var(--cinder-touch-target-min)-var(--_cinder-compact-control-height)-var(--cinder-space-2))',
     );
     // Evaluate the margin with the real tokens: the gap and the margin together must hold both
     // extensions, (touch - drawn) / 2 past each button's face.
