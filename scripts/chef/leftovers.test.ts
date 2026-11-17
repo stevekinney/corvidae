@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  callerAncestors,
   findLeftovers,
   findLockProcesses,
   findWorktreeProcesses,
@@ -46,6 +47,17 @@ describe('parsers', () => {
       { pid: 10, command: 'sleep' },
       { pid: 11, command: 'bun' },
     ]);
+  });
+
+  test('caller ancestors exclude only the caller chain', () => {
+    const parents = new Map([
+      [10, 9],
+      [9, 1],
+      [11, 10],
+      [12, 2],
+    ]);
+    expect(callerAncestors(10, (pid) => parents.get(pid))).toEqual(new Set([9]));
+    expect(callerAncestors(11, (pid) => parents.get(pid))).toEqual(new Set([10, 9]));
   });
 });
 
@@ -149,10 +161,17 @@ describe('findWorktreeProcesses fails closed', () => {
     );
   });
 
-  test('does not report its lsof probe as a worktree leftover', () => {
-    expect(findWorktreeProcesses(sandbox, answer(0, 'p10\nclsof\np11\ncbun\n', ''), 0)).toEqual([
-      { pid: 11, command: 'bun' },
-    ]);
+  test('does not report a caller ancestor but keeps an owned background child', () => {
+    const calls: string[][] = [];
+    const runner: Runner = (command) => {
+      calls.push(command);
+      if (command[0] === 'lsof') return { code: 0, stdout: 'p9\nczsh\np11\ncbun\n', stderr: '' };
+      if (command.at(-1) === '10') return { code: 0, stdout: '9\n', stderr: '' };
+      if (command.at(-1) === '9') return { code: 0, stdout: '1\n', stderr: '' };
+      return { code: 1, stdout: '', stderr: '' };
+    };
+    expect(findWorktreeProcesses(sandbox, runner, 10)).toEqual([{ pid: 11, command: 'bun' }]);
+    expect(calls.filter((call) => call[0] === 'ps')).toHaveLength(2);
   });
 
   test('a missing lsof (exit 127) or an error on stderr is unknown, not empty', () => {

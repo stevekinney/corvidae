@@ -100,6 +100,29 @@ export function parseLsofFields(stdout: string): FoundProcess[] {
   return [...found.values()];
 }
 
+/** The caller chain is diagnostic machinery, not leftover work in its own worktree. */
+export function callerAncestors(
+  pid: number,
+  parentOf: (pid: number) => number | undefined,
+): Set<number> {
+  const ancestors = new Set<number>();
+  for (
+    let current = parentOf(pid);
+    current !== undefined && current > 1 && !ancestors.has(current);
+    current = parentOf(current)
+  )
+    ancestors.add(current);
+  return ancestors;
+}
+
+function callerAncestorPids(runner: Runner, ownPid: number): Set<number> {
+  return callerAncestors(ownPid, (pid) => {
+    const result = runner(['ps', '-o', 'ppid=', '-p', String(pid)]);
+    const parent = Number(result.stdout.trim());
+    return Number.isInteger(parent) ? parent : undefined;
+  });
+}
+
 /** Processes whose command line matches the extended regular expression `pattern`. */
 export function findLockProcesses(
   pattern: string,
@@ -128,8 +151,10 @@ export function findWorktreeProcesses(
     const detail = result.stderr.trim().split('\n').slice(-1)[0] ?? '';
     throw new ProbeError(`lsof could not check ${resolved} (exit ${result.code}): ${detail}`);
   }
-  // `lsof +D` reports the probe process it starts. It is not work owned by the checked worktree.
-  return parseLsofFields(result.stdout).filter((item) => item.pid !== ownPid && item.command !== 'lsof');
+  const callers = callerAncestorPids(runner, ownPid);
+  return parseLsofFields(result.stdout).filter(
+    (item) => item.pid !== ownPid && !callers.has(item.pid),
+  );
 }
 
 export interface LeftoversRequest {
