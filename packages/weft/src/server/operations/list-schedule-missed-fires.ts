@@ -1,9 +1,9 @@
+import { invalidParamsFault, type UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
 
+import { defineOperation } from '@lostgradient/backchannel';
 import { SCHEDULE_MISSED_FIRE_LIMIT, type ScheduleMissedFire } from '../../core/types.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { mapScheduleErrorToFault } from './schedule-faults.ts';
 
 const listScheduleMissedFiresInput = z.object({

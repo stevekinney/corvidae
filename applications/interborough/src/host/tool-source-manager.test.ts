@@ -1,4 +1,4 @@
-import type { WorkspaceIdentity } from '@lostgradient/weft';
+import type { WorkspaceIdentity } from '@lostgradient/backchannel';
 import { createHostMutationContext } from './host-mutation-context.ts';
 /**
  * COR-1930: the tool-source manager over an in-memory home. These pin what the host tests do not

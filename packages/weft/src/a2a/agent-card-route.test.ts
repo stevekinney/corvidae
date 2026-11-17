@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { AgentCard, verifyAgentCardSignature } from '@a2a-js/sdk';
 
-import { canonicalJson } from '../server/openapi-canonical-json.ts';
+import { canonicalJson } from '@lostgradient/backchannel/internals';
 import {
   agentCardFixture,
   CARD_URL,

@@ -1,3 +1,19 @@
+import type { DiscoveryInfo, OperationFault, Principal } from '@lostgradient/backchannel';
+import {
+  FAULT_CODE_TO_HTTP_STATUS,
+  errorResponse,
+  executeOperation,
+  generateAsyncApiDocument,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+  jsonResponse,
+  type AuthContext,
+  type ConnectionLease,
+  type OpenApiSecuritySchemeName,
+  type OperationRegistry,
+  type PipelineTrace,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
 import type { Engine } from '../../core/engine.ts';
 import { listMcpTools } from '../../mcp/tools.ts';
 import {
@@ -7,38 +23,15 @@ import {
 import { resolveServerEnvironment } from '../../runtime/environment-configuration.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import { generateApiCatalog, originFromRequest, warnIfPublicOriginUnset } from '../api-catalog.ts';
-import { generateAsyncApiDocument } from '../asyncapi.ts';
-import type { AuthContext } from '../authentication.ts';
-import type { DiscoveryInfo } from '../discovery-info.ts';
-import { faultToHttpResponse } from '../fault-to-http.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import { generateMcpDiscovery } from '../mcp-discovery.ts';
-import { generateOpenApiDocument, type OpenApiSecuritySchemeName } from '../openapi.ts';
-import { generateOpenRpcDocument } from '../openrpc.ts';
-import {
-  executeOperation,
-  type OperationRegistry,
-  type PipelineTrace,
-} from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { FAULT_CODE_TO_HTTP_STATUS } from '../operation-fault.ts';
 import type { WorkflowStreamConnectionAcquirer } from '../operations/workflow-events-sse.ts';
-import type { Principal } from '../principal.ts';
-import {
-  createLiveOperationRegistry,
-  createLiveRestBindings,
-  type UnknownRestBinding,
-} from '../rest-bindings.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import { weftDiscoveryInfo } from '../weft-documents.ts';
+import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
-import {
-  defaultShapeSuccess,
-  errorResponse,
-  jsonResponse,
-  negotiatedResponse,
-} from './response-helpers.ts';
+import { defaultShapeSuccess, negotiatedResponse } from './response-helpers.ts';
 import type { DirectRouteHandlerName } from './route-matching.ts';
 import {
   dispatchServerSentEventsBinding,
@@ -340,7 +333,9 @@ export async function dispatchViaExecuteOperation(
       ? binding.shapeSuccess(result.value, request)
       : defaultShapeSuccess(result.value, binding.success);
   }
-  return binding.shapeFault ? binding.shapeFault(result.fault) : faultToHttpResponse(result.fault);
+  return binding.shapeFault
+    ? binding.shapeFault(result.fault)
+    : weftFaultToHttpResponse(result.fault);
 }
 
 type RestBindingInputResult =
@@ -368,7 +363,9 @@ async function extractRestBindingInput(
     return { ok: true, input };
   } catch (error) {
     if (isOperationFaultLike(error)) {
-      const response = binding.shapeFault ? binding.shapeFault(error) : faultToHttpResponse(error);
+      const response = binding.shapeFault
+        ? binding.shapeFault(error)
+        : weftFaultToHttpResponse(error);
       return { ok: false, response };
     }
     const message = error instanceof Error ? error.message : String(error);

@@ -1,9 +1,8 @@
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { listSchedulesOperation, listSchedulesRestBinding } from './list-schedules.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (

@@ -14,7 +14,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module agent-references-operation
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { AgentReferences } from '../../agent-references.ts';

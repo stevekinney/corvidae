@@ -9,9 +9,9 @@ import {
   runGenerateOperationClientCommand,
 } from './generate-operation-client.ts';
 
+import { stringifyCatalogSnapshot } from '@lostgradient/backchannel';
 import { MAX_BATCH_OPERATIONS, MAX_SCAN_LIMIT } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { stringifyCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
 import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 import { assignAliasNames } from './operation-client-aliases.ts';
 import { canonicalKey, schemaToNode } from './operation-client-schema.ts';

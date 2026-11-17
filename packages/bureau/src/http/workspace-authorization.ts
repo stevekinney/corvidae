@@ -1,4 +1,4 @@
-import type { OperationHandlerMount, Principal } from '@lostgradient/weft';
+import type { OperationHandlerMount, Principal } from '@lostgradient/backchannel';
 
 import { OPERATION_MAP, type WorkspaceOperationClass } from './operation-map.ts';
 

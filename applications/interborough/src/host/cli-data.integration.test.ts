@@ -1,3 +1,4 @@
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import {
   createGovernedMemory,
   createInMemoryMemoryRecordStorage,
@@ -9,7 +10,6 @@ import {
 } from '@lostgradient/memory';
 import { createAgent } from '@lostgradient/operative';
 import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { principalFromApiKey } from '@lostgradient/weft';
 import { afterAll, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

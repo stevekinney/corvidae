@@ -32,14 +32,12 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  */
 
 import {
-  defineOperation,
   isValidTimeZone,
-  type OperationFault,
-  type Principal,
   ScheduleOccurrenceNotNextError,
   type ScheduleSummary,
   ScheduleStaleRevisionError,
 } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import {

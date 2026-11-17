@@ -1,4 +1,11 @@
 import {
+  createOperationHandlerAuthenticator,
+  guardWorkspaceResponse,
+  unauthenticatedLocalAuthContext,
+  type AuthConfig,
+  type OperationHandlerAuthenticate,
+} from '@lostgradient/backchannel';
+import {
   ANONYMOUS_LOCAL_OWNER,
   authorizeWorkspaceClass,
   BUREAU_SCOPES,
@@ -6,13 +13,6 @@ import {
   type WorkspaceMembershipOptions,
   type WorkspaceOperationClass,
 } from '@lostgradient/bureau';
-import {
-  createOperationHandlerAuthenticator,
-  guardWorkspaceResponse,
-  unauthenticatedLocalAuthContext,
-  type AuthConfig,
-  type OperationHandlerAuthenticate,
-} from '@lostgradient/weft';
 import {
   createHostMutationContext,
   HostMutationError,

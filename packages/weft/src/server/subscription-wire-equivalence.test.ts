@@ -16,21 +16,17 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
+import { encodeCursor, principalFromApiKey } from '@lostgradient/backchannel';
 import {
   createJsonRpcWebSocketSession,
+  createOperationRegistry,
   type JsonRpcWebSocketEmitter,
-} from './json-rpc-websocket.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
+} from '@lostgradient/backchannel/internals';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
-import { principalFromApiKey } from './principal.ts';
 import { jsonRecord, propertyRecord } from './protocol.test-support.ts';
-import {
-  createWorkflowEventFeed,
-  encodeCursor,
-  type WorkflowEventFeed,
-} from './workflow-event-feed.ts';
+import { createWorkflowEventFeed, type WorkflowEventFeed } from './workflow-event-feed.ts';
 
 const FIXTURE_DIR = new URL('./__fixtures__/subscription-wire/', import.meta.url).pathname;
 

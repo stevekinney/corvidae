@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
-import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { getStreamChunksOperation, getStreamChunksRestBinding } from './get-stream-chunks.ts';
 
 function createEngineWithChunks(): Engine {

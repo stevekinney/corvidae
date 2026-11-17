@@ -25,14 +25,12 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { describe, expect, it } from 'bun:test';
 
+import { decodeCursor, encodeCursor } from '@lostgradient/backchannel';
+import { ReplayWindowExceededError, compareCursor } from '@lostgradient/backchannel/internals';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
-import { ReplayWindowExceededError } from './replay-live-feed-internals.ts';
 import {
-  compareCursor,
   createWorkflowEventFeed,
-  decodeCursor,
-  encodeCursor,
   type EventEnvelope,
   type WorkflowEventFeedBackend,
 } from './workflow-event-feed.ts';

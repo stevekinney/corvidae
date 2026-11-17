@@ -1,5 +1,8 @@
-import { snapshotOperationCatalog, type CatalogSnapshot } from './operation-catalog-snapshot.ts';
-import type { ErasedOperation } from './operation-catalog.ts';
+import { type CatalogSnapshot } from '@lostgradient/backchannel';
+import {
+  type ErasedOperation,
+  snapshotOperationCatalog,
+} from '@lostgradient/backchannel/internals';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 
 /**

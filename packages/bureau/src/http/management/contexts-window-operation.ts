@@ -13,7 +13,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module contexts-window-operation
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauContexts } from '../../bureau-types/contexts.ts';

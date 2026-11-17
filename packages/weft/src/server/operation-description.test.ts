@@ -18,14 +18,17 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  type UnknownRestBinding,
+  createOperationRegistry,
+  emitBindings,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+  OpenRpcDocumentSchema,
+} from '@lostgradient/backchannel/internals';
 import { MAX_BATCH_OPERATIONS } from '@lostgradient/storage';
 import { generateMcpDiscovery } from './mcp-discovery.ts';
-import { emitBindings, generateOpenApiDocument } from './openapi.ts';
-import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 import { createCatalogSnapshot } from './weft-catalog-snapshot.ts';
 

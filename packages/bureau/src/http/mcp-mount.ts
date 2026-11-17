@@ -1,8 +1,5 @@
-import {
-  createOperationMcpMount,
-  type OperationHandlerMount,
-  type OperationMcpMountOptions,
-} from '@lostgradient/weft';
+import { createOperationMcpMount, type OperationMcpMountOptions } from '@lostgradient/weft';
+import { type OperationHandlerMount } from '@lostgradient/backchannel';
 
 /**
  * Options for the Bureau MCP adapter that `createBureauHandler`'s `mcp`

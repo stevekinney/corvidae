@@ -4,11 +4,12 @@
  * @module server/operation-catalog/raise-fault
  */
 
-import type { FaultCode } from '../../core/fault-code.ts';
+import type { FaultCode, OperationFault } from '@lostgradient/backchannel';
+import {
+  type ErasedOperation,
+  UNIVERSAL_FAULT_DEFAULTS,
+} from '@lostgradient/backchannel/internals';
 import { resolveServerEnvironment } from '../../runtime/environment-configuration.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import type { ErasedOperation } from './types.ts';
-import { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
 
 /**
  * Throw an `OperationFault` after checking it against an operation's declared

@@ -7,6 +7,8 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { principalFromApiKey, type AuthorizationScope } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../core/codec.ts';
@@ -22,10 +24,8 @@ import { taskResultDeliveryKey } from '../core/task-ledger/task-result-delivery.
 import { sha256HexSync } from '../worker/manifest/content-digest.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';
-import type { AuthorizationScope } from './authorization-scope.ts';
 import type { ServeOptions } from './index.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
-import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { clearTaskDeadLetterOperation } from './operations/clear-task-dead-letter.ts';
 import {
   getTaskDeadLetterOperation,
@@ -42,7 +42,6 @@ import {
   putLedgerRecord,
   runGetTaskDetail,
 } from './operations/get-task-detail.test-support.ts';
-import { principalFromApiKey } from './principal.ts';
 import { minimalServerContext } from './runtime/server-context.test-support.ts';
 import { handleTaskResultRequest } from './runtime/task-result-submission.ts';
 import { handleWorkerWebSocketMessage } from './runtime/websocket-worker.ts';

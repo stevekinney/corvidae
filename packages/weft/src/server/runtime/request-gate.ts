@@ -15,10 +15,15 @@
  * @internal
  */
 
-import type { AuthContext, AuthResult } from '../authentication.ts';
-import { DEFAULT_PUBLIC_PATHS, normalizeRequestPathname } from '../authentication/types.ts';
-import { unauthenticatedLocalAuthContext } from '../handler/auth-context-principal.ts';
-import { shapeRestFaultAsJson } from '../operation-fault.ts';
+import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
+import {
+  type AuthContext,
+  authContextFromAuthResult,
+  DEFAULT_PUBLIC_PATHS,
+  normalizeRequestPathname,
+  unauthorizedResponse,
+} from '@lostgradient/backchannel/internals';
+import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import type { ServerContext } from './context.ts';
 
 const DEFAULT_PUBLIC_PATH_SET = new Set(DEFAULT_PUBLIC_PATHS);
@@ -39,36 +44,6 @@ export type AuthenticationOutcome = {
    */
   publicBypass: boolean;
 };
-
-/**
- * The context a successful, non-public authentication result admits. One
- * mapping for `serve()`'s gate and for the engine-independent handler's
- * authenticator, so the two forward the same principal and claims.
- */
-export function authContextFromAuthResult(
-  authResult: Extract<AuthResult, { authenticated: true }>,
-): AuthContext {
-  return {
-    method: authResult.method,
-    ...(authResult.claims !== undefined ? { claims: authResult.claims } : {}),
-    ...(authResult.principal !== undefined ? { principal: authResult.principal } : {}),
-  };
-}
-
-/**
- * The 401 a rejected credential receives. Shared by `serve()`'s gate and the
- * engine-independent handler's authenticator so the body and the
- * `WWW-Authenticate` challenge cannot drift apart.
- */
-export function unauthorizedResponse(error: string): Response {
-  return new Response(JSON.stringify({ error }), {
-    status: 401,
-    headers: {
-      'Content-Type': 'application/json',
-      'WWW-Authenticate': 'Bearer',
-    },
-  });
-}
 
 export async function authenticateRequest(
   context: ServerContext,
@@ -175,7 +150,7 @@ function enforceRateLimit(
   // answers in the same shape as an operation that raises it: status 429, a
   // `Retry-After` header, and `data.retryAfterSeconds` in the body. The limiter
   // knows when the budget resets, so the delay is exact.
-  const response = shapeRestFaultAsJson({
+  const response = shapeWeftRestFaultAsJson({
     code: 'RateLimited',
     message: 'Too Many Requests',
     data: { retryAfterSeconds: decision.retryAfterSeconds },

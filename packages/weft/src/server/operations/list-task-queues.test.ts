@@ -20,6 +20,8 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
@@ -27,8 +29,6 @@ import {
 } from '../../worker/registry-fixtures.test-support.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import { TaskQueue } from '../task-queue.ts';
