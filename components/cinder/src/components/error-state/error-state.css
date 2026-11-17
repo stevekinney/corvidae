@@ -307,10 +307,11 @@
     max-inline-size: none;
   }
 
-  /* The row has no padding of its own (its body carries the insets), so its content box is its
-   * width and the phone breakpoint (640px) switches a full-width row at the same viewport width it
-   * always did. */
-  @container cinder-error-state (max-width: 40rem) {
+  /* A narrow row: 28rem (448px; the row has no padding of its own, so that is its width). The retry
+   * keeps the inline end whenever it has room beside the words, and a full-width row on a phone
+   * still drops it to a line of its own at the row's inline start, as a narrow EmptyState row
+   * does. */
+  @container cinder-error-state (max-width: 28rem) {
     .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action {
       flex-basis: 100%;
       justify-content: flex-start;

@@ -243,28 +243,28 @@ test.describe('GroupedList layout', () => {
     ).toBeLessThanOrEqual(1);
   });
 
-  test('an empty row’s action ends on the list buttons’ edge, and a narrow failed row’s retry drops under its words (COR-2329, COR-2394)', async ({
+  test('a narrow empty row and a narrow failed row drop their actions under the words, on one edge (COR-2329, COR-2394)', async ({
     page,
   }) => {
-    // The fixture's list is 28rem wide, under the rows' 640px container threshold, so on a wide
-    // viewport both rows take their narrow form: the empty row's action moves under the words and
-    // still ends on the list edge, and the failed row's retry takes a line of its own at the start.
+    // The fixture's list is 28rem wide, at the rows' 28rem container threshold, so on a wide
+    // viewport both rows take their narrow form: each action takes a line of its own under the
+    // words, at the row's inline start, so the two actions in one card share an edge.
     await page.setViewportSize({ width: 1024, height: 800 });
+    const emptyRow = page.getByTestId('grouped-list-empty-row');
     const errorRow = page.getByTestId('grouped-list-error-row');
-    const [listButton, emptyAction, retry, glyph, text] = await Promise.all([
-      page.getByTestId('grouped-list-actions').getByRole('link', { name: 'Answer' }).boundingBox(),
-      page
-        .getByTestId('grouped-list-empty-row')
-        .getByRole('button', { name: 'Open Health' })
-        .boundingBox(),
+    const [emptyAction, emptyDisc, emptyText, retry, glyph, errorText] = await Promise.all([
+      emptyRow.getByRole('button', { name: 'Open Health' }).boundingBox(),
+      emptyRow.locator('.cinder-empty-state-icon').boundingBox(),
+      emptyRow.locator('.cinder-empty-state-title').boundingBox(),
       errorRow.getByRole('button', { name: 'Try again' }).boundingBox(),
       errorRow.locator('.cinder-error-state-glyph').boundingBox(),
       errorRow.locator('.cinder-error-state-text').boundingBox(),
     ]);
-    const listEdge = listButton!.x + listButton!.width;
-    expect(Math.abs(emptyAction!.x + emptyAction!.width - listEdge)).toBeLessThanOrEqual(1);
+    expect(Math.abs(emptyAction!.x - emptyDisc!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(retry!.x - glyph!.x)).toBeLessThanOrEqual(1);
-    expect(retry!.y).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
+    expect(Math.abs(emptyAction!.x - retry!.x)).toBeLessThanOrEqual(1);
+    expect(emptyAction!.y).toBeGreaterThanOrEqual(emptyText!.y + emptyText!.height - 1);
+    expect(retry!.y).toBeGreaterThanOrEqual(errorText!.y + errorText!.height - 1);
   });
 
   test('a trailing value is one line on the title’s line, and on a phone the subtitle runs under both (COR-2329)', async ({

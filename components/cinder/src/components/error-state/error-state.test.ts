@@ -214,13 +214,14 @@ describe('ErrorState variant', () => {
     const row = declarationsFor(css, ".cinder-error-state[data-cinder-variant='row']");
     expect(row.get('container-type')).toBe('inline-size');
     expect(row.get('container-name')).toBe('cinder-error-state');
-    // The row has no padding, so its content box is its width and 40rem is the phone breakpoint.
+    // The row has no padding, so its content box is its width: 28rem keeps the retry at the inline
+    // end whenever it has room, and a full-width row on a phone still drops it.
     expect(row.get('padding')).toBe('0');
     expect(css).not.toMatch(/@media[^{]*width/);
     const action = atRuleDeclarationsFor(
       css,
       'container',
-      'cinder-error-state (max-width: 40rem)',
+      'cinder-error-state (max-width: 28rem)',
       ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-action",
     );
     expect(action.get('flex-basis')).toBe('100%');

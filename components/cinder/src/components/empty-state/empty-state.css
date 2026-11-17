@@ -230,14 +230,14 @@
       'description action';
   }
 
-  /* A narrow row. The threshold is the phone breakpoint (640px) less the row's 1.5rem of inline
-   * padding, because a size query measures the content box: a full-width row switches at the same
-   * viewport width it always did, and a row in a narrow list switches too. A query cannot restyle
+  /* A narrow row: 28rem of content box (448px), so the action keeps the inline end whenever it has
+   * room beside the words, and a full-width row on a phone still drops it. A query cannot restyle
    * its own container, so the grid keeps its three tracks and the parts move: the words span the
    * second track and the empty third one (whose gap they take back, so their measure is what it
-   * was), and the action takes a third line under them. Without a disc the action stays beside
-   * the words, as it always has. */
-  @container cinder-empty-state (max-width: 38.5rem) {
+   * was), and the action takes a third line under them, at the row's inline start, the edge a
+   * narrow ErrorState row puts its retry on, so the two read as one family in one card. Without a
+   * disc the action stays beside the words, as it always has. */
+  @container cinder-empty-state (max-width: 28rem) {
     .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
       :is(.cinder-empty-state-title, .cinder-empty-state-description) {
       grid-column: 2 / -1;
@@ -245,12 +245,12 @@
 
     .cinder-empty-state[data-cinder-layout='row']:has(.cinder-empty-state-icon)
       .cinder-empty-state-action {
-      grid-column: 2 / -1;
+      grid-column: 1 / -1;
       grid-row: 3;
     }
 
     .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      justify-content: flex-end;
+      justify-content: flex-start;
       margin-block-start: var(--cinder-space-2);
     }
   }
