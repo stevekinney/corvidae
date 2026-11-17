@@ -1,8 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { initialize, validateBudgetRecord } from './outcome-budget.ts';
+import { validateBudgetRecord } from './outcome-budget.ts';
 
 const validRecord = {
   version: 1,
@@ -26,18 +23,6 @@ test('accepts a versioned record with an explicit non-enforced hard-limit state'
   ).not.toThrow();
 });
 
-test('initialization snapshots a validated allowance before its first await', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'budget-allowance-'));
-  const allowance = { amount: 4, provenance: 'user' };
-  try {
-    const initialized = initialize(join(directory, 'record.json'), 'outcome', allowance);
-    allowance.amount = -1;
-    allowance.provenance = '';
-    expect(await initialized).toMatchObject({ allowanceTokens: { amount: 4, provenance: 'user' } });
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
 
 test('rejects malformed durable fields before any persistent operation can use them', () => {
   for (const record of [

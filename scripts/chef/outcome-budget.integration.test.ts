@@ -11,6 +11,23 @@ import { initialize, reserve, settle } from './outcome-budget.ts';
 const script = join(process.cwd(), 'scripts/chef/outcome-accounting.ts');
 const run = (...arguments_: string[]) => runWithHangGuard(['bun', script, ...arguments_]);
 
+const allowanceSnapshotScenario = await (async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'outcome-budget-allowance-'));
+  const allowance = { amount: 4, provenance: 'user' };
+  try {
+    const pending = initialize(join(directory, 'budget.json'), 'outcome', allowance);
+    allowance.amount = -1;
+    allowance.provenance = '';
+    return await pending;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+})();
+
+test('initialization snapshots a validated allowance before its first await', () => {
+  expect(allowanceSnapshotScenario).toMatchObject({ allowanceTokens: { amount: 4, provenance: 'user' } });
+});
+
 const restartScenario = await (async () => {
   const directory = mkdtempSync(join(tmpdir(), 'outcome-budget-integration-'));
   const path = join(directory, 'budget.json');
@@ -96,7 +113,9 @@ test('unknown reservation and settlement retain their operation identities witho
     spentTokens: 'unknown',
     operations: { dispatch: { actual: 'unknown', amount: 'unknown', state: 'settled' } },
   });
-  expect(unknownAllowanceError.message).toContain('Unknown reservation cannot use an allowance');
+  expect((unknownAllowanceError as Error).message).toContain(
+    'Unknown reservation cannot use an allowance',
+  );
 });
 
 async function interruptReserveAtReplacement(

@@ -185,7 +185,11 @@ export async function reserve(
         Object.values(current.operations)
           .filter((item) => item.state === 'reserved' && item.amount !== 'unknown')
           .reduce<number>((sum, item) => sum + (item.amount as number), 0);
-      if (current.allowanceTokens && committed + amount > current.allowanceTokens.amount)
+      if (
+        current.allowanceTokens &&
+        amount !== 'unknown' &&
+        committed + amount > current.allowanceTokens.amount
+      )
         throw new Error('Allowance exceeded.');
       return {
         ...current,
