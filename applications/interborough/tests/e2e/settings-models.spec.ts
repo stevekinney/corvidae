@@ -172,11 +172,12 @@ test.describe('Settings › Models, provider connected', () => {
     ] as const;
     for (const [index, [name, identifier, abilities, context]] of expected.entries()) {
       const row = rows.nth(index);
-      await expect(row.locator('td').nth(0)).toContainText(name);
+      // The name is the row's header cell (COR-2364), so the data cells start at abilities.
+      await expect(row.locator('th')).toContainText(name);
       await expect(row.locator('code')).toHaveText(identifier);
-      await expect(row.locator('td').nth(1)).toHaveText(abilities);
-      await expect(row.locator('td').nth(2)).toHaveText(context);
-      await expect(row.locator('td').nth(3)).toHaveText('Allowed');
+      await expect(row.locator('td').nth(0)).toHaveText(abilities);
+      await expect(row.locator('td').nth(1)).toHaveText(context);
+      await expect(row.locator('td').nth(2)).toHaveText('Allowed');
     }
     await expect(page.getByRole('switch')).toHaveCount(0);
 
