@@ -30,9 +30,9 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
   import type { BackdropProps } from './backdrop.types.ts';
-  import { lockBodyScroll, pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { lockBodyScroll, pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
 
   const DEFAULT_TRANSITION_DURATION = 200;
 

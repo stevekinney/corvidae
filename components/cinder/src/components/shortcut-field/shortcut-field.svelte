@@ -14,8 +14,8 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
   import ShortcutFieldControl from './shortcut-field-control.svelte';
   import type { ShortcutFieldProps } from './shortcut-field.types.ts';
 

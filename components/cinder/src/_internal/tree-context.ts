@@ -1,7 +1,7 @@
 import { createContext } from 'svelte';
 
+import { optionalContext } from '@lostgradient/foundation/_internal/optional-context.ts';
 import type { TreeSelectionState } from '../components/tree/tree-selection.ts';
-import { optionalContext } from './optional-context.ts';
 import type { TreeDragController } from './tree-drag-controller.svelte.ts';
 import type { TreeNodeRegistration } from './tree-registry.svelte.ts';
 

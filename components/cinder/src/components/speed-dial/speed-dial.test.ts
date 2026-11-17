@@ -11,7 +11,8 @@ const { default: SpeedDialFixture } = await import('./speed-dial.fixture.svelte'
 const { waitForSpeedDialExit } = await import('./speed-dial-exit.ts');
 const { createQueuedFocusRestoration, getFocusTargetBeforeSpeedDial } =
   await import('./speed-dial-focus.ts');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 const speedDialSource = readFileSync(new URL('./speed-dial.svelte', import.meta.url), 'utf8');
 const speedDialStyles = readFileSync(new URL('./speed-dial.css', import.meta.url), 'utf8');
 

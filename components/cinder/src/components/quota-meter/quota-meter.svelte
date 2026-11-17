@@ -13,8 +13,8 @@
 </script>
 
 <script lang="ts">
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { default as Meter } from '../meter/index.ts';
 
   import type { QuotaMeterProps } from './quota-meter.types.ts';

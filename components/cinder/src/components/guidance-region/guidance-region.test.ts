@@ -3,12 +3,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import {
   createModalSlot,
   isRelevant,
   type GuidanceClaim,
-} from '../../_internal/guidance-context.ts';
+} from '@lostgradient/foundation/_internal/guidance-context.ts';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -98,9 +98,12 @@ describe('GuidanceRegion', () => {
   });
 
   test('resetAll restores focus to the active connected anchor before cleanup', async () => {
-    let api: import('../../_internal/guidance-context.ts').GuidanceApi | undefined;
+    let api:
+      import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi | undefined;
     const { container } = render(GuidanceAnchorHost, {
-      onReady: (value: import('../../_internal/guidance-context.ts').GuidanceApi) => {
+      onReady: (
+        value: import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi,
+      ) => {
         api = value;
       },
     });
@@ -115,9 +118,12 @@ describe('GuidanceRegion', () => {
   });
 
   test('does not let reset settle a stale modal claim into a new claim', async () => {
-    let api: import('../../_internal/guidance-context.ts').GuidanceApi | undefined;
+    let api:
+      import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi | undefined;
     render(GuidanceRegionHost, {
-      onReady: (value: import('../../_internal/guidance-context.ts').GuidanceApi) => {
+      onReady: (
+        value: import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi,
+      ) => {
         api = value;
       },
     });
@@ -139,10 +145,13 @@ describe('GuidanceRegion', () => {
       set: (key: string, value: boolean) => values.set(key, value),
       remove: (key: string) => values.delete(key),
     };
-    let firstApi: import('../../_internal/guidance-context.ts').GuidanceApi | undefined;
+    let firstApi:
+      import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi | undefined;
     const first = render(GuidanceRegionHost, {
       storage,
-      onReady: (value: import('../../_internal/guidance-context.ts').GuidanceApi) => {
+      onReady: (
+        value: import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi,
+      ) => {
         firstApi = value;
       },
     });
@@ -153,10 +162,13 @@ describe('GuidanceRegion', () => {
     expect(values.get('cinder-guidance:upgrade')).toBe(true);
     first.unmount();
 
-    let secondApi: import('../../_internal/guidance-context.ts').GuidanceApi | undefined;
+    let secondApi:
+      import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi | undefined;
     render(GuidanceRegionHost, {
       storage,
-      onReady: (value: import('../../_internal/guidance-context.ts').GuidanceApi) => {
+      onReady: (
+        value: import('@lostgradient/foundation/_internal/guidance-context.ts').GuidanceApi,
+      ) => {
         secondApi = value;
       },
     });

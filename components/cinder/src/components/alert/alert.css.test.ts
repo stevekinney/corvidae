@@ -47,7 +47,9 @@ const root = parse(alertCss);
 // surface" criterion is pinned in two places: the variant rule sets a
 // status-derived base here, and the partial synthesizes the tint (and border
 // color) from it.
-const statusSurfaceCss = loadCss('../../styles/components/_status-surface.css');
+const statusSurfaceCss = loadCss(
+  '../../../../foundation/src/styles/components/_status-surface.css',
+);
 const statusSurfaceRoot = parse(statusSurfaceCss);
 
 function findRuleInPartial(selector: string): Rule {

@@ -17,7 +17,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { FeedEventProps } from './feed-event.types.ts';
 
   let {

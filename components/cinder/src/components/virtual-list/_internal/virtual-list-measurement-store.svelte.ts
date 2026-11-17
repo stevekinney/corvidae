@@ -1,4 +1,4 @@
-import type { VirtualListKey } from '../../../utilities/fixed-virtual-window.ts';
+import type { VirtualListKey } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 import type { MeasurementCorrection } from './measurement-window.ts';
 
 /**

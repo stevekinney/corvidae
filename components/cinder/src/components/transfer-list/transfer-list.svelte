@@ -18,9 +18,9 @@
   import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { overflowShadow } from '../../utilities/attachments.ts';
-  import { useAnnouncer } from '../../utilities/use-announcer.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { overflowShadow } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
   import type { TransferListItem, TransferListProps } from './transfer-list.types.ts';
 
   const baseId = $props.id();

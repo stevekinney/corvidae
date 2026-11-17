@@ -25,8 +25,8 @@
     setTreeItemParentContext,
     tryGetTreeItemParentContext,
   } from '../../_internal/tree-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
   import { TreeItemAsyncLoader } from './tree-item-async-load.svelte.ts';
   import { TreeItemDragHandlers } from './tree-item-drag.svelte.ts';
   import { splitLabelForHighlight } from './tree-item-label-highlight.ts';

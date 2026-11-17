@@ -26,7 +26,7 @@
 
   import Collapsible from '../collapsible/collapsible.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     partitionRequiredFields,
     readSchemaFields,

@@ -22,7 +22,7 @@
     setTableSectionContext,
     tryGetTableContext,
   } from '../table/table.context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     class: className,

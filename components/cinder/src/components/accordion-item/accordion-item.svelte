@@ -16,7 +16,7 @@
 
 <script lang="ts">
   import { getAccordionContext } from '../accordion/accordion.context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { AccordionItemProps } from './accordion-item.types.ts';
 
   let {

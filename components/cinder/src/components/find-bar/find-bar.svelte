@@ -20,7 +20,7 @@
   import X from '@lucide/svelte/icons/x';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { FindBarProps } from './find-bar.types.ts';
   let {
     value = $bindable(''),

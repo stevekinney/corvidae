@@ -3,15 +3,15 @@
  * Each component owns its CSS partial under ./components/<name>.css.
  * Wave 2 of Phase 2 adds all imports in alphabetical order.
  */
-@import './components/_control-item.css';
-@import './components/_field-label.css';
-@import './components/_floating-surface.css';
-@import './components/_form-field-error.css';
-@import './components/_label-value.css';
-@import './components/_option-group.css';
-@import './components/_row-item.css';
-@import './components/_input-frame.css';
-@import './components/_field-chevron.css';
+@import '@lostgradient/foundation/components/_control-item.css';
+@import '@lostgradient/foundation/components/_field-label.css';
+@import '@lostgradient/foundation/components/_floating-surface.css';
+@import '@lostgradient/foundation/components/_form-field-error.css';
+@import '@lostgradient/foundation/components/_label-value.css';
+@import '@lostgradient/foundation/components/_option-group.css';
+@import '@lostgradient/foundation/components/_row-item.css';
+@import '@lostgradient/foundation/components/_input-frame.css';
+@import '@lostgradient/foundation/components/_field-chevron.css';
 @import '../components/access-gate/access-gate.css';
 @import '../components/accordion-item/accordion-item.css';
 @import '../components/accordion/accordion.css';
@@ -100,7 +100,7 @@
 @import '../components/inspector/inspector.css';
 @import '../components/inspector-row/inspector-row.css';
 @import '../components/invocation-rule-builder/invocation-rule-builder.css';
-@import './components/json-highlight.css';
+@import '@lostgradient/foundation/components/json-highlight.css';
 @import '../components/json-editor/json-editor.css';
 @import '../components/json-schema-editor/json-schema-editor.css';
 @import '../components/json-viewer/json-viewer.css';
@@ -224,7 +224,7 @@
 /* Shared internal partial — base chrome for Alert/Banner dismiss buttons.
  * Imported last to preserve the original source order of the inline rule it
  * replaced (it previously sat after every component import). */
-@import './components/_dismiss-button.css';
+@import '@lostgradient/foundation/components/_dismiss-button.css';
 
 /* Shared internal partial — soft status-surface recipe for Alert/Banner/Callout.
  * The recipe is import-order-independent by design: its classes are self-doubled
@@ -239,9 +239,9 @@
  * of `cinder/styles` only — a per-component sidecar (`cinder/alert/styles`) does
  * NOT include it; the documented contract requires importing `cinder/styles`
  * first through the package root entry. */
-@import './components/_status-surface.css';
+@import '@lostgradient/foundation/components/_status-surface.css';
 
 /* Shared internal partial — scroll-driven edge-fade recipe (see the file's
  * own doc comment for the full design rationale). Grouped with the other
  * shared partials for the same reason as `_status-surface.css` above. */
-@import './components/_scroll-fade.css';
+@import '@lostgradient/foundation/components/_scroll-fade.css';

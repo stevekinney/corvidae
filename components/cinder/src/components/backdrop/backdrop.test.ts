@@ -10,7 +10,8 @@ setupHappyDom();
 
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Backdrop } = await import('./backdrop.svelte');
-const { resetEscapeStack, resetScrollLock } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack, resetScrollLock } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

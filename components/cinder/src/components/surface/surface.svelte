@@ -16,8 +16,11 @@
 </script>
 
 <script lang="ts">
-  import { setSurfaceContext, type SurfaceContextValue } from '../../_internal/surface-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import {
+    setSurfaceContext,
+    type SurfaceContextValue,
+  } from '@lostgradient/foundation/_internal/surface-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { SurfaceProps } from './surface.types.ts';
 
   let { tone = 'default', class: className, children, ...rest }: SurfaceProps = $props();

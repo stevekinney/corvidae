@@ -315,7 +315,7 @@ export type { CopyButtonProps } from './components/copy-button/index.ts';
 export { default as CopyableValue } from './components/copyable-value/index.ts';
 export type { CopyableValueProps } from './components/copyable-value/index.ts';
 
-export { copyToClipboard } from './utilities/clipboard.ts';
+export { copyToClipboard } from '@lostgradient/foundation';
 
 export {
   formatCompactAge,
@@ -328,16 +328,16 @@ export {
   formatTimeOfDay,
   formatTimeZoneLabel,
   formatTimestamp,
-} from './utilities/format-date.ts';
+} from '@lostgradient/foundation';
 export type {
   DateFormatOptions,
   DateInput,
   DayHeadingOptions,
   RelativeTimeFormatOptions,
   TimeZoneLabelOptions,
-} from './utilities/format-date.ts';
+} from '@lostgradient/foundation';
 
-export { formatDuration } from './utilities/format-duration.ts';
+export { formatDuration } from '@lostgradient/foundation';
 
 export { THEME_CHANGING_ATTRIBUTE, guardThemeTransitions } from '@lostgradient/tokens';
 export type { ThemeTransitionGuardOptions } from '@lostgradient/tokens';
@@ -548,7 +548,7 @@ export type { FormFieldManaged, FormFieldProps } from './components/form-field/i
 export { default as FormSection } from './components/form-section/index.ts';
 export type { FormSectionHeadingLevel, FormSectionProps } from './components/form-section/index.ts';
 
-export type { FormFieldContext } from './_internal/form-field-context.ts';
+export type { FormFieldContext } from '@lostgradient/foundation';
 
 export { default as Footer } from './components/footer/index.ts';
 export type { FooterGroup, FooterLink, FooterProps } from './components/footer/index.ts';
@@ -1033,13 +1033,13 @@ export {
 } from './components/sidebar/index.ts';
 export type { SidebarProps } from './components/sidebar/index.ts';
 
-export { default as SortableList } from './components/sortable-list/index.ts';
-export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
 export type {
   SortableAnnouncements,
   SortableItemContext,
   SortableReorderChange,
-} from './utilities/sortable-controller.types.ts';
+} from '@lostgradient/foundation';
+export { default as SortableList } from './components/sortable-list/index.ts';
+export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
 export type {
@@ -1462,6 +1462,7 @@ export {
 } from '@lostgradient/tokens';
 export type { TokenRegistry, TokenRegistryEntry } from '@lostgradient/tokens';
 
+export { createBodyScrollLock, scrollEdgeFade } from '@lostgradient/foundation';
 export type { CarouselSlideContext } from './components/carousel/index.ts';
 export type { ConnectionIndicatorSchemaProps } from './components/connection-indicator/index.ts';
 export type {
@@ -1519,4 +1520,3 @@ export type {
   TreeSelectAllProps,
   TreeVirtualizedItemRenderState,
 } from './components/tree/index.ts';
-export { createBodyScrollLock, scrollEdgeFade } from './utilities/attachments.ts';

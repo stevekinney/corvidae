@@ -19,8 +19,8 @@
   import type { TabListProps } from './tab-list.types.ts';
 
   import { getTabsContext } from '../tabs/tabs-context.ts';
-  import { overflowFadeEdges } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { overflowFadeEdges } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let { label, ariaLabelledby, class: className, children, ...rest }: TabListProps = $props();
 

@@ -26,10 +26,10 @@
   import Check from '@lucide/svelte/icons/check';
   import Lock from '@lucide/svelte/icons/lock';
   import { untrack } from 'svelte';
-  import { composeDescribedBy } from '../../_internal/field-control.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
-  import { phoneViewport } from '../../_internal/phone-viewport.svelte.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { composeDescribedBy } from '@lostgradient/foundation/_internal/field-control.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
+  import { phoneViewport } from '@lostgradient/foundation/_internal/phone-viewport.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
   import type { JsonEditorDynamicOptions, JsonEditorHandle } from './json-editor-enhancement.ts';
   import { formatJson, isBlankJson } from './json-editor-format.ts';

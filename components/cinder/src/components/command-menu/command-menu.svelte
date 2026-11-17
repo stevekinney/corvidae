@@ -33,12 +33,12 @@
   import type { VirtualElement } from '@floating-ui/dom';
   import { on } from 'svelte/events';
 
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { isRightToLeftElement } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { setCommandListContext } from '../_internal/command-list-context.ts';
-  import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { isRightToLeftElement } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { setCommandListContext } from '@lostgradient/foundation/components/_internal/command-list-context.ts';
+  import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';
   import { createPortalAttachment } from '../portal/index.ts';
 
   const fallbackListboxId = $props.id();

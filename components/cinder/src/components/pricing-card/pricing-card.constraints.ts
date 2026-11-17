@@ -1,4 +1,4 @@
-import { defineConstraints } from '../../_internal/constraints.ts';
+import { defineConstraints } from '@lostgradient/foundation/_internal/constraints.ts';
 
 export default defineConstraints({
   component: 'pricing-card',

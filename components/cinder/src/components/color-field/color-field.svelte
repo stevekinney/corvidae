@@ -35,8 +35,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatColor, parseCssColor } from '../../utilities/color-format.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { formatColor, parseCssColor } from '@lostgradient/foundation/utilities/color-format.ts';
   import Input from '../input/input.svelte';
   import { default as ColorPicker } from '../color-picker/index.ts';
   import { default as Popover } from '../popover/index.ts';

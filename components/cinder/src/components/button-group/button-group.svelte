@@ -21,9 +21,9 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { setButtonGroupContext } from '../../_internal/button-group-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { useMutationObserver } from '../../utilities/use-mutation-observer.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { useMutationObserver } from '@lostgradient/foundation/utilities/use-mutation-observer.svelte.ts';
 
   let {
     label,

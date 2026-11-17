@@ -20,13 +20,13 @@
   import { untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Kbd from '../kbd/kbd.svelte';
-  import { rowDividerAttachment } from '../../utilities/row-divider.ts';
+  import { rowDividerAttachment } from '@lostgradient/foundation/utilities/row-divider.ts';
   import {
     getCommandListContext,
     hasCommandListContext,
-  } from '../_internal/command-list-context.ts';
+  } from '@lostgradient/foundation/components/_internal/command-list-context.ts';
 
   if (!hasCommandListContext()) {
     throw new Error('CommandItem must be used within a CommandPalette or CommandMenu.');

@@ -20,12 +20,12 @@
   import { onDestroy } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import type { Placement } from '@floating-ui/dom';
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { setTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { createAnchoredOverlayExitState } from '@lostgradient/foundation/_internal/anchored-overlay-exit.svelte.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { setTooltipTriggerContext } from '@lostgradient/foundation/_internal/tooltip-trigger-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import { createPortalAttachment } from '../portal/index.ts';
 
   let {

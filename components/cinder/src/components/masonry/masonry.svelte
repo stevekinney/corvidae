@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { MasonryProps } from './masonry.types.ts';
 
   let {

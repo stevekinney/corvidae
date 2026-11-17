@@ -23,11 +23,14 @@
     PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import Select from '../select/select.svelte';
-  import { handleRovingKeydown, isRovingKey } from '../../utilities/roving-tabindex.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { commitValue } from '../../utilities/value-change.ts';
+  import {
+    handleRovingKeydown,
+    isRovingKey,
+  } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { commitValue } from '@lostgradient/foundation/utilities/value-change.ts';
 
   const baseId = $props.id();
 

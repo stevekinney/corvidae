@@ -5,7 +5,7 @@
    * through context and report the picker's validation as its own. This wrapper publishes a
    * neutral form-field context for the field it holds, so it stays an ordinary search box.
    */
-  import { setFormFieldContext } from '../../_internal/form-field-context.ts';
+  import { setFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
   import SearchField from '../search-field/search-field.svelte';
   import type { SearchFieldProps } from '../search-field/search-field.types.ts';
 

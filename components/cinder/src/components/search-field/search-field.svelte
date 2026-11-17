@@ -19,10 +19,10 @@
 
   import Search from '@lucide/svelte/icons/search';
   import X from '@lucide/svelte/icons/x';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import type { SearchFieldProps } from './search-field.types.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { default as Input } from '../input/index.ts';
 
   let {

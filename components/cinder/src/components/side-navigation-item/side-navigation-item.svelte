@@ -17,7 +17,7 @@
 
 <script lang="ts">
   import type { SideNavigationItemProps } from './side-navigation-item.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { getSidebarContext } from '../../_internal/sidebar-context.ts';
   import NavigationItem from '../navigation-item/navigation-item.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';

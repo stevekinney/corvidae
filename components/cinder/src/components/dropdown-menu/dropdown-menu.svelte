@@ -19,16 +19,19 @@
   import type { DropdownMenuProps } from './dropdown-menu.types.ts';
   import { tick } from 'svelte';
 
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { observeTextDirection, resolveTextDirection } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import {
+    observeTextDirection,
+    resolveTextDirection,
+  } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     findTypeaheadMatch,
     isTypeaheadKey,
     TypeaheadBuffer,
-  } from '../../utilities/typeahead.ts';
+  } from '@lostgradient/foundation/utilities/typeahead.ts';
   import {
     getDropdownContext,
     getDropdownRegister,

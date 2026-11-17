@@ -29,7 +29,7 @@
   import { Check, Funnel, Plug, Search, TriangleAlert } from '@lucide/svelte';
 
   import Button from '../button/button.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     title,

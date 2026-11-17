@@ -23,10 +23,10 @@
     composeDescribedBy,
     describeId,
     errorId as buildErrorId,
-  } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
   let {
     id,

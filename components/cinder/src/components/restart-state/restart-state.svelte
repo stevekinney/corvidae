@@ -22,7 +22,7 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import WifiOff from '@lucide/svelte/icons/wifi-off';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { BANNER_MAX_ATTEMPTS } from '../banner/banner-presets.ts';
   import Button from '../button/button.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';

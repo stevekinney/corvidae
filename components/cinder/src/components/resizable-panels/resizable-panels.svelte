@@ -28,8 +28,8 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import {
     applyPointerDragDelta,
     applyPairDelta,
@@ -54,7 +54,7 @@
     ResizablePanelsResizeReason,
   } from './resizable-panels.types.ts';
   import type { ResizablePanelsLayoutState } from './resizable-panels-sizing.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
 
   let {
     panes,

@@ -17,13 +17,13 @@
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import {
     createRovingToolbar,
     ROVING_TOOLBAR_MUTATION_OPTIONS,
-  } from '../../utilities/roving-toolbar.ts';
-  import { useMutationObserver } from '../../utilities/use-mutation-observer.svelte.ts';
+  } from '@lostgradient/foundation/utilities/roving-toolbar.ts';
+  import { useMutationObserver } from '@lostgradient/foundation/utilities/use-mutation-observer.svelte.ts';
   import type { ToolbarProps } from './toolbar.types.ts';
 
   type ToolbarRuntimeProps = ToolbarProps & {

@@ -31,8 +31,8 @@
   import LockKeyhole from '@lucide/svelte/icons/lock-keyhole';
   import Minus from '@lucide/svelte/icons/minus';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { overflowShadow } from '../../utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { overflowShadow } from '@lostgradient/foundation/utilities/attachments.ts';
 
   import type {
     PermissionMatrixAxisItem,

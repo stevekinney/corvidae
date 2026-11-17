@@ -25,9 +25,9 @@
   import type { TabProps } from './tab.types.ts';
   import { untrack } from 'svelte';
 
-  import { rovingTabIndex } from '../../_internal/collection.ts';
+  import { rovingTabIndex } from '@lostgradient/foundation/_internal/collection.ts';
   import { getTabsContext } from '../tabs/tabs-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Badge from '../badge/badge.svelte';
 
   let {

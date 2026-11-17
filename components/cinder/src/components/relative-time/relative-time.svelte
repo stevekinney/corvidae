@@ -74,9 +74,13 @@
 </script>
 
 <script lang="ts">
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatDate, formatDateTime, formatRelativeTime } from '../../utilities/format-date.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    formatDate,
+    formatDateTime,
+    formatRelativeTime,
+  } from '@lostgradient/foundation/utilities/format-date.ts';
 
   import type { RelativeTimeProps } from './relative-time.types.ts';
 

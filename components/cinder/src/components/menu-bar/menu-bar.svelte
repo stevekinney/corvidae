@@ -30,14 +30,17 @@
   import { tick, untrack } from 'svelte';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { observeTextDirection, resolveTextDirection } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import {
+    observeTextDirection,
+    resolveTextDirection,
+  } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     findTypeaheadMatch,
     isTypeaheadKey,
     TypeaheadBuffer,
-  } from '../../utilities/typeahead.ts';
+  } from '@lostgradient/foundation/utilities/typeahead.ts';
   import type { DropdownContext } from '../dropdown/dropdown.types.ts';
   import DropdownItem from '../dropdown-item/dropdown-item.svelte';
   import DropdownLabel from '../dropdown-label/dropdown-label.svelte';

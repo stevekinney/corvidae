@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { evaluateConstraints } from '../../_internal/constraints.ts';
+import { evaluateConstraints } from '@lostgradient/foundation/_internal/constraints.ts';
 import { invalid, valid } from './input.constraints.fixtures.ts';
 import inputConstraints from './input.constraints.ts';
 

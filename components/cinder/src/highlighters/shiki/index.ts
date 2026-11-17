@@ -85,8 +85,8 @@ import type {
   HighlighterCore,
 } from '@shikijs/types';
 
-import type { Highlighter } from '../../utilities/highlighter.ts';
-import { createRetryingLoaderCache } from '../../utilities/retrying-loader-cache.ts';
+import type { Highlighter } from '@lostgradient/foundation/utilities/highlighter.ts';
+import { createRetryingLoaderCache } from '@lostgradient/foundation/utilities/retrying-loader-cache.ts';
 import { stripRootPreTabIndex } from './strip-root-pre-tab-index.ts';
 
 /**

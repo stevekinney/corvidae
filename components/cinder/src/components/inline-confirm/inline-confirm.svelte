@@ -16,8 +16,8 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import { onDestroy, tick, untrack } from 'svelte';
   import { default as Button } from '../button/index.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { InlineConfirmProps } from './inline-confirm.types.ts';
 
   let {

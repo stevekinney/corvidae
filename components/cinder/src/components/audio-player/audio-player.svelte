@@ -14,7 +14,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { MediaPlayerState } from '../_internal/media-player-state.svelte.ts';
   import MediaControls from '../_internal/media-controls.svelte';
   import type { AudioPlayerProps } from './audio-player.types.ts';

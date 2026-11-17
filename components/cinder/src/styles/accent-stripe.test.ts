@@ -44,8 +44,8 @@ const jsonSchemaEditor = load('../components/json-schema-editor/json-schema-edit
 const navigationBar = load('../components/navigation-bar/navigation-bar.css');
 const navigationItem = load('../components/navigation-item/navigation-item.css');
 const runStepTimeline = load('../components/run-step-timeline/run-step-timeline.css');
-const statusSurface = load('./components/_status-surface.css');
-const utilities = load('./utilities.css');
+const statusSurface = load('../../../foundation/src/styles/components/_status-surface.css');
+const utilities = load('../../../foundation/src/styles/utilities.css');
 
 describe('no accent stripe remains on the listed components', () => {
   test('Callout draws no inline-start border stripe', () => {

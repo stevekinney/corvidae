@@ -58,7 +58,7 @@ import { join, relative } from 'node:path';
 
 import { parse } from 'svelte/compiler';
 
-import { IDENTIFIER_ACRONYMS } from '../../../components/cinder/src/utilities/humanize-identifier.ts';
+import { IDENTIFIER_ACRONYMS } from '../../../components/foundation/src/utilities/humanize-identifier.ts';
 
 /** The rules this check enforces. */
 export type InterfaceRule =

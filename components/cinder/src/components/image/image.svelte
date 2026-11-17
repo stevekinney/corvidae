@@ -17,7 +17,7 @@
 
 <script lang="ts">
   import type { ImageProps } from './image.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     src,

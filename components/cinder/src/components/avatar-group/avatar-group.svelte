@@ -21,7 +21,7 @@
 
 <script lang="ts">
   import type { AvatarGroupProps } from './avatar-group.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Avatar from '../avatar/avatar.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
 

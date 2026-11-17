@@ -23,8 +23,8 @@
     tryGetTableHeaderSelectionContext,
     tryGetTableSectionContext,
   } from '../table/table.context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
   let {
     class: className,

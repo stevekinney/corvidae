@@ -22,11 +22,11 @@
   import type { NumberInputProps } from './number-input.types.ts';
   import { untrack } from 'svelte';
 
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatNumber } from '../../utilities/format-number.ts';
-  import { parseLocaleNumber } from '../../utilities/parse-locale-number.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
+  import { parseLocaleNumber } from '@lostgradient/foundation/utilities/parse-locale-number.ts';
   import {
     createStepController,
     attachInputNode,

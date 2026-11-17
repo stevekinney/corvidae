@@ -30,7 +30,7 @@
 <script lang="ts">
   import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { SelectableRowProps } from './selectable-row.types.ts';
 
   let {

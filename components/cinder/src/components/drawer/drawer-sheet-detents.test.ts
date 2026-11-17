@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { resetEscapeStack, resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { detentHeight } from './drawer-detents.ts';
 import { emptySnippet, installDrawerDialogStubs, textSnippet } from './drawer-test-helpers.ts';
 import type { DrawerProps } from './drawer.types.ts';

@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { useGuidance, type GuidanceApi } from '../../utilities/use-guidance.ts';
+  import {
+    useGuidance,
+    type GuidanceApi,
+  } from '@lostgradient/foundation/utilities/use-guidance.ts';
 
   let { onReady }: { onReady: (api: GuidanceApi) => void } = $props();
   const api = useGuidance();

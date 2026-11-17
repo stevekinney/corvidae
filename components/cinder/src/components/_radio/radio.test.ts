@@ -62,7 +62,10 @@ describe('Radio', () => {
       new URL('../radio-group/radio-group.css', import.meta.url),
     ).text();
     const sharedErrorCss = await Bun.file(
-      new URL('../../styles/components/_form-field-error.css', import.meta.url),
+      new URL(
+        '../../../../foundation/src/styles/components/_form-field-error.css',
+        import.meta.url,
+      ),
     ).text();
     const removeStyles = injectStrippedStyles(radioCss, radioGroupCss, sharedErrorCss);
     try {

@@ -170,6 +170,8 @@ export interface SplitPackages {
 }
 
 const UNSPLIT: SplitPackages = { packages: new Set(['tooling']), generated: new Map() };
+const CORE_PACKAGE = `${PACKAGE_SCOPE}cinder`;
+const CORE_BARREL = 'src/index.ts';
 
 function globsMatch(patterns: readonly string[], path: string): boolean {
   return patterns.some((pattern) => new Bun.Glob(pattern).match(path));
@@ -462,6 +464,12 @@ function buildImports(
     if (!CODE_FILE.test(path)) continue;
     const targets = new Set<string>();
     for (const specifier of importSpecifiers(content)) {
+      // A test that imports core's own package (`@lostgradient/cinder`) needs core's barrel; a
+      // source module that names it does so in a usage comment.
+      if (specifier === CORE_PACKAGE && isTestFile(path) && files.has(CORE_BARREL)) {
+        targets.add(CORE_BARREL);
+        continue;
+      }
       for (const target of resolveSplitImport(files, split, path, specifier)) {
         if (target !== path) targets.add(target);
       }

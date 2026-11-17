@@ -25,19 +25,22 @@
   import X from '@lucide/svelte/icons/x';
   import { tick, untrack } from 'svelte';
 
-  import CheckboxIndicatorShell from '../_internal/checkbox-indicator-shell.svelte';
-  import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
-  import { groupOptions, hasGroupedOptions } from '../_internal/group-options.ts';
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { resolveFieldControl } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import CheckboxIndicatorShell from '@lostgradient/foundation/components/_internal/checkbox-indicator-shell.svelte';
+  import { createCommandListState } from '@lostgradient/foundation/components/_internal/create-command-list-state.svelte.ts';
+  import {
+    groupOptions,
+    hasGroupedOptions,
+  } from '@lostgradient/foundation/components/_internal/group-options.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { resolveFieldControl } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
   import {
     PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { createPortalAttachment } from '../portal/index.ts';
   import { findNearestOpenTopLayer } from '../portal/portal.utilities.svelte.ts';
   import Tooltip from '../tooltip/tooltip.svelte';

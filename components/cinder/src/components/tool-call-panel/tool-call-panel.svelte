@@ -35,9 +35,9 @@
   import {
     readViewportBreakpoint,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import { phoneViewport } from '../../_internal/phone-viewport.svelte.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { phoneViewport } from '@lostgradient/foundation/_internal/phone-viewport.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
   import Drawer from '../drawer/drawer.svelte';

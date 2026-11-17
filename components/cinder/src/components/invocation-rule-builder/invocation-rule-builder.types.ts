@@ -1,5 +1,8 @@
+import type {
+  DataAttributes,
+  WithoutDataAttributes,
+} from '@lostgradient/foundation/_internal/union-props.ts';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { DataAttributes, WithoutDataAttributes } from '../../_internal/union-props.ts';
 
 /**
  * A single condition within a rule. The field, operator, and value

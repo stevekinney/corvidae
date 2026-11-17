@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { ComponentAttributes } from '../../_internal/constraints.ts';
-import { evaluateConstraints } from '../../_internal/constraints.ts';
+import type { ComponentAttributes } from '@lostgradient/foundation/_internal/constraints.ts';
+import { evaluateConstraints } from '@lostgradient/foundation/_internal/constraints.ts';
 import { invalid, valid } from './pricing-card.constraints.fixtures.ts';
 import pricingCardConstraints from './pricing-card.constraints.ts';
 

@@ -1,6 +1,6 @@
+import type { NonMetadataHTMLElementTagName } from '@lostgradient/foundation/utilities/html-element-types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
 
 /** Props for the GridItem component. */
 export type GridItemProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {

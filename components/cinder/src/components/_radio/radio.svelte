@@ -18,10 +18,14 @@
 <script lang="ts">
   import type { RadioProps } from './radio.types.ts';
 
-  import { ariaInvalid, composeDescribedBy, describeId } from '../../_internal/field-control.ts';
+  import {
+    ariaInvalid,
+    composeDescribedBy,
+    describeId,
+  } from '@lostgradient/foundation/_internal/field-control.ts';
   import { getRadioGroupContext } from '../radio-group/radio-group-context.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     id,

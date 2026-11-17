@@ -36,7 +36,7 @@
   import Button from '../button/button.svelte';
   import { bannerPresetCopy, type BannerPreset } from './banner-presets.ts';
   import RelativeTime from '../relative-time/relative-time.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   const FOCUSABLE_SELECTOR =
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

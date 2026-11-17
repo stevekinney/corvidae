@@ -106,12 +106,12 @@ export const RUNTIME_VARIABLE_ALLOWLIST: Array<{ name: string; reason: string }>
  * prefixes. Keep this minimal and reasoned.
  */
 export const SHARED_PARTIAL_OWNED_PREFIXES: Record<string, string[]> = {
-  'src/styles/components/_input-frame.css': ['--cinder-input-frame'],
-  'src/styles/components/_control-item.css': ['--cinder-control-item'],
-  'src/styles/components/_dismiss-button.css': ['--cinder-dismiss-button'],
-  'src/styles/components/_floating-surface.css': ['--cinder-floating-surface'],
-  'src/styles/components/_scroll-fade.css': ['--cinder-scroll-fade'],
-  'src/styles/components/json-highlight.css': ['--cinder-json-highlight'],
+  '../foundation/src/styles/components/_input-frame.css': ['--cinder-input-frame'],
+  '../foundation/src/styles/components/_control-item.css': ['--cinder-control-item'],
+  '../foundation/src/styles/components/_dismiss-button.css': ['--cinder-dismiss-button'],
+  '../foundation/src/styles/components/_floating-surface.css': ['--cinder-floating-surface'],
+  '../foundation/src/styles/components/_scroll-fade.css': ['--cinder-scroll-fade'],
+  '../foundation/src/styles/components/json-highlight.css': ['--cinder-json-highlight'],
 };
 
 export type TokenCategory = 'global' | 'component-owned' | 'private' | 'runtime' | 'unresolved';

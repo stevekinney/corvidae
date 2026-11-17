@@ -18,7 +18,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import type { CalendarProps } from './calendar.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   type CalendarRangeValue = {
     start: string | undefined;

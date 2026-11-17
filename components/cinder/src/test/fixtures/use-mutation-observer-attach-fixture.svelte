@@ -2,7 +2,7 @@
   import type {
     MutationCallback,
     UseMutationObserverOptions,
-  } from '../../utilities/use-mutation-observer.types.ts';
+  } from '@lostgradient/foundation/utilities/use-mutation-observer.types.ts';
 
   export type UseMutationObserverAttachFixtureProps = {
     onMutate: MutationCallback;
@@ -11,7 +11,7 @@
 </script>
 
 <script lang="ts">
-  import { useMutationObserver } from '../../utilities/use-mutation-observer.svelte.ts';
+  import { useMutationObserver } from '@lostgradient/foundation/utilities/use-mutation-observer.svelte.ts';
 
   let { onMutate, options }: UseMutationObserverAttachFixtureProps = $props();
 </script>

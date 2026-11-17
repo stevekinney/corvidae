@@ -50,6 +50,7 @@
     "@floating-ui/dom": "catalog:",
     "@lezer/highlight": "catalog:",
     "@lostgradient/component-tooling": "workspace:*",
+    "@lostgradient/foundation": "workspace:*",
     "@lostgradient/markdown": "workspace:*",
     "@lostgradient/tokens": "workspace:*",
     "@lucide/svelte": "catalog:",

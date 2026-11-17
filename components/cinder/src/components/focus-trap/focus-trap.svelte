@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   import type { FocusTrapProps } from './focus-trap.types.ts';
   import { createFocusTrap } from './focus-trap.utilities.svelte.ts';

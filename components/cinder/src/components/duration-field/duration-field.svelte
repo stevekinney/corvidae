@@ -18,9 +18,9 @@
 </script>
 
 <script lang="ts">
-  import type { FormFieldContext } from '../../_internal/form-field-context.ts';
-  import FormFieldProvider from '../../_internal/form-field-provider.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import type { FormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import FormFieldProvider from '@lostgradient/foundation/_internal/form-field-provider.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import NumberInput from '../number-input/number-input.svelte';
   import Select from '../select/select.svelte';
   import type { DurationFieldProps } from './duration-field.types.ts';

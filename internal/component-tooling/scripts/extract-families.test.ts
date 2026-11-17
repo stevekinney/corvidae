@@ -425,6 +425,29 @@ describe('extract-families', () => {
     expect(readPackageTree(join(root, CORE)).has('src/components/button/index.ts')).toBe(false);
   });
 
+  test('a newer map moves a test an earlier run placed back to core', async () => {
+    const root = repository();
+    await extract(root, { kind: 'all' });
+    const file = 'src/components/button/button.test.ts';
+    const newer: DerivedFamilies = {
+      ...ORIGINAL,
+      testMoves: [...ORIGINAL.testMoves, { file, from: 'button', to: 'core', because: 'test' }],
+    };
+    const result = await extractFamilies({
+      root,
+      core: CORE,
+      families: newer,
+      rules: RULES,
+      selection: { kind: 'all' },
+    });
+    expect(result.moves).toEqual([{ from: `components/button/${file}`, to: `${CORE}/${file}` }]);
+    expect(existsSync(join(root, 'components/button', file))).toBe(false);
+    // Its paths into core still reach core from there: a sibling path names core by directory.
+    expect(read(root, `${CORE}/${file}`)).toContain(
+      "join(packageRoot, '..', 'cinder', 'src', 'styles', 'components.css')",
+    );
+  });
+
   test('a second run changes nothing', async () => {
     const root = repository();
     await extract(root, { kind: 'packages', names: ['tokens', 'foundation'] });

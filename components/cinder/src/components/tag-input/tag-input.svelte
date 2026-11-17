@@ -18,17 +18,20 @@
 <script lang="ts">
   import { flushSync, tick, untrack } from 'svelte';
 
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
   import {
     ariaInvalid,
     composeDescribedBy,
     resolveFieldControl,
-  } from '../../_internal/field-control.ts';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { handleRovingKeydown, isRovingKey } from '../../utilities/roving-tabindex.ts';
+  } from '@lostgradient/foundation/_internal/field-control.ts';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    handleRovingKeydown,
+    isRovingKey,
+  } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
   import type { TagInputProps } from './tag-input.types.ts';
 
   const generatedId = $props.id();

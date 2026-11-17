@@ -25,8 +25,8 @@
 
   import type { DropdownItemProps } from './dropdown-item.types.ts';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { rowDividerAttachment } from '../../utilities/row-divider.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { rowDividerAttachment } from '@lostgradient/foundation/utilities/row-divider.ts';
   import { getDropdownContext } from '../dropdown/dropdown.context.ts';
 
   let {

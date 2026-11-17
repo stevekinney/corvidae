@@ -15,7 +15,8 @@ const { default: Fixture } = await import('../../test/fixtures/dropdown-compound
 const { default: DropdownDirectionFixture } =
   await import('../../test/fixtures/dropdown-direction-fixture.svelte');
 const { default: DropdownMenu } = await import('./dropdown-menu.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

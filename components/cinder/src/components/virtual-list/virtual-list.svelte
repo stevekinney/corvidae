@@ -26,13 +26,13 @@
   export type {
     FixedVirtualWindow,
     FixedVirtualWindowItem,
-  } from '../../utilities/fixed-virtual-window.ts';
+  } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
   export {
     getFixedVirtualWindow,
     parsePixelLength,
     resolveVirtualItemHeight,
     resolveVirtualOverscan,
-  } from '../../utilities/fixed-virtual-window.ts';
+  } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
   /**
    * Cached for the lifetime of the document: the convention cannot change, and the
    * probe forces layout, so it must not run per instance.
@@ -43,21 +43,21 @@
 <script lang="ts" generics="Item">
   import { tick, untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
   import type {
     VirtualListProps,
     VirtualListRef,
     VirtualListScrollToIndexOptions,
   } from './virtual-list.types.ts';
-  import type { VirtualListKey } from '../../utilities/fixed-virtual-window.ts';
+  import type { VirtualListKey } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
   import {
     getFixedVirtualWindow,
     parsePixelLength,
     resolveVirtualItemHeight,
     resolveVirtualOverscan,
-  } from '../../utilities/fixed-virtual-window.ts';
+  } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
   import {
     buildVirtualOffsets,
     computeScrollToIndexOffset,

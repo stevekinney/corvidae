@@ -20,9 +20,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
-  import { trackDockedBarHeight } from '../../_internal/docked-bar-height.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { trackKeyboardInset } from '@lostgradient/foundation/_internal/keyboard-inset.ts';
+  import { trackDockedBarHeight } from '@lostgradient/foundation/_internal/docked-bar-height.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import StaleRegion from '../stale-region/stale-region.svelte';
   import type { DockedActionBarProps } from './docked-action-bar.types.ts';
 

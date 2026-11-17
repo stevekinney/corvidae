@@ -37,7 +37,7 @@
   import { ChartInteraction } from '../../_internal/chart/chart-interaction.svelte.ts';
   import ChartDataTable from '../_internal/chart-data-table.svelte';
   import ChartTooltip from '../_internal/chart-tooltip.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { AreaChartProps } from './area-chart.types.ts';
 
   let {

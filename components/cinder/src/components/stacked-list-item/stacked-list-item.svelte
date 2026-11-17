@@ -33,9 +33,9 @@
 <script lang="ts">
   import { ChevronDown, ChevronRight, ChevronUp, Ellipsis, TriangleAlert } from '@lucide/svelte';
   import { getDataListContext } from '../../_internal/data-list-context.ts';
-  import { phoneViewport } from '../../_internal/phone-viewport.svelte.ts';
+  import { phoneViewport } from '@lostgradient/foundation/_internal/phone-viewport.svelte.ts';
   import type { StackedListItemProps } from './stacked-list-item.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
   import { Dropdown } from '../dropdown/index.ts';
 

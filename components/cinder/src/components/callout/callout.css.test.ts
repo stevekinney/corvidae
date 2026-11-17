@@ -28,7 +28,9 @@ const root = parse(calloutCss);
 // The soft-surface color algebra (border) lives in the shared `_status-surface.css` partial,
 // consumed by Callout via the `.cinder-_status-surface*` classes. Callout's variant rules only set
 // the partial's per-variant inputs.
-const statusSurfaceCss = loadCss('../../styles/components/_status-surface.css');
+const statusSurfaceCss = loadCss(
+  '../../../../foundation/src/styles/components/_status-surface.css',
+);
 const statusSurfaceRoot = parse(statusSurfaceCss);
 
 function findRuleIn(parsedRoot: ReturnType<typeof parse>, selector: string): Rule {

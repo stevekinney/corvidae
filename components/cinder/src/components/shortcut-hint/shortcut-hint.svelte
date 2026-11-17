@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Kbd from '../kbd/kbd.svelte';
   import type { ShortcutHintProps } from './shortcut-hint.types.ts';
 

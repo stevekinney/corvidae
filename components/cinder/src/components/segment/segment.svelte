@@ -21,7 +21,7 @@
   import type { Attachment } from 'svelte/attachments';
   import type { HTMLAttributes } from 'svelte/elements';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { getSegmentedControlContext } from '../segmented-control/segmented-control-state.svelte.ts';
   import type { SegmentProps } from './segment.types.ts';
 

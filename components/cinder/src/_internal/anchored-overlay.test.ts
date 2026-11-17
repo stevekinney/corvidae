@@ -2,14 +2,14 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { compileModule } from 'svelte/compiler';
 
-import { setupHappyDom } from '@lostgradient/testing';
 import {
   applyAnchoredOverlayMaxBlockSize,
   getAnchoredOverlayAvailableHeightStyle,
   getAnchoredOverlayMaxBlockSizeStyle,
   getAnchoredOverlayWidthStyle,
   isAnchoredOverlayWriteCurrent,
-} from './anchored-overlay.svelte.ts';
+} from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

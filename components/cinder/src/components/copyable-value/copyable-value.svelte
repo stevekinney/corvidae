@@ -17,7 +17,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
   import type { CopyableValueProps } from './copyable-value.types.ts';
 

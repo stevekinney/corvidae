@@ -3,8 +3,8 @@
   `@lostgradient/cinder`: the players are the public surface.
 -->
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
   import type { MediaControlsProps } from './media-controls.types.ts';
   import { formatMediaTime, seekFractionForKey } from './media-time.ts';
 

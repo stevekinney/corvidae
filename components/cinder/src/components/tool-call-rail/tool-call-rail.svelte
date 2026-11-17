@@ -35,8 +35,11 @@
   import { SvelteMap } from 'svelte/reactivity';
   import type { Attachment } from 'svelte/attachments';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    planFold,
+    summarizeFoldedNames,
+  } from '@lostgradient/foundation/utilities/fold-middle.ts';
   import Spinner from '../spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';

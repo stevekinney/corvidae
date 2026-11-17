@@ -30,8 +30,8 @@
     DateRangeGranularity,
     DateRangeValue,
   } from './date-range-field.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { normalizeDateValue } from '../../_internal/date-value.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { normalizeDateValue } from '@lostgradient/foundation/_internal/date-value.ts';
   import Calendar from '../calendar/calendar.svelte';
   import Grid from '../grid/grid.svelte';
   import Input from '../input/input.svelte';
@@ -40,7 +40,7 @@
     composeDescribedBy,
     describeId,
     errorId as buildErrorId,
-  } from '../../_internal/field-control.ts';
+  } from '@lostgradient/foundation/_internal/field-control.ts';
 
   let {
     id,

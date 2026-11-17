@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { resetEscapeStack, resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { installDrawerDialogStubs } from '../drawer/drawer-test-helpers.ts';
 
 setupHappyDom();

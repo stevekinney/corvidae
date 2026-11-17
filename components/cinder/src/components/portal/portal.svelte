@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   import type { PortalProps } from './portal.types.ts';
   import { createPortalAttachment, resolvePortalTarget } from './portal.utilities.svelte.ts';

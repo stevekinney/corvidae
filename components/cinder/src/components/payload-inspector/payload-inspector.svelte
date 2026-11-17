@@ -38,8 +38,8 @@
   import Segment from '../segment/segment.svelte';
 
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatBytes } from '../../utilities/format-bytes.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { formatBytes } from '@lostgradient/foundation/utilities/format-bytes.ts';
   import {
     chooseFieldsLayout,
     headerCount,

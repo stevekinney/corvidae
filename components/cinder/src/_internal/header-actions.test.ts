@@ -67,7 +67,7 @@ describe('header actions never grow the header', () => {
 describe('coarse pointers get a real touch box without enlarging the painted control', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
   const tokens = read('../../../tokens/src/styles/tokens-base.css');
-  const foundation = read('../styles/foundation.css');
+  const foundation = read('../../../foundation/src/styles/foundation.css');
   const buttonCss = read('../components/button/button.css');
 
   // happy-dom cannot evaluate `(pointer: coarse)`, so the coarse run applies those blocks

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ToastApi } from '../../_internal/toast-context.ts';
+  import type { ToastApi } from '@lostgradient/foundation/_internal/toast-context.ts';
 
   /**
    * Test-only child component: reads useToast() from its own context (which is
@@ -15,7 +15,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { useToast } from '../../utilities/use-toast.ts';
+  import { useToast } from '@lostgradient/foundation/utilities/use-toast.ts';
 
   let { onReady, onInitialize }: ToastProbeProps = $props();
 

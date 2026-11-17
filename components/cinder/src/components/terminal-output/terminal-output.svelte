@@ -22,7 +22,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { TerminalOutputProps } from './terminal-output.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { TerminalOutputParser } from './terminal-output-parser.ts';
   let {
     class: className,

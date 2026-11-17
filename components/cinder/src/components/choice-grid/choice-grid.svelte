@@ -27,10 +27,13 @@
 <script lang="ts">
   import type { ChoiceGridProps } from './choice-grid.types.ts';
   import { setChoiceGridContext } from './choice-grid-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { createSingleSelection, createMultiSelection } from '../../_internal/collection.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    createSingleSelection,
+    createMultiSelection,
+  } from '@lostgradient/foundation/_internal/collection.ts';
+  import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import { default as Grid } from '../grid/index.ts';
 
   let {

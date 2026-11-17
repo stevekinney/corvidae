@@ -19,7 +19,7 @@
 <script lang="ts">
   import type { JsonViewerProps } from './json-viewer.types.ts';
   import JsonViewerNode from './_json-viewer-node.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     value,

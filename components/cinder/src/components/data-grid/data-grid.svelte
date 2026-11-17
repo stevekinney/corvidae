@@ -47,9 +47,9 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import ZoomIn from '@lucide/svelte/icons/zoom-in';
   import ZoomOut from '@lucide/svelte/icons/zoom-out';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { copyToClipboard } from '../../utilities/clipboard.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { copyToClipboard } from '@lostgradient/foundation/utilities/clipboard.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import Button from '../button/button.svelte';
   import Input from '../input/input.svelte';
   import SearchField from '../search-field/search-field.svelte';

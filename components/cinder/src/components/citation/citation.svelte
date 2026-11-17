@@ -20,8 +20,8 @@
   import {
     PHONE_VIEWPORT_BREAKPOINT,
     useViewportBelow,
-  } from '../../_internal/viewport-below.svelte.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { default as Popover } from '../popover/index.ts';
 
   import { resolveCitationLink } from './citation-link.ts';

@@ -81,7 +81,10 @@ describe('JsonEditor', () => {
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
     const jsonEditorCss = await Bun.file(new URL('./json-editor.css', import.meta.url)).text();
     const sharedErrorCss = await Bun.file(
-      new URL('../../styles/components/_form-field-error.css', import.meta.url),
+      new URL(
+        '../../../../foundation/src/styles/components/_form-field-error.css',
+        import.meta.url,
+      ),
     ).text();
     const removeStyles = injectStrippedStyles(jsonEditorCss, sharedErrorCss);
     try {

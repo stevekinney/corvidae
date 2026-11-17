@@ -16,8 +16,8 @@
 
 <script lang="ts">
   import type { FormFieldProps } from './form-field.types.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     id,

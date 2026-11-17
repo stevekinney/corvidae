@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { VirtualListKey } from '../../utilities/fixed-virtual-window.ts';
+import type { VirtualListKey } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 import type { VirtualListScrollAlign } from './_internal/measurement-window.ts';
 
 export type { VirtualListScrollAlign };

@@ -24,11 +24,14 @@
 <script lang="ts">
   import type { SliderProps, SliderValue } from './slider.types.ts';
   import { untrack } from 'svelte';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { getLocaleContext } from '../../_internal/locale-context.ts';
-  import { observeTextDirection, resolveTextDirection } from '../../_internal/text-direction.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { getLocaleContext } from '@lostgradient/foundation/_internal/locale-context.ts';
+  import {
+    observeTextDirection,
+    resolveTextDirection,
+  } from '@lostgradient/foundation/_internal/text-direction.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
   let {
     mode = 'single',

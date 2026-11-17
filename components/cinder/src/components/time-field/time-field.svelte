@@ -25,11 +25,11 @@
 
   import { default as Input } from '../input/index.ts';
 
-  import { resolveFieldControl } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
+  import { resolveFieldControl } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
   import { parseTimeString, serializeTimeParts } from '../../_internal/time-parts.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { TimeFieldProps } from './time-field.types.ts';
 
   let {

@@ -15,7 +15,8 @@ setupHappyDom();
 // `validatorForSchema` cache), so delaying `compileInterpreted`'s
 // resolution delays the *first* submit's validation — exactly the moment
 // this test needs to observe "Validating..." before it resolves.
-const realInterpreter = await import('../../utilities/json-schema-interpreter.ts');
+const realInterpreter =
+  await import('@lostgradient/foundation/utilities/json-schema-interpreter.ts');
 // `mock.module` rebinds the module's live exports, including on this
 // already-imported namespace object — calling `realInterpreter.
 // compileInterpreted` from inside the mock factory below would recurse
@@ -28,7 +29,7 @@ const pendingValidation = Promise.withResolvers<void>();
 const validationStarted = Promise.withResolvers<void>();
 let compileCallCount = 0;
 
-mock.module('../../utilities/json-schema-interpreter.ts', () => ({
+mock.module('@lostgradient/foundation/utilities/json-schema-interpreter.ts', () => ({
   ...realInterpreter,
   compileInterpreted: async (
     ...args: Parameters<typeof realInterpreter.compileInterpreted>

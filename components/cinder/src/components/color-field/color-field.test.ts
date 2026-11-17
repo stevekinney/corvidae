@@ -13,7 +13,7 @@ const { default: ColorFieldFormFixture } =
   await import('../../test/fixtures/color-field-form-fixture.svelte');
 const { default: ColorFieldFormFieldFixture } =
   await import('../../test/fixtures/color-field-form-field-fixture.svelte');
-const { resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack } = await import('@lostgradient/foundation/_internal/overlay.ts');
 
 afterEach(() => {
   cleanup();

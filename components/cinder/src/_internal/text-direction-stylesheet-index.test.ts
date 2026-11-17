@@ -1,13 +1,13 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { setupHappyDom } from '@lostgradient/testing';
-import { matchesDirectionStyleRule } from './text-direction-css.ts';
+import { matchesDirectionStyleRule } from '@lostgradient/foundation/_internal/text-direction-css.ts';
 import {
   resetDirectionStyleSheetIndex,
   styleSheetDeclaresDirection,
-} from './text-direction-sheet-index.ts';
-import { createCssRule } from './text-direction-test-helpers.ts';
+} from '@lostgradient/foundation/_internal/text-direction-sheet-index.ts';
+import { createCssRule } from '@lostgradient/foundation/_internal/text-direction-test-helpers.ts';
+import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 

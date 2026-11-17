@@ -10,7 +10,8 @@ const { cleanup, fireEvent, render, screen } = await import('@testing-library/sv
 const { default: SelectionPopover } = await import('./selection-popover.svelte');
 const { default: RuntimeSelectionPopover } =
   await import('./selection-popover-javascript-consumer.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 afterEach(() => {
   cleanup();

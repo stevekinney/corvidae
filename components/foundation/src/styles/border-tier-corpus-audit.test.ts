@@ -62,7 +62,7 @@ describe('CIN-245: structural border tier corpus audit', () => {
   });
   test('every area fill is named in the seam audit', () => {
     const audit = readFileSync(
-      join(PACKAGE_ROOT, 'documentation/css-audit/translucent-border-seams.md'),
+      join(PACKAGE_ROOT, '../cinder/documentation/css-audit/translucent-border-seams.md'),
       'utf8',
     );
     const missing = new Set<string>();

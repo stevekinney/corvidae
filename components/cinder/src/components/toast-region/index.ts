@@ -2,7 +2,7 @@ import './toast-region.css';
 import ToastRegion from './toast-region.svelte';
 
 export default ToastRegion;
-export { useToast } from '../../utilities/use-toast.ts';
+export { useToast } from '@lostgradient/foundation/utilities/use-toast.ts';
 export type {
   ToastApi,
   ToastItem,

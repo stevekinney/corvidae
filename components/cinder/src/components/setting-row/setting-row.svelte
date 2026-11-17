@@ -19,9 +19,9 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
 
-  import FormFieldFrame from '../../_internal/form-field-frame.svelte';
+  import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
   import type { SettingRowProps, SettingRowStatus } from './setting-row.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let {
     id,

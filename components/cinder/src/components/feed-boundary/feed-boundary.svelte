@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { FeedBoundaryProps } from './feed-boundary.types.ts';
 
   let { label, datetime, timestamp, class: className, ...rest }: FeedBoundaryProps = $props();

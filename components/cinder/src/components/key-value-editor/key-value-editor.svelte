@@ -17,7 +17,7 @@
   import { tick } from 'svelte';
   import { default as Button } from '../button/index.ts';
   import { default as Input } from '../input/index.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { KeyValueEditorProps, KeyValueEntry } from './key-value-editor.types.ts';
   let {
     entries = $bindable([]),

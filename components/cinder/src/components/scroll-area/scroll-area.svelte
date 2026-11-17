@@ -28,12 +28,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import type { ScrollAreaProps } from './scroll-area.types.ts';
-  import { overflowFadeEdges } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { useDragScroll } from '../../utilities/use-drag-scroll.svelte.ts';
-  import { useFinePointer } from '../../utilities/use-fine-pointer.svelte.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { overflowFadeEdges } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { useDragScroll } from '@lostgradient/foundation/utilities/use-drag-scroll.svelte.ts';
+  import { useFinePointer } from '@lostgradient/foundation/utilities/use-fine-pointer.svelte.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
 
   let {
     direction = 'vertical',

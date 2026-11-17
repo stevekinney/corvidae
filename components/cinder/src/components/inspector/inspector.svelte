@@ -18,7 +18,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { InspectorProps } from './inspector.types.ts';
 
   let { header, children, class: className, ...rest }: InspectorProps = $props();

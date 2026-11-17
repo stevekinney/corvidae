@@ -16,14 +16,14 @@
 
 <script lang="ts">
   import type { ToggleProps } from './toggle.types.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
   import {
     getStaleRegionContext,
     isStaleInert,
     mergeDescribedBy,
-  } from '../../_internal/stale-region-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { commitValue } from '../../utilities/value-change.ts';
+  } from '@lostgradient/foundation/_internal/stale-region-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { commitValue } from '@lostgradient/foundation/utilities/value-change.ts';
 
   let {
     id,

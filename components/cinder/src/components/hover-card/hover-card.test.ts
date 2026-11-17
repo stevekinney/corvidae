@@ -46,7 +46,8 @@ mock.module('@floating-ui/dom', () => ({
 
 const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/svelte');
 const { default: HoverCard } = await import('./hover-card.svelte');
-const { resetEscapeStack, pushEscapeHandler } = await import('../../_internal/overlay.ts');
+const { resetEscapeStack, pushEscapeHandler } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 const triggerSnippet = createRawSnippet(() => ({
   render: () => `<button type="button">Inspect</button>`,

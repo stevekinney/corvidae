@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CircleAlert } from '../icons/index.ts';
+  import { CircleAlert } from '@lostgradient/foundation/components/icons/index.ts';
   import Input from '../input/input.svelte';
   import { CRON_FIELDS, describeCronFieldError } from './schedule-builder.utilities.ts';
 

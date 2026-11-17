@@ -500,9 +500,7 @@
         "src/highlighters/shiki/default.ts",
         "src/highlighters/shiki/index.ts",
         "src/highlighters/shiki/shiki.test.ts",
-        "src/highlighters/shiki/strip-root-pre-tab-index.ts",
-        "src/test/fixtures/code-block-bundle-explicit-highlighter.ts",
-        "src/test/fixtures/code-block-bundle-no-highlighter.ts"
+        "src/highlighters/shiki/strip-root-pre-tab-index.ts"
       ]
     },
     "code-location": {
@@ -817,6 +815,7 @@
         "src/api-contract.test.ts",
         "src/api-contract.ts",
         "src/components.test.ts",
+        "src/components/icons/index.test.ts",
         "src/components/svg-data-uri-color-literals.test.ts",
         "src/convention-structural-ast-test-helpers.ts",
         "src/convention-structural-test-helpers.ts",
@@ -867,6 +866,8 @@
         "src/test/fixtures/anchored-overlay-boundary-fixture.svelte",
         "src/test/fixtures/checkbox-group-fixture.svelte",
         "src/test/fixtures/checkbox-indeterminate-form-reset-fixture.svelte",
+        "src/test/fixtures/code-block-bundle-explicit-highlighter.ts",
+        "src/test/fixtures/code-block-bundle-no-highlighter.ts",
         "src/test/fixtures/code-highlighter-context-fixture.svelte",
         "src/test/fixtures/command-palette-fixture.svelte",
         "src/test/fixtures/dropdown-compound-fixture.svelte",
@@ -1239,7 +1240,6 @@
         "src/components/_visually-hidden-live-region.same-message-fixture.svelte",
         "src/components/_visually-hidden-live-region.svelte",
         "src/components/_visually-hidden-live-region.test.ts",
-        "src/components/icons/index.test.ts",
         "src/components/icons/index.ts",
         "src/styles/all.css.d.ts",
         "src/styles/base-guard.test.ts",
@@ -2603,6 +2603,12 @@
       "because": "it imports or builds src/test/fixtures/checkbox-indeterminate-form-reset-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/code-block/code-block.bundle.test.ts",
+      "from": "code-block",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/code-block-bundle-explicit-highlighter.ts, which core owns"
+    },
+    {
       "file": "src/components/code-block/code-block.test.ts",
       "from": "code-block",
       "to": "core",
@@ -2735,6 +2741,12 @@
       "because": "it imports or builds src/test/fixtures/form-field-supporting-text-controls-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/icons/index.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it needs \"core\", which depends on \"foundation\" (src/components/icons/index.test.ts -> src/index.ts)"
+    },
+    {
       "file": "src/components/kbd/kbd-button-shortcut.fixture.svelte",
       "from": "kbd",
       "to": "core",
@@ -2801,6 +2813,12 @@
       "because": "it imports or builds src/test/fixtures/stacked-list-item-extras-fixture.svelte, which core owns"
     },
     {
+      "file": "src/components/steps/steps.test.ts",
+      "from": "steps",
+      "to": "core",
+      "because": "it needs \"core\", which depends on \"steps\" (src/components/steps/steps.test.ts -> src/index.ts)"
+    },
+    {
       "file": "src/components/tag-input/tag-input.test.ts",
       "from": "tag-input",
       "to": "core",
@@ -2838,6 +2856,18 @@
     },
     {
       "file": "src/test/fixtures/checkbox-indeterminate-form-reset-fixture.svelte",
+      "from": "by-imports",
+      "to": "core",
+      "because": "no one family can mount everything it needs"
+    },
+    {
+      "file": "src/test/fixtures/code-block-bundle-explicit-highlighter.ts",
+      "from": "by-imports",
+      "to": "core",
+      "because": "no one family can mount everything it needs"
+    },
+    {
+      "file": "src/test/fixtures/code-block-bundle-no-highlighter.ts",
       "from": "by-imports",
       "to": "core",
       "because": "no one family can mount everything it needs"

@@ -44,14 +44,14 @@
   import { TreeRegistry } from '../../_internal/tree-registry.svelte.ts';
   import { TreeVirtualizer } from '../../_internal/use-virtualizer.svelte.ts';
   import type { VirtualItem } from '../../_internal/virtual-item.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import {
     findTypeaheadMatch,
     isTypeaheadKey,
     TypeaheadBuffer,
-  } from '../../utilities/typeahead.ts';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  } from '@lostgradient/foundation/utilities/typeahead.ts';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
   import {
     deselectIds,
     selectIds,

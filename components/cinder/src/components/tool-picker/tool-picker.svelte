@@ -21,10 +21,10 @@
 <script lang="ts">
   import { SvelteMap } from 'svelte/reactivity';
   import { untrack } from 'svelte';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
-  import { ChevronDown, ChevronRight } from '../icons/index.ts';
+  import { ChevronDown, ChevronRight } from '@lostgradient/foundation/components/icons/index.ts';
   import Input from '../input/input.svelte';
   import Modal from '../modal/modal.svelte';
   import Skeleton from '../skeleton/skeleton.svelte';

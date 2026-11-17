@@ -17,8 +17,8 @@
 
 <script lang="ts">
   import type { PaginationProps } from './pagination.types.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatNumber } from '../../utilities/format-number.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { formatNumber } from '@lostgradient/foundation/utilities/format-number.ts';
 
   let {
     currentPage = $bindable(1),

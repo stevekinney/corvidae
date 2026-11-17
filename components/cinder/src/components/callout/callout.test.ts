@@ -382,7 +382,7 @@ describe('Callout progress and dismiss', () => {
 
   test('the dismiss button keeps its 44px hit area off the layout box', async () => {
     const dismissCss = await Bun.file(
-      new URL('../../styles/components/_dismiss-button.css', import.meta.url),
+      new URL('../../../../foundation/src/styles/components/_dismiss-button.css', import.meta.url),
     ).text();
     const hit = declarationsFor(dismissCss, '.cinder-_dismiss-button::after');
     expect(hit.get('position')).toBe('absolute');
