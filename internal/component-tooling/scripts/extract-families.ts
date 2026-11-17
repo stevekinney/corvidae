@@ -69,6 +69,7 @@ import {
   renderFamilies,
   REPOSITORY_ROOT,
 } from './derive-families.ts';
+import { browserImports, rootCatalog } from './browser-suite-files.ts';
 import { exportNames } from './export-names.ts';
 import {
   GENERATED_MARKER,
@@ -1701,6 +1702,19 @@ function writeManifests(plan: Plan): void {
       ...(packageManifest(name)['devDependencies'] as Record<string, string>),
       ...scanned.devDependencies,
     };
+    // A browser suite (`move-browser-specs.ts`, COR-2092) keeps what its files import.
+    const browserDirectory = join(plan.options.root, 'components', name, 'browser');
+    const hasBrowserSuite = existsSync(browserDirectory);
+    if (hasBrowserSuite) {
+      const catalog = rootCatalog(plan.options.root);
+      for (const dependency of browserImports(join(plan.options.root, 'components', name))) {
+        if (dependency === `${PACKAGE_SCOPE}${name}` || devDependencies[dependency] !== undefined) {
+          continue;
+        }
+        if (Object.hasOwn(catalog, dependency)) devDependencies[dependency] = 'catalog:';
+        else if (dependency.startsWith(PACKAGE_SCOPE)) devDependencies[dependency] = 'workspace:*';
+      }
+    }
     for (const dependency of Object.keys(dependencies)) delete devDependencies[dependency];
     const edges = new Set<string>();
     for (const dependency of [...Object.keys(dependencies), ...Object.keys(devDependencies)]) {
@@ -1715,7 +1729,13 @@ function writeManifests(plan: Plan): void {
     const hasDirectory = (directory: string) =>
       plan.owner.has(directory) ||
       [...plan.owner].some(([file, owner]) => owner === name && file.startsWith(`${directory}/`));
-    const sources = hasDirectory('scripts') ? 'src scripts' : 'src';
+    const sources = [
+      'src',
+      ...(hasDirectory('scripts') ? ['scripts'] : []),
+      ...(hasBrowserSuite ? ['browser'] : []),
+    ].join(' ');
+    // The browser suite's specs run under Playwright, never `bun test`.
+    const testSources = sources.replace(/ browser$/, '');
     const scripts = { ...manifest.scripts };
     const checks = [
       `oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json ${sources}`,
@@ -1746,7 +1766,7 @@ function writeManifests(plan: Plan): void {
     scripts['lint:fix'] =
       `oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json ${sources}`;
     scripts['test'] = (scripts['test'] ?? '')
-      .replace(/ src$/, ` ${sources}`)
+      .replace(/ src$/, ` ${testSources}`)
       .replace(' --pass-with-no-tests', '');
     // A package whose every test the map gives to core, or the isolated lane (`*.slow.test.ts`,
     // `*.integration.test.ts`), has none in this lane, and `bun test` fails on a run that finds

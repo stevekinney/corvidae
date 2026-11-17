@@ -21,8 +21,8 @@
  * regression is back.
  */
 
+import { tokenFixtureRoute } from '@lostgradient/testing/playwright/token-fixture-route';
 import { expect, test } from '@playwright/test';
-import { tokenFixtureRoute } from './token-fixture-route.ts';
 
 async function loadCard(themedPage: import('@playwright/test').Page, theme: 'light' | 'dark') {
   await themedPage

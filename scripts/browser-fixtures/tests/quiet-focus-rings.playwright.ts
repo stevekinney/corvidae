@@ -31,7 +31,7 @@ import {
   readRing,
   waitForFocusRingToSettle,
   type RingExpectation,
-} from './quiet-focus-rings-support.ts';
+} from '@lostgradient/testing/playwright/quiet-focus-rings-support';
 
 type RingCase = {
   label: string;

@@ -1208,7 +1208,8 @@ describe('the Playwright specs that playwright-timeout reads', () => {
   test.each([
     join('applications', 'interborough', 'tests', 'e2e'),
     join('applications', 'interborough', 'tests', 'panels'),
-    join('scripts', 'browser-fixtures', 'tests'),
+    join('components', 'chat', 'browser', 'tests'),
+    join('testing', 'testing', 'src', 'playwright'),
   ])('includes %s, and the directory exists', (directory) => {
     expect(PLAYWRIGHT_SPEC_DIRECTORIES).toContain(directory);
     expect(existsSync(join(import.meta.dir, '..', directory))).toBe(true);

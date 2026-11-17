@@ -1,6 +1,6 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import { fixtureRoute } from './layout-fixture.ts';
 
 const CAROUSEL_ROUTE = fixtureRoute('carousel');
 const nativePanTouchAction = /^(?:manipulation|pan-x pan-y pinch-zoom)$/;

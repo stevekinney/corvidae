@@ -5,29 +5,39 @@
 # batch.
 #
 #   gh workflow run targeted-checks.yml --ref <branch> \
+#     -f fixture_packages='approval-card description-list' \
 #     -f fixture_components='approval-card,description-list' \
-#     -f fixture_specs='scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts' \
+#     -f fixture_specs='components/approval-card/browser/tests/approval-card-input-rows.playwright.ts' \
 #     -f e2e_specs='tests/e2e/chat-responsive.spec.ts tests/e2e/chat-toast-clearance.spec.ts' \
 #     -f unit_workspace='components/core' -f unit_paths='src/components/approval-card'
 #
 # Every input is optional, and a job runs only when its inputs name something. The browser jobs copy
 # the image and setup of `browser-suites.yml`, so the renderer and fonts are the baselines' own, and
-# the fixtures job uploads `playwright-fixtures-targeted` on failure, which
-# `scripts/browser-fixtures/scripts/baselines-from-run.ts <run id>` reads like a `main.yml` run's.
-# `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts` keeps the image tag equal to the
+# the fixtures job uploads `playwright-packages-targeted` on failure, which
+# `testing/testing/visual-baselines/baselines-from-run.ts <run id>` reads like a `main.yml` run's.
+# The browser specs live in the component packages (COR-2092): `fixture_packages` runs whole package
+# suites (directory names under `components/`), `fixture_specs` runs single specs in their packages'
+# suites, and `fixture_components` narrows the component sweeps of what runs (a sweep covers the
+# fixtures its package owns, so name the owning packages as well).
+# `testing/testing/visual-baselines/browser-suites-workflow.test.ts` keeps the image tag equal to the
 # Playwright that `bun.lock` resolves. Inputs reach the shell through `env`, never interpolated.
 name: Targeted checks
 
 on:
   workflow_dispatch:
     inputs:
+      fixture_packages:
+        description: Component packages whose browser suites to run, space-separated directory names under components/.
+        type: string
+        required: false
+        default: ''
       fixture_components:
         description: Fixture component slugs for the screenshot suite, comma-separated (CINDER_TEST_COMPONENTS).
         type: string
         required: false
         default: ''
       fixture_specs:
-        description: Fixture spec files, space-separated, from the repository root.
+        description: Browser spec files, space-separated, from the repository root (components/<package>/browser/tests/<spec>).
         type: string
         required: false
         default: ''
@@ -61,8 +71,8 @@ env:
 
 jobs:
   fixtures:
-    name: Chromium fixtures (targeted)
-    if: ${{ inputs.fixture_components != '' || inputs.fixture_specs != '' }}
+    name: Package browser suites (targeted)
+    if: ${{ inputs.fixture_packages != '' || inputs.fixture_specs != '' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     container:
@@ -70,6 +80,7 @@ jobs:
     env:
       CINDER_VISUAL_DIFF: block
       CINDER_TEST_COMPONENTS: ${{ inputs.fixture_components }}
+      FIXTURE_PACKAGES: ${{ inputs.fixture_packages }}
       FIXTURE_SPECS: ${{ inputs.fixture_specs }}
     steps:
       - run: apt-get update && apt-get install -y --no-install-recommends git unzip
@@ -81,27 +92,26 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
+      # committed: the suites read core's manifest, so make it first.
       - run: bunx turbo run metadata
-      - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
-      # Named components with no spec run the screenshot suite for those components alone.
+      # Each named package's whole suite, then each named spec in its own package's suite.
       - run: |
-          specs="$FIXTURE_SPECS"
-          if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs="$specs scripts/browser-fixtures/tests/components.playwright.ts"
-          fi
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
-          bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts \
-            --project=chromium --workers=4 --reporter=line,html,json $specs
+          status=0
+          for package in $FIXTURE_PACKAGES; do
+            bun run --cwd "components/$package" test:browser --reporter=line || status=1
+          done
+          for spec in $FIXTURE_SPECS; do
+            directory="${spec%%/browser/tests/*}"
+            bun run --cwd "$directory" test:browser --reporter=line "${spec##*/}" || status=1
+          done
+          exit $status
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}
         continue-on-error: true
         with:
-          name: playwright-fixtures-targeted
+          name: playwright-packages-targeted
           path: |
-            playwright-output/
-            scripts/browser-fixtures/test-results/
+            components/*/browser/test-results/
           retention-days: 14
           if-no-files-found: ignore
 

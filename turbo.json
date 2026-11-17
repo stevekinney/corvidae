@@ -118,8 +118,6 @@
         "{applications,components,packages,testing,internal,plugins}/*/package.json",
         "{applications,components,packages,testing,internal,plugins}/*/tsconfig*.json",
         "{applications,components,packages,testing,internal,plugins}/**/*.{slow,integration}.test.ts",
-        "scripts/browser-fixtures/package.json",
-        "scripts/browser-fixtures/tsconfig*.json",
         "scripts/groom/package.json",
         "scripts/groom/tsconfig*.json",
         "testing/testing/src/hang-guard.ts",
@@ -128,6 +126,7 @@
       ]
     },
     "//#test:self:slow": {
+      "dependsOn": ["@lostgradient/cinder#metadata"],
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": [],
       "inputs": [
@@ -137,107 +136,32 @@
         "testing/testing/src/wait-until.ts"
       ]
     },
-    "//#test:browser-fixtures": {
-      "dependsOn": [
-        "@lostgradient/browser-fixtures#transit",
-        "@lostgradient/browser-fixtures#metadata"
+    "test:browser": {
+      "dependsOn": ["transit", "@lostgradient/cinder#metadata"],
+      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
+      "passThroughEnv": [
+        "CI",
+        "HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_HTML_OUTPUT_DIR",
+        "PLAYWRIGHT_JSON_OUTPUT_FILE",
+        "TMPDIR"
       ],
-      "env": ["CODEX_CI", "CORVIDAE_TEST_SELECTION"],
-      "passThroughEnv": ["TMPDIR"],
       "inputs": [
-        "scripts/browser-fixtures/**",
-        "!scripts/browser-fixtures/**/{node_modules,.playwright,.turbo,.svelte-kit,coverage,playwright-report,test-output,test-results,tmp}/**",
-        "!scripts/browser-fixtures/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
-        "$TURBO_ROOT$/bunfig.toml",
-        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
-        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
-        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/components/*/src/**",
+        "$TURBO_ROOT$/components/*/browser/host.ts",
+        "$TURBO_ROOT$/components/*/browser/fixture-declarations.ts",
+        "$TURBO_ROOT$/components/*/browser/fixtures/**",
+        "$TURBO_ROOT$/testing/testing/src/**",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/bun-test.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/module-scope-scenario.test-support.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
-        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
-        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
-        "$TURBO_ROOT$/scripts/workspace-directories.ts"
-      ],
-      "outputs": [
-        "scripts/browser-fixtures/.playwright/manifest.json",
-        "scripts/browser-fixtures/.playwright/fixture-modules.ts",
-        "scripts/browser-fixtures/.playwright/manifest-inputs.sha256",
-        "test-output/junit/browser-fixtures.xml"
-      ]
-    },
-    "//#dev:browser-fixtures": {
-      "persistent": true,
-      "cache": false,
-      "dependsOn": ["@lostgradient/browser-fixtures#metadata"]
-    },
-    "@lostgradient/chat#test:browser": {
-      "dependsOn": ["transit"],
-      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
-      "passThroughEnv": [
-        "CI",
-        "HOME",
-        "PLAYWRIGHT_BROWSERS_PATH",
-        "PLAYWRIGHT_HTML_OUTPUT_DIR",
-        "PLAYWRIGHT_JSON_OUTPUT_FILE",
-        "TMPDIR"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/host-slots.ts",
-        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts",
-        "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts",
-        "$TURBO_ROOT$/scripts/test-watchdog.ts"
-      ],
-      "outputs": []
-    },
-    "@lostgradient/editor#test:browser": {
-      "dependsOn": ["transit"],
-      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
-      "passThroughEnv": [
-        "CI",
-        "HOME",
-        "PLAYWRIGHT_BROWSERS_PATH",
-        "PLAYWRIGHT_HTML_OUTPUT_DIR",
-        "PLAYWRIGHT_JSON_OUTPUT_FILE",
-        "TMPDIR"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/host-slots.ts",
-        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts",
-        "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts",
-        "$TURBO_ROOT$/scripts/test-watchdog.ts"
-      ],
-      "outputs": []
-    },
-    "@lostgradient/terminal#test:browser": {
-      "dependsOn": ["transit"],
-      "env": ["CINDER_TEST_COMPONENTS", "CINDER_UPDATE_SNAPSHOTS", "CINDER_VISUAL_DIFF"],
-      "passThroughEnv": [
-        "CI",
-        "HOME",
-        "PLAYWRIGHT_BROWSERS_PATH",
-        "PLAYWRIGHT_HTML_OUTPUT_DIR",
-        "PLAYWRIGHT_JSON_OUTPUT_FILE",
-        "TMPDIR"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/host-slots.ts",
-        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts",
-        "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts",
-        "$TURBO_ROOT$/scripts/test-watchdog.ts"
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts"
       ],
       "outputs": []
     },
@@ -975,7 +899,6 @@
         "$TURBO_ROOT$/components/*/README.md",
         "$TURBO_ROOT$/components/core/scripts/**",
         "$TURBO_ROOT$/components/tokens/scripts/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",

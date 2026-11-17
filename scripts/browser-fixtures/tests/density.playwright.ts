@@ -12,8 +12,8 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { fixtureRoute } from './layout-fixture.ts';
-import { themeFixtureRoute } from './theme-fixture-route.ts';
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
+import { themeFixtureRoute } from '@lostgradient/testing/playwright/theme-fixture-route';
 
 type Density = 'default' | 'compact' | 'comfortable';
 

@@ -1,5 +1,5 @@
+import { tokenFixtureRoute } from '@lostgradient/testing/playwright/token-fixture-route';
 import { expect, test } from '@playwright/test';
-import { tokenFixtureRoute } from './token-fixture-route.ts';
 
 test('surface, text, and border tokens resolve from a nested host container', async ({ page }) => {
   await page.goto(tokenFixtureRoute);

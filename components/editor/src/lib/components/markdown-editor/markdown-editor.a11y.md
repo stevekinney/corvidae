@@ -108,7 +108,7 @@ Verified at 320×800 and 1280×720, light and dark, across the five popup cases 
 
 ## Template placeholders (COR-519)
 
-This section records the implemented `{{path}}` placeholder interaction (COR-526, COR-521, COR-525) and the review it still needs. The interactive route is the `markdown-editor-template-placeholders` browser fixture (`bun run dev:browser-fixtures`), which uses fixed synthetic data; `components/editor/browser/tests/markdown-editor-template-placeholders.playwright.ts` is its automated Chromium coverage.
+This section records the implemented `{{path}}` placeholder interaction (COR-526, COR-521, COR-525) and the review it still needs. The interactive route is the `markdown-editor-template-placeholders` browser fixture (`bun browser/harness.ts serve --port <port>` in `components/editor`), which uses fixed synthetic data; `components/editor/browser/tests/markdown-editor-template-placeholders.playwright.ts` is its automated Chromium coverage.
 
 ### Implemented interaction
 

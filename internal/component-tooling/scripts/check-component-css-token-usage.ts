@@ -512,7 +512,7 @@ function cinderScanRoots(sourceRoot: string, nameOf: (directory: string) => stri
 const COMPONENT_DIRECTORIES = ['src/components', 'src/lib/components'];
 /** A package's own browser-fixture directory (COR-2080 moved the application fixtures there). */
 export const PACKAGE_FIXTURE_DIRECTORY = 'browser/fixtures';
-/** The repository's shared browser-fixture tree, walked while it exists. */
+/** The repository's shared browser-fixture tree, walked while it exists (COR-2092 removed it). */
 const SHARED_FIXTURE_DIRECTORY = 'scripts/browser-fixtures/src';
 
 /** Every `components/*` workspace directory the root `package.json` names, sorted. */

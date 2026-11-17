@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { functionalResidualRoute } from './functional-residual-route.ts';
+import { functionalResidualRoute } from '@lostgradient/testing/playwright/functional-residual-route';
 
 const CODE_BLOCK_ROUTE = functionalResidualRoute;
 const EXAMPLE = '#example-mount-delayed-highlighting';

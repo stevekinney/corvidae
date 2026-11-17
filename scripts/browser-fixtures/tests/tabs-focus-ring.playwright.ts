@@ -38,14 +38,14 @@
  */
 
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
-import { expect, test } from '@playwright/test';
 import {
   assertRingUnclipped,
   HORIZONTAL_LIST,
   resolvedRingColor,
   tabWalkToTab,
   VERTICAL_LIST,
-} from './tabs-focus-ring-helpers.ts';
+} from '@lostgradient/testing/playwright/tabs-focus-ring-helpers';
+import { expect, test } from '@playwright/test';
 
 const TABS_ROUTE = fixtureRoute('tabs');
 

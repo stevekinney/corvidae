@@ -3,7 +3,7 @@
 # at 7.8 GB under coverage on a laptop, so it still runs alone). Nothing here is a required status
 # check. Coverage (`bun run coverage`) and the publish-surface sweep (`bun run release:check`) are
 # not part of `validate` and not run here.
-# The Playwright browser suites, the Chromium fixture suite with screenshot comparison and
+# The Playwright browser suites, the component packages' suites with screenshot comparison and
 # Interborough's end-to-end suite, run in the `browser` job (`browser-suites.yml`, COR-2411).
 name: Main
 
@@ -50,10 +50,6 @@ jobs:
         if: ${{ !cancelled() }}
       - run: bun run test:self
         if: ${{ !cancelled() }}
-      - run: bunx playwright install --with-deps chromium
-        if: ${{ !cancelled() }}
-      - run: bun run test:browser-fixtures
-        if: ${{ !cancelled() }}
       - run: bun run format:check
         if: ${{ !cancelled() }}
       - run: bun run audit
@@ -74,7 +70,6 @@ jobs:
             testing/*/test-output/junit/*.xml
             internal/*/test-output/junit/*.xml
             plugins/*/test-output/junit/*.xml
-            scripts/browser-fixtures/test-output/junit/*.xml
             scripts/groom/test-output/junit/*.xml
           if-no-files-found: ignore
 
@@ -155,7 +150,6 @@ jobs:
             testing/*/test-output/junit/*.xml
             internal/*/test-output/junit/*.xml
             plugins/*/test-output/junit/*.xml
-            scripts/browser-fixtures/test-output/junit/*.xml
             scripts/groom/test-output/junit/*.xml
           if-no-files-found: ignore
 

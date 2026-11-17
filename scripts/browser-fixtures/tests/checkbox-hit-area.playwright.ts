@@ -10,9 +10,9 @@
  * `page.emulateMedia`.
  */
 
+import { boxOf } from '@lostgradient/testing/playwright/first-line-alignment';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { boxOf } from './first-line-alignment.ts';
 
 const BOX = 18;
 const TASK_BOX = 20;

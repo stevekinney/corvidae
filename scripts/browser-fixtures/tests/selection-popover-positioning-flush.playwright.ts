@@ -1,4 +1,3 @@
-import { expect, test } from '@playwright/test';
 import {
   boxesOverlap,
   desktopViewport,
@@ -6,7 +5,8 @@ import {
   openPage,
   requireBox,
   waitForSelectionPopoverClearOfSelection,
-} from './selection-popover-positioning-helpers.ts';
+} from '@lostgradient/testing/playwright/selection-popover-positioning-helpers';
+import { expect, test } from '@playwright/test';
 
 test.use({ viewport: { width: desktopViewport.width, height: desktopViewport.height } });
 

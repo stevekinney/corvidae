@@ -25,7 +25,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { themeFixtureRoute } from './theme-fixture-route.ts';
+import { themeFixtureRoute } from '@lostgradient/testing/playwright/theme-fixture-route';
 
 /**
  * The alternate theme: documented `:root` tokens overridden to values that are

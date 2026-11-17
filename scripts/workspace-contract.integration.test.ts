@@ -238,7 +238,7 @@ describe('internal workspace architecture', () => {
       // minutes, and `bun run build` and the Vercel project's own build still run it. Every suite
       // runs through the same `test` task the per-pull-request checks run, so a suite they just ran
       // is a cache hit here. Coverage is a report (`bun run coverage`), never part of this chain.
-      'turbo run lint typecheck test:self test test:browser-fixtures',
+      'turbo run lint typecheck test:self test',
       // COR-1499: slow correctness tests run serially after the parallel phase.
       'bun run test:slow',
       'bun run format:check',
@@ -256,23 +256,22 @@ describe('internal workspace architecture', () => {
     expect(scripts['typecheck']).toBe(
       "bun scripts/run-exclusively.ts 'bun run typecheck:root && turbo run typecheck'",
     );
-    // One turbo run, so the root self-tests and browser fixtures are cached like every package.
+    // One turbo run, so the root self-tests are cached like every package.
     expect(scripts['test']).toBe(
-      "bun scripts/run-exclusively.ts --shared 'turbo run test:self test test:browser-fixtures'",
+      "bun scripts/run-exclusively.ts --shared 'turbo run test:self test'",
     );
     // The development loop. Lint and the type-checks run for the workspaces a change can affect,
     // judged against the default branch (`--affected`). Tests run through `affected-tests.ts`,
     // which selects test files by import graph instead of by package and drives the same Turborepo
-    // lanes (`test` for a workspace selected whole or in part, the root self-tests, the browser
-    // fixtures, then the serial slow lanes).
+    // lanes (`test` for a workspace selected whole or in part, the root self-tests, then the
+    // serial slow lanes).
     // `validate` stays the full gate. `check` is the per-pull-request gate, so it runs `--shared`:
     // parallel sessions run it side by side instead of queueing it behind a full validate.
     expect(scripts['check']).toBe(
       "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck --affected && bun scripts/affected-tests.ts run'",
     );
-    // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
-    // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
-    // the separate `test:browser-fixtures` gate.
+    // Enumerated rather than recursive on purpose: a new directory of root scripts joins the lane
+    // by name.
     // The chef plumbing scripts' real-process suites are `*.slow.test.ts` files: the fast lane
     // ignores them and `test:self:slow` runs them, serially after the parallel phase, through
     // `test:slow` (COR-1499).
@@ -280,7 +279,7 @@ describe('internal workspace architecture', () => {
       "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts ./scripts/groom/*.test.ts",
     );
     expect(scripts['test:self:slow']).toBe(
-      'bun scripts/bun-test-selected.ts ./scripts/*.slow.test.ts ./scripts/chef/*.slow.test.ts ./scripts/*.integration.test.ts ./scripts/chef/*.integration.test.ts ./scripts/browser-fixtures/scripts/*.integration.test.ts',
+      'bun scripts/bun-test-selected.ts ./scripts/*.slow.test.ts ./scripts/chef/*.slow.test.ts ./scripts/*.integration.test.ts ./scripts/chef/*.integration.test.ts',
     );
     expect(scripts['test:slow']).toBe(
       "bun scripts/run-exclusively.ts --shared 'turbo run test:slow test:self:slow --concurrency=1'",
@@ -290,15 +289,17 @@ describe('internal workspace architecture', () => {
     // browsers are not installed on the host.
     // Interborough's suite runs on a free block of ports and never reuses a server
     // (`applications/interborough/scripts/run-gated-browser-suite.ts`).
-    expect(scripts['test:browser:interborough']).toBe(
+    expect(scripts['e2e:interborough']).toBe(
       "bun scripts/run-exclusively.ts 'bun applications/interborough/scripts/run-gated-browser-suite.ts'",
     );
-    expect(scripts['test:browser:chromium']).toBe(
-      "bun scripts/run-exclusively.ts 'bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts --project=chromium'",
+    // The component packages' browser suites run per batch through `validate:batch` (COR-2092),
+    // and no root script runs a browser suite of its own.
+    expect(scripts['validate:batch']).toBe(
+      'bun scripts/run-exclusively.ts "bunx turbo run test:browser --filter=\'./components/*\' --concurrency=1"',
     );
+    expect(Object.keys(scripts).filter((name) => name.startsWith('test:browser'))).toEqual([]);
     expect(scripts['validate']).not.toContain('playwright');
-    expect(scripts['validate']).not.toContain('test:browser:chromium');
-    expect(scripts['validate']).not.toContain('test:browser:interborough');
+    expect(scripts['validate']).not.toContain('e2e:interborough');
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
     expect(scripts['audit']).toBe('bun scripts/check-audit-exceptions.ts');
@@ -687,7 +688,6 @@ describe('internal workspace architecture', () => {
     const manifest = (await readManifest('.')) as Manifest & { workspaces?: string[] };
     expect(manifest.workspaces).toEqual([
       ...workspaceParentDirectories.map((directory) => `${directory}/*`),
-      'scripts/browser-fixtures',
       'scripts/groom',
     ]);
   });

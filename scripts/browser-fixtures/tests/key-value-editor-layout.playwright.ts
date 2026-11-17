@@ -1,5 +1,5 @@
+import { fixtureRoute } from '@lostgradient/testing/playwright/layout-fixture';
 import { expect, test, type Locator } from '@playwright/test';
-import { fixtureRoute } from './layout-fixture.ts';
 const KEY_VALUE_EDITOR_ROUTE = fixtureRoute('key-value-editor');
 
 async function box(locator: Locator) {

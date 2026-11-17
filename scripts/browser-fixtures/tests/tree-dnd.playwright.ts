@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-import { functionalResidualRoute } from './functional-residual-route.ts';
+import { functionalResidualRoute } from '@lostgradient/testing/playwright/functional-residual-route';
 
 import { runAxe, type AxeBuckets } from '@lostgradient/testing';
 

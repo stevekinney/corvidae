@@ -16,7 +16,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { themeFixtureRoute } from './theme-fixture-route.ts';
+import { themeFixtureRoute } from '@lostgradient/testing/playwright/theme-fixture-route';
 
 async function loadStyledPage(page: Page): Promise<void> {
   await page.goto(themeFixtureRoute, { waitUntil: 'load' });

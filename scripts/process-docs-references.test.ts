@@ -35,12 +35,9 @@ const historicalDocuments = new Map<string, string>([
 ]);
 
 /** Every workspace directory, so a `scripts/...` path inside a workspace resolves there too. */
-const workspaceRoots = [
-  ...workspaceParentDirectories.flatMap((parent) =>
-    workspaceChildDirectoryNames(root, parent).map((name) => join(parent, name)),
-  ),
-  'scripts/browser-fixtures',
-];
+const workspaceRoots = workspaceParentDirectories.flatMap((parent) =>
+  workspaceChildDirectoryNames(root, parent).map((name) => join(parent, name)),
+);
 
 function documents(): string[] {
   const found = new Set<string>();
