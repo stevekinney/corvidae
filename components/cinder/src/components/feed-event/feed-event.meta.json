@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Individual entry within a feed that pairs a timestamp with a content snippet and optional leading icon.",
+  "tags": ["timeline", "event"],
+  "useWhen": [
+    "Rendering a single activity or audit entry inside a feed parent.",
+    "Switching between an icon-led and a connector-led visual treatment via the variant prop."
+  ],
+  "avoidWhen": [
+    { "reason": "Standing alone outside a feed — it expects the feed list semantics around it." }
+  ],
+  "related": ["feed"],
+  "composeOnly": true
+}

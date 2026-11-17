@@ -30,8 +30,8 @@ async function runArtifactCheck(): Promise<CheckStage> {
 
 async function runConstraintCheck(): Promise<CheckStage> {
   try {
-    const { checkConstraintsDrift } = await import('./generate-component-constraints.ts');
-    const issues = await checkConstraintsDrift();
+    const { checkComponentConstraints } = await import('./check-component-constraints.ts');
+    const issues = await checkComponentConstraints();
     return {
       issues: issues.map((issue) => `constraints: ${issue.name}/${issue.file} (${issue.reason})`),
     };
@@ -155,12 +155,7 @@ async function runGenerateMode(args: string[]): Promise<void> {
   const { writeRootRegistries } = await import('./generate-root-registries.ts');
   for (const file of await writeRootRegistries()) process.stdout.write(`generated ${file}\n`);
   if (targetName !== undefined) return;
-  const { generateAllConstraints } = await import('./generate-component-constraints.ts');
   const { writeManifest } = await import('./generate-manifest.ts');
-  const constraintsCount = await generateAllConstraints();
-  if (constraintsCount > 0) {
-    process.stdout.write(`generated ${constraintsCount} constraints sidecar(s)\n`);
-  }
   await writeManifest();
   process.stdout.write('generated components.json\n');
   const { buildManifest } = await import('./generate-manifest.ts');

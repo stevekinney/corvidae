@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "beta",
+  "purpose": "Quick-action leaf for SpeedDial that closes the owning dial after activation.",
+  "tags": ["action", "floating"],
+  "useWhen": ["Rendering a secondary quick action inside SpeedDial."],
+  "avoidWhen": [
+    {
+      "reason": "Rendering an action outside SpeedDial - use floating-action directly.",
+      "alternative": "floating-action"
+    }
+  ],
+  "related": ["speed-dial", "floating-action"],
+  "composeOnly": true
+}

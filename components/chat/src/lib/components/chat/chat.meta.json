@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "category": "domain",
+  "status": "domain-suite",
+  "purpose": "Opinionated conversation surface bundling message list, composer, attachments, and scroll affordances for AI or support transcripts.",
+  "tags": ["chat", "conversation", "domain-suite"],
+  "useWhen": [
+    "Shipping a full chat surface with composer, scroll-anchor, unread indicator, and attachments bundled as one heavyweight drop-in.",
+    "Building an AI assistant or support thread where conversation state is modeled as a transcript of role-tagged messages.",
+    "Embedding Chat in a definite-height flex or grid region where its internal transcript should own scrolling."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Rendering a one-off message list — compose lighter primitives directly instead of pulling the full suite."
+    },
+    {
+      "reason": "The transcript is read-only and needs no composer — a simple list of message bubbles is a better fit."
+    }
+  ],
+  "related": ["markdown-editor"],
+  "compound": {
+    "parts": ["chat-composer-popover", "chat-conversation-header", "chat-conversation-list"]
+  }
+}

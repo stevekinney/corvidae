@@ -1,0 +1,30 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Vertical navigation column that hosts grouped side-navigation-item entries with a required accessible label for the landmark.",
+  "tags": ["navigation", "sidebar"],
+  "useWhen": [
+    "Building a tall, dense application sidebar with many sections and nested groups.",
+    "Pairing with sidebar so the column collapses responsively on narrow viewports."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Anchoring primary navigation across the top of the page.",
+      "alternative": "navigation-bar"
+    },
+    { "reason": "Rendering a single flat horizontal nav row.", "alternative": "navigation-bar" },
+    { "reason": "Showing an in-page heading outline.", "alternative": "table-of-contents" },
+    { "reason": "Rendering expandable hierarchical non-navigation data.", "alternative": "tree" },
+    { "reason": "Needing the shell.", "alternative": "sidebar" }
+  ],
+  "related": [
+    "side-navigation-item",
+    "side-navigation-group",
+    "navigation-bar",
+    "table-of-contents",
+    "tree",
+    "sidebar"
+  ],
+  "compound": { "parts": ["side-navigation-group", "side-navigation-item"] }
+}

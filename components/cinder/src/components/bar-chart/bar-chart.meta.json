@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Responsive SVG bar chart for grouped or stacked category comparisons.",
+  "tags": ["chart", "bar", "analytics"],
+  "useWhen": [
+    "Comparing discrete category totals or grouped category breakdowns.",
+    "Showing stacked contribution across known categories."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a continuous ordered trend — use line-chart instead." },
+    { "reason": "Showing magnitude under a trend — use area-chart instead." }
+  ],
+  "related": ["line-chart", "area-chart", "table", "statistic"]
+}

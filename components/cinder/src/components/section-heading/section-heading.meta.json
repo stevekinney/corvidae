@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "typography",
+  "status": "stable",
+  "purpose": "Section header that renders a leveled heading with optional eyebrow label, description, actions, and tabs row.",
+  "tags": ["typography", "heading"],
+  "useWhen": [
+    "Introducing a top-level section of a page with a title and supporting metadata.",
+    "Pairing a section title with inline actions or a tab row beneath the heading."
+  ],
+  "avoidWhen": [
+    { "reason": "Labelling a single form control or field — use label instead." },
+    {
+      "reason": "Rendering a page-wide header with primary navigation — use a hand-rolled page scaffold with a heading element."
+    }
+  ],
+  "related": ["card", "tab-list"]
+}

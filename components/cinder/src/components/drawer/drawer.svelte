@@ -1,18 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status stable
-   * @purpose Edge-anchored modal panel built on the native dialog element; slides from the left, right, or bottom edge for secondary navigation, settings, or mobile-first sheet patterns.
-   * @tag overlay
-   * @tag dialog
-   * @useWhen Showing supplementary navigation, filters, or settings that should slide in from a page edge.
-   * @useWhen Presenting long-form content that benefits from a side panel without leaving the current view.
-   * @useWhen Presenting a focused task or set of actions that slides up from the bottom of the viewport on touch surfaces — use `placement="bottom"`.
-   * @avoidWhen Interrupting the user for a focused decision — use modal so the surface is centered and task-scoped.
-   * @avoidWhen Anchoring a small surface to a trigger — use popover instead.
-   * @related modal, popover
-   */
   export type { DrawerDetent, DrawerProps, DrawerPlacement, DrawerSize } from './drawer.types.ts';
 </script>
 

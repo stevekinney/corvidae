@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Controlled multi-column board for reordering cards within and across workflow columns with keyboard, pointer, and live-region feedback.",
+  "tags": ["board", "kanban", "drag", "reorder"],
+  "useWhen": [
+    "Presenting a workflow board where users move cards between ordered columns.",
+    "Cards need a title over one quiet row (an assignee, a priority badge), or consumers own card rendering."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a single ordered list — use sortable-list instead." },
+    { "reason": "Sorting by computed fields rather than direct manual placement." }
+  ],
+  "related": ["sortable-list", "grid-list", "data-list"]
+}

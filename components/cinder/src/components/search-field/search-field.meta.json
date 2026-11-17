@@ -1,0 +1,15 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Search input with a leading icon, automatic clear button, and optional keyboard shortcut hint badge.",
+  "tags": ["form", "search"],
+  "useWhen": [
+    "Capturing a free-text query that filters or queries a larger dataset.",
+    "Surfacing a global search affordance with a visible keyboard shortcut."
+  ],
+  "avoidWhen": [
+    { "reason": "Selecting from a constrained list of known options — use combobox instead." }
+  ],
+  "related": ["input", "combobox"]
+}

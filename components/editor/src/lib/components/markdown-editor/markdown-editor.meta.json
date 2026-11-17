@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "category": "domain",
+  "status": "domain-suite",
+  "purpose": "Rich Markdown editing surface bundling a Milkdown-powered ProseMirror editor, toolbar, and mark or block introspection helpers.",
+  "tags": ["markdown", "editor", "domain-suite"],
+  "useWhen": [
+    "Composing or editing Markdown documents and wanting the bundled toolbar, link-aware selection, and source or WYSIWYG mode toggle.",
+    "Building writing surfaces that need an editor handle for programmatic mark or block manipulation as part of the heavyweight suite."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Authoring a simple plain-text note — a textarea is dramatically lighter than the Milkdown bundle."
+    },
+    {
+      "reason": "The surface needs inline review threads on top of the editor — use review-editor for that composition."
+    }
+  ],
+  "related": ["review-editor", "code-block"]
+}

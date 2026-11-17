@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Segmented bar with one segment per allowed attempt, filled for the attempts made, that reads as an image named \"2 of 5 attempts\".",
+  "tags": ["attempts", "progress", "segments"],
+  "useWhen": [
+    "Showing how many of a fixed number of attempts a goal, retry or reconnection has used, beside its count.",
+    "Drawing a neutral attempts bar on a list row's second line, where the word beside it carries the outcome."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing continuous progress toward a value — use progress or meter." },
+    { "reason": "Drawing a trend over time — use sparkbar." }
+  ],
+  "related": [],
+  "rationale": "Nearest alternative: Progress — AttemptsIndicator draws whole attempts as segments rather than a continuous fill."
+}

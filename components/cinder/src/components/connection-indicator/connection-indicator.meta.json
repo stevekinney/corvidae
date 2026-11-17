@@ -1,0 +1,28 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "beta",
+  "purpose": "Quiet inline dot-and-word status for a live connection, telling connecting, live, reconnecting, polling, stale, out-of-date, and closed apart by shape and text, not color alone.",
+  "tags": ["connection", "status", "realtime"],
+  "useWhen": [
+    "Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained dot and word.",
+    "Distinguishing push (`live`) from interval polling (`polling`) so operators don't mistake one for the other."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Annotating a static entity's state (a row, a user, a deployment) rather than a live transport — use status-dot instead.",
+      "alternative": "status-dot"
+    },
+    {
+      "reason": "Rendering a full event log with per-event connection transitions — use feed's log arm instead.",
+      "alternative": "feed"
+    }
+  ],
+  "related": ["status-dot", "feed", "badge"],
+  "a11y": {
+    "pattern": "role=\"status\" live region",
+    "notes": [
+      "Status is conveyed by shape and text together, never color alone (WCAG 1.4.1): live is a dot, out-of-date a hollow ring, the rest an icon. The live pulsing dot collapses to a static dot under prefers-reduced-motion."
+    ]
+  }
+}

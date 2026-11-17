@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Interactive saturation, hue, and alpha control for picking an arbitrary color and emitting a normalized value (hex by default, or another CSS Color 4 format via `format`).",
+  "tags": ["form", "color"],
+  "useWhen": [
+    "Letting users pick any color from the full spectrum with optional alpha.",
+    "Composing a custom color with a fallback palette of preset swatches."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Constraining selection to a fixed brand palette — use color-swatch-picker instead."
+    }
+  ],
+  "related": ["color-swatch-picker", "input"]
+}

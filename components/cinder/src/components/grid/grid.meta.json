@@ -1,0 +1,23 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "beta",
+  "purpose": "CSS grid container for explicit columns, intrinsic auto-fill layouts, and two-dimensional placement.",
+  "tags": ["layout", "grid"],
+  "useWhen": [
+    "Building form layouts, card grids, or dashboards that need two-dimensional placement.",
+    "Creating intrinsic responsive grids by passing minItemWidth."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Presenting homogeneous gallery tiles - use grid-list instead.",
+      "alternative": "grid-list"
+    },
+    {
+      "reason": "Packing variable-height content into waterfall columns - use masonry instead.",
+      "alternative": "masonry"
+    }
+  ],
+  "related": ["grid-item", "grid-list", "masonry"],
+  "compound": { "parts": ["grid-item"] }
+}

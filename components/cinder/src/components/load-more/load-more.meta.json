@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Sentinel-based infinite-scroll trigger with an always-visible button fallback and accessible status states.",
+  "tags": ["navigation", "paging"],
+  "useWhen": [
+    "Streaming results into a long list and you want the next page to load as the user approaches the end."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "The dataset is bounded and benefits from discrete jumps — use `Pagination` instead."
+    }
+  ],
+  "related": ["pagination", "virtual-list"]
+}

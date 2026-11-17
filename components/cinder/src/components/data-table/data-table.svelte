@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from columns and rows, with custom cells, day groups, a footer and rows that open a detail pane.
-   * @tag table
-   * @tag data
-   * @useWhen Rendering a structured dataset where columns and rows are known at runtime (e.g. API responses, config-driven dashboards).
-   * @useWhen You want correct scope=col / scope=row semantics and aria-sort wiring without writing Table.Header / Table.Body manually.
-   * @avoidWhen You need nested components in header cells or column spanning — use the compositional Table family directly.
-   * @avoidWhen You need fully custom cell or row composition — use Table directly.
-   * @related table, data-grid, table-header, table-body, table-row, table-cell, table-header-cell
-   */
   export type {
     DataTableCellContext,
     DataTableColumn,

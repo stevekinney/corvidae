@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "stable",
+  "purpose": "Button that writes plain text plus optional rich HTML/image clipboard representations and flips to a confirmation state after success.",
+  "tags": ["action", "clipboard"],
+  "useWhen": [
+    "Offering one-click copy of a token, snippet, share link, or code sample.",
+    "Pairing with code-block so readers can grab the rendered source."
+  ],
+  "avoidWhen": [
+    { "reason": "Triggering a generic non-clipboard action — use button instead." },
+    {
+      "reason": "Copying long-form rich content that needs format preservation — handle clipboard logic directly."
+    }
+  ],
+  "related": ["button", "code-block"]
+}

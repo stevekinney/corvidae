@@ -6,8 +6,8 @@
  *   bun run scripts/generate-manifest.ts           # write components.json
  *   bun run scripts/generate-manifest.ts --check   # diff against committed file; non-zero on drift
  *
- * The generator fails loudly when `extractAllComponentMetadata()` returns any
- * errors — a partial manifest is never written to disk.
+ * The generator fails loudly when any component's `<name>.meta.json` is missing or invalid — a
+ * partial manifest is never written to disk.
  *
  * `hasExamples` and `hasConstraints` are derived from the committed JSON
  * artifacts on disk. Use the orchestrator (`bun run components:generate`)
@@ -24,13 +24,9 @@ import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
 
 import type { CategoryId, StatusLevel } from '../src/manifest.meta.ts';
 import { categories, overlapFamilies, statusLevels } from '../src/manifest.meta.ts';
-import type {
-  A11yMetadata,
-  AvoidWhenEntry,
-  ComponentMetadata,
-} from './generate-component-metadata.ts';
-import { extractAllComponentMetadata } from './generate-component-metadata.ts';
 import { discoverComponentEnhancements } from './lib/component-enhancements.ts';
+import type { A11yMetadata, AvoidWhenEntry, ComponentMetadata } from './lib/component-meta.ts';
+import { extractAllComponentMetadata } from './lib/component-meta.ts';
 import { parseJsonFile, readJsonFile } from './lib/read-json-file.ts';
 import { readTokenNamespaces } from './token-namespaces.ts';
 
@@ -67,7 +63,7 @@ export type ManifestComponent = {
   /** Accessibility metadata, present only when a11y tags were authored. */
   a11y?: A11yMetadata;
   /**
-   * True when the component directory contains a `{id}.constraints.ts` file.
+   * True when the component directory contains a `{id}.constraints.json` file.
    * The constraints sidecar is read by local component tooling.
    */
   hasConstraints: boolean;
@@ -174,8 +170,8 @@ export function enhancementArtifactPath(
  * Build the manifest from all discovered component metadata.
  *
  * Throws when:
- * - `extractAllComponentMetadata()` returns any errors (partial manifest is
- *   never emitted — callers must fix all annotations first).
+ * - any component's `<name>.meta.json` is missing or invalid (a partial manifest is never
+ *   emitted — callers must fix the metadata first).
  * - The produced manifest fails validation against `manifest.schema.json`.
  */
 /**
@@ -196,7 +192,7 @@ export function formatExtractionErrorMessage(
     errors.length > 10
       ? `  … and ${errors.length - 10} more errors (${errors.length} total)`
       : `  (${errors.length} error${errors.length === 1 ? '' : 's'} total)`;
-  return `Cannot build manifest — ${errors.length} component${errors.length === 1 ? '' : 's'} have extraction errors:\n${lines.join('\n')}\n${tail}\n\nFix all @cinder metadata annotations before generating the manifest.`;
+  return `Cannot build manifest — ${errors.length} component${errors.length === 1 ? '' : 's'} have extraction errors:\n${lines.join('\n')}\n${tail}\n\nFix every component's <name>.meta.json before generating the manifest.`;
 }
 
 /** One dangling `avoidWhen.alternative`: the owning component and the bad id. */
@@ -234,8 +230,8 @@ export function formatDanglingAlternativeMessage(dangling: DanglingAlternative[]
 }
 
 export async function buildManifest(): Promise<Manifest> {
-  // 1. Extract metadata from every component's .svelte file.
-  const { metadata, errors } = await extractAllComponentMetadata();
+  // 1. Read every component's `<name>.meta.json`, in the manifest's id order.
+  const { metadata, errors } = await extractAllComponentMetadata(PACKAGE_ROOT);
 
   if (errors.length > 0) {
     throw new Error(formatExtractionErrorMessage(errors));

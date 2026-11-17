@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "beta",
+  "purpose": "Optional placement child for Grid that controls column and row spans or explicit track placement.",
+  "tags": ["layout", "grid"],
+  "useWhen": ["A child in a grid needs to span tracks or start at a specific track."],
+  "avoidWhen": [
+    {
+      "reason": "Every child can use default grid auto-placement - render plain children inside Grid instead.",
+      "alternative": "grid"
+    }
+  ],
+  "related": ["grid"],
+  "composeOnly": true
+}

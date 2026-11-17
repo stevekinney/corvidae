@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status beta
-   * @purpose Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron, action and text actions; the whole row is the link.
-   * @tag list
-   * @tag row
-   * @useWhen Listing entities inside a grouped list, each with a leading glyph, a title and a secondary line.
-   * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @useWhen Ending a row with the button that is its point, such as Review on an approval, which stays a button on a phone.
-   * @avoidWhen Showing a row with a fixed status column, details or a disclosure — use stacked-list-item.
-   * @avoidWhen Comparing values across columns — use table.
-   * @related grouped-list, stacked-list-item, avatar
-   * @rationale Nearest alternative: StackedListItem — a grouped-list row has no border of its own; the group draws one rounded surface and inset separators.
-   */
   export type {
     GroupedListItemAction,
     GroupedListItemLeadingKind,

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "beta",
+  "purpose": "Rotating content viewport with previous/next controls, picker dots, and optional autoplay.",
+  "tags": ["navigation", "carousel", "media"],
+  "useWhen": [
+    "Presenting a finite set of visual highlights with sequential browsing controls.",
+    "Cycling between promotional or tutorial panels inside a single region."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Content should remain simultaneously visible and scannable.",
+      "alternative": "grid"
+    },
+    { "reason": "You only need one static hero panel with no sequence controls." }
+  ],
+  "related": ["image", "aspect-ratio", "masonry"],
+  "a11y": {
+    "pattern": "WAI-ARIA Carousel",
+    "keyboard": [
+      { "keys": "ArrowLeft / ArrowRight / Home / End", "action": "Moves between slides." }
+    ],
+    "notes": ["Auto-advance pauses on hover and focus, and is disabled under reduced motion."]
+  }
+}

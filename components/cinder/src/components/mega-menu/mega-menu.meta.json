@@ -1,0 +1,31 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "beta",
+  "purpose": "Wide primary navigation menu with trigger/content panels, shared viewport, active indicator, and nested submenu support.",
+  "tags": ["navigation", "mega-menu", "menu"],
+  "useWhen": [
+    "Building site-level navigation where top-level categories reveal rich multi-column content.",
+    "You need optional hover-open behavior with keyboard-first trigger traversal."
+  ],
+  "avoidWhen": [
+    { "reason": "A simple single-trigger flyout is sufficient.", "alternative": "dropdown" },
+    {
+      "reason": "You need command-style application menus with item-by-item keyboard semantics.",
+      "alternative": "menu-bar"
+    }
+  ],
+  "related": ["navigation-bar", "menu-bar", "dropdown"],
+  "a11y": {
+    "pattern": "Navigation landmark + disclosure buttons",
+    "keyboard": [
+      {
+        "keys": "ArrowLeft / ArrowRight / Home / End / ArrowDown / Escape",
+        "action": "Traverses triggers and opens/closes panels."
+      }
+    ],
+    "notes": [
+      "Trigger focus remains in the tab order; Escape closes and returns focus to the active trigger."
+    ]
+  }
+}

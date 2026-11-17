@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "stable",
+  "purpose": "Measured splitter layout that renders adjacent resize handles between panes and emits persisted layout state after pointer, keyboard, and collapse interactions.",
+  "tags": ["layout", "splitter", "panels"],
+  "useWhen": [
+    "Building editor, inspector, or dashboard layouts where neighboring panes must be resized directly by dragging a separator.",
+    "Persisting a multi-pane workspace layout without coupling the component to localStorage."
+  ],
+  "avoidWhen": [
+    { "reason": "You only need a static two-column or stack layout with no interactive resizing." },
+    {
+      "reason": "Content should wrap naturally instead of claiming a fixed share of a measured container."
+    }
+  ],
+  "related": ["divider", "scroll-area"]
+}

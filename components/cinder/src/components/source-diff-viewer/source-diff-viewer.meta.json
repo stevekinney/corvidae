@@ -1,0 +1,21 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Lightweight unified-patch viewer for source-code and operational diffs with file headers, hunk headers, line state styling, and bounded rendering.",
+  "tags": ["diff", "source", "code"],
+  "useWhen": [
+    "Rendering source-code unified patches from agent output, Git operations, workspace changes, or review systems.",
+    "Showing operational patch output where file and hunk structure matters more than Markdown front matter or word-level prose review."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Comparing two Markdown documents with normalization, front-matter, and revert affordances — use `DiffViewer` from `@lostgradient/editor`."
+    },
+    {
+      "reason": "Showing syntax-highlighted code samples rather than patch output.",
+      "alternative": "code-block"
+    }
+  ],
+  "related": ["diff-statistics", "code-block"]
+}

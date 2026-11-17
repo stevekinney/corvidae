@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Renders an ordered set of term and value pairs that describe attributes of a single entity.",
+  "tags": ["metadata", "key-value"],
+  "useWhen": [
+    "Summarizing the properties of one record such as a user profile or order detail.",
+    "Switching between stacked and inline term layouts via the variant prop."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Iterating over a homogenous collection of records — use data-list or table instead."
+    }
+  ],
+  "related": ["data-list", "table"]
+}

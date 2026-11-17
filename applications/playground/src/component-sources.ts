@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
+import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.generated.ts';
 
 const PLAYGROUND_ROOT = dirname(import.meta.dirname);
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "Provider region that hosts polite and assertive toast stacks and exposes an imperative show/dismiss API via context.",
+  "tags": ["feedback", "toast"],
+  "useWhen": [
+    "Surfacing transient, non-blocking confirmations or errors that auto-dismiss after a short duration.",
+    "Announcing the outcome of a background action that the user does not need to acknowledge."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Communicating a persistent page-level message — use banner so it stays until dismissed."
+    },
+    { "reason": "Reporting an urgent error that must remain on screen — use alert." }
+  ],
+  "related": ["alert", "banner"]
+}

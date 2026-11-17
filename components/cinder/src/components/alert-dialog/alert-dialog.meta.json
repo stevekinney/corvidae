@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Sticky alert dialog for urgent acknowledgement that cannot be dismissed by backdrop click or Escape.",
+  "tags": ["overlay", "dialog"],
+  "useWhen": [
+    "Requiring acknowledgement of a blocking warning before the user can continue.",
+    "A system-initiated or out-of-band condition requires explicit acknowledgement before continuing."
+  ],
+  "avoidWhen": [
+    { "reason": "Asking a reversible yes/no question — use confirm-dialog." },
+    { "reason": "Collecting rich form input — compose modal instead." }
+  ],
+  "related": ["modal", "confirm-dialog", "drawer"]
+}

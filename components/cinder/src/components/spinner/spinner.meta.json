@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "Compact role=\"status\" indicator that communicates indeterminate background work with an accessible loading label.",
+  "tags": ["feedback", "loading"],
+  "useWhen": [
+    "Showing that a short asynchronous action is in progress without a predictable completion time.",
+    "Indicating inline busy state next to a control while a request resolves."
+  ],
+  "avoidWhen": [
+    { "reason": "Reserving layout space for content with a known final shape — use skeleton." },
+    { "reason": "Reporting determinate progress with a measurable percentage — use progress." }
+  ],
+  "related": ["skeleton", "progress"]
+}

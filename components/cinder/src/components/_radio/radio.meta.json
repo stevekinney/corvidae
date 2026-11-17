@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Single radio button that contributes a value, label, and id to a parent radio-group for one-of-many selection.",
+  "tags": ["form", "selection"],
+  "useWhen": [
+    "Rendering one option inside a radio-group where exactly one value must be chosen.",
+    "Overriding the group disabled state for a single option."
+  ],
+  "avoidWhen": [
+    { "reason": "Selecting zero or more independent options — use checkbox instead." },
+    { "reason": "Used outside a radio-group — the group owns the shared name and value." }
+  ],
+  "related": ["radio-group", "checkbox"]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "stable",
+  "purpose": "Primary interactive control for triggering actions or rendering an anchor styled as a button via href.",
+  "tags": ["action", "cta"],
+  "useWhen": [
+    "Triggering a discrete action such as submit, save, or delete.",
+    "Rendering a link that should look and behave like a button by passing href."
+  ],
+  "avoidWhen": [
+    { "reason": "Toggling a binary on or off state — use toggle instead." },
+    { "reason": "Selecting one of a small fixed set of options — use segmented-control instead." }
+  ],
+  "related": ["button-group", "copy-button"]
+}

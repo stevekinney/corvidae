@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category overlay
-   * @status beta
-   * @purpose The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Retry now, and what to check and run if it fails.
-   * @tag overlay
-   * @tag restart
-   * @tag progress
-   * @useWhen The person confirmed a restart and the page must say what is happening while the host stops answering.
-   * @useWhen The host did not come back and the person needs the way back: what to check, the exact command, and a choice to keep waiting.
-   * @avoidWhen Asking whether to restart at all — use confirm-dialog first.
-   * @avoidWhen Showing that the connection dropped on its own — use banner with the reconnecting preset.
-   * @rationale Nearest alternative: Modal — a modal can be dismissed; this one is not, because the host is not answering and nothing behind it is true.
-   * @related confirm-dialog, banner, steps, modal
-   */
   export type { RestartStatePhase, RestartStateProps } from './restart-state.types.ts';
 </script>
 

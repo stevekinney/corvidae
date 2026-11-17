@@ -1,16 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status beta
-   * @purpose Settings-page row: label, raw key and description on the left with the setting's save status, error and managed line under them, and the control on the right; it stacks below a container width.
-   * @tag form
-   * @tag settings
-   * @useWhen Pairing a setting label and guidance with an Input, Toggle, or Select control that saves as the person leaves it.
-   * @useWhen A setting needs to say where its save has got to (Saving, Saved, Applies after restart) or that it is locked by policy.
-   * @avoidWhen The control belongs in a conventional stacked form field.
-   * @related form-field, policy-lock
-   */
   export type { SettingRowProps, SettingRowStatus } from './setting-row.types.ts';
 </script>
 

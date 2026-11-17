@@ -1,0 +1,15 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "beta",
+  "purpose": "Numeric parameter editor that distinguishes an inherited base value from a local override and makes reset state explicit.",
+  "tags": ["form", "numeric"],
+  "useWhen": ["Editing a numeric setting that inherits a default but can be overridden locally."],
+  "avoidWhen": [
+    {
+      "reason": "Collecting an independent numeric value with no inheritance semantics — use number-input or slider."
+    }
+  ],
+  "related": ["number-input", "slider", "badge"],
+  "rationale": "Nearest alternative: NumberInput — ParameterField adds base/override ownership, reset, and change-state semantics around the numeric editor."
+}

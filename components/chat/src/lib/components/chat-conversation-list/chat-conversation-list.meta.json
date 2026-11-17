@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "category": "domain",
+  "status": "domain-suite",
+  "purpose": "Conversation navigation list for switching among Chat transcripts without embedding the list inside Chat.",
+  "tags": ["chat", "conversation", "navigation"],
+  "useWhen": [
+    "Rendering a multi-conversation chat sidebar beside one active Chat transcript.",
+    "Showing unread counts and last-message previews for compatible conversation snapshots."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Rendering the message transcript itself — use chat for the active conversation surface."
+    },
+    { "reason": "Building app-wide primary navigation — use side-navigation or navigation-bar." }
+  ],
+  "related": ["chat", "chat-conversation-header", "side-navigation"]
+}

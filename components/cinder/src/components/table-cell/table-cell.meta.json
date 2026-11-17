@@ -1,0 +1,14 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Data cell within a table-row that renders one column value with configurable horizontal alignment.",
+  "tags": ["table", "cell"],
+  "useWhen": [
+    "Rendering a single value inside a body row of a table.",
+    "Aligning numeric or trailing-action columns via the align prop."
+  ],
+  "avoidWhen": [{ "reason": "Rendering a column header — use table-header-cell instead." }],
+  "related": ["table-row", "table-header-cell"],
+  "composeOnly": true
+}

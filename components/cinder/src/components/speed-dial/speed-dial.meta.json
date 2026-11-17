@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "beta",
+  "purpose": "Floating action cluster that reveals secondary quick actions around a primary FloatingAction trigger.",
+  "tags": ["action", "floating"],
+  "useWhen": ["One primary floating action needs a small set of closely related quick actions."],
+  "avoidWhen": [
+    {
+      "reason": "The actions are equally important and always visible - use toolbar instead.",
+      "alternative": "toolbar"
+    },
+    {
+      "reason": "The trigger should open rich contextual content - use popover instead.",
+      "alternative": "popover"
+    }
+  ],
+  "related": ["floating-action", "toolbar", "popover"],
+  "compound": { "parts": ["speed-dial-action"] }
+}

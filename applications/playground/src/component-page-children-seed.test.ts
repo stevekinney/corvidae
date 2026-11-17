@@ -7,7 +7,7 @@ import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import {
   COMPOUND_COMPONENT_FAMILIES,
   COMPOUND_COMPONENT_PARENTS,
-} from './shell-app/compound-families.ts';
+} from './shell-app/compound-families.generated.ts';
 import type { ComponentManifest } from './types.ts';
 
 function manifest(kebabName: string, isCompound = false): ComponentManifest {

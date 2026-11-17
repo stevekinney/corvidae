@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "Decorative placeholder that reserves layout space while real content loads, as a single block or a group of lines or a card, with optional delayed appearance and a \"Still loading\" status.",
+  "tags": ["feedback", "loading"],
+  "useWhen": [
+    "Reserving the rough shape of incoming content during an initial fetch to avoid layout shift.",
+    "Indicating progressive load of cards, rows, or media tiles where the final shape is known."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Indicating indeterminate background work without a known target shape — use spinner."
+    },
+    { "reason": "Communicating that a view has no data at all — use empty-state." }
+  ],
+  "related": ["spinner", "empty-state", "progress"]
+}

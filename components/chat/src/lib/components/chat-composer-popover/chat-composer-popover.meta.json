@@ -1,0 +1,32 @@
+{
+  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "beta",
+  "purpose": "Chat composer-bound slash-command and mention listbox primitive.",
+  "tags": ["chat", "command", "overlay"],
+  "useWhen": [
+    "Adding slash commands, mentions, or autocomplete to ChatInput without re-implementing combobox ARIA.",
+    "Composer suggestions should stay anchored to the active token and leave command definitions in application code."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Opening a global command launcher detached from the composer — use command-palette instead."
+    },
+    {
+      "reason": "Anchoring a generic command menu to an arbitrary input — use command-menu instead."
+    }
+  ],
+  "related": ["chat", "command-menu", "command-item", "command-palette"],
+  "a11y": {
+    "pattern": "WAI-ARIA Combobox with Listbox Popup",
+    "keyboard": [
+      { "keys": "ArrowUp / ArrowDown", "action": "Moves the active suggestion." },
+      { "keys": "Enter", "action": "Selects the active suggestion." },
+      { "keys": "Tab", "action": "Selects the active suggestion and keeps focus in the composer." },
+      { "keys": "Escape", "action": "Dismisses the suggestion popover." }
+    ],
+    "notes": [
+      "Passes combobox role and aria-expanded, aria-controls, aria-activedescendant, and aria-autocomplete through to ChatInput's composer overlay API."
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "stable",
+  "purpose": "Determinate or indeterminate progressbar rendered as a horizontal bar or ring with full ARIA value semantics.",
+  "tags": ["feedback", "progress"],
+  "useWhen": [
+    "Reporting measurable progress of a known task such as a file upload or multi-step import.",
+    "Showing an indeterminate work indicator when the task duration is unknown but the surface needs a progressbar role."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Showing a bounded measurement gauge (battery, CPU, quota) that is not task completion.",
+      "alternative": "meter"
+    },
+    { "reason": "Showing a small inline busy state next to a control — use spinner." },
+    { "reason": "Reserving placeholder space for incoming content — use skeleton." }
+  ],
+  "related": ["meter", "spinner", "skeleton"]
+}

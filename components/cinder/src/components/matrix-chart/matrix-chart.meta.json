@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "alpha",
+  "purpose": "Categorical × categorical heatmap for dense analytics, confusion matrices, and correlation grids.",
+  "tags": ["chart", "heatmap", "matrix", "analytics"],
+  "useWhen": [
+    "Showing density or magnitude across two categorical dimensions simultaneously.",
+    "Rendering a confusion matrix where rows are actual classes and columns are predicted classes."
+  ],
+  "avoidWhen": [
+    { "reason": "Showing a continuous trend over time — use line-chart instead." },
+    { "reason": "Comparing discrete category totals — use bar-chart instead." }
+  ],
+  "related": ["bar-chart", "line-chart", "area-chart"]
+}

@@ -9,7 +9,18 @@
 import { basename, dirname, join } from 'node:path';
 
 import { COMPONENT_SOURCES, type ComponentSource } from './component-sources.ts';
-export { COMPOUND_COMPONENT_FAMILIES } from './shell-app/compound-families.ts';
+/**
+ * Compose-only leaf components (`composeOnly: true` in their `<name>.meta.json`) and the compound
+ * families. Compose-only leaves are public components with no meaningful standalone usage: they
+ * are always rendered inside a parent compound, so the sidebar's single parent entry covers the
+ * family, but they remain in `discoverComponents()` so direct `/c/<leaf>` routing still works.
+ */
+import {
+  COMPOSE_ONLY_COMPONENTS,
+  COMPOUND_COMPONENT_FAMILIES,
+} from './shell-app/compound-families.generated.ts';
+
+export { COMPOSE_ONLY_COMPONENTS, COMPOUND_COMPONENT_FAMILIES };
 
 // import.meta.dirname is applications/playground/src/
 const PLAYGROUND_ROOT = dirname(import.meta.dirname); // applications/playground/
@@ -20,47 +31,6 @@ export type DiscoveredComponent = {
   importPath: string;
   source: ComponentSource;
 };
-
-/**
- * Compose-only leaf components. These public components exist as real
- * directories and are exported flat from `@lostgradient/cinder`, but they have no meaningful
- * standalone usage — they are always rendered inside a parent compound
- * (`Tabs`, `Table`, `Dropdown`, `Accordion`, `Tree`, `Feed`, `GridList`,
- * `Grid`, `SpeedDial`, `StatisticGroup`, `SideNavigation`, `CommandMenu`,
- * `SegmentedControl`, `ChoiceGrid`, `ContextMenu`). They are
- * excluded from the playground sidebar so a single parent entry covers the
- * family, but they remain in `discoverComponents()` so direct `/c/<leaf>`
- * routing still works.
- */
-export const COMPOSE_ONLY_COMPONENTS: ReadonlySet<string> = new Set([
-  'accordion-item',
-  'choice-grid-item',
-  'command-item',
-  'segment',
-  'tab-list',
-  'tab',
-  'tab-panel',
-  'table-body',
-  'table-cell',
-  'table-header',
-  'table-header-cell',
-  'table-row',
-  'dropdown-trigger',
-  'dropdown-menu',
-  'dropdown-item',
-  'dropdown-label',
-  'dropdown-separator',
-  'dropdown-group',
-  'context-menu-trigger',
-  'tree-item',
-  'feed-event',
-  'grid-item',
-  'grid-list-item',
-  'speed-dial-action',
-  'statistic',
-  'side-navigation-group',
-  'side-navigation-item',
-]);
 
 /**
  * Scans a component-source root for the absolute paths of every public

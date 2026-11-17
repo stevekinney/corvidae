@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "alpha",
+  "purpose": "Native audio element with its own controls for play, pause, replay, seeking, and elapsed and total time.",
+  "tags": ["media", "audio"],
+  "useWhen": [
+    "Playing a single audio track from an https, http, or blob URL with accessible controls."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "You need streaming protocols, caption authoring, or playlists — wire those separately."
+    }
+  ],
+  "related": ["video-player"]
+}

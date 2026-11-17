@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Standalone time-of-day field that collects a canonical time string with optional timezone selection.",
+  "tags": ["form", "time", "internationalization"],
+  "useWhen": [
+    "Collecting a time of day without a date, such as a reminder time or office-hours boundary.",
+    "Pairing a time value with an optional timezone while keeping a canonical `HH:mm` or `HH:mm:ss` value."
+  ],
+  "avoidWhen": [{ "reason": "Collecting a full date range — use date-range-field instead." }],
+  "related": ["date-range-field", "number-input"]
+}

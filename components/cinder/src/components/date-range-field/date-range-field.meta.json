@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Controlled start/end date range picker with preset shortcuts and validation feedback for time-window filtering.",
+  "tags": ["form", "date", "filter"],
+  "useWhen": [
+    "Filtering a list or dashboard by a start and end date (e.g. created between, updated between).",
+    "Offering common presets (last 7 days, last 24 hours) alongside a manual date range."
+  ],
+  "avoidWhen": [
+    { "reason": "A single date is sufficient — use a plain date input instead." },
+    {
+      "reason": "Timezone conversion or a standalone time-of-day value is required — use time-field for the latter."
+    }
+  ],
+  "related": ["input", "form-field", "chip", "segmented-control"]
+}

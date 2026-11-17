@@ -1,19 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category layout
-   * @status beta
-   * @purpose Bar that docks a page's main actions to the bottom of its scrolling area, above the safe area and the on-screen keyboard, while the page scrolls behind it.
-   * @tag docked
-   * @tag actions
-   * @tag sticky
-   * @useWhen Actions must never scroll away: a live run's Send a message and Cancel run, or a review's Deny and Approve on a phone.
-   * @useWhen The actions can go off together for one stated reason, such as a dropped connection.
-   * @avoidWhen The actions belong to a form inside a dialog or drawer — use the modal or drawer footer.
-   * @avoidWhen A banner states a page-level condition — use banner so it sits above the content instead.
-   * @rationale Nearest alternative: Drawer footer — a footer belongs to an overlay; the docked bar belongs to the page and scrolls with its container.
-   * @related stale-region, toast-region, button
-   */
   export type { DockedActionBarProps, DockedActionBarVariant } from './docked-action-bar.types.ts';
 </script>
 

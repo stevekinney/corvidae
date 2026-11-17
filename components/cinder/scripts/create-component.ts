@@ -9,9 +9,9 @@
  * it writes:
  *
  *   1. `src/components/<name>/<name>.svelte` — instance + module script. The
- *      module script carries a VALID `@cinder` JSDoc block with every required
- *      tag (`@category`, `@status`, `@purpose`) plus optional placeholder tags,
- *      and re-exports the props type.
+ *      module script re-exports the props type.
+ *   1a. `src/components/<name>/<name>.meta.json` — VALID metadata with every
+ *      required field (`category`, `status`, `purpose`) plus placeholder guidance.
  *   2. `src/components/<name>/<name>.types.ts` — a `<Pascal>Props` stub that the
  *      schema generator resolves.
  *   3. `src/components/<name>/index.ts` — the barrel (default + named export,
@@ -26,8 +26,8 @@
  *
  * The placeholder values are intentionally generic — the contributor edits them
  * in place. They are chosen so that, immediately after creation, running
- * `bun run components:generate` produces drift-free artifacts and the `@cinder`
- * header validates cleanly through `generate-component-metadata.ts`.
+ * `bun run components:generate` produces drift-free artifacts and the metadata
+ * validates cleanly through `scripts/lib/component-meta.ts`.
  *
  * This script does NOT regenerate schemas, the manifest, the package root
  * `src/index.ts` barrel, or `src/styles/components.css`. Run the component
@@ -107,25 +107,34 @@ export function buildContext(inputName: string): CreationContext {
 }
 
 /**
- * Render `<name>.svelte`. The module script carries a valid `@cinder` block with
- * placeholder values for every required tag and re-exports the props type; the
+ * Render `<name>.meta.json`: a valid metadata file with placeholder values for every required
+ * field, which `scripts/lib/component-meta.ts` reads and the inventory check holds to account.
+ */
+export function renderMeta(context: CreationContext): string {
+  const { name, pascalName } = context;
+  const meta = {
+    $schema: '../../schemas/component-meta.schema.json',
+    category: 'data-display',
+    status: 'beta',
+    purpose: `TODO: one-sentence description of what ${pascalName} renders and when to reach for it.`,
+    tags: [name],
+    useWhen: [`TODO: describe a scenario where ${pascalName} is the right choice.`],
+    avoidWhen: [{ reason: 'TODO: describe when a different component fits better.' }],
+    related: [],
+    rationale:
+      'Nearest alternative: TODO — name the nearest component and explain the interaction boundary.',
+  };
+  return `${JSON.stringify(meta, null, 2)}\n`;
+}
+
+/**
+ * Render `<name>.svelte`. The module script re-exports the props type; the
  * instance script renders a class-tagged wrapper that forwards rest props.
  */
 export function renderSvelte(context: CreationContext): string {
   const { name, pascalName } = context;
-  const status = 'beta';
   const utilitiesImport = '../../utilities/class-names.ts';
   return `<script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status ${status}
-   * @purpose TODO: one-sentence description of what ${pascalName} renders and when to reach for it.
-   * @tag ${name}
-   * @useWhen TODO: describe a scenario where ${pascalName} is the right choice.
-   * @avoidWhen TODO: describe when a different component fits better.
-   * @rationale Nearest alternative: TODO — name the nearest component and explain the interaction boundary.
-   */
   export type { ${pascalName}Props } from './${name}.types.ts';
 </script>
 
@@ -364,6 +373,7 @@ export function planFiles(context: CreationContext): PlannedFile[] {
   assertScaffoldPropConventions(context);
   return [
     { path: join(directory, `${name}.svelte`), content: renderSvelte(context) },
+    { path: join(directory, `${name}.meta.json`), content: renderMeta(context) },
     { path: join(directory, `${name}.types.ts`), content: renderTypes(context) },
     { path: join(directory, 'index.ts'), content: renderIndex(context) },
     { path: join(directory, `${name}.test.ts`), content: renderTest(context) },
@@ -421,7 +431,9 @@ async function main(): Promise<void> {
 
   process.stdout.write(`  ✓ scaffolded src/components/${context.relativeDirectory}/\n`);
   process.stdout.write('\nNext steps:\n');
-  process.stdout.write('  1. Fill in the @cinder JSDoc placeholders and the props stub.\n');
+  process.stdout.write(
+    `  1. Fill in the placeholders of ${context.name}.meta.json and the props stub.\n`,
+  );
   process.stdout.write(
     `  2. Flesh out ${context.name}.test.ts with behavioral coverage (a passing stub ships already).\n`,
   );

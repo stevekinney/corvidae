@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Header section of a table that groups column-header rows and exposes selection state to its descendants.",
+  "tags": ["table", "section"],
+  "useWhen": ["Wrapping the column-header row that labels each column of a table."],
+  "avoidWhen": [{ "reason": "Wrapping body data rows — use table-body instead." }],
+  "related": ["table", "table-header-cell"],
+  "composeOnly": true
+}

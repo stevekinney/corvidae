@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Root tabs composite that owns the active value and orientation and coordinates tab, tab-list, and tab-panel descendants via context.",
+  "tags": ["navigation", "tabs"],
+  "useWhen": [
+    "Switching between several panels of related content under one heading area.",
+    "Building the WAI-ARIA tabs pattern with shared keyboard navigation and activation rules."
+  ],
+  "avoidWhen": [
+    { "reason": "Picking one of two to five short values inline — use segmented-control instead." },
+    { "reason": "Showing ordered progress through a wizard — use steps instead." }
+  ],
+  "related": ["tab", "tab-list", "tab-panel", "segmented-control"],
+  "compound": { "parts": ["tab-list", "tab", "tab-panel"] }
+}

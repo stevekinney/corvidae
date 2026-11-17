@@ -180,7 +180,7 @@ function publicExports(): Set<string> {
 
 export async function proseSourcePaths(): Promise<string[]> {
   const files = ['components.json'];
-  for (const pattern of ['src/components/**/*.svelte', 'src/components/**/*.md']) {
+  for (const pattern of ['src/components/**/*.meta.json', 'src/components/**/*.md']) {
     const sources = new Glob(pattern);
     for await (const filePath of sources.scan({ cwd: packageRoot })) files.push(filePath);
   }
@@ -209,17 +209,21 @@ function metadataProse(source: string): string {
   return prose.join('\n');
 }
 
+/** Every string a `<name>.meta.json` authors (its guidance, rationale and accessibility notes). */
+function authoredMetadataProse(value: unknown, key = ''): string {
+  if (key === '$schema') return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map((entry) => authoredMetadataProse(entry)).join('\n');
+  if (!isRecord(value)) return '';
+  return Object.entries(value)
+    .map(([entryKey, entry]) => authoredMetadataProse(entry, entryKey))
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function componentDocumentationProse(filePath: string, source: string): string {
   if (filePath === 'components.json') return metadataProse(source);
-  if (filePath.endsWith('.svelte')) {
-    const moduleScript =
-      source.match(/<script\b(?=[^>]*\bmodule\b)[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? '';
-    return (
-      [...moduleScript.matchAll(/\/\*\*[\s\S]*?\*\//g)].find((comment) =>
-        /@cinder\b/.test(comment[0]),
-      )?.[0] ?? ''
-    );
-  }
+  if (filePath.endsWith('.meta.json')) return authoredMetadataProse(JSON.parse(source));
 
   const introduction = source
     .slice(0, source.search(/(?:^|\n)## /m))

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Single event inside a timeline rail with a decorative tone marker, timestamp-first header, optional group header, and body content.",
+  "tags": ["timeline", "event"],
+  "useWhen": [
+    "Rendering one event along a timeline rail with consistent marker, header, connector, and body structure.",
+    "Coloring decorative markers by tone (info, success, warning, error, or a hollow pending ring) while keeping the meaningful status in title or content."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "The entry lives in a social activity stream rather than a workflow rail — feed-event fits better."
+    }
+  ],
+  "related": ["timeline", "feed-event"]
+}

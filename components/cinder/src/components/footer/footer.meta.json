@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "layout",
+  "status": "beta",
+  "purpose": "Footer composition primitive with brand copy, grouped links, and legal row content.",
+  "tags": ["layout", "navigation", "footer"],
+  "useWhen": [
+    "Building page-level footer chrome with grouped resource links and legal text.",
+    "Keeping lower-page wayfinding and compliance links in one responsive region."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "You need top-level route switching with active state handling.",
+      "alternative": "navigation-bar"
+    },
+    { "reason": "You need dense in-content navigation rather than page chrome." }
+  ],
+  "related": ["navigation-bar", "side-navigation", "container", "grid"]
+}

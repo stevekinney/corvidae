@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Block container for multi-line source code with optional syntax highlighting and a copy-to-clipboard control.",
+  "tags": ["code", "snippet"],
+  "useWhen": [
+    "Displaying a multi-line code sample or terminal transcript inside documentation or chat.",
+    "Letting the reader copy a snippet to the clipboard via the copyable prop."
+  ],
+  "avoidWhen": [
+    { "reason": "Annotating a single inline keystroke or shortcut — use kbd instead." },
+    {
+      "reason": "Rendering rich prose that happens to include code — embed it in markdown instead."
+    }
+  ],
+  "related": ["kbd", "copy-button"]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Meter composition for quota usage with reset and unlimited states.",
+  "tags": ["quota-meter"],
+  "useWhen": ["Showing usage against a plan or account limit."],
+  "avoidWhen": [{ "reason": "Showing task completion." }],
+  "related": [],
+  "rationale": "Nearest alternative: Meter — QuotaMeter adds quota-specific accessible value text."
+}

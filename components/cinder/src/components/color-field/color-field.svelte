@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category form
-   * @status stable
-   * @purpose Text input that validates and normalizes hex, rgb(), hsl(), hwb(), and oklch() color strings into a canonical value (hex by default, or another CSS Color 4 format via `format`) emitted on blur.
-   * @tag form
-   * @tag color
-   * @useWhen Accepting an exact color value via keyboard entry, including pasted hex, rgb(), or hsl() strings.
-   * @useWhen Pairing with color-picker for combined visual selection and text-based entry.
-   * @avoidWhen Letting users graze visually across a color space — use color-picker instead.
-   * @avoidWhen Constraining selection to a fixed brand palette — use color-swatch-picker instead.
-   * @related color-picker, color-swatch-picker, input, form-field
-   */
   export type {
     ColorFieldProps,
     ColorFieldFormat,

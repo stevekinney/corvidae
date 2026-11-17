@@ -1,20 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status alpha
-   * @purpose Responsive SVG time × frequency heatmap for visualizing audio spectrogram data.
-   * @tag chart
-   * @tag spectrogram
-   * @tag signal
-   * @tag audio
-   * @useWhen Visualizing how frequency content of a signal changes over time (time × frequency heatmap).
-   * @useWhen Displaying pre-computed spectrogram frames from an FFT or short-time Fourier transform.
-   * @avoidWhen Only a single spectrum snapshot is needed — use spectrum-chart instead.
-   * @avoidWhen Real-time live audio spectrogram is needed — feed frames as props yourself.
-   * @avoidWhen A categorical × categorical heatmap without a time axis is needed — use matrix-chart instead.
-   * @related spectrum-chart, waveform, matrix-chart
-   */
   export type {
     SpectrogramFrame,
     SpectrogramProps,

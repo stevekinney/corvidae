@@ -1,0 +1,15 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "beta",
+  "purpose": "Circular button representing the single most important action on a screen.",
+  "tags": ["action", "button"],
+  "useWhen": ["One action dominates the page purpose (compose, add, create)."],
+  "avoidWhen": [
+    { "reason": "Multiple equally-important actions exist — use a toolbar or button group." },
+    {
+      "reason": "You need it pinned to the viewport — it doesn't position itself; wrap it in your own fixed/sticky container."
+    }
+  ],
+  "related": ["button", "toolbar"]
+}

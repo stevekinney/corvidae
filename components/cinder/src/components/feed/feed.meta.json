@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Chronological stream of feed-event entries: a plain ordered list for user-facing activity, or an operator-facing append-only log region with follow-latest scrolling.",
+  "tags": ["timeline", "activity", "log"],
+  "useWhen": [
+    "Rendering a user-facing activity stream or notification timeline.",
+    "Announcing newly appended entries to assistive technology via the live prop.",
+    "Displaying an operator-facing append-only stream with follow-latest scrolling — use the log arm (`kind=\"log\"`)."
+  ],
+  "avoidWhen": [
+    { "reason": "Displaying a one-off transient notice — use toast-region or banner instead." },
+    {
+      "reason": "Displaying static temporal history or execution state — use timeline or run-step-timeline."
+    }
+  ],
+  "related": ["timeline", "run-step-timeline", "feed-event", "feed-boundary"],
+  "compound": { "parts": ["feed-event", "feed-boundary"] }
+}

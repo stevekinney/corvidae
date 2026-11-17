@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Compact chip that identifies a source file and optional line and column.",
+  "tags": ["code-location"],
+  "useWhen": ["Showing a source location beside an error, review comment, or code reference."],
+  "avoidWhen": [{ "reason": "Displaying editable source code." }],
+  "related": [],
+  "rationale": "Nearest alternative: Chip — CodeLocation owns canonical file/line formatting."
+}

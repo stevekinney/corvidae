@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Keyboard-navigable listbox of preset color swatches that constrains selection to a curated palette.",
+  "tags": ["form", "color"],
+  "useWhen": [
+    "Restricting color choice to a fixed brand or theme palette.",
+    "Pairing with color-picker as a shortcut for common values."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Letting users author arbitrary colors across the spectrum — use color-picker instead."
+    }
+  ],
+  "related": ["color-picker"]
+}

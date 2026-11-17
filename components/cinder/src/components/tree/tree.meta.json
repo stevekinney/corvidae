@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Composite root that renders a hierarchical tree of tree-item nodes with keyboard navigation and selection state.",
+  "tags": ["tree", "hierarchy"],
+  "useWhen": [
+    "Presenting hierarchical data such as a file system, organization, or nested categories.",
+    "Coordinating single- or multi-select state across all descendant tree-items via the selectionMode prop."
+  ],
+  "avoidWhen": [
+    { "reason": "Disclosing flat sibling sections — use accordion instead." },
+    { "reason": "Switching between sibling views of the same region — use tabs instead." },
+    { "reason": "Showing an in-page heading outline.", "alternative": "table-of-contents" },
+    { "reason": "Providing vertical sidebar route navigation.", "alternative": "side-navigation" }
+  ],
+  "related": ["tree-item", "table-of-contents", "side-navigation", "accordion"],
+  "compound": { "parts": ["tree-item"] }
+}

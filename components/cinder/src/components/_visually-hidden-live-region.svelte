@@ -8,7 +8,7 @@
    * the full message is read on every change — and owns the blank-then-set timing
    * that makes a *repeated* identical message re-announce.
    *
-   * Not a public component (no `@cinder` block, not in the manifest): it is an
+   * Not a public component (no `<name>.meta.json`, not in the manifest): it is an
    * implementation detail consumed by components that need announcements
    * (autocomplete, load-more, copy-button, …). See `_internal/PLATFORM-POLICY.md`
    * § Live regions.

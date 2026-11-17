@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "beta",
+  "purpose": "Number plus unit for a duration that is stored in milliseconds, so a person types 30 and picks seconds while the value stays one number.",
+  "tags": ["form", "duration", "numeric"],
+  "useWhen": [
+    "A setting or schema field holds a length of time in milliseconds and the person should not have to count zeros.",
+    "A setting always counts in one unit and should show it beside the number (\"30 seconds\") — set `unitSelectable` to `false`."
+  ],
+  "avoidWhen": [
+    { "reason": "Collecting a clock time or a calendar date — use time-field or date-picker." },
+    { "reason": "Showing a duration read-only — format it with `formatDuration`." }
+  ],
+  "related": ["number-input", "select", "time-field"]
+}

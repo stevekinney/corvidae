@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../../cinder/src/schemas/component-meta.schema.json",
+  "category": "domain",
+  "status": "domain-suite",
+  "purpose": "Header primitive for the active Chat conversation, composed as a sibling above Chat rather than inside it.",
+  "tags": ["chat", "conversation", "header"],
+  "useWhen": [
+    "Showing the active conversation title, participants, status, and export controls above a Chat transcript.",
+    "Building a multi-conversation chat layout where the list, header, and Chat surface are composed as siblings."
+  ],
+  "avoidWhen": [
+    { "reason": "Rendering the conversation switcher — use chat-conversation-list." },
+    { "reason": "Rendering the transcript body and composer — use chat." }
+  ],
+  "related": ["chat", "chat-conversation-list"]
+}

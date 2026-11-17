@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category data-display
-   * @status stable
-   * @purpose Context control for expanding or collapsing all registered static Tree branches.
-   * @tag tree
-   * @tag expansion
-   * @useWhen Adding expand-all and collapse-all controls to a Tree selectionControls snippet.
-   * @useWhen Expanding registered static Tree branches without placing controls inside role="tree".
-   * @avoidWhen Rendering outside a Tree component — it requires Tree selectionControls context.
-   * @avoidWhen Triggering async lazy loading for every branch; bulk expansion skips loadChildren branches.
-   * @related tree, tree-item
-   */
   export type { TreeExpandAllProps } from './tree-expand-all.types.ts';
 </script>
 

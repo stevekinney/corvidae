@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "alpha",
+  "purpose": "Presents a single pricing plan with its name, price, feature list, and a call-to-action button.",
+  "tags": ["pricing", "plan"],
+  "useWhen": [
+    "Letting users compare and select subscription tiers or product plans.",
+    "Highlighting one tier as selected or recommended in a pricing comparison."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Showing generic grouped content without a distinct price or CTA — use card instead."
+    },
+    {
+      "reason": "Displaying a single key metric in isolation — use statistic or statistic-group instead."
+    }
+  ],
+  "related": ["card", "button", "statistic", "statistic-group"]
+}

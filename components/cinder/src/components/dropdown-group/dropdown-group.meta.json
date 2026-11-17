@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Accessible group boundary that clusters related dropdown-item rows inside a dropdown-menu.",
+  "tags": ["overlay", "menu"],
+  "useWhen": [
+    "Grouping related dropdown actions under one accessible heading.",
+    "Pairing dropdown-label with a role='group' container inside dropdown-menu."
+  ],
+  "avoidWhen": [
+    { "reason": "Rendering a clickable row — use dropdown-item." },
+    { "reason": "Separating sections without a group label — use dropdown-separator." }
+  ],
+  "related": ["dropdown", "dropdown-menu", "dropdown-item", "dropdown-label", "dropdown-separator"],
+  "composeOnly": true
+}

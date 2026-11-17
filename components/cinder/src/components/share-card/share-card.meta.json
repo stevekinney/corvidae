@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "alpha",
+  "purpose": "Compact share card with copy-link, copy-text, and native navigator.share actions, with accessible success announcements and graceful fallback when navigator.share is unavailable.",
+  "tags": ["action", "clipboard"],
+  "useWhen": [
+    "Offering a quick way to share a link or text with copy and native share options.",
+    "Presenting a result, invite link, or exported report link with sharing affordances."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Generating the share text or images — compose ShareCard with your own copy generation logic."
+    },
+    { "reason": "Posting directly to social media or analytics — wire those externally." }
+  ],
+  "related": ["copy-button", "card", "button"]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Numeric input with locale-aware formatting, min and max bounds, and step increments emitting a number or null.",
+  "tags": ["form", "numeric"],
+  "useWhen": [
+    "Collecting a bounded numeric value such as a quantity, price, or age.",
+    "Needing locale-aware display formatting on top of a native number input."
+  ],
+  "avoidWhen": [
+    { "reason": "Selecting a value within a continuous range visually — use slider instead." },
+    { "reason": "Collecting free-form text or non-numeric content — use input instead." }
+  ],
+  "related": ["input", "slider"]
+}

@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category navigation
-   * @status stable
-   * @purpose Root tabs composite that owns the active value and orientation and coordinates tab, tab-list, and tab-panel descendants via context.
-   * @tag navigation
-   * @tag tabs
-   * @useWhen Switching between several panels of related content under one heading area.
-   * @useWhen Building the WAI-ARIA tabs pattern with shared keyboard navigation and activation rules.
-   * @avoidWhen Picking one of two to five short values inline — use segmented-control instead.
-   * @avoidWhen Showing ordered progress through a wizard — use steps instead.
-   * @related tab, tab-list, tab-panel, segmented-control
-   */
   export type { TabsContext, TabsOrientation, TabsProps } from './tabs.types.ts';
 </script>
 

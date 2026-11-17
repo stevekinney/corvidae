@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "navigation",
+  "status": "stable",
+  "purpose": "Hierarchical wayfinding trail showing the ancestor path of the current page with the final entry marked as aria-current.",
+  "tags": ["navigation", "wayfinding"],
+  "useWhen": [
+    "Surfacing where the user sits inside a deep, nested hierarchy.",
+    "Letting the user jump back to any ancestor view in one click."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Switching between sibling sections at the same level — use navigation-bar or tabs."
+    },
+    { "reason": "Showing an ordered task progression — use steps instead." }
+  ],
+  "related": ["navigation-bar", "side-navigation", "steps"]
+}

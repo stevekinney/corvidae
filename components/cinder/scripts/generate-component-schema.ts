@@ -381,7 +381,7 @@ function applyComponentSchemaRules(componentName: string, schema: ComponentSchem
   // WHEN provided it must reference a real id — the constraints sidecar's
   // `described-by-non-empty` rule already rejects an empty OR
   // whitespace-only value (`nonEmpty`, which trims) — see
-  // modal.constraints.ts. `type: 'string'` alone lets a schema-driven
+  // modal.constraints.json. `type: 'string'` alone lets a schema-driven
   // consumer (CLI/MCP) pass `describedById: '   '` right past validation,
   // even though modal.svelte's own runtime guard rejects it too (see that
   // file's `isNonEmptyString` comment). `minLength: 1` + `pattern: '\S'`

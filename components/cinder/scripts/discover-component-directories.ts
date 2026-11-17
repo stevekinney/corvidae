@@ -4,7 +4,7 @@
  * manifest generators all need.
  *
  * Extracted from `generate-component-artifacts.ts` so other generator scripts
- * (e.g. `generate-component-constraints.ts`) can import this without forming
+ * (e.g. `check-component-constraints.ts`) can import this without forming
  * a cycle through the artifact orchestrator.
  */
 

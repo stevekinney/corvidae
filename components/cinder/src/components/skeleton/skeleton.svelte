@@ -1,17 +1,4 @@
 <script lang="ts" module>
-  /**
-   * @cinder
-   * @category feedback
-   * @status stable
-   * @purpose Decorative placeholder that reserves layout space while real content loads, as a single block or a group of lines or a card, with optional delayed appearance and a "Still loading" status.
-   * @tag feedback
-   * @tag loading
-   * @useWhen Reserving the rough shape of incoming content during an initial fetch to avoid layout shift.
-   * @useWhen Indicating progressive load of cards, rows, or media tiles where the final shape is known.
-   * @avoidWhen Indicating indeterminate background work without a known target shape — use spinner.
-   * @avoidWhen Communicating that a view has no data at all — use empty-state.
-   * @related spinner, empty-state, progress
-   */
   export type { SkeletonProps, SkeletonStatusMarker, SkeletonVariant } from './skeleton.types.ts';
 </script>
 

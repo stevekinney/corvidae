@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Display of a recurring weekly schedule as one row per day with a day, an unbroken time range and a description, today highlighted and a live window marked with a pill.",
+  "tags": ["schedule", "week", "recurring"],
+  "useWhen": [
+    "Showing the days and hours a place or event recurs, such as happy-hour windows, on a detail page.",
+    "Showing a window that crosses midnight without breaking its time range across lines."
+  ],
+  "avoidWhen": [
+    { "reason": "Letting the user edit a schedule or a cron expression — use schedule-builder." },
+    { "reason": "Showing dated events on a calendar grid — use calendar." }
+  ],
+  "related": [],
+  "rationale": "Nearest alternative: ScheduleBuilder — WeekSchedule only displays; it has no inputs."
+}

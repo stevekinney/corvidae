@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Binary or tri-state selection control with bindable checked and indeterminate state for forms and lists.",
+  "tags": ["form", "selection"],
+  "useWhen": [
+    "Selecting zero or more independent options from a list.",
+    "Representing a parent state that aggregates child selections via indeterminate."
+  ],
+  "avoidWhen": [
+    { "reason": "Flipping a single setting on or off with immediate effect — use toggle instead." },
+    {
+      "reason": "Picking exactly one option from a small fixed set — use RadioGroup or segmented-control instead."
+    }
+  ],
+  "related": ["checkbox-group", "radio-group", "toggle", "segmented-control"]
+}

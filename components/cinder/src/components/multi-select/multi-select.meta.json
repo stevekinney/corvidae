@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "alpha",
+  "purpose": "Multi-value dropdown with checkbox options, optional filtering, and count-summary trigger text.",
+  "tags": ["form", "selection", "multiselect"],
+  "useWhen": [
+    "Selecting multiple values from a fixed option list while preserving compact form layout.",
+    "Showing many options in an anchored picker instead of a permanently-expanded checkbox group."
+  ],
+  "avoidWhen": [
+    { "reason": "Selecting a single value from a short fixed list — use select instead." },
+    { "reason": "Moving items between available/selected panes — use transfer-list instead." }
+  ],
+  "related": ["select", "combobox", "checkbox-group", "transfer-list"]
+}

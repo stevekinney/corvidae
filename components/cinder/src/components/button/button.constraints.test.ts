@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { evaluateConstraints } from '../../_internal/constraints.ts';
+import { evaluateConstraints, type ConstraintsDocument } from '../../_internal/constraints.ts';
 import { invalid, valid } from './button.constraints.fixtures.ts';
-import buttonConstraints from './button.constraints.ts';
+import buttonConstraintsJson from './button.constraints.json' with { type: 'json' };
+
+// The authored JSON, typed: its string literals widen to `string` on import.
+const buttonConstraints = buttonConstraintsJson as ConstraintsDocument;
 
 describe('button constraints — valid fixtures', () => {
   for (const attributes of valid) {

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Headless focus-trap primitive that keeps Tab navigation within a container and restores focus on teardown.",
+  "tags": ["overlay", "accessibility"],
+  "useWhen": [
+    "Building non-native overlays or popovers that need contained keyboard focus.",
+    "Reusing the same focus-management behavior across custom floating surfaces."
+  ],
+  "avoidWhen": [{ "reason": "The surface already uses native dialog focus trapping." }],
+  "related": ["modal", "drawer", "popover"]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "form",
+  "status": "stable",
+  "purpose": "Star rating control with bindable numeric value, optional half-star precision, and a non-interactive readonly display mode.",
+  "tags": ["form", "selection"],
+  "useWhen": [
+    "Letting the user score something on a small ordinal scale such as 1-5 stars.",
+    "Displaying an existing rating in readonly mode alongside a count or average."
+  ],
+  "avoidWhen": [
+    { "reason": "Picking a value from a numeric continuum — use slider instead." },
+    { "reason": "Capturing a binary preference — use toggle or checkbox." }
+  ],
+  "related": ["slider", "segmented-control", "radio-group", "form-field"]
+}

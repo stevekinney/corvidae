@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Semantic list container for like rows: empty state, density, day groups, a shared status column, and announced live insertion.",
+  "tags": ["list", "iterator"],
+  "useWhen": [
+    "Rendering a vertical list of like records where each row shares the same layout.",
+    "Pairing with StackedListItem rows for leading/title/description/meta/trailing content.",
+    "Showing a dedicated empty state when the collection has no items.",
+    "Grouping rows under day headers, or announcing rows that arrive while the list is on screen."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Presenting key-value metadata for a single entity — use description-list instead."
+    },
+    { "reason": "Rendering tabular data with rows and columns — use table instead." }
+  ],
+  "related": ["stacked-list-item", "description-list", "table"]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Edits string key/value pairs and masks values selected as secrets.",
+  "tags": ["key-value-editor"],
+  "useWhen": ["Editing headers, environment variables, or configuration fields."],
+  "avoidWhen": [{ "reason": "Values need rich structured content; use Table." }],
+  "related": ["secret-value-field", "table"],
+  "rationale": "Nearest alternative: SecretValueField displays one secret; this owns pair editing."
+}

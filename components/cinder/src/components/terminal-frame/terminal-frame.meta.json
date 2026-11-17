@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "feedback",
+  "status": "alpha",
+  "purpose": "Frame a consumer-owned real PTY with terminal chrome, connection status, reload handling, and character-cell resize reporting.",
+  "tags": ["terminal", "pty", "shell"],
+  "useWhen": [
+    "Hosting a real interactive terminal implementation that needs consistent chrome and resize dimensions."
+  ],
+  "avoidWhen": [{ "reason": "Rendering a read-only stream — use TerminalOutput." }],
+  "related": ["terminal-output", "preview-panel"]
+}

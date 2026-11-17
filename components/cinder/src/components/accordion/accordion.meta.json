@@ -1,0 +1,42 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Composite root that coordinates a stack of collapsible accordion-item panels with single or multiple expansion.",
+  "tags": ["disclosure", "collapsible"],
+  "useWhen": [
+    "Progressively disclosing several sections of content that share a parent heading.",
+    "Letting the consumer expand one or multiple panels at once via the multiple prop."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Switching between mutually exclusive views of the same region.",
+      "alternative": "tabs"
+    },
+    {
+      "reason": "Hiding a single optional region — reach for a plain disclosure instead.",
+      "alternative": "collapsible"
+    }
+  ],
+  "related": ["accordion-item", "tabs", "tree"],
+  "a11y": {
+    "pattern": "WAI-ARIA Accordion",
+    "keyboard": [
+      {
+        "keys": "Tab",
+        "action": "Moves focus to the next focusable element (accordion header buttons are in the natural tab order)."
+      },
+      { "keys": "Shift + Tab", "action": "Moves focus to the previous focusable element." },
+      {
+        "keys": "Enter / Space",
+        "action": "When focus is on a header button, toggles the associated panel open or closed."
+      }
+    ],
+    "notes": [
+      "Each trigger is a native button exposing aria-expanded and aria-controls, so screen readers announce open/closed state.",
+      "Panels intentionally omit role=\"region\" to keep the page's landmark list clean.",
+      "Disabled items set the native disabled attribute on their trigger, removing them from the tab order."
+    ]
+  },
+  "compound": { "parts": ["accordion-item"] }
+}

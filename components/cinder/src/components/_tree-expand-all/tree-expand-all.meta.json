@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Context control for expanding or collapsing all registered static Tree branches.",
+  "tags": ["tree", "expansion"],
+  "useWhen": [
+    "Adding expand-all and collapse-all controls to a Tree selectionControls snippet.",
+    "Expanding registered static Tree branches without placing controls inside role=\"tree\"."
+  ],
+  "avoidWhen": [
+    {
+      "reason": "Rendering outside a Tree component — it requires Tree selectionControls context."
+    },
+    {
+      "reason": "Triggering async lazy loading for every branch; bulk expansion skips loadChildren branches."
+    }
+  ],
+  "related": ["tree", "tree-item"]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "stable",
+  "purpose": "Body section of a table that groups data rows and establishes the body section context for nested rows.",
+  "tags": ["table", "section"],
+  "useWhen": ["Wrapping the data rows of a table to distinguish them from header rows."],
+  "avoidWhen": [{ "reason": "Wrapping header rows — use table-header instead." }],
+  "related": ["table", "table-row"],
+  "composeOnly": true
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "overlay",
+  "status": "stable",
+  "purpose": "Centered modal dialog shell built on the native dialog element with focus capture, restoration, and dismissal handling.",
+  "tags": ["overlay", "dialog"],
+  "useWhen": [
+    "Presenting rich or structured content that requires user interaction before returning to the page — forms, multi-step wizards, detail views.",
+    "Collecting structured input (forms, multi-field workflows) inside an overlay."
+  ],
+  "avoidWhen": [
+    { "reason": "Only a two-action confirm/cancel prompt is needed — use confirm-dialog instead." },
+    { "reason": "An urgent blocking acknowledgement is needed — use alert-dialog instead." },
+    { "reason": "Showing side-anchored navigation or settings — use a drawer instead." },
+    {
+      "reason": "Presenting a small contextual surface anchored to a trigger — use a popover or a bottom-placed drawer instead."
+    }
+  ],
+  "related": ["confirm-dialog", "alert-dialog", "drawer", "popover"]
+}

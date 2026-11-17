@@ -184,18 +184,19 @@ describe('components.json', () => {
       expect(artifact).toBe(packageJson.name);
   });
 
-  test('repeats the doc tags of terminal.svelte, so the two cannot drift', async () => {
+  test('repeats the authored metadata of terminal.meta.json, so the two cannot drift', async () => {
     const manifest = JSON.parse(
       await Bun.file(join(packageRoot, 'components.json')).text(),
     ) as Manifest;
     const [component] = manifest.components;
-    const source = await read('terminal.svelte');
-    const tag = (name: string) =>
-      [...source.matchAll(new RegExp(`@${name} (.+)`, 'g'))].map((match) => match[1]!.trim());
-    expect([component!.purpose]).toEqual(tag('purpose'));
-    expect(component!.useWhen).toEqual(tag('useWhen'));
-    expect(component!.avoidWhen.map(({ reason }) => reason)).toEqual(tag('avoidWhen'));
-    expect(component!.related.join(', ')).toBe(tag('related')[0]!);
+    const meta = (await readJson('terminal.meta.json')) as Pick<
+      Manifest['components'][number],
+      'purpose' | 'useWhen' | 'avoidWhen' | 'related'
+    >;
+    expect(component!.purpose).toBe(meta.purpose);
+    expect(component!.useWhen).toEqual(meta.useWhen);
+    expect(component!.avoidWhen).toEqual(meta.avoidWhen);
+    expect(component!.related).toEqual(meta.related);
   });
 });
 

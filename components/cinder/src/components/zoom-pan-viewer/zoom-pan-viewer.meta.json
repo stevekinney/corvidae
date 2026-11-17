@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schemas/component-meta.schema.json",
+  "category": "data-display",
+  "status": "beta",
+  "purpose": "Interactive viewport for zooming and panning images, diagrams, and rendered Mermaid content.",
+  "tags": ["zoom-pan-viewer"],
+  "useWhen": ["Viewing large images or SVG diagrams that need pointer and keyboard navigation."],
+  "avoidWhen": [
+    { "reason": "Showing ordinary responsive media that does not need a viewport transform." }
+  ],
+  "related": ["image", "button"]
+}
