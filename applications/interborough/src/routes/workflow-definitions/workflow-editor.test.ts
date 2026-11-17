@@ -974,7 +974,7 @@ describe('the step builder in the editor', () => {
     const keep = [...dialog.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === DISCARD.keep,
     );
-    await waitFor(() => expect(document.activeElement).toBe(keep ?? null));
+    await waitFor(() => expect(document.activeElement === keep).toBe(true));
     await fireEvent.click(keep as HTMLElement);
     expect(router.pathname).toBe('/workflows/digest/edit');
     expect(field(container, 'workflow-builder-title').value).toBe('Changed');
