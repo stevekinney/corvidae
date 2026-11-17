@@ -13,7 +13,7 @@ const schema = {
     variant: {
       enum: ['stepper', 'checklist', 'status'],
       description:
-        "Which list the steps render as: `'stepper'` is the ordered wizard indicator, `'checklist'` is\na card of rows that each carry an action, and `'status'` is a list of progress by step.",
+        "Which list the steps render as: `'stepper'` is the ordered wizard indicator, `'checklist'` is\na grouped list of rows that each carry an action, and `'status'` is a list of progress by step.",
       default: 'stepper',
     },
     orientation: {
@@ -25,7 +25,7 @@ const schema = {
     heading: {
       type: 'string',
       description:
-        "Title of the `'checklist'` card, such as \"Get started\". It sits at the start of the card's\nheader row, with the counter at the end, and names the section.",
+        'Title of the `\'checklist\'` list, such as "Get started". It sits at the start of the line above\nthe rows, with the counter at the end, and names the section.',
     },
     headingLevel: {
       enum: [1, 2, 3, 4, 5, 6],
