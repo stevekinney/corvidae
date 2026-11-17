@@ -25,7 +25,7 @@ const TURNS = [
 
 /** A read that never answers, until the page gives it up. */
 function hanging(init: RequestInit | undefined): Promise<Response> {
-  return new Promise((_, reject) => {
+  return new Promise((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () =>
       reject(new DOMException('The read was given up.', 'AbortError')),
     );
