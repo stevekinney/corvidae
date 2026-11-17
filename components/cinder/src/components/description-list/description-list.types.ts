@@ -111,6 +111,13 @@ export type DescriptionListItem = {
    * and is left out when empty.
    */
   note?: string;
+  /**
+   * Where the row leads, such as the page of the record a value names. A row with an address ends
+   * in a trailing chevron, and the whole row is its link target; a row without one is read-only and
+   * draws no chevron, so a row that goes somewhere never looks like one that does not. The link is
+   * named for the term and, when the definition is plain text, its value.
+   */
+  href?: string;
 };
 export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class'> & {
   items: DescriptionListItem[];
@@ -124,7 +131,8 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    *   surrounding context already labels the value. NOT a general compact mode.
    * - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value
    *   beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text;
-   *   stacks below 28rem.
+   *   a row with an `href` ends in a trailing chevron; the term stacks above its value while the list
+   *   is narrower than 700px.
    * - `facts`: one row of equal columns, each a muted term above its value, between two quiet
    *   rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the
    *   container narrows.
