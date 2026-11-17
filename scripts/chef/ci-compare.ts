@@ -114,7 +114,8 @@ export function failingTests(log: string): Map<string, string[]> {
       const currentFile = fileByJob.get(job);
       // Bun sometimes omits the `(fail)` line. Do not treat a generic error in a file group as a
       // known failure: wait for its assertion-specific expected value below.
-      if (currentFile !== undefined) assertionByJob.set(job, { file: currentFile, assertion: message });
+      if (currentFile !== undefined)
+        assertionByJob.set(job, { file: currentFile, assertion: message });
       continue;
     }
     const expected = BUN_EXPECTED.exec(line);
