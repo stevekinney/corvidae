@@ -1024,7 +1024,8 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
   }
   if (next.includes(core)) {
     const pattern = new RegExp(
-      `${escapeRegExp(core)}/((?:src|scripts|documentation)(?:/[\\w.@-]+)*)`,
+      // A segment ends on a name character, so a sentence's full stop is not part of the path.
+      `${escapeRegExp(core)}/((?:src|scripts|documentation)(?:/[\\w.@-]*[\\w@-])*)`,
       'g',
     );
     next = next.replace(pattern, (whole, written: string) => {

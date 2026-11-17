@@ -245,6 +245,7 @@ const TREE: Record<string, string> = {
     "const single = join(cinderRoot, 'src/tokens/runtime/index.ts');",
     "const own = join(cinderRoot, 'src', 'styles', 'components.css');",
     'const inTokens = /\\/components\\/core\\/src\\/tokens\\//;',
+    '// The token corpus under components/core/src/tokens/.',
     '',
   ].join('\n'),
 };
@@ -432,6 +433,7 @@ describe('extract-families', () => {
         "const single = join(cinderRoot, '../tokens/src/tokens/runtime/index.ts');",
         "const own = join(cinderRoot, 'src', 'styles', 'components.css');",
         'const inTokens = /\\/components\\/tokens\\/src\\/tokens\\//;',
+        '// The token corpus under components/tokens/src/tokens/.',
       ].join('\n'),
     );
     const coreAfterTokens = JSON.parse(read(root, `${CORE}/package.json`)) as {
