@@ -97,7 +97,7 @@ describe('Chat — approvals waiting together', () => {
 
     const groups = container.querySelectorAll('.cinder-approval-group');
     expect(groups).toHaveLength(1);
-    const group = getByRole(container, 'region', { name: '2 approvals waiting' });
+    const group = getByRole(container, 'group', { name: '2 approvals waiting' });
     expect(group).toBe(groups[0] as HTMLElement);
     const cards = Array.from(group.querySelectorAll<HTMLElement>('.cinder-approval-card'));
     expect(cards.map((card) => card.getAttribute('data-cinder-layout'))).toEqual(['row', 'row']);
@@ -115,7 +115,7 @@ describe('Chat — approvals waiting together', () => {
     });
     await tick();
 
-    expect(getByRole(container, 'region', { name: '3 Freigaben warten' })).not.toBeNull();
+    expect(getByRole(container, 'group', { name: '3 Freigaben warten' })).not.toBeNull();
   });
 
   test('one waiting approval draws no group: it is the decision surface on its own', async () => {

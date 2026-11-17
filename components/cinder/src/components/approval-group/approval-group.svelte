@@ -33,12 +33,13 @@
 
 <!--
   One surface, one border: the heading, then each row one inset separator below the last. The rows
-  are the host's (an ApprovalCard each), so the group names itself by its heading and adds no
-  landmark of its own.
+  are the host's (an ApprovalCard each), so the group is a named group, not a landmark: two batches
+  under the same heading do not make two regions of the same name.
 -->
-<section
+<div
   {...rest}
   class={classNames('cinder-approval-group', customClassName)}
+  role="group"
   aria-labelledby={headingId}
 >
   <svelte:element this={`h${headingLevel}`} id={headingId} class="cinder-approval-group__heading">
@@ -47,4 +48,4 @@
   <div class="cinder-approval-group__rows">
     {@render children()}
   </div>
-</section>
+</div>

@@ -30,7 +30,7 @@ Not applicable; the group is not focusable. Focus moves through the rows' own co
 
 ### Assistive-technology announcements
 
-The group is a `section` named by its heading through `aria-labelledby`, so it reads as the region "2 approvals waiting". The heading renders at `headingLevel` (default `3`) to fit the page's outline. Nothing in the group is a live region; each row announces its own state as an ApprovalCard does.
+The group is a `div` with `role="group"` named by its heading through `aria-labelledby`, so it reads as the group "2 approvals waiting" and adds no landmark: two batches under the same heading never make two regions of one name. The heading renders at `headingLevel` (default `3`) to fit the page's outline. Nothing in the group is a live region; each row announces its own state as an ApprovalCard does.
 
 ## Forced colors
 

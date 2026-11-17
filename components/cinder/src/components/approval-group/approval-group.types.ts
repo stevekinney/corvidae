@@ -2,7 +2,7 @@ import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
 /** Props for the ApprovalGroup component. */
-export type ApprovalGroupProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
+export type ApprovalGroupProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Custom class merged with `.cinder-approval-group`. */
   class?: string;
   /**

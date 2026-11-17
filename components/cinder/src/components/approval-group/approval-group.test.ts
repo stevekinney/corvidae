@@ -28,14 +28,15 @@ function rows(...labels: string[]) {
 }
 
 describe('ApprovalGroup', () => {
-  test('is one section named by its heading, with the rows under the heading', () => {
+  test('is one group named by its heading, not a landmark, with the rows under the heading', () => {
     const { container, getByRole } = render(ApprovalGroup, {
       heading: '2 approvals waiting',
       children: rows('Refund order 4471', 'Delete draft 12'),
     });
 
-    const group = getByRole('region', { name: '2 approvals waiting' });
+    const group = getByRole('group', { name: '2 approvals waiting' });
     expect(group.classList.contains('cinder-approval-group')).toBe(true);
+    expect(container.querySelector('section')).toBeNull();
     const heading = group.querySelector('h3');
     expect(heading?.textContent?.trim()).toBe('2 approvals waiting');
     expect(heading?.nextElementSibling?.classList.contains('cinder-approval-group__rows')).toBe(
