@@ -86,8 +86,9 @@ describe('StackedListItem selected row', () => {
     expect(row?.hasAttribute('data-cinder-selected')).toBe(true);
     expect(getByRole('link').getAttribute('aria-current')).toBe('true');
     expect(row?.hasAttribute('aria-current')).toBe(false);
+    // The one selected fill the sidebar's current page shares (`--cinder-selected-background`).
     expect(stylesheet).toMatch(
-      /--selected\s*\{[^}]*background:\s*color-mix\(in oklch, var\(--cinder-accent-solid\)/,
+      /--selected\s*\{[^}]*background:\s*var\(--cinder-selected-background\);/,
     );
   });
 

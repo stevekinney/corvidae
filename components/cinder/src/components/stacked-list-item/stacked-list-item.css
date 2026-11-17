@@ -671,13 +671,20 @@
  * The selected row (the one open in the detail beside the list) and the glyph tile
  * ---------------------------------------- */
 
+  /* The selected row takes `--cinder-selected-background`, the one selected fill the sidebar's
+   * current page shares, so a list and the navigation beside it read as one recipe. Hovering it
+   * deepens the same tint a step toward the accent. */
   .cinder-stacked-list-item.cinder-stacked-list-item--selected {
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+    background: var(--cinder-selected-background);
   }
 
   @media (hover: hover) {
     .cinder-stacked-list-item--linked.cinder-stacked-list-item--selected:hover {
-      background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+      background: color-mix(
+        in oklch,
+        var(--cinder-selected-background),
+        var(--cinder-accent-solid) 5%
+      );
     }
   }
 
