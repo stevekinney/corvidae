@@ -120,15 +120,6 @@ const CAPTURE_STATE: Readonly<Record<string, string>> = {
   '/internal-workflows': 'no-internal-types',
 };
 
-/**
- * The state a capture is named for when it is not the frame's own: this host's engine lists none of
- * the Bureau's own types, so its Internal workflows page is empty here; this capture takes its own
- * state name instead of overwriting the showcase capture's files of the same route.
- */
-const CAPTURE_STATE: Readonly<Record<string, string>> = {
-  '/internal-workflows': 'no-internal-types',
-};
-
 /** Text a route prints only once its seeded content has loaded. */
 const MARKERS: Readonly<Record<string, RegExp>> = {
   // The list prints the seeded chats' titles, among them the memory thread's 300-character one.
