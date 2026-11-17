@@ -274,11 +274,11 @@ describe('a plugin’s page', () => {
     const from = view.getByRole('link', { name: 'Acme reports' });
     expect(from.getAttribute('href')).toBe('/settings/plugins?plugin=acme-reports');
     expect(view.container.textContent).toContain('From Acme reports');
-    // The header adds no padding of its own, so at 320 pixels it and the panel's gap fit in the
-    // 96 pixels the design allows (PL8-15, `tests/e2e/plugin-page.spec.ts`).
+    // The header adds no padding of its own (it is not inset), so at 320 pixels it and the panel's
+    // gap fit in the 96 pixels the design allows (PL8-15, `tests/e2e/plugin-page.spec.ts`).
     expect(
-      view.container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-flush'),
-    ).toBe('true');
+      view.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-inset'),
+    ).toBe(false);
     expect(view.container.textContent).not.toContain('acme-reports');
     expect(view.container.textContent).not.toContain('reviews/queue');
     // The host serves the page once and the app does not ask again.

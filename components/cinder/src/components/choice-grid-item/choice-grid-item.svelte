@@ -75,7 +75,8 @@
   // There is no separate `size` prop on ChoiceGridItem — the grid is the
   // single source of truth so every item in a grid sizes consistently.
   const size = $derived(context.size);
-  const isCard = $derived(context.variant === 'card');
+  // A row draws a card's content (the indicator, the title and its description) with no box.
+  const isCard = $derived(context.variant === 'card' || context.variant === 'row');
   const descriptionId = $props.id();
 
   let elementRef: HTMLElement | null = $state(null);
@@ -134,7 +135,7 @@
   data-cinder-disabled={isDisabled || undefined}
   data-cinder-state={feedbackState !== 'neutral' ? feedbackState : undefined}
   data-cinder-size={isCard ? undefined : size}
-  data-cinder-variant={isCard ? 'card' : undefined}
+  data-cinder-variant={isCard ? context.variant : undefined}
   onclick={handleClick}
   onkeydown={handleKeydown}
 >

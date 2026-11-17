@@ -44,7 +44,7 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   // The list's own Revision column (WFT-117) — a truncated `rev …` id or an
   // explicit "Unpinned" badge, never a blank cell. `Table.HeaderCell` order
   // is Status/Workflow ID (a `<th scope="row">` — role "rowheader", not
-  // "cell")/Type/Revision/Tags/Created/Updated, so among plain `<td>` cells
+  // "cell")/Type (with its tags)/Revision/Updated, so among plain `<td>` cells
   // (role "cell") Revision is index 2 (Status=0, Type=1).
   const revisionCell = orderRow.getByRole('cell').nth(2);
   await expect(revisionCell).not.toBeEmpty();

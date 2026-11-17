@@ -930,10 +930,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'The order was charged twice, and the refund policy allows a full refund in that case.',
       ),
     );
+    const sourceSet = param<'contract' | 'single' | undefined>(stressCase, 'sourceSet', undefined);
     setup.sources[0] =
-      param<'contract' | undefined>(stressCase, 'sourceSet', undefined) === 'contract'
+      sourceSet === 'contract'
         ? SOURCE_LIST_CONTRACT_SOURCES
-        : SAMPLE_SOURCES;
+        : sourceSet === 'single'
+          ? SAMPLE_SOURCES.slice(0, 1)
+          : SAMPLE_SOURCES;
     setup.withdrawable = param(stressCase, 'withdrawable', false);
     return setup;
   },

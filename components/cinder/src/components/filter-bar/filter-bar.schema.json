@@ -35,7 +35,7 @@
       "description": "Which end of the row the search field sits at. A bar with segments or chips puts it at the\n`end`; a bar of selects alone puts it at the `start`."
     },
     "layout": {
-      "enum": ["auto", "wide", "medium", "narrow"],
+      "enum": ["auto", "wide", "search-folded", "medium", "narrow"],
       "description": "Force a layout. By default the bar follows the viewport (phone under 640px, tablet under\n1024px) and narrows further when its own width cannot hold the wider form."
     },
     "disabled": {

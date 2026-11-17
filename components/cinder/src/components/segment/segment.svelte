@@ -105,6 +105,14 @@
 </script>
 
 {#snippet content()}
+  {#if context.stacked && role === 'radio'}
+    <!-- A stacked option is a radio row: the radio Radio draws, on a span because the option itself
+       is the button. It is decoration; the option's aria-checked carries the state. -->
+    <span class="cinder-radio-row__control" aria-hidden="true">
+      <span class="cinder-radio" data-cinder-checked={isSelected ? '' : undefined}></span>
+      <span class="cinder-radio-row__indicator"></span>
+    </span>
+  {/if}
   {#if leading}
     <span class="cinder-segmented-control-option-icon" aria-hidden="true">
       {@render leading()}

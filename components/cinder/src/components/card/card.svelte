@@ -26,11 +26,13 @@
 
 <script lang="ts">
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
+  import { untrack } from 'svelte';
   import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
   import type { CardProps } from './card.types.ts';
   import CompactActions from '../../_internal/compact-actions.svelte';
   import { composeDescribedBy } from '../../_internal/field-control.ts';
+  import { setFramedSurfaceContext } from '../../_internal/framed-surface-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
   const generatedId = $props.id();
@@ -61,6 +63,10 @@
     onclick,
     ...rest
   }: CardProps = $props();
+
+  // A Table inside the card draws no frame of its own: the card is the frame. A `plain` card has no
+  // frame to share, so its table keeps its own. Read once, as context is set at construction.
+  if (untrack(() => variant) !== 'plain') setFramedSurfaceContext();
 
   // Coerce + clamp at runtime: a consumer can pass 0, 7, NaN, or a non-numeric
   // value (JS callers, schema-driven usage). Building `h${headingLevel}` directly

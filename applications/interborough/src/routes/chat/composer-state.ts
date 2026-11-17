@@ -3,14 +3,17 @@
  * when sending is not possible, or else the line under it. Both are `@lostgradient/chat`'s
  * `composerStatus`; this turns what the page knows into the one that applies.
  *
- * A blocked row says the first of these that holds, because each makes the ones after it moot:
- * the server is unreachable (Retry lives in the banner, so the row has no action), the host is
- * restarting after a plugin was enabled, the chat is archived (Chat's neutral Archived bar, with New
- * chat and the primary Unarchive), the chat's agent comes from a disabled plugin, the host
- * stopped the chat when it restarted, a chat started from Workflows has no agent that can create
- * workflows, or no provider is connected for an agent that needs a model.
- * Otherwise the line under the box is, in this order, the reconnect count, a queued follow-up, a
- * note about a setting that was just changed, and the steering line while the chat is working.
+ * The server being unreachable comes first, as Chat's offline warning drawer above the box (COR-2284
+ * C5): the draft stays in the box and Send is off until the server answers (Retry lives in the
+ * banner, so the drawer has no action). Otherwise a blocked row says the first of these that holds,
+ * because each makes the ones after it moot: the host is restarting after a plugin was enabled, the
+ * chat is archived (Chat's neutral Archived bar, with New chat and the primary Unarchive), the
+ * chat's agent comes from a disabled plugin, the host stopped the chat when it restarted, a chat
+ * started from Workflows has no agent that can create workflows, or no provider is connected for an
+ * agent that needs a model.
+ * Otherwise the composer says, in this order, the reconnect count, a draft put back from the draft
+ * store with when it was written (COR-2284 C7), a queued follow-up, a note about a setting that was
+ * just changed, and, while the chat is working, that a message sent now waits for the run to finish.
  */
 import type { ChatComposerStatus } from '@lostgradient/chat';
 
@@ -32,6 +35,14 @@ export interface ArchivedChat {
   readonly when: string;
   /** Unarchives the chat, so the composer comes back. */
   readonly unarchive: () => void;
+}
+
+/** A draft the page put back in the composer from the draft store (`chat-drafts.ts`). */
+export interface RestoredDraft {
+  /** When the draft was written, in words, such as `yesterday at 4:12 PM`. */
+  readonly when: string;
+  /** Forgets the draft once Discard draft has emptied the composer. */
+  readonly discard: () => void;
 }
 
 /** What the page knows that decides the composer's status. */
@@ -66,11 +77,16 @@ export interface ComposerFacts {
   readonly newChatHref: string;
   /** The failed reads in a row while the page retries the stream; `0` when it is up. */
   readonly reconnectAttempt: number;
+  /** The draft put back in the composer, until it is sent or discarded. */
+  readonly restoredDraft?: RestoredDraft | undefined;
   /** Follow-ups the Bureau accepted that the run has not yet taken. */
   readonly queuedFollowUps: number;
   /** When a setting the person just changed takes effect, in words. */
   readonly note?: string | undefined;
-  /** The chat is working, so a message sent now steers the run. */
+  /**
+   * The chat is working, so a message sent now waits in Chat's Up next queue and goes when the run
+   * finishes.
+   */
   readonly working: boolean;
 }
 
@@ -78,7 +94,7 @@ const COPY = CHAT_COPY.composer;
 
 /** The status the composer shows for `facts`, or `undefined` for the plain composer with its hint. */
 export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | undefined {
-  if (facts.unreachable) return { kind: 'blocked', reason: COPY.unreachable };
+  if (facts.unreachable) return { kind: 'offline' };
   if (facts.restarting) return { kind: 'blocked', reason: COPY.restarting };
   if (facts.archived !== undefined) {
     return {
@@ -120,8 +136,15 @@ export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | und
     };
   }
   if (facts.reconnectAttempt > 0) return { kind: 'reconnecting', attempt: facts.reconnectAttempt };
+  if (facts.restoredDraft !== undefined) {
+    return {
+      kind: 'draft-restored',
+      when: facts.restoredDraft.when,
+      ondiscard: facts.restoredDraft.discard,
+    };
+  }
   if (facts.queuedFollowUps > 0) return { kind: 'queued', count: facts.queuedFollowUps };
   if (facts.note !== undefined) return { kind: 'note', text: facts.note };
-  if (facts.working) return { kind: 'steering' };
+  if (facts.working) return { kind: 'note', text: COPY.working };
   return undefined;
 }

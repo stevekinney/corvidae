@@ -366,6 +366,24 @@
     margin-block-start: 0.125rem;
   }
 
+  /* Failed is said in words, not only by the red cross, at the weight of the row's name. */
+  .cinder-tool-call-rail__failure-status {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The rest of the error wraps under the danger line in muted text, at the text's start. */
+  .cinder-tool-call-rail__diagnostic {
+    padding-inline-start: calc(0.875rem + var(--cinder-space-1-5));
+    color: var(--cinder-text-subtle);
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+  }
+
+  .cinder-tool-call-rail__summary-step {
+    color: var(--cinder-text-subtle);
+    font-weight: var(--cinder-font-normal);
+  }
+
   /* The links sit on their own line beneath the danger text, lined up with the text, not the glyph. */
   .cinder-tool-call-rail__links {
     display: inline-flex;
@@ -487,11 +505,12 @@
  * connector. Line one is the name and the duration; line two is the muted key input and result.
  * ---------------------------------------- */
 
+  /* A failed call keeps its failure line on a phone too: Failed, what went wrong, the diagnostic,
+     and Copy error and Retry are how a person recovers the step (COR-2283 R1 and R7). */
   @container cinder-tool-call-rail (max-width: 28rem) {
     .cinder-tool-call-rail .cinder-timeline-item__event::before,
     .cinder-tool-call-rail__summary-duration,
-    .cinder-tool-call-rail__summary-separator[data-cinder-duration],
-    .cinder-tool-call-rail__failure {
+    .cinder-tool-call-rail__summary-separator[data-cinder-duration] {
       display: none;
     }
 

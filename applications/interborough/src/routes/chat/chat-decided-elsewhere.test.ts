@@ -224,7 +224,7 @@ describe('an approval decided on another page', () => {
 });
 
 describe('the run a decision on another page continues the chat with (design row 18j)', () => {
-  test('is joined once it starts: Running, Stop in Send’s place, and a message now steers the run', async () => {
+  test('is joined once it starts: Running, Stop in Send’s place, and a message sent now waits for the run', async () => {
     const thread = decidedThread(APPROVED, { refunded: 4200 });
     let decided = false;
     let continued = false;
@@ -306,7 +306,7 @@ describe('the run a decision on another page continues the chat with (design row
     expect(container.querySelector('[role="img"][aria-label="Waiting on you"]')).toBeNull();
     await until(() =>
       expect(container.querySelector('.chat-input-status')?.textContent?.trim()).toBe(
-        'A message now steers the run.',
+        'A message sent now waits until this run finishes.',
       ),
     );
     // The decision is still said once, and its row stays collapsed.

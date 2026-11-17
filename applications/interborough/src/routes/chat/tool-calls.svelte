@@ -40,6 +40,11 @@
     onSelect?: ((callId: string) => void) | undefined;
     /** The call whose panel is open: its row is tinted. Only with `onSelect`. */
     selectedId?: string | undefined;
+    /**
+     * Runs the step again: fired with a failed call's id when the person chooses Retry this step
+     * under it. The link shows only when this is set, so the page sets it where a retry can run.
+     */
+    onRetryStep?: ((callId: string) => void) | undefined;
   }
 
   let {
@@ -53,7 +58,18 @@
     opensPanel,
     onSelect,
     selectedId,
+    onRetryStep,
   }: ToolCallsProps = $props();
+
+  /** A failed step's Copy error puts what went wrong and its diagnostic on the clipboard. */
+  async function copyError(_id: string, text: string): Promise<void> {
+    await navigator.clipboard.writeText(text);
+  }
+  const railLabels = {
+    retry: CHAT_COPY.tools.retryStep,
+    copyError: CHAT_COPY.tools.copyError,
+    copied: CHAT_COPY.tools.copied,
+  };
 
   let openDetails = $state<ReadonlySet<string>>(new Set());
   const inline = $derived(onSelect === undefined);
@@ -114,8 +130,13 @@
     {duration}
     {endLabel}
     label={CHAT_COPY.tools.railLabel}
+    labels={railLabels}
     {selectedId}
     onSelect={onSelect ?? toggleDetails}
+    onCopyError={copyError}
+    onRetry={onRetryStep === undefined
+      ? undefined
+      : (id) => onRetryStep(byId.get(id)?.callId ?? id)}
   >
     {#snippet children(call)}
       {@const entry = byId.get(call.id)}

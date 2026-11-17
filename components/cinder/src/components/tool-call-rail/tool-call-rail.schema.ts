@@ -65,6 +65,11 @@ const schema = {
             description:
               'For a `failed` call: the consequence in one danger-text line under the row ("Mail server didn\'t\nreply within 10s. The refund notice for 4471 wasn\'t sent."). The row shows no filled error\nblock.',
           },
+          diagnostic: {
+            type: 'string',
+            description:
+              "For a `failed` call with a `failure`: the rest of the error (its code, the tool's own words),\nin muted text that wraps under the failure line. Copy error puts the failure and this together.",
+          },
           nested: {
             type: 'boolean',
             description:
@@ -126,6 +131,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           "Content under a call's row: the approval a `waiting` call is waiting on. Drawn for the calls that set `nested`.",
+      },
+      {
+        name: 'onCopyError',
+        reason: 'function-or-snippet',
+        description:
+          'Fired when the person copies a failed call\'s error, with the call\'s id and the text to copy\n(its `failure` and `diagnostic`). The link shows on a failed call with a `failure` only when\nthis is set, and reads "Copied" once the returned promise settles without an error.',
       },
       {
         name: 'onCopyInput',

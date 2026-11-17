@@ -1,6 +1,6 @@
 /**
  * A question that has choices, docked in place of the composer (COR-2278, row P3): the Needs you
- * warning, the fieldset named Question, radio cards with the keys 1, 2 and 3, Something
+ * warning, the fieldset named Question, flat radio rows with the keys 1, 2 and 3, Something
  * else with its field, a quiet Reply in chat and a primary Answer, progress through
  * several questions, and the answer receipt that stays in the transcript.
  */
@@ -209,12 +209,24 @@ describe('a docked question', () => {
     expect(container.querySelector('[data-cinder-tool-input]')).toBeNull();
   });
 
-  test('draws a radio card per choice with its description and the key that chooses it', async () => {
+  test('draws a flat radio row per choice, with no card of its own, its description and the key that chooses it (COR-2402)', async () => {
     const { container } = mountDocked('dock-radios', ENVIRONMENT);
     await settle();
 
     const radios = radiosOf(container);
     expect(radios).toHaveLength(3);
+    // The dock is the one box: its choices are rows on its surface, not bordered cards.
+    expect(radios.map((radio) => radio.getAttribute('data-cinder-variant'))).toEqual([
+      'row',
+      'row',
+      'row',
+    ]);
+    const dockSource = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+    const actions = /\.chat-question-dock-actions \{([^}]*)\}/u.exec(dockSource)?.[1] ?? '';
+    expect(actions).not.toContain('border-block-start');
+    expect(actions).not.toContain('background');
     expect(
       radios.map((radio) => radio.querySelector('.chat-question-dock-choice-label')?.textContent),
     ).toEqual(['Staging', 'Production', 'Canary']);

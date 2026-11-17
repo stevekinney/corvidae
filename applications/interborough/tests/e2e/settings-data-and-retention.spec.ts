@@ -58,9 +58,12 @@ test.describe('Settings › Data and retention', () => {
       'true',
     );
     await expect(audit.getByRole('spinbutton')).toHaveValue('90');
-    // The days are readable: the field is wide enough to show them beside their unit and stepper.
-    const daysBox = await audit.getByRole('spinbutton').boundingBox();
-    expect(daysBox?.width ?? 0).toBeGreaterThan(40);
+    // The days are readable: the text area is sized to its digits (the unit follows them), so it is
+    // narrow by design, and what matters is that it clips none of the value.
+    const days = await audit
+      .getByRole('spinbutton')
+      .evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+    expect(days.scroll).toBeLessThanOrEqual(days.client + 1);
     // Memory deletes while unset (the memory policy's 90 days), so it offers Delete after alone and
     // shows the window in force (decisions, B11 after round 3).
     const memory = row(page, 'retention.memory');

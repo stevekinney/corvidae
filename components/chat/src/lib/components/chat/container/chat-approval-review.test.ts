@@ -23,6 +23,7 @@ import {
   approvalRowVisible,
   approvalTallerThanTranscript,
   approvalVisibleBox,
+  CHAT_APPROVAL_FOR_ATTRIBUTE,
   findPendingApprovalMessageId,
   focusPendingApproval,
   nextPendingApprovalDeadline,
@@ -262,6 +263,27 @@ describe('pendingApprovalCard', () => {
     expect(pendingApprovalCard(root, 'call-row')?.id).toBe('host-card');
     expect(pendingApprovalCard(document.createElement('div'), 'call-row')).toBeNull();
     expect(pendingApprovalCard(null, 'call-row')).toBeNull();
+  });
+
+  test('finds a host-rendered card by the block the host marks for the waiting message, ahead of an earlier pending card (COR-2440)', () => {
+    expect(CHAT_APPROVAL_FOR_ATTRIBUTE).toBe('data-chat-approval-for');
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div data-chat-approval-for="older-result">
+        <div class="cinder-approval-card" data-cinder-state="pending" id="older-card"></div>
+      </div>
+      <article data-message-id="reply"></article>
+      <div data-chat-approval-for="result-1">
+        <div class="cinder-approval-card" data-cinder-state="pending" id="host-card"></div>
+      </div>
+      <div class="cinder-approval-card" data-cinder-state="pending" data-chat-approval-for="result-2" id="marked-card"></div>
+    `;
+
+    expect(pendingApprovalCard(root, 'result-1')?.id).toBe('host-card');
+    // The marked element may be the card itself.
+    expect(pendingApprovalCard(root, 'result-2')?.id).toBe('marked-card');
+    // A message nothing marks falls back to the first pending card, as before.
+    expect(pendingApprovalCard(root, 'unmarked')?.id).toBe('older-card');
   });
 });
 

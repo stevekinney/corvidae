@@ -1,13 +1,12 @@
 /**
- * While the server does not answer, the chat's composer is replaced by the shared blocked row that
- * says sending is off (design row 17b), so nothing is said beside Send, and what was typed is kept
- * for when the server answers again.
+ * While the server does not answer, Chat's offline warning drawer sits above the composer (COR-2284
+ * C5): the box keeps what was typed, Send is off and names the drawer as the reason, and both come
+ * back as they were when the server answers again.
  */
 import { cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { mount, restoreBureau, serve, TURNS } from './chat-more-menu.test-support.ts';
 
 const monitors: ConnectionMonitor[] = [];
@@ -37,32 +36,41 @@ function monitorThatIs(unreachable: boolean) {
 }
 
 describe('the chat composer while the server does not answer', () => {
-  test('swaps the text box for the blocked row, keeps the typed text, and brings both back', async () => {
+  test('shows the offline drawer above the box, keeps the typed text with Send off, and clears when it is back', async () => {
     const monitor = monitorThatIs(false);
     const view = mountWith(monitor);
     await view.findByText('Second answer');
     const composer = () => view.container.querySelector<HTMLTextAreaElement>('textarea');
+    const drawer = () =>
+      view.container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]');
+    const send = () => view.container.querySelector<HTMLButtonElement>('[data-chat-send]');
     await fireEvent.input(composer()!, { target: { value: 'What did I approve yesterday?' } });
-    expect(view.container.querySelector('.chat-input-blocked')).toBeNull();
+    expect(drawer()).toBeNull();
 
     monitor.reportUnreachable();
 
-    await waitFor(() => expect(view.container.querySelector('.chat-input-blocked')).not.toBeNull());
-    expect(view.container.querySelector('.chat-input-blocked')?.textContent).toContain(
-      CHAT_COPY.composer.unreachable,
-    );
-    expect(composer()).toBeNull();
-    expect(view.container.querySelector('.chat-input-paused-reason')).toBeNull();
+    await waitFor(() => expect(drawer()).not.toBeNull());
+    expect(drawer()?.textContent).toContain('Your draft is saved here');
+    expect(view.container.querySelector('.chat-input-blocked')).toBeNull();
+    expect(composer()?.value).toBe('What did I approve yesterday?');
+    expect(send()?.disabled).toBe(true);
+    expect(send()?.getAttribute('aria-describedby')?.split(' ')).toContain(drawer()!.id);
+    // Enter sends nothing either, and the text stays in the box.
+    await fireEvent.keyDown(composer()!, { key: 'Enter' });
+    expect(composer()?.value).toBe('What did I approve yesterday?');
+    expect(view.container.textContent).not.toContain('Not sent');
 
     monitor.reportReachable();
 
-    await waitFor(() => expect(composer()).not.toBeNull());
+    await waitFor(() => expect(drawer()).toBeNull());
     expect(composer()?.value).toBe('What did I approve yesterday?');
+    expect(send()?.disabled).toBe(false);
   });
 
-  test('shows no blocked row while the server answers', async () => {
+  test('shows no offline drawer and no blocked row while the server answers', async () => {
     const view = mountWith(monitorThatIs(false));
     await view.findByText('Second answer');
+    expect(view.container.querySelector('[data-chat-composer-drawer="offline"]')).toBeNull();
     expect(view.container.querySelector('.chat-input-blocked')).toBeNull();
   });
 });

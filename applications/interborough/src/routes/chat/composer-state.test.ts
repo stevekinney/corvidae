@@ -4,6 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { composerStatusOf, type ComposerFacts } from './composer-state.ts';
 
 const QUIET: ComposerFacts = {
@@ -20,14 +21,13 @@ const QUIET: ComposerFacts = {
 
 const facts = (overrides: Partial<ComposerFacts>): ComposerFacts => ({ ...QUIET, ...overrides });
 
-describe('a blocked composer', () => {
-  test('says sending is off until the server is reachable, with no action, since Retry lives in the banner', () => {
-    expect(composerStatusOf(facts({ unreachable: true }))).toEqual({
-      kind: 'blocked',
-      reason: 'Sending is off until Interborough is reachable',
-    });
+describe('an unreachable server (COR-2284 C5)', () => {
+  test('is the offline warning drawer above the box, which keeps the draft and turns Send off, not a blocked row', () => {
+    expect(composerStatusOf(facts({ unreachable: true }))).toEqual({ kind: 'offline' });
   });
+});
 
+describe('a blocked composer', () => {
   test('says sending resumes when Interborough is back, with no action, while the host restarts', () => {
     expect(composerStatusOf(facts({ restarting: true }))).toEqual({
       kind: 'blocked',
@@ -99,9 +99,7 @@ describe('a blocked composer', () => {
       reconnectAttempt: 2,
     });
 
-    expect(composerStatusOf(everything)).toMatchObject({
-      reason: expect.stringContaining('reachable'),
-    });
+    expect(composerStatusOf(everything)).toEqual({ kind: 'offline' });
     expect(composerStatusOf({ ...everything, unreachable: false })).toMatchObject({
       reason: 'Sending resumes when Interborough is back.',
     });
@@ -163,10 +161,7 @@ describe('an archived chat (COR-2285 V5)', () => {
 
   test('gives way to an unreachable server and a restarting host, since Unarchive is a write', () => {
     const archived = { when: 'Nov 3', unarchive: () => undefined };
-    expect(composerStatusOf(facts({ archived, unreachable: true }))).toEqual({
-      kind: 'blocked',
-      reason: 'Sending is off until Interborough is reachable',
-    });
+    expect(composerStatusOf(facts({ archived, unreachable: true }))).toEqual({ kind: 'offline' });
     expect(composerStatusOf(facts({ archived, restarting: true }))).toEqual({
       kind: 'blocked',
       reason: 'Sending resumes when Interborough is back.',
@@ -179,8 +174,11 @@ describe('the line under the composer', () => {
     expect(composerStatusOf(QUIET)).toBeUndefined();
   });
 
-  test('says a message now steers the run while the chat is working', () => {
-    expect(composerStatusOf(facts({ working: true }))).toEqual({ kind: 'steering' });
+  test('says a message sent now waits for the run to finish while the chat is working, never that it steers the run', () => {
+    const status = composerStatusOf(facts({ working: true }));
+    expect(status).toEqual({ kind: 'note', text: CHAT_COPY.composer.working });
+    expect(CHAT_COPY.composer.working).toBe('A message sent now waits until this run finishes.');
+    expect(status?.kind).not.toBe('steering');
   });
 
   test('counts the reconnect attempts while the stream is being read again', () => {
@@ -196,9 +194,39 @@ describe('the line under the composer', () => {
     ).toEqual({ kind: 'queued', count: 1 });
   });
 
-  test('says when a changed setting applies, ahead of steering', () => {
+  test('says when a changed setting applies, ahead of the working line', () => {
     expect(
       composerStatusOf(facts({ working: true, note: 'Effort High applies from the next step.' })),
     ).toEqual({ kind: 'note', text: 'Effort High applies from the next step.' });
+  });
+});
+
+describe('a draft put back from the draft store (COR-2284 C7)', () => {
+  test('is the draft-restored drawer with when the draft was written, and Discard draft forgets it', () => {
+    let discarded = 0;
+    const status = composerStatusOf(
+      facts({ restoredDraft: { when: 'yesterday at 4:12 PM', discard: () => (discarded += 1) } }),
+    );
+
+    expect(status).toMatchObject({ kind: 'draft-restored', when: 'yesterday at 4:12 PM' });
+    if (status?.kind !== 'draft-restored') throw new Error('No draft-restored drawer.');
+    status.ondiscard?.();
+    expect(discarded).toBe(1);
+  });
+
+  test('gives way to the offline drawer, a blocked row and the reconnect count, and outranks the lines under the box', () => {
+    const restoredDraft = { when: '10:42 AM', discard: () => undefined };
+    expect(composerStatusOf(facts({ restoredDraft, unreachable: true }))).toEqual({
+      kind: 'offline',
+    });
+    expect(composerStatusOf(facts({ restoredDraft, ended: true }))).toMatchObject({
+      kind: 'blocked',
+    });
+    expect(composerStatusOf(facts({ restoredDraft, reconnectAttempt: 2 }))).toMatchObject({
+      kind: 'reconnecting',
+    });
+    expect(
+      composerStatusOf(facts({ restoredDraft, queuedFollowUps: 1, note: 'n', working: true })),
+    ).toMatchObject({ kind: 'draft-restored' });
   });
 });

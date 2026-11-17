@@ -191,6 +191,12 @@ export const CHAT_COPY = {
     expiredBeforeDecision: 'Expired before a decision was made.',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished, no reply',
+    /** A failed step's machine code, at the end of its diagnostic. */
+    errorCode: (code: string): string => `Code: ${code}`,
+    /** The links under a failed step (COR-2283 R7). */
+    retryStep: 'Retry this step',
+    copyError: 'Copy error',
+    copied: 'Copied',
     /**
      * How a decided approval is worded on the rail and under the call: "Approved by you 10:33 AM",
      * and, for one decided on a page that is not this one, "Approved by you in Reviews 10:46 AM".
@@ -503,7 +509,11 @@ export const CHAT_COPY = {
   composer: {
     /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
     placeholder: (agent: string): string => `Message ${agent}…`,
-    unreachable: 'Sending is off until Interborough is reachable',
+    /**
+     * The line under the composer while the chat works: a message sent now waits in Up next and
+     * goes when the run finishes (COR-2284), so it does not steer the run.
+     */
+    working: 'A message sent now waits until this run finishes.',
     restarting: 'Sending resumes when Interborough is back.',
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,

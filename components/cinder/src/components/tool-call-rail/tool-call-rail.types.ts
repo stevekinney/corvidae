@@ -61,6 +61,11 @@ export type ToolCallRailCall = {
    */
   failure?: string | undefined;
   /**
+   * For a `failed` call with a `failure`: the rest of the error (its code, the tool's own words),
+   * in muted text that wraps under the failure line. Copy error puts the failure and this together.
+   */
+  diagnostic?: string | undefined;
+  /**
    * Whether the `children` snippet draws content under this call's row, such as the approval that
    * a `waiting` call is waiting on, or the approved one under a call that has been decided.
    */
@@ -106,6 +111,17 @@ export type ToolCallRailLabels = {
   retry?: string | undefined;
   /** The link on a failed call that copies its input. Defaults to "Copy input". */
   copyInput?: string | undefined;
+  /** The link on a failed call that copies its error. Defaults to "Copy error". */
+  copyError?: string | undefined;
+  /** What Copy error says once it has copied. Defaults to "Copied". */
+  copied?: string | undefined;
+  /** The visible status that opens a failed call's failure line. Defaults to "Failed". */
+  failedStatus?: string | undefined;
+  /**
+   * Where the call under way falls among the calls so far, in the summary of a running turn.
+   * Defaults to "Step 2 of 3".
+   */
+  stepPosition?: ((position: number, total: number) => string) | undefined;
 };
 
 /** Props for the ToolCallRail component. */
@@ -140,6 +156,12 @@ export type ToolCallRailProps = Omit<
   onRetry?: ((id: string) => void) | undefined;
   /** Fired when the person copies a failed call's input. The link shows only when this is set. */
   onCopyInput?: ((id: string) => void) | undefined;
+  /**
+   * Fired when the person copies a failed call's error, with the call's id and the text to copy
+   * (its `failure` and `diagnostic`). The link shows on a failed call with a `failure` only when
+   * this is set, and reads "Copied" once the returned promise settles without an error.
+   */
+  onCopyError?: ((id: string, text: string) => void | Promise<void>) | undefined;
   /**
    * The run's end state, on its own line after the last row, in neutral text with a check glyph
    * ("Run finished, no reply"). Set it when the turn ends on a tool call, so it does not look hung.

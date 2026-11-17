@@ -16,7 +16,7 @@ import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { installFakePluginHost } from '../settings/plugins/plugins-host.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { AGENT, bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -143,7 +143,7 @@ describe('the live composer', () => {
     expect(row(container)).toBeNull();
   });
 
-  test('keeps Stop in Send’s place while the chat works, and says a message now steers the run', async () => {
+  test('keeps Stop in Send’s place while the chat works, and says a message sent now waits for the run', async () => {
     serve({}, { running: true });
     const { container } = mount();
 
@@ -151,8 +151,104 @@ describe('the live composer', () => {
       expect(container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull(),
     );
     expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
-    await waitFor(() => expect(status(container)).toBe('A message now steers the run.'));
+    await waitFor(() => expect(status(container)).toBe(COPY.working));
     expect(container.querySelector('.chat-input-hint')).toBeNull();
+  });
+});
+
+describe('the draft store (COR-2284 C7)', () => {
+  const WORKSPACE = { workspaceId: 'workspace-1', actorId: 'actor-1' };
+  const KEY = `interborough:identity:${JSON.stringify(['workspace-1', 'actor-1'])}:chat-draft:session-1`;
+  afterEach(() => window.localStorage.removeItem(KEY));
+
+  function mountAs() {
+    return render(QueryPage, {
+      props: {
+        page: ChatConversation,
+        pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+        client: createQueryClient(),
+        principal: { workspace: WORKSPACE, scopes: [] },
+      },
+    } as never);
+  }
+
+  test('keeps what is typed, puts it back with the draft-restored drawer, and Discard draft forgets it', async () => {
+    serve();
+    const first = mountAs();
+    await waitFor(() => expect(composer(first.container)).not.toBeNull());
+    await fireEvent.input(composer(first.container)!, {
+      target: { value: 'Refund order 4471 in full' },
+    });
+    expect(JSON.parse(window.localStorage.getItem(KEY) ?? '{}')).toMatchObject({
+      text: 'Refund order 4471 in full',
+    });
+    first.unmount();
+
+    const again = mountAs();
+    const drawer = () =>
+      again.container.querySelector<HTMLElement>('[data-chat-composer-drawer="draft-restored"]');
+    await waitFor(() => expect(drawer()).not.toBeNull());
+    expect(drawer()?.textContent).toContain('Restored your unsent draft from');
+    await waitFor(() => expect(composer(again.container)?.value).toBe('Refund order 4471 in full'));
+
+    const discard = [...drawer()!.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Discard draft',
+    )!;
+    await fireEvent.click(discard);
+
+    await waitFor(() => expect(drawer()).toBeNull());
+    expect(window.localStorage.getItem(KEY)).toBe('');
+  });
+
+  test('forgets a draft once it is sent, so the chat opens with no draft-restored drawer', async () => {
+    // A run that starts and answers at once, so the message is sent.
+    const runs: string[] = [];
+    const served = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [RUNNER, AGENT] }),
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
+      },
+      (url, init) => {
+        if (url.endsWith('/host/providers')) return provider(true);
+        if (!url.includes('/agents/')) return thread(false)(url);
+        runs.push(url);
+        const input: { threadId: string; runId: string } = JSON.parse(
+          typeof init?.body === 'string' ? init.body : '{}',
+        );
+        const frames = [
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ];
+        return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(''), {
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+    const first = mountAs();
+    const box = await loadedComposer(first.container);
+    await fireEvent.input(box, { target: { value: 'Send this one' } });
+    expect(window.localStorage.getItem(KEY)).not.toBe('');
+
+    await fireEvent.keyDown(box, { key: 'Enter' });
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    await waitFor(() => expect(window.localStorage.getItem(KEY) === '').toBe(true));
+    first.unmount();
+    const again = mountAs();
+    await loadedComposer(again.container);
+    expect(again.container.querySelector('[data-chat-composer-drawer="draft-restored"]')).toBe(
+      null,
+    );
+    expect(composer(again.container)?.value).toBe('');
   });
 });
 
@@ -174,7 +270,7 @@ describe('a blocked composer', () => {
     expect(router.pathname).toBe('/settings/models');
   });
 
-  test('replaces the text box with one row while the server does not answer, with no second retry', async () => {
+  test('keeps the text box under the offline drawer while the server does not answer, with no second retry (COR-2284 C5)', async () => {
     serve();
     const monitor = new ConnectionMonitor({ probe: () => new Promise<never>(() => undefined) });
     monitor.reportUnreachable();
@@ -188,10 +284,12 @@ describe('a blocked composer', () => {
         },
       } as never);
 
-      await waitFor(() => expect(row(container)).not.toBeNull());
-      expect(row(container)?.textContent).toContain(COPY.unreachable);
-      expect(composer(container)).toBeNull();
-      expect([...row(container)!.querySelectorAll('a, button')]).toEqual([]);
+      const drawer = () =>
+        container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]');
+      await waitFor(() => expect(drawer()).not.toBeNull());
+      expect(row(container)).toBeNull();
+      expect(composer(container)).not.toBeNull();
+      expect([...drawer()!.querySelectorAll('a, button')]).toEqual([]);
     } finally {
       monitor.dispose();
     }

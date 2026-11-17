@@ -281,7 +281,13 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(railRows(page).nth(2)).toContainText('4476');
     await expect(rail(page).locator('.cinder-tool-call-rail__more')).toHaveText('Show 24 more');
     await expect(railRows(page).nth(3)).toContainText('Send email');
-    await expect(railRows(page).nth(3)).toContainText('→ SMTP timeout after 10s');
+    // A failed step says Failed in words and what went wrong under its row, with Copy error
+    // (COR-2283 R1 and R7).
+    const failure = rail(page).locator(
+      '.cinder-tool-call-rail__item[data-cinder-status="failed"] .cinder-tool-call-rail__failure',
+    );
+    await expect(failure).toContainText(/Failed\s+SMTP timeout after 10s/);
+    await expect(failure.getByRole('button', { name: 'Copy error' })).toBeVisible();
     await expect(railRows(page).nth(4)).toContainText('Approved by you 9:58 AM');
     await expect(railRows(page).nth(5)).toContainText('Waiting on you');
     // The approval is the waiting row's content, with Deny and Approve at its right.

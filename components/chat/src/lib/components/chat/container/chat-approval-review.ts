@@ -178,21 +178,37 @@ export function approvalActionRowShift(
 export const PENDING_APPROVAL_CARD_SELECTOR = '.cinder-approval-card[data-cinder-state="pending"]';
 
 /**
- * Returns the pending approval card rendered by the message that is waiting. A host that draws its
- * calls in a row of its own (Interborough folds a step's calls into the step's reply) renders no
- * card under that message, so the first pending card in the transcript stands for it: the message
- * is the first approval still waiting, so the first pending card is the one it means. Without the
- * fallback the reminder could never tell that the card's decision row is in view, and stayed.
+ * The attribute a host sets on the block it draws an approval in, outside Chat's message rows, with
+ * the id of the message that asks for the approval (the tool result's message):
+ * `<div data-chat-approval-for="result-1">…</div>`. Chat's arrival scroll, its visibility check and
+ * its "Waiting for your approval" reminder find the pending card in that block (COR-2440).
+ */
+export const CHAT_APPROVAL_FOR_ATTRIBUTE = 'data-chat-approval-for';
+
+/** The pending card in `block`, or `block` itself when it is the card. */
+function pendingCardIn(block: Element | null | undefined): HTMLElement | null {
+  if (!(block instanceof HTMLElement)) return null;
+  if (block.matches(PENDING_APPROVAL_CARD_SELECTOR)) return block;
+  return block.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR);
+}
+
+/**
+ * Returns the pending approval card of the message that is waiting: the one its row draws, else the
+ * one in the block a host marked with {@link CHAT_APPROVAL_FOR_ATTRIBUTE} for that message. A host
+ * that draws its calls in a row of its own and marks nothing (Interborough folds a step's calls into
+ * the step's reply) renders no card under that message, so the first pending card in the transcript
+ * stands for it: the message is the first approval still waiting, so the first pending card is the
+ * one it means. Without that the reminder could never tell that the card's decision row is in view.
  */
 export function pendingApprovalCard(
   root: ParentNode | null | undefined,
   messageId: string,
 ): HTMLElement | null {
-  const message = root?.querySelector<HTMLElement>(
-    `article[data-message-id="${CSS.escape(messageId)}"]`,
-  );
+  const escaped = CSS.escape(messageId);
+  const message = root?.querySelector<HTMLElement>(`article[data-message-id="${escaped}"]`);
   return (
-    message?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
+    pendingCardIn(message) ??
+    pendingCardIn(root?.querySelector(`[${CHAT_APPROVAL_FOR_ATTRIBUTE}="${escaped}"]`)) ??
     root?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
     null
   );

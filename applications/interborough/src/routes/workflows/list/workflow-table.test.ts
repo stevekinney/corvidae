@@ -62,12 +62,13 @@ describe('WorkflowTable — active-versus-bound badge (COR-15)', () => {
 
 describe('WorkflowTable', () => {
   test('renders a row per workflow with status label and truncated id', async () => {
-    const { getByText } = render(WorkflowTable, {
+    const { getByText, getAllByText } = render(WorkflowTable, {
       props: { rows: [summary({ status: 'failed', type: 'payment-failing' })] },
     });
 
     expect(getByText('Failed')).not.toBeNull();
-    expect(getByText('payment-failing')).not.toBeNull();
+    // A cut type is also the text of its tooltip.
+    expect(getAllByText('payment-failing').length).toBeGreaterThan(0);
     expect(getByText('wf_4a9f1…2c10')).not.toBeNull();
   });
 
@@ -76,7 +77,7 @@ describe('WorkflowTable', () => {
       props: { rows: [summary({ revision: 'order-processing-rev-abcdefghijk' })] },
     });
 
-    expect(getByText('order-pr…hijk')).not.toBeNull();
+    expect(getByText('order-…hijk')).not.toBeNull();
     expect(
       getByText('Revision (exact executable artifact): order-processing-rev-abcdefghijk'),
     ).not.toBeNull();
@@ -91,12 +92,38 @@ describe('WorkflowTable', () => {
   });
 
   test('renders every tag as a badge', async () => {
-    const { getByText } = render(WorkflowTable, {
+    const { getAllByText } = render(WorkflowTable, {
       props: { rows: [summary({ tags: ['prod', 'nightly'] })] },
     });
 
-    expect(getByText('prod')).not.toBeNull();
-    expect(getByText('nightly')).not.toBeNull();
+    // A cut tag is also the text of its tooltip.
+    expect(getAllByText('prod').length).toBeGreaterThan(0);
+    expect(getAllByText('nightly').length).toBeGreaterThan(0);
+  });
+
+  test('the tags are the Type cell’s second line, and no column of their own', () => {
+    const { container } = render(WorkflowTable, {
+      props: { rows: [summary({ type: 'payments', tags: ['prod', 'nightly'] })] },
+    });
+
+    const headers = Array.from(container.querySelectorAll('thead th')).map((cell) =>
+      cell.textContent?.trim(),
+    );
+    expect(headers).not.toContain('Tags');
+    expect(headers).toContain('Updated');
+    expect(container.querySelector('thead th[title]')).toBeNull();
+    const row = container.querySelector('tbody tr') as HTMLElement;
+    const typeCell = Array.from(row.querySelectorAll('td')).find((cell) =>
+      cell.querySelector('.cinder-table__cell-text')?.textContent?.includes('payments'),
+    ) as HTMLElement;
+    const tags = Array.from(typeCell.querySelectorAll('.weft-workflows-table__tags .cinder-badge'));
+    expect(tags.map((tag) => tag.textContent?.trim())).toEqual(['prod', 'nightly']);
+    // The type text comes first, the tags after it.
+    expect(
+      typeCell
+        .querySelector('.cinder-table__cell-text')
+        ?.compareDocumentPosition(typeCell.querySelector('.weft-workflows-table__tags') as Node),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   test('renders agent-run provenance as a human link and hides its technical tag', () => {

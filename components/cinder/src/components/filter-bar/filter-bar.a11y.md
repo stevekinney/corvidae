@@ -19,7 +19,7 @@ Roving-tabindex Toolbar semantics are intentionally NOT applied to the outer con
 | Choice options | `group` of checkboxes, or a `radiogroup` | Each count is the checkbox's or radio's `aria-describedby`. |
 | Applied filter without a facet | `span` with a `button` | A chip that reads "Updated: Last 24 hours" with the same Remove button. In the narrow form it is a row in the Filter menu. |
 | Toggle chip | `button`, `aria-pressed` | Name includes the count ("Missed runs 1"). The dot is decorative. |
-| Search | `type="search"` | Provided by `SearchField`. In the medium layout an icon button named "Search" opens it in a dialog; in the narrow layout it is the Filter menu's Search row. |
+| Search | `type="search"` | Provided by `SearchField`. In the search-folded and medium layouts an icon button named "Search" opens it in a dialog; in the narrow layout it is the Filter menu's Search row. |
 | Filter button | `button`, `aria-haspopup="dialog"`, `aria-expanded` | Named "Filter", or "Filter, 2 applied" while filters are applied. |
 | Filter menu rows | `button`, `aria-expanded`, `aria-controls` | One row per facet and one for Search; a row opens its controls in place beneath it. |
 | Live region | `role="status"` (`aria-live="polite"`, `aria-atomic="true"`) | Always in DOM; announces the active filter count and values on change. Never conditionally rendered. |

@@ -302,7 +302,7 @@ describe('ToolCallRail rows', () => {
       HTMLElement,
     );
     expect(text(failure)).toBe(
-      "Mail server didn't reply. Details Ask the agent to retry Copy input",
+      "Failed Mail server didn't reply. Details Ask the agent to retry Copy input",
     );
     const links = [...failure.querySelectorAll<HTMLElement>('button')];
     await fireEvent.click(requiredInstance(links[0], HTMLElement));
@@ -325,6 +325,66 @@ describe('ToolCallRail rows', () => {
     expect(text(container.querySelector('.cinder-tool-call-rail__result'))).toBe(
       '→ Morning briefing',
     );
+  });
+
+  test('a failed step says Failed in words, its diagnostic under the danger line, then Copy error and Retry this step (COR-2283 R7)', async () => {
+    const copied: Array<[string, string]> = [];
+    const onRetry = mock((_id: string) => undefined);
+    const calls: Call[] = [
+      {
+        id: 'mail',
+        name: 'Send email',
+        status: 'failed',
+        failure: "Mail server didn't reply.",
+        diagnostic: 'ETIMEDOUT after 10s connecting to smtp.example.com:587',
+      },
+    ];
+    const { container } = render(ToolCallRail, {
+      props: {
+        calls,
+        onRetry,
+        onCopyError: (id: string, error: string) => void copied.push([id, error]),
+        labels: { retry: 'Retry this step' },
+      },
+    });
+    const failure = requiredInstance(
+      container.querySelector('.cinder-tool-call-rail__failure'),
+      HTMLElement,
+    );
+    expect(text(failure.querySelector('.cinder-tool-call-rail__failure-status'))).toBe('Failed');
+    expect(text(failure.querySelector('.cinder-tool-call-rail__diagnostic'))).toBe(
+      'ETIMEDOUT after 10s connecting to smtp.example.com:587',
+    );
+    const links = [...failure.querySelectorAll<HTMLElement>('button')];
+    expect(links.map((link) => text(link))).toEqual(['Copy error', 'Retry this step']);
+
+    await fireEvent.click(requiredInstance(links[0], HTMLElement));
+    await waitFor(() => expect(text(links[0] ?? null)).toBe('Copied'));
+    expect(copied).toEqual([
+      ['mail', "Mail server didn't reply.\nETIMEDOUT after 10s connecting to smtp.example.com:587"],
+    ]);
+    await fireEvent.click(requiredInstance(links[1], HTMLElement));
+    expect(onRetry).toHaveBeenCalledWith('mail');
+    // A phone keeps the failure line, so the step can be recovered there too.
+    expect(cssText).not.toMatch(
+      /@container cinder-tool-call-rail \(max-width: 28rem\) \{[^}]*\.cinder-tool-call-rail__failure[,\s{]/,
+    );
+  });
+
+  test('a running turn says where the call under way falls among the calls so far (COR-2283 R1)', () => {
+    const calls: Call[] = [
+      ...turn(3),
+      { id: 'now', name: 'Send email', status: 'running' },
+      { id: 'next', name: 'Lookup order', status: 'done' },
+    ];
+    const { container } = render(ToolCallRail, { props: { calls, running: true } });
+    expect(
+      text(container.querySelector('.cinder-tool-call-rail__summary [data-cinder-step-position]')),
+    ).toBe('Step 4 of 5');
+
+    cleanup();
+    const idle = render(ToolCallRail, { props: { calls: turn(4), running: true } });
+    expect(idle.container.querySelector('[data-cinder-step-position]')).toBeNull();
   });
 
   test('the failed call stacks its links beneath the danger text', () => {
