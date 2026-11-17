@@ -1,14 +1,15 @@
 <script lang="ts">
   /**
    * The Event field of the hook editor: a searchable picker over every event a hook can listen to,
-   * grouped by area, each named in plain words with its raw kind beside it. It matches what a person
-   * types against the words, the raw kind, the area, and what the event means. An event the chosen
-   * action cannot listen to is listed but cannot be chosen, with the reason beside it. The events
-   * chosen are listed under the field, each with a button that removes it.
+   * grouped by area, each named in plain words; the raw kind is shown, small and monospaced, only
+   * beside two events that would otherwise read the same (R10-23). It matches what a person types
+   * against the words, the raw kind, the area, and what the event means. An event the chosen action
+   * cannot listen to is listed but cannot be chosen, with the reason beside it. The events chosen are
+   * listed under the field, each with a button that removes it.
    *
    * A hook that is saved keeps its events: the field then reads them as plain text (Cinder's
-   * read-only Select, with the raw kind small and monospaced beside it and a lock) and says they
-   * cannot be changed, so a different event is a new hook.
+   * read-only Select, with a lock) and says they cannot be changed, so a different event is a new
+   * hook.
    */
   import { Button, Combobox, Select } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
@@ -16,7 +17,12 @@
   import type { HookActionType, HookEventKind } from '../../lib/bureau-hooks.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import { EVENTS_MAXIMUM } from './hook-form-state.svelte.ts';
-  import { eventChoices, eventMatches, eventOptionLabel } from './hook-presentation.ts';
+  import {
+    eventChoices,
+    eventMatches,
+    eventOptionLabel,
+    kindsReadingAlike,
+  } from './hook-presentation.ts';
 
   interface Props {
     /** Every event kind the Bureau describes. */
@@ -42,6 +48,8 @@
   const lockedValue = $derived(events.join(','));
   const lockedLabel = $derived(events.map(eventOptionLabel).join(', '));
   const meanings = $derived(new Map(kinds.map((kind) => [kind.kind, kind.description])));
+  /** The events chosen whose words another chosen event shares: only these show their raw kind. */
+  const alike = $derived(kindsReadingAlike(events));
   /** The picker holds no value: choosing an event adds it to the list and clears the field. */
   let picked = $state('');
 
@@ -66,7 +74,9 @@
       />
       <span class="ib-hook-events__lock">
         {#each events as kind (kind)}
-          <code class="ib-hook-events__kind" data-event={kind}>{kind}</code>
+          {#if alike.has(kind)}
+            <code class="ib-hook-events__kind" data-event={kind}>{kind}</code>
+          {/if}
         {/each}
         <Lock aria-hidden="true" size={14} />
       </span>
@@ -90,7 +100,9 @@
         {#each events as kind (kind)}
           <li class="ib-hook-events__item" data-event={kind}>
             <span class="ib-hook-events__name">{eventOptionLabel(kind)}</span>
-            <code class="ib-hook-events__kind">{kind}</code>
+            {#if alike.has(kind)}
+              <code class="ib-hook-events__kind">{kind}</code>
+            {/if}
             <Button
               variant="ghost"
               size="sm"

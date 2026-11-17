@@ -679,10 +679,25 @@ describe('the hook editor', () => {
       });
     }
     // With nothing typed, every event of the catalog is offered.
-    await waitFor(async () => {
-      const labels = await optionLabels('');
-      expect(labels.length).toBe(CATALOG.length);
+    const labels = await waitFor(async () => {
+      const found = await optionLabels('');
+      expect(found.length).toBe(CATALOG.length);
+      return found;
     });
+    // R10-23: an option is its words; no event of the catalog reads alike, so none shows its kind.
+    for (const label of labels) {
+      for (const event of CATALOG) expect(label).not.toContain(event.kind);
+    }
+    expect(document.body.querySelector('[role="option"] code')).toBeNull();
+    // Nor does an event once chosen, in the list under the field.
+    await chooseEvent(view, 'Reviews', 'A review is waiting');
+    const chosen = await waitFor(() => {
+      const found = view.container.querySelector('li[data-event="review.requested"]');
+      if (found === null) throw new Error('not chosen yet');
+      return found;
+    });
+    expect(chosen.textContent).not.toContain('review.requested');
+    expect(chosen.querySelector('code')).toBeNull();
   });
 
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
@@ -1447,11 +1462,12 @@ describe('a saved hook’s header', () => {
 });
 
 describe('the steps of a saved hook', () => {
-  test('shows the event as plain text with its raw kind and a note, and offers no picker', async () => {
+  test('shows the event as plain text in words, not its raw kind, with a note, and offers no picker (R10-23)', async () => {
     const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
     const locked = await view.findByTestId('hook-event-locked');
     expect(locked.textContent).toContain('A review is waiting');
-    expect(locked.textContent).toContain('review.requested');
+    for (const kind of hook('alpha').events) expect(locked.textContent).not.toContain(kind);
+    expect(locked.querySelector('code')).toBeNull();
     expect(locked.textContent).toContain(HOOKS_COPY.editor.event.fixed);
     expect(locked.querySelector('[aria-readonly="true"]')).not.toBeNull();
     expect(view.container.querySelector('input[role="combobox"]')).toBeNull();
