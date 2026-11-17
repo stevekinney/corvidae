@@ -65,4 +65,32 @@
       <p>Resize the viewport below 640px to see the mobile drawer behavior.</p>
     </main>
   </div>
+
+  <div
+    data-testid="sidebar-rail-labels"
+    style="display: flex; min-height: 20rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; overflow: hidden;"
+  >
+    <Sidebar collapsed railLabels label="Labelled rail">
+      {#snippet navigation()}
+        <SideNavigation ariaLabel="Labelled rail sections">
+          {#snippet children()}
+            {#each ['Home', 'Chats', 'Capabilities', 'Schedules'] as name (name)}
+              <SideNavigationItem href={`#rail-${name.toLowerCase()}`}>
+                {#snippet icon()}<span>{name.slice(0, 1)}</span>{/snippet}
+                {#snippet children()}{name}{/snippet}
+              </SideNavigationItem>
+            {/each}
+            <SideNavigationGroup label="Build" collapsible={false}>
+              {#snippet children()}
+                <SideNavigationItem href="#rail-workflows">
+                  {#snippet icon()}<span>W</span>{/snippet}
+                  {#snippet children()}Workflows{/snippet}
+                </SideNavigationItem>
+              {/snippet}
+            </SideNavigationGroup>
+          {/snippet}
+        </SideNavigation>
+      {/snippet}
+    </Sidebar>
+  </div>
 </div>
