@@ -715,7 +715,7 @@
     min-inline-size: 0;
     font-size: var(--cinder-text-md);
     font-weight: var(--cinder-font-semibold);
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
   .cinder-table[data-cinder-stack-card]
@@ -731,7 +731,7 @@
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
   .cinder-table[data-cinder-stack-card] .cinder-table__cell-title:focus-visible {

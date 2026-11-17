@@ -372,7 +372,7 @@
       size="sm"
       presentation="native"
       options={sortOptions}
-      value={selectedSort}
+      {...selectedSort ? { value: selectedSort } : {}}
       onValueChange={chooseSort}
     />
   </div>
