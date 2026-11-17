@@ -148,13 +148,20 @@ export async function openTab(root: Locator, name: string): Promise<void> {
   await root.page().getByRole('option', { name, exact: true }).click();
 }
 
-/** Expects the tab `name` of the bar in `root` to be the one that is open. */
+/**
+ * Expects the tab `name` of the bar in `root` to be the one that is open. The bar collapses into its
+ * select only once it has measured that it does not fit, which can be after the page first draws
+ * it, so which control shows the open tab is read again on every try, not once.
+ */
 export async function expectTabOpen(root: Locator, name: string): Promise<void> {
-  if (await tabsAreCollapsed(root)) {
-    await expect(collapsedTabs(root)).toContainText(name);
-    return;
-  }
-  await expect(root.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .poll(async () => {
+      if (await tabsAreCollapsed(root)) return (await collapsedTabs(root).textContent()) ?? '';
+      const tab = root.getByRole('tab', { name });
+      if ((await tab.count()) === 0) return '';
+      return (await tab.first().getAttribute('aria-selected')) === 'true' ? name : '';
+    })
+    .toContain(name);
 }
 
 /**

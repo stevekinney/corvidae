@@ -145,7 +145,8 @@ test.describe('the memory page', () => {
   });
 
   test('keeps a memory whose forget was undone', async ({ page, request }) => {
-    const label = uniqueLabel('Undo me');
+    // Not "Undo …": a row named so would match the toast's Undo button in other tests.
+    const label = uniqueLabel('Kept after all');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-undo'), label);
     await page.goto(MEMORY_PATH);
 
@@ -175,10 +176,13 @@ test.describe('the memory page', () => {
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
     // Leaving sends the forget; opening the page again asks the Bureau again, and the agent is empty.
     await page.goto('/agents');
+    const nothing = page.getByRole('heading', { name: MEMORY_COPY.nothing.title });
     await expect
       .poll(async () => {
         await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
-        return page.getByRole('heading', { name: MEMORY_COPY.nothing.title }).count();
+        // Read once the list has drawn: its row, or the empty state.
+        await expect(nothing.or(rowOf(page, label))).toBeVisible();
+        return nothing.count();
       })
       .toBe(1);
   });
