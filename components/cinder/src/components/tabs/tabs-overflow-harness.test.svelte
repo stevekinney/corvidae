@@ -16,7 +16,9 @@
 <Tabs bind:value {...collapseOnOverflow === undefined ? {} : { collapseOnOverflow }}>
   <TabList label="Sections">
     {#each names as name, index (name)}
-      <Tab value={`tab-${index}`} count={counts[index]}>{name}</Tab>
+      <Tab value={`tab-${index}`} {...counts[index] === undefined ? {} : { count: counts[index] }}
+        >{name}</Tab
+      >
     {/each}
   </TabList>
   {#each names as name, index (name)}

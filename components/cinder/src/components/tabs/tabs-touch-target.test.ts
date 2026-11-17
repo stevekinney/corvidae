@@ -26,7 +26,7 @@ function coarse(selector: string): Record<string, string> {
 describe('Tabs touch target on a coarse pointer', () => {
   test('a tab reaches the touch minimum through a positioned pseudo-element, not a taller box', () => {
     const hitArea = coarse(".cinder-tab:not([data-variant='vertical'])::before");
-    expect(hitArea.position).toBe('absolute');
+    expect(hitArea['position']).toBe('absolute');
     expect(hitArea['inset-block-start']).toBe(
       'min(0px, calc(100% - var(--cinder-touch-target-min)))',
     );
