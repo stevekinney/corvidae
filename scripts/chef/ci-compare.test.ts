@@ -6,6 +6,7 @@ import {
   matchFlakeIssues,
   renderComparison,
   run,
+  unparseableTestJobs,
   type RunFailures,
 } from './ci-compare.ts';
 import type { LinearClient } from './linear.ts';
@@ -71,6 +72,7 @@ describe('failingTests', () => {
       'Tests (components)\tRun bun test\t2026-11-17T19:21:40Z error: unexpected failure',
     ].join('\n');
     expect(failingTests(log)).toEqual(new Map());
+    expect(unparseableTestJobs(log)).toEqual(new Set(['Tests (components)']));
   });
 
   test('qualifies identical Bun tests by their Turbo workspace across changed job topology', () => {
@@ -191,6 +193,20 @@ describe('compare', () => {
     );
     expect(result.hasNew).toBe(true);
     expect(result.jobs[0]?.steps[0]?.seenIn).toEqual(['2']);
+  });
+
+  test('an unparseable test error remains new beside an otherwise known step', () => {
+    const result = compare(
+      {
+        id: '1',
+        status: 'completed',
+        conclusion: 'failure',
+        jobs: [{ name: 'Unit', tests: [], steps: ['lint'], unknown: true }],
+      },
+      [failures('2', [['Unit', []]])],
+    );
+    expect(result.hasNew).toBe(true);
+    expect(result.jobs[0]?.unknown).toBe(true);
   });
 
   test('a file-qualified test seen under a different control topology is known', () => {

@@ -33,6 +33,8 @@ export interface FailedJob {
   tests: string[];
   /** Independently failed workflow steps, retained even when the job also names a failed test. */
   steps?: string[];
+  /** A test error whose file/title/assertion identity could not be safely parsed. */
+  unknown?: boolean;
 }
 
 export interface RunFailures {
@@ -96,6 +98,7 @@ const BUN_TEST_FILE = /^([^\t]+)\t.*?##\[group\](.+?\.test\.ts):\s*$/;
 const BUN_ASSERTION = /^([^\t]+)\t.*?error: (expect\(.+\))\s*$/;
 /** The assertion's specific expected value, which makes its file-qualified identity stable. */
 const BUN_EXPECTED = /^([^\t]+)\t.*?Expected to contain: (.+)\s*$/;
+const BUN_ERROR = /^([^\t]+)\t.*?error: /;
 /** Turbo's per-workspace task heading in a failed GitHub Actions log. */
 const TURBO_TASK = /^([^\t]+)\t.*?##\[group\](@lostgradient\/[^\s:]+):[^\s]+\s*$/;
 /** A GitHub Actions step boundary. */
@@ -182,6 +185,32 @@ export function failingSteps(log: string): Map<string, string[]> {
   return new Map([...byJob].map(([job, steps]) => [job, [...steps].toSorted()]));
 }
 
+/** Test-file errors without a complete identity stay unknown instead of inheriting a known step. */
+export function unparseableTestJobs(log: string): Set<string> {
+  const files = new Set<string>();
+  const pending = new Set<string>();
+  for (const line of log.split('\n')) {
+    const file = BUN_TEST_FILE.exec(line);
+    if (file !== null) {
+      files.add(file[1] ?? '');
+      continue;
+    }
+    const expected = BUN_EXPECTED.exec(line);
+    if (expected !== null) {
+      pending.delete(expected[1] ?? '');
+      continue;
+    }
+    const failed = BUN_FAILURE.exec(line);
+    if (failed !== null) {
+      pending.delete(failed[1] ?? '');
+      continue;
+    }
+    const error = BUN_ERROR.exec(line);
+    if (error !== null && files.has(error[1] ?? '')) pending.add(error[1] ?? '');
+  }
+  return pending;
+}
+
 /** A run's failed jobs and their failing tests, read from GitHub. */
 export function readFailures(runner: Runner, repository: string, id: string): RunFailures {
   const view = JSON.parse(
@@ -197,6 +226,7 @@ export function readFailures(runner: Runner, repository: string, id: string): Ru
       : gh(runner, ['run', 'view', id, '--repo', repository, '--log-failed']);
   const tests = failingTests(log);
   const steps = failingSteps(log);
+  const unknown = unparseableTestJobs(log);
   return {
     id,
     status: view.status ?? '',
@@ -205,6 +235,7 @@ export function readFailures(runner: Runner, repository: string, id: string): Ru
       name,
       tests: tests.get(name) ?? [],
       steps: steps.get(name) ?? [],
+      unknown: unknown.has(name),
     })),
   };
 }
@@ -279,7 +310,8 @@ export function compare(target: RunFailures, main: RunFailures[]): Comparison {
     }));
     // A test job whose log names no failing test cannot be judged by its name alone: a new failure
     // in a shard that is already red on main would read as known.
-    const unknown = tests.length === 0 && steps.length === 0 && TEST_JOB.test(job.name);
+    const unknown =
+      job.unknown === true || (tests.length === 0 && steps.length === 0 && TEST_JOB.test(job.name));
     const seenIn =
       tests.length === 0 && steps.length === 0
         ? sameJobRuns
