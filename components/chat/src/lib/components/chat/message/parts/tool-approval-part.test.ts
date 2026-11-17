@@ -57,7 +57,7 @@ describe('ToolApprovalPart', () => {
 
     expect(operation).toBe(part.action.operation);
   });
-  test('renders one Cinder approval row with the question and Input', async () => {
+  test('renders one Cinder approval row with the question and its input in the open', () => {
     const { container, getByRole } = render(ToolApprovalPart, {
       props: { part: pendingPart(), onApprovalResolve: () => undefined },
     });
@@ -71,20 +71,18 @@ describe('ToolApprovalPart', () => {
     expect(getByRole('article', { name: 'Deploy to production?' })).toBe(card as HTMLElement);
     const buttons = Array.from(
       container.querySelectorAll(
-        '.cinder-approval-card__input-toggle, .cinder-approval-card__note-toggle, .cinder-approval-card__row-actions button',
+        '.cinder-approval-card__note-toggle, .cinder-approval-card__row-actions button',
       ),
       (button) => button.textContent?.replace(/\s+/g, ' ').trim(),
     );
-    expect(buttons).toEqual([
-      'Input Environment production, Replicas 3',
-      'Add note',
-      'Deny',
-      'Approve',
-    ]);
-
-    await fireEvent.click(getByRole('button', { name: /^Input/ }));
-    flushSync();
-
+    expect(buttons).toEqual(['Add note', 'Deny', 'Approve']);
+    // The input is in the open as one row per pair, under the command, with no disclosure.
+    expect(
+      Array.from(
+        getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
+        (row) => row.textContent?.replace(/\s+/g, ' ').trim(),
+      ),
+    ).toEqual(['Environment production', 'Replicas 3']);
     expect(container.textContent).toContain('deploy_to_production --environment production');
   });
 

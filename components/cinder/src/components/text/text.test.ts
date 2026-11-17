@@ -36,6 +36,7 @@ describe('Text', () => {
     ['h5', 'H5'],
     ['caption', 'P'],
     ['body', 'P'],
+    ['code', 'CODE'],
   ] as const)('variant %p renders a %p element', (variant, tagName) => {
     const { container } = render(Text, { variant, children: textSnippet('hello') });
     const root = container.querySelector('.cinder-text');
@@ -93,6 +94,29 @@ describe('Text', () => {
     expect(h2).toContain('font-weight: var(--cinder-font-heading);');
     expect(h2).toContain('line-height: var(--cinder-leading-heading);');
     expect(h2).toContain('letter-spacing: var(--cinder-tracking-tight);');
+  });
+
+  test('the code variant is monospace and inherits the size around it, with no em scaling', () => {
+    const rule = textCss.match(/data-cinder-variant='code'\] \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('font-family: var(--cinder-font-mono);');
+    expect(rule).toContain('font-size: inherit;');
+    expect(rule).toContain('line-height: inherit;');
+    expect(rule).not.toMatch(/\d(?:\.\d+)?em\b/);
+    expect(rule).not.toMatch(/font-size:\s*(?:0\.|\d)/);
+  });
+
+  test('the code variant renders inline, keeps its text, and can be set inside a run of text', () => {
+    const { container } = render(Text, {
+      variant: 'caption',
+      children: textSnippet('Acme audit'),
+    });
+    const caption = container.querySelector('.cinder-text');
+    expect(caption?.tagName).toBe('P');
+
+    const inner = render(Text, { variant: 'code', children: textSnippet('acme-audit:redact') });
+    const code = inner.container.querySelector('code.cinder-text');
+    expect(code?.textContent).toBe('acme-audit:redact');
+    expect(code?.getAttribute('data-cinder-variant')).toBe('code');
   });
 
   test('resets wrapping and tracking on the base so `as` cannot change a variant look', () => {

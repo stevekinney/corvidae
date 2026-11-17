@@ -168,6 +168,7 @@ describe('/host/paths', () => {
       'locked',
       'mode',
       'providers',
+      'triggersUrl',
       'workflowDirectory',
     ]);
     expect(String(paths['workflowDirectory'])).toEndWith('workflows');
@@ -192,6 +193,7 @@ describe('/host/paths', () => {
         { name: 'typesafe', secretFile: `workspace:${host.workspaceId}/typesafe-api-key` },
       ],
       a2aDirectoryUrl: `http://127.0.0.1:${host.url.port}/bureau/a2a/.well-known/agent-card.json`,
+      triggersUrl: `http://127.0.0.1:${host.url.port}/triggers/`,
     });
   });
 

@@ -60,6 +60,16 @@ export const SETTING_VALUES: Record<string, unknown> = {
   'a2a.push.sweepIntervalMs': 3_600_000,
 };
 
+/** What `bureau.memory.embedding` answers for memory on the built-in embedder: no problem, no switch, one embedder. */
+export function hashingEmbeddingStatus() {
+  return {
+    active: { embedder: 'hashing', dimension: 256, model: 'hashing' },
+    problem: null,
+    job: null,
+    embedders: [{ id: 'hashing', dimension: 256, availability: 'available' }],
+  };
+}
+
 /** What the Bureau holds: the values, the revision, and the keys the deployment locked. */
 export type SettingsServed = {
   values: Record<string, unknown>;
@@ -140,6 +150,9 @@ export function installSettingsBureau(
     {
       'bureau.settings.get': () => settingsSnapshot(served),
       'bureau.settings.schema': () => ({ schema: PUBLISHED_SCHEMA }),
+      // The Embedder row of General reads this; a test that is not about it gets memory that uses
+      // the built-in embedder with nothing to report.
+      'bureau.memory.embedding': () => hashingEmbeddingStatus(),
       'bureau.settings.update': (params) => {
         const patch = params['patch'] as Record<string, unknown>;
         if (params['expectedRevision'] !== served.revision) {

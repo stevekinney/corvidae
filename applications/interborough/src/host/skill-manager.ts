@@ -28,6 +28,21 @@
  *   fails.
  * - **Explicit write capability.** Read-only backends refuse changes. Trusting filesystem skill
  *   sources requires current deployment authority immediately before the configuration CAS.
+ * - **Watched while the host runs (COR-2100).** Every local source's directory (the configured ones
+ *   and each running plugin's `content/skills`) is watched with a recursive `fs.watch`, which is
+ *   only a trigger, and rescanned every {@link DIRECTORY_POLL_INTERVAL_MILLISECONDS} whether or not
+ *   a native event arrived: `watch` follows the host's `directoryWatch`, `true` arming both, `'poll'`
+ *   the rescan alone, `false` neither. A rescan is a {@link SkillManager.refresh} that keeps its
+ *   catalog and revision when the digest is the same, so each poll re-reads `configuration.json`
+ *   and the running plugins, and a hand edit of `skills.trusted` takes effect within a poll without
+ *   an audit record (as it already did at the next refresh). One rescan runs at a time; a burst of
+ *   events is one more. After each discovery the directories are watched again, so a plugin that
+ *   started, or a root made after the host did, is picked up.
+ * - **Changes are announced after the catalog is replaced.** {@link SkillManagerOptions.onChange}
+ *   hears the names a discovery added, changed, removed and rejected (`diffSkillCatalogs`), once
+ *   `standing()` already answers the new catalog, so a run started on the report binds the new
+ *   revision. The first discovery is a baseline and is not announced; an empty difference is not
+ *   announced; a refresh and a trust change are announced like a rescan.
  * - **A catalog is replaced, never edited.** Each discovery makes a new revision. A skill client
  *   offers the revision it was built with and, given `currentCatalog` (COR-1926), checks a skill
  *   against the current catalog when the skill is used. A file agent that lists `skills`
@@ -47,10 +62,20 @@ import {
   type SkillsStanding,
 } from '@lostgradient/bureau';
 import {
+  diffSkillCatalogs,
   discoverSkills,
+  type SkillCatalogChange,
   type SkillCatalogRevision,
   type SkillSource,
+  type SkillSourceKind,
 } from '@lostgradient/bureau/skills';
+import {
+  DIRECTORY_POLL_INTERVAL_MILLISECONDS,
+  type DirectoryWatchMode,
+} from '@lostgradient/bureau/sources';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/operative';
+import { watch, type FSWatcher } from 'node:fs';
+import { stat } from 'node:fs/promises';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
@@ -68,6 +93,20 @@ import {
   type SkillsConfiguration,
 } from './skills-configuration.ts';
 import { SecretPublicationError } from './workspace-secrets.ts';
+
+/**
+ * Which kinds of skill source live in a directory on this machine, and so can be watched with
+ * `fs.watch`. A table keyed by the kind, not a comparison against a name, so a new kind of source
+ * does not compile until it says whether it has a directory (COR-2468, `home-branches.test.ts`).
+ */
+const WATCHED_SOURCE_KINDS: Readonly<Record<SkillSourceKind, boolean>> = {
+  project: true,
+  user: true,
+  'built-in': true,
+  plugin: true,
+  remote: false,
+  storage: false,
+};
 
 /** A write the home does not allow: the reason is the one `settings.get` reports for a locked key. */
 export class SkillWriteLockedError extends Error {
@@ -194,6 +233,27 @@ export type SkillManagerOptions = {
   readonly owner?: string;
   /** The clock a change is stamped with, in milliseconds. Defaults to `Date.now`. */
   readonly now?: () => number;
+  /**
+   * COR-2100 — how the skill directories are watched: `true` (the default) arms a recursive
+   * `fs.watch` on each local source and a rescan every {@link DIRECTORY_POLL_INTERVAL_MILLISECONDS},
+   * `'poll'` the rescan alone, `false` neither, which leaves reloading to `refresh()`. The host passes
+   * its `directoryWatch`.
+   */
+  readonly watch?: DirectoryWatchMode;
+  /** Reports a failure the manager can only report: a rescan that failed, a watcher that could not be opened. Defaults to the console. */
+  readonly warn?: (message: string, cause?: unknown) => void;
+  /** The runtime whose timers drive the rescan, so a test advances it by hand. Defaults to the real one. */
+  readonly runtime?: RuntimeServices;
+  /**
+   * COR-2100 — told what each discovery after the first added, changed, removed and rejected, by
+   * name, once `standing()` answers the new catalog. Never called with an empty difference.
+   */
+  readonly onChange?: (change: SkillCatalogChange) => void;
+  /** Opens a recursive native watcher on a directory. Defaults to `fs.watch` that does not keep the process alive. */
+  readonly openWatcher?: (
+    path: string,
+    listener: (event: string, filename: string | null) => void,
+  ) => FSWatcher;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -252,8 +312,144 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     }
   }
 
-  /** Discover the catalog `configuration` describes and make it the current one. */
-  async function discover(configuration: SkillsConfiguration): Promise<SkillsStanding> {
+  const watchMode = options.watch ?? true;
+  const warn = options.warn ?? ((message: string) => console.warn(message));
+  const openWatcher =
+    options.openWatcher ??
+    ((path: string, listener: (event: string, filename: string | null) => void) =>
+      watch(path, { recursive: true, persistent: false }, listener));
+  /**
+   * The native watchers that are open, by the directory each watches, with the directory's inode when
+   * it was opened: a root removed and made again is a different directory, and a watcher of the old
+   * one would see nothing of the new.
+   */
+  const watchers = new Map<
+    string,
+    { readonly watcher: FSWatcher; readonly inode: number | bigint }
+  >();
+  /** The directories a watcher could not be opened for, for a reason other than being absent: reported once each. */
+  const unwatchable = new Set<string>();
+  let pollRuntime: RuntimeServices | undefined;
+  let pollTimer: unknown;
+  /** Set when something asked for a rescan; the loop clears it as it starts one. */
+  let dirty = false;
+  let scanning: Promise<void> | undefined;
+  /** The text of the last warning about a failed rescan, until a rescan succeeds. */
+  let lastRescanWarning: string | undefined;
+
+  /** Opens a watcher on `path`; a directory that is not there has none, and the next discovery tries again. */
+  function openNativeWatcher(path: string, inode: number | bigint): void {
+    try {
+      const watcher = openWatcher(path, () => trigger());
+      watcher.on('error', () => {
+        // Re-armed by the next discovery, which the failure asks for.
+        if (watchers.get(path)?.watcher === watcher) watchers.delete(path);
+        watcher.close();
+        trigger();
+      });
+      watchers.set(path, { watcher, inode });
+    } catch (error) {
+      const code: unknown = error instanceof Error ? Reflect.get(error, 'code') : undefined;
+      if (code === 'ENOENT' || code === 'ENOTDIR' || unwatchable.has(path)) return;
+      unwatchable.add(path);
+      warn(`The skill directory ${path} could not be watched.`, error);
+    }
+  }
+
+  /** Watches the local sources' directories and starts the rescan timer, as `watch` says. */
+  async function arm(sources: readonly SkillSource[]): Promise<void> {
+    if (closed || watchMode === false) return;
+    if (pollTimer === undefined) {
+      pollRuntime = options.runtime ?? createDefaultRuntimeServices();
+      // The native watcher is only a trigger and can miss an event (or be unavailable), so the rescan backs it.
+      // poll-reason: fallback
+      pollTimer = pollRuntime.timers.setInterval(trigger, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    }
+    if (watchMode === 'poll') return;
+    const wanted = new Set(
+      sources
+        .filter((source) => WATCHED_SOURCE_KINDS[source.kind])
+        .map((source) => source.location),
+    );
+    const inodes = new Map<string, number | bigint>();
+    for (const path of wanted) {
+      const info = await stat(path).catch(() => undefined);
+      if (info?.isDirectory() === true) inodes.set(path, info.ino);
+    }
+    // `close()` may have landed while the directories were looked at: open nothing then.
+    if (closed) return;
+    for (const [path, held] of watchers) {
+      if (inodes.get(path) === held.inode) continue;
+      held.watcher.close();
+      watchers.delete(path);
+    }
+    for (const [path, inode] of inodes) if (!watchers.has(path)) openNativeWatcher(path, inode);
+  }
+
+  /** Stops the rescan timer and closes the watchers. */
+  function disarm(): void {
+    if (pollTimer !== undefined) pollRuntime?.timers.clearInterval(pollTimer);
+    pollTimer = undefined;
+    for (const held of watchers.values()) held.watcher.close();
+    watchers.clear();
+  }
+
+  /** Asks for a rescan: one runs at a time, and a request that comes while it does is one more. */
+  function trigger(): void {
+    if (closed) return;
+    dirty = true;
+    scanning ??= scanUntilQuiet();
+  }
+
+  async function scanUntilQuiet(): Promise<void> {
+    while (dirty) {
+      dirty = false;
+      if (closed) break;
+      try {
+        await serialized(async () => {
+          await rediscover('scan');
+        });
+        lastRescanWarning = undefined;
+      } catch (error) {
+        // The shutting-down error after `close()` is the host stopping, not a failure.
+        if (closed) continue;
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === lastRescanWarning) continue;
+        lastRescanWarning = message;
+        warn(`The skills could not be rescanned: ${message}`, error);
+      }
+    }
+    scanning = undefined;
+  }
+
+  /** Tells {@link SkillManagerOptions.onChange} what `next` changed against `previous`, when it changed anything. */
+  function announce(previous: SkillCatalogRevision, next: SkillCatalogRevision): void {
+    const change = diffSkillCatalogs(previous, next);
+    if (
+      change.added.length +
+        change.changed.length +
+        change.removed.length +
+        change.rejected.length ===
+      0
+    ) {
+      return;
+    }
+    try {
+      options.onChange?.(change);
+    } catch (error) {
+      warn('A skill change listener threw.', error);
+    }
+  }
+
+  /**
+   * Discover the catalog `configuration` describes and make it the current one, then announce what
+   * it changed. A `scan` (a watcher or the poll) that finds the digest it already has keeps the
+   * current catalog and its revision; anything else numbers a new revision.
+   */
+  async function discover(
+    configuration: SkillsConfiguration,
+    origin: 'scan' | 'explicit' = 'explicit',
+  ): Promise<SkillsStanding> {
     const sources = [
       ...toSkillSources(configuration),
       ...((await options.pluginSources?.()) ?? []),
@@ -283,7 +479,30 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
       })),
       ...(lockReason() === undefined ? {} : { trustLocked: lockReason() }),
     };
+    // A host that is shutting down changes nothing and tells nobody.
+    if (closed && current !== undefined) return current;
+    const previous = current;
+    // Armed from the sources just read, whether or not the catalog changed: a plugin that started, or
+    // a directory that now exists, is watched from here.
+    await arm(sources);
+    if (origin === 'scan' && previous !== undefined && previous.catalog.digest === catalog.digest) {
+      // The same catalog: its revision stays, and only what is listed beside it can have moved.
+      const same = JSON.stringify(previous.sources) === JSON.stringify(standing.sources);
+      current = same ? previous : { ...standing, catalog: previous.catalog };
+      return current;
+    }
     current = standing;
+    if (previous !== undefined) announce(previous.catalog, catalog);
+    return standing;
+  }
+
+  /** Read the configuration and discover again, and retry what the audit trail still owes. */
+  async function rediscover(origin: 'scan' | 'explicit'): Promise<SkillsStanding> {
+    const standing = await discover(readSkillsConfiguration(await readText(), location), origin);
+    // A refresh answers for the catalog, so a trail that is still down is left for the next trust request.
+    for (const source of new Set(unrecorded.map((entry) => entry.detail.sourceId))) {
+      await recordUnrecorded(source);
+    }
     return standing;
   }
 
@@ -326,14 +545,11 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     lockReason,
     close() {
       closed = true;
+      disarm();
     },
     refresh: () =>
       serialized(async () => {
-        const standing = await discover(readSkillsConfiguration(await readText(), location));
-        // A refresh answers for the catalog, so a trail that is still down is left for the next trust request.
-        for (const source of new Set(unrecorded.map((entry) => entry.detail.sourceId))) {
-          await recordUnrecorded(source);
-        }
+        const standing = await rediscover('explicit');
         return { revision: standing.catalog.revision };
       }),
     // The request is read, checked, and copied before the first `await`: the caller owns it, and

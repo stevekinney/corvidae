@@ -22,6 +22,8 @@
     zone: string;
     /** The name an agent goes by, from its identifier. */
     agentLabel: (agentName: string) => string;
+    /** The title of a plugin, for a run its trigger started; the identifier is said without one. */
+    pluginTitle?: ((plugin: string) => string | undefined) | undefined;
     /**
      * Where the row leads, when not to the run's own page: a workflow's Runs tab opens each run
      * under the workflow it belongs to.
@@ -29,10 +31,17 @@
     href?: string | undefined;
   }
 
-  let { row, now, zone, agentLabel, href = undefined }: Props = $props();
+  let { row, now, zone, agentLabel, pluginTitle = undefined, href = undefined }: Props = $props();
 
   const word = $derived(runStatusWord(row));
-  const lineTwo = $derived(runLineTwo(row, { now, zone, agentLabel }));
+  const lineTwo = $derived(
+    runLineTwo(row, {
+      now,
+      zone,
+      agentLabel,
+      ...(pluginTitle === undefined ? {} : { pluginTitle }),
+    }),
+  );
 </script>
 
 <StackedListItem

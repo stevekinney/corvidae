@@ -115,6 +115,8 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
+  // An archived chat, the Archived chats row and view, and a refused archive.
+  'tests/e2e/chat-archive.spec.ts',
   'tests/e2e/workflow-builder-cards.spec.ts',
 ] as const;
 

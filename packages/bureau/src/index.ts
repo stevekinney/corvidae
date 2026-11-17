@@ -136,6 +136,8 @@ export type {
   DefinitionSource,
   DefinitionSourceChange,
   DefinitionSourceHost,
+  GuardrailSource,
+  ValidatorSource,
   WorkflowSource,
 } from './sources/definition-source';
 export {
@@ -478,6 +480,8 @@ export type {
   RunFailureDetail,
   RunSettledStatus,
   SteeringOutcomeDetail,
+  TriggerEventKind,
+  TriggerFireOutcome,
 } from './events';
 export {
   ActionEvent,
@@ -504,11 +508,14 @@ export {
   GoalLifecycleEvent,
   DecisionMadeEvent,
   MemoryGovernanceEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
   ScorerThresholdBreachedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  TriggerLifecycleEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
@@ -909,6 +916,7 @@ export type {
   HookDelivery,
   HookDeliveryAttempt,
   HookDeliveryRequest,
+  HookDeliveryFailureOutcome,
   HookDeliveryStatus,
   HookDeliverySummary,
   HookDeliverySummaryAttempt,

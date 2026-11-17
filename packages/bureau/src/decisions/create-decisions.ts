@@ -375,8 +375,16 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
     return row === undefined || row.availability === 'unavailable' ? undefined : row;
   };
 
-  /** The row's own models: native when it declares the kind, else through its `generate`. */
-  function modelOfRow(row: BackendDescriptor, kind: DecisionKind): Answerer | undefined {
+  /**
+   * The row's own models: native when it declares the kind, else through its `generate`. With
+   * `nativeOnly`, a row that would answer through its `generate` answers nothing, and that
+   * `generate` is never built.
+   */
+  function modelOfRow(
+    row: BackendDescriptor,
+    kind: DecisionKind,
+    nativeOnly: boolean,
+  ): Answerer | undefined {
     const policy = dependencies.modelPolicy?.();
     const denial = modelPolicyDenialOf(row, policy);
     // A forbidden chosen row refuses the decision: the owner chose it, so the fallback must not
@@ -390,7 +398,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       ) {
         return { model: dependencies.models.decide(row), path: 'native', row };
       }
-      if (row.structuredOutput) {
+      if (row.structuredOutput && !nativeOnly) {
         return {
           model: llmDecisionModel({ generate: dependencies.models.generate(row), descriptor: row }),
           path: 'adapter',
@@ -406,12 +414,41 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
     return undefined;
   }
 
-  /** The model that answers a `kind` request: the registered one, the chosen row's, else the fallback. */
-  function modelFor(kind: DecisionKind): Answerer {
+  /**
+   * The row a request names (`BureauDecideOptions.model`): the one that answers it, or a refusal.
+   * It is not replaced by another when it cannot answer, because the caller chose it. With
+   * `nativeOnly` (the call also named `requireKinds`) only a native answer qualifies.
+   */
+  function namedModel(name: string, kind: DecisionKind, nativeOnly: boolean): Answerer {
+    const row = findDecisionRow(dependencies.models.catalog().descriptors, name);
+    const answerer = row === undefined ? undefined : modelOfRow(row, kind, nativeOnly);
+    if (answerer === undefined) {
+      throw dependencies.notConfigured(
+        row === undefined
+          ? `No model can answer this decision: "${name}" is not in the model catalog`
+          : `No model can answer this decision: "${name}" cannot answer a ${kind} request`,
+      );
+    }
+    return answerer;
+  }
+
+  /**
+   * The model that answers a `kind` request: the registered one, the chosen row's, else the
+   * fallback. With `nativeOnly` (the call named `requireKinds`) only a model that answers natively
+   * qualifies, and nothing answers by the fallback or a row's `generate`: no such model is built.
+   */
+  function modelFor(kind: DecisionKind, nativeOnly: boolean): Answerer {
     const hostModel = hostModelNow();
     if (hostModel?.kinds.has(kind) === true) return { model: hostModel, path: 'native' };
     const row = chosenRowNow();
-    return (row === undefined ? undefined : modelOfRow(row, kind)) ?? fallback();
+    const chosen = row === undefined ? undefined : modelOfRow(row, kind, nativeOnly);
+    if (chosen !== undefined) return chosen;
+    if (nativeOnly) {
+      throw dependencies.notConfigured(
+        'No model can answer this decision natively: no registered model or catalog row serves its kind',
+      );
+    }
+    return fallback();
   }
 
   /** Writes the record of a decision that was refused or failed; the failure itself is what is thrown. */
@@ -485,7 +522,9 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       decideOptions: BureauDecideOptions = {},
     ): Promise<Decision<DecisionValue<Request>>> {
       // The caller owns `request` and `decideOptions`: read them once, before the first await.
-      const { principal, taskId, routingId, signal } = decideOptions;
+      const { principal, taskId, routingId, signal, model } = decideOptions;
+      const required =
+        decideOptions.requireKinds === undefined ? undefined : [...decideOptions.requireKinds];
       try {
         assertValidDecisionRequest(request);
       } catch (error) {
@@ -509,7 +548,18 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       };
       let answerer: Answerer;
       try {
-        answerer = modelFor(kind);
+        const chosen =
+          model === undefined
+            ? modelFor(kind, required !== undefined)
+            : namedModel(model, kind, required !== undefined);
+        // The model that answers is the object whose kinds are read: a registered model's own, or
+        // the model the host builds for a row.
+        if (required !== undefined && !required.every((each) => chosen.model.kinds.has(each))) {
+          throw dependencies.notConfigured(
+            `No model can answer this decision natively: the model that answers it does not serve every required kind (${required.join(', ')})`,
+          );
+        }
+        answerer = chosen;
       } catch (error) {
         await auditFailure(error, base, undefined);
         throw error;
@@ -520,6 +570,12 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
           ...(principal === undefined ? {} : { principal }),
           ...(signal === undefined ? {} : { signal }),
         });
+        // A model that answers nothing is a failure with a record, not a TypeError after the call.
+        if (typeof decision !== 'object' || decision === null) {
+          throw Object.assign(new TypeError('The decision model answered with no decision.'), {
+            code: 'MALFORMED_DECISION',
+          });
+        }
       } catch (error) {
         await auditFailure(error, base, answerer);
         throw error;

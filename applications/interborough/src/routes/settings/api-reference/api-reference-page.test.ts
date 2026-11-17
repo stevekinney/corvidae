@@ -261,8 +261,10 @@ describe('Settings › API reference', () => {
       const row = list.querySelector<HTMLElement>(`[data-document="${id}"]`);
       expect(row?.textContent).toContain(title);
       expect(row?.textContent).toContain(description);
-      await waitFor(() => expect(row?.querySelector('code')?.textContent).toContain(address));
-      expect(within(row!).getByRole('button', { name: `Copy ${title}` })).not.toBeNull();
+      // The address is a Cinder CopyableValue, with its copy button inside it.
+      const value = row?.querySelector<HTMLElement>('.cinder-copyable-value');
+      await waitFor(() => expect(value?.textContent).toContain(address));
+      expect(within(value!).getByRole('button', { name: `Copy ${title}` })).not.toBeNull();
     }
   });
 

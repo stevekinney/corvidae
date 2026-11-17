@@ -74,6 +74,15 @@ export function shownLabel(container: HTMLElement, id?: string): string {
   return trigger.querySelector('.cinder-select__prefix')?.nextElementSibling?.textContent ?? '';
 }
 
+/**
+ * The words of the option the trigger shows, without the muted suffix that follows it ("Contains
+ * phrase, version 1" reads "Contains phrase"): for a select whose options carry a suffix.
+ */
+export function shownChoice(container: HTMLElement, id?: string): string {
+  const value = listboxTrigger(container, id).querySelector('.cinder-select__value');
+  return value?.firstChild?.textContent ?? '';
+}
+
 /** The muted words before the value in the trigger. */
 export function shownPrefix(container: HTMLElement, id?: string): string {
   return listboxTrigger(container, id).querySelector('.cinder-select__prefix')?.textContent ?? '';

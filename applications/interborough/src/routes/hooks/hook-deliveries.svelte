@@ -36,6 +36,7 @@
     type HookDelivery,
   } from '../../lib/bureau-hooks.ts';
   import { faultTreatment } from '../../lib/faults.ts';
+  import { nextTryWords } from '../../lib/format/next-try.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import HookDeliveryDetail from './hook-delivery-detail.svelte';
@@ -44,7 +45,6 @@
     deliveryStamp,
     deliveryStatusWord,
     deliverySubject,
-    nextTryWords,
     retryKind,
   } from './hook-delivery-presentation.ts';
   import { deliveryFailed } from './hook-presentation.ts';

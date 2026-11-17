@@ -1,11 +1,12 @@
-import { pendingReview, runInspector } from '@lostgradient/plugin-inspectors';
+import { createPluginTestHost } from '@lostgradient/bureau/testing';
+import type { PluginPanel } from '@lostgradient/interborough-plugin';
 import {
   cp,
   lstat,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   readlink,
   realpath,
   rename,
@@ -14,12 +15,29 @@ import {
 } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPanelPage } from '../src/host/panel-build.ts';
+import {
+  buildPanelPage,
+  HOST_PANEL_PACKAGES,
+  type PanelPageBuilder,
+} from '../src/host/panel-build.ts';
+import { prebuiltPanelFile } from '../src/host/panel-mounts.ts';
+import { workspacePlugins } from '../src/host/plugins.ts';
 import { buildApplication } from './build.ts';
 
 const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
 const REPOSITORY_ROOT = resolve(PACKAGE_DIRECTORY, '..', '..');
 const SDK = '@lostgradient/interborough-plugin';
+/**
+ * What the release stages beside the SDK for the host's runtime panel builds (COR-2217): the
+ * Svelte compiler and runtime (one package), Cinder's source, and the MCP Apps SDK a panel imports.
+ * A panel that is not prebuilt, such as a folder plugin's, builds from these with Bun off `PATH`.
+ */
+export const PANEL_RUNTIME_PACKAGES: readonly string[] = [
+  ...HOST_PANEL_PACKAGES,
+  '@modelcontextprotocol/ext-apps',
+];
+/** A panel a workspace plugin contributes, with the plugin that contributes it. */
+export type WorkspacePanel = { readonly plugin: string; readonly app: PluginPanel };
 export type ReleaseArguments = { readonly version: string; readonly outdir: string };
 export type ReleaseManifest = {
   readonly version: string;
@@ -30,7 +48,9 @@ type ReleaseCommand = (arguments_: string[], cwd?: string) => Promise<void>;
 export type ReleaseOperations = {
   readonly runCommand?: ReleaseCommand;
   readonly buildApplication?: typeof buildApplication;
-  readonly buildPanelPage?: typeof buildPanelPage;
+  readonly buildPanelPage?: PanelPageBuilder;
+  /** The panels the workspace plugins contribute; defaults to {@link workspacePanels}. */
+  readonly workspacePanels?: () => Promise<readonly WorkspacePanel[]>;
   readonly platform?: NodeJS.Platform;
   readonly architecture?: string;
   readonly now?: () => number;
@@ -90,6 +110,54 @@ export async function readRepositoryState(
   const awaited90 = await gitOutput(['rev-parse', 'HEAD'], repositoryRoot);
   const sourceSha = awaited90.trim();
   return { status, sourceSha };
+}
+
+/**
+ * Every panel every workspace plugin contributes, read as the host reads them: from each plugin's
+ * `setup`, through Bureau's plugin test host. A plugin with no panels contributes none.
+ */
+export async function workspacePanels(
+  entries = workspacePlugins(),
+): Promise<readonly WorkspacePanel[]> {
+  const panels: WorkspacePanel[] = [];
+  for (const entry of entries) {
+    const host = await createPluginTestHost(entry.descriptor);
+    try {
+      for (const { plugin, app } of host.plugins.panels()) panels.push({ plugin, app });
+    } finally {
+      await host.dispose();
+    }
+  }
+  return panels;
+}
+
+/**
+ * Build every panel of `panels` into `directory` as `<panel name>.json`, the file the host reads
+ * (`prebuiltPanelFile`), and return the names written. A panel's name is unique only within its
+ * plugin and the file is named by it alone, so two workspace plugins that contribute the same name
+ * fail the release here, before one overwrites the other.
+ */
+export async function prebuildPanels(
+  directory: string,
+  panels: readonly WorkspacePanel[],
+  build: PanelPageBuilder = buildPanelPage,
+): Promise<readonly string[]> {
+  const owners = new Map<string, string>();
+  for (const { plugin, app } of panels) {
+    const owner = owners.get(app.name);
+    if (owner !== undefined) {
+      throw new Error(
+        `The plugins ${owner} and ${plugin} both contribute a panel named ${app.name}, and a release names a prebuilt page by it`,
+      );
+    }
+    owners.set(app.name, plugin);
+  }
+  await mkdir(directory, { recursive: true });
+  for (const { app } of panels) {
+    const page = await build({ entry: app.entry.href, title: app.title, styles: app.styles ?? '' });
+    await writeFile(join(directory, `${app.name}.json`), prebuiltPanelFile(app.uri, page));
+  }
+  return panels.map(({ app }) => app.name);
 }
 
 async function locateFromProductionInstall(
@@ -217,6 +285,7 @@ async function bundleSdk(
 
 async function verifyRelocatedHost(
   root: string,
+  prebuilt: readonly string[],
   now: () => number = Date.now,
   sleep: (milliseconds: number) => Promise<void> = Bun.sleep,
 ): Promise<void> {
@@ -233,7 +302,24 @@ if (testingExportProof !== '{"release":"proof"}') throw new Error('Testing expor
 export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', version: '1.0.0', description: 'Release proof', setup: () => ({ panels: [{ name: 'external-proof', title: 'External proof', uri: 'ui://runtime-proof/external/v1', entry: new URL('./app.ts', import.meta.url), styles: '', allowedTools: ['bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }] }) });
 `,
   );
-  await writeFile(join(plugin, 'app.ts'), 'document.body.textContent = "external runtime";\n');
+  // A Cinder panel: the page the relocated host builds from the plugin runtime with Bun off PATH.
+  await writeFile(
+    join(plugin, 'app.ts'),
+    `import { mountPanel } from '@lostgradient/cinder/panel';
+import Proof from './app.svelte';
+mountPanel(Proof, { props: { label: 'external runtime' } });
+`,
+  );
+  await writeFile(
+    join(plugin, 'app.svelte'),
+    `<script lang="ts">
+  import { Badge } from '@lostgradient/cinder';
+  let { label }: { label: string } = $props();
+</script>
+
+<Badge>{label}</Badge>
+`,
+  );
   const childProcess = Bun.spawn(
     [join(root, 'bin', 'interborough'), 'start', '--port', '0', '--home', home],
     {
@@ -301,12 +387,10 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
     );
     if ((await realpath(resolve(join(home, 'plugins'), target))) !== (await realpath(expected)))
       throw new Error(`Relocated plugin link targets the wrong runtime: ${target} !== ${expected}`);
-    if (
-      !(await Bun.file(
-        join(root, 'share', 'interborough', 'panels', 'run-inspector.json'),
-      ).exists())
-    )
-      throw new Error('Prebuilt inspector is missing');
+    for (const name of prebuilt) {
+      if (!(await Bun.file(join(root, 'share', 'interborough', 'panels', `${name}.json`)).exists()))
+        throw new Error(`Prebuilt panel ${name} is missing`);
+    }
     let listing: Record<string, unknown> | undefined;
     let snapshot: Record<string, unknown> | undefined;
     // Wait for the host's own report of its port: an event, which ends when the host exits too.
@@ -367,6 +451,10 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
     const app = (await appResponse.json()) as { html?: unknown };
     if (typeof app.html !== 'string' || !app.html.includes('external runtime'))
       throw new Error('External MCP app response did not contain its generated page');
+    // Built with Cinder: the kit's token rule is in the one inline stylesheet, and nothing is loaded
+    // from beside the page.
+    if (!app.html.includes('--cinder-status-info-background') || /<link\b/.test(app.html))
+      throw new Error('External MCP app response was not a self-contained Cinder page');
   } finally {
     try {
       await stopChild();
@@ -444,22 +532,20 @@ export async function buildRelease(
     await (operations.buildApplication ?? buildApplication)({
       outdir: join(root, 'share', 'interborough', 'browser'),
     });
-    const panels = join(root, 'share', 'interborough', 'panels');
-    await mkdir(panels, { recursive: true });
-    for (const app of [runInspector, pendingReview]) {
-      const page = await (operations.buildPanelPage ?? buildPanelPage)({
-        entry: app.entry.href,
-        title: app.title,
-        styles: app.styles ?? '',
-      });
-      await writeFile(join(panels, `${app.name}.json`), JSON.stringify(page));
-    }
+    const prebuilt = await prebuildPanels(
+      join(root, 'share', 'interborough', 'panels'),
+      await (operations.workspacePanels ?? workspacePanels)(),
+      operations.buildPanelPage ?? buildPanelPage,
+    );
     const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
     await mkdir(runtime, { recursive: true });
-    await stage(SDK, runtime, new Set(), productionInstall.dependencies);
+    const staged = new Set<string>();
+    await stage(SDK, runtime, staged, productionInstall.dependencies);
+    for (const name of PANEL_RUNTIME_PACKAGES)
+      await stage(name, runtime, staged, productionInstall.dependencies);
     await bundleSdk(runtime, productionInstall.source, command);
     await assertContained(join(root, 'share', 'interborough', 'plugin-runtime'));
-    await verifyRelocatedHost(root, operations.now, operations.sleep);
+    await verifyRelocatedHost(root, prebuilt, operations.now, operations.sleep);
     const manifest: ReleaseManifest = {
       version: options.version,
       sourceSha,

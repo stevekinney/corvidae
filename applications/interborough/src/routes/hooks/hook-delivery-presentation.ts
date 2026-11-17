@@ -95,17 +95,6 @@ export function retryKind(delivery: HookDelivery): RetryKind | undefined {
   return delivery.attempts.at(-1)?.outcome === 'sending' ? undefined : 'retry-now';
 }
 
-/** How long until a try, in words: `40 seconds`, `2 minutes`, `a moment` when it is due. */
-export function nextTryWords(nextAttemptAt: number, now: number): string {
-  const seconds = Math.ceil((nextAttemptAt - now) / 1000);
-  if (seconds <= 0) return COPY.nextTryDue;
-  if (seconds < 90) return `${String(seconds)} ${seconds === 1 ? 'second' : 'seconds'}`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${String(minutes)} minutes`;
-  const hours = Math.round(minutes / 60);
-  return `${String(hours)} ${hours === 1 ? 'hour' : 'hours'}`;
-}
-
 /** The hint that ends a failure's cause: what a status says is likely wrong, and the next step. */
 function failureHint(status: number | null): string {
   if (status === 404 || status === 410) return COPY.cause.hintRemoved;

@@ -31,6 +31,8 @@
     why: string | undefined;
     /** The live countdown, such as "Expires in 4m 10s". */
     countdown: string | undefined;
+    /** The countdown as a narrow card writes it, such as "Expires Nov 17". */
+    countdownShort: string | undefined;
     /** What approving does; the warning glyph's tooltip says it when the action cannot be undone. */
     consequence: string | undefined;
     /** The checkbox's scope, or `undefined` when the tool never offers it. */
@@ -69,10 +71,10 @@
     context: Snippet | undefined;
     /** Identity of the request; the note, the checkbox and an armed press reset when it changes. */
     requestKey: string;
-    /** What the Input disclosure opens onto, or `undefined` when the operation carries nothing more. */
-    inputBody: Snippet | undefined;
-    /** The pairs of the one-line summary of the input. */
-    inputPairs: InputSummaryPair[];
+    /** The patch and the touched files, shown in the open, or `undefined` when the operation carries neither. */
+    operationBody: Snippet | undefined;
+    /** The rows of the input, shown in the open while the approval waits. */
+    inputRows: InputRow[];
     /** What the input is called. */
     inputLabel: string;
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
@@ -96,7 +98,8 @@
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import { describeDecidedAction, STATE_LABELS, UNDECIDED_PREFIX } from './approval-card-state.ts';
-  import type { InputSummaryPair } from './approval-card-state.ts';
+  import ApprovalCardInputRows from './approval-card-input-rows.svelte';
+  import type { InputRow } from './approval-card-state.ts';
 
   let {
     rootId,
@@ -109,6 +112,7 @@
     command,
     why,
     countdown,
+    countdownShort,
     consequence,
     rememberScope,
     approveLabel,
@@ -128,8 +132,8 @@
     decisionNote,
     context,
     requestKey,
-    inputBody,
-    inputPairs,
+    operationBody,
+    inputRows,
     inputLabel,
     resolve,
   }: ApprovalCardDecisionProps = $props();
@@ -141,7 +145,6 @@
   const hintId = $derived(`${rootId}-arm-hint`);
   const disabledReasonId = $derived(`${rootId}-disabled-reason`);
 
-  let inputOpen = $state(false);
   let whyOpen = $state(false);
   let detailsOpen = $state(false);
   let noteOpen = $state(false);
@@ -318,6 +321,7 @@
     {#if undecidedPrefix === undefined}
       <ApprovalCardFactsLine
         countdown={isPending ? countdown : undefined}
+        countdownShort={isPending ? countdownShort : undefined}
         {irreversible}
         undoneExplanation={consequence ?? "Can't be undone"}
       />
@@ -328,30 +332,33 @@
       </span>
     {/if}
   </div>
-  <dl class="cinder-approval-card__facts">
-    {#each factRows as fact, index (index)}
-      <div class="cinder-approval-card__fact">
-        <dt dir="auto">{fact.label}</dt>
-        <dd data-cinder-monospace={fact.monospace || undefined} dir="auto">{fact.value}</dd>
-      </div>
-    {/each}
-    {#if command !== undefined}
-      <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
-        <dt class="cinder-sr-only">Command</dt>
-        <dd class="cinder-approval-card__command-value" dir="auto">
-          <div class="cinder-approval-card__command">
-            <CodeBlock
-              code={command}
-              language="shell"
-              languageLabelVisible={false}
-              copyable={false}
-              wrap
-            />
-          </div>
-        </dd>
-      </div>
-    {/if}
-  </dl>
+  <!-- Drawn only with something in it: an empty list would stand a second stack gap under the title. -->
+  {#if factRows.length > 0 || command !== undefined}
+    <dl class="cinder-approval-card__facts">
+      {#each factRows as fact, index (index)}
+        <div class="cinder-approval-card__fact">
+          <dt dir="auto">{fact.label}</dt>
+          <dd data-cinder-monospace={fact.monospace || undefined} dir="auto">{fact.value}</dd>
+        </div>
+      {/each}
+      {#if command !== undefined}
+        <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
+          <dt class="cinder-sr-only">Command</dt>
+          <dd class="cinder-approval-card__command-value" dir="auto">
+            <div class="cinder-approval-card__command">
+              <CodeBlock
+                code={command}
+                language="shell"
+                languageLabelVisible={false}
+                copyable={false}
+                wrap
+              />
+            </div>
+          </dd>
+        </div>
+      {/if}
+    </dl>
+  {/if}
   {#if isPending}
     {#if why !== undefined}
       <div class="cinder-approval-card__input cinder-approval-card__why">
@@ -374,39 +381,9 @@
         <p id={whyId} class="cinder-approval-card__why-body" hidden={!whyOpen} dir="auto">{why}</p>
       </div>
     {/if}
-    {#if inputBody !== undefined}
-      <div class="cinder-approval-card__input">
-        <button
-          type="button"
-          class="cinder-approval-card__input-toggle"
-          aria-expanded={inputOpen}
-          aria-controls={inputId}
-          onclick={() => (inputOpen = !inputOpen)}
-        >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={inputOpen || undefined}
-          />
-          <span class="cinder-approval-card__input-word">{inputLabel}</span>
-          <span class="cinder-approval-card__input-pairs">
-            {#each inputPairs as pair, index (pair.key)}
-              {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true"
-                  >,</span
-                >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
-              >{' '}<span
-                class="cinder-approval-card__pair-value"
-                data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-              >
-            {/each}
-          </span>
-        </button>
-        <div id={inputId} class="cinder-approval-card__row-input" hidden={!inputOpen}>
-          {@render inputBody()}
-        </div>
-      </div>
+    {@render operationBody?.()}
+    {#if inputRows.length > 0}
+      <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
     {/if}
     {#if canAnswer && failure !== undefined}
       <ApprovalCardFailure {failure} />

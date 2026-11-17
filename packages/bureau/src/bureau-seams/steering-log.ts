@@ -36,6 +36,7 @@ import {
   SteeringLogSealedError,
   type SteeringLogEvent,
   appendSteeringLogEvent,
+  deleteEndedSteeringLogEntries,
   deleteSteeringLog,
   listSteeringLogIncarnations,
   readSteeringLogEntries,
@@ -667,7 +668,9 @@ export function createSteeringLog<D extends AgentDefinitions>(
 
   /**
    * COR-2097 — removes an ended session incarnation's log, once its `session.deleted` entry is
-   * acknowledged: until then a drainer may still need to fold and seal it. Best effort, like every
+   * acknowledged: until then a drainer may still need to fold and seal it. The sealed head stays,
+   * so an admission that read the session before it ended and reads the log now is refused as
+   * sealed, not given a fresh log to append to; the boot sweep removes it. Best effort, like every
    * removal after a commit: a log left behind is removed by the boot sweep.
    */
   async function removeEndedSessionSteeringLog(
@@ -681,7 +684,7 @@ export function createSteeringLog<D extends AgentDefinitions>(
         if (steeringCursors.get(sessionId)?.incarnation === incarnation) {
           forgetSessionSteering(sessionId);
         }
-        await deleteSteeringLog(kv, sessionId, incarnation);
+        await deleteEndedSteeringLogEntries(kv, sessionId, incarnation);
       });
     } catch (error) {
       diagnose({

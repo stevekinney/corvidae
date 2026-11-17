@@ -81,9 +81,13 @@ for (const width of WIDTHS) {
     // The model policy has a section of its own, the decisions are on Settings › Models, and the
     // A2A push settings are on Settings › A2A; every other key is on the General page.
     // The retention windows are on Data and retention, which has its own page.
+    // The scorer settings have no control yet and are set through the Bureau's settings (COR-2202).
     const keys = Object.keys(published).filter(
       (key) =>
-        key !== 'modelPolicy' && !key.startsWith('decisions.') && !key.startsWith('retention.'),
+        key !== 'modelPolicy' &&
+        !key.startsWith('decisions.') &&
+        !key.startsWith('retention.') &&
+        !key.startsWith('scorers.'),
     );
     const sections = [
       { path: '/settings', keys: keys.filter((key) => !key.startsWith('a2a.')) },

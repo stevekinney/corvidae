@@ -4,16 +4,21 @@
  * `bureau.tasks.events`, and aborts through `bureau.tasks.cancel`. It holds no credential and
  * reaches no origin, so the host's authorization decides every call it makes.
  */
+import { mountPanel } from '@lostgradient/cinder/panel';
 import { App } from '@modelcontextprotocol/ext-apps';
+import { unmount } from 'svelte';
 
+import { followHostTheme } from '../host-theme.ts';
+import Inspector from './inspector.svelte';
 import {
   buildInspectorModel,
+  describeChange,
   type Inspection,
   type InspectorModel,
   isStaleInspection,
   type TaskEventElement,
 } from './model.ts';
-import { describeChange, renderInspector } from './render.ts';
+import { createInspectorView } from './view.svelte.ts';
 
 const REFRESH_MILLISECONDS = 3000;
 const ABORT_WAIT_MILLISECONDS = 10_000;
@@ -53,7 +58,14 @@ async function start(): Promise<void> {
   // Without the host's `serverTools` capability the page cannot call the server: it shows the
   // result that opened it and offers no Abort.
   const canCallServer = (): boolean => app.getHostCapabilities()?.serverTools !== undefined;
-  const handlers = { onAbort: () => void abort() };
+  // The page is a Svelte component over this view: what the page learns goes into it, and the
+  // component redraws in place, so a poll never moves the reader's focus.
+  const view = createInspectorView();
+  const mounted = mountPanel(Inspector, {
+    target: root,
+    props: { view, onAbort: () => void abort() },
+  });
+  const applyHostTheme = followHostTheme(app);
 
   const show = (inspected: Inspection, announceReconnect: boolean): void => {
     if (isStaleInspection(shown, inspected)) return;
@@ -61,13 +73,14 @@ async function start(): Promise<void> {
     const next = buildInspectorModel(inspected, events, canCallServer());
     const announcement = announceReconnect ? 'Reconnected.' : describeChange(model, next);
     model = next;
-    renderInspector(root, next, handlers, announcement);
+    view.model = next;
+    if (announcement !== null) view.announcement = announcement;
   };
 
   const connectionLost = (): void => {
     if (connected && model !== undefined) {
       connected = false;
-      renderInspector(root, model, handlers, 'Connection lost. Retrying.');
+      view.announcement = 'Connection lost. Retrying.';
     }
   };
 
@@ -115,7 +128,7 @@ async function start(): Promise<void> {
       });
       if (started !== generation) return;
       if (receipt.isError === true && model !== undefined) {
-        renderInspector(root, model, handlers, 'Abort was refused.');
+        view.announcement = 'Abort was refused.';
         return;
       }
     } catch {
@@ -158,10 +171,12 @@ async function start(): Promise<void> {
   app.onteardown = async () => {
     if (timer !== undefined) clearInterval(timer);
     generation += 1;
+    void unmount(mounted);
     root.replaceChildren();
     return {};
   };
   await app.connect();
+  applyHostTheme();
   // poll-reason: mcp-transport
   timer = setInterval(() => void refresh(), REFRESH_MILLISECONDS);
 }

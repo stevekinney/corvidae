@@ -312,6 +312,9 @@ export type { ContextMenuTriggerProps } from './components/context-menu-trigger/
 export { default as CopyButton } from './components/copy-button/index.ts';
 export type { CopyButtonProps } from './components/copy-button/index.ts';
 
+export { default as CopyableValue } from './components/copyable-value/index.ts';
+export type { CopyableValueProps } from './components/copyable-value/index.ts';
+
 export { copyToClipboard } from './utilities/clipboard.ts';
 
 export {
@@ -1520,4 +1523,4 @@ export type {
   TreeSelectAllProps,
   TreeVirtualizedItemRenderState,
 } from './components/tree/index.ts';
-export { createBodyScrollLock, scrollEdgeFade } from './utilities/attachments.ts';
+export { createBodyScrollLock, dockedToBottom, scrollEdgeFade } from './utilities/attachments.ts';

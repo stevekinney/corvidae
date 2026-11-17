@@ -11,7 +11,7 @@ import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
-import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -80,8 +80,7 @@ function mount(title = 'Plan the week') {
 }
 
 async function askForApproval(container: HTMLElement): Promise<void> {
-  const box = container.querySelector('textarea');
-  if (box === null) throw new Error('The composer did not render.');
+  const box = await loadedComposer(container);
   await fireEvent.input(box, { target: { value: 'Refund it' } });
   await fireEvent.keyDown(box, { key: 'Enter' });
   await waitFor(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
@@ -99,7 +98,8 @@ describe('an approval in the chat', () => {
     await askForApproval(container);
 
     expect(container.querySelectorAll('[data-approval-decision]')).toHaveLength(1);
-    for (const name of ['Input', 'Add note', 'Deny', 'Approve']) {
+    expect(await findByRole('group', { name: 'Input' })).not.toBeNull();
+    for (const name of ['Add note', 'Deny', 'Approve']) {
       expect(await findByRole('button', { name: new RegExp(`^${name}`) })).not.toBeNull();
     }
     expect(
@@ -203,23 +203,21 @@ describe('an approval in the chat', () => {
     });
   });
 
-  test('shows what the call was given under Input, and hides it again', async () => {
+  test('shows what the call was given in the open, as the rows of the Input group', async () => {
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
       approvalRun,
     ).restore;
     landAt('/chats/session-1');
-    const { container, findByRole } = mount();
+    const { container, findByRole, queryByRole } = mount();
     await askForApproval(container);
-    const toggle = await findByRole('button', { name: /^Input/ });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    const input = await findByRole('group', { name: 'Input' });
 
-    await fireEvent.click(toggle);
-
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(container.querySelector('[data-approval-decision]')?.textContent).toContain('4200');
-    await fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(input.closest('[data-approval-decision]')).not.toBeNull();
+    expect(input.textContent).toContain('4200');
+    // A short input has no disclosure and no Show all.
+    expect(queryByRole('button', { name: /^Input/ })).toBeNull();
+    expect(queryByRole('button', { name: /^Show all/ })).toBeNull();
   });
 
   test('sends a refusal with the note the person left, as the reason the agent reads', async () => {
@@ -329,8 +327,7 @@ describe('an approval raised after the person answered a question', () => {
     ).restore;
     landAt('/chats/session-1');
     const { container } = mount();
-    const box = container.querySelector('textarea');
-    if (box === null) throw new Error('The composer did not render.');
+    const box = await loadedComposer(container);
     await fireEvent.input(box, { target: { value: 'Ship it' } });
     await fireEvent.keyDown(box, { key: 'Enter' });
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -392,9 +389,9 @@ describe('an approval while Interborough cannot be reached (design rows 16y, 16z
         CHAT_COPY.approval.unreachable,
       );
       // What does not change anything stays available, and nothing is dimmed.
-      const input = await findByRole('button', { name: /^Input/ });
+      const input = await findByRole('group', { name: 'Input' });
       const note = await findByRole('button', { name: 'Add note' });
-      expect(input.hasAttribute('disabled')).toBe(false);
+      expect(input.textContent).toContain('4200');
       expect(note.hasAttribute('aria-disabled')).toBe(false);
       expect(container.querySelector('[style*="opacity"]')).toBeNull();
     } finally {

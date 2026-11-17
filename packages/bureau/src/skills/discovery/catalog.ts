@@ -93,6 +93,12 @@ export interface SkillSourceDiagnostic {
     | 'duplicate-source-id'
     | 'cancelled';
   readonly message: string;
+  /**
+   * The skill directory a failed admission is about, set on every `admission-failed` diagnostic
+   * (COR-2100). A directory that cannot be parsed has no record, so this is what names it: the
+   * identifier a change report lists it under.
+   */
+  readonly directoryName?: string;
   /** Admission diagnostics from the artifact layer, when the failure came from there. */
   readonly admission?: readonly SkillAdmissionDiagnostic[];
 }
@@ -148,6 +154,111 @@ export function deepCloneAndFreeze<T>(value: T): T {
     clone[key] = deepCloneAndFreeze(nested);
   }
   return Object.freeze(clone) as T;
+}
+
+/** What changed between two discoveries, by skill name (COR-2100): the lists of a `definitions.changed` event. */
+export interface SkillCatalogChange {
+  /** Names with no skill before, and now a record or an unparseable directory. */
+  readonly added: readonly string[];
+  /** Names whose records, or whose unparseable directory's diagnostic, are not what they were. */
+  readonly changed: readonly string[];
+  /** Names that had a skill before and have none now. */
+  readonly removed: readonly string[];
+  /** Names of `added` and `changed` whose skill cannot run: the winning record is invalid, or a directory could not be parsed. */
+  readonly rejected: readonly string[];
+}
+
+/** What a catalog holds under one name: its records, and the diagnostics that name a directory of that name. */
+interface CatalogEntry {
+  readonly records: SkillCatalogRecord[];
+  readonly diagnostics: SkillSourceDiagnostic[];
+}
+
+/**
+ * The name a record is reported under: its own, or its directory's when it has none (an empty
+ * `SKILL.md` declares no name, and two such directories would otherwise share one key).
+ */
+function reportedName(record: SkillCatalogRecord): string {
+  return record.name === '' ? (record.directoryName ?? '') : record.name;
+}
+
+/** `revision`'s records and unparseable directories, grouped by the name each is reported under. */
+function entriesByName(revision: SkillCatalogRevision): Map<string, CatalogEntry> {
+  const entries = new Map<string, CatalogEntry>();
+  const entryOf = (name: string): CatalogEntry => {
+    let entry = entries.get(name);
+    if (entry === undefined) {
+      entry = { records: [], diagnostics: [] };
+      entries.set(name, entry);
+    }
+    return entry;
+  };
+  for (const record of revision.records) entryOf(reportedName(record)).records.push(record);
+  for (const diagnostic of revision.sourceDiagnostics) {
+    if (diagnostic.directoryName !== undefined) {
+      entryOf(diagnostic.directoryName).diagnostics.push(diagnostic);
+    }
+  }
+  return entries;
+}
+
+/** What an entry is, for comparing it with itself in another revision: what a run could see of it. */
+function signatureOf(entry: CatalogEntry): string {
+  const records = entry.records.map(
+    (record) =>
+      `${record.sourceId}\u0000${record.artifactDigest}\u0000${record.unavailableReason ?? ''}`,
+  );
+  const diagnostics = entry.diagnostics.map(
+    (diagnostic) =>
+      `${diagnostic.sourceId}\u0000${diagnostic.directoryName}\u0000${diagnostic.message}`,
+  );
+  return JSON.stringify([records.toSorted(), diagnostics.toSorted()]);
+}
+
+/** Whether the skill an entry holds cannot run: a directory that failed to parse, or an invalid record that wins its name. */
+function isRejected(entry: CatalogEntry): boolean {
+  if (entry.diagnostics.length > 0) return true;
+  const winner =
+    entry.records.find((record) => record.unavailableReason !== 'shadowed') ?? entry.records[0];
+  return winner?.unavailableReason === 'invalid';
+}
+
+/**
+ * What changed between two discoveries of the same sources (COR-2100), by name. A name's entry is
+ * compared as the sorted list of its records' (`sourceId`, `artifactDigest`, `unavailableReason`)
+ * and its unparseable directories' (`sourceId`, `directoryName`, `message`), so an edit, a move to
+ * another source, a shadowing copy, a change in trust and a skill that becomes unparseable are each
+ * a change, while a touched file, a renamed directory that declares the same name, and a diagnostic
+ * that is still the same are not. A skill that becomes unparseable is `changed` and `rejected`, not
+ * removed, when its directory name is its name.
+ */
+export function diffSkillCatalogs(
+  previous: SkillCatalogRevision,
+  next: SkillCatalogRevision,
+): SkillCatalogChange {
+  const before = entriesByName(previous);
+  const after = entriesByName(next);
+  const added: string[] = [];
+  const changed: string[] = [];
+  const removed: string[] = [];
+  for (const [name, entry] of after) {
+    const earlier = before.get(name);
+    if (earlier === undefined) added.push(name);
+    else if (signatureOf(earlier) !== signatureOf(entry)) changed.push(name);
+  }
+  for (const name of before.keys()) if (!after.has(name)) removed.push(name);
+  const order = (names: string[]): string[] => names.toSorted();
+  return {
+    added: order(added),
+    changed: order(changed),
+    removed: order(removed),
+    rejected: order(
+      [...added, ...changed].filter((name) => {
+        const entry = after.get(name);
+        return entry !== undefined && isRejected(entry);
+      }),
+    ),
+  };
 }
 
 /** The records a host would actually offer a model. */

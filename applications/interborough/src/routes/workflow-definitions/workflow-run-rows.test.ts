@@ -61,18 +61,55 @@ describe('one instance as a row', () => {
     expect(row.agentName).toBe('journey-author');
   });
 
-  test('names a trigger-started instance by its origin, and says a trigger started it on line two', () => {
+  test('names a trigger-started instance by its origin, its plugin and its file kept, and says a trigger started it on line two', () => {
     const row = workflowRunRow(
       summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
       CONTEXT,
     );
-    expect(row.origin).toEqual({ kind: 'trigger' });
+    // COR-2171: the projection keeps the plugin and the file, so the row can say which trigger.
+    expect(row.origin).toEqual({
+      kind: 'trigger',
+      plugin: 'linear',
+      workflowId: 'sync',
+      href: '/workflows/sync',
+    });
     const line = runLineTwo(row, {
       now: 1_760_000_010_000,
       zone: 'America/Chicago',
       agentLabel: (name) => name,
     });
     expect(line.startsWith(TASK_COPY.list.kinds.trigger)).toBe(true);
+  });
+
+  test('names the trigger’s plugin by its title in the who slot of a run whose workflow names no agent, never "An agent" (COR-2171)', () => {
+    const row = workflowRunRow(
+      summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
+      { title: 'Sync', agentName: null },
+    );
+    const line = runLineTwo(row, {
+      now: 1_760_000_010_000,
+      zone: 'America/Chicago',
+      agentLabel: (name) => name,
+      pluginTitle: (plugin) => (plugin === 'linear' ? 'Linear' : undefined),
+    });
+    expect(line).toBe(
+      [TASK_COPY.list.kinds.trigger, 'Linear', '3 s'].join(TASK_COPY.list.separator),
+    );
+    expect(line).not.toContain(TASK_COPY.unknownAgent);
+  });
+
+  test('says the plugin’s identifier only when no title is loaded for it (COR-2171)', () => {
+    const row = workflowRunRow(
+      summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
+      { title: 'Sync', agentName: null },
+    );
+    const context = {
+      now: 1_760_000_010_000,
+      zone: 'America/Chicago',
+      agentLabel: (n: string) => n,
+    };
+    expect(runLineTwo(row, context)).toContain(', linear, ');
+    expect(runLineTwo(row, { ...context, pluginTitle: () => undefined })).toContain(', linear, ');
   });
 
   test('has no duration while it is still going', () => {

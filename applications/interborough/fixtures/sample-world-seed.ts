@@ -41,6 +41,7 @@ import { createOffsetRuntime, type OffsetRuntime } from '../src/host/offset-runt
 import type { ShowcasePacing } from '../src/host/showcase-agents.ts';
 import { SHOWCASE_MODELS, showcaseHostOptions } from '../src/host/showcase.ts';
 import { writeProviderHome } from '../src/host/stub-provider.ts';
+import { checksRecorded } from './sample-world-checks.ts';
 import {
   missedRunsLogged,
   november1Afternoon,
@@ -629,6 +630,8 @@ export async function seedSampleWorld(
     await scratchChatDeleted(context);
     await sayHelloChat(context);
     await november1Afternoon(context);
+    // The guardrails, scorers and the flagged chat the Checks page lists, beside the goals' verdicts.
+    await checksRecorded(context);
   });
   // Daily summary, on a clock set back to Oct 28 (`sample-world-history.ts` says why).
   await session(story, history.dailySummaryCreated - 60_000, october28);
