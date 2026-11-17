@@ -645,7 +645,7 @@
     backVisible={!phone.current}
     {listBody}
   >
-    {#snippet header({ listToggle })}
+    {#snippet header()}
       <div class="ib-chats__controls" bind:clientWidth={paneWidth}>
         {#if showingArchived}
           <!-- The archived view's way back to the chats, above its title. Its label says where it
@@ -672,9 +672,8 @@
               : CHAT_COPY.sessionsTitle}
         >
           {#snippet actions()}
-            <!-- The "+" and, beside an open chat, the toggle that hides the list (COR-2327 AC1). -->
+            <!-- The "+" alone: the toggle that hides the list is ListDetail's, on its rail. -->
             {@render newChatButton()}
-            {@render listToggle?.()}
           {/snippet}
         </SectionHeading>
         {#if !phone.current}

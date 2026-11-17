@@ -687,9 +687,12 @@ describe('ListDetail', () => {
       await measure(container, 1000);
       const root = container.querySelector('.cinder-list-detail')!;
 
-      // The header places the toggle it is given: here, at the end of its title row.
+      // One control in one place: the rail, never the header's title row, so the header's own
+      // actions stand alone at the end of it.
       const hide = getByRole('button', { name: 'Hide list' });
-      expect(hide.closest('.list-detail-fixture-title-row')).not.toBeNull();
+      expect(hide.closest('.cinder-list-detail__rail')).not.toBeNull();
+      expect(hide.closest('.cinder-list-detail__header')).toBeNull();
+      expect(hide.closest('.list-detail-fixture-title-row')).toBeNull();
       await fireEvent.click(hide);
       await tick();
       await tick();
@@ -707,6 +710,8 @@ describe('ListDetail', () => {
       expect(detailText(container)).toBe('Beta chat detail');
       const show = getByRole('button', { name: 'Show list' });
       expect(show.closest('.cinder-list-detail__rail')).not.toBeNull();
+      // The same button in the same place, not a second control drawn where the first was.
+      expect(show).toBe(hide);
       expect(document.activeElement).toBe(show);
 
       await fireEvent.click(show);
@@ -781,16 +786,15 @@ describe('ListDetail', () => {
       expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
     });
 
-    test('a list with no header of its own gets one holding the toggle', async () => {
+    test('a list with no header of its own draws no header for the toggle, which is on the rail', async () => {
       const { container, getByRole } = render(ListDetailTableFixture, {
         props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
       });
       await measure(container, 1000);
 
       const toggle = getByRole('button', { name: 'Hide list' });
-      expect(
-        toggle.closest('.cinder-list-detail__header')?.hasAttribute('data-cinder-list-toggle'),
-      ).toBe(true);
+      expect(toggle.closest('.cinder-list-detail__rail')).not.toBeNull();
+      expect(container.querySelector('.cinder-list-detail__header')).toBeNull();
     });
 
     test('takes its labels from the host, and has nothing to hide below pushBelow', async () => {

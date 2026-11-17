@@ -21,7 +21,6 @@
    * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
    */
   export type {
-    ListDetailHeaderContext,
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
@@ -361,15 +360,12 @@
     onkeydown={handleKeydown}
   >
     {#if header}
-      <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
+      <!-- The list toggle is on the rail, so the header keeps its width for its own title, search
+           and filter. -->
       <header class="cinder-list-detail__header">
         <CompactActions>
-          {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+          {@render header()}
         </CompactActions>
-      </header>
-    {:else if toggleShown}
-      <header class="cinder-list-detail__header" data-cinder-list-toggle="">
-        <CompactActions>{@render listToggle()}</CompactActions>
       </header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
@@ -493,9 +489,10 @@
     {/if}
   {:else if below}
     <div class="cinder-list-detail__below">
-      {#if collapsed}
+      {#if toggleShown}
         <div class="cinder-list-detail__rail">{@render listToggle()}</div>
-      {:else}
+      {/if}
+      {#if !collapsed}
         {@render listPane()}
       {/if}
       {@render detailPane()}
@@ -506,7 +503,7 @@
          focus, and the rail beside them keeps the way back. An open item that mounted again
          would read its data again and could take focus for itself. -->
     <div class="cinder-list-detail__split">
-      {#if collapsed}
+      {#if toggleShown}
         <div class="cinder-list-detail__rail">{@render listToggle()}</div>
       {/if}
       <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
