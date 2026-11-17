@@ -259,10 +259,17 @@ function preparePackedWorkspace(root: string): string {
     >;
     for (const nestedName of Object.keys(nestedDependencies)) {
       const nestedDirectory = WEFT_WORKSPACE_DEPENDENCIES.get(nestedName);
-      if (nestedDirectory === undefined) continue;
       const nestedLink = join(root, workspaceDirectory, 'node_modules', nestedName);
       mkdirSync(dirname(nestedLink), { recursive: true });
-      symlinkSync(join(root, nestedDirectory), nestedLink, 'dir');
+      // A workspace dependency links to its fixture copy; an external one (backchannel's `zod`)
+      // links to the package this workspace's own install holds.
+      symlinkSync(
+        nestedDirectory === undefined
+          ? join(REPOSITORY_ROOT, 'node_modules', nestedName)
+          : join(root, nestedDirectory),
+        nestedLink,
+        'dir',
+      );
     }
   }
 

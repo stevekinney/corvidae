@@ -16,4 +16,34 @@ describe('the settings frame', () => {
     // page root that pads itself doubles the space above its heading.
     expect(ruleOf('.weft-settings')).not.toMatch(/padding/);
   });
+
+  test('takes the wide measure from its measure property, and knows no page by name (COR-2509)', () => {
+    const style = source.slice(source.indexOf('<style>'));
+    // A page is never selected by its name: the page asks for the measure.
+    expect(style).not.toMatch(/data-page/);
+    expect(ruleOf(".weft-settings[data-measure='wide']")).toMatch(/--ib-settings-measure:\s*64rem/);
+    // Every section keeps the one reading width unless it asks.
+    expect(ruleOf('.weft-settings')).toMatch(
+      /--ib-settings-measure:\s*var\(--ib-settings-content-width\)/,
+    );
+    expect(source).toMatch(/measure = 'default'/);
+  });
+
+  test('only the Plugins page asks for the wide measure', async () => {
+    const pages = [
+      './index.svelte',
+      './plugins/index.svelte',
+      './models/index.svelte',
+      './a2a/index.svelte',
+      './retention/index.svelte',
+      './api-reference/index.svelte',
+      './allowed-models.svelte',
+    ];
+    const wide: string[] = [];
+    for (const path of pages) {
+      const text = await Bun.file(new URL(path, import.meta.url)).text();
+      if (/measure="wide"/.test(text)) wide.push(path);
+    }
+    expect(wide).toEqual(['./plugins/index.svelte']);
+  });
 });

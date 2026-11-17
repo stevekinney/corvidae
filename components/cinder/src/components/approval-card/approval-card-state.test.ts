@@ -2,9 +2,12 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   describeCountdown,
+  describeCountdownShort,
   describeDecisionTime,
   describeExpiry,
+  describeInputRows,
   formatRemainingTime,
+  INPUT_SUMMARY_ROWS,
   RISK_WORDS,
   STATE_DOT_STATUS,
   STATE_LABELS,
@@ -129,5 +132,59 @@ describe('the approval countdown', () => {
     const far = describeCountdown(now + 8_521_807 * HOUR, now);
     expect(far).not.toContain(' h');
     expect(far).toMatch(/^Expires /);
+  });
+
+  test('a narrow card names only the day of a deadline more than a day out, and keeps a countdown', () => {
+    expect(describeCountdownShort(Date.parse('2026-11-12T18:30:00.000Z'), now)).toBe(
+      'Expires tomorrow',
+    );
+    expect(describeCountdownShort(Date.parse('2026-11-20T09:30:00.000Z'), now)).toBe(
+      'Expires Nov 20',
+    );
+    // Under a day the countdown is already short, so both forms are the same words.
+    expect(describeCountdownShort(now + 3 * HOUR, now)).toBe(
+      describeCountdown(now + 3 * HOUR, now),
+    );
+  });
+});
+
+describe('describeInputRows', () => {
+  test('writes one row per field, nested values whole as JSON with secrets masked', () => {
+    const rows = describeInputRows({
+      orderId: 4471,
+      reason: '',
+      items: [{ sku: 'A-1' }],
+      account: { name: 'Ada', password: 'hunter2' },
+    });
+
+    expect(rows.map((row) => [row.label, row.text, row.muted, row.structured])).toEqual([
+      ['Order ID', '4471', false, false],
+      ['Reason', 'Empty', true, false],
+      ['Items', '[{"sku":"A-1"}]', false, true],
+      ['Account', '{"name":"Ada","password":"••••••••••••"}', false, true],
+    ]);
+  });
+
+  test('a preview that is not a list or an object is one Value row; an empty one has none', () => {
+    expect(describeInputRows('refund order 4471')).toEqual([
+      { key: 'value', label: 'Value', text: 'refund order 4471', muted: false, structured: false },
+    ]);
+    expect(describeInputRows({})).toEqual([]);
+    expect(describeInputRows([])).toEqual([]);
+  });
+
+  test('cuts a value longer than the preview budget, so a huge value never floods the card', () => {
+    const [row] = describeInputRows({ body: 'x'.repeat(10_000) });
+
+    expect(row?.text).toHaveLength(4_097);
+    expect(row?.text.endsWith('…')).toBe(true);
+  });
+
+  test('a nested value JSON cannot write says how much it holds instead', () => {
+    expect(describeInputRows({ sizes: [1n, 2n] })[0]?.text).toBe('2 items');
+  });
+
+  test('keeps a short call whole: four rows before Show all', () => {
+    expect(INPUT_SUMMARY_ROWS).toBe(4);
   });
 });

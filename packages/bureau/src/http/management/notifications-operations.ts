@@ -13,7 +13,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module notifications-operations
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import {

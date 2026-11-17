@@ -116,21 +116,21 @@
  * limitation.
  */
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import type {
-  AgentScheduledEvent,
-  DurableEventEnvelope,
-  DurableEventGap,
-  DurableEventOwner,
-  DurableEventPage,
-  ScheduleCancelledEvent,
-  SchedulePausedEvent,
-  ScheduleResumedEvent,
-  SessionCreatedEvent,
-  SessionDeletedEvent,
-  SessionSavedEvent,
-  Subscription,
+import {
+  type AgentScheduledEvent,
+  type DurableEventEnvelope,
+  type DurableEventGap,
+  type DurableEventOwner,
+  type DurableEventPage,
+  type ScheduleCancelledEvent,
+  type SchedulePausedEvent,
+  type ScheduleResumedEvent,
+  type SessionCreatedEvent,
+  type SessionDeletedEvent,
+  type SessionSavedEvent,
+  type Subscription,
+  GOAL_AUDIT_WORKFLOW_ID_PREFIX,
 } from '@lostgradient/operative';
-import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from '@lostgradient/operative';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
@@ -138,15 +138,13 @@ import {
 } from '@lostgradient/storage';
 import {
   createFleetEventFeed,
-  type Cursor,
-  decodeCursor,
   decode,
   encode,
-  encodeCursor,
   type FleetEventEnvelope,
   type FleetEventFeed,
   KEYS,
 } from '@lostgradient/weft';
+import { type Cursor, decodeCursor, encodeCursor } from '@lostgradient/backchannel';
 
 import type { AgentDefinitions } from './agent-catalog';
 import {

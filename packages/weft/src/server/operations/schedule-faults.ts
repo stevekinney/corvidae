@@ -1,3 +1,5 @@
+import type { OperationFault } from '@lostgradient/backchannel';
+import { invalidParamsFault } from '@lostgradient/backchannel/internals';
 import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic-source-errors.ts';
 import { ScheduleOccurrenceNotNextError } from '../../core/engine/schedule-occurrence-not-next-error.ts';
 import { ScheduleStaleRevisionError } from '../../core/engine/schedule-stale-revision-error.ts';
@@ -8,11 +10,7 @@ import {
 } from '../../core/engine/validation/schedule.ts';
 import { isValidTimeZone } from '../../core/schedule.ts';
 import type { ScheduleSpec, ScheduleUpdateOptions } from '../../core/types.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
-
-export { isOperationFault } from './operation-helpers.ts';
 
 export type ScheduleMutableOptionsInput = {
   description?: unknown;

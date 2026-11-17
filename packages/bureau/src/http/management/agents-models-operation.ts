@@ -14,7 +14,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module agents-models-operation
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { AgentModels } from '../../agent-models.ts';

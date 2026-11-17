@@ -36,7 +36,6 @@ export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const MCP_LEGACY_PROTOCOL_VERSION = '2025-11-25';
 
 /** MCP method used for live tool introspection. */
-export const MCP_TOOLS_LIST_METHOD = 'tools/list';
 
 /** MCP method used for live resource introspection. */
 export const MCP_RESOURCES_LIST_METHOD = 'resources/list';

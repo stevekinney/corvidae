@@ -11,13 +11,13 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
   type RemoteTaskLeased,
 } from '../../core/task-ledger/task-ledger.ts';
-import { principalFromApiKey } from '../principal.ts';
 import {
   FailingTerminalCommitStorage,
   minimalServeOptions,

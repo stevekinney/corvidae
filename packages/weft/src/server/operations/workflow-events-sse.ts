@@ -1,36 +1,36 @@
 import { z } from 'zod';
 
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { isAuthenticated } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
-import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
-import {
-  decodeCursor,
-  type Cursor,
-  type EventEnvelope,
-  type EventSelector,
-  type ReplayLiveSubscribeOptions,
-  type WorkflowEventFeed,
-} from '../workflow-event-feed.ts';
 import {
   createReplayAwareClosableIterable,
-  isClosableAsyncIterable,
-  isReplayAwareClosableIterable,
-  workflowEventEnvelopeSchema,
-  workflowEventParameterizedAccess,
+  decodeCursor,
+  defineOperation,
+  type AuthorizationScope,
+  type Cursor,
+  type OperationFault,
   type ReplayAwareClosableIterable,
-} from './event-stream-contracts.ts';
-import { invalidParamsFault, shapeRestFault } from './operation-helpers.ts';
+  type ReplayLiveSubscribeOptions,
+} from '@lostgradient/backchannel';
 import {
   createEventEnvelopeSSEStream,
+  invalidParamsFault,
+  isAuthenticated,
+  isClosableAsyncIterable,
+  isReplayAwareClosableIterable,
   readServerSentEventsCursor,
   requireServerSentEventsAccept,
   shapeServerSentEventsFault,
   SSE_RESPONSE_HEADERS,
-} from './sse-stream.ts';
+  type ConnectionLease,
+  type EventSelector,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
+import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
+import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
+import {
+  workflowEventEnvelopeSchema,
+  workflowEventParameterizedAccess,
+} from './event-stream-contracts.ts';
+import { shapeRestFault } from './operation-helpers.ts';
 
 export type WorkflowStreamConnectionAcquirer = (
   workflowId: string,

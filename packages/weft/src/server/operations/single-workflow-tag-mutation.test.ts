@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   createSingleWorkflowTagMutationOperation,
   createSingleWorkflowTagMutationRestBinding,

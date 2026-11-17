@@ -15,7 +15,7 @@ import {
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 

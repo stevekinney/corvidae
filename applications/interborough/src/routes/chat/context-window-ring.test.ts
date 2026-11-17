@@ -47,6 +47,17 @@ describe('the ring', () => {
     expect(trigger(container).getAttribute('data-tone')).toBe('normal');
   });
 
+  test('says what it is on hover and focus, in the words of its name (COR-2327)', async () => {
+    const { container } = render(ContextWindowRing, { props: { report: REPORT } });
+    const ring = trigger(container);
+
+    await fireEvent.focus(ring);
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(COPY.trigger(42, '84,000', '200,000')),
+    );
+    expect(ring.closest('.cinder-tooltip-wrapper')).not.toBeNull();
+  });
+
   test('draws the share as an arc of the ring, and changes its tone as the window fills', () => {
     const { container, rerender } = render(ContextWindowRing, { props: { report: REPORT } });
     const arc = () => container.querySelector('.weft-context-ring__fill');

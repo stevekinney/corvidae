@@ -17,7 +17,7 @@
 
 import { JsonRpcTransportHandler, type ServerCallContext } from '@a2a-js/sdk/server';
 
-import { formatServerSentEvent } from '../server/operations/sse-stream.ts';
+import { formatServerSentEvent } from '@lostgradient/backchannel/internals';
 import type { StreamCursorEntry } from './stream-cursors.ts';
 
 /** A JSON-RPC response envelope as the SDK's transport handler produces it. */

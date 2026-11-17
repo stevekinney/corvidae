@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { DiscoveryInfo } from '@lostgradient/backchannel';
+import {
+  generateAsyncApiDocument,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { generateAsyncApiDocument } from './asyncapi.ts';
-import type { DiscoveryInfo } from './discovery-info.ts';
 import { serve, type WeftServer } from './index.ts';
-import { generateOpenApiDocument } from './openapi.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 
 const discoveryInfo: DiscoveryInfo = {

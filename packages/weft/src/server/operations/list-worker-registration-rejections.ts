@@ -13,9 +13,9 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { RegistrationRejectionEntry, WorkerRegistry } from '../../worker/registry.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;

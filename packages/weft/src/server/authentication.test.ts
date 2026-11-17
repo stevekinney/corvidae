@@ -1,28 +1,26 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  type AuthAuditEvent,
+  type AuthConfig,
+  type AuthMethod,
+  type AuthResult,
+  type JWTConfig,
+  type JWTPayload,
+  createAuthenticator,
+  validateAuthConfig,
+} from '@lostgradient/backchannel';
+import {
+  buildTLSOptions,
+  importJWTKey,
+  signJWT,
+  verifyJWT,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
-import type {
-  AuthAuditEvent,
-  AuthConfig,
-  AuthMethod,
-  AuthResult,
-  JWTConfig,
-  JWTPayload,
-} from './authentication.ts';
-import {
-  buildTLSOptions,
-  createAuthenticator,
-  importJWTKey,
-  signJWT,
-  validateAuthConfig,
-  verifyJWT,
-} from './authentication.ts';
-import type { WeftServer } from './index.ts';
-import { serve } from './index.ts';
+import { type WorkflowContext, workflow } from '../core/types.ts';
+import { type WeftServer, serve } from './index.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
   _ctx: WorkflowContext,

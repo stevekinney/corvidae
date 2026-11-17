@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import type { FaultCode } from '../core/fault-code.ts';
-import { buildErrorResponses } from './openapi-error-responses.ts';
-import { generateOpenApiDocument } from './openapi.ts';
-import type { ErasedOperation } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
+import { type FaultCode, defineOperation } from '@lostgradient/backchannel';
+import {
+  type ErasedOperation,
+  buildErrorResponses,
+  generateOpenApiDocument,
+} from '@lostgradient/backchannel/internals';
 import { isRecord } from './protocol.test-support.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 

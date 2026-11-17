@@ -13,7 +13,7 @@
  * @module guardrails-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauPlugins } from '../../plugins/plugin-types.ts';

@@ -1,11 +1,8 @@
+import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES, type WorkspaceMembership } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
-import {
-  AUTHORIZATION_SCOPES,
-  MCP_LEGACY_PROTOCOL_VERSION,
-  principalFromApiKey,
-} from '@lostgradient/weft';
+import { MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

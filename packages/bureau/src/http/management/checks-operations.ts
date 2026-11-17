@@ -16,7 +16,7 @@
  * @module checks-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { mayUseCrossOwnerScope, ownerOfPrincipal } from '../owner-predicate.ts';

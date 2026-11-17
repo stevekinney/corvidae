@@ -21,7 +21,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module deployments-operations
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';

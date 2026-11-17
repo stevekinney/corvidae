@@ -1,72 +1,15 @@
 /**
- * `FaultCode` is the stable, machine-readable discriminant that the server's
- * operation pipeline attaches to every fault. Transport adapters serialize it
- * onto the wire so clients can branch on the failure programmatically rather
- * than string-matching a human message:
- *
- *   - REST operation routes: the HTTP status derived from this code, plus a
- *     `{ error, weftCode?, data? }` body. The body never carries the
- *     `FaultCode` itself: its optional `weftCode` is the fine-grained
- *     `WeftErrorCode` of the originating error class (see
- *     `shapeRestFaultAsJson` in `operation-fault.ts`). `EngineFailure` is
- *     masked to exactly `{ "error": "Internal server error" }`.
- *   - JSON-RPC: `error.data.weftCode` is this coarse `FaultCode`, alongside
- *     `error.data.httpStatus` (see `fault-to-json-rpc.ts`). The fine-grained
- *     `WeftErrorCode` is not carried on this transport.
- *
- * The same key therefore names different vocabularies per transport; see
- * `documentation/reference/api-errors.md#wire-envelopes`.
- *
- * The type lives in `core` — not `server` — because both the server (which
- * produces faults) and the client (which consumes them off the wire) need it,
- * and the client must not import from `server`. The server re-exports it from
- * `operation-fault.ts` so its existing call sites are unaffected.
- *
  * `FAULT_CODE_TO_FAILURE_CATEGORY` is the single source of truth for mapping a
  * wire fault code onto the coarser {@link FailureCategory} execution taxonomy.
  * The category is a derived convenience: it is **not** carried on the wire, so
  * a client computes it from `faultCode` rather than reading it from the body.
+ *
+ * The `FaultCode` type itself lives in `server/fault-code.ts`, beside the
+ * transport-neutral fault model that produces it.
  */
 
+import type { FaultCode } from '@lostgradient/backchannel';
 import type { FailureCategory } from './types/identity.ts';
-
-/**
- * Stable fault code names. The full vocabulary is closed for v1; new codes can
- * be added additively, and the `satisfies` map below forces every new code to
- * declare its failure category at compile time.
- *
- * See `documentation/reference/api-errors.md#faultcode` for the HTTP status,
- * JSON-RPC error code, and failure category of every fault code.
- *
- * @example
- * ```ts
- * import { HttpClientError, type FaultCode } from '@lostgradient/weft';
- *
- * function describe(error: HttpClientError): string {
- *   const code: FaultCode | undefined = error.faultCode;
- *   return code === 'NotFound' ? 'missing resource' : (code ?? 'unknown');
- * }
- * void describe;
- * ```
- */
-export type FaultCode =
-  | 'Unauthorized'
-  | 'Forbidden'
-  | 'NotFound'
-  | 'Conflict'
-  | 'Unprocessable'
-  | 'Timeout'
-  | 'PayloadTooLarge'
-  | 'NotImplemented'
-  | 'UnsupportedTransport'
-  | 'SubscriptionOverflow'
-  | 'InvalidParams'
-  | 'MethodNotFound'
-  | 'StaleRevision'
-  | 'RateLimited'
-  | 'Unavailable'
-  | 'UnsupportedCapability'
-  | 'EngineFailure';
 
 /**
  * Maps each wire {@link FaultCode} onto a {@link FailureCategory}.
@@ -110,23 +53,6 @@ export const FAULT_CODE_TO_FAILURE_CATEGORY = Object.freeze({
   UnsupportedCapability: 'system',
   EngineFailure: 'system',
 } as const satisfies Readonly<Record<FaultCode, FailureCategory>>);
-
-const faultCodes = new Set<unknown>(Object.keys(FAULT_CODE_TO_FAILURE_CATEGORY));
-
-/**
- * Type guard: narrows an unknown wire value to a known {@link FaultCode}.
- *
- * @example
- * ```ts
- * import { isFaultCode } from '@lostgradient/weft';
- *
- * isFaultCode('NotFound'); // true
- * isFaultCode('teapot'); // false
- * ```
- */
-export function isFaultCode(value: unknown): value is FaultCode {
-  return faultCodes.has(value);
-}
 
 /**
  * Returns the {@link FailureCategory} a given {@link FaultCode} belongs to.

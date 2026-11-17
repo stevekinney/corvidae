@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import {
+  principalFromApiKey,
+  principalFromMutualTls,
+  type AuthorizationScope,
+  type Principal,
+} from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import {
   encodeRemoteTaskRecord,
@@ -7,8 +13,6 @@ import {
   type RemoteTaskQueued,
 } from '../../core/task-ledger/task-ledger.ts';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import { principalFromApiKey, principalFromMutualTls, type Principal } from '../principal.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { handleWorkerSessionRequest } from './worker-sessions.ts';

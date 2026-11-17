@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromStdioLocal } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import type { WorkflowState } from '../../core/types.ts';
@@ -7,8 +9,6 @@ import { KEYS } from '../../storage/keys.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/types.ts';
 import { resolveWorkflowWorkerStartBinding } from '../../worker/versioning-policy.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromStdioLocal } from '../principal.ts';
 import {
   createWorkerStartOverridePreviewOperation,
   workerStartOverridePreviewRestBinding,

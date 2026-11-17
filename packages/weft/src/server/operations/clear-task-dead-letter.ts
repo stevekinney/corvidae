@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import { commitTaskLedgerDelete } from '../../core/task-ledger/task-ledger-runtime.ts';
 import { canClearDeadLetteredTask } from '../../core/task-ledger/task-ledger-transitions.ts';
 import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 
 const clearTaskDeadLetterInput = z.object({

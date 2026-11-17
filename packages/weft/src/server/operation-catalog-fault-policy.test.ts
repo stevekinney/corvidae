@@ -19,8 +19,8 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { classifyEngineError } from './operation-catalog.ts';
-import type { OperationFault } from './operation-fault.ts';
+import type { OperationFault } from '@lostgradient/backchannel';
+import { classifyEngineError } from '@lostgradient/backchannel/internals';
 import { weftFaultPolicy } from './weft-fault-policy.ts';
 
 describe('classifyEngineError — producibleFaults enforcement', () => {

@@ -17,6 +17,7 @@ import {
   newThreadId,
   releaseBarrier,
   runToEnd,
+  untilChatLoaded,
 } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -33,6 +34,7 @@ import { tasksOfSession } from './task-support.ts';
 const composer = (page: Page) => page.getByRole('textbox');
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   await composer(page).fill(text);
   await composer(page).press('Enter');
 }

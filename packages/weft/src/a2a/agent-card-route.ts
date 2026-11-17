@@ -13,7 +13,7 @@
 
 import { AgentCard, generateAgentCardSignature } from '@a2a-js/sdk';
 
-import { canonicalJson } from '../server/openapi-canonical-json.ts';
+import { canonicalJson } from '@lostgradient/backchannel/internals';
 
 /** The Agent Card fields a caller supplies; the kit owns the interface list and signatures. */
 export type A2AAgentCardInput = Omit<AgentCard, 'supportedInterfaces' | 'signatures'>;

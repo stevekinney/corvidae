@@ -4,10 +4,10 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   getRealmDiagnosticsOperation,
   getRealmDiagnosticsRestBinding,
