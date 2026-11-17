@@ -134,15 +134,21 @@ test('the package root still exports every recorded name, each of the same kind'
   expect(recordedTypes.filter((name) => !types.has(name))).toEqual([]);
   // A name the snapshot lacks must come from a component added since, through its barrel.
   const componentNames = new Set<string>();
-  const componentsRoot = join(packageRoot, 'src', 'components');
-  for (const directory of readdirSync(componentsRoot)) {
-    const barrel = join(componentsRoot, directory, 'index.ts');
-    if (!existsSync(barrel)) continue;
-    const names = exportNames(barrel);
-    componentNames.add(
-      directory.replaceAll(/(?:^|-)(\w)/g, (_, letter: string) => letter.toUpperCase()),
-    );
-    for (const name of [...names.runtime, ...names.types]) componentNames.add(name);
+  // Components sit in core until the split extracts them into their family packages.
+  const workspaces = join(packageRoot, '..');
+  const componentsRoots = readdirSync(workspaces)
+    .map((name) => join(workspaces, name, 'src', 'components'))
+    .filter((directory) => existsSync(directory));
+  for (const componentsRoot of componentsRoots) {
+    for (const directory of readdirSync(componentsRoot)) {
+      const barrel = join(componentsRoot, directory, 'index.ts');
+      if (!existsSync(barrel)) continue;
+      const names = exportNames(barrel);
+      componentNames.add(
+        directory.replaceAll(/(?:^|-)(\w)/g, (_, letter: string) => letter.toUpperCase()),
+      );
+      for (const name of [...names.runtime, ...names.types]) componentNames.add(name);
+    }
   }
   const recordedNames = new Set([...recordedRuntime, ...recordedTypes]);
   const added = [...current.runtime, ...current.types].filter(
