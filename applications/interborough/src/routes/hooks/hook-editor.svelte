@@ -584,9 +584,9 @@
   const duplicating = createMutation(() => ({
     mutationFn: (source: Hook) =>
       duplicateHook(source.id, HOOKS_COPY.defaultHook.copyName(source.name ?? title).slice(0, 100)),
-    onSuccess: async (copy) => {
+    onSuccess: async (duplicate) => {
       await queryClient.invalidateQueries({ queryKey: ['hooks'] });
-      router.navigate(hookPath(copy.id));
+      router.navigate(hookPath(duplicate.id));
       showToast(HOOKS_COPY.defaultHook.duplicated);
     },
     onError: (error: unknown) => {
@@ -756,15 +756,16 @@
     // The Bureau lists the kinds a running plugin contributes: one that is not listed is off.
     if (contributed.isPending) return undefined;
     if (contributed.isError) return copy.check.testPluginUnknown;
-    const title = pluginTitleOf(hook.action.plugin, plugins.data?.plugins);
+    const pluginTitle = pluginTitleOf(hook.action.plugin, plugins.data?.plugins);
     if (savedKind === undefined) {
       // A plugin that is on and no longer offers the action needs its own sentence: "turn it on" is wrong for it.
       return testReasonKind === 'not-offered'
-        ? copy.check.testNoLongerOffered(title)
-        : copy.check.testPluginOff(title);
+        ? copy.check.testNoLongerOffered(pluginTitle)
+        : copy.check.testPluginOff(pluginTitle);
     }
     // Read from what the action says of itself (COR-2181), so the button is off before it is pressed.
-    if (savedKind.availability === 'needs-setup') return copy.check.testPluginNeedsSetup(title);
+    if (savedKind.availability === 'needs-setup')
+      return copy.check.testPluginNeedsSetup(pluginTitle);
     return savedKind.dryRun ? undefined : copy.check.testNotOffered;
   });
   /** Which of the two causes of an action that is not listed it is: its plugin is on and dropped it, or its plugin is off. */

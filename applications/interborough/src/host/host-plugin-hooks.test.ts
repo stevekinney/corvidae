@@ -88,7 +88,9 @@ describe('the hooks a plugin declares (COR-2180)', () => {
       ]),
     ]);
     const listed = (await second.bureau.hooks?.list()) ?? [];
-    expect(listed.map(({ name }) => name).toSorted()).toEqual(['Page again', 'Page on settle']);
+    expect(
+      listed.map(({ name }) => name).toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual(['Page again', 'Page on settle']);
     // A changed declaration replaces the hook in place.
     expect(listed.find(({ name }) => name === 'Page on settle')?.id).toBe(before?.id);
     await close(second);
@@ -127,9 +129,8 @@ describe('the hooks a plugin declares (COR-2180)', () => {
     expect(await hooksOf(second)).toEqual([
       { name: 'Page on settle', enabled: true, declaredBy: { plugin: 'pager' } },
     ]);
-    const listing = (await second.bureau.plugins.list()).find(
-      ({ descriptor }) => descriptor.name === 'pager',
-    );
+    const secondPlugins = await second.bureau.plugins.list();
+    const listing = secondPlugins.find(({ descriptor }) => descriptor.name === 'pager');
     expect(listing?.status).toBe('disabled');
     await close(second);
 
@@ -150,10 +151,10 @@ describe('the hooks a plugin declares (COR-2180)', () => {
       ]),
     ]);
 
-    expect((await hooksOf(host)).map(({ name }) => name)).toEqual(['Page on settle']);
-    const listing = (await host.bureau.plugins.list()).find(
-      ({ descriptor }) => descriptor.name === 'pager',
-    );
+    const hosted = await hooksOf(host);
+    expect(hosted.map(({ name }) => name)).toEqual(['Page on settle']);
+    const hostedPlugins = await host.bureau.plugins.list();
+    const listing = hostedPlugins.find(({ descriptor }) => descriptor.name === 'pager');
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([
       { code: 'hook-invalid', hook: 'Wrong configuration', path: 'configuration' },

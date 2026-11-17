@@ -30,14 +30,16 @@ export type HookProblemField = 'event' | 'only-for' | 'action' | 'url' | 'workfl
 /** One reason the hook cannot be saved yet, said beside the field it belongs to. */
 export type HookProblem = { readonly field: HookProblemField; readonly message: string };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** `value` as JSON text with every object's keys in order, so two configurations that differ only in key order are equal. */
 function stableText(value: unknown): string {
   return JSON.stringify(value, (_key, member: unknown) =>
-    typeof member === 'object' && member !== null && !Array.isArray(member)
+    isPlainObject(member)
       ? Object.fromEntries(
-          Object.entries(member as Record<string, unknown>).toSorted(([left], [right]) =>
-            left.localeCompare(right),
-          ),
+          Object.entries(member).toSorted(([left], [right]) => left.localeCompare(right)),
         )
       : member,
   );
@@ -137,12 +139,7 @@ export class HookFormState {
         // (COR-2181): a secret field in it holds `{ "$secret": key }`, never a value.
         this.contributedKind = { plugin: hook.action.plugin, kind: hook.action.kind };
         const configuration = hook.action.configuration;
-        this.contributedConfiguration =
-          typeof configuration === 'object' &&
-          configuration !== null &&
-          !Array.isArray(configuration)
-            ? { ...(configuration as Record<string, unknown>) }
-            : {};
+        this.contributedConfiguration = isPlainObject(configuration) ? { ...configuration } : {};
         break;
       }
     }
