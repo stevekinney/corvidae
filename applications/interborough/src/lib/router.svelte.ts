@@ -44,10 +44,25 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
   const patternSegments = pattern.split('/').filter((segment) => segment.length > 0);
   const pathSegments = pathname.split('/').filter((segment) => segment.length > 0);
 
-  if (patternSegments.length !== pathSegments.length) return null;
+  // A final `*` matches one or more segments, captured joined by `/` as `params['*']`, so a plugin's
+  // page can sit at a path of several segments (`/plugins/<plugin>/reviews/queue`).
+  const wildcard = patternSegments.at(-1) === '*';
+  const fixed = wildcard ? patternSegments.slice(0, -1) : patternSegments;
+  if (wildcard ? pathSegments.length <= fixed.length : pathSegments.length !== fixed.length) {
+    return null;
+  }
 
   const params: Record<string, string> = {};
-  for (const [index, patternSegment] of patternSegments.entries()) {
+  if (wildcard) {
+    const rest: string[] = [];
+    for (const segment of pathSegments.slice(fixed.length)) {
+      const decoded = decodeSegment(segment);
+      if (decoded === null) return null;
+      rest.push(decoded);
+    }
+    params['*'] = rest.join('/');
+  }
+  for (const [index, patternSegment] of fixed.entries()) {
     const pathSegment = pathSegments[index];
     if (pathSegment === undefined) return null;
 

@@ -144,8 +144,8 @@
   /* ----------------------------------------
  * Vertical variant — sidebar / vertical-tab contexts
  *
- * Row geometry for sidebar edges. The active row is a neutral raised pill, never an
- * accent stripe (COR-1821), so toggling active state never shifts the label.
+ * Row geometry for sidebar edges. The active row is a filled pill, never an accent stripe
+ * (COR-1821), so toggling active state never shifts the label.
  * ---------------------------------------- */
 
   /* One control, one 30px row (COR-2010, rows 02m to 02p). Hover, focus and the active fill all
@@ -167,30 +167,22 @@
     border-radius: var(--cinder-radius-sm);
   }
 
-  /* The current page is a raised white pill with the hairline shadow on the retuned light ladder
-   * (COR-2315 AC9, COR-2308): the sidebar paints `--cinder-surface` and the selected row is
-   * `--cinder-surface-raised`, a step above the surface in dark. In light both are white since
-   * 2026-11-15, so the pill reads there by its hairline shadow and its semibold label. The text stays default and semibold, because the accent is for actions and links, so
-   * the place the person is in is never accent-coloured (owner, 2026-11-10; AC2). The ink tint
-   * (about 7%) remains where the row sits on a raised drawer panel (`sidebar.css`), where a raised
-   * pill would not read. */
+  /* The current page is a flat fill (owner, 2026-11-16): `--cinder-selected-background`, the soft
+   * accent tint every selected row in the app shares (StackedListItem paints its selected row from
+   * it too). In light the sidebar's `--cinder-surface` and `--cinder-surface-raised` are both white
+   * since 2026-11-15, so the raised pill the row used to take vanished; the tint (about
+   * oklch(94% 0.029 257) on white, 25% on the dark 18.5% surface) stands apart from the sidebar and
+   * from the neutral 4% ink hover below in both themes, with no shadow, so it is a flat row and
+   * never a raised chip. Leaving `box-shadow` alone also keeps the inset focus ring above on a
+   * focused active row. The text stays default and semibold, because the accent is for actions
+   * and links, so the place the person is in is never accent-coloured text (owner, 2026-11-10;
+   * AC2). The ink tint (about 7%) remains where the row sits on a raised drawer panel
+   * (`sidebar.css`). */
   .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
     border-bottom-color: transparent;
-    background-color: var(--cinder-surface-raised);
-    box-shadow: var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm));
+    background-color: var(--cinder-selected-background);
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-semibold);
-  }
-
-  /* The pill's shadow shares the `box-shadow` channel with the inset focus ring, and this rule is
-   * the more specific one, so an active row that holds keyboard focus keeps both. A surface that
-   * drops the pill (the phone drawer, `sidebar.css`) sets `--_cinder-navigation-item-pill-shadow`
-   * and never `box-shadow` itself, so it cannot take the ring away with the pill. */
-  .cinder-navigation-item[data-variant='vertical'][data-active='true']:focus-visible {
-    box-shadow:
-      inset 0 0 0 var(--cinder-ring-width)
-        var(--_cinder-navigation-item-ring, var(--cinder-ring-color)),
-      var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm));
   }
 
   /* Hover on a sidebar row is a lighter neutral tint than the active row, the ink at 4% (row 02n),
@@ -205,10 +197,10 @@
     }
   }
 
-  /* The active row takes no hover change (row 02n): it keeps its pill and its text. */
+  /* The active row takes no hover change (row 02n): it keeps its fill and its text. */
   @media (hover: hover) {
     .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
-      background-color: var(--cinder-surface-raised);
+      background-color: var(--cinder-selected-background);
       color: var(--cinder-text-default);
     }
   }

@@ -44,6 +44,7 @@
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { readPreferredAgent, writePreferredAgent } from '../../lib/preferred-agent.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import EmbedderRow from './embedder-row.svelte';
   import { generalSections } from './general-sections.ts';
   import SettingField from './setting-field.svelte';
   import { SettingsAutosave } from './settings-autosave.svelte.ts';
@@ -168,6 +169,14 @@
     });
   });
 
+  /** The embedder the setting holds, else the one it applies by while it holds none. */
+  function embedderStored(key: string): string | undefined {
+    const held = snapshot.values[key];
+    if (typeof held === 'string' && held !== '') return held;
+    const applied = snapshot.effective[key];
+    return typeof applied === 'string' && applied !== '' ? applied : undefined;
+  }
+
   function appliedNoteOf(key: string): string | undefined {
     if (appliedAt === undefined || !appliedLabels.includes(settingLabel(key))) return undefined;
     return SETTINGS_COPY.general.inEffectSince(formatTimeOfDay(appliedAt));
@@ -217,7 +226,10 @@
 {#snippet field(key: string, remoteCard: boolean)}
   {@const node = schema[key]}
   {@const control = controls.get(key)}
-  {#if node !== undefined && control !== undefined}
+  {#if node !== undefined && control !== undefined && control.kind === 'choice' && control.source === 'embedders'}
+    <!-- The embedder is picked from the ones memory can use, and a switch is confirmed before it is written. -->
+    <EmbedderRow name={key} {node} keyState={stateOf(key)} stored={embedderStored(key)} />
+  {:else if node !== undefined && control !== undefined}
     <SettingField
       name={key}
       {node}

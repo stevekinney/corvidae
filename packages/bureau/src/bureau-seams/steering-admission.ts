@@ -1268,13 +1268,15 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
     const { sequence } = stored.binding;
     const head = await readSteeringLogHead(kv, sessionId, incarnation);
     if (sequence > head.sequence) return false;
-    const [named] = await readSteeringLogEntries(
-      kv,
-      sessionId,
-      incarnation,
-      sequence - 1,
-      sequence,
-    );
+    let named;
+    try {
+      [named] = await readSteeringLogEntries(kv, sessionId, incarnation, sequence - 1, sequence);
+    } catch (error) {
+      // A sealed log whose entries were removed after the binding was read (COR-2097: the sealed head
+      // stays while the entries go) is a log that names no entry, as an absent head was.
+      if (head.sealed === true && error instanceof SteeringLogCorruptError) return false;
+      throw error;
+    }
     return (
       named !== undefined &&
       (named.type === 'admit' || named.type === 'refused') &&

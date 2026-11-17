@@ -872,7 +872,132 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     await checkA11y('settings models, remove key confirm, at 1280px');
     await captureAtEveryWidth(page, 'remove-key-confirm');
   });
+
+  test('remove-key-embedder-in-use: memory search uses an embedder from this provider, and the confirmation says what removing the key does', async ({
+    page,
+    checkA11y,
+  }) => {
+    const copy = MODELS_COPY.removeDialog;
+    await withModelAgents(page);
+    await withMemoryOnProviderEmbedder(page, 'anthropic');
+    const manage = await openManage(page);
+    await manage.getByRole('button', { name: MODELS_COPY.manageDialog.removeKey }).click();
+    const dialog = page.getByRole('dialog', { name: copy.title('Anthropic') });
+    await expect(dialog).toBeVisible();
+
+    await expect(
+      dialog.getByText(
+        'Memory search uses Anthropic from this provider. Removing the key stops it, so search matches words only until you add a key or switch embedders.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await checkA11y('settings models, remove key with the embedder in use, at 1280px');
+    await captureAtEveryWidth(page, 'remove-key-embedder-in-use');
+  });
 });
+
+/**
+ * Makes memory use an embedder the provider's plugin adds: the status says it is the embedder in
+ * use, and the host's plugin list gives the provider's plugin an embedder contribution. The real
+ * deployment is not written to; every other request goes on to it.
+ */
+async function withMemoryOnProviderEmbedder(page: Page, provider: string) {
+  const embedder = `${provider}:embedder`;
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
+    if (body?.method !== 'bureau.memory.embedding') return route.fallback();
+    return route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: body.id ?? null,
+        result: {
+          active: { embedder, dimension: 256, model: 'm' },
+          problem: null,
+          job: null,
+          embedders: [
+            { id: 'hashing', dimension: 256, availability: 'available' },
+            { id: embedder, dimension: 256, availability: 'available' },
+          ],
+        },
+      },
+    });
+  });
+  const contribution = {
+    kind: 'embedder',
+    id: embedder,
+    references: { agents: 0, schedules: 0, waitingRuns: 0 },
+  };
+  // The provider's plugin is the host's own when it lists one, and a running stand-in when it does not.
+  await page.route('**/host/plugins', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      plugins: { descriptor: { name: string }; contributions: unknown[] }[];
+    };
+    const listed = body.plugins.some((plugin) => plugin.descriptor.name === provider);
+    return route.fulfill({
+      response,
+      json: {
+        ...body,
+        plugins: listed
+          ? body.plugins.map((plugin) =>
+              plugin.descriptor.name === provider
+                ? { ...plugin, contributions: [...plugin.contributions, contribution] }
+                : plugin,
+            )
+          : [
+              ...body.plugins,
+              {
+                descriptor: {
+                  name: provider,
+                  title: MODELS_COPY.providerNames[provider] ?? provider,
+                  version: '1.0.0',
+                  description: `The ${provider} plugin.`,
+                  required: false,
+                  enabledByDefault: true,
+                },
+                source: 'package',
+                location: `@lostgradient/plugin-${provider}`,
+                status: 'running',
+                problems: [],
+                contributions: [contribution],
+                enabled: true,
+                configuration: {},
+                configurationSchema: null,
+                running: { enabled: true, configuration: {} },
+                secrets: [],
+                restartRequired: false,
+              },
+            ],
+      },
+    });
+  });
+  // The provider names its plugin in the Bureau's contributions; added when the host leaves it out.
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { method?: string } | null;
+    if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
+    const response = await route.fetch();
+    const reply = (await response.json()) as {
+      result: { providers: { plugin: string; name: string }[] };
+    };
+    const named = reply.result.providers.some((entry) => entry.name === provider);
+    return route.fulfill({
+      response,
+      json: {
+        ...reply,
+        result: {
+          ...reply.result,
+          providers: named
+            ? reply.result.providers
+            : [
+                ...reply.result.providers,
+                { plugin: provider, name: provider, configuration: null },
+              ],
+        },
+      },
+    });
+  });
+}
 
 const OLLAMA_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',

@@ -43,6 +43,19 @@
   }: Props = $props();
 
   const view = $derived(problemView(problem, plugin));
+  // A thing with no title is named by its identifier, which is set in monospace where the body says it.
+  const identifierParts = $derived.by(() => {
+    const identifier = view.identifier;
+    if (identifier === undefined) return undefined;
+    const at = view.body.indexOf(identifier);
+    return at < 0
+      ? undefined
+      : {
+          before: view.body.slice(0, at),
+          identifier,
+          after: view.body.slice(at + identifier.length),
+        };
+  });
   const action = $derived(view.action);
   const available = $derived(
     action === undefined
@@ -113,7 +126,11 @@
     <div class="ib-problem__main">
       <div class="ib-problem__text">
         <p class="ib-problem__title">{view.title}</p>
-        <p class="ib-problem__body">{view.body}</p>
+        <p class="ib-problem__body">
+          {#if identifierParts !== undefined}{identifierParts.before}<code
+              class="ib-problem__identifier">{identifierParts.identifier}</code
+            >{identifierParts.after}{:else}{view.body}{/if}
+        </p>
       </div>
       {#if available}
         <div class="ib-problem__action">{@render button()}</div>
@@ -191,6 +208,11 @@
   .ib-problem__title {
     margin: 0;
     font-weight: 600;
+  }
+
+  .ib-problem__identifier {
+    font-family: var(--cinder-font-mono);
+    font-size: 0.95em;
   }
 
   .ib-problem__body {

@@ -57,6 +57,8 @@ import {
   DiagnosticEvent,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   NotificationCreatedEvent,
   SessionTaintEvent,
   TriggerLifecycleEvent,
@@ -501,6 +503,26 @@ const EVENTS: Record<
     sparsest: () => new TaskCleanupAcknowledgedEvent('task-1', 'cleaned-up'),
   },
   'notification.created': { sparsest: () => new NotificationCreatedEvent('n-1', 'run.failed') },
+  'hook.delivery.failed': {
+    sparsest: () =>
+      new HookDeliveryFailedEvent({
+        hookId: 'hook-1',
+        deliveryId: 'hook-delivery-1',
+        attempt: 1,
+        outcome: 'network-error',
+      }),
+    fullest: () =>
+      new HookDeliveryFailedEvent({
+        hookId: 'hook-1',
+        deliveryId: 'hook-delivery-1',
+        attempt: 2,
+        outcome: 'response',
+        status: 500,
+      }),
+  },
+  'hook.delivery.gave-up': {
+    sparsest: () => new HookDeliveryGaveUpEvent('hook-1', 'hook-delivery-1', 3),
+  },
   diagnostic: { sparsest: () => new DiagnosticEvent('warn', 'hooks') },
   'memory.governance': {
     sparsest: () =>
@@ -654,6 +676,8 @@ describe('the Bureau event catalog', () => {
         'decision.made',
         'definitions.changed',
         'diagnostic',
+        'hook.delivery.failed',
+        'hook.delivery.gave-up',
         'memory.governance',
         'notification.created',
         'plugin.settings-changed',

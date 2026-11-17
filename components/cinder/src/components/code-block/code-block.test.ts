@@ -415,7 +415,7 @@ describe('CodeBlock — static structure', () => {
     expect(css).toContain('@media (prefers-color-scheme: dark)');
   });
 
-  test("github-light's orange takes Cinder's warning text, which meets AA on the white field", async () => {
+  test("github-light's orange takes Cinder's warning text, which meets AA on the inset field", async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     expect(css).toContain(
       ".cinder-code-block :where(pre.shiki) span[style*='E36209;' i],\n  .cinder-code-block :where(pre.shiki) span[style$='E36209' i] {\n    color: var(--cinder-status-warning-text) !important;",
@@ -424,8 +424,8 @@ describe('CodeBlock — static structure', () => {
 
   test('code surface background is one component-owned declaration', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
-    // One surface: the root (and so the bar) takes the code's own fill, and its one edge is a
-    // hairline in the light theme only.
+    // One surface: the root (and so the bar) takes the code's own fill, the inset well, and its
+    // edge token is transparent unless a consumer sets it.
     expect(css).not.toContain('background: var(--cinder-surface-inset);');
     expect(css).toContain('box-shadow: inset 0 0 0 1px var(--cinder-code-block-edge);');
     expect(css).toContain('background: var(--cinder-code-block-background);');

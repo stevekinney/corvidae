@@ -32,6 +32,9 @@ const RETIRED_PATHS = [
 
 /** The patterns a path's leading segments name: `/a/:b/c` is `/a`, `/a/:b`, then itself. */
 function ancestorPatterns(pattern: string): string[] {
+  // A route that ends in `*` owns every address below it (a plugin's page), so its leading
+  // segments are no pages and name no parent.
+  if (pattern.endsWith('/*')) return [];
   const segments = pattern.split('/').filter((segment) => segment.length > 0);
   return segments.slice(0, -1).map((_, index) => `/${segments.slice(0, index + 1).join('/')}`);
 }
@@ -58,7 +61,9 @@ function breadcrumbGaps(table: readonly RouteDefinition[]): string[] {
 
 /** A concrete address for a pattern: each parameter filled with a value of its own name. */
 function addressOf(pattern: string): string {
-  return pattern.replace(/:(\w+)/g, (_, name: string) => `sample-${name}`);
+  return pattern
+    .replace(/:(\w+)/g, (_, name: string) => `sample-${name}`)
+    .replace(/\*$/, 'sample-rest');
 }
 
 describe('the route table', () => {
@@ -171,7 +176,9 @@ describe('the route table', () => {
       // A page that names itself after its path (`/settings` is General) adds one crumb of its own,
       // and one that belongs under another page (`/internal-workflows`) is led by that page.
       const led = route.parent === undefined ? 0 : 1;
-      const crumbs = segments.length + (route.leafCrumb === undefined ? 0 : 1) + led;
+      // A route that ends in `*` is one page whatever its depth, so it is one crumb.
+      const depth = route.pattern.endsWith('/*') ? 1 : segments.length;
+      const crumbs = depth + (route.leafCrumb === undefined ? 0 : 1) + led;
       expect(trail.length, `${route.pattern}: ${JSON.stringify(trail)}`).toBe(crumbs);
       // Every crumb but the last links to its own leading part of the address, and a parent to its own path.
       for (const [index, item] of trail.entries()) {
@@ -183,6 +190,19 @@ describe('the route table', () => {
         }
       }
     }
+  });
+
+  test('reads a plugin’s page, at any depth, as one crumb that its title replaces (COR-2213)', () => {
+    for (const path of ['/plugins/reports/queue', '/plugins/reports/reviews/queue']) {
+      expect(breadcrumbTrail(path, new Map())).toEqual([{ label: 'Plugin page' }]);
+      expect(breadcrumbTrail(path, new Map([[path, 'Review queue']]))).toEqual([
+        { label: 'Review queue' },
+      ]);
+    }
+    // No plugin name or path ever reads as a crumb.
+    expect(
+      JSON.stringify(breadcrumbTrail('/plugins/reports/reviews/queue', new Map())),
+    ).not.toContain('reports');
   });
 
   test('reads the trail of a nested run as Workflows, the workflow, Runs, then the run', () => {

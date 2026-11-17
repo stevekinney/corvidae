@@ -1,10 +1,5 @@
 [
   {
-    "filePath": "src/components/code-block/code-block.css",
-    "colorClass": "hex",
-    "allowedCount": 3
-  },
-  {
     "filePath": "src/components/input/input.css",
     "colorClass": "oklch",
     "allowedCount": 1

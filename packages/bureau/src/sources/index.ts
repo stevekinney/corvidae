@@ -24,6 +24,7 @@ export { layeredAgentSource, layeredWorkflowSource } from './layered-source';
 export { pluginLayer } from './plugin-layer';
 export type { DirectorySourceOptions } from './directory-source';
 export type { DirectoryWatchMode } from './watched-directory';
+export { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
 export type {
   ListedObject,
   ListedPage,

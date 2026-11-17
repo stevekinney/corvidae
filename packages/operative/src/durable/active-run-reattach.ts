@@ -1,4 +1,4 @@
-import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { HookPlanDescription, RuntimeServices } from '@lostgradient/lifecycle';
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { AdmissionTracker } from '../admission-tracker';
 
@@ -78,6 +78,14 @@ export function reattachDurableActiveRun(
      * this option existed.
      */
     childRegistry?: ChildRunRegistry | undefined;
+    /**
+     * COR-2115: describes the recovered run's hook plan. A reattachment rebuilds none of its own: the
+     * run's services, hooks included, were rebuilt by the recovery resolver and live with the caller
+     * that holds them, so the caller says how to read the plan and this adapter answers it as
+     * `describeHookPlan`, as a fresh run does. Read at each call, so a plan the recovered services
+     * change stays current. A read that throws answers `undefined`, as does omitting this.
+     */
+    describeHookPlan?: (() => HookPlanDescription | undefined) | undefined;
   },
 ): ActiveRun {
   const { runId, handle } = reattach;
@@ -304,11 +312,17 @@ export function reattachDurableActiveRun(
     runId,
     result,
     abort,
-    // COR-1270/COR-1267 — always `undefined`, and meaningfully so: a
-    // reattachment to an already-terminal run rebuilds no hook plan, because
-    // no further execution happens for one to govern. See
-    // `active-run-reattach-driver.ts`'s `hooks: undefined`.
-    describeHookPlan: () => undefined,
+    // COR-1270/COR-1267, COR-2115 — the plan the caller holds for the recovered run, or `undefined`
+    // for one that was handed none or cannot be read. The adapter fires no run hooks itself (see
+    // `active-run-reattach-driver.ts`'s `hooks: undefined`), but a recovered run that is still live
+    // keeps executing under the recovered services' plan, which is what an inspector asks about.
+    describeHookPlan: (): HookPlanDescription | undefined => {
+      try {
+        return reattach.describeHookPlan?.();
+      } catch {
+        return undefined;
+      }
+    },
     closed,
     // AB-361: a reattached/recovered run's durable record was committed
     // before this process even started — nothing left to await.

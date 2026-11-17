@@ -27,7 +27,10 @@
     view?: ViewName;
     /** A primary button that starts the thing again, such as New chat. */
     create?: ViewLink | undefined;
-    /** The way back in the view's own words, such as "Back to chats". The view's list when omitted. */
+    /**
+     * The way back in the view's own words, such as "Back to chats" or "Open Plugins", which is the
+     * button's whole label. The view's list when omitted.
+     */
     back?: ViewLink | undefined;
     /** Whether the "Search everything" button is drawn. Defaults to true. */
     search?: boolean;
@@ -90,7 +93,7 @@
         href={router.href(parent.path)}
         onclick={(event) => follow(event, parent.path)}
       >
-        {NOT_FOUND_COPY.back(parent.label)}
+        {back?.label ?? NOT_FOUND_COPY.back(parent.label)}
       </Button>
       {#if search}
         <Button variant="secondary" onclick={() => openSearch?.()}>{NOT_FOUND_COPY.search}</Button>

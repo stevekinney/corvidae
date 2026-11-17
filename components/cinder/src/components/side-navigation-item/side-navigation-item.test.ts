@@ -165,6 +165,81 @@ describe('SideNavigationItem empty label (row 03k)', () => {
   });
 });
 
+describe('SideNavigationItem badge (COR-2213)', () => {
+  test('draws a neutral extra-small Badge, names the row "<label>, plugin", and tooltips the same', () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/plugins/reports/queue',
+        label: 'Reports',
+        badge: 'Plugin',
+        children: labelSnippet('Reports'),
+      },
+    });
+    const badge = container.querySelector('.cinder-side-navigation-item__badge .cinder-badge');
+    expect(badge?.textContent?.trim()).toBe('Plugin');
+    expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(badge?.getAttribute('data-cinder-size')).toBe('xs');
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Reports, plugin');
+    expect(
+      container.querySelector('.cinder-side-navigation-item__badge')?.getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
+  test('is mutually exclusive with a count and a dot: the badge wins and the name has no count', () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/plugins/reports/queue',
+        label: 'Reports',
+        badge: 'Plugin',
+        count: 4,
+        countLabel: 'need you',
+        dot: 'warning',
+        children: labelSnippet('Reports'),
+      },
+    });
+    expect(container.querySelector('.cinder-side-navigation-item__count')).toBeNull();
+    expect(container.querySelector('.cinder-side-navigation-item__dot')).toBeNull();
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Reports, plugin');
+  });
+
+  test('a blank badge draws nothing, and the row keeps its count', () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/reviews',
+        label: 'Reviews',
+        badge: '   ',
+        count: 2,
+        countLabel: 'need you',
+        children: labelSnippet('Reviews'),
+      },
+    });
+    expect(container.querySelector('.cinder-side-navigation-item__badge')).toBeNull();
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Reviews, 2 need you');
+  });
+
+  test('is not forwarded to the link as an attribute', () => {
+    const { container } = render(SideNavigationItem, {
+      props: { href: '/x', label: 'X', badge: 'Plugin', children: labelSnippet('X') },
+    });
+    expect(container.querySelector('a')?.hasAttribute('badge')).toBe(false);
+  });
+
+  test('a collapsed row keeps the badge in the DOM for its name and says it in the tooltip text', async () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/x',
+        label: 'Reports',
+        badge: 'Plugin',
+        collapsed: true,
+        icon: iconSnippet(),
+        children: labelSnippet('Reports'),
+      },
+    });
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Reports, plugin');
+    expect(container.querySelector('a')?.hasAttribute('data-cinder-collapsed')).toBe(true);
+  });
+});
+
 describe('SideNavigationItem accessible name (rows 02q and 03b)', () => {
   test('a count names the row: "Health, 3 need attention"', () => {
     const { container } = render(SideNavigationItem, {
