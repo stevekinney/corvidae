@@ -324,6 +324,19 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     expect(approvalArrivalBox(transcript)).toMatchObject({ top: 160, bottom: 380 });
     container.remove();
   });
+
+  test('starts under a header the host lays over the transcript, so a card is not placed beneath it', () => {
+    const container = document.createElement('div');
+    container.className = 'chat-container';
+    const transcript = document.createElement('div');
+    container.append(transcript);
+    document.body.append(container);
+    stubBox(transcript, 160, 380);
+    transcript.style.setProperty('--cinder-chat-overlay-inset-start', '96px');
+
+    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 256, bottom: 380 });
+    container.remove();
+  });
 });
 
 describe('where a waiting approval lands when it opens (COR-2327)', () => {

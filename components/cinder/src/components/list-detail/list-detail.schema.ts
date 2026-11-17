@@ -89,7 +89,7 @@ const schema = {
     listCollapsible: {
       type: 'boolean',
       description:
-        'Offers a toggle that hides the list pane while an item is open and the panes sit side by side\nor one above the other, so the detail takes the whole width. While the list shows, `header`\nis given the toggle to place (a list with no `header` gets a header holding it alone); while\nthe list is hidden, the toggle is the only control of a narrow rail at the start edge, so it is\nalways on screen, and focus moves to it each time it flips. With no item open the list shows\nand there is no toggle, and below `pushBelow`, where one pane shows at a time, there is\nnothing to hide.',
+        "Offers a toggle that hides the list pane while an item is open and the panes sit side by side\nor one above the other, so the detail takes the whole width. The toggle is one control in one\nplace, the start corner of the list's header, which is also where a narrow rail holds it once\nthe list is hidden (no rail is drawn while the list shows), so it is always on screen, never\nbeside the header's own actions, and does not move or lose focus as it flips. With no item open the list shows\nand there is no toggle, and below `pushBelow`, where one pane shows at a time, there is\nnothing to hide.",
       default: false,
     },
     listCollapsed: {
@@ -166,7 +166,7 @@ const schema = {
         name: 'header',
         reason: 'function-or-snippet',
         description:
-          "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button. With `listCollapsible`, it is\ngiven the toggle that hides the list to place, usually at the end of the title row.",
+          "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button. The toggle that hides the list\n(`listCollapsible`) is not part of it: ListDetail draws it in the header's start corner, and a\n`SectionHeading` title starts after it.",
       },
       {
         name: 'items',

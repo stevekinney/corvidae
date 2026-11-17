@@ -703,7 +703,6 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
-  ListDetailHeaderContext,
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,

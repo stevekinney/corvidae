@@ -54,17 +54,44 @@
     padding-inline: var(--cinder-button-padding-x-sm);
   }
 
-  /* A list with no header of its own holds the toggle alone, at the header's end. */
-  .cinder-list-detail__header[data-cinder-list-toggle] {
-    align-items: flex-end;
-  }
-
-  /* Side by side: the rail, while the list is hidden, then the panels. */
+  /* Side by side: the rail, whenever the list can be hidden, then the panels. */
   .cinder-list-detail__split {
+    position: relative;
     display: flex;
     flex: 1 1 auto;
     min-inline-size: 0;
     min-block-size: 0;
+  }
+
+  .cinder-list-detail__below {
+    position: relative;
+  }
+
+  /* The toggle is one button with one rule for both states: the start corner of the list's header
+   * while the list shows, and the same place, at the top of the rail, once it is hidden, so it
+   * does not move when it is pressed. Its inset is the header's (the heading starts after it,
+   * below) rather than a rail's width in. */
+  .cinder-list-detail__toggle {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: var(--cinder-space-3-5);
+    inset-inline-start: var(--cinder-space-2);
+  }
+
+  /* The heading in the header starts after the toggle: the toggle's width, which with its own
+   * inset and the gap after it is the header's inset again. The search and the filter under the
+   * title keep the header's full width. */
+  .cinder-list-detail[data-cinder-toggle-shown]
+    .cinder-list-detail__header
+    .cinder-section-heading__primary {
+    padding-inline-start: var(--cinder-button-height-sm);
+  }
+
+  /* A list with no header of its own holds the toggle's place with an empty one. */
+  .cinder-list-detail__header[data-cinder-toggle-space] {
+    box-sizing: border-box;
+    block-size: calc(var(--cinder-button-height-sm) + 2 * var(--cinder-space-3-5));
+    padding: 0;
   }
 
   .cinder-list-detail__split > .cinder-list-detail__panels {
@@ -72,15 +99,13 @@
     min-inline-size: 0;
   }
 
-  /* The list hidden: a narrow rail at the start edge holds the toggle, set off from the detail by
-   * the same hairline the divider draws. The panels stay mounted, so the open item keeps its
-   * state; the list pane and the divider leave the layout, and the detail takes the width. */
+  /* While the list is hidden a narrow rail holds the toggle's place at the start edge, set off from
+   * the detail by the same hairline the divider draws; no rail is drawn while the list shows. The
+   * panels stay mounted, so the open item keeps its state; the list pane and the divider leave the
+   * layout, and the detail takes the width. */
   .cinder-list-detail__rail {
-    display: flex;
     flex: none;
-    flex-direction: column;
-    align-items: center;
-    padding: var(--cinder-space-4) var(--cinder-space-2);
+    inline-size: calc(var(--cinder-button-height-sm) + 2 * var(--cinder-space-2));
     border-inline-end: 1px solid var(--cinder-border-muted);
   }
 
@@ -98,8 +123,8 @@
 
   /* One above the other, the rail is a row across the top of the detail. */
   .cinder-list-detail__below > .cinder-list-detail__rail {
-    flex-direction: row;
-    padding: var(--cinder-space-2) var(--cinder-space-4);
+    inline-size: auto;
+    block-size: calc(var(--cinder-button-height-sm) + 2 * var(--cinder-space-3-5));
     border-inline-end: 0;
     border-block-end: 1px solid var(--cinder-border-muted);
   }

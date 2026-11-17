@@ -55,7 +55,7 @@ const { cleanup, fireEvent, render } = await import('@testing-library/svelte/pur
 const { flushSync, tick } = await import('svelte');
 const { default: ListDetailFixture } = await import('./list-detail.fixture.svelte');
 const { default: ListDetailTableFixture } = await import('./list-detail-table.fixture.svelte');
-const { stripCinderComponentsLayer } = await import('../../test/css.ts');
+const { declarationsFor, stripCinderComponentsLayer } = await import('../../test/css.ts');
 const { LIST_DETAIL_SHORTCUTS } = await import('./list-detail.constants.ts');
 
 afterEach(() => {
@@ -687,9 +687,13 @@ describe('ListDetail', () => {
       await measure(container, 1000);
       const root = container.querySelector('.cinder-list-detail')!;
 
-      // The header places the toggle it is given: here, at the end of its title row.
+      // One control in one place: its own anchor, never the header's title row, so the header's own
+      // actions stand alone at the end of it, and no rail is drawn while the list shows.
       const hide = getByRole('button', { name: 'Hide list' });
-      expect(hide.closest('.list-detail-fixture-title-row')).not.toBeNull();
+      expect(hide.closest('.cinder-list-detail__toggle')).not.toBeNull();
+      expect(hide.closest('.cinder-list-detail__header')).toBeNull();
+      expect(hide.closest('.list-detail-fixture-title-row')).toBeNull();
+      expect(container.querySelector('.cinder-list-detail__rail')).toBeNull();
       await fireEvent.click(hide);
       await tick();
       await tick();
@@ -706,7 +710,11 @@ describe('ListDetail', () => {
       );
       expect(detailText(container)).toBe('Beta chat detail');
       const show = getByRole('button', { name: 'Show list' });
-      expect(show.closest('.cinder-list-detail__rail')).not.toBeNull();
+      // The rail holds the toggle's place; the toggle is the same anchor as before.
+      expect(container.querySelector('.cinder-list-detail__rail')).not.toBeNull();
+      expect(show.closest('.cinder-list-detail__toggle')).not.toBeNull();
+      // The same button in the same place, not a second control drawn where the first was.
+      expect(show).toBe(hide);
       expect(document.activeElement).toBe(show);
 
       await fireEvent.click(show);
@@ -781,15 +789,32 @@ describe('ListDetail', () => {
       expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
     });
 
-    test('a list with no header of its own gets one holding the toggle', async () => {
+    test('the toggle has one rule for both states, at the header corner, and the rail draws none of its own', async () => {
+      const css = stripCinderComponentsLayer(
+        await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+      );
+      const rule = declarationsFor(css, '.cinder-list-detail__toggle');
+      expect(rule.get('position')).toBe('absolute');
+      expect(rule.get('inset-block-start')).toBe('var(--cinder-space-3-5)');
+      expect(rule.get('inset-inline-start')).toBe('var(--cinder-space-2)');
+      // The rail only reserves the width: no padding that would place a button in it.
+      const rail = declarationsFor(css, '.cinder-list-detail__rail');
+      expect(rail.has('padding')).toBe(false);
+    });
+
+    test('a list with no header of its own gets an empty one that holds the toggle’s place', async () => {
       const { container, getByRole } = render(ListDetailTableFixture, {
         props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
       });
       await measure(container, 1000);
 
       const toggle = getByRole('button', { name: 'Hide list' });
+      expect(toggle.closest('.cinder-list-detail__toggle')).not.toBeNull();
+      expect(toggle.closest('.cinder-list-detail__header')).toBeNull();
       expect(
-        toggle.closest('.cinder-list-detail__header')?.hasAttribute('data-cinder-list-toggle'),
+        container
+          .querySelector('.cinder-list-detail__header')
+          ?.hasAttribute('data-cinder-toggle-space'),
       ).toBe(true);
     });
 

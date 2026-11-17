@@ -21,7 +21,6 @@
    * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
    */
   export type {
-    ListDetailHeaderContext,
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
@@ -361,16 +360,21 @@
     onkeydown={handleKeydown}
   >
     {#if header}
-      <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
+      <!-- The list toggle stands in the header's start corner (drawn once, outside the pane), and
+           the heading starts after it, so the header keeps its full width for its own search and
+           filter. -->
       <header class="cinder-list-detail__header">
         <CompactActions>
-          {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+          {@render header()}
         </CompactActions>
       </header>
     {:else if toggleShown}
-      <header class="cinder-list-detail__header" data-cinder-list-toggle="">
-        <CompactActions>{@render listToggle()}</CompactActions>
-      </header>
+      <!-- No header of its own: an empty one holds the toggle's place at the top of the list. -->
+      <header
+        class="cinder-list-detail__header"
+        data-cinder-toggle-space=""
+        aria-hidden="true"
+      ></header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}
@@ -439,6 +443,13 @@
   </Tooltip>
 {/snippet}
 
+{#snippet toggleAnchor()}
+  <!-- One button, mounted while the list shows and while it is hidden, at one place: the start
+       corner of the list's header, which is also where the rail's top is, so the control does not
+       move when it is pressed and focus stays on it. -->
+  <div class="cinder-list-detail__toggle">{@render listToggle()}</div>
+{/snippet}
+
 {#snippet detailPane()}
   <!-- Without a Back button the region is where focus lands when an item opens, so it takes a
        programmatic tab stop of -1 (never a stop of the tab order). -->
@@ -484,6 +495,7 @@
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
   data-cinder-list-collapsed={collapsed ? '' : undefined}
+  data-cinder-toggle-shown={toggleShown && !collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}
@@ -493,9 +505,13 @@
     {/if}
   {:else if below}
     <div class="cinder-list-detail__below">
+      {#if toggleShown}
+        {@render toggleAnchor()}
+      {/if}
       {#if collapsed}
-        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
-      {:else}
+        <div class="cinder-list-detail__rail"></div>
+      {/if}
+      {#if !collapsed}
         {@render listPane()}
       {/if}
       {@render detailPane()}
@@ -506,8 +522,11 @@
          focus, and the rail beside them keeps the way back. An open item that mounted again
          would read its data again and could take focus for itself. -->
     <div class="cinder-list-detail__split">
+      {#if toggleShown}
+        {@render toggleAnchor()}
+      {/if}
       {#if collapsed}
-        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+        <div class="cinder-list-detail__rail"></div>
       {/if}
       <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
         {#snippet children(pane)}

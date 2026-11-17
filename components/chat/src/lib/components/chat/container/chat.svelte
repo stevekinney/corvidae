@@ -3239,6 +3239,16 @@
     overflow-y: auto;
     scroll-padding-block: var(--cinder-space-2);
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
+    /* A header the host lays over the top of the transcript (so the transcript scrolls under it)
+     * names its height here: the first row starts clear of it, and a row scrolled to rests
+     * under it, never behind it. 0 when nothing is laid over. */
+    --_cinder-chat-overlay-inset-start: var(--cinder-chat-overlay-inset-start, 0px);
+    padding-block-start: calc(
+      var(--cinder-chat-timeline-padding) + var(--_cinder-chat-overlay-inset-start)
+    );
+    scroll-padding-block-start: calc(
+      var(--cinder-space-2) + var(--_cinder-chat-overlay-inset-start)
+    );
     display: flex;
     flex-direction: column;
     /* The gap between rows, named so a row that adjusts its own spacing reads the width's value. */
@@ -3256,7 +3266,7 @@
 
   .chat-timeline-focus-label {
     position: sticky;
-    inset-block-start: var(--cinder-space-2);
+    inset-block-start: calc(var(--cinder-space-2) + var(--_cinder-chat-overlay-inset-start));
     align-self: flex-start;
     z-index: 2;
     inline-size: 0;
@@ -3831,6 +3841,9 @@
   @container (max-width: 480px) {
     .chat-timeline {
       padding: var(--cinder-chat-narrow-padding);
+      padding-block-start: calc(
+        var(--cinder-chat-narrow-padding) + var(--_cinder-chat-overlay-inset-start)
+      );
       --_cinder-chat-row-gap: var(--cinder-chat-narrow-gap);
     }
 

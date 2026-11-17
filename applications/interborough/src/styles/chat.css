@@ -180,19 +180,33 @@
  * the route's width up to 760px, the same width Chat's own container query reads. */
 .weft-chat-route {
   container: weft-chat-route / inline-size;
+  /* The header is laid over the conversation from the route's top edge. */
+  position: relative;
 }
 
 .weft-chat-head {
   --_ib-chat-inset: var(--cinder-space-4);
 
+  /* Laid over the top of the conversation on Cinder's translucent ground (`cinder-translucent-surface`),
+   * so the transcript scrolls under it and shows through softly, in both themes and solid under
+   * `prefers-reduced-transparency`. The ground spans the pane; the column inside it keeps the
+   * reading column's measure. The conversation reads this band's height as its top inset. */
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-3);
   box-sizing: border-box;
-  inline-size: calc(100% - 2 * var(--_ib-chat-inset));
-  max-inline-size: calc(47.5rem - 2 * var(--_ib-chat-inset));
-  margin-inline: auto;
-  padding-block-start: var(--cinder-space-3);
+  padding-block: var(--cinder-space-3);
+  padding-inline: max(var(--_ib-chat-inset), calc((100% - 47.5rem) / 2 + var(--_ib-chat-inset)));
+}
+
+/* The loading placeholder for the heading stays in the flow above the conversation, where the real
+ * header will be laid over it, so nothing moves under it while the chat loads. */
+.weft-chat-head.ib-chat-unavailable__heading {
+  position: static;
 }
 
 /* A new chat has no header, and nothing else may be up there: then the column takes no room. */
@@ -357,6 +371,12 @@
 .ib-chats__back-row {
   display: flex;
   margin-inline-start: calc(-1 * var(--cinder-space-2));
+}
+
+/* While the list's toggle stands in the header's start corner, the way back starts after it too,
+ * its chevron still lined up with the title's start. */
+.cinder-list-detail[data-cinder-toggle-shown] .ib-chats__back-row {
+  margin-inline-start: calc(var(--cinder-button-height-sm) - var(--cinder-space-2));
 }
 
 /* The agent that line two names in a pane wide enough for it keeps the muted line's colour. */

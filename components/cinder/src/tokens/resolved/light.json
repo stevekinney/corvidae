@@ -1536,6 +1536,19 @@
       }
     }
   },
+  "surface.translucent": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.976, 0.004, 265], "alpha": 0.9 },
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-canvas) 90%, transparent)",
+        "cssProperty": "--cinder-surface-translucent",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$description": "The canvas at 90%, for a header or bar that content scrolls under, drawn with a backdrop blur (AppBar and `.cinder-translucent-surface`), and opaque canvas where the platform cannot blur or `prefers-reduced-transparency` is set. The 90% is the least the canvas can keep so that the body and status text on it hold 4.5:1 over the worst backdrop, pure black or pure white, in both themes (`translucent-surface-contrast.test.ts`)."
+  },
   "polarity.ink": {
     "$value": { "colorSpace": "oklch", "components": [0, 0, 0] },
     "$description": "The neutral ink that contrasts with the current theme's surfaces: black in light mode, white in dark mode. It is a complete color value, not a bare component triplet, so it can be assigned directly to any color-valued property and mixed with `color-mix()` to build a wash at any alpha. The scrollbar washes (track, thumb, thumb-hover) derive from this one token, so overriding it at :root or in a [data-theme] block re-polarizes them together; a subtree override does not reach them, because the washes are declared at :root and descendants inherit the already-resolved values. The shadow tokens are NOT derived from it and do not follow an override: shadow.small/medium/large carry independently tuned per-arm alphas (0.10 light against 0.09 dark, and so on) that one ink cannot express without changing what they paint.",

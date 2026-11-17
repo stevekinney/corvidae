@@ -143,7 +143,17 @@ export function approvalArrivalBox(
   const room = approvalReminderRoom(
     transcript.closest('.chat-container') ?? transcript.parentElement,
   );
-  return { top: box.top, bottom: box.bottom + room, left: box.left, right: box.right };
+  // A header the host lays over the top of the transcript (`--cinder-chat-overlay-inset-start`,
+  // which also pads the transcript's first row clear of it) hides that much of the box.
+  const covered = Number.parseFloat(
+    getComputedStyle(transcript).getPropertyValue('--cinder-chat-overlay-inset-start'),
+  );
+  return {
+    top: box.top + (Number.isFinite(covered) ? covered : 0),
+    bottom: box.bottom + room,
+    left: box.left,
+    right: box.right,
+  };
 }
 
 /** The selector of a pending approval card's row of decision buttons. */

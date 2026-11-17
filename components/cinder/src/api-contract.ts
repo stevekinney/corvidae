@@ -565,7 +565,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       empty: s0(true),
       listEmpty: s0(true),
       listFooter: s0(true),
-      header: sp(1, true),
+      header: s0(true),
     },
   },
 

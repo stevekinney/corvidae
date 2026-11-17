@@ -18,6 +18,15 @@
   box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
 }
 
+/* A page that opens on an approval focuses it by script (a chat's waiting card, a review's row).
+ * The browser draws `:focus-visible` on such a focus after a focused composer or before any input,
+ * so a tap or a cold load saw a ring round the card. It is drawn only while the keyboard was the
+ * last input (`data-input-modality`, `lib/input-modality.ts`); the card is still focused. */
+:root:not([data-input-modality='keyboard']) [data-approval-decision]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .ib-decision__row {
   display: flex;
   flex-wrap: wrap;

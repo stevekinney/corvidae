@@ -23,6 +23,7 @@
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
+  import { trackInputModality } from '../../lib/input-modality.ts';
   import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
@@ -174,6 +175,8 @@
         },
   );
   onDestroy(disarmWriteGuard);
+  // A focus the page moves by script draws its ring only after the keyboard was the last input.
+  onDestroy(trackInputModality(document));
   $effect(() => {
     const stopObserving = connection.observe(queryClient);
     const goOffline = () => connection.setBrowserOffline(true);
