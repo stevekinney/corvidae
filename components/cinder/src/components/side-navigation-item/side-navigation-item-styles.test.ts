@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'bun:test';
 import { parse, type Rule } from 'postcss';
 
+import { stylesheetImportPattern } from '@lostgradient/component-tooling/test/css.ts';
 import { isUnderForcedColors } from '@lostgradient/component-tooling/test/focus-ring-helpers.ts';
 
 function loadCss(relativePath: string): string {
@@ -213,7 +214,7 @@ describe('side navigation item: indicators and the collapsed rail (rows 02q, 03b
 
   test('carries the StatusDot, Badge and Tooltip styles it renders', () => {
     for (const sheet of ['status-dot/status-dot', 'badge/badge', 'tooltip/tooltip']) {
-      expect(sideNavigationItemCss).toContain(`@import '../${sheet}.css';`);
+      expect(sideNavigationItemCss).toMatch(stylesheetImportPattern(`${sheet}.css`));
     }
   });
 });

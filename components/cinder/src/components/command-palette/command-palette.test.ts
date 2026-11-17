@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, flushSync, tick } from 'svelte';
 
+import { stylesheetImportPattern } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 
@@ -1034,7 +1035,7 @@ describe('CommandPalette — visual contract', () => {
       /\.cinder-command-item\[data-cinder-active\]\s*\{[\s\S]*?background:\s*var\(--cinder-accent-background\);[\s\S]*?color:\s*var\(--cinder-text-default\);/,
     );
     // Confirm command-palette.css now @imports command-item.css (import chain).
-    expect(paletteCss).toMatch(/@import\s+['"]\.\.\/command-item\/command-item\.css['"]/);
+    expect(paletteCss).toMatch(stylesheetImportPattern('command-item/command-item.css'));
   });
 });
 

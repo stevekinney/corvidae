@@ -7,6 +7,10 @@ import {
   COMPONENT_LAYER_NAME,
   isSingleComponentLayer,
 } from '@lostgradient/component-tooling/scripts/check-component-css.ts';
+import {
+  CORE_ROOT,
+  cinderPackages,
+} from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 /**
  * Every component CSS file that reaches the cascade must carry its own
@@ -27,14 +31,18 @@ import {
  * (`isSingleComponentLayer` in `check-component-css.ts`) so both agree.
  */
 
-const repoRoot = join(import.meta.dir, '..', '..');
+// Core's directory and, once the split extracts them, each Cinder package's.
+const packageRoots = [CORE_ROOT, ...cinderPackages().map(([, root]) => root)];
 
+/** The absolute paths of every package root's files that match `pattern`. */
 async function scanGlob(pattern: string): Promise<string[]> {
   const glob = new Bun.Glob(pattern);
   const files: string[] = [];
-  for await (const file of glob.scan(repoRoot)) {
-    if (file.includes('.test.')) continue;
-    files.push(file);
+  for (const root of packageRoots) {
+    for await (const file of glob.scan(root)) {
+      if (file.includes('.test.')) continue;
+      files.push(join(root, file));
+    }
   }
   return files;
 }
@@ -58,8 +66,7 @@ async function directlyImportedComponentCss(): Promise<string[]> {
   const importPattern = /import\s+['"](\.[^'"]+\.css)['"]/g;
   const found = new Set<string>();
   for (const source of sources) {
-    const absolute = join(repoRoot, source);
-    const text = await Bun.file(absolute).text();
+    const text = await Bun.file(source).text();
     for (const match of text.matchAll(importPattern)) {
       // Resolve the relative specifier against the importing file's directory,
       // then re-express it relative to the package root for comparison.
@@ -98,7 +105,7 @@ function describeShape(source: string, file: string): string {
 }
 
 async function isWrapped(file: string): Promise<boolean> {
-  const source = await Bun.file(join(repoRoot, file)).text();
+  const source = await Bun.file(file).text();
   return isSingleComponentLayer(parse(source, { from: file }));
 }
 
@@ -115,7 +122,7 @@ describe('component CSS @layer invariant', () => {
 
     for (const file of files) {
       if (!(await isWrapped(file))) {
-        const source = await Bun.file(join(repoRoot, file)).text();
+        const source = await Bun.file(file).text();
         offenders.push(`${file} → ${describeShape(source, file)}`);
       }
     }
@@ -132,7 +139,7 @@ describe('component CSS @layer invariant', () => {
     // every path it finds exists and carries the wrapper.
     const directImports = await directlyImportedComponentCss();
     for (const file of directImports) {
-      expect(await Bun.file(join(repoRoot, file)).exists()).toBe(true);
+      expect(await Bun.file(file).exists()).toBe(true);
       expect(await isWrapped(file)).toBe(true);
     }
   });
@@ -187,7 +194,7 @@ describe('direct-subpath layer membership regression', () => {
   }
 
   async function assertEveryRuleInComponentLayer(file: string): Promise<void> {
-    const source = await Bun.file(join(repoRoot, file)).text();
+    const source = await Bun.file(file).text();
     const layers = topLevelLayerOfEveryRule(source, file);
     expect(layers.length).toBeGreaterThan(0);
     // Not a single rule may sit outside the layer — that is the un-overridable

@@ -2,7 +2,10 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
+import {
+  injectStrippedStyles,
+  stylesheetImportPattern,
+} from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
@@ -27,8 +30,10 @@ describe('Checkbox', () => {
   test('keeps intrinsic layout when all component styles load FormField later', () => {
     const checkboxStyles = readFileSync(new URL('./checkbox.css', import.meta.url), 'utf8');
     const allStyles = readFileSync(new URL('../../styles/components.css', import.meta.url), 'utf8');
-    expect(allStyles.indexOf('../components/checkbox/checkbox.css')).toBeLessThan(
-      allStyles.indexOf('../components/form-field/form-field.css'),
+    const checkboxAt = allStyles.search(stylesheetImportPattern('checkbox/checkbox.css'));
+    expect(checkboxAt).toBeGreaterThan(-1);
+    expect(checkboxAt).toBeLessThan(
+      allStyles.search(stylesheetImportPattern('form-field/form-field.css')),
     );
     expect(checkboxStyles).toContain('.cinder-checkbox-field.cinder-form-field');
     expect(checkboxStyles).toMatch(

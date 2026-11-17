@@ -5,8 +5,10 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-const read = (path: string): Promise<string> =>
-  Bun.file(new URL(`../components/${path}`, import.meta.url)).text();
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
+// A component's file, in whichever Cinder package holds the component.
+const read = (path: string): Promise<string> => Bun.file(cinderComponentFile(path)).text();
 
 const HIT_AREA_INSETS =
   /inset-block:\s*min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);\s*inset-inline:\s*min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/;

@@ -7,6 +7,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
 const foundation = await Bun.file(new URL('./foundation.css', import.meta.url)).text();
 const tokens = await Bun.file(new URL('./tokens-base.css', import.meta.url)).text();
 const stackedListItem = await Bun.file(
@@ -69,8 +71,8 @@ describe('control heights keyed to the pointer', () => {
  * above lifts each of them to the 44px touch target.
  */
 describe('filled controls size from the control-height steps', () => {
-  const component = (name: string) =>
-    Bun.file(new URL(`../components/${name}/${name}.css`, import.meta.url)).text();
+  // Each component's stylesheet, in whichever Cinder package holds the component.
+  const component = (name: string) => Bun.file(cinderComponentFile(`${name}/${name}.css`)).text();
   // A control's height, not a rule's thickness: the tablist underline is a 2px `block-size`.
   const HEIGHT_LITERAL = /(?:^|[;{\s])(?:min-height|height|min-block-size):\s*[\d.]+px\b/m;
 

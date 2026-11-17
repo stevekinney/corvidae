@@ -3,17 +3,20 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-const COMPONENTS_DIR = join(import.meta.dir, '..', 'components');
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
+/** A component's file, in whichever Cinder package holds the component. */
+const componentFile = (...segments: string[]) => cinderComponentFile(join(...segments));
 const STYLES_DIR = join(import.meta.dir, 'components');
 
 // diff-viewer and review-editor moved to @lostgradient/editor (see
 // documentation/decisions/package-boundaries.md); their audit entries moved with them
 // and are no longer part of this package's source tree.
 const auditedFiles = [
-  join(COMPONENTS_DIR, 'badge', 'badge.css'),
-  join(COMPONENTS_DIR, 'button', 'button.css'),
-  join(COMPONENTS_DIR, 'chip', 'chip.css'),
-  join(COMPONENTS_DIR, 'dropdown', 'dropdown.css'),
+  componentFile('badge', 'badge.css'),
+  componentFile('button', 'button.css'),
+  componentFile('chip', 'chip.css'),
+  componentFile('dropdown', 'dropdown.css'),
   join(STYLES_DIR, 'json-highlight.css'),
 ];
 
@@ -42,7 +45,7 @@ describe('status token usage', () => {
   });
 
   test('chip variants use semantic status triples directly', async () => {
-    const chipSource = await readFile(join(COMPONENTS_DIR, 'chip', 'chip.css'), 'utf-8');
+    const chipSource = await readFile(componentFile('chip', 'chip.css'), 'utf-8');
 
     // Accent lives under its own domain rather than `status.*`: it is a brand
     // colour, not a status, and CIN-33 kept that distinction in the names.
@@ -67,7 +70,7 @@ describe('status token usage', () => {
   // `--cinder-status-*-border` tokens are untouched, because Chip and the danger Button
   // read them and the stop button's hover paints one over its background.
   test("each Badge variant's border-color is its own background token", async () => {
-    const badgeSource = await readFile(join(COMPONENTS_DIR, 'badge', 'badge.css'), 'utf-8');
+    const badgeSource = await readFile(componentFile('badge', 'badge.css'), 'utf-8');
     const soft = (variant: string) =>
       variant === 'accent' ? '--cinder-accent' : `--cinder-status-${variant}`;
 

@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 import { parse, type ChildNode } from 'postcss';
 
 import { COMPONENT_LAYER_NAME } from '@lostgradient/component-tooling/scripts/check-component-css.ts';
+import { resolveStylesheetImport } from '@lostgradient/component-tooling/test/css.ts';
 
 /**
  * Cascade-identity guard for the aggregated `@lostgradient/cinder` entry point.
@@ -41,14 +42,17 @@ const componentsCss = join(stylesRoot, 'components.css');
 
 type FlatRule = { layer: string | null; selector: string };
 
-/** Resolve an `@import` specifier (and any `layer()` qualifier) relative to the importing file. */
+/**
+ * Resolve an `@import` specifier (and any `layer()` qualifier) from the importing file: a relative
+ * path, or the specifier of the package that holds the file once the split moves it.
+ */
 function resolveImport(
   fromFile: string,
   params: string,
 ): { target: string; layer: string | undefined } | null {
   const match = params.match(/['"]([^'"]+)['"]\s*(?:layer\(([^)]*)\))?/);
   if (!match) return null;
-  return { target: join(dirname(fromFile), match[1]!), layer: match[2]?.trim() };
+  return { target: resolveStylesheetImport(fromFile, match[1]!), layer: match[2]?.trim() };
 }
 
 /**

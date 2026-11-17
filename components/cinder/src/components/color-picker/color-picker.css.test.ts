@@ -5,6 +5,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { parse, type Declaration, type Rule } from 'postcss';
 
+import { stylesheetImportPattern } from '@lostgradient/component-tooling/test/css.ts';
+
 function loadCss(relativePath: string): string {
   const fullPath = fileURLToPath(new URL(relativePath, import.meta.url));
   return readFileSync(fullPath, 'utf8');
@@ -100,11 +102,13 @@ test('the preview swatch shares the first format row and its height', () => {
 });
 
 test('composed color controls aggregate their dependency styles for à-la-carte consumers', () => {
-  expect(colorFieldCss).not.toContain("@import '../button/button.css'");
-  expect(colorFieldCss).toContain("@import '../color-picker/color-picker.css'");
-  expect(colorFieldCss).toContain("@import '../popover/popover.css'");
-  expect(colorPickerCss).toContain("@import '../color-swatch-picker/color-swatch-picker.css'");
-  expect(colorPickerCss).toContain("@import '../copy-button/copy-button.css'");
+  expect(colorFieldCss).not.toMatch(stylesheetImportPattern('button/button.css'));
+  expect(colorFieldCss).toMatch(stylesheetImportPattern('color-picker/color-picker.css'));
+  expect(colorFieldCss).toMatch(stylesheetImportPattern('popover/popover.css'));
+  expect(colorPickerCss).toMatch(
+    stylesheetImportPattern('color-swatch-picker/color-swatch-picker.css'),
+  );
+  expect(colorPickerCss).toMatch(stylesheetImportPattern('copy-button/copy-button.css'));
 });
 const colorSwatchPickerCss = loadCss('../color-swatch-picker/color-swatch-picker.css');
 

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { injectStrippedStyles } from '@lostgradient/component-tooling/test/css.ts';
 
 setupHappyDom();
@@ -17,8 +18,9 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+// Each component's stylesheet, in whichever Cinder package holds the component.
 const component = (name: string) =>
-  readFileSync(new URL(`../components/${name}/${name}.css`, import.meta.url), 'utf8');
+  readFileSync(cinderComponentFile(`${name}/${name}.css`), 'utf8');
 
 describe('header actions never grow the header', () => {
   for (const kind of ['card', 'section-heading'] as const) {

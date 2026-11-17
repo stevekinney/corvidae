@@ -15,10 +15,13 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { parse } from 'svelte/compiler';
 
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
 import type { ComponentContract, PropSpec, SnippetSpec } from './api-contract.ts';
 import { CONTRACT } from './api-contract.ts';
 
-const COMPONENTS_DIR = join(import.meta.dir, 'components');
+/** A file under a components root, in whichever Cinder package holds the component. */
+const componentFile = (...segments: string[]) => cinderComponentFile(join(...segments));
 
 function toPascal(kebab: string): string {
   return kebab
@@ -356,8 +359,8 @@ describe('api contract', () => {
       // flat components live at src/components/<name>.svelte. Try the directory
       // shape first so the test transparently spans both layouts during the
       // partial-migration window.
-      const directoryPath = join(COMPONENTS_DIR, name, file);
-      const flatPath = join(COMPONENTS_DIR, file);
+      const directoryPath = componentFile(name, file);
+      const flatPath = componentFile(file);
 
       let source: string;
       try {
@@ -392,7 +395,7 @@ describe('api contract', () => {
       // script only re-exports them. Fall back to parsing the types file via a
       // synthetic <script module> wrapper so the same AST walker keeps working.
       if (!propsAnnotation) {
-        const typesPath = join(COMPONENTS_DIR, name, `${name}.types.ts`);
+        const typesPath = componentFile(name, `${name}.types.ts`);
         try {
           const typesSource = await readFile(typesPath, 'utf-8');
           const wrapped = `<script module lang="ts">\n${typesSource}\n</script>`;

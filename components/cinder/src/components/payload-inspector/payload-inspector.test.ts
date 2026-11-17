@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
+import { stylesheetImportPattern } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import Ajv2020 from 'ajv/dist/2020';
 
@@ -1242,7 +1243,7 @@ describe('PayloadInspector', () => {
         'table',
         'tooltip',
       ]) {
-        expect(css).toContain(`@import '../${sheet}/${sheet}.css';`);
+        expect(css).toMatch(stylesheetImportPattern(`${sheet}/${sheet}.css`));
       }
     });
 

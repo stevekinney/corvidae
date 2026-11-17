@@ -3,6 +3,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { readFileSync } from 'node:fs';
 
+import { stylesheetImportPattern } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { ScheduleFire, ScheduleValue } from './schedule-builder.types.ts';
 import { availableTimeZones } from './schedule-builder.utilities.ts';
@@ -991,7 +992,7 @@ describe('ScheduleBuilder', () => {
 
     test('uses the form field error style instead of a style of its own', () => {
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
-      expect(css).toContain("@import '../form-field/form-field.css'");
+      expect(css).toMatch(stylesheetImportPattern('form-field/form-field.css'));
     });
   });
 
@@ -1146,7 +1147,7 @@ describe('ScheduleBuilder', () => {
       const { readFileSync } = await import('node:fs');
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
       for (const imported of ['chip', 'combobox', 'form-field', 'input', 'select']) {
-        const at = css.indexOf(`@import '../${imported}/${imported}.css'`);
+        const at = css.search(stylesheetImportPattern(`${imported}/${imported}.css`));
         expect(at).toBeGreaterThan(css.indexOf('@layer cinder.tokens'));
         expect(at).toBeLessThan(css.indexOf('@layer cinder.components'));
       }

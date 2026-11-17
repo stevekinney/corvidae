@@ -323,7 +323,6 @@ describe('required constraints', () => {
   test('every id in requiredConstraints ships a {name}.constraints.json sidecar', async () => {
     const { existsSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const componentsRoot = join(import.meta.dir, 'components');
     const components = await discoverComponents();
     const byId = new Map(components.map((c) => [c.name, c]));
 
@@ -331,7 +330,7 @@ describe('required constraints', () => {
     for (const id of requiredConstraints) {
       const component = byId.get(id);
       if (!component) continue; // Already reported by the previous test.
-      const sidecarPath = join(componentsRoot, id, `${id}.constraints.json`);
+      const sidecarPath = join(component.directory, `${id}.constraints.json`);
       if (!existsSync(sidecarPath)) missing.push(id);
     }
     expect(missing).toEqual([]);

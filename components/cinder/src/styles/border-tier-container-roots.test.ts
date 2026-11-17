@@ -3,6 +3,9 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+// Every Cinder components root: core's, and each package's the split extracts.
+import { cinderComponentRoots } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
 /**
  * COR-2311: space first, then tone, then a border, with elevation for anything that floats. A
  * container root draws a structural-tier border (`--cinder-border`, `-muted`, `-strong`; never the
@@ -11,8 +14,6 @@ import { describe, expect, test } from 'bun:test';
  * card-like container has to choose a tone or a shadow, or be added here with a reason.
  */
 describe('COR-2311: container roots draw no structural border unless allowlisted', () => {
-  const COMPONENTS_ROOT = join(import.meta.dirname, '..', 'components');
-
   const EXCEPTIONS: Record<string, string> = {
     accordion: 'a stack of panels, each a real outlined region',
     alert: 'a status role; the border carries the tone',
@@ -59,8 +60,10 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
 
   function bordered(): string[] {
     const found: string[] = [];
-    for (const name of readdirSync(COMPONENTS_ROOT)) {
-      const path = join(COMPONENTS_ROOT, name, `${name}.css`);
+    const components = cinderComponentRoots().flatMap((root) =>
+      readdirSync(root).map((name) => ({ name, path: join(root, name, `${name}.css`) })),
+    );
+    for (const { name, path } of components) {
       if (!existsSync(path)) continue;
       const source = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, (c) =>
         ' '.repeat(c.length),
