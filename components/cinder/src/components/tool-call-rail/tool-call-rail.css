@@ -80,15 +80,12 @@
     block-size: 0.875rem;
   }
 
-  .cinder-tool-call-rail__summary-separator,
+  /* The pieces of the line are told apart by the summary's gap and a step: the count dots carry
+   * their own colour, and the duration is regular and subtle. No comma stands between them. */
   .cinder-tool-call-rail__summary-duration {
     color: var(--cinder-text-subtle);
+    font-variant-numeric: tabular-nums;
     font-weight: var(--cinder-font-normal);
-  }
-
-  /* A comma ends the words before it, so it takes back the gap that would stand between them. */
-  .cinder-tool-call-rail__summary-separator {
-    margin-inline-start: calc(var(--cinder-space-1-5) * -1);
   }
 
   .cinder-tool-call-rail__count {
@@ -490,7 +487,6 @@
   @container cinder-tool-call-rail (max-width: 28rem) {
     .cinder-tool-call-rail .cinder-timeline-item__event::before,
     .cinder-tool-call-rail__summary-duration,
-    .cinder-tool-call-rail__summary-separator[data-cinder-duration],
     .cinder-tool-call-rail__failure {
       display: none;
     }
@@ -548,8 +544,9 @@
       color: inherit;
     }
 
-    .cinder-tool-call-rail__input:not(:last-child)::after {
-      content: ', ';
+    /* The key input and the result are two facts, not a sentence: a gap tells them apart. */
+    .cinder-tool-call-rail__input:not(:last-child) {
+      margin-inline-end: var(--cinder-space-1-5);
     }
 
     .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__detail,
