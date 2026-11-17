@@ -124,6 +124,27 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
     expect(container.querySelector('.cinder-stacked-list-item__actions-trigger')).not.toBeNull();
   });
 
+  test('an observer callback with no entries leaves the measured width as it was', () => {
+    const actions = [
+      { label: 'Memory', href: '/memory' },
+      { label: 'New chat', href: '/chat' },
+    ];
+    const { container } = render(ExtrasFixture, { props: { mode: 'actions', actions } });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    if (!row) throw new Error('no row');
+    const callback = observers.get(row);
+    expect(callback).toBeDefined();
+    // An empty list, and a call that passes none (a test double may do either), both change nothing.
+    expect(() => callback?.([])).not.toThrow();
+    expect(() => (callback as unknown as () => void)()).not.toThrow();
+    flushSync();
+    expect(container.querySelector('.cinder-stacked-list-item__actions')).not.toBeNull();
+    resizeRow(row, 360);
+    expect(() => callback?.([])).not.toThrow();
+    flushSync();
+    expect(container.querySelector('.cinder-stacked-list-item__actions-trigger')).not.toBeNull();
+  });
+
   test('a single action stays its own compact button in a narrow pane', () => {
     const actions = [{ label: 'Memory', href: '/memory' }];
     const { container } = render(ExtrasFixture, { props: { mode: 'actions', actions } });

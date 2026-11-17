@@ -131,7 +131,8 @@
     };
     update(container.getBoundingClientRect().width);
     const observer = new ResizeObserver((entries) => {
-      const entry = entries[entries.length - 1];
+      // No entries (an empty list, or none passed): measure the container itself.
+      const entry = (entries as ResizeObserverEntry[] | undefined)?.at(-1);
       update(entry ? entry.contentRect.width : container.getBoundingClientRect().width);
     });
     observer.observe(container);

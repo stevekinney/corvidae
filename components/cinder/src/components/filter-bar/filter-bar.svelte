@@ -213,7 +213,7 @@
       typeof ResizeObserver === 'undefined'
         ? undefined
         : new ResizeObserver((entries) => {
-            const width = entries[0]?.contentRect.width;
+            const width = (entries as ResizeObserverEntry[] | undefined)?.[0]?.contentRect.width;
             if (typeof width !== 'number' || width === lastWidth) return;
             lastWidth = width;
             measureRequest += 1;

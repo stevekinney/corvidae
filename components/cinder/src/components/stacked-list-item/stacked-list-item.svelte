@@ -128,7 +128,9 @@
   // measurable width (the server, a test with no layout), the viewport stands in.
   let rowWidth = $state<number | undefined>(undefined);
   const measureRow = useResizeObserver((entries) => {
-    const entry = entries[entries.length - 1];
+    // A callback with no entries (an empty list, or none passed, as a test double may) changes
+    // nothing: the last measured width stands.
+    const entry = (entries as ResizeObserverEntry[] | undefined)?.at(-1);
     if (entry) rowWidth = entry.contentRect.width;
   });
   const phone = $derived(
