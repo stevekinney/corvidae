@@ -15,9 +15,14 @@
     origin: RunOrigin;
     /** Which attempt of its goal the run is, when it is one. */
     attempt?: RunAttempt | null | undefined;
+    /**
+     * The title of a plugin, for a run its trigger started ("GitHub"); the identifier is said when
+     * none is loaded.
+     */
+    pluginTitle?: ((plugin: string) => string | undefined) | undefined;
   }
 
-  let { origin, attempt = null }: RunOriginProps = $props();
+  let { origin, attempt = null, pluginTitle = undefined }: RunOriginProps = $props();
 
   /** Opens a link in place, and leaves a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
@@ -90,15 +95,15 @@
     {#if origin.plugin === null}
       {STARTED_BY_LABELS.trigger}
     {:else}
-      <!-- COR-2171: which trigger, by its plugin, linked to the file whose trigger it is. -->
+      <!-- COR-2171: which trigger, by its plugin's title, linked to the file whose trigger it is. -->
+      {@const plugin = pluginTitle?.(origin.plugin) ?? origin.plugin}
       <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.trigger}</span>
       {#if origin.href !== null}
         {@const triggerPath = origin.href}
-        <a href={router.href(triggerPath)} onclick={(event) => open(event, triggerPath)}
-          ><code class="ib-identifier">{origin.plugin}</code></a
+        <a href={router.href(triggerPath)} onclick={(event) => open(event, triggerPath)}>{plugin}</a
         >
       {:else}
-        <code class="ib-identifier">{origin.plugin}</code>
+        {plugin}
       {/if}
     {/if}
   {:else}

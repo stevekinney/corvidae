@@ -1,19 +1,21 @@
 <script lang="ts">
   /**
-   * What a workflow file's plugin trigger is doing (COR-2171), under the header of its page: the
-   * listener's state as a badge and a sentence (`listening`, `ready`, `standby`,
-   * `waiting-for-secret`, `failed` with its code and when it is tried again, `stopped`), Retry now
-   * for a failed one, which calls `bureau.workflows.triggers.retry` and shows the state it answers,
-   * and, for a kind that receives, the address its deliveries go to with a copy control. Every
-   * control is Cinder's.
+   * What a workflow file's plugin trigger is doing (COR-2171), under its "Starts" line: the status
+   * as a dot and a word, as the header shows a workflow's own status, and the words after it that
+   * the word does not say (`listening`, `ready`, `standby`, `waiting-for-secret`, `failed` with when
+   * it is tried again, `stopped`). A failed trigger offers Retry now, which calls
+   * `bureau.workflows.triggers.retry` and shows the state it answers, and a refused configuration
+   * offers Edit instead. A kind that receives shows the address its deliveries go to, which wraps
+   * with its copy control. Every control is Cinder's.
    */
-  import { Alert, Badge, type BadgeVariant, Button, CopyButton } from '@lostgradient/cinder';
+  import { Button, CopyableValue, Link, StatusDot } from '@lostgradient/cinder';
   import { createMutation } from '@tanstack/svelte-query';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { faultTreatment } from '../../lib/faults.ts';
-  import { clockTime, clockTimeWithSeconds } from '../../lib/format/clock.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import { retryWorkflowTrigger, type WorkflowListener } from '../../lib/workflow-files.ts';
+  import { nextTryClockPeriod, triggerStatus } from './workflow-trigger-presentation.ts';
 
   interface Props {
     /** The workflow's identifier, which the address ends in. */
@@ -28,54 +30,59 @@
     onListener: (listener: WorkflowListener) => void;
     /** Whether the plugin trigger kinds have loaded, so `triggersUrl` says all there is to say. */
     kindsLoaded?: boolean;
+    /** The title of the plugin the trigger belongs to ("GitHub"), or `undefined` until the host has said. */
+    pluginTitle?: string | undefined;
+    /** Where the file is edited, when the person may edit it: a refused configuration leads there. */
+    editPath?: string | undefined;
   }
 
-  let { workflowId, listener, triggersUrl, onListener, kindsLoaded = false }: Props = $props();
+  let {
+    workflowId,
+    listener,
+    triggersUrl,
+    onListener,
+    kindsLoaded = false,
+    pluginTitle,
+    editPath,
+  }: Props = $props();
 
   const copy = WORKFLOW_COPY.page.listener;
-
-  const VARIANTS: Readonly<Record<WorkflowListener['state'], BadgeVariant>> = {
-    listening: 'success',
-    ready: 'success',
-    standby: 'neutral',
-    'waiting-for-secret': 'warning',
-    failed: 'danger',
-    stopped: 'neutral',
-  };
+  /** Where a plugin's secret is added. */
+  const SETTINGS_PATH = '/settings/plugins';
 
   /** The address a trigger that receives is sent its deliveries at. */
   const address = $derived(
     triggersUrl === undefined ? undefined : `${triggersUrl}${encodeURIComponent(workflowId)}`,
   );
 
-  /**
-   * A time as a clock reads it, in the viewer's zone, so it stays true while the page is open; a
-   * retry is due within seconds, so its time carries them.
-   */
-  function at(iso: string): string {
-    return clockTime(Date.parse(iso));
-  }
-
-  /** The sentence beside the badge. */
-  const sentence = $derived.by(() => {
-    switch (listener.state) {
-      case 'listening':
-        return copy.listening(at(listener.since));
-      case 'ready':
-        return copy.ready(at(listener.since));
-      case 'standby':
-        return copy.standby;
-      case 'waiting-for-secret':
-        return copy.waitingForSecret;
-      case 'stopped':
-        return copy.stopped;
-      case 'failed':
-        if (listener.code === 'configuration-refused') return copy.configurationRefused;
-        return listener.retryAt === null
-          ? copy.startFailed
-          : copy.startFailedRetrying(clockTimeWithSeconds(Date.parse(listener.retryAt)));
-    }
+  // The clock the next try is counted to: each second in its last minute and a half, and each half
+  // minute before, so "Next try in 59 minutes" stays true while the page is open. It is read again
+  // when the listener changes, such as after a retry.
+  let now = $state(Date.now());
+  $effect(() => {
+    void listener;
+    now = Date.now();
   });
+  const period = $derived(nextTryClockPeriod(listener, now));
+  $effect(() => {
+    if (period === null) return;
+    // poll-reason: clock
+    const timer = setInterval(() => {
+      now = Date.now();
+    }, period);
+    return () => clearInterval(timer);
+  });
+
+  const status = $derived(triggerStatus(listener, { now, pluginTitle }));
+
+  /** Opens a link in place, and leaves a modified click to the browser. */
+  function go(event: MouseEvent, target: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(target);
+  }
 
   // A failed retry is said once, here beside the control: this `onError` replaces the query
   // client's default, which would also raise a toast.
@@ -99,56 +106,72 @@
   data-testid="workflow-trigger-listener"
   data-kinds={kindsLoaded ? 'loaded' : 'loading'}
 >
-  <p class="ib-workflow-trigger__line" data-state={listener.state}>
-    <Badge variant={VARIANTS[listener.state]} size="sm">{copy.states[listener.state]}</Badge>
-    <span>{sentence}</span>
-    {#if listener.code !== null}
-      <span class="ib-workflow-trigger__code"
-        >{copy.codeLabel} <code data-testid="workflow-trigger-code">{listener.code}</code></span
-      >
-    {/if}
-    {#if listener.lastFiredAt !== null}
-      <span>{copy.lastFired(at(listener.lastFiredAt))}</span>
-    {/if}
-    {#if listener.state === 'failed'}
+  <!-- The line is drawn as the header's lines are: inline parts, muted, wrapping as prose does. -->
+  <p class="ib-workflow__line" data-state={listener.state}>
+    <StatusDot word={status.word} size="sm" />{status.text}{#if status.settings !== null}<Link
+        href={router.href(SETTINGS_PATH)}
+        onclick={(event) => go(event, SETTINGS_PATH)}>{status.settings.link}</Link
+      >{status.settings.after}{/if}{#if status.lastStarted !== null}{' '}{status.lastStarted}{/if}
+    {#if status.canRetry}
       <Button
         data-changes
+        class="ib-workflow-trigger__action"
         variant="secondary"
-        size="sm"
+        size="xs"
         loading={retry.isPending}
         loadingStatus={copy.retrying}
         onclick={() => retry.mutate()}>{copy.retry}</Button
       >
+    {:else if status.canEdit && editPath !== undefined}
+      {@const target = editPath}
+      <Button
+        class="ib-workflow-trigger__action"
+        variant="secondary"
+        size="xs"
+        href={router.href(target)}
+        onclick={(event) => go(event, target)}>{copy.edit}</Button
+      >
+    {/if}
+    {#if retryFailure !== null}
+      <span class="ib-workflow-trigger__failure" role="alert" data-testid="workflow-trigger-failure"
+        >{retryFailure}</span
+      >
+    {/if}
+    {#if status.code !== null}
+      <!-- The code goes last, as quiet as the line around it. -->
+      <span data-testid="workflow-trigger-code-note"
+        >({copy.code} <code data-testid="workflow-trigger-code">{status.code}</code>)</span
+      >
     {/if}
   </p>
-  {#if retryFailure !== null}
-    <Alert variant="danger">{retryFailure}</Alert>
-  {/if}
   {#if address !== undefined}
-    <p class="ib-workflow-trigger__line">
-      <span>{copy.address}</span>
-      <code data-testid="workflow-trigger-address">{address}</code>
-      <CopyButton value={address} label={copy.copyAddress} copiedLabel={copy.copiedAddress} />
+    <p class="ib-workflow__line">
+      {copy.address}
+      <CopyableValue
+        data-testid="workflow-trigger-address"
+        value={address}
+        label={copy.copyAddress}
+        copiedLabel={copy.copiedAddress}
+      />
     </p>
   {/if}
 </section>
 
 <style>
   .ib-workflow-trigger {
-    display: grid;
-    gap: var(--cinder-space-2);
-  }
-
-  .ib-workflow-trigger__line {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-2);
-    margin: 0;
-    font-size: var(--cinder-text-sm);
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-width: 0;
   }
 
-  .ib-workflow-trigger__code {
-    color: var(--cinder-text-muted);
+  /* A control inside the line sits on the text's own line, with a little room from the words. */
+  .ib-workflow-trigger :global(.ib-workflow-trigger__action) {
+    margin-inline: var(--cinder-space-1);
+    vertical-align: middle;
+  }
+
+  .ib-workflow-trigger__failure {
+    color: var(--cinder-status-danger-text);
   }
 </style>

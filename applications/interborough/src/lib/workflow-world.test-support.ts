@@ -412,6 +412,11 @@ export type World = {
    * `bureau.settings.get` reports it in `running`, or `null` for settings that set nothing.
    */
   maxConcurrentRuns: number | null;
+  /**
+   * The plugins `/host/plugins` reports, each with the title a person knows it by, or `null` for a
+   * host that does not answer (a page then says a plugin's identifier where it must).
+   */
+  hostPlugins: Array<{ name: string; title: string }> | null;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -445,6 +450,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     agentModels: {},
     impacts: {},
     maxConcurrentRuns: null,
+    hostPlugins: null,
     ...overrides,
   };
 }
@@ -1060,6 +1066,34 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
           ? stubRemoteHostPaths()
           : stubHostPaths(STUB_AGENT_DIRECTORY, world.workflowDirectory),
       );
+    }
+    if (url.pathname === '/host/plugins') {
+      if (world.hostPlugins === null) return new Response('Not found', { status: 404 });
+      return Response.json({
+        configurationRevision: null,
+        plugins: world.hostPlugins.map(({ name, title }) => ({
+          descriptor: {
+            name,
+            title,
+            version: '1.0.0',
+            description: '',
+            required: false,
+            enabledByDefault: false,
+          },
+          source: 'folder',
+          location: `/plugins/${name}`,
+          status: 'running',
+          problems: [],
+          contributions: [],
+          enabled: true,
+          configuration: {},
+          configurationSchema: null,
+          running: { enabled: true, configuration: {} },
+          secrets: [],
+          restartRequired: false,
+        })),
+        unloaded: [],
+      });
     }
     const scheduleRoute = url.pathname.endsWith('/jsonrpc')
       ? null

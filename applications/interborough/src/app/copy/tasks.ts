@@ -44,8 +44,6 @@ export const TASK_COPY = {
     },
     /** Line two's agent for a run Interborough started for its own bookkeeping. */
     interboroughStarted: 'Interborough started',
-    /** Line two's agent for a run a plugin's trigger started, when its workflow names no agent. */
-    triggerStarted: (plugin: string): string => `${plugin} trigger started`,
     /** The title of one instance of a workflow file, which only its steps are tasks of. */
     workflowRunTitle: 'Workflow run',
     /** How long a run has waited on a person, at the end of line two. */

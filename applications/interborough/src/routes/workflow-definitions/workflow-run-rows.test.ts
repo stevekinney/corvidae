@@ -81,7 +81,7 @@ describe('one instance as a row', () => {
     expect(line.startsWith(TASK_COPY.list.kinds.trigger)).toBe(true);
   });
 
-  test('says the trigger’s plugin started a run whose workflow names no agent, never "An agent" (COR-2171)', () => {
+  test('names the trigger’s plugin by its title in the who slot of a run whose workflow names no agent, never "An agent" (COR-2171)', () => {
     const row = workflowRunRow(
       summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
       { title: 'Sync', agentName: null },
@@ -90,9 +90,26 @@ describe('one instance as a row', () => {
       now: 1_760_000_010_000,
       zone: 'America/Chicago',
       agentLabel: (name) => name,
+      pluginTitle: (plugin) => (plugin === 'linear' ? 'Linear' : undefined),
     });
-    expect(line).toContain(TASK_COPY.list.triggerStarted('linear'));
+    expect(line).toBe(
+      [TASK_COPY.list.kinds.trigger, 'Linear', '3 s'].join(TASK_COPY.list.separator),
+    );
     expect(line).not.toContain(TASK_COPY.unknownAgent);
+  });
+
+  test('says the plugin’s identifier only when no title is loaded for it (COR-2171)', () => {
+    const row = workflowRunRow(
+      summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
+      { title: 'Sync', agentName: null },
+    );
+    const context = {
+      now: 1_760_000_010_000,
+      zone: 'America/Chicago',
+      agentLabel: (n: string) => n,
+    };
+    expect(runLineTwo(row, context)).toContain(', linear, ');
+    expect(runLineTwo(row, { ...context, pluginTitle: () => undefined })).toContain(', linear, ');
   });
 
   test('has no duration while it is still going', () => {

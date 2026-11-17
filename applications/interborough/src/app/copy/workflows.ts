@@ -147,6 +147,7 @@ export const WORKFLOW_COPY = {
     listener: {
       /** The name of the section, for the screen reader. */
       label: 'Trigger status',
+      /** The status word beside its dot: Cinder's StatusDot owns each word's tone. */
       states: {
         listening: 'Listening',
         ready: 'Ready',
@@ -155,23 +156,42 @@ export const WORKFLOW_COPY = {
         failed: 'Failed',
         stopped: 'Stopped',
       },
+      /**
+       * What follows the word, saying only what the word does not. Each begins with the joiner that
+       * follows the word ("Listening since 10:02 AM", "Failed, the trigger could not start.") and
+       * ends with a full stop.
+       */
+      after: {
+        /** `time` is a clock time: "10:02 AM". */
+        listening: (time: string): string => ` since ${time}.`,
+        ready: (time: string): string => ` to receive deliveries since ${time}.`,
+        standby:
+          ', another Interborough that shares this storage runs this trigger. This one takes over if that one stops.',
+        stopped: ' while the workflow is paused.',
+        startFailed: ', the trigger could not start.',
+        /** `when` is `nextTryWords`: "59 minutes". */
+        startFailedRetrying: (when: string): string =>
+          `, the trigger could not start. Next try in ${when}.`,
+        configurationRefused:
+          ', the plugin refused this trigger’s settings, so it is not tried again until they change.',
+      },
+      /**
+       * A trigger waiting for a secret says whose it is and leads to where it is added, "Waiting for a
+       * secret. GitHub needs one: add it in Plugins settings." `plugin` is the plugin's title, and
+       * `undefined` until the host has said, which reads "The plugin".
+       */
+      waitingForSecret: {
+        before: (plugin: string | undefined): string => `. ${plugin ?? 'The plugin'} needs one: `,
+        link: 'add it in Plugins settings',
+        after: '.',
+      },
       /** `time` is a clock time: "10:02 AM". */
-      listening: (time: string): string => `Listening since ${time}.`,
-      ready: (time: string): string => `Ready to receive deliveries since ${time}.`,
-      standby:
-        'Another Interborough that shares this storage runs this trigger. This one takes over if that one stops.',
-      waitingForSecret: 'Waiting for a secret its plugin needs. Add it in Settings, under Plugins.',
-      /** `time` is a clock time with seconds: "10:02:15 AM". */
-      startFailedRetrying: (time: string): string =>
-        `The trigger could not start. It is tried again at ${time}.`,
-      startFailed: 'The trigger could not start.',
-      configurationRefused:
-        'The plugin refused this trigger’s settings, so it is not tried again until they change.',
-      stopped: 'Stopped while the workflow is paused.',
-      /** What the code beside a failed state is. */
-      codeLabel: 'Code',
-      lastFired: (time: string): string => `Last fired at ${time}.`,
+      lastStartedRun: (time: string): string => `Last started a run at ${time}.`,
+      /** The code of a failed trigger, last on the line: "(code start-failed)". */
+      code: 'code',
       retry: 'Retry now',
+      /** A refused configuration is not tried again until it changes, so the page offers Edit, not Retry now. */
+      edit: 'Edit',
       retrying: 'Retrying the trigger…',
       retryFailed: 'The trigger could not be retried.',
       retryForbidden: 'You don’t have permission to retry this trigger.',
@@ -198,6 +218,8 @@ export const WORKFLOW_COPY = {
       starts: (when: string): string => `Starts ${when}`,
       /** The words around a signal's identifier, which is set in monospace between them. */
       startsOnSignal: { before: 'Starts when a signal arrives (', after: ')' },
+      /** "Starts when GitHub sends a push": `what` is a plugin trigger kind's own description, in the words of `pluginTriggerSummary`. */
+      startsOnPlugin: (what: string): string => `Starts when ${what}`,
       /** Several schedules start a type that code registered. */
       startsFromMany: (count: number): string => `Starts from ${String(count)} schedules`,
       startYourself: 'you can also start it yourself',

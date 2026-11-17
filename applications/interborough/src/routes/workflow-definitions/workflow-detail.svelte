@@ -82,6 +82,8 @@
     type WorkflowListener,
   } from '../../lib/workflow-files.ts';
   import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
+  import { kindPlugin } from '../../lib/plugin-title.ts';
+  import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
   import { cancelSchedule } from '../schedules/schedule-queries.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
   import DeleteWorkflowDialog, { type DeleteDialogSchedule } from './delete-workflow-dialog.svelte';
@@ -110,6 +112,7 @@
     internalWords,
     scheduleLabel,
     schedulesSummary,
+    pluginTriggerSummary,
     schemaOf,
     triggerSummary,
   } from './workflow-presentation.ts';
@@ -315,6 +318,24 @@
     (pluginKinds.data?.triggers ?? []).some(
       (kind) => kind.id === document?.trigger.kind && kind.receives,
     ),
+  );
+  /** What the file's plugin trigger is doing, when it has one and the host answers. */
+  const triggerListener = $derived(
+    file?.listener != null && !connection.unreachable ? file.listener : undefined,
+  );
+  // The plugin the trigger belongs to, by its title ("GitHub"), for the status that waits for one of
+  // its secrets; the title is `undefined` until the host has said.
+  const titleOfPlugin = usePluginTitle();
+  const triggerPlugin = $derived.by(() => {
+    const kind = document?.trigger.kind;
+    if (typeof kind !== 'string') return undefined;
+    return (
+      pluginKinds.data?.triggers.find((candidate) => candidate.id === kind)?.plugin ??
+      kindPlugin(kind)
+    );
+  });
+  const triggerPluginTitle = $derived(
+    triggerPlugin === undefined ? undefined : titleOfPlugin(triggerPlugin),
   );
 
   /** After a delete: the list of workflows, which no longer shows this one. */
@@ -524,11 +545,12 @@
   const details = $derived(definitionDetails(definition, acceptedSignals));
   // What starts the workflow: a file's trigger (for a file that cannot load, the newest version that
   // ran, which is the last the Bureau could read), or the schedules the engine has for a code type.
-  const starts = $derived(
-    file !== undefined
-      ? triggerSummary(document?.trigger ?? revisions.data?.[0]?.document.trigger ?? null)
-      : schedulesSummary(schedules.data ?? null),
-  );
+  const starts = $derived.by(() => {
+    if (file === undefined) return schedulesSummary(schedules.data ?? null);
+    const trigger = document?.trigger ?? revisions.data?.[0]?.document.trigger ?? null;
+    // A trigger a plugin contributes says what starts it in its kind's own description.
+    return triggerSummary(trigger) ?? pluginTriggerSummary(trigger, pluginKinds.data?.triggers);
+  });
   const engineType = isEngineType(type);
   // A file that loaded declares its schemas itself; otherwise the engine's contract does.
   const inputSchema = $derived(schemaOf(file?.inputSchema, definition, 'inputSchema'));
@@ -762,6 +784,18 @@
   />
 {/snippet}
 
+{#snippet triggerStatusLine(listener: WorkflowListener)}
+  <WorkflowTriggerListener
+    workflowId={type}
+    {listener}
+    triggersUrl={receives ? hostPaths.data?.triggersUrl : undefined}
+    kindsLoaded={pluginKinds.isSuccess}
+    pluginTitle={triggerPluginTitle}
+    editPath={actions?.edit === true ? editPath : undefined}
+    onListener={adoptListener}
+  />
+{/snippet}
+
 {#snippet headingText()}
   {#if titled}
     {heading}
@@ -796,18 +830,16 @@
     {#if summary}
       <p class="ib-workflow__description" data-testid="workflow-description">{summary}</p>
     {/if}
+    <!-- The trigger's status is the line under "Starts", or first when the file says nothing starts it. -->
+    {#if triggerListener !== undefined && !lines.some((line) => line.id === 'starts')}
+      {@render triggerStatusLine(triggerListener)}
+    {/if}
     {#each lines as line (line.id)}
       <WorkflowHeaderLine {line} />
+      {#if line.id === 'starts' && triggerListener !== undefined}
+        {@render triggerStatusLine(triggerListener)}
+      {/if}
     {/each}
-    {#if file?.listener != null && !connection.unreachable}
-      <WorkflowTriggerListener
-        workflowId={type}
-        listener={file.listener}
-        triggersUrl={receives ? hostPaths.data?.triggersUrl : undefined}
-        kindsLoaded={pluginKinds.isSuccess}
-        onListener={adoptListener}
-      />
-    {/if}
   </div>
 
   {#if connection.unreachable && !restartActivity.active}

@@ -621,6 +621,11 @@ export type RunLineContext = {
   readonly zone: string;
   /** The name an agent goes by, from its identifier. */
   readonly agentLabel: (agentName: string) => string;
+  /**
+   * The title of a plugin, from its identifier, or `undefined` when none is loaded (COR-2171): a
+   * run a trigger started names its plugin ("GitHub"). Left out, the identifier is said.
+   */
+  readonly pluginTitle?: (plugin: string) => string | undefined;
 };
 
 /**
@@ -631,15 +636,15 @@ export type RunLineContext = {
  */
 export function runLineTwo(row: RunRow, context: RunLineContext): string {
   const copy = TASK_COPY.list;
-  // A run with no agent names who started it: Interborough, or the trigger's plugin (COR-2171),
-  // never "An agent".
+  // A run with no agent names who started it: Interborough, or the trigger's plugin by its title
+  // (COR-2171), and by its identifier only when no title is loaded; never "An agent".
   const agent =
     row.origin.kind === 'system'
       ? copy.interboroughStarted
       : row.agentName !== null
         ? context.agentLabel(row.agentName)
         : row.origin.kind === 'trigger' && row.origin.plugin !== null
-          ? copy.triggerStarted(row.origin.plugin)
+          ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
           : TASK_COPY.unknownAgent;
   const parts: string[] = [copy.kinds[row.origin.kind], agent];
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
