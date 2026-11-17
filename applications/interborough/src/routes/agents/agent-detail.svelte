@@ -43,7 +43,7 @@
     Tabs,
     Tooltip,
   } from '@lostgradient/cinder';
-  import { Pencil, Plus } from '@lucide/svelte';
+  import { Copy, Pencil, Plus } from '@lucide/svelte';
   import {
     createInfiniteQuery,
     createMutation,
@@ -456,11 +456,14 @@
       data-changes
       variant="secondary"
       size="sm"
+      iconOnly
+      aria-label={copy.plugin.duplicate}
+      title={copy.plugin.duplicate}
       loading={reading || (duplicate.isPending && !confirmOpen)}
       onclick={(event) => {
         duplicateButton = event.currentTarget;
         void startDuplicate();
-      }}>{copy.plugin.duplicate}</Button
+      }}><Copy aria-hidden="true" size={14} /></Button
     >
   {:else if listed?.kind === 'file'}
     <Button
@@ -480,7 +483,10 @@
       href={router.href(duplicatePath)}
       variant="secondary"
       size="sm"
-      onclick={(event) => goTo(event, duplicatePath)}>{copy.duplicate}</Button
+      iconOnly
+      aria-label={copy.duplicate}
+      title={copy.duplicate}
+      onclick={(event) => goTo(event, duplicatePath)}><Copy aria-hidden="true" size={14} /></Button
     >
   {/if}
   {#if unavailable}
