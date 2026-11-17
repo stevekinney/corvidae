@@ -166,7 +166,7 @@ describe('Feed', () => {
   test('connector geometry derives from a shared rail-size token', async () => {
     const css = await Bun.file(new URL('../feed-event/feed-event.css', import.meta.url)).text();
     const tokensBaseCss = await Bun.file(
-      new URL('../../styles/tokens-base.css', import.meta.url),
+      new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
     ).text();
     const railBlock = css.match(/\.cinder-feed-event-rail\s*\{[^}]*\}/)?.[0] ?? '';
     const connectorBlock = css.match(/\.cinder-feed-event::after\s*\{[^}]*\}/)?.[0] ?? '';

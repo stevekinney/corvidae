@@ -1,4 +1,4 @@
-import { ownEntry } from '../../_internal/own-entry.ts';
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 export function calculatePropertyValidationErrorCount(
   propertyNames: string[],
   childValidationCounts: Record<string, number>,

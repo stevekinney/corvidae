@@ -275,6 +275,8 @@ describe('the capability matrix document', () => {
     here,
     '..',
     '..',
+    '..',
+    'core',
     'documentation',
     'theme-builder-token-capabilities.md',
   );

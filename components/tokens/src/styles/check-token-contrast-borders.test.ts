@@ -371,12 +371,12 @@ describe('field edges (COR-1814)', () => {
   // clear 3:1 against the page and the field's own fill once the person asks for more contrast.
   const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
   const fieldStylesheets = {
-    input: '../components/input/input.css',
-    select: '../components/select/select.css',
-    combobox: '../components/combobox/combobox.css',
-    multiSelect: '../components/multi-select/multi-select.css',
-    textarea: '../components/textarea/textarea.css',
-    inputFrame: './components/_input-frame.css',
+    input: '../../../core/src/components/input/input.css',
+    select: '../../../core/src/components/select/select.css',
+    combobox: '../../../core/src/components/combobox/combobox.css',
+    multiSelect: '../../../core/src/components/multi-select/multi-select.css',
+    textarea: '../../../core/src/components/textarea/textarea.css',
+    inputFrame: '../../../core/src/styles/components/_input-frame.css',
   } as const;
 
   it('the field edge tokens alias the control border tiers', async () => {

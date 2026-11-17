@@ -43,7 +43,10 @@ describe('Statistic loading', () => {
     expect(block).not.toContain('skeleton-fill');
     expect(block).not.toContain('surface-raised');
     expect(block).not.toContain('surface-inset');
-    const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+    const tokens = readFileSync(
+      new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+      'utf8',
+    );
     expect(tokens.replace(/\s+/g, ' ')).toMatch(
       /--cinder-skeleton-background: color-mix\( ?in oklch, var\(--cinder-border-ink\), transparent \d+% ?\);/,
     );

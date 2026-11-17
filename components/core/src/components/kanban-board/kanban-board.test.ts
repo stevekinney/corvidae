@@ -18,7 +18,7 @@ const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: KanbanBoard } = await import('./kanban-board.svelte');
 const kanbanBoardCss = await Bun.file(new URL('./kanban-board.css', import.meta.url)).text();
 const tokensBaseCss = await Bun.file(
-  new URL('../../styles/tokens-base.css', import.meta.url),
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
 ).text();
 const sortableListCss = await Bun.file(
   new URL('../sortable-list/sortable-list.css', import.meta.url),

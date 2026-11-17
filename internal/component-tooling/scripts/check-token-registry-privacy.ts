@@ -25,7 +25,14 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/core');
-const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
+const registryPath = join(
+  componentsRoot,
+  '..',
+  'tokens',
+  'src',
+  'tokens',
+  'registry.generated.json',
+);
 
 export const PUBLIC_TOKEN_PREFIX = '--cinder-';
 export const PRIVATE_TOKEN_PREFIX = '--_cinder-';
@@ -89,7 +96,7 @@ async function main(): Promise<void> {
       `tokens:privacy — the generated token registry advertises properties whose ` +
         `privacy and prefix disagree:\n${detail}\n\n` +
         `The generated registry disagrees with the corpus it describes. Run ` +
-        `\`bun run --filter=@lostgradient/cinder tokens:generate\` and inspect the diff.\n`,
+        `\`bun run --filter=@lostgradient/tokens tokens:generate\` and inspect the diff.\n`,
     );
     process.exitCode = 1;
     return;

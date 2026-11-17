@@ -13,7 +13,9 @@ const { mountPanel, PANEL_TOKEN_MAP } = await import('./index.ts');
 const { default: PanelMountFixture } = await import('../test/fixtures/panel-mount-fixture.svelte');
 
 const panelCss = await Bun.file(new URL('./panel.css', import.meta.url)).text();
-const tokensBase = await Bun.file(new URL('../styles/tokens-base.css', import.meta.url)).text();
+const tokensBase = await Bun.file(
+  new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 const baseValues = readRootTokenValues(tokensBase);
 
 /** A value with whitespace around punctuation removed, so formatting never decides equality. */

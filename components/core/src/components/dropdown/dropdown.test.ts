@@ -124,7 +124,7 @@ async function readDropdownCss(): Promise<string> {
 
 async function injectDropdownCss(): Promise<() => void> {
   const [tokens, dropdownCss] = await Promise.all([
-    Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text(),
+    Bun.file(new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url)).text(),
     readDropdownCss(),
   ]);
 

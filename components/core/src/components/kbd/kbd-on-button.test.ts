@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test';
 
 const kbdCss = await Bun.file(new URL('./kbd.css', import.meta.url)).text();
 const buttonCss = await Bun.file(new URL('../button/button.css', import.meta.url)).text();
-const tokens = await Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text();
+const tokens = await Bun.file(
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 
 function block(source: string, selector: string): string {
   const start = source.indexOf(selector);
