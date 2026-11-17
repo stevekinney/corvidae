@@ -3,7 +3,7 @@
  * COR-2448: a StackedListItem chooses its layout from its own container width, not the viewport's.
  * In a 360px pane of a 1280px window the row takes its phone form (the status moves to line two),
  * so the name column is not crushed. happy-dom performs no layout, so it is measured in a browser
- * on the `narrow-pane` fixture.
+ * on the pane the `narrow-trailing` fixture draws under its two rows.
  */
 
 import { expect, test } from '@playwright/test';
@@ -13,7 +13,7 @@ import { fixtureRoute } from './overlay-fixture.ts';
 test.describe('StackedListItem in a narrow pane of a wide viewport', () => {
   test('the name column is wider than 120px in a 360px pane at 1280px', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(fixtureRoute('stacked-list-item', { fixtureName: 'narrow-pane' }), {
+    await page.goto(fixtureRoute('stacked-list-item', { fixtureName: 'narrow-trailing' }), {
       waitUntil: 'load',
     });
     const row = page.locator('[data-testid="pane"] .cinder-stacked-list-item');

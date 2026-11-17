@@ -693,7 +693,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       collapsed: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       collapsedBar: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       createAction: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
-      flush: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      inset: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       divider: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       error: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusPlacement: { optional: true, type_kind: 'TSTypeReference', default: L('below') },
