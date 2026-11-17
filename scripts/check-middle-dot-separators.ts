@@ -34,6 +34,7 @@ export const SCANNED_DIRECTORIES = [
   'components/chat',
   'applications/playground',
   'applications/interborough',
+  'scripts/browser-fixtures/src',
 ];
 
 // Installed dependencies and generated output, mirroring `.gitignore`. Dot directories

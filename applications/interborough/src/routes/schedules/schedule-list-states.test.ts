@@ -272,6 +272,33 @@ describe('a read in progress (row 70s)', () => {
     expect(rows(container)).toHaveLength(0);
   });
 
+  test('draws rows of two lines on a wide viewport, as the loaded rows are', () => {
+    jest.useFakeTimers();
+    const { container } = openHanging();
+    advance(LIST_LOADING_DELAY_MILLISECONDS);
+    expect(container.querySelectorAll('.cinder-skeleton-row')).toHaveLength(4);
+    expect(container.querySelector('.cinder-stacked-list-item__detail')).toBeNull();
+  });
+
+  test('draws rows of three lines on a phone, where the loaded rows carry a detail line', () => {
+    jest.useFakeTimers();
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        media: query,
+        matches: query.includes('640'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      }),
+    });
+    const phone = openHanging();
+    advance(LIST_LOADING_DELAY_MILLISECONDS);
+    expect(phone.container.querySelectorAll('.cinder-skeleton-row')).toHaveLength(4);
+    expect(phone.container.querySelectorAll('.cinder-stacked-list-item__detail')).toHaveLength(4);
+  });
+
   test('says it is taking longer than usual at 10 s, and not before', async () => {
     jest.useFakeTimers();
     const { container } = openHanging();

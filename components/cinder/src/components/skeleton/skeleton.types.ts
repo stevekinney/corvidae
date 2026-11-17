@@ -73,12 +73,21 @@ export type SkeletonProps = {
    */
   statusColumn?: boolean;
   /**
-   * Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside
-   * a card that already frames its rows, so the placeholder does not draw a box within the box.
-   * Ignored by other variants.
-   * @default true
+   * Draw the list's own border and rounded corners when `variant` is `'list'`. A placeholder draws
+   * a frame only when the list it stands for does, so the default is none: a status-first list sits
+   * flat on its page, and a frame that vanished when the rows arrived would be a jump. Turn it on
+   * for a list that draws its own frame. Ignored by other variants.
+   * @default false
    */
   framed?: boolean;
+  /**
+   * Draw a third bar under each row's two lines when `variant` is `'list'`, for a list whose rows
+   * carry a `detail` line (a phone's Schedules rows say why a schedule will not run and what
+   * happened last). Without it a row of three lines would load at half as much again as its
+   * placeholder. Ignored by other variants.
+   * @default false
+   */
+  detailLine?: boolean;
   /**
    * Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`,
    * the placeholder for a list that groups its rows by day. Ignored by other variants.

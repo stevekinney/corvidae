@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    Card,
     Table,
     TableBody,
     TableCell,
@@ -82,10 +83,61 @@
       {/each}
     </TableBody>
   </Table>
+
+  <!-- A Table inside a Card (COR-2449): frameless by default, since the card is the frame, and
+       beside it the `framed` opt-in that draws the table's own frame within the card. -->
+  <div data-testid="table-in-card" class="table-in-card">
+    <div data-testid="table-in-card-flat">
+      <Card title="Contributors">
+        <Table caption="Contributors in a card">
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Name</TableHeaderCell>
+              <TableHeaderCell align="right">Commits</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {#each contributors as contributor (contributor.name)}
+              <TableRow>
+                <TableCell>{contributor.name}</TableCell>
+                <TableCell align="right">{contributor.commits}</TableCell>
+              </TableRow>
+            {/each}
+          </TableBody>
+        </Table>
+      </Card>
+    </div>
+    <div data-testid="table-in-card-framed">
+      <Card title="Contributors">
+        <Table caption="Contributors in a card, framed" framed>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Name</TableHeaderCell>
+              <TableHeaderCell align="right">Commits</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {#each contributors as contributor (contributor.name)}
+              <TableRow>
+                <TableCell>{contributor.name}</TableCell>
+                <TableCell align="right">{contributor.commits}</TableCell>
+              </TableRow>
+            {/each}
+          </TableBody>
+        </Table>
+      </Card>
+    </div>
+  </div>
 </div>
 
 <style>
   .table-fixture {
     max-inline-size: 42rem;
+  }
+
+  .table-in-card {
+    display: grid;
+    gap: 1.5rem;
+    margin-block-start: 1.5rem;
   }
 </style>

@@ -32,10 +32,14 @@ describe('skeleton fill token', () => {
 });
 
 describe('skeleton list rows with no status word', () => {
-  test('keep the marker beside the text in a narrow container (row 76x)', () => {
-    const narrow = skeletonCss.slice(skeletonCss.indexOf('@container cinder-skeleton'));
-    const rule = narrow.slice(narrow.indexOf("[data-cinder-status-column='none']"));
-    expect(rule.replace(/\s+/g, ' ')).toContain("grid-template-areas: 'status title time'");
-    expect(rule.replace(/\s+/g, ' ')).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
+  test('keep the marker beside the text in a narrow container (row 76x): it is the row leading cell, not the status', async () => {
+    // The row's own layout keeps a leading cell beside the title at every width, and only a status
+    // moves to line two, so the placeholder borrows that instead of a container query of its own.
+    const markup = await Bun.file(new URL('./skeleton.svelte', import.meta.url)).text();
+    expect(markup).toContain(
+      '<div class="cinder-stacked-list-item__leading cinder-skeleton-row-status">',
+    );
+    expect(markup).toContain("!statusColumn && 'cinder-stacked-list-item--has-leading'");
+    expect(skeletonCss).not.toContain('@container cinder-skeleton (');
   });
 });

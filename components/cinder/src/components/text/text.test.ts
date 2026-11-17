@@ -224,6 +224,12 @@ describe('Text clamp', () => {
     expect(textCss).toMatch(
       /\.cinder-text__toggle\s*\{[^}]*font-weight:\s*var\(--cinder-font-medium\)/,
     );
+    // A clear step between two accent-coloured controls: the footer's gap is space 2, and the
+    // action's margin tops it up to space 3, so the two do not read as one run of links.
+    expect(textCss).toMatch(/\.cinder-text__footer\s*\{[^}]*gap:\s*var\(--cinder-space-2\)/);
+    expect(textCss).toMatch(
+      /\.cinder-text__toggle \+ \.cinder-text__actions\s*\{[^}]*margin-inline-start:\s*calc\(var\(--cinder-space-3\) - var\(--cinder-space-2\)\)/,
+    );
     expect(textCss).not.toContain('.cinder-text__actions::before');
     expect(footer?.textContent).not.toContain(',');
     expect(footer?.textContent).not.toContain(String.fromCodePoint(0xb7));

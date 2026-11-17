@@ -108,6 +108,9 @@ describe('scan roots', () => {
         'components/chat',
         'applications/playground',
         'applications/interborough',
+        // The browser fixtures draw the copy the screenshot baselines and the design review show,
+        // so a separator there is seen as the owner sees it.
+        'scripts/browser-fixtures/src',
       ]),
     );
   });

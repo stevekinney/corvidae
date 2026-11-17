@@ -127,8 +127,10 @@
   /* The page's own action sits after "Show more" with a space and a weight and colour step ("Show
      more" is medium weight in the accent colour, the action is regular weight in the text's own
      colour, unless it brings its own, as a link does), and no glyph between them: no comma and no
-     dot. */
+     dot. The footer's own gap (space 2) is topped up to a space-3 step, so an action that is itself
+     an accent link does not run on from "Show more" as one run of links. */
   .cinder-text__toggle + .cinder-text__actions {
+    margin-inline-start: calc(var(--cinder-space-3) - var(--cinder-space-2));
     font-weight: var(--cinder-font-normal);
   }
 

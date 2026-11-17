@@ -38,8 +38,11 @@ describe('NumberInput unit and stepper order', () => {
 
     expect(adornment?.nextElementSibling).toBe(getDecrement(container));
     expect(adornment?.parentElement?.previousElementSibling).toBe(getInput(container));
+    // One alignment for every NumberInput: no end-aligned number remains, and a unit's text area
+    // is sized to its value so the unit follows the digits.
+    expect(css).not.toMatch(/text-align:\s*end/);
     expect(css).toMatch(
-      /:has\(\.cinder-number-input__adornment\)\s*>\s*\.cinder-number-input__input\s*\{[^}]*text-align:\s*end;/,
+      /@supports \(field-sizing: content\)\s*\{[^@]*\.cinder-number-input__input\s*\{[^}]*field-sizing:\s*content;[^}]*flex:\s*0 1 auto;/,
     );
   });
 });

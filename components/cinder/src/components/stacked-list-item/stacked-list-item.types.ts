@@ -133,9 +133,13 @@ type StackedListItemBase = ForwardedLiAttributes & {
    */
   wrapMeta?: boolean;
   /**
-   * Line two: muted metadata, kind first, then agent, then detail, separated by spaces, no comma or dot. It starts
-   * under the title (not under the status) and ends in an ellipsis rather than wrapping. A line
-   * that must carry a control (an error with its own "Try again") may put one in.
+   * Line two: muted metadata, kind first, then agent, then detail. Pieces are told apart by a space
+   * and a step, never by a comma or a dot, and never as a bare run of words in one weight and one
+   * colour: each piece is its own element, and a piece that stands apart takes a step in face,
+   * weight or colour (the status word is semibold beside the muted line; inside the line, an
+   * identifier in a `Text` of `variant="code"`, or a reason in a tone). It starts under the title
+   * (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a
+   * control (an error with its own "Try again") may put one in.
    */
   meta?: Snippet;
   /**
