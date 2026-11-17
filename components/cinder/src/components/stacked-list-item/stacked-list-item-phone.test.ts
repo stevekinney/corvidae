@@ -76,7 +76,7 @@ describe('StackedListItem on a phone', () => {
     );
     expect(stylesheet).toContain("'leading status line line trailing'");
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\][^{]*__status:has\(\*\)::after\s*\{\s*content:\s*','/,
+      /--status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*,/,
     );
     cleanup();
     setPhone(false);
@@ -91,10 +91,10 @@ describe('StackedListItem on a phone', () => {
     // The phone rules name the line-two placement as well as the leading one: an auto status track
     // in place of the fixed column, no end padding, and the dot separator after the word.
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
+      /--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*\.cinder-stacked-list-item__status:has\(\*\)::after\s*\{\s*content:\s*','/,
+      /--status-line-two\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{\s*margin-inline-end:/,
     );
     cleanup();
     setPhone(false);
@@ -224,7 +224,7 @@ describe('StackedListItem on a phone', () => {
       /__detail\s*\{[^}]*grid-row:\s*details;[^}]*overflow-wrap:\s*anywhere/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
+      /--lines:not\(\.cinder-stacked-list-item--band\)\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
     );
     // Wrapping, not truncating: the third line carries no ellipsis or nowrap rule.
     const rule = /\.cinder-stacked-list-item__detail\s*\{[^}]*\}/.exec(stylesheet)?.[0] ?? '';

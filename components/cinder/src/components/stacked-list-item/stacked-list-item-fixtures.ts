@@ -6,6 +6,11 @@
  * measure where the box sits against the first line of the title, which happy-dom cannot.
  */
 export default [
+  // A 360px pane, so the layout tests can measure the row's own width driving the phone form.
+  {
+    name: 'narrow-pane',
+    host: './stacked-list-item-pane.fixture.svelte',
+  },
   {
     name: 'leading-checkbox',
     host: './stacked-list-item.fixture.svelte',
