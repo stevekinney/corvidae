@@ -164,6 +164,57 @@ describe('SegmentedControl falls back when its options do not fit (COR-2448 AC3)
     expect(stacked(container)).toBe(false);
   });
 
+  // COR-2448 review D: a stacked control is a radio list, not a text field with suggestions under
+  // it. Each row leads with the radio Radio draws; the chosen row has no face of its own.
+  test('stacked rows lead with the radio indicator, filled on the chosen row only', () => {
+    geometry.room = 375;
+    geometry.need = 460;
+    const { container } = renderStarts();
+    flushSync();
+
+    const rows = [...container.querySelectorAll('[role="radio"]')];
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      const control = row.querySelector(':scope > .cinder-radio-row__control');
+      expect(control?.getAttribute('aria-hidden')).toBe('true');
+      expect(control?.firstElementChild?.classList.contains('cinder-radio')).toBe(true);
+      expect(control?.querySelector('.cinder-radio + .cinder-radio-row__indicator')).not.toBeNull();
+    }
+    expect(
+      rows.map((row) => row.querySelector('.cinder-radio')?.hasAttribute('data-cinder-checked')),
+    ).toEqual([true, false, false, false]);
+    // The row's accessible state is unchanged: the indicator is decoration.
+    expect(rows.map((row) => row.getAttribute('aria-checked'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ]);
+  });
+
+  test('a row that fits draws no indicator', () => {
+    geometry.room = 375;
+    geometry.need = 300;
+    const { container } = renderStarts();
+    flushSync();
+    expect(container.querySelector('.cinder-radio-row__control')).toBeNull();
+  });
+
+  test('stacked, the chosen row has no face, border or ring, and no separator applies', () => {
+    const flat = css.replace(/\s+/g, ' ');
+    const row =
+      ".cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control .cinder-segmented-control-option[role='radio']:not(:focus-visible) {";
+    const rowRule = flat.slice(flat.indexOf(row), flat.indexOf('}', flat.indexOf(row)));
+    expect(rowRule).toContain('background: transparent;');
+    expect(rowRule).toContain('box-shadow: none;');
+    expect(rowRule).toContain('border: 0;');
+    expect(flat).toContain(
+      '.cinder-segmented-control-container[data-cinder-stacked] .cinder-segmented-control .cinder-segmented-control-option:not(:first-child)::before { content: none; }',
+    );
+    // The stylesheet takes the radio's own styles rather than drawing a third one.
+    expect(css).toContain("@import '../radio-group/radio-group.css';");
+  });
+
   test('the stylesheet gives the stacked list the full width, one option per row', () => {
     expect(css).toMatch(
       /\.cinder-segmented-control-container\[data-cinder-stacked\]\s*\{[^}]*display:\s*flex/,
