@@ -12,10 +12,9 @@
 //
 // Exit codes: 0 verified, 1 invalid task bank, 2 invalid CLI usage.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { initialize, release, reserve, settle } from './outcome-budget.ts';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { initialize, read, release, reserve, settle } from './outcome-budget.ts';
 import {
   costOf,
   readTranscript,
@@ -212,14 +211,13 @@ export interface TaskSnapshot {
   heldOut: boolean;
   permittedPaths: string[];
   deliveryBoundary: string;
-  files: {
-    candidatePath: string;
-    candidate: string;
-    repaired: string;
-    empty: string;
-    oraclePath: string;
-    oracle: string;
-  };
+  /** Complete, ordinary source tree used for the buggy baseline. */
+  files: Record<string, string>;
+  /** Evaluator-only replacements for files the trial is permitted to edit. */
+  repairedFiles: Record<string, string>;
+  oraclePath: string;
+  oracleArgv: string[];
+  acceptanceCases: string[];
 }
 
 export interface TaskBank {
@@ -229,7 +227,47 @@ export interface TaskBank {
   tasks: TaskSnapshot[];
 }
 
-/** Validate frozen task-bank structure and its independently executable fixture oracle. */
+function normalizedTaskPath(path: string): string | undefined {
+  if (!path || isAbsolute(path)) return undefined;
+  const normalized = normalize(path);
+  if (normalized === '.' || normalized === '..' || normalized.startsWith(`..${sep}`))
+    return undefined;
+  return normalized;
+}
+
+function taskPathErrors(task: TaskSnapshot): string[] {
+  const errors: string[] = [];
+  const files = new Set<string>();
+  for (const path of Object.keys(task.files)) {
+    const normalized = normalizedTaskPath(path);
+    if (normalized === undefined) errors.push(`${task.id} has an unsafe file path: ${path}.`);
+    else if (files.has(normalized)) errors.push(`${task.id} has duplicate normalized file path: ${path}.`);
+    else files.add(normalized);
+  }
+  const permitted = new Set<string>();
+  for (const path of task.permittedPaths) {
+    const normalized = normalizedTaskPath(path);
+    if (normalized === undefined) errors.push(`${task.id} has an unsafe permitted path: ${path}.`);
+    else if (!files.has(normalized)) errors.push(`${task.id} permits missing file: ${path}.`);
+    else if (permitted.has(normalized)) errors.push(`${task.id} has duplicate permitted path: ${path}.`);
+    else permitted.add(normalized);
+  }
+  for (const path of Object.keys(task.repairedFiles)) {
+    const normalized = normalizedTaskPath(path);
+    if (normalized === undefined) errors.push(`${task.id} has an unsafe repaired path: ${path}.`);
+    else if (!permitted.has(normalized)) errors.push(`${task.id} repairs unpermitted path: ${path}.`);
+    else if (normalized === normalizedTaskPath(task.oraclePath))
+      errors.push(`${task.id} repairs its oracle: ${path}.`);
+  }
+  const oracle = normalizedTaskPath(task.oraclePath);
+  if (oracle === undefined || !files.has(oracle)) errors.push(`${task.id} has no oracle file.`);
+  for (const argument of task.oracleArgv) {
+    if (normalizedTaskPath(argument) === undefined) errors.push(`${task.id} has unsafe oracle argv: ${argument}.`);
+  }
+  return errors;
+}
+
+/** Validate frozen task-bank structure before any evaluator material is written to disk. */
 export function verifyTaskBank(bank: TaskBank): string[] {
   const errors: string[] = [];
   if (!bank.orderSeed) errors.push('Task bank needs an order seed.');
@@ -242,15 +280,8 @@ export function verifyTaskBank(bank: TaskBank): string[] {
     families.set(task.family, group);
     if (!task.baseRevision || !task.deliveryBoundary || task.permittedPaths.length === 0)
       errors.push(`${task.id} is missing a frozen boundary.`);
-    if (
-      !task.files.candidatePath ||
-      !task.files.candidate ||
-      !task.files.repaired ||
-      !task.files.empty ||
-      !task.files.oraclePath ||
-      !task.files.oracle
-    )
-      errors.push(`${task.id} has no executable input or oracle.`);
+    if (task.acceptanceCases.length === 0) errors.push(`${task.id} has no independently stated cases.`);
+    errors.push(...taskPathErrors(task));
   }
   for (const [family, tasks] of families) {
     if (tasks.length !== 2 || tasks.filter((task) => task.heldOut).length !== 1)
@@ -259,32 +290,28 @@ export function verifyTaskBank(bank: TaskBank): string[] {
   return errors;
 }
 
-/** Prove each oracle rejects its buggy and empty candidates while accepting the repair. */
-export function verifyTaskControls(bank: TaskBank, scratch = tmpdir()): string[] {
-  const errors = verifyTaskBank(bank);
-  const directory = mkdtempSync(join(scratch, 'chef-task-bank-'));
-  try {
-    for (const task of bank.tasks) {
-      const oracle = join(directory, `${task.id}-oracle.ts`);
-      writeFileSync(oracle, task.files.oracle);
-      for (const [name, contents, expected] of [
-        ['buggy', task.files.candidate, 1],
-        ['repaired', task.files.repaired, 0],
-        ['empty', task.files.empty, 1],
-      ] as const) {
-        const candidate = join(directory, `${task.id}-${name}.ts`);
-        writeFileSync(candidate, contents);
-        const result = Bun.spawnSync(['bun', oracle, candidate]);
-        if (result.exitCode !== expected)
-          errors.push(
-            `${task.id} ${name} control exited ${result.exitCode}, expected ${expected}.`,
-          );
-      }
-    }
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
+export type TaskControl = 'buggy' | 'repaired' | 'empty';
+
+/** Materialize one frozen snapshot without ever allowing a control to replace its oracle. */
+export function materializeTask(task: TaskSnapshot, directory: string, control: TaskControl): string {
+  const errors = taskPathErrors(task);
+  if (errors.length > 0) throw new Error(errors.join('\n'));
+  const root = resolve(directory, task.id, control);
+  for (const [path, contents] of Object.entries(task.files)) {
+    const output = resolve(root, path);
+    if (relative(root, output).startsWith('..')) throw new Error(`${task.id} escaped its root.`);
+    mkdirSync(resolve(output, '..'), { recursive: true });
+    writeFileSync(output, contents);
   }
-  return errors;
+  const replacements =
+    control === 'repaired'
+      ? task.repairedFiles
+      : control === 'empty'
+        ? Object.fromEntries(task.permittedPaths.map((path) => [path, '']))
+        : {};
+  for (const [path, contents] of Object.entries(replacements))
+    writeFileSync(resolve(root, path), contents);
+  return root;
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -295,7 +322,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (argv[0] === 'read' && argv.length === 3) {
-    process.stdout.write(`${JSON.stringify(await initialize(argv[1]!, argv[2]!))}\n`);
+    process.stdout.write(`${JSON.stringify(await read(argv[1]!, argv[2]!))}\n`);
     return 0;
   }
   if (argv[0] === 'reserve' && argv.length === 5) {
@@ -323,7 +350,7 @@ async function main(argv: string[]): Promise<number> {
   } catch {
     return 2;
   }
-  const errors = verifyTaskControls(bank);
+  const errors = verifyTaskBank(bank);
   if (errors.length > 0) {
     process.stderr.write(`${errors.join('\n')}\n`);
     return 1;

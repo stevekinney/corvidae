@@ -4,164 +4,24 @@
   "policySnapshot": "scripts/chef/fixtures/sdlc-policy-baseline.json@53409caab8ca35ab33d1b3294353013ddcc10698b137db9b17af8e938b7a4f65",
   "tasks": [
     {
-      "id": "local-01",
-      "family": "local-regression",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": false,
-      "permittedPaths": ["fixtures/local-01/candidate.ts"],
-      "deliveryBoundary": "unit",
+      "id": "local-01", "family": "local-regression", "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b", "heldOut": false, "permittedPaths": ["candidate.ts"], "deliveryBoundary": "unit",
       "files": {
-        "candidatePath": "fixtures/local-01/candidate.ts",
-        "candidate": "export const run=()=>Number('x')",
-        "repaired": "export const run=()=>Number.isNaN(Number('x'))?'invalid':'bad'",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/local-01/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='invalid')process.exit(1)"
-      }
+        "support.ts": "export function isUnsignedDecimal(value: string): boolean { return /^(0|[1-9]\\d*)$/.test(value); }\n",
+        "candidate.ts": "export function parseAttemptCount(value: unknown): number | undefined { const parsed = typeof value === 'string' ? Number(value) : Number.NaN; return Number.isNaN(parsed) ? undefined : parsed; }\n",
+        "oracle.ts": "import { parseAttemptCount } from './candidate.ts';\nconst cases: readonly [unknown, number | undefined][] = [['0', 0], ['12', 12], ['', undefined], [' 2 ', undefined], ['-1', undefined], ['1e2', undefined], ['1.5', undefined], [null, undefined], ['9007199254740992', undefined]];\nfor (const [value, expected] of cases) if (!Object.is(parseAttemptCount(value), expected)) process.exit(1);\n"
+      },
+      "repairedFiles": { "candidate.ts": "import { isUnsignedDecimal } from './support.ts';\nexport function parseAttemptCount(value: unknown): number | undefined { if (typeof value !== 'string' || !isUnsignedDecimal(value)) return undefined; const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : undefined; }\n" },
+      "oraclePath": "oracle.ts", "oracleArgv": ["oracle.ts"], "acceptanceCases": ["accepts 0", "accepts 12", "rejects non-decimal and unsafe values"]
     },
     {
-      "id": "local-02",
-      "family": "local-regression",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": true,
-      "permittedPaths": ["fixtures/local-02/candidate.ts"],
-      "deliveryBoundary": "unit",
+      "id": "local-02", "family": "local-regression", "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b", "heldOut": true, "permittedPaths": ["candidate.ts"], "deliveryBoundary": "unit",
       "files": {
-        "candidatePath": "fixtures/local-02/candidate.ts",
-        "candidate": "export const run=()=>['a','a'].join(',')",
-        "repaired": "export const run=()=>[...new Set(['a','a'])].join(',')",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/local-02/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='a')process.exit(1)"
-      }
-    },
-    {
-      "id": "contract-01",
-      "family": "cross-workspace-contract",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": false,
-      "permittedPaths": ["fixtures/contract-01/producer.ts", "fixtures/contract-01/consumer.ts"],
-      "deliveryBoundary": "contract",
-      "files": {
-        "candidatePath": "fixtures/contract-01/candidate.ts",
-        "candidate": "export const run=()=>({id:'1'} as {id:string,name?:string}).name",
-        "repaired": "export const run=()=>({id:'1',name:'Ada'}).name",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/contract-01/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='Ada')process.exit(1)"
-      }
-    },
-    {
-      "id": "contract-02",
-      "family": "cross-workspace-contract",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": true,
-      "permittedPaths": ["fixtures/contract-02/producer.ts", "fixtures/contract-02/consumer.ts"],
-      "deliveryBoundary": "contract",
-      "files": {
-        "candidatePath": "fixtures/contract-02/candidate.ts",
-        "candidate": "export const run=()=>({id:'1',label:'READY'}).id",
-        "repaired": "export const run=()=>({id:'1',label:'READY'}).label.toLowerCase()",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/contract-02/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='ready')process.exit(1)"
-      }
-    },
-    {
-      "id": "concurrency-01",
-      "family": "concurrency",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": false,
-      "permittedPaths": ["fixtures/concurrency-01/barrier.ts"],
-      "deliveryBoundary": "schedule",
-      "files": {
-        "candidatePath": "fixtures/concurrency-01/candidate.ts",
-        "candidate": "export const run=()=>['a','b'].length",
-        "repaired": "export const run=()=>['a'].length",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/concurrency-01/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!==1)process.exit(1)"
-      }
-    },
-    {
-      "id": "concurrency-02",
-      "family": "concurrency",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": true,
-      "permittedPaths": ["fixtures/concurrency-02/barrier.ts"],
-      "deliveryBoundary": "schedule",
-      "files": {
-        "candidatePath": "fixtures/concurrency-02/candidate.ts",
-        "candidate": "export const run=()=> 'stale-committed'",
-        "repaired": "export const run=()=> 'stale-rejected'",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/concurrency-02/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='stale-rejected')process.exit(1)"
-      }
-    },
-    {
-      "id": "ui-01",
-      "family": "agreed-ui-behavior",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": false,
-      "permittedPaths": ["fixtures/ui-01/render.ts"],
-      "deliveryBoundary": "a11y",
-      "files": {
-        "candidatePath": "fixtures/ui-01/candidate.ts",
-        "candidate": "export const run=()=>'<button>Save</button>'",
-        "repaired": "export const run=()=>'<button aria-label=\"Save draft\" disabled>Save</button>'",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/ui-01/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='<button aria-label=\"Save draft\" disabled>Save</button>')process.exit(1)"
-      }
-    },
-    {
-      "id": "ui-02",
-      "family": "agreed-ui-behavior",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": true,
-      "permittedPaths": ["fixtures/ui-02/render.ts"],
-      "deliveryBoundary": "a11y",
-      "files": {
-        "candidatePath": "fixtures/ui-02/candidate.ts",
-        "candidate": "export const run=()=>'<p>Loading</p>'",
-        "repaired": "export const run=()=>'<p role=\"status\" aria-live=\"polite\">Loading</p>'",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/ui-02/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='<p role=\"status\" aria-live=\"polite\">Loading</p>')process.exit(1)"
-      }
-    },
-    {
-      "id": "delivery-01",
-      "family": "interrupted-delivery",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": false,
-      "permittedPaths": ["fixtures/delivery-01/journal.ts"],
-      "deliveryBoundary": "journal",
-      "files": {
-        "candidatePath": "fixtures/delivery-01/candidate.ts",
-        "candidate": "export const run=()=>['merge','merge'].join(',')",
-        "repaired": "export const run=()=>['merge'].join(',')",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/delivery-01/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!=='merge')process.exit(1)"
-      }
-    },
-    {
-      "id": "delivery-02",
-      "family": "interrupted-delivery",
-      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
-      "heldOut": true,
-      "permittedPaths": ["fixtures/delivery-02/journal.ts"],
-      "deliveryBoundary": "journal",
-      "files": {
-        "candidatePath": "fixtures/delivery-02/candidate.ts",
-        "candidate": "export const run=()=>['email','email'].length",
-        "repaired": "export const run=()=>['email'].length",
-        "empty": "export const run=()=>undefined",
-        "oraclePath": "fixtures/delivery-02/oracle.ts",
-        "oracle": "const m=await import(Bun.argv[2]!);if(m.run()!==1)process.exit(1)"
-      }
+        "support.ts": "export function copy(values: readonly string[]): string[] { return [...values]; }\n",
+        "candidate.ts": "export function uniqueKeys(values: readonly string[]): string[] { return (values as string[]).sort().filter((value, index, all) => index === 0 || all[index - 1] !== value); }\n",
+        "oracle.ts": "import { uniqueKeys } from './candidate.ts';\nconst cases: readonly [string[], string[]][] = [[[], []], [['b', 'a', 'b'], ['b', 'a']], [['A', 'a', 'A'], ['A', 'a']], [['__proto__', 'constructor', '__proto__'], ['__proto__', 'constructor']]];\nfor (const [values, expected] of cases) { const before = [...values]; const actual = uniqueKeys(values); if (JSON.stringify(actual) !== JSON.stringify(expected) || JSON.stringify(values) !== JSON.stringify(before)) process.exit(1); }\n"
+      },
+      "repairedFiles": { "candidate.ts": "import { copy } from './support.ts';\nexport function uniqueKeys(values: readonly string[]): string[] { return [...new Set(copy(values))]; }\n" },
+      "oraclePath": "oracle.ts", "oracleArgv": ["oracle.ts"], "acceptanceCases": ["preserves first occurrence", "preserves input array", "supports inherited-key spellings"]
     }
   ]
 }
