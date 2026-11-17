@@ -8,11 +8,12 @@
  * whether the check passes, since every failure it looks for is raised during mount.
  */
 
-import { chromium, type Browser } from '@playwright/test';
+import { chromium, type Browser, type Page } from '@playwright/test';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { cardWidthOf, measuredCardHeight } from './archetypes.ts';
 import type { PreviewMeasurement, StaticSnapshot } from './components.ts';
 
 const SNAPSHOT_SETTLE_MILLISECONDS = 800;
@@ -154,6 +155,14 @@ export async function checkRenders(
   return { results, problems };
 }
 
+/** The outcome of {@link checkArchetypeRenders}. */
+export type ArchetypeCheck = {
+  /** One line per rendering that went wrong. */
+  problems: string[];
+  /** Each card's measured `@dsCard` height, by its folder name. */
+  heights: Map<string, number>;
+};
+
 /** The widths an archetype card is rendered at: a phone and a desktop. */
 const ARCHETYPE_VIEWPORTS = [
   { name: 'phone', width: 390, height: 844 },
@@ -169,23 +178,59 @@ export async function checkArchetypeRenders(
   projectDirectory: string,
   checkDirectory: string,
   names: string[],
-): Promise<string[]> {
+): Promise<ArchetypeCheck> {
   const tokensCss = pathToFileURL(join(projectDirectory, 'tokens.css')).href;
   const bundleCss = pathToFileURL(join(projectDirectory, 'components/bundle.css')).href;
+  const bundleScript = pathToFileURL(join(projectDirectory, 'components/bundle.js')).href;
   const problems: string[] = [];
-  if (names.length === 0) return problems;
+  const heights = new Map<string, number>();
+  if (names.length === 0) return { problems, heights };
   await withBrowser(async (browser) => {
     for (const name of names) {
       const directory = join(checkDirectory, name);
       mkdirSync(directory, { recursive: true });
-      const html = readFileSync(
+      const source = readFileSync(
         join(projectDirectory, 'components', name, 'preview.html'),
         'utf8',
-      ).replace(
-        '<head>',
-        `<head><link rel="stylesheet" href="${tokensCss}"><link rel="stylesheet" href="${bundleCss}">`,
       );
+      // A page that mounts a component from the bundle loads it from beside the cards; the check
+      // page sits elsewhere, so the script is read from where the project keeps it.
+      const html = source
+        .replace('src="../bundle.js"', `src="${bundleScript}"`)
+        .replace(
+          '<head>',
+          `<head><link rel="stylesheet" href="${tokensCss}"><link rel="stylesheet" href="${bundleCss}">`,
+        );
+      const mounts = source.includes('data-cinder-composer');
       writeFileSync(join(directory, 'index.html'), html);
+      const settle = async (page: Page) => {
+        if (!mounts) return;
+        // The composer loads lazily after the bundle runs: wait for it to draw, then let it lay out.
+        await page.waitForFunction(
+          () => (document.querySelector('[data-cinder-composer]')?.childElementCount ?? 0) > 0,
+          undefined,
+          { timeout: 15_000 },
+        );
+        await page.waitForTimeout(CHECK_SETTLE_MILLISECONDS);
+      };
+      // The card's own height is measured at the card's width, in light, as a live preview's is.
+      {
+        const page = await browser.newPage({
+          viewport: { width: cardWidthOf(source), height: 900 },
+        });
+        await page.goto(pathToFileURL(join(directory, 'index.html')).href);
+        await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+        await settle(page).catch((error: unknown) =>
+          problems.push(`${name} card did not draw its composer: ${String(error).slice(0, 160)}`),
+        );
+        heights.set(
+          name,
+          measuredCardHeight(
+            await page.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height)),
+          ),
+        );
+        await page.close();
+      }
       for (const viewport of ARCHETYPE_VIEWPORTS) {
         for (const theme of ['light', 'dark']) {
           const page = await browser.newPage({
@@ -201,7 +246,11 @@ export async function checkArchetypeRenders(
             (value) => document.documentElement.setAttribute('data-theme', value),
             theme,
           );
-          // The pages are static markup, so the load event is the whole render: nothing settles.
+          // The pages are static markup, so the load event is the whole render; only a page that
+          // mounts its composer from the bundle waits for it.
+          await settle(page).catch((error: unknown) =>
+            errors.push(`composer did not draw: ${String(error).slice(0, 120)}`),
+          );
           const info = await page.evaluate(() => ({
             height: Math.ceil(document.body.getBoundingClientRect().height),
             overflow: document.documentElement.scrollWidth > window.innerWidth,
@@ -220,5 +269,5 @@ export async function checkArchetypeRenders(
       }
     }
   });
-  return problems;
+  return { problems, heights };
 }

@@ -28,7 +28,7 @@ import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { withHostSlots, withMemoryAdmission } from '../../../../scripts/host-slots.ts';
-import { readArchetypePreviews } from './archetypes.ts';
+import { readArchetypePreviews, withCardHeight } from './archetypes.ts';
 import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
 import {
@@ -300,16 +300,26 @@ async function main(): Promise<number> {
   writeComponents(check.results);
 
   step(`render check: ${archetypes.length} archetypes in light and dark, at phone and desktop`);
-  const archetypeProblems = await withHostSlots(1, () =>
+  const archetypeCheck = await withHostSlots(1, () =>
     checkArchetypeRenders(
       projectDirectory,
       join(workDirectory, 'check-archetypes'),
       archetypes.map((archetype) => archetype.exportName),
     ),
   );
+  // The card heights are the measured ones, written over the numbers checked in, as a live
+  // preview's card is; only the `@dsCard` marker changes.
+  for (const archetype of archetypes) {
+    const height = archetypeCheck.heights.get(archetype.exportName);
+    if (height === undefined) continue;
+    writeFileSync(
+      join(componentsDirectory, archetype.exportName, 'preview.html'),
+      withCardHeight(archetype.html, height),
+    );
+  }
 
   const problems = [
-    ...archetypeProblems.map((problem) => `archetype ${problem}`),
+    ...archetypeCheck.problems.map((problem) => `archetype ${problem}`),
     ...built.failures.map((failure) => `build ${failure}`),
     ...[...snapshots].flatMap(([id, snapshot]) =>
       snapshot.errors.map((error) => `snapshot ${id} ${error}`),
