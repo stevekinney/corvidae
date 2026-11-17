@@ -136,7 +136,7 @@
     min-inline-size: 0;
   }
 
-  .cinder-text[data-cinder-truncate='middle']:focus-visible {
+  .cinder-text[data-cinder-truncate]:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     border-radius: var(--cinder-radius-sm);
     box-shadow: var(--_cinder-focus-ring-shadow);
