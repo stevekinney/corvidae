@@ -33,7 +33,7 @@ import { createOperationRegistry, type OperationRegistry } from './operation-cat
 import { defineOperation } from './operation-registry.ts';
 import { principalFromApiKey, type Principal } from './principal.ts';
 import type { RestBinding } from './rest-binding.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
+import type { UnknownRestBinding } from './rest-binding.ts';
 import { TaskQueue } from './task-queue.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (

@@ -1,4 +1,4 @@
-import { copyBytesToArrayBuffer } from './byte-arrays.ts';
+import { copyBytesToArrayBuffer } from '../server/byte-arrays.ts';
 import { encode, validateCloneable } from './codec.ts';
 import type { ContextOperationRequest } from './context.ts';
 import type { FailureCategory, OperationRequest, WorkerOutboundMessage } from './types.ts';

@@ -8,7 +8,7 @@ import {
   createAdditionalScopeSet,
   type PackageAuthorizationScope,
 } from '../authorization-scope.ts';
-import { authContextFromAuthResult, unauthorizedResponse } from '../runtime/request-gate.ts';
+import { authContextFromAuthResult, unauthorizedResponse } from './authentication-responses.ts';
 
 /**
  * Resolves the caller of one request for `createOperationHandler`. Resolve to

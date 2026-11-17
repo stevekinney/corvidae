@@ -4,7 +4,7 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
 import type { ReviewRequest } from '../../core/review/index.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const getReviewInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow the review belongs to.'),

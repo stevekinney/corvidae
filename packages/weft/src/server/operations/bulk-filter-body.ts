@@ -9,7 +9,8 @@ import {
   parseOptionalTimeRange,
   type BulkListFilterDraft,
 } from './bulk-filter-input.ts';
-import { faultMessage, invalidParamsFault } from './operation-helpers.ts';
+import { faultMessage } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 function parseAttributeFiltersFromBody(value: unknown): AttributeFilter[] {
   if (!Array.isArray(value)) {

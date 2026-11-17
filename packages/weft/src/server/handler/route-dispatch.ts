@@ -23,22 +23,15 @@ import type { OperationFault } from '../operation-fault.ts';
 import { FAULT_CODE_TO_HTTP_STATUS } from '../operation-fault.ts';
 import type { WorkflowStreamConnectionAcquirer } from '../operations/workflow-events-sse.ts';
 import type { Principal } from '../principal.ts';
-import {
-  createLiveOperationRegistry,
-  createLiveRestBindings,
-  type UnknownRestBinding,
-} from '../rest-bindings.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
+import type { ConnectionLease } from '../connection-lease.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import { weftDiscoveryInfo } from '../weft-documents.ts';
 import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
-import {
-  defaultShapeSuccess,
-  errorResponse,
-  jsonResponse,
-  negotiatedResponse,
-} from './response-helpers.ts';
+import { defaultShapeSuccess, negotiatedResponse } from './response-helpers.ts';
+import { errorResponse, jsonResponse } from './json-responses.ts';
 import type { DirectRouteHandlerName } from './route-matching.ts';
 import {
   dispatchServerSentEventsBinding,

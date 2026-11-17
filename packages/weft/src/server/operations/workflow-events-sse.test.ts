@@ -8,13 +8,9 @@ import { workflow } from '../../core/types.ts';
 import { handleRequest, type HandlerOptions } from '../handler.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
-import {
-  createWorkflowEventFeed,
-  type EventEnvelope,
-  type EventSelector,
-  type ReplayLiveSubscribeOptions,
-  type WorkflowEventFeed,
-} from '../workflow-event-feed.ts';
+import { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
+import { type EventSelector } from '../event-selector.ts';
+import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
 import { workflowEventsSseOperation, workflowEventsSseRestBinding } from './workflow-events-sse.ts';
 
 const registry = createOperationRegistry([workflowEventsSseOperation]);

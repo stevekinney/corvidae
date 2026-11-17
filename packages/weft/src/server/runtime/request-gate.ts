@@ -15,9 +15,13 @@
  * @internal
  */
 
-import type { AuthContext, AuthResult } from '../authentication.ts';
+import type { AuthContext } from '../authentication.ts';
 import { DEFAULT_PUBLIC_PATHS, normalizeRequestPathname } from '../authentication/types.ts';
 import { unauthenticatedLocalAuthContext } from '../handler/auth-context-principal.ts';
+import {
+  authContextFromAuthResult,
+  unauthorizedResponse,
+} from '../handler/authentication-responses.ts';
 import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import type { ServerContext } from './context.ts';
 
@@ -39,36 +43,6 @@ export type AuthenticationOutcome = {
    */
   publicBypass: boolean;
 };
-
-/**
- * The context a successful, non-public authentication result admits. One
- * mapping for `serve()`'s gate and for the engine-independent handler's
- * authenticator, so the two forward the same principal and claims.
- */
-export function authContextFromAuthResult(
-  authResult: Extract<AuthResult, { authenticated: true }>,
-): AuthContext {
-  return {
-    method: authResult.method,
-    ...(authResult.claims !== undefined ? { claims: authResult.claims } : {}),
-    ...(authResult.principal !== undefined ? { principal: authResult.principal } : {}),
-  };
-}
-
-/**
- * The 401 a rejected credential receives. Shared by `serve()`'s gate and the
- * engine-independent handler's authenticator so the body and the
- * `WWW-Authenticate` challenge cannot drift apart.
- */
-export function unauthorizedResponse(error: string): Response {
-  return new Response(JSON.stringify({ error }), {
-    status: 401,
-    headers: {
-      'Content-Type': 'application/json',
-      'WWW-Authenticate': 'Bearer',
-    },
-  });
-}
 
 export async function authenticateRequest(
   context: ServerContext,

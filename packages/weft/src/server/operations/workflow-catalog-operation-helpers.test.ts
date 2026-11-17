@@ -24,7 +24,7 @@ import {
 } from '../../core/engine/dynamic-source-errors.ts';
 import { WorkflowNotRegisteredError } from '../../core/engine/errors.ts';
 import { WorkflowSourceValidationError } from '../../core/source/errors.ts';
-import { isOperationFault } from './operation-helpers.ts';
+import { isOperationFault } from '../operation-fault-helpers.ts';
 import {
   activationRefusalToFault,
   readWorkflowCatalogRestBody,

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { WorkflowLogsResult } from '../../core/workflow-log-codec.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 /**

@@ -30,7 +30,7 @@ import type { AccessPolicy } from '../authorization.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import type { RestInputContext } from '../rest-binding.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
+import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
 /** `workflows:admin` — required by `install` and `activate` (mutating). */

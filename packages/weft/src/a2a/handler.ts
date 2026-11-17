@@ -30,7 +30,7 @@ import {
   type User,
 } from '@a2a-js/sdk/server';
 
-import { isOperationFault } from '../server/operations/operation-helpers.ts';
+import { isOperationFault } from '../server/operation-fault-helpers.ts';
 import { DEFAULT_REST_MAX_BODY_BYTES, readRestTextBody } from '../server/rest-body.ts';
 import {
   type A2AAgentCardInput,

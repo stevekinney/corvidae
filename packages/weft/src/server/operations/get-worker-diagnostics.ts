@@ -21,7 +21,7 @@ import { z } from 'zod';
 import type { WorkerHealth, WorkerRegistry, WorkerTransport } from '../../worker/registry.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const workerHealthSchema = z.enum(['active', 'draining', 'drained']) as z.ZodType<WorkerHealth>;
 const workerTransportSchema = z.enum(['websocket', 'long-poll']) as z.ZodType<WorkerTransport>;

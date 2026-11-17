@@ -7,12 +7,8 @@ import type { AuthConfig, AuthContext } from '../authentication.ts';
 import type { HandlerOptions } from '../handler.ts';
 import { authContextToPrincipal, handleRequest } from '../handler.ts';
 import { handleJsonRpcHttpRequestSafely } from '../json-rpc-transport-helpers.ts';
-import {
-  closeJsonRpcWebSocketSession,
-  handleJsonRpcWebSocketMessage,
-  openJsonRpcWebSocketSession,
-  type WebSocketData,
-} from '../json-rpc-websocket-runtime.ts';
+import { openJsonRpcWebSocketSession, type WebSocketData } from '../json-rpc-websocket-runtime.ts';
+import { closeJsonRpcWebSocketSession, handleJsonRpcWebSocketMessage } from '../json-rpc-session-runtime.ts';
 import type { OpenApiSecuritySchemeName } from '../openapi.ts';
 import { API_PREFIX, JSON_RPC_PATH, MCP_STREAMABLE_HTTP_PATH } from '../route-model.ts';
 import {

@@ -3,9 +3,10 @@ import { z } from 'zod';
 import type { ReviewDecision, SubmitReviewOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import { assertOperationEngineMethods, isOperationFault } from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { isOperationFault } from '../operation-fault-helpers.ts';
 
 const VALID_DECISIONS = [
   'approved',

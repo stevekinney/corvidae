@@ -19,7 +19,7 @@ import {
 } from '../authorization-scope.ts';
 import { shapeOperationFaultAsJson } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const principalMethodSchema = z.enum([
   'jwt',

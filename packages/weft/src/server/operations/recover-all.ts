@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { WorkflowTypeNotRegisteredForRecoveryError } from '../../core/engine.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
 
 // Intentionally accept no input fields. `acknowledgeUnknownWorkflowTypes` is

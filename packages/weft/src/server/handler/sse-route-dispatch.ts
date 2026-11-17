@@ -12,8 +12,8 @@ import {
   type WorkflowStreamConnectionAcquirer,
 } from '../operations/workflow-events-sse.ts';
 import { isAuthenticated, principalFromStdioLocal, type Principal } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import type { ConnectionLease } from '../connection-lease.ts';
 import { weftFaultToHttpResponse } from '../weft-operation-fault.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 

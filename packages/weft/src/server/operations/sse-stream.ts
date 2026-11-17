@@ -1,7 +1,6 @@
-import type { StoredStreamChunk } from '../../core/context.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { decodeCursor, type Cursor } from '../workflow-event-feed.ts';
-import { invalidParamsFault, isOperationFault, shapeRestFault } from './operation-helpers.ts';
+import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
+import { shapeRestFaultAsJson, type OperationFault } from '../operation-fault.ts';
+import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
 
 const textEncoder = new TextEncoder();
 
@@ -73,9 +72,9 @@ export function readServerSentEventsCursor(value: string | null): Cursor | undef
 
 export function shapeServerSentEventsFault(fault: OperationFault): Response {
   if (fault.code === 'InvalidParams' && fault.message === SSE_ACCEPT_REQUIRED_MESSAGE) {
-    return shapeRestFault(fault, { status: 406 });
+    return shapeRestFaultAsJson(fault, { status: 406 });
   }
-  return shapeRestFault(fault);
+  return shapeRestFaultAsJson(fault);
 }
 
 /** Format a single Server-Sent Events message. */
@@ -266,9 +265,9 @@ export function createEventEnvelopeSSEStream<TEnvelope extends ServerSentEventEn
  * Used by REST `shapeSuccess` for the streaming routes (`streamSSE`,
  * `getStreamChunks` when negotiated to `text/event-stream`).
  */
-export function createStoredChunkSSEStream(
-  chunks: ReadonlyArray<StoredStreamChunk>,
-  mapChunkToText: (chunk: StoredStreamChunk) => string | null,
+export function createStoredChunkSSEStream<TChunk extends { readonly sequence: number }>(
+  chunks: ReadonlyArray<TChunk>,
+  mapChunkToText: (chunk: TChunk) => string | null,
 ): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {

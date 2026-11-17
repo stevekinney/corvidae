@@ -14,7 +14,7 @@ import type { Engine, RegistryAgnosticEngine } from '../../core/engine.ts';
 import { MalformedRouteParameterError } from '../rest-binding.ts';
 import { authContextToPrincipal } from './auth-context-principal.ts';
 import { matchRestBinding } from './binding-dispatch.ts';
-import { errorResponse } from './response-helpers.ts';
+import { errorResponse } from './json-responses.ts';
 import {
   defaultOperationRegistry,
   defaultRestBindings,
@@ -67,15 +67,8 @@ export {
   type FleetEventInput,
   type FleetWorkflowEventInput,
 } from '../fleet-event-feed.ts';
-export {
-  createWorkflowEventFeed,
-  decodeCursor,
-  encodeCursor,
-  type Cursor,
-  type EventEnvelope,
-  type WorkflowEventFeed,
-  type WorkflowEventFeedBackend,
-} from '../workflow-event-feed.ts';
+export { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeed, type WorkflowEventFeedBackend } from '../workflow-event-feed.ts';
+export { decodeCursor, encodeCursor, type Cursor } from '../sequence-cursor.ts';
 
 type RouteLookup<T> = { kind: 'matched'; value: T } | { kind: 'malformed'; response: Response };
 

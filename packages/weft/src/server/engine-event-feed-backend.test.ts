@@ -21,11 +21,8 @@ import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
 import { KEYS } from '../storage/keys.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
-import {
-  createWorkflowEventFeed,
-  encodeCursor,
-  type EventEnvelope,
-} from './workflow-event-feed.ts';
+import { createWorkflowEventFeed, type EventEnvelope } from './workflow-event-feed.ts';
+import { encodeCursor } from './sequence-cursor.ts';
 
 class ScanCountingMemoryStorage extends MemoryStorage {
   readonly scanPrefixes: string[] = [];

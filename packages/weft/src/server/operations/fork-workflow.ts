@@ -5,13 +5,10 @@ import type { ForkOptions } from '../../core/types.ts';
 import { VersionMismatchError } from '../../core/versioning.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
-import {
-  assertOperationEngineMethods,
-  invalidParamsFault,
-  workerVersionRemovedFault,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods, workerVersionRemovedFault } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
 // `fromStep` is intentionally `unknown` at the schema boundary. The exact

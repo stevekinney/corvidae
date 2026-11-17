@@ -1,5 +1,5 @@
 /** Static HTTP bindings in route matching order. */
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { activateWorkflowRevisionRestBinding } from './activate-workflow-revision.ts';
 import { addWorkflowTagsRestBinding } from './add-workflow-tags.ts';
 import { aggregateWorkflowsRestBinding } from './aggregate-workflows.ts';

@@ -18,8 +18,9 @@ import type { WorkflowReplay } from '../../core/types.ts';
 import { negotiatedResponse } from '../handler/response-helpers.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 const replayWorkflowInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow to replay.'),

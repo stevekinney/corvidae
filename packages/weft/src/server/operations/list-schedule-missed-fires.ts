@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 import { SCHEDULE_MISSED_FIRE_LIMIT, type ScheduleMissedFire } from '../../core/types.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { mapScheduleErrorToFault } from './schedule-faults.ts';
 
 const listScheduleMissedFiresInput = z.object({

@@ -3,7 +3,7 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 import type { ScheduleTriggerResult } from '../../core/types.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { mapScheduleErrorToFault } from './schedule-faults.ts';
 
 const triggerScheduleInput = z.object({

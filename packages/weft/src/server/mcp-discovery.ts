@@ -21,8 +21,6 @@ export {
   MCP_RESOURCES_LIST_METHOD,
   MCP_TOOLS_LIST_METHOD,
 };
-/** Root-stable discovery document path (RFC 9264 / well-known convention). */
-export const MCP_DISCOVERY_PATH = '/.well-known/mcp.json';
 /**
  * The SDK serves every MCP exchange as one POST: the 2026-07-28 lane carries
  * each request's own envelope, and the 2025-era lane is stateless, so there is

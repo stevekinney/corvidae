@@ -14,6 +14,7 @@
  * pure session logic; these cover the wiring.
  */
 
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
@@ -203,6 +204,7 @@ describe('runStdioSession — engine-backed integration', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
+discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 
@@ -236,6 +238,7 @@ describe('runStdioSession — engine-backed integration', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
+discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 
@@ -266,6 +269,7 @@ describe('runStdioSession — engine-backed integration', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
+discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 

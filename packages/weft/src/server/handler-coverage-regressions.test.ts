@@ -9,7 +9,7 @@ import { handleRequestAsLocalUser as handleRequest } from './local-user-request.
 import { createOperationRegistry } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
 import { principalFromApiKey } from './principal.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
+import type { UnknownRestBinding } from './rest-binding.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
   _ctx: WorkflowContext,

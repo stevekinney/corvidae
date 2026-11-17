@@ -3,19 +3,12 @@ import { z } from 'zod';
 import type { AuthorizationScope } from '../authorization-scope.ts';
 import { defineOperation } from '../operation-registry.ts';
 import { isAuthenticated } from '../principal.ts';
-import {
-  decodeCursor,
-  type Cursor,
-  type EventEnvelope,
-  type ReplayLiveSubscribeOptions,
-  type WorkflowEventFeed,
-} from '../workflow-event-feed.ts';
-import {
-  createReplayAwareClosableIterable,
-  workflowEventEnvelopeSchema,
-  workflowEventParameterizedAccess,
-} from './event-stream-contracts.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
+import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
+import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
+import { workflowEventEnvelopeSchema, workflowEventParameterizedAccess } from './event-stream-contracts.ts';
+import { createReplayAwareClosableIterable } from './closable-iterable.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 const INITIAL_SUBSCRIPTION_CURSOR: Cursor = '-1';
 const MAX_WORKFLOW_SUBSCRIPTION_REPLAY_EVENTS = 1_000;

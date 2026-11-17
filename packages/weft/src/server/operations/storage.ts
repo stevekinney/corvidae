@@ -13,11 +13,8 @@ import type { AccessPolicy } from '../authorization.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import { isAuthenticated, type Principal } from '../principal.ts';
-import {
-  invalidParamsFault,
-  requireOperationStorage,
-  type OperationStorageMethodName,
-} from './operation-helpers.ts';
+import { requireOperationStorage, type OperationStorageMethodName } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import {
   emptyOutput,
   storageBatchInput,

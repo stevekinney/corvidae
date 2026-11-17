@@ -3,7 +3,7 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 import type { RetentionOverview } from '../../core/types.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const getRetentionOverviewInput = z.object({});
 const getRetentionOverviewOutput = z.unknown();

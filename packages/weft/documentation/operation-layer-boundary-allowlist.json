@@ -1,18 +1,1 @@
-[
-  {
-    "file": "src/server/mcp-discovery.ts",
-    "specifier": "../mcp/protocol.ts"
-  },
-  {
-    "file": "src/server/mcp-discovery.ts",
-    "specifier": "../version.ts"
-  },
-  {
-    "file": "src/server/operation-catalog/stream-pipeline.ts",
-    "specifier": "../../core/weft-error.ts"
-  },
-  {
-    "file": "src/server/rest-binding.ts",
-    "specifier": "../core/weft-error.ts"
-  }
-]
+[]

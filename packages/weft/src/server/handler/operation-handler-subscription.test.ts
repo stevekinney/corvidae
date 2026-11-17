@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { defineOperation } from '../operation-registry.ts';
-import { createReplayAwareClosableIterable } from '../operations/event-stream-contracts.ts';
+import { createReplayAwareClosableIterable } from '../operations/closable-iterable.ts';
 import { DEFAULT_MAX_STREAM_DURATION_MS } from './operation-handler-subscription.ts';
 import {
   createManualScheduler,

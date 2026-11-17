@@ -29,8 +29,9 @@ import {
 } from '../../core/catalog/index.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { assertOperationWorkflowMethods, invalidParamsFault } from './operation-helpers.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import { assertOperationWorkflowMethods } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import {
   readWorkflowCatalogRestBody,
   throwWorkflowCatalogOperationFault,

@@ -26,12 +26,9 @@ import type {
   WorkflowFeedRecord,
   WorkflowFeedSelector,
 } from '../core/engine.ts';
-import {
-  encodeCursor,
-  type EventEnvelope,
-  type EventSelector,
-  type WorkflowEventFeedBackend,
-} from './workflow-event-feed.ts';
+import { type EventEnvelope, type WorkflowEventFeedBackend } from './workflow-event-feed.ts';
+import { type EventSelector } from './event-selector.ts';
+import { encodeCursor } from './sequence-cursor.ts';
 
 /**
  * Build the production `WorkflowEventFeedBackend`. Call once per

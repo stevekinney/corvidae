@@ -26,11 +26,8 @@ import { createOperationRegistry } from './operation-catalog.ts';
 import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
 import { principalFromApiKey } from './principal.ts';
 import { jsonRecord, propertyRecord } from './protocol.test-support.ts';
-import {
-  createWorkflowEventFeed,
-  encodeCursor,
-  type WorkflowEventFeed,
-} from './workflow-event-feed.ts';
+import { createWorkflowEventFeed, type WorkflowEventFeed } from './workflow-event-feed.ts';
+import { encodeCursor } from './sequence-cursor.ts';
 
 const FIXTURE_DIR = new URL('./__fixtures__/subscription-wire/', import.meta.url).pathname;
 

@@ -11,11 +11,8 @@ import type { AccessPolicy } from './authorization.ts';
 import { emitBindings, generateOpenApiDocument } from './openapi.ts';
 import { createOperationRegistry, type ParameterizedAccessHint } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
-import {
-  createLiveOperationRegistry,
-  createLiveRestBindings,
-  type UnknownRestBinding,
-} from './rest-bindings.ts';
+import type { UnknownRestBinding } from './rest-binding.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 import { DIRECT_HTTP_ROUTES, externalApiPath, toOpenApiPath, toRegex } from './route-model.ts';
 import { weftDiscoveryInfo } from './weft-documents.ts';
 

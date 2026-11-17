@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import { armAndWait, createDurableSubscription } from './replay-live-feed-internals.ts';
-import type { ReplayLiveFeedBackend, SequencedEventEnvelope } from './workflow-event-feed.ts';
+import type { SequencedEventEnvelope } from './sequence-cursor.ts';
+import type { ReplayLiveFeedBackend } from './replay-live-feed-types.ts';
 
 type Envelope = SequencedEventEnvelope;
 

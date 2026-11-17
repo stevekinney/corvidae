@@ -6,9 +6,9 @@
 
 import { z } from 'zod';
 
-import { definitionSchemaToJsonSchema } from '../core/types/definition-schema-to-json.ts';
 import { isDiscoverable } from './discovery-filter.ts';
 import type { ErasedOperation } from './operation-catalog.ts';
+import { zodToJsonSchema } from './zod-json-schema.ts';
 
 /**
  * The part of an operation the description audit reads. Anything
@@ -49,7 +49,7 @@ function undescribedParameters(operation: AuditedOperation): string[] {
   // The registry already requires an object input; a non-object has no
   // parameter fields to describe.
   if (!(operation.inputSchema instanceof z.ZodObject)) return [];
-  const schema = definitionSchemaToJsonSchema(operation.inputSchema);
+  const schema = zodToJsonSchema(operation.inputSchema);
   const properties = schema['properties'];
   if (!isPlainObject(properties)) return [];
   const definitions = isPlainObject(schema['$defs']) ? schema['$defs'] : undefined;

@@ -21,7 +21,6 @@
  * the client omits content-length or lies.
  */
 
-import { WeftError } from '../core/weft-error.ts';
 import {
   dispatchJsonRpc,
   type DispatchJsonRpcContext,
@@ -167,9 +166,13 @@ function isJsonContentType(contentType: string): boolean {
   return type.trim() === 'application/json';
 }
 
-class RequestBodyTooLargeError extends WeftError<'RequestBodyTooLargeError'> {
+class RequestBodyTooLargeError extends Error {
+  /** Stable machine-readable discriminant; equals the class name, as a `WeftError`'s does. */
+  readonly code = 'RequestBodyTooLargeError';
+
   constructor() {
-    super('RequestBodyTooLargeError', 'body exceeds max bytes');
+    super('body exceeds max bytes');
+    this.name = this.code;
   }
 }
 

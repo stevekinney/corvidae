@@ -12,7 +12,7 @@
 
 import { sha256 } from '@noble/hashes/sha2.js';
 
-import { copyBytesToArrayBuffer } from '../../core/byte-arrays.ts';
+import { copyBytesToArrayBuffer } from '../../server/byte-arrays.ts';
 import { utf8Encode } from './utf8.ts';
 
 /**

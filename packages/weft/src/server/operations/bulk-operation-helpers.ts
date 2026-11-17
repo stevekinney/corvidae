@@ -2,7 +2,8 @@ import { assertScopedBulkWorkflowFilter } from '../../core/bulk-workflow-filter.
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
 import type { ListFilter } from '../../core/types.ts';
 import { listFilterFromBulkInput, type BulkListFilterInput } from './bulk-filter-input.ts';
-import { faultMessage, invalidParamsFault } from './operation-helpers.ts';
+import { faultMessage } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 /**
  * Coerces filter tags (label `Field "filter.tags"`), builds a `ListFilter`

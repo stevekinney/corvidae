@@ -24,14 +24,9 @@ import {
   isStoredWatchEvent,
   parseSequenceFromEventKey,
 } from './runtime/websocket-stream.ts';
-import {
-  createWorkflowEventFeed,
-  encodeCursor,
-  type EventEnvelope,
-  type EventSelector,
-  type WorkflowEventFeed,
-  type WorkflowEventFeedBackend,
-} from './workflow-event-feed.ts';
+import { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeed, type WorkflowEventFeedBackend } from './workflow-event-feed.ts';
+import { type EventSelector } from './event-selector.ts';
+import { encodeCursor } from './sequence-cursor.ts';
 
 type WatchEventFeedBackend = WorkflowEventFeedBackend & {
   notify(workflowId: string, sequence: number, message: string): void;

@@ -7,14 +7,11 @@ import {
 } from '../../core/updates.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestJsonBody } from '../rest-body.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import {
-  assertOperationEngineMethods,
-  isOperationFault,
-  undeclaredMessageFault,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods, undeclaredMessageFault } from './operation-helpers.ts';
+import { isOperationFault } from '../operation-fault-helpers.ts';
 
 const DEFAULT_UPDATE_TIMEOUT_MS = 30_000;
 

@@ -1,4 +1,5 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -519,6 +520,7 @@ describe('Operation-catalog acceptance coverage', () => {
         admission: { kind: 'allow-unauthenticated-local-admin' },
         registry,
         engine,
+discoverDocument: createWeftDiscoverDocument(registry, engine),
         feed,
       });
     } finally {

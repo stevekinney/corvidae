@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 
 const storageCapabilitiesInput = z.object({});

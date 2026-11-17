@@ -1,14 +1,8 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import {
-  closeJsonRpcSessionsForShutdown,
-  closeJsonRpcWebSocketSession,
-  handleJsonRpcWebSocketMessage,
-  openGenericJsonRpcWebSocketSession,
-  openJsonRpcWebSocketSession,
-  type WebSocketData,
-} from './json-rpc-websocket-runtime.ts';
+import { closeJsonRpcSessionsForShutdown, openJsonRpcWebSocketSession, type WebSocketData } from './json-rpc-websocket-runtime.ts';
+import { closeJsonRpcWebSocketSession, handleJsonRpcWebSocketMessage, openGenericJsonRpcWebSocketSession } from './json-rpc-session-runtime.ts';
 import type { JsonRpcWebSocketSession } from './json-rpc-websocket.ts';
 
 function createWebSocket(data: Partial<WebSocketData> = {}): {

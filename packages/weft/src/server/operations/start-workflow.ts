@@ -13,13 +13,10 @@ import {
 import type { SearchAttributeSchema, StartOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import {
-  invalidParamsFault,
-  workerStartOverrideRejectedFault,
-  workerVersionRemovedFault,
-} from './operation-helpers.ts';
+import { workerStartOverrideRejectedFault, workerVersionRemovedFault } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import { buildSharedStartWorkflowOptions } from './start-workflow-options.ts';
 import {
   extractSharedStartWorkflowRestFields,

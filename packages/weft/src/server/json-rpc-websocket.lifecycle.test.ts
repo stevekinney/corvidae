@@ -8,12 +8,8 @@ import {
 } from './json-rpc-websocket.ts';
 import { principalFromApiKey } from './principal.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
-import {
-  createWorkflowEventFeed,
-  encodeCursor,
-  type EventEnvelope,
-  type WorkflowEventFeed,
-} from './workflow-event-feed.ts';
+import { createWorkflowEventFeed, type EventEnvelope, type WorkflowEventFeed } from './workflow-event-feed.ts';
+import { encodeCursor } from './sequence-cursor.ts';
 
 const fakeEngine = {} as unknown;
 

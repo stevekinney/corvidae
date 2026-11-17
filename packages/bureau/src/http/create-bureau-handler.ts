@@ -38,6 +38,7 @@ import {
   type AuthorizationScope,
   createOperationHandler,
   createOperationHandlerAuthenticator,
+  encode,
   getPrincipalOperation,
   type OperationHandler,
   type OperationHandlerMount,
@@ -1557,6 +1558,8 @@ export function createBureauHandler(
     discoveryInfo: { title: 'Bureau', version: WEFT_VERSION },
     // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting.
     faultPolicy: weftFaultPolicy,
+    // `/v1/health` answers MessagePack to a client that asks for it, as it always has.
+    encodeBinary: encode,
   });
   const resourceInventory: BureauResourceInventoryEntry[] = [
     ...BUREAU_HANDLER_OPERATIONS.map((operation): BureauResourceInventoryEntry => ({

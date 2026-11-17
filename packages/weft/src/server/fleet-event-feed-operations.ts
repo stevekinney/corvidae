@@ -32,17 +32,9 @@ import {
   createDurableSubscription,
   createSerialOperationQueue,
 } from './replay-live-feed-internals.ts';
-import {
-  createReplayLiveFeed,
-  encodeCursor,
-  type Cursor,
-  type FleetEventAppendOptions,
-  type FleetEventEnvelope,
-  type FleetEventInput,
-  type FleetWorkflowEventInput,
-  type ReplayLiveFeed,
-  type ReplayLiveFeedBackend,
-} from './workflow-event-feed.ts';
+import { createReplayLiveFeed, type FleetEventAppendOptions, type FleetEventEnvelope, type FleetEventInput, type FleetWorkflowEventInput } from './workflow-event-feed.ts';
+import { encodeCursor, type Cursor } from './sequence-cursor.ts';
+import { type ReplayLiveFeed, type ReplayLiveFeedBackend } from './replay-live-feed-types.ts';
 
 export function createFleetEventFeedOperations(
   storage: Storage,

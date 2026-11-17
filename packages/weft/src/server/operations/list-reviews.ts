@@ -5,7 +5,7 @@ import { reviewListEntrySchema } from '../../core/review/index.ts';
 import type { ReviewListEntry, ReviewListFilter, ReviewStatus } from '../../core/types.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const reviewStatusSchema = z.enum(['pending', 'completed']) satisfies z.ZodType<ReviewStatus>;
 const listReviewsInput = z.object({

@@ -29,11 +29,8 @@ import { createOperationRegistry } from './operation-catalog.ts';
 import { fleetEventsSubscriptionOperation } from './operations/fleet-events-subscription.ts';
 import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
 import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
-import {
-  createWorkflowEventFeed,
-  encodeCursor,
-  type WorkflowEventFeed,
-} from './workflow-event-feed.ts';
+import { createWorkflowEventFeed, type WorkflowEventFeed } from './workflow-event-feed.ts';
+import { encodeCursor } from './sequence-cursor.ts';
 
 const fakeEngine = {} as unknown;
 

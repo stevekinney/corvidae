@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { listWorkflowSources } from '../../core/engine/source-listing.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineObject } from './operation-helpers.ts';
 
 const listCatalogSourcesInput = z

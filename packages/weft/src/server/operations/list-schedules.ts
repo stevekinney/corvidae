@@ -17,8 +17,9 @@ import type {
   ScheduleSummary,
 } from '../../core/types.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 const VALID_SCHEDULE_STATUSES = new Set<string>(['active', 'paused', 'cancelled']);
 

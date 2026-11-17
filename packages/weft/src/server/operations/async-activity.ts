@@ -13,13 +13,10 @@ import type { PendingAsyncActivityPage } from '../../core/types.ts';
 import type { AccessPolicy } from '../authorization.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import {
-  assertOperationEngineMethods,
-  invalidParamsFault,
-  isOperationFault,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
 
 /**
  * Async ("out-of-band") activity completion, exposed across every transport.

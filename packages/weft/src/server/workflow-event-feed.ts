@@ -1,6 +1,9 @@
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import type { WeftEventMap } from '../core/events.ts';
+import type { EventSelector } from './event-selector.ts';
+import type { ReplayLiveFeed, ReplayLiveSubscribeOptions } from './replay-live-feed-types.ts';
 import { createReplayLiveFeed } from './replay-live-feed.ts';
+import type { Cursor } from './sequence-cursor.ts';
 export { createReplayLiveFeed } from './replay-live-feed.ts';
 
 /** Discriminator string carried on every feed envelope. */
@@ -15,62 +18,8 @@ export type FeedEventKind =
   | (string & {});
 
 // ---------------------------------------------------------------------------
-// Cursor (opaque)
-// ---------------------------------------------------------------------------
-
-/**
- * Opaque cursor into a workflow or fleet event feed. Durable workflow and
- * fleet feeds use numeric cursors; in-memory backends use an incarnation and
- * sequence so a reconnect after restart can report a gap. Pass the cursor
- * back as `fromCursor` to resume a feed, and never parse it in a client.
- *
- * @example
- * ```ts
- * import type { Cursor, EventEnvelope } from '@lostgradient/weft';
- *
- * declare const envelope: EventEnvelope;
- * const lastCursor: Cursor = envelope.cursor;
- * void lastCursor;
- * ```
- */
-export type Cursor = string;
-
-const CURSOR_PATTERN = /^(?:-1|\d+)$/;
-
-/** Encode a non-negative integer sequence as an opaque cursor. */
-export function encodeCursor(sequence: number): Cursor {
-  if (!Number.isInteger(sequence) || sequence < 0) {
-    throw new Error(`encodeCursor: sequence must be a non-negative integer, got ${sequence}`);
-  }
-  return String(sequence);
-}
-
-/**
- * Decode an opaque cursor back to its sequence. `-1` is the initial
- * sentinel for "before the first event"; malformed input returns null.
- */
-export function decodeCursor(cursor: Cursor): number | null {
-  if (!CURSOR_PATTERN.test(cursor)) return null;
-  const value = Number(cursor);
-  if (!Number.isSafeInteger(value) || value < -1) return null;
-  return value;
-}
-
-function decodeCursorOrThrow(cursor: Cursor): number {
-  const sequence = decodeCursor(cursor);
-  if (sequence === null) throw new Error('Invalid cursor');
-  return sequence;
-}
-
-export function compareCursor(a: Cursor, b: Cursor): 'before' | 'at' | 'after' {
-  const delta = decodeCursorOrThrow(a) - decodeCursorOrThrow(b);
-  return delta === 0 ? 'at' : delta < 0 ? 'before' : 'after';
-}
-// ---------------------------------------------------------------------------
 // Envelope
 // ---------------------------------------------------------------------------
-
-export type EventSelector = 'events' | 'tokens';
 
 /**
  * A single committed record from a workflow's event feed — the `events`
@@ -277,42 +226,6 @@ export type FleetEventGapEnvelope = {
 export type FleetEventFeedOptions = {
   /** How often a subscriber checks durable storage for commits from another process. */
   readonly livePollIntervalMs?: number;
-};
-
-export type SequencedEventEnvelope = {
-  readonly sequence: number;
-  readonly cursor: Cursor;
-};
-
-export type ReplayLiveFeedBackend<TEnvelope extends SequencedEventEnvelope> = {
-  replay(options: { afterSequence: number; requestedCursor?: Cursor }): AsyncIterable<TEnvelope>;
-  snapshotTailSequence(): Promise<number>;
-  subscribeLive(listener: (envelope: TEnvelope) => void): () => void;
-  decodeCursor?(cursor: Cursor): { sequence: number } | 'gap' | 'invalid';
-  encodeCursor?(sequence: number): Cursor;
-  snapshotFirstRetainedSequence?(): Promise<number>;
-  createGapEnvelope?(options: {
-    requestedCursor: Cursor;
-    firstRetainedSequence: number;
-    continuationCursor: Cursor;
-  }): TEnvelope;
-};
-
-export type ReplayLiveFeed<TEnvelope extends SequencedEventEnvelope> = {
-  replay(options?: { fromCursor?: Cursor; limit?: number }): AsyncIterable<TEnvelope>;
-  subscribe(options?: ReplayLiveSubscribeOptions<TEnvelope>): AsyncIterable<TEnvelope>;
-  decodeCursor(cursor: Cursor): { sequence: number } | 'gap' | 'invalid';
-  dispose(): void;
-};
-
-export type ReplayLiveSubscribeOptions<TEnvelope extends SequencedEventEnvelope> = {
-  fromCursor?: Cursor;
-  signal?: AbortSignal;
-  replayLimit?: number;
-  filterEnvelope?: (envelope: TEnvelope) => boolean;
-  countReplayEnvelope?: (envelope: TEnvelope) => boolean;
-  createReplayLimitError?: (count: number, limit: number) => unknown;
-  onReplayComplete?: () => void;
 };
 
 /**

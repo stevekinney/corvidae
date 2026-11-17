@@ -13,6 +13,7 @@
  * I/O streams for testability.
  */
 
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -77,6 +78,7 @@ function runStdioTestSession({
     admission,
     registry,
     engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(registry, fakeEngine),
     feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     ...(maxFrameBytes === undefined ? {} : { maxFrameBytes }),
   });
@@ -93,6 +95,7 @@ describe('runStdioSession — admission', () => {
       admission,
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -119,6 +122,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(registry, fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -153,6 +157,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token },
       registry,
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(registry, fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -184,6 +189,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -201,6 +207,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -219,6 +226,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -236,6 +244,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -258,6 +267,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -280,6 +290,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -305,6 +316,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -331,6 +343,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -354,6 +367,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(2);
@@ -379,6 +393,7 @@ describe('runStdioSession — admission', () => {
       admission: { kind: 'startup-token', token: 'correct' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
       maxFrameBytes: 500,
     });
@@ -581,6 +596,7 @@ describe('runStdioSession — dispatch', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -626,6 +642,7 @@ describe('runStdioSession — dispatch', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(registry, fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -661,6 +678,7 @@ describe('runStdioSession — dispatch', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(registry, fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);
@@ -714,6 +732,7 @@ describe('runStdioSession — dispatch', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry: createOperationRegistry([]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
 
@@ -757,6 +776,7 @@ describe('runStdioSession — subscription limit', () => {
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry: createOperationRegistry([stdioSubscriptionOperation()]),
       engine: fakeEngine,
+discoverDocument: createWeftDiscoverDocument(createOperationRegistry([stdioSubscriptionOperation()]), fakeEngine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
       maxSubscriptions: 1,
     });

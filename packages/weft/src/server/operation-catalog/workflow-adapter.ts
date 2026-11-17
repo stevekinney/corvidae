@@ -11,7 +11,7 @@ import type { AccessPolicy } from '../authorization.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import type { UnarySchemaOperationDefinition } from '../operation-registry.ts';
 import { defineOperation } from '../operation-registry.ts';
-import { invalidParamsFault } from '../operations/operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import type {
   AuthorizationDecision,
   OperationContext,

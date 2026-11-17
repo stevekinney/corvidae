@@ -11,7 +11,8 @@ import {
 import { handleRequest, type HandlerOptions } from '../handler.ts';
 import { createOperationRegistry, executeStream } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';
-import { createReplayLiveFeed, type ReplayLiveSubscribeOptions } from '../workflow-event-feed.ts';
+import { createReplayLiveFeed } from '../workflow-event-feed.ts';
+import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
 import { fleetEventsSseOperation, fleetEventsSseRestBinding } from './fleet-events-sse.ts';
 
 const registry = createOperationRegistry([fleetEventsSseOperation]);

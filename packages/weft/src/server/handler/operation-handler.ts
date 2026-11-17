@@ -1,4 +1,3 @@
-import type { ServerWebSocket } from 'bun';
 import { z } from 'zod';
 
 import type { AuthContext } from '../authentication.ts';
@@ -8,8 +7,9 @@ import {
   closeJsonRpcWebSocketSession,
   handleJsonRpcWebSocketMessage,
   openGenericJsonRpcWebSocketSession,
-  type WebSocketData,
-} from '../json-rpc-websocket-runtime.ts';
+  type JsonRpcSocket,
+  type JsonRpcSocketData,
+} from '../json-rpc-session-runtime.ts';
 import {
   createOperationRegistry,
   executeOperation,
@@ -30,8 +30,8 @@ import {
   validateCorsOptions,
   type CorsOptions,
 } from '../runtime/cors.ts';
-import { weftDiscoveryInfo } from '../weft-documents.ts';
 import { authContextToPrincipal } from './auth-context-principal.ts';
+import { errorResponse, jsonResponse, negotiatedJsonOrBinary } from './json-responses.ts';
 import type { OperationHandlerAuthenticate } from './operation-handler-authentication.ts';
 import {
   createOperationHandlerDocuments,
@@ -50,7 +50,6 @@ import {
   DEFAULT_MAX_STREAM_DURATION_MS,
   handleSubscriptionRequest,
 } from './operation-handler-subscription.ts';
-import { errorResponse, jsonResponse, negotiatedResponse } from './response-helpers.ts';
 import { createWorkspaceRevalidation, guardWorkspaceResponse } from './workspace-release.ts';
 
 /**
@@ -100,6 +99,12 @@ export type OperationHandlerOptions<Host> = {
   readonly publicPaths?: ReadonlyArray<string>;
   readonly discoveryInfo?: DiscoveryInfo;
   /**
+   * A binary encoding for `GET /v1/health`: when a request accepts `application/msgpack` and this
+   * is supplied, the answer is its bytes with that content type. Omitted, the answer is JSON. The
+   * handler carries no codec of its own; a host on Weft passes Weft's `encode`.
+   */
+  readonly encodeBinary?: (value: unknown) => Uint8Array;
+  /**
    * What the host decides about the faults its operations throw: whether an undeclared fault
    * answers `EngineFailure` (`strict`, on by default) or passes through with a warning, and how
    * the host's own error classes map to faults. The handler reads no environment variable; a host
@@ -127,13 +132,18 @@ export type OperationHandlerOptions<Host> = {
 
 /** A fetch handler over a caller-supplied operation registry. */
 export type OperationHandlerUpgradeServer = {
-  upgrade(request: Request, options: { data: WebSocketData }): boolean;
+  upgrade(request: Request, options: { data: JsonRpcSocketData }): boolean;
 };
 
+/**
+ * The WebSocket entry points of the handler, typed against the part of a socket a session uses.
+ * Bun's `ServerWebSocket` satisfies {@link JsonRpcSocket}, so `Bun.serve({ websocket })` takes
+ * these as they are.
+ */
 export type OperationHandlerWebSocket = {
-  open(ws: ServerWebSocket<WebSocketData>): void;
-  message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer): void;
-  close(ws: ServerWebSocket<WebSocketData>): void;
+  open(ws: JsonRpcSocket<JsonRpcSocketData>): void;
+  message(ws: JsonRpcSocket<JsonRpcSocketData>, message: string | Uint8Array): void;
+  close(ws: JsonRpcSocket<JsonRpcSocketData>): void;
 };
 
 /** A callable catalog handler with an optional Bun WebSocket entry point. */
@@ -254,7 +264,7 @@ export function createOperationHandler<Host>(
         resolveCorsPolicy(options.cors, authenticate !== undefined));
   const documents = createOperationHandlerDocuments({
     registry,
-    discoveryInfo: weftDiscoveryInfo(options.discoveryInfo),
+    discoveryInfo: options.discoveryInfo,
     authenticates: authenticate !== undefined,
     publicPaths,
   });
@@ -332,7 +342,7 @@ export function createOperationHandler<Host>(
     });
   };
   handler.websocket = {
-    open(ws: ServerWebSocket<WebSocketData>) {
+    open(ws: JsonRpcSocket<JsonRpcSocketData>) {
       openGenericJsonRpcWebSocketSession({
         ws,
         registry,
@@ -341,10 +351,10 @@ export function createOperationHandler<Host>(
         discoverDocument: documents.openRpc,
       });
     },
-    message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
+    message(ws: JsonRpcSocket<JsonRpcSocketData>, message: string | Uint8Array) {
       handleJsonRpcWebSocketMessage(ws, message);
     },
-    close(ws: ServerWebSocket<WebSocketData>) {
+    close(ws: JsonRpcSocket<JsonRpcSocketData>) {
       ws.data.workspaceClosed = true;
       closeJsonRpcWebSocketSession({ session: ws.data.jsonRpcSession, activeSessions });
     },
@@ -412,7 +422,7 @@ async function routeCatalog<Host>(catalog: CatalogRequest<Host>): Promise<Respon
     return routeSubscription(catalog);
   }
   if (request.method === 'GET') {
-    const response = routeGet(catalog);
+    const response = routeGet(catalog, options.encodeBinary);
     if (response !== null) return response;
   }
   return errorResponse(`Not found: ${request.method} ${pathname}`, 404);
@@ -420,11 +430,12 @@ async function routeCatalog<Host>(catalog: CatalogRequest<Host>): Promise<Respon
 
 function routeGet(
   catalog: Pick<CatalogRequest<unknown>, 'request' | 'pathname' | 'documents'>,
+  encodeBinary: ((value: unknown) => Uint8Array) | undefined,
 ): Response | null {
   const { request, pathname, documents } = catalog;
   switch (pathname) {
     case HEALTH_PATH:
-      return negotiatedResponse(request, { status: 'ok' });
+      return negotiatedJsonOrBinary(request, { status: 'ok' }, 200, encodeBinary);
     case '/openapi.json':
       return jsonResponse(documents.openApi());
     case '/openrpc.json':

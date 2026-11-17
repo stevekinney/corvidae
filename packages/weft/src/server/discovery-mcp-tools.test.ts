@@ -9,6 +9,7 @@
  * missing-metadata error rather than a silently wrong document.
  */
 
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -143,6 +144,7 @@ describe('rpc.discover lists a workflow MCP tool on an engine-hosted server', ()
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry: createCheckoutRegistry(),
       engine,
+discoverDocument: createWeftDiscoverDocument(createCheckoutRegistry(), engine),
       feed: createWorkflowEventFeed(createInMemoryEventBackend()),
     });
     expect(result.exitCode).toBe(0);

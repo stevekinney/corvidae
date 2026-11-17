@@ -4,26 +4,17 @@ import type { AuthorizationScope } from '../authorization-scope.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import { isAuthenticated } from '../principal.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import type { ConnectionLease } from '../runtime/context.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import type { ConnectionLease } from '../connection-lease.ts';
 import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
-import {
-  decodeCursor,
-  type Cursor,
-  type EventEnvelope,
-  type EventSelector,
-  type ReplayLiveSubscribeOptions,
-  type WorkflowEventFeed,
-} from '../workflow-event-feed.ts';
-import {
-  createReplayAwareClosableIterable,
-  isClosableAsyncIterable,
-  isReplayAwareClosableIterable,
-  workflowEventEnvelopeSchema,
-  workflowEventParameterizedAccess,
-  type ReplayAwareClosableIterable,
-} from './event-stream-contracts.ts';
-import { invalidParamsFault, shapeRestFault } from './operation-helpers.ts';
+import { type EventEnvelope, type WorkflowEventFeed } from '../workflow-event-feed.ts';
+import { type EventSelector } from '../event-selector.ts';
+import { decodeCursor, type Cursor } from '../sequence-cursor.ts';
+import { type ReplayLiveSubscribeOptions } from '../replay-live-feed-types.ts';
+import { workflowEventEnvelopeSchema, workflowEventParameterizedAccess } from './event-stream-contracts.ts';
+import { createReplayAwareClosableIterable, isClosableAsyncIterable, isReplayAwareClosableIterable, type ReplayAwareClosableIterable } from './closable-iterable.ts';
+import { shapeRestFault } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import {
   createEventEnvelopeSSEStream,
   readServerSentEventsCursor,

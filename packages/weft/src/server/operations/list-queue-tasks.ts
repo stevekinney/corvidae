@@ -21,8 +21,9 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { invalidParamsFault, requireOperationStorage } from './operation-helpers.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
+import { requireOperationStorage } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;

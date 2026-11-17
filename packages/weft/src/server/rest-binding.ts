@@ -11,7 +11,6 @@
  * remaining REST-only meta and discovery endpoints.
  */
 
-import { WeftError } from '../core/weft-error.ts';
 import type { OperationFault } from './operation-fault.ts';
 import type { RestBodyReadOptions } from './rest-body.ts';
 import type { HttpMethod } from './route-model.ts';
@@ -20,9 +19,13 @@ import type { HttpMethod } from './route-model.ts';
  * Thrown by `bindingPathMatches` when a URL path parameter contains malformed
  * percent-encoding. The top-level handler catches it and returns a 400.
  */
-export class MalformedRouteParameterError extends WeftError<'MalformedRouteParameterError'> {
+export class MalformedRouteParameterError extends Error {
+  /** Stable machine-readable discriminant; equals the class name, as a `WeftError`'s does. */
+  readonly code = 'MalformedRouteParameterError';
+
   constructor() {
-    super('MalformedRouteParameterError', 'Malformed route parameter encoding');
+    super('Malformed route parameter encoding');
+    this.name = this.code;
   }
 }
 
@@ -153,6 +156,21 @@ export type RestBinding<Input, Output> = {
    */
   readonly shapeFault?: (fault: OperationFault) => Response;
 };
+
+/**
+ * The router stores heterogeneous bindings whose `Input`/`Output` pairs
+ * all differ. `RestBinding<Input, Output>` is strictly-typed at the
+ * author boundary (so `defineOperation` + binding factories catch
+ * mistakes), but at the router level those generics are irrelevant —
+ * every binding produces a `Response` regardless of its output type.
+ *
+ * `RestBinding<any, any>` is the idiomatic way to express "a binding
+ * with SOME Input/Output pair the router doesn't care about." A stricter
+ * `unknown, unknown` form fails under `exactOptionalPropertyTypes`
+ * because `shapeSuccess: (Output) => Response` cannot be safely widened
+ * to `(unknown) => Response` (function parameters are contravariant).
+ */
+export type UnknownRestBinding = RestBinding<any, any>;
 
 /**
  * Match a binding's `:name` path pattern against a concrete URL path.

@@ -35,7 +35,7 @@ import type {
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const conformanceTargetSummarySchema = z
   .object({

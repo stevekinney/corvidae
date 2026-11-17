@@ -1,6 +1,6 @@
 import type { RestInputContext } from '../rest-binding.ts';
 import { readOptionalRestJsonBody, readRestJsonBody } from '../rest-body.ts';
-import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
+import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
 
 export type SharedScheduleRestFields = {
   readonly cronExpression: unknown;

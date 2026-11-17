@@ -28,7 +28,7 @@ import {
   RegistryWorkflowCountLimitError,
 } from '../../core/registry-snapshot.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const getRegistryInput = z.object({});
 

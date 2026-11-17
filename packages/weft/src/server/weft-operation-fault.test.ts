@@ -80,6 +80,7 @@ describe('Weft code that answers a REST request', () => {
     'weft-operation-fault.ts',
     'handler/operation-handler-subscription.ts',
     'operations/get-principal.ts',
+    'operations/sse-stream.ts',
   ]);
 
   it('calls only the projections bound to Weft error codes', async () => {

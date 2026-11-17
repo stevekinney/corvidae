@@ -6,6 +6,7 @@ import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts
 import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import type { Authenticator, RateLimiter } from '../authentication.ts';
+import type { ConnectionLease } from '../connection-lease.ts';
 import type { DeadlineTracker } from '../deadline-tracker.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
@@ -159,8 +160,6 @@ export interface ServerContext {
    */
   stopping: boolean;
 }
-
-export type ConnectionLease = Readonly<{ release(): void }>;
 
 export function acquireFleetSseConnection(context: ServerContext): ConnectionLease {
   return acquireConnection(context, 'fleetSse');

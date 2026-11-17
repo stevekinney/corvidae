@@ -8,11 +8,11 @@ import {
 } from '../../core/engine/validation/schedule.ts';
 import { isValidTimeZone } from '../../core/schedule.ts';
 import type { ScheduleSpec, ScheduleUpdateOptions } from '../../core/types.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import type { OperationFault } from '../operation-fault.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
-export { isOperationFault } from './operation-helpers.ts';
+export { isOperationFault } from '../operation-fault-helpers.ts';
 
 export type ScheduleMutableOptionsInput = {
   description?: unknown;

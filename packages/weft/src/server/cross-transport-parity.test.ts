@@ -1,4 +1,5 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { createWeftDiscoverDocument } from './weft-documents.ts';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
@@ -255,6 +256,7 @@ async function invokeStdioJsonRpcEnvelope(
       admission: { kind: 'allow-unauthenticated-local-admin' },
       registry,
       engine,
+discoverDocument: createWeftDiscoverDocument(registry, engine),
       feed,
     });
 

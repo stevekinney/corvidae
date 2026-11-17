@@ -39,7 +39,7 @@ import {
   type DispatchResult,
   type SubscriptionStartEnvelope,
 } from './operation-catalog.ts';
-import type { ConnectionLease } from './runtime/context.ts';
+import type { ConnectionLease } from './connection-lease.ts';
 
 export type {
   JsonRpcWebSocketEmitter,

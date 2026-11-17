@@ -6,12 +6,12 @@ import type {
   WorkerDeploymentRoutingWrite,
 } from '../../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import { type OperationFault } from '../operation-fault.ts';
-import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
@@ -23,8 +23,7 @@ const routingInput = z.object({
   expectedGeneration: z.number().int().min(0).optional(),
 });
 const deploymentInput = z.object({ deploymentName: z.string().min(1), buildId: z.string().min(1) });
-// Promote and rollback read the current generation themselves; a caller that previewed the change
-// passes the generation the preview reported, and a move past it is a Conflict, not a silent overwrite.
+// Promote and rollback read the current generation; one past a previewed generation is a Conflict.
 const moveBuildInput = deploymentInput.extend({
   expectedGeneration: z.number().int().min(0).optional(),
 });

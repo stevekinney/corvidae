@@ -34,8 +34,6 @@ import {
 import { isPlainObject } from './json-schema-utilities.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
 import { principalFromStdioLocal, type Principal } from './principal.ts';
-import { createWeftDiscoverDocument } from './weft-documents.ts';
-import type { WorkflowEventFeed } from './workflow-event-feed.ts';
 
 export type StdioAdmission =
   | { readonly kind: 'require-one' }
@@ -48,7 +46,13 @@ export type StdioSessionOptions = {
   readonly admission: StdioAdmission;
   readonly registry: OperationRegistry;
   readonly engine: unknown;
-  readonly feed: WorkflowEventFeed;
+  /** The host's workflow event feed, handed to `weft.workflows.subscribe` as `host.feed`. */
+  readonly feed: unknown;
+  /**
+   * The document `rpc.discover` answers with. A host on Weft's engine passes
+   * `createWeftDiscoverDocument(registry, engine)`, which lists the engine's MCP tools.
+   */
+  readonly discoverDocument: () => Record<string, unknown>;
   readonly maxFrameBytes?: number;
   readonly maxSubscriptions?: number;
 };
@@ -110,7 +114,7 @@ export async function runStdioSession(options: StdioSessionOptions): Promise<Std
     principal,
     emitter: io.emitter,
     feed: options.feed,
-    discoverDocument: createWeftDiscoverDocument(options.registry, options.engine),
+    discoverDocument: options.discoverDocument,
     // Dispatch operations as `jsonRpcStdio`, not `jsonRpcWebSocket`,
     // so the transport-availability check in `executeOperation`
     // evaluates the right flag for this session. Operations

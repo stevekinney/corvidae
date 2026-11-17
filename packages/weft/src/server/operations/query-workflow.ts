@@ -2,14 +2,11 @@ import { z } from 'zod';
 
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import {
-  assertOperationEngineMethods,
-  invalidParamsFault,
-  undeclaredMessageFault,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods, undeclaredMessageFault } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 const queryWorkflowInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow to query.'),

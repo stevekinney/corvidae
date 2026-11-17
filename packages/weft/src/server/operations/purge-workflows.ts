@@ -1,15 +1,11 @@
 import { purgeOutputSchema } from './bulk-output-schemas.ts';
-import {
-  assertOperationEngineMethods,
-  faultMessage,
-  invalidParamsFault,
-  readOptionalJsonBody,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods, faultMessage, readOptionalJsonBody } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 import type { z } from 'zod';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { parseBulkListFilterFromBody } from './bulk-filter-body.ts';
 import {
   bulkListFilterInputSchema,

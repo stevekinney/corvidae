@@ -1,12 +1,7 @@
 import { z } from 'zod';
 import { bulkTagOutputSchema } from './bulk-output-schemas.ts';
-import {
-  assertOperationEngineMethods,
-  engineFailureFault,
-  faultMessage,
-  invalidParamsFault,
-  readOptionalJsonBody,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods, engineFailureFault, faultMessage, readOptionalJsonBody } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 import { BulkOperationConfirmationError, type Engine } from '../../core/engine.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
@@ -18,7 +13,7 @@ import type {
   ListFilter,
 } from '../../core/types.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { parseBulkListFilterFromBody } from './bulk-filter-body.ts';
 import { bulkListFilterInputSchema } from './bulk-filter-input.ts';
 import {

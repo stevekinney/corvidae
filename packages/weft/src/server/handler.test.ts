@@ -12,7 +12,7 @@ import { KEYS } from '../storage/keys.ts';
 import { getRequiredRouteParameter } from './handler.ts';
 import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
 import { principalFromApiKey } from './principal.ts';
-import type { UnknownRestBinding } from './rest-bindings.ts';
+import type { UnknownRestBinding } from './rest-binding.ts';
 import { storeHistoricalReviewDecisionWithoutRequestMetadata } from './review-test-support.test-support.ts';
 
 // ---------------------------------------------------------------------------

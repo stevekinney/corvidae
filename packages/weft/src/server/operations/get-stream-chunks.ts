@@ -2,9 +2,10 @@ import { z } from 'zod';
 
 import type { StoredStreamChunk } from '../../core/context.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { parseOptionalSequenceCursor } from '../sequence-cursor.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 import { createStoredChunkSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.ts';
 
 // `after` is permissive at the schema boundary so REST and JSON-RPC clients

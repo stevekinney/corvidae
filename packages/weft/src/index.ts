@@ -157,20 +157,12 @@ export type {
   InMemoryReplayLiveBackend,
   InMemoryReplayLiveBackendOptions,
 } from './server/in-memory-replay-live-backend.ts';
-export {
-  createReplayAwareClosableIterable,
-  type ClosableAsyncIterable,
-  type ReplayAwareClosableIterable,
-} from './server/operations/event-stream-contracts.ts';
+export { createReplayAwareClosableIterable, type ClosableAsyncIterable, type ReplayAwareClosableIterable } from './server/operations/closable-iterable.ts';
 export type { SchedulingPolicy } from './server/task-queue-types.ts';
-export { createReplayLiveFeed, decodeCursor, encodeCursor } from './server/workflow-event-feed.ts';
-export type {
-  Cursor,
-  ReplayLiveFeed,
-  ReplayLiveFeedBackend,
-  ReplayLiveSubscribeOptions,
-  SequencedEventEnvelope,
-} from './server/workflow-event-feed.ts';
+export { createReplayLiveFeed } from './server/workflow-event-feed.ts';
+export { decodeCursor, encodeCursor } from './server/sequence-cursor.ts';
+export type { Cursor, SequencedEventEnvelope } from './server/sequence-cursor.ts';
+export type { ReplayLiveFeed, ReplayLiveFeedBackend, ReplayLiveSubscribeOptions } from './server/replay-live-feed-types.ts';
 export * from './service-worker/index.ts';
 export { CompressedStorage } from './storage/compressed-storage.ts';
 export * from './storage/http.ts';

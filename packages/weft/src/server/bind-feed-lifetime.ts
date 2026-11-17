@@ -8,7 +8,8 @@
  * @module server/bind-feed-lifetime
  */
 
-import type { ReplayLiveFeed, SequencedEventEnvelope } from './workflow-event-feed.ts';
+import type { SequencedEventEnvelope } from './sequence-cursor.ts';
+import type { ReplayLiveFeed } from './replay-live-feed-types.ts';
 
 /**
  * Binds every subscription a feed hands out to a lifetime signal.

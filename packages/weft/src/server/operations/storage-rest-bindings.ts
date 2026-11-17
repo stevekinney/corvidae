@@ -1,8 +1,8 @@
-import { copyBytesToArrayBuffer } from '../../core/byte-arrays.ts';
+import { copyBytesToArrayBuffer } from '../byte-arrays.ts';
 import type { RestInputContext } from '../rest-binding.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestBodyBounded, readRestJsonBody } from '../rest-body.ts';
-import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
+import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
 import type {
   StorageConditionalBatchOutput,
   StoragePreviewOutput,

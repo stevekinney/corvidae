@@ -1,3 +1,4 @@
+import type { EventSelector } from './event-selector.ts';
 import {
   JSON_RPC_ERROR_CODES,
   JSON_RPC_VERSION,
@@ -5,7 +6,7 @@ import {
   type JsonRpcId,
 } from './json-rpc-protocol.ts';
 import { isPlainObject } from './json-schema-utilities.ts';
-import type { Cursor, EventSelector } from './workflow-event-feed.ts';
+import type { Cursor } from './sequence-cursor.ts';
 
 type JsonRpcErrorPayload = {
   readonly code: number;
@@ -65,8 +66,36 @@ function validateSubscribeSelector(rawSelector: unknown): SubscribeSelectorValid
   return invalidParams("params.selector must be 'events' or 'tokens'");
 }
 
+/**
+ * The number of bytes `text` takes encoded as UTF-8, counting a lone surrogate as the three bytes
+ * of U+FFFD, as `Buffer.byteLength` does. Allocates nothing, so a frame over the limit is measured
+ * without a copy.
+ */
+export function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (unit < 0x80) {
+      bytes += 1;
+    } else if (unit < 0x800) {
+      bytes += 2;
+    } else if (unit >= 0xd800 && unit <= 0xdbff && index + 1 < text.length) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
+
 export function validateMessageFrame(frame: string, maxFrameBytes: number): MessageFrameValidation {
-  const frameByteLength = Buffer.byteLength(frame, 'utf8');
+  const frameByteLength = utf8ByteLength(frame);
   if (frameByteLength > maxFrameBytes) {
     return {
       ok: false,

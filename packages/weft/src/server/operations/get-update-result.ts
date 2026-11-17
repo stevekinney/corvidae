@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 
 const getUpdateResultInput = z.object({
   updateId: z

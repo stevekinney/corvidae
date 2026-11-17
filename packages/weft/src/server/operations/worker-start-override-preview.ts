@@ -17,7 +17,7 @@ import {
 import { type OperationFault } from '../operation-fault.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
 import {
   UPGRADE_REFUSAL_REASON_PREFIX,

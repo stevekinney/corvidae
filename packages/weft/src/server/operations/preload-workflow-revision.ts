@@ -15,7 +15,7 @@ import type { WorkflowRevisionRecord } from '../../core/catalog/index.ts';
 import { isWeftError } from '../../core/weft-error.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationWorkflowMethods } from './operation-helpers.ts';
 import {
   readWorkflowCatalogRestBody,

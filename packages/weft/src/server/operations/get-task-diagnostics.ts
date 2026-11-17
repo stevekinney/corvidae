@@ -42,7 +42,7 @@ import { z } from 'zod';
 
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 import { collectTaskDiagnostics } from './task-diagnostics-collector.ts';

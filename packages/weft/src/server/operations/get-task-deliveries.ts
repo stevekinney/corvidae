@@ -67,7 +67,7 @@ import {
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 import {
   getTaskDeadLetterInput,

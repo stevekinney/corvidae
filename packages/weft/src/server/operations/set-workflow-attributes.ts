@@ -5,13 +5,10 @@ import { StartWorkflowValidationError } from '../../core/start-workflow-validati
 import type { SearchAttributeValue } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import {
-  assertOperationEngineMethods,
-  invalidParamsFault,
-  isOperationFault,
-} from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { invalidParamsFault, isOperationFault } from '../operation-fault-helpers.ts';
 import { normalizeDateTimeSearchAttributes } from './start-workflow-options.ts';
 
 const setWorkflowAttributesInput = z.object({

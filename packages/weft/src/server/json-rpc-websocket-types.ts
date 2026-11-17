@@ -1,8 +1,6 @@
-import type { FleetEventFeed } from './fleet-event-feed.ts';
+import type { ConnectionLease } from './connection-lease.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
 import type { Principal } from './principal.ts';
-import type { ConnectionLease } from './runtime/context.ts';
-import type { WorkflowEventFeed } from './workflow-event-feed.ts';
 
 export type JsonRpcWebSocketEmitter = {
   send(message: string): void;
@@ -13,8 +11,13 @@ export type JsonRpcWebSocketSessionOptions = {
   readonly engine: unknown;
   readonly principal: Principal;
   readonly emitter: JsonRpcWebSocketEmitter;
-  readonly feed?: WorkflowEventFeed;
-  readonly fleetFeed?: FleetEventFeed;
+  /**
+   * The host's workflow event feed, handed to `weft.workflows.subscribe` as `host.feed`. The
+   * session only checks that it is present; the operation that reads it knows its type.
+   */
+  readonly feed?: unknown;
+  /** The host's fleet event feed, handed to `weft.events.subscribe` as `host.fleetFeed`. */
+  readonly fleetFeed?: unknown;
   readonly acquireWorkflowSubscription?: () => ConnectionLease;
   readonly acquireFleetSubscription?: () => ConnectionLease;
   readonly maxSubscriptions?: number;

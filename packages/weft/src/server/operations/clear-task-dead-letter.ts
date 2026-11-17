@@ -6,7 +6,7 @@ import { canClearDeadLetteredTask } from '../../core/task-ledger/task-ledger-tra
 import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { requireOperationStorage } from './operation-helpers.ts';
 
 const clearTaskDeadLetterInput = z.object({

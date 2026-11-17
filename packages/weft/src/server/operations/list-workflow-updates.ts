@@ -7,7 +7,7 @@ import {
   type UpdateHistoryPage,
 } from '../../core/update-history.ts';
 import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { UnknownRestBinding } from '../rest-binding.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 /**

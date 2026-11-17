@@ -11,7 +11,7 @@ import {
 } from '../../core/types/bulk.ts';
 import type { AccessPolicy } from '../authorization.ts';
 import type { Principal } from '../principal.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+import { invalidParamsFault } from '../operation-fault-helpers.ts';
 
 export const bulkOperationControlInputSchema = z.object({
   dryRun: z
