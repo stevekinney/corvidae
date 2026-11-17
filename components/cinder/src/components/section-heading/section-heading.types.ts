@@ -6,7 +6,7 @@ import type { Snippet } from 'svelte';
  *  Deeper levels (`5`, `6`) are intentionally excluded: this primitive targets
  *  top-level section headers in page bodies, and very deep nesting usually
  *  signals a structural problem. Expand the union additively if needed later. */
-export type SectionHeadingLevel = 2 | 3 | 4;
+export type SectionHeadingLevel = 1 | 2 | 3 | 4;
 export type SectionHeadingProps = {
   /** Section title text. Rendered inside the dynamic heading element. */
   title: string;
