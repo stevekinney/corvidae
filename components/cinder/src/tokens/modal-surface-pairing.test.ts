@@ -13,6 +13,9 @@ import { parse } from 'postcss';
 import { readJsonRecord } from '../styles/token-contrast-test-readers.ts';
 
 const modalCss = await Bun.file(new URL('../components/modal/modal.css', import.meta.url)).text();
+const drawerCss = await Bun.file(
+  new URL('../components/drawer/drawer.css', import.meta.url),
+).text();
 const popoverCss = await Bun.file(
   new URL('../components/popover/popover.css', import.meta.url),
 ).text();
@@ -55,6 +58,22 @@ describe('Modal surface pairing (COR-2448 AC6)', () => {
       ".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel",
     ]) {
       expect(modal.get(selector), selector).toBe(popover);
+    }
+  });
+
+  // The Drawer is the same sheet in the same dark theme: a bottom drawer and a docked dialog must
+  // not paint two different surfaces (header and body on the page surface under a lighter strip).
+  test('the Drawer paints every one of its surfaces with the Modal token', () => {
+    const popover = backgrounds(popoverCss).get('.cinder-popover');
+    const drawer = backgrounds(drawerCss);
+    for (const selector of [
+      '.cinder-drawer__panel',
+      '.cinder-drawer__header',
+      '.cinder-drawer__body',
+      '.cinder-drawer__footer',
+      '.cinder-drawer__peek',
+    ]) {
+      expect(drawer.get(selector), selector).toBe(popover);
     }
   });
 
