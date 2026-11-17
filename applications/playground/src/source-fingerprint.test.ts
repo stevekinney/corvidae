@@ -270,7 +270,7 @@ describe('newestSourceMtimeMs', () => {
     // `scripts` trees. An edit to the server/bundler code must move the
     // fingerprint too, or a running server with the old server code loaded
     // looks fresh.
-    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('components/cinder/scripts');
+    expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('components/tokens/scripts');
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('internal/component-tooling/scripts');
     expect(FINGERPRINT_SOURCE_DIRECTORIES).toContain('applications/playground/scripts');
   });

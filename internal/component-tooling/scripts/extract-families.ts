@@ -91,6 +91,8 @@ const UNREWRITTEN = [
   'internal/component-tooling/family-rules.fixture.json',
   'internal/component-tooling/scripts/extract-families.ts',
   'internal/component-tooling/scripts/move-cinder-tooling.ts',
+  // It prints the theme JSON under core-relative names, and finds the tokens package itself.
+  'internal/component-tooling/scripts/css-fingerprint.ts',
   'internal/component-tooling/scripts/extract-families.test.ts',
   'internal/component-tooling/scripts/split-layout.ts',
   'internal/component-tooling/scripts/derive-families.ts',
@@ -295,11 +297,23 @@ function buildOwnership(plan: Plan): string[] {
       }
       if (path.startsWith('src/') && !plan.owner.has(path)) {
         problems.push(`${posix.join(directory, path)} is in no package of families.json.`);
+      } else if (directory === core && !PACKAGE_FILES.has(path) && !plan.owner.has(path)) {
+        // Core keeps the rest of its directory (its other scripts, baselines and documentation).
+        plan.owner.set(path, 'core');
       }
     }
   }
   return problems;
 }
+
+/** The files every package has its own of, which no path names across packages. */
+const PACKAGE_FILES = new Set([
+  'package.json',
+  'tsconfig.json',
+  'tsconfig.browser.json',
+  'bunfig.toml',
+  'README.md',
+]);
 
 function planMoves(plan: Plan): void {
   const { root, core } = plan.options;
@@ -546,21 +560,99 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
   const { core } = plan.options;
   if (UNREWRITTEN.includes(path) || !TEXT_FILE.test(path)) return;
   const original = read(plan, path);
-  if (!original.includes(core)) return;
-  const pattern = new RegExp(
-    `${core.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}/((?:src|scripts)(?:/[\\w.@-]+)*)`,
-    'g',
-  );
-  const next = original.replace(pattern, (whole, virtual: string) => {
-    let owner = plan.owner.get(virtual);
-    if (owner === undefined) {
-      const owners = ownersUnder(plan, virtual);
-      if (owners.size === 1) owner = [...owners][0];
-    }
-    if (owner === undefined || packageDirectory(plan, owner) === core) return whole;
-    return `${packageDirectory(plan, owner)}/${virtual}`;
-  });
+  let next = original;
+  if (next.includes(core)) {
+    const pattern = new RegExp(
+      `${escapeRegExp(core)}/((?:src|scripts|documentation)(?:/[\\w.@-]+)*)`,
+      'g',
+    );
+    next = next.replace(pattern, (whole, virtual: string) => {
+      const owner = ownerOfPath(plan, virtual);
+      if (owner === undefined || packageDirectory(plan, owner) === core) return whole;
+      return `${packageDirectory(plan, owner)}/${virtual}`;
+    });
+  }
+  for (const fixup of FIXUPS) {
+    if (plan.extracted.has(fixup.package)) next = next.replaceAll(fixup.from, fixup.to);
+  }
+  if (CODE_FILE.test(path)) next = rewriteSegmentedPaths(plan, path, next);
   if (next !== original) write(plan, path, next);
+}
+
+const escapeRegExp = (text: string) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The package that holds a virtual file, or every file under a virtual directory. */
+function ownerOfPath(plan: Plan, virtual: string): string | undefined {
+  const owner = plan.owner.get(virtual);
+  if (owner !== undefined) return owner;
+  const owners = ownersUnder(plan, virtual);
+  return owners.size === 1 ? [...owners][0] : undefined;
+}
+
+/**
+ * Text replacements a move needs that no path pattern finds, applied once the named package has
+ * moved: a command that names the package that now runs a script.
+ */
+const FIXUPS: readonly { package: string; from: string; to: string }[] = [
+  ...['tokens:generate', 'tokens:check'].map((script) => ({
+    package: 'tokens',
+    from: `bun run --filter=@lostgradient/cinder ${script}`,
+    to: `bun run --filter=@lostgradient/tokens ${script}`,
+  })),
+];
+
+const SEGMENTED =
+  /(?:(['"])([\w.@-]+)\1\s*,\s*)?(['"])(src|scripts|documentation)\3((?:\s*,\s*(['"])[\w.@-]+\6)+)/g;
+const SINGLE = /(['"])((?:src|scripts|documentation)\/[\w.@/-]+)\1/g;
+
+/**
+ * Rewrites a path a script builds from a package root and core-relative segments (`join(root,
+ * 'src', 'tokens', 'registry.generated.json')`, or `join(root, 'src/tokens/…')`) when another
+ * package now holds what it names: the root is assumed to be a package's directory under
+ * `components/`, so `'..', '<package>'` reaches the sibling. A file outside the component packages
+ * is read only when it names core, so a path into its own `src` is left alone.
+ */
+function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
+  const home = packageOf(plan, path)?.name;
+  const coreName = posix.basename(plan.options.core);
+  const scripts = path.startsWith('internal/component-tooling/scripts/');
+  // Outside the packages a test often builds a tree of its own, which these paths would mistake.
+  if (home === undefined && (isTestFile(path) || (!scripts && !text.includes(coreName)))) {
+    return text;
+  }
+  const target = (virtual: string): string | undefined => {
+    const owner = ownerOfPath(plan, virtual);
+    if (owner === undefined || owner === 'tooling') return undefined;
+    const directory = packageDirectory(plan, owner);
+    const base = home === undefined ? plan.options.core : packageDirectory(plan, home);
+    return directory === base ? undefined : posix.basename(directory);
+  };
+  let next = text.replace(
+    SEGMENTED,
+    (
+      whole,
+      quote: string | undefined,
+      previous: string | undefined,
+      startQuote: string,
+      start: string,
+      rest: string,
+    ) => {
+      const segments = [...rest.matchAll(/(['"])([\w.@-]+)\1/g)].map((match) => match[2] ?? '');
+      const name = target([start, ...segments].join('/'));
+      if (name === undefined || previous === name) return whole;
+      const tail = `${startQuote}${start}${startQuote}${rest}`;
+      if (previous === coreName && quote !== undefined) {
+        return `${quote}${name}${quote}, ${tail}`;
+      }
+      const head = previous === undefined ? '' : `${quote}${previous}${quote}, `;
+      return `${head}${startQuote}..${startQuote}, ${startQuote}${name}${startQuote}, ${tail}`;
+    },
+  );
+  next = next.replace(SINGLE, (whole, quote: string, virtual: string) => {
+    const name = target(virtual.replace(/\/$/, ''));
+    return name === undefined ? whole : `${quote}../${name}/${virtual}${quote}`;
+  });
+  return next;
 }
 
 type ExportedNames = { runtime: string[]; types: string[] };
@@ -840,6 +932,12 @@ function scanDependencies(
     }
   }
   for (const dependency of Object.keys(dependencies)) delete devDependencies[dependency];
+  // The type declarations core lists for a dependency come with it.
+  for (const dependency of [...Object.keys(dependencies), ...Object.keys(devDependencies)]) {
+    const types = `@types/${dependency.replace(/^@/, '').replace('/', '__')}`;
+    const version = versions[types];
+    if (version !== undefined) devDependencies[types] = version;
+  }
   return { dependencies, devDependencies, problems };
 }
 
@@ -928,6 +1026,13 @@ function writeManifests(plan: Plan): void {
     scripts['lint:fix'] =
       `oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json ${sources}`;
     scripts['test'] = (scripts['test'] ?? '').replace(/ src$/, ` ${sources}`);
+    // svelte-check fails on a package with no Svelte file; TypeScript checks one of those.
+    const svelte = [...plan.owner].some(
+      ([file, owner]) => owner === name && file.endsWith('.svelte'),
+    );
+    scripts['typecheck'] = svelte
+      ? 'svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings'
+      : 'tsc --noEmit -p ./tsconfig.json';
     Object.assign(scripts, movedScripts(plan, coreManifest, name));
     const next: Manifest = {
       ...manifest,

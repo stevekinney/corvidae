@@ -205,6 +205,7 @@
         "scripts/tokens/**",
         "src/styles/check-token-contrast-*",
         "src/styles/token-contrast-test-readers.ts",
+        "documentation/tokens.md",
         "src/utilities/theme-transition-guard.ts",
         "src/_internal/own-entry.ts"
       ],

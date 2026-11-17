@@ -19,14 +19,14 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import * as values from '@lostgradient/tokens/styles/check-token-contrast-test-values.ts';
 import {
   AA_TEXT,
   NON_TEXT,
   contrastRatio,
   isInSrgbGamut,
   wcagLuminance,
-} from '../tokens/runtime/contrast/index.ts';
-import * as values from './check-token-contrast-test-values.ts';
+} from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
 const { bg, dangerBg, dangerBorder, dangerFg, surface, surfaceInset, surfaceRaised } = values;
 

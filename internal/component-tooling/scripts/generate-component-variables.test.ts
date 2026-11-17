@@ -5,7 +5,7 @@ import { readCorpusVariables, resolveRegistryPath } from './generate-component-v
 describe('component variable corpus lookup', () => {
   test('resolves the component registry', () => {
     expect(resolveRegistryPath('/workspace/components/cinder/src/components/button')).toBe(
-      '/workspace/components/cinder/src/tokens/registry.generated.json',
+      '/workspace/components/tokens/src/tokens/registry.generated.json',
     );
   });
 

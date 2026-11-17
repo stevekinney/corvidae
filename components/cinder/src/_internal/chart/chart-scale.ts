@@ -1,9 +1,9 @@
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 import type {
   BarChartDatum,
   BarChartSeries,
   ChartNumericValue,
 } from '../../components/chart.types.ts';
-import { ownEntry } from '../own-entry.ts';
 import type { NormalizedXValue } from './chart-model-utilities.ts';
 
 export function normalizeNumericValue(

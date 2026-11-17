@@ -1,6 +1,6 @@
 # Status Triple Equivalence — Alert / Banner / Callout
 
-Pre-flight analysis for **Batch D** of the CSS audit. The goal was to migrate the duplicated `light-dark(oklch(from var(--cinder-{status}) ...))` math in Alert, Banner, and Callout to the existing `--cinder-color-{status}-{bg,fg,border}` triples defined in `components/cinder/src/styles/tokens-base.css` lines 182–196.
+Pre-flight analysis for **Batch D** of the CSS audit. The goal was to migrate the duplicated `light-dark(oklch(from var(--cinder-{status}) ...))` math in Alert, Banner, and Callout to the existing `--cinder-color-{status}-{bg,fg,border}` triples defined in `components/tokens/src/styles/tokens-base.css` lines 182–196.
 
 A `component × status` pair migrates only when **both** light and dark themes satisfy:
 

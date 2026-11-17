@@ -7,11 +7,11 @@
 
 import { expect, test } from '@playwright/test';
 
-import { buildTokensBaseCss } from '../../../components/cinder/scripts/tokens/css-generator.ts';
+import { buildTokensBaseCss } from '../../../components/tokens/scripts/tokens/css-generator.ts';
 import type {
   ResolverDocument,
   TokenDocument,
-} from '../../../components/cinder/src/tokens/runtime/types.ts';
+} from '../../../components/tokens/src/tokens/runtime/types.ts';
 
 const TEST_PROPERTY = '--test-reduced-motion-duration';
 

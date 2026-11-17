@@ -9,7 +9,7 @@ import {
   contrastRatio,
   type OklchColor,
   wcagLuminance,
-} from '../../tokens/runtime/contrast/color-math.ts';
+} from '@lostgradient/tokens/tokens/runtime/contrast/color-math.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 setupHappyDom();
@@ -20,7 +20,10 @@ const { default: PageHeader } = await import('./page-header.svelte');
 const { default: Harness } = await import('./page-header-variants-harness.test.svelte');
 
 const stylesheet = readFileSync(new URL('./page-header.css', import.meta.url), 'utf8');
-const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+const tokens = readFileSync(
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+  'utf8',
+);
 
 // A controllable IntersectionObserver, installed before each render, so a test can scroll the
 // large title away and back without a layout engine.

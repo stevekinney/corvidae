@@ -25,8 +25,8 @@ export const defaultOutputRoot = join(repositoryRoot, 'tmp/cinder-design-system/
 /** The repository-relative source paths `tokens.json` records in its `meta`. */
 export const sourcePaths = {
   tokens: [
-    'components/cinder/src/tokens/resolved/light.json',
-    'components/cinder/src/tokens/resolved/dark.json',
+    'components/tokens/src/tokens/resolved/light.json',
+    'components/tokens/src/tokens/resolved/dark.json',
   ],
   styles: ['components/cinder/src/styles/all.css'],
   components: ['components/cinder/components.json', 'components/editor/components.json'],

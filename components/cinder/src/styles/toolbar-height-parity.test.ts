@@ -28,7 +28,7 @@ const SIZES = ['sm', 'md', 'lg'] as const;
 type Size = (typeof SIZES)[number];
 
 const rootValues = new Map<string, string>();
-parse(await read('./tokens-base.css')).walkRules((rule: Rule) => {
+parse(await read('../../../tokens/src/styles/tokens-base.css')).walkRules((rule: Rule) => {
   if (rule.selector !== ':root') return;
   rule.walkDecls((declaration) => {
     if (declaration.prop.startsWith('--')) rootValues.set(declaration.prop, declaration.value);

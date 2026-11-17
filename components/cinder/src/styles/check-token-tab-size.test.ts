@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { css, readTokenValue } from './check-token-contrast-test-values.ts';
+import {
+  css,
+  readTokenValue,
+} from '@lostgradient/tokens/styles/check-token-contrast-test-values.ts';
 
 describe('--cinder-type-tab-size (declaration, value, usage)', () => {
   it('is declared in tokens-base.css', () => {

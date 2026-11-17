@@ -204,7 +204,7 @@ export async function buildTokensBaseCss(
   const css = `/**
  * GENERATED FILE. Do not edit by hand.
  *
- * Source: components/cinder/src/tokens/ (the DTCG token corpus).
+ * Source: components/tokens/src/tokens/ (the DTCG token corpus).
  * Regenerate: ${REGENERATE_COMMAND}
  */
 

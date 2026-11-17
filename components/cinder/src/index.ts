@@ -339,11 +339,8 @@ export type {
 
 export { formatDuration } from './utilities/format-duration.ts';
 
-export {
-  THEME_CHANGING_ATTRIBUTE,
-  guardThemeTransitions,
-} from './utilities/theme-transition-guard.ts';
-export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
+export { THEME_CHANGING_ATTRIBUTE, guardThemeTransitions } from '@lostgradient/tokens';
+export type { ThemeTransitionGuardOptions } from '@lostgradient/tokens';
 
 export { default as DataList } from './components/data-list/index.ts';
 export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
@@ -1445,26 +1442,25 @@ export * from './highlighters/shiki/index.ts';
 // registries. Nothing else in cinder imports `default.ts`.
 export { shikiHighlighter as fullShikiHighlighter } from './highlighters/shiki/default.ts';
 
-export { default as tokenResolver } from './tokens/cinder.resolver.json' with { type: 'json' };
-export { default as tokenIndex } from './tokens/index.json' with { type: 'json' };
-export { default as motionDefaultTokens } from './tokens/modes/motion-default.tokens.json' with { type: 'json' };
-export { default as motionForcedReducedTokens } from './tokens/modes/motion-forced-reduced.tokens.json' with { type: 'json' };
-export { default as motionReducedTokens } from './tokens/modes/motion-reduced.tokens.json' with { type: 'json' };
 export {
   TOKEN_REGISTRY,
-  type TokenRegistry,
-  type TokenRegistryEntry,
-} from './tokens/registry.generated.ts';
-export { default as resolvedDarkReducedMotionTokens } from './tokens/resolved/dark-reduced-motion.json' with { type: 'json' };
-export { default as resolvedDarkTokens } from './tokens/resolved/dark.json' with { type: 'json' };
-export { default as resolvedLightReducedMotionTokens } from './tokens/resolved/light-reduced-motion.json' with { type: 'json' };
-export { default as resolvedLightTokens } from './tokens/resolved/light.json' with { type: 'json' };
-export { default as colorTokens } from './tokens/sets/colors.tokens.json' with { type: 'json' };
-export { default as componentTokens } from './tokens/sets/components.tokens.json' with { type: 'json' };
-export { default as foundationTokens } from './tokens/sets/foundation.tokens.json' with { type: 'json' };
-export { default as semanticTokens } from './tokens/sets/semantic.tokens.json' with { type: 'json' };
-export { default as darkThemeTokens } from './tokens/themes/dark.tokens.json' with { type: 'json' };
-export { default as lightThemeTokens } from './tokens/themes/light.tokens.json' with { type: 'json' };
+  colorTokens,
+  componentTokens,
+  darkThemeTokens,
+  foundationTokens,
+  lightThemeTokens,
+  motionDefaultTokens,
+  motionForcedReducedTokens,
+  motionReducedTokens,
+  resolvedDarkReducedMotionTokens,
+  resolvedDarkTokens,
+  resolvedLightReducedMotionTokens,
+  resolvedLightTokens,
+  semanticTokens,
+  tokenIndex,
+  tokenResolver,
+} from '@lostgradient/tokens';
+export type { TokenRegistry, TokenRegistryEntry } from '@lostgradient/tokens';
 
 export type { CarouselSlideContext } from './components/carousel/index.ts';
 export type { ConnectionIndicatorSchemaProps } from './components/connection-indicator/index.ts';

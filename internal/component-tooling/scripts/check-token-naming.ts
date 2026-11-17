@@ -35,7 +35,14 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
-const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
+const registryPath = join(
+  componentsRoot,
+  '..',
+  'tokens',
+  'src',
+  'tokens',
+  'registry.generated.json',
+);
 
 /** Lowercase kebab-case: letters and digits, single hyphens between them. */
 export const SEGMENT_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

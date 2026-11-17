@@ -304,7 +304,17 @@ const RESOLVED_THEME_DIRECTORY = join('src', 'tokens', 'resolved');
 
 /** The SHA-256 of every resolved theme JSON of a package, as `path hash` lines sorted by path. */
 export function themeJsonHashes(packageRoot: string): string[] {
-  const directory = resolve(packageRoot, RESOLVED_THEME_DIRECTORY);
+  let directory = resolve(packageRoot, RESOLVED_THEME_DIRECTORY);
+  // Once the tokens package holds the theme JSON (COR-2083), core reads it through its dependency.
+  if (!existsSync(directory)) {
+    directory = resolve(
+      packageRoot,
+      'node_modules',
+      '@lostgradient',
+      'tokens',
+      RESOLVED_THEME_DIRECTORY,
+    );
+  }
   if (!existsSync(directory)) return [];
   return readdirSync(directory)
     .filter((name) => name.endsWith('.json'))

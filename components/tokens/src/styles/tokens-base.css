@@ -1,8 +1,8 @@
 /**
  * GENERATED FILE. Do not edit by hand.
  *
- * Source: components/cinder/src/tokens/ (the DTCG token corpus).
- * Regenerate: bun run --filter=@lostgradient/cinder tokens:generate
+ * Source: components/tokens/src/tokens/ (the DTCG token corpus).
+ * Regenerate: bun run --filter=@lostgradient/tokens tokens:generate
  */
 
 :root {

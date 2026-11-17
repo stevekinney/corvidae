@@ -30,7 +30,14 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
 const componentsSource = join(componentsRoot, 'src', 'components');
-const registryPath = join(componentsRoot, 'src', 'tokens', 'registry.generated.json');
+const registryPath = join(
+  componentsRoot,
+  '..',
+  'tokens',
+  'src',
+  'tokens',
+  'registry.generated.json',
+);
 
 /** One field of an already-narrowed object, without asserting a shape over it. */
 function readField(source: object, field: string): unknown {

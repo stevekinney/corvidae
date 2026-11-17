@@ -142,6 +142,8 @@ const TREE: Record<string, string> = {
     "import { join } from 'node:path';",
     '',
     "const css = readFileSync(join(import.meta.dir, '../../styles/components.css'), 'utf8');",
+    "const packageRoot = join(import.meta.dir, '..', '..', '..');",
+    "const all = readFileSync(join(packageRoot, 'src', 'styles', 'components.css'), 'utf8');",
     '',
   ].join('\n'),
   [`${CORE}/src/components/card/index.ts`]:
@@ -163,6 +165,10 @@ const TREE: Record<string, string> = {
     "const button = 'components/cinder/src/components/button/button.css';",
     "const all = 'components/cinder/src/components';",
     "const tokens = 'components/cinder/scripts/tokens/check.ts';",
+    "const runtime = join(root, 'components', 'cinder', 'src', 'tokens', 'runtime', 'index.ts');",
+    "const sibling = join(cinderRoot, 'src', 'tokens', 'runtime');",
+    "const single = join(cinderRoot, 'src/tokens/runtime/index.ts');",
+    "const own = join(cinderRoot, 'src', 'styles', 'components.css');",
     '',
   ].join('\n'),
 };
@@ -321,6 +327,14 @@ describe('extract-families', () => {
     );
     expect(manifest(root, 'tokens').scripts['tokens:check']).toBe('bun scripts/tokens/check.ts');
     expect(manifest(root, 'tokens').scripts['lint']).toContain('bun run tokens:check');
+    expect(read(root, 'scripts/check.ts')).toContain(
+      [
+        "const runtime = join(root, 'components', 'tokens', 'src', 'tokens', 'runtime', 'index.ts');",
+        "const sibling = join(cinderRoot, '..', 'tokens', 'src', 'tokens', 'runtime');",
+        "const single = join(cinderRoot, '../tokens/src/tokens/runtime/index.ts');",
+        "const own = join(cinderRoot, 'src', 'styles', 'components.css');",
+      ].join('\n'),
+    );
     const coreAfterTokens = JSON.parse(read(root, `${CORE}/package.json`)) as {
       scripts: Record<string, string>;
       exports: Record<string, { default: string }>;
@@ -364,6 +378,9 @@ describe('extract-families', () => {
     );
     expect(read(root, 'components/button/src/components/button/button.test.ts')).toContain(
       "'../../../../cinder/src/styles/components.css'",
+    );
+    expect(read(root, 'components/button/src/components/button/button.test.ts')).toContain(
+      "join(packageRoot, '..', 'cinder', 'src', 'styles', 'components.css')",
     );
     expect(read(root, `${CORE}/src/exports/extra.ts`)).toContain(
       "from '@lostgradient/card/_internal/card-context.ts'",

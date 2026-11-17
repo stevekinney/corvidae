@@ -5,7 +5,7 @@
 
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 
-@import './tokens.css' layer(cinder.tokens);
+@import '@lostgradient/tokens/tokens.css' layer(cinder.tokens);
 @import './foundation.css' layer(cinder.foundation);
 @import './components/_dismiss-button.css';
 @import './components/_field-label.css';

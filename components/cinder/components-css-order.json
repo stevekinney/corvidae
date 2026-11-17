@@ -1,0 +1,673 @@
+{
+  "$comment": "The order of core's components.css (P-COR-101). extract-families.ts regenerates components.css from it; a component stylesheet missing from it fails the extraction, so place a new component here.",
+  "imports": [
+    {
+      "path": "src/styles/components/_control-item.css",
+      "comment": "/**\n * Component styles aggregator.\n * Each component owns its CSS partial under ./components/<name>.css.\n * Wave 2 of Phase 2 adds all imports in alphabetical order.\n */"
+    },
+    {
+      "path": "src/styles/components/_field-label.css"
+    },
+    {
+      "path": "src/styles/components/_floating-surface.css"
+    },
+    {
+      "path": "src/styles/components/_form-field-error.css"
+    },
+    {
+      "path": "src/styles/components/_label-value.css"
+    },
+    {
+      "path": "src/styles/components/_option-group.css"
+    },
+    {
+      "path": "src/styles/components/_row-item.css"
+    },
+    {
+      "path": "src/styles/components/_input-frame.css"
+    },
+    {
+      "path": "src/styles/components/_field-chevron.css"
+    },
+    {
+      "path": "src/components/access-gate/access-gate.css"
+    },
+    {
+      "path": "src/components/accordion-item/accordion-item.css"
+    },
+    {
+      "path": "src/components/accordion/accordion.css"
+    },
+    {
+      "path": "src/components/action-row/action-row.css"
+    },
+    {
+      "path": "src/components/alert-dialog/alert-dialog.css"
+    },
+    {
+      "path": "src/components/alert/alert.css"
+    },
+    {
+      "path": "src/components/app-bar/app-bar.css"
+    },
+    {
+      "path": "src/components/approval-card/approval-card.css"
+    },
+    {
+      "path": "src/components/area-chart/area-chart.css"
+    },
+    {
+      "path": "src/components/aspect-ratio/aspect-ratio.css"
+    },
+    {
+      "path": "src/components/attempts-indicator/attempts-indicator.css"
+    },
+    {
+      "path": "src/components/audio-player/audio-player.css"
+    },
+    {
+      "path": "src/components/autocomplete/autocomplete.css"
+    },
+    {
+      "path": "src/components/avatar-group/avatar-group.css"
+    },
+    {
+      "path": "src/components/avatar/avatar.css"
+    },
+    {
+      "path": "src/components/backdrop/backdrop.css"
+    },
+    {
+      "path": "src/components/badge/badge.css"
+    },
+    {
+      "path": "src/components/banner/banner.css"
+    },
+    {
+      "path": "src/components/bar-chart/bar-chart.css"
+    },
+    {
+      "path": "src/components/breadcrumbs/breadcrumbs.css"
+    },
+    {
+      "path": "src/components/button-group/button-group.css"
+    },
+    {
+      "path": "src/components/button/button.css"
+    },
+    {
+      "path": "src/components/calendar/calendar.css"
+    },
+    {
+      "path": "src/components/callout/callout.css"
+    },
+    {
+      "path": "src/components/capability-gate/capability-gate.css"
+    },
+    {
+      "path": "src/components/card/card.css"
+    },
+    {
+      "path": "src/components/carousel/carousel.css"
+    },
+    {
+      "path": "src/components/checkbox-group/checkbox-group.css"
+    },
+    {
+      "path": "src/components/checkbox/checkbox.css"
+    },
+    {
+      "path": "src/components/chip/chip.css"
+    },
+    {
+      "path": "src/components/choice-grid/choice-grid.css"
+    },
+    {
+      "path": "src/components/citation/citation.css"
+    },
+    {
+      "path": "src/components/code-block/code-block.css"
+    },
+    {
+      "path": "src/components/code-location/code-location.css"
+    },
+    {
+      "path": "src/components/collapsible/collapsible.css"
+    },
+    {
+      "path": "src/components/color-field/color-field.css"
+    },
+    {
+      "path": "src/components/color-picker/color-picker.css"
+    },
+    {
+      "path": "src/components/color-swatch-picker/color-swatch-picker.css"
+    },
+    {
+      "path": "src/components/combobox/combobox.css"
+    },
+    {
+      "path": "src/components/command-menu/command-menu.css"
+    },
+    {
+      "path": "src/components/command-palette/command-palette.css"
+    },
+    {
+      "path": "src/components/confirm-dialog/confirm-dialog.css"
+    },
+    {
+      "path": "src/components/connection-indicator/connection-indicator.css"
+    },
+    {
+      "path": "src/components/container/container.css"
+    },
+    {
+      "path": "src/components/context-menu/context-menu.css"
+    },
+    {
+      "path": "src/components/copy-button/copy-button.css"
+    },
+    {
+      "path": "src/components/copyable-value/copyable-value.css"
+    },
+    {
+      "path": "src/components/data-grid/data-grid.css"
+    },
+    {
+      "path": "src/components/data-list/data-list.css"
+    },
+    {
+      "path": "src/components/data-table/data-table.css"
+    },
+    {
+      "path": "src/components/date-picker/date-picker.css"
+    },
+    {
+      "path": "src/components/date-range-field/date-range-field.css"
+    },
+    {
+      "path": "src/components/decision-deck/decision-deck.css"
+    },
+    {
+      "path": "src/components/description-list/description-list.css"
+    },
+    {
+      "path": "src/components/diff-statistics/diff-statistics.css"
+    },
+    {
+      "path": "src/components/divider/divider.css"
+    },
+    {
+      "path": "src/components/donut-chart/donut-chart.css"
+    },
+    {
+      "path": "src/components/docked-action-bar/docked-action-bar.css"
+    },
+    {
+      "path": "src/components/drawer/drawer.css"
+    },
+    {
+      "path": "src/components/dropdown/dropdown.css"
+    },
+    {
+      "path": "src/components/duration-field/duration-field.css"
+    },
+    {
+      "path": "src/components/empty-state/empty-state.css"
+    },
+    {
+      "path": "src/components/error-state/error-state.css"
+    },
+    {
+      "path": "src/components/feed-boundary/feed-boundary.css"
+    },
+    {
+      "path": "src/components/feed-event/feed-event.css"
+    },
+    {
+      "path": "src/components/feed/feed.css"
+    },
+    {
+      "path": "src/components/popover/popover-surface.css"
+    },
+    {
+      "path": "src/components/file-upload/file-upload.css"
+    },
+    {
+      "path": "src/components/filter-bar/filter-bar.css"
+    },
+    {
+      "path": "src/components/find-bar/find-bar.css"
+    },
+    {
+      "path": "src/components/floating-action/floating-action.css"
+    },
+    {
+      "path": "src/components/footer/footer.css"
+    },
+    {
+      "path": "src/components/form-actions/form-actions.css"
+    },
+    {
+      "path": "src/components/form-field/form-field.css"
+    },
+    {
+      "path": "src/components/form-section/form-section.css"
+    },
+    {
+      "path": "src/components/form/form.css"
+    },
+    {
+      "path": "src/components/grid-list/grid-list.css"
+    },
+    {
+      "path": "src/components/grouped-list/grouped-list.css"
+    },
+    {
+      "path": "src/components/grouped-list-item/grouped-list-item.css"
+    },
+    {
+      "path": "src/components/grid/grid.css"
+    },
+    {
+      "path": "src/components/hover-card/hover-card.css"
+    },
+    {
+      "path": "src/components/image/image.css"
+    },
+    {
+      "path": "src/components/inline-confirm/inline-confirm.css"
+    },
+    {
+      "path": "src/components/inline-loading/inline-loading.css"
+    },
+    {
+      "path": "src/components/input/input.css"
+    },
+    {
+      "path": "src/components/inspector/inspector.css"
+    },
+    {
+      "path": "src/components/inspector-row/inspector-row.css"
+    },
+    {
+      "path": "src/components/invocation-rule-builder/invocation-rule-builder.css"
+    },
+    {
+      "path": "src/styles/components/json-highlight.css"
+    },
+    {
+      "path": "src/components/json-editor/json-editor.css"
+    },
+    {
+      "path": "src/components/json-schema-editor/json-schema-editor.css"
+    },
+    {
+      "path": "src/components/json-viewer/json-viewer.css"
+    },
+    {
+      "path": "src/components/kanban-board/kanban-board.css"
+    },
+    {
+      "path": "src/components/kbd/kbd.css"
+    },
+    {
+      "path": "src/components/key-facts/key-facts.css"
+    },
+    {
+      "path": "src/components/week-schedule/week-schedule.css"
+    },
+    {
+      "path": "src/components/map-marker/map-marker.css"
+    },
+    {
+      "path": "src/components/map-legend/map-legend.css"
+    },
+    {
+      "path": "src/components/key-value-editor/key-value-editor.css"
+    },
+    {
+      "path": "src/components/keyboard-shortcuts/keyboard-shortcuts.css"
+    },
+    {
+      "path": "src/components/label/label.css"
+    },
+    {
+      "path": "src/components/line-chart/line-chart.css"
+    },
+    {
+      "path": "src/components/link/link.css"
+    },
+    {
+      "path": "src/components/list-detail/list-detail.css"
+    },
+    {
+      "path": "src/components/load-more/load-more.css"
+    },
+    {
+      "path": "src/components/marquee/marquee.css"
+    },
+    {
+      "path": "src/components/masonry/masonry.css"
+    },
+    {
+      "path": "src/components/matrix-chart/matrix-chart.css"
+    },
+    {
+      "path": "src/components/mega-menu/mega-menu.css"
+    },
+    {
+      "path": "src/components/menu-bar/menu-bar.css"
+    },
+    {
+      "path": "src/components/message/message.css"
+    },
+    {
+      "path": "src/components/meter/meter.css"
+    },
+    {
+      "path": "src/components/modal/modal.css"
+    },
+    {
+      "path": "src/components/multi-select/multi-select.css"
+    },
+    {
+      "path": "src/components/navigation-bar/navigation-bar.css"
+    },
+    {
+      "path": "src/components/navigation-item/navigation-item.css"
+    },
+    {
+      "path": "src/components/number-input/number-input.css"
+    },
+    {
+      "path": "src/components/page-header/page-header.css"
+    },
+    {
+      "path": "src/components/pagination/pagination.css"
+    },
+    {
+      "path": "src/components/parameter-field/parameter-field.css"
+    },
+    {
+      "path": "src/components/payload-inspector/payload-inspector.css"
+    },
+    {
+      "path": "src/components/permission-matrix/permission-matrix.css"
+    },
+    {
+      "path": "src/components/phone-input/phone-input.css"
+    },
+    {
+      "path": "src/components/pin-input/pin-input.css"
+    },
+    {
+      "path": "src/components/policy-lock/policy-lock.css"
+    },
+    {
+      "path": "src/components/popover/popover.css"
+    },
+    {
+      "path": "src/components/preview-panel/preview-panel.css"
+    },
+    {
+      "path": "src/components/pricing-card/pricing-card.css"
+    },
+    {
+      "path": "src/components/progress/progress.css"
+    },
+    {
+      "path": "src/components/qr-code/qr-code.css"
+    },
+    {
+      "path": "src/components/_radio/radio.css"
+    },
+    {
+      "path": "src/components/quota-meter/quota-meter.css"
+    },
+    {
+      "path": "src/components/radio-group/radio-group.css"
+    },
+    {
+      "path": "src/components/rating/rating.css"
+    },
+    {
+      "path": "src/components/relative-time/relative-time.css"
+    },
+    {
+      "path": "src/components/resizable-panels/resizable-panels.css"
+    },
+    {
+      "path": "src/components/restart-state/restart-state.css"
+    },
+    {
+      "path": "src/components/run-step-timeline/run-step-timeline.css"
+    },
+    {
+      "path": "src/components/schedule-builder/schedule-builder.css"
+    },
+    {
+      "path": "src/components/schema-form/schema-form.css"
+    },
+    {
+      "path": "src/components/schema-view/schema-view.css"
+    },
+    {
+      "path": "src/components/scroll-area/scroll-area.css"
+    },
+    {
+      "path": "src/components/search-field/search-field.css"
+    },
+    {
+      "path": "src/components/secret-value-field/secret-value-field.css"
+    },
+    {
+      "path": "src/components/section/section.css"
+    },
+    {
+      "path": "src/components/section-heading/section-heading.css"
+    },
+    {
+      "path": "src/components/segmented-control/segmented-control.css"
+    },
+    {
+      "path": "src/components/select/select.css"
+    },
+    {
+      "path": "src/components/selectable-row/selectable-row.css"
+    },
+    {
+      "path": "src/components/selection-popover/selection-popover.css"
+    },
+    {
+      "path": "src/components/setting-row/setting-row.css"
+    },
+    {
+      "path": "src/components/share-card/share-card.css"
+    },
+    {
+      "path": "src/components/shortcut-field/shortcut-field.css"
+    },
+    {
+      "path": "src/components/shortcut-hint/shortcut-hint.css"
+    },
+    {
+      "path": "src/components/side-navigation-group/side-navigation-group.css"
+    },
+    {
+      "path": "src/components/side-navigation-item/side-navigation-item.css"
+    },
+    {
+      "path": "src/components/side-navigation/side-navigation.css"
+    },
+    {
+      "path": "src/components/sidebar/sidebar.css"
+    },
+    {
+      "path": "src/components/skeleton/skeleton.css"
+    },
+    {
+      "path": "src/components/slider/slider.css"
+    },
+    {
+      "path": "src/components/sortable-list/sortable-list.css"
+    },
+    {
+      "path": "src/components/source-diff-viewer/source-diff-viewer.css"
+    },
+    {
+      "path": "src/components/sparkbar/sparkbar.css"
+    },
+    {
+      "path": "src/components/spectrogram/spectrogram.css"
+    },
+    {
+      "path": "src/components/spectrum-chart/spectrum-chart.css"
+    },
+    {
+      "path": "src/components/speed-dial/speed-dial.css"
+    },
+    {
+      "path": "src/components/spinner/spinner.css"
+    },
+    {
+      "path": "src/components/spotlight/spotlight.css"
+    },
+    {
+      "path": "src/components/stack/stack.css"
+    },
+    {
+      "path": "src/components/stacked-list-item/stacked-list-item.css"
+    },
+    {
+      "path": "src/components/stale-region/stale-region.css"
+    },
+    {
+      "path": "src/components/statistic-group/statistic-group.css"
+    },
+    {
+      "path": "src/components/statistic/statistic.css"
+    },
+    {
+      "path": "src/components/status-dot/status-dot.css"
+    },
+    {
+      "path": "src/components/steps/steps.css"
+    },
+    {
+      "path": "src/components/surface/surface.css"
+    },
+    {
+      "path": "src/components/tab-list/tab-list.css"
+    },
+    {
+      "path": "src/components/tab-panel/tab-panel.css"
+    },
+    {
+      "path": "src/components/tab/tab.css"
+    },
+    {
+      "path": "src/components/table-body/table-body.css"
+    },
+    {
+      "path": "src/components/table-cell/table-cell.css"
+    },
+    {
+      "path": "src/components/table-header-cell/table-header-cell.css"
+    },
+    {
+      "path": "src/components/table-header/table-header.css"
+    },
+    {
+      "path": "src/components/table-of-contents/table-of-contents.css"
+    },
+    {
+      "path": "src/components/table-row/table-row.css"
+    },
+    {
+      "path": "src/components/table/table.css"
+    },
+    {
+      "path": "src/components/tabs/tabs.css"
+    },
+    {
+      "path": "src/components/tag-input/tag-input.css"
+    },
+    {
+      "path": "src/components/terminal-frame/terminal-frame.css"
+    },
+    {
+      "path": "src/components/terminal-output/terminal-output.css"
+    },
+    {
+      "path": "src/components/text/text.css"
+    },
+    {
+      "path": "src/components/textarea/textarea.css"
+    },
+    {
+      "path": "src/components/time-field/time-field.css"
+    },
+    {
+      "path": "src/components/timeline/timeline.css"
+    },
+    {
+      "path": "src/components/toast-region/toast-region.css"
+    },
+    {
+      "path": "src/components/theme-switch/theme-switch.css"
+    },
+    {
+      "path": "src/components/toggle/toggle.css"
+    },
+    {
+      "path": "src/components/tool-call-panel/tool-call-panel.css"
+    },
+    {
+      "path": "src/components/tool-call-rail/tool-call-rail.css"
+    },
+    {
+      "path": "src/components/tool-picker/tool-picker.css"
+    },
+    {
+      "path": "src/components/toolbar/toolbar.css"
+    },
+    {
+      "path": "src/components/tooltip/tooltip.css"
+    },
+    {
+      "path": "src/components/transfer-list/transfer-list.css"
+    },
+    {
+      "path": "src/components/tree/tree.css"
+    },
+    {
+      "path": "src/components/video-player/video-player.css"
+    },
+    {
+      "path": "src/components/virtual-list/virtual-list.css"
+    },
+    {
+      "path": "src/components/waveform/waveform.css"
+    },
+    {
+      "path": "src/components/zoom-pan-viewer/zoom-pan-viewer.css"
+    },
+    {
+      "path": "src/styles/components/_dismiss-button.css",
+      "comment": "/* Shared internal partial — base chrome for Alert/Banner dismiss buttons.\n * Imported last to preserve the original source order of the inline rule it\n * replaced (it previously sat after every component import). */"
+    },
+    {
+      "path": "src/styles/components/_status-surface.css",
+      "comment": "/* Shared internal partial — soft status-surface recipe for Alert/Banner/Callout.\n * The recipe is import-order-independent by design: its classes are self-doubled\n * (`.x.x`, specificity 0,2,0) so they beat the component base (0,1,0) whether the\n * partial loads before or after the component CSS — which matters because in\n * slim/sidecar mode (`cinder/styles` + `cinder/<component>/styles`) the component\n * base loads AFTER this partial. The stripe-wins-over-border behavior and the\n * forced-colors reset are both resolved WITHIN the partial (rule order +\n * specificity there), not by this import's position. The placement here is just\n * conventional grouping with the other shared partials.\n * Like every shared partial here (_dismiss-button, _input-frame, …), this is part\n * of `cinder/styles` only — a per-component sidecar (`cinder/alert/styles`) does\n * NOT include it; the documented contract requires importing `cinder/styles`\n * first through the package root entry. */"
+    },
+    {
+      "path": "src/styles/components/_scroll-fade.css",
+      "comment": "/* Shared internal partial — scroll-driven edge-fade recipe (see the file's\n * own doc comment for the full design rationale). Grouped with the other\n * shared partials for the same reason as `_status-surface.css` above. */"
+    }
+  ],
+  "unlisted": [
+    "src/components/choice-grid-item/choice-grid-item.css",
+    "src/components/command-item/command-item.css"
+  ]
+}

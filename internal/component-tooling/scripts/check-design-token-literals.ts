@@ -81,7 +81,10 @@ function readTypedTokens(): ReadonlyArray<{
   cssProperty: string | undefined;
 }> {
   const parsed: unknown = JSON.parse(
-    readFileSync(join(componentsRoot, 'src', 'tokens', 'resolved', 'light.json'), 'utf8'),
+    readFileSync(
+      join(componentsRoot, '..', 'tokens', 'src', 'tokens', 'resolved', 'light.json'),
+      'utf8',
+    ),
   );
   if (typeof parsed !== 'object' || parsed === null) {
     throw new Error('resolved/light.json is not a JSON object');

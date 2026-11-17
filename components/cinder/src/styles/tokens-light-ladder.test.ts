@@ -59,7 +59,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'bun:test';
 
 const tokensCss = readFileSync(
-  fileURLToPath(new URL('./tokens-base.css', import.meta.url)),
+  fileURLToPath(new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url)),
   'utf8',
 );
 

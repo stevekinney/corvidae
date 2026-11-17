@@ -250,7 +250,7 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
 
   test('the secondary Button edge reads the control tier through --cinder-button-border', () => {
     const tokens = readFileSync(
-      join(import.meta.dirname, '../../../../components/cinder/src/styles/tokens-base.css'),
+      join(import.meta.dirname, '../../../../components/tokens/src/styles/tokens-base.css'),
       'utf8',
     );
     const declarations = [...tokens.matchAll(/--cinder-button-border:\s*([^;]+);/g)].map((match) =>

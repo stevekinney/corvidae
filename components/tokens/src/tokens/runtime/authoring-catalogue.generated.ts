@@ -2,7 +2,7 @@
  * GENERATED FILE. Do not edit by hand.
  *
  * The token authoring catalogue: one record per public registry entry.
- * Regenerate: bun run --filter=@lostgradient/cinder tokens:generate
+ * Regenerate: bun run --filter=@lostgradient/tokens tokens:generate
  */
 
 import type { AuthoringCatalogue } from './authoring-types.ts';

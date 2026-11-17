@@ -3,7 +3,7 @@
  *
  * The source digest of the bundled Cinder token base: a digest of the resolver
  * and documents only, so nothing that changes at publish time can alter it.
- * Regenerate: bun run --filter=@lostgradient/cinder tokens:generate
+ * Regenerate: bun run --filter=@lostgradient/tokens tokens:generate
  */
 
 export const BASE_SOURCE_DIGEST =

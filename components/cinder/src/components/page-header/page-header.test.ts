@@ -227,7 +227,10 @@ describe('PageHeader', () => {
   });
 
   test('the title renders at the page-title token, which resolves to 24px', () => {
-    const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+    const tokens = readFileSync(
+      new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+      'utf8',
+    );
     const declared = (name: string) =>
       tokens.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
     const titleRule = stylesheet.match(/__title\s*\{[^}]*\}/)?.[0] ?? '';

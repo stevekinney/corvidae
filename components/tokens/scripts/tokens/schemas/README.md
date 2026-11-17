@@ -1,6 +1,6 @@
 # Vendored DTCG 2025.10 JSON Schemas
 
-These two files are vendored (not fetched at test/build time) so `tokens:validate` and `bun test components/cinder/scripts/tokens` never depend on network access.
+These two files are vendored (not fetched at test/build time) so `tokens:validate` and `bun test components/tokens/scripts/tokens` never depend on network access.
 
 - `dtcg-format-2025-10.json`—retrieved from `https://www.designtokens.org/schemas/2025.10/format.json`
 - `dtcg-resolver-2025-10.json`—retrieved from `https://www.designtokens.org/schemas/2025.10/resolver.json`
@@ -9,7 +9,7 @@ Retrieved: 2026-08-26, via `curl -sS <url> -o <file>`.
 
 ## `$schema` draft
 
-Both files declare `"$schema": "http://json-schema.org/draft-07/schema#"`. Despite the resolver schema being newer/more elaborate than the format schema, it is also draft-07— there is no 2020-12 schema in this pair. `components/cinder/scripts/tokens/schema-validators.ts` therefore uses the plain `Ajv` export from `ajv` (draft-07 support is Ajv's default) for _both_ validators, and compiles each into a standalone module (`src/tokens/runtime/*-validator.generated.js`) at `tokens:generate` time, so the runtime in `src/tokens/runtime/validate-schema.ts` never compiles a schema itself. `Ajv2020` from `ajv/dist/2020` is not needed.
+Both files declare `"$schema": "http://json-schema.org/draft-07/schema#"`. Despite the resolver schema being newer/more elaborate than the format schema, it is also draft-07— there is no 2020-12 schema in this pair. `components/tokens/scripts/tokens/schema-validators.ts` therefore uses the plain `Ajv` export from `ajv` (draft-07 support is Ajv's default) for _both_ validators, and compiles each into a standalone module (`src/tokens/runtime/*-validator.generated.js`) at `tokens:generate` time, so the runtime in `src/tokens/runtime/validate-schema.ts` never compiles a schema itself. `Ajv2020` from `ajv/dist/2020` is not needed.
 
 ## These are single, self-contained files—the `format/*` and `resolver/*` sub-paths do not exist as separate endpoints
 
@@ -17,7 +17,7 @@ Both schemas reference URLs like `https://www.designtokens.org/schemas/2025.10/f
 
 ## `cinder.resolver.json` was migrated to the official object-keyed resolver shape
 
-Cinder originally authored `components/cinder/src/tokens/cinder.resolver.json` with **arrays**: `sets: {name, source}[]`, `modifiers: {name, values, default?}[]`, `resolutionOrder: string[]`. That shape declared the official `"$schema": ".../resolver.json"` URI but never actually conformed to it—a real, confirmed divergence caught while building `validateResolverDocumentSchema`, not a bug in the validator.
+Cinder originally authored `components/tokens/src/tokens/cinder.resolver.json` with **arrays**: `sets: {name, source}[]`, `modifiers: {name, values, default?}[]`, `resolutionOrder: string[]`. That shape declared the official `"$schema": ".../resolver.json"` URI but never actually conformed to it—a real, confirmed divergence caught while building `validateResolverDocumentSchema`, not a bug in the validator.
 
 The official 2025.10 resolver schema requires **objects keyed by name**: `sets` is an object whose values are `{ sources: [...] }` (note: `sources`, not `source`); `modifiers` is an object whose values are `{ contexts: { <contextName>: sources[] }, default? }`; `resolutionOrder` is an array of `{ "$ref": "#/sets/..." }` / `{ "$ref": "#/modifiers/..." }` reference objects (or inline set/modifier definitions), not an array of plain modifier-name strings.
 

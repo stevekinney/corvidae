@@ -619,7 +619,7 @@ describe('JSON Schema validation (resolver)', () => {
   });
 
   test('accepts the real, migrated cinder.resolver.json file on disk', () => {
-    // CIN-27 migrated components/cinder/src/tokens/cinder.resolver.json
+    // CIN-27 migrated components/tokens/src/tokens/cinder.resolver.json
     // from an array-based shape to the official object-keyed shape. This
     // reads the real file (not a copy) so a future edit to it that drifts
     // from the official schema fails here, not only in tokens:validate.
