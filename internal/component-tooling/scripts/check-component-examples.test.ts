@@ -9,7 +9,7 @@ import {
 import type { Manifest } from './generate-manifest.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
-const PACKAGE_ROOT = `${import.meta.dir}/../../../components/cinder`;
+const PACKAGE_ROOT = `${import.meta.dir}/../../../components/core`;
 const COMPONENT_SCHEMA_PATH = `${import.meta.dir}/../src/schemas/examples.schema.json`;
 const MANIFEST_PATH = `${PACKAGE_ROOT}/.metadata/components.json`;
 

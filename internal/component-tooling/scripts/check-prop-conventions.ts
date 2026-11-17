@@ -7,7 +7,7 @@ import ts from 'typescript';
 import { cinderComponentRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(scriptDirectory, '../../../components/cinder');
+const packageRoot = resolve(scriptDirectory, '../../../components/core');
 const repositoryRoot = resolve(packageRoot, '..', '..');
 const documentationPath = 'documentation/component-api-conventions.md';
 const componentsDirectory = resolve(packageRoot, 'src', 'components');
@@ -1107,7 +1107,7 @@ export function collectComponentNameShadowViolations(
  * not hardcoded sibling paths (`../../chat`, `../../editor`) — so this
  * script does not take a structural dependency on any other workspace.
  * `components:cinder`'s `check:prop-conventions` script passes
- * `components/cinder/src/components`, `components/chat/src/lib/components`,
+ * `components/core/src/components`, `components/chat/src/lib/components`,
  * and `components/editor/src/lib/components` explicitly; with no arguments
  * this falls back to cinder's own `componentsDirectory`, matching the
  * script's original (cinder-only) behavior.

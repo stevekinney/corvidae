@@ -3,7 +3,7 @@
  * the Svelte 5 compile plugin BEFORE any test file's imports resolve, then a
  * single global `afterEach(cleanup)` for `@testing-library/svelte`.
  *
- * Ported from `cinder/components/cinder/scripts/preload.ts` +
+ * Ported from `cinder/components/core/scripts/preload.ts` +
  * `src/test/happy-dom.ts` + `src/test/register-global-cleanup.ts` — the
  * proven working incantation for Bun + happy-dom + Svelte 5 component
  * tests, copied rather than re-derived. See the inline comments below for

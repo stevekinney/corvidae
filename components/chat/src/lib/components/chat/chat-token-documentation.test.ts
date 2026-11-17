@@ -10,8 +10,8 @@ import { join } from 'node:path';
  */
 const repositoryRoot = join(import.meta.dirname, '..', '..', '..', '..', '..', '..');
 const chatComponentDirectory = import.meta.dirname;
-const tokenDocumentationPath = join(repositoryRoot, 'components/cinder/documentation/tokens.md');
-const tokenBaseCssPath = join(repositoryRoot, 'components/cinder/src/styles/tokens-base.css');
+const tokenDocumentationPath = join(repositoryRoot, 'components/core/documentation/tokens.md');
+const tokenBaseCssPath = join(repositoryRoot, 'components/core/src/styles/tokens-base.css');
 
 describe('Chat tokens in the Cinder token reference', () => {
   it('documents the Chat typography control and keeps it out of the color contract', () => {

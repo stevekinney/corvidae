@@ -34,7 +34,7 @@ if (!preview) {
   const watchRoots = [
     resolve(root, 'src'),
     resolve(root, 'fixtures'),
-    ...['cinder', 'chat', 'editor'].map((name) => resolve(repository, 'components', name, 'src')),
+    ...['core', 'chat', 'editor'].map((name) => resolve(repository, 'components', name, 'src')),
     // The application fixtures the chat, editor and terminal packages own (COR-2080).
     ...['chat', 'editor', 'terminal'].map((name) =>
       resolve(repository, 'components', name, 'browser', 'fixtures'),

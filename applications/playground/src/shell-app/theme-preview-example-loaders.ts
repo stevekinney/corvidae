@@ -17,31 +17,31 @@ export function exampleComponent(module: ExampleModule): Component<{ mountIdPref
 export const THEME_PREVIEW_EXAMPLE_LOADERS: Readonly<Record<string, () => Promise<ExampleModule>>> =
   {
     'button/variants': () =>
-      import('../../../../components/cinder/src/components/button/examples/variants.example.svelte'),
+      import('../../../../components/core/src/components/button/examples/variants.example.svelte'),
     'link/basic': () =>
-      import('../../../../components/cinder/src/components/link/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/link/examples/basic.example.svelte'),
     'input/basic': () =>
-      import('../../../../components/cinder/src/components/input/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/input/examples/basic.example.svelte'),
     'input/with-error': () =>
-      import('../../../../components/cinder/src/components/input/examples/with-error.example.svelte'),
+      import('../../../../components/core/src/components/input/examples/with-error.example.svelte'),
     'select/basic': () =>
-      import('../../../../components/cinder/src/components/select/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/select/examples/basic.example.svelte'),
     'select/with-error': () =>
-      import('../../../../components/cinder/src/components/select/examples/with-error.example.svelte'),
+      import('../../../../components/core/src/components/select/examples/with-error.example.svelte'),
     'checkbox/basic': () =>
-      import('../../../../components/cinder/src/components/checkbox/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/checkbox/examples/basic.example.svelte'),
     'checkbox/with-error': () =>
-      import('../../../../components/cinder/src/components/checkbox/examples/with-error.example.svelte'),
+      import('../../../../components/core/src/components/checkbox/examples/with-error.example.svelte'),
     'tabs/basic': () =>
-      import('../../../../components/cinder/src/components/tabs/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/tabs/examples/basic.example.svelte'),
     'callout/variants': () =>
-      import('../../../../components/cinder/src/components/callout/examples/variants.example.svelte'),
+      import('../../../../components/core/src/components/callout/examples/variants.example.svelte'),
     'table/basic': () =>
-      import('../../../../components/cinder/src/components/table/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/table/examples/basic.example.svelte'),
     'line-chart/multi-series': () =>
-      import('../../../../components/cinder/src/components/line-chart/examples/multi-series.example.svelte'),
+      import('../../../../components/core/src/components/line-chart/examples/multi-series.example.svelte'),
     'modal/with-form': () =>
-      import('../../../../components/cinder/src/components/modal/examples/with-form.example.svelte'),
+      import('../../../../components/core/src/components/modal/examples/with-form.example.svelte'),
     'popover/basic': () =>
-      import('../../../../components/cinder/src/components/popover/examples/basic.example.svelte'),
+      import('../../../../components/core/src/components/popover/examples/basic.example.svelte'),
   };

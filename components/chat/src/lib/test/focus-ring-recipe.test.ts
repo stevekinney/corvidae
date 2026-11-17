@@ -226,9 +226,7 @@ describe('Chat focus-ring recipes', () => {
     // Cinder paints that ring as a box-shadow on the button itself, which is the painted face;
     // the 44px hit extension is the separate ::before pseudo-element and carries no ring.
     const buttonCss = readFileSync(
-      fileURLToPath(
-        new URL('../../../../cinder/src/components/button/button.css', import.meta.url),
-      ),
+      fileURLToPath(new URL('../../../../core/src/components/button/button.css', import.meta.url)),
       'utf8',
     );
     const ring = findRules(buttonCss, '.cinder-button:focus-visible').find(

@@ -92,7 +92,7 @@ describe('the token runtime browser bundle', () => {
     expect(bundleText.length).toBeGreaterThan(200_000);
     expect(graph.length).toBeGreaterThan(30);
     expect(
-      graph.some((file) => file.path.endsWith('components/cinder/src/tokens/runtime/index.ts')),
+      graph.some((file) => file.path.endsWith('components/core/src/tokens/runtime/index.ts')),
     ).toBe(true);
   });
 
@@ -137,7 +137,7 @@ describe('the token runtime browser bundle', () => {
       (file) =>
         /\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:prettier|ajv|ajv-formats|postcss|stylelint)\//.test(
           file.path,
-        ) || /\/components\/cinder\/scripts\//.test(file.path),
+        ) || /\/components\/core\/scripts\//.test(file.path),
     );
     expect(tooling.map((file) => file.path)).toEqual([]);
   });
@@ -155,13 +155,13 @@ describe('the token runtime browser bundle', () => {
   it('only pulls the runtime tree and its pure dependencies into the graph', () => {
     const outside = graph.filter(
       (file) =>
-        !/\/components\/cinder\/src\/tokens\//.test(file.path) &&
+        !/\/components\/core\/src\/tokens\//.test(file.path) &&
         !/\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:postcss-value-parser|culori)\//.test(
           file.path,
         ) &&
         !file.path.endsWith('/entry.ts') &&
         // A pure, import-free helper (one `Object.hasOwn` read) the token runtime shares.
-        !file.path.endsWith('/components/cinder/src/_internal/own-entry.ts'),
+        !file.path.endsWith('/components/core/src/_internal/own-entry.ts'),
     );
     expect(outside.map((file) => file.path)).toEqual([]);
   });

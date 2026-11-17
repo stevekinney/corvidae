@@ -8,7 +8,7 @@
  *   - Duplicate the SSR-guard logic that `useReducedMotion` already handles.
  *   - Scatter the policy across components, making future changes error-prone.
  *
- * This script walks `components/cinder/src/{components,utilities,_internal}/**`
+ * This script walks `components/core/src/{components,utilities,_internal}/**`
  * and flags any `.svelte` or `.ts` file that contains BOTH a `matchMedia` call and a
  * `prefers-reduced-motion` string — the two-signal approach (see below) — so the guard
  * cannot be evaded by hoisting the query into a constant. The shared utility itself is
@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { cinderSourceRoots } from './discover-component-directories.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const srcRoot = resolve(scriptDirectory, '../../../components/cinder/src');
+const srcRoot = resolve(scriptDirectory, '../../../components/core/src');
 
 /**
  * Paths (relative to `src/`) permitted to call `matchMedia` with the

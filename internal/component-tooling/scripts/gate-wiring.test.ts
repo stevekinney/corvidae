@@ -10,13 +10,13 @@ import {
   findUninvokedChecks,
 } from './gate-wiring.ts';
 
-const PACKAGE_ROOT = join(import.meta.dirname, '../../../components/cinder');
+const PACKAGE_ROOT = join(import.meta.dirname, '../../../components/core');
 const SCRIPTS_DIRECTORY = import.meta.dirname;
 
 function readPackageScripts(): Record<string, string> {
   const manifest: unknown = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'));
   if (typeof manifest !== 'object' || manifest === null || !('scripts' in manifest)) {
-    throw new Error('components/cinder/package.json has no scripts.');
+    throw new Error('components/core/package.json has no scripts.');
   }
   return manifest.scripts as Record<string, string>;
 }

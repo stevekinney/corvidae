@@ -12,7 +12,7 @@ describe('static code block', () => {
       new URL('./component-page-static-code-block.svelte', import.meta.url),
     ).text();
     const codeBlockDirectory = new URL(
-      '../../../components/cinder/src/components/code-block/',
+      '../../../components/core/src/components/code-block/',
       import.meta.url,
     );
     const codeBlockSource = await Bun.file(new URL('code-block.svelte', codeBlockDirectory)).text();

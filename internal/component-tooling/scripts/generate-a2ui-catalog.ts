@@ -184,7 +184,7 @@ export type VendoredSchemas = {
 // Paths
 // ---------------------------------------------------------------------------
 
-const PACKAGE_ROOT = join(import.meta.dir, '../../../components/cinder');
+const PACKAGE_ROOT = join(import.meta.dir, '../../../components/core');
 
 /** Absolute path of the catalog the `metadata` task writes. */
 export const CATALOG_PATH = join(metadataRoot(PACKAGE_ROOT), 'a2ui-catalog.json');
@@ -212,7 +212,7 @@ const BUREAU_PROVENANCE_PATH = join(
 );
 /** The command that brings Bureau's copy back in step. */
 export const WRITE_BUREAU_COMMAND =
-  'cd components/cinder && bun scripts/generate-a2ui-catalog.ts --write-bureau';
+  'cd components/core && bun scripts/generate-a2ui-catalog.ts --write-bureau';
 /** Absolute path of the checked-in allowlist. */
 export const ALLOWLIST_PATH = join(PACKAGE_ROOT, 'scripts/a2ui-catalog-allowlist.json');
 

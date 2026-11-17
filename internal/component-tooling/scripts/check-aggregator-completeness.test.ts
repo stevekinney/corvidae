@@ -11,7 +11,7 @@ import {
 } from './check-aggregator-completeness.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const componentsRoot = resolve(scriptDirectory, '../../../components/cinder');
+const componentsRoot = resolve(scriptDirectory, '../../../components/core');
 const componentsSource = join(componentsRoot, 'src');
 const realComponentsDirectory = join(componentsSource, 'components');
 const realAggregator = join(componentsSource, 'styles', 'components.css');
