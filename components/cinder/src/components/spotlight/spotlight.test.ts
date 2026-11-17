@@ -43,11 +43,17 @@ describe('Spotlight', () => {
     expect(dot?.getAttribute('data-cinder-status')).toBe('online');
   });
 
-  test('value uses the default text colour, never the accent', () => {
+  // COR-2489 (owner decision 2026-11-16, "Yes, including the Spotlight value"): the focal value
+  // carries Cinder's colour, through a Cinder token, not default ink and not a page style.
+  test('value is drawn in the accent text colour through its Cinder token, not default ink', () => {
     const css = readFileSync(new URL('./spotlight.css', import.meta.url), 'utf8');
     const valueRule = /\.cinder-spotlight__value \{([^}]*)\}/.exec(css)?.[1] ?? '';
-    expect(valueRule).toContain('color: var(--cinder-text-default)');
-    expect(css).not.toContain('--cinder-accent');
+    expect(valueRule).toContain('color: var(--cinder-accent-text);');
+    expect(valueRule).not.toContain('--cinder-text-default');
+    // A token, not a literal colour.
+    expect(valueRule).not.toMatch(/color:\s*(oklch|rgb|#|hsl)/);
+    // The value is text, never a link: nothing underlines it.
+    expect(valueRule).not.toContain('text-decoration');
   });
 });
 

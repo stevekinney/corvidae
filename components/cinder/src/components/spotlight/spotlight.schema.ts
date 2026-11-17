@@ -7,7 +7,7 @@ const schema = {
     value: {
       type: 'string',
       description:
-        'The one focal value of the screen, such as "Ends in 45 min" or "2 need you". It is set at display size in the default text colour, never the accent.',
+        'The one focal value of the screen, such as "Ends in 45 min" or "2 need you". It is set at display size in the accent\'s text colour, so the screen\'s focus carries Cinder\'s colour.',
     },
     status: {
       enum: [
