@@ -10,8 +10,8 @@
  * a short page too, when its parent is a flex column at least as tall as the scrolling area (the
  * parent's own `gap` sets the space above it). It rides above the on-screen keyboard through
  * `--_cinder-keyboard-inset` (keyboard-inset.ts), clears the home indicator through
- * `env(safe-area-inset-bottom)`, and publishes its own height as `--_cinder-docked-action-bar-height`
- * (docked-bar-height.ts) so the toast region sits above it.
+ * `env(safe-area-inset-bottom)`, and while it is docked its top edge is counted in
+ * `--_cinder-docked-action-bar-height` (docked-bar-height.ts) so the toast region sits above it.
  *
  * The default is a flush strip with only a top border (row 26p: the phone decision bar). The
  * `card` variant is the bordered, rounded, raised card the run page draws on a wide screen

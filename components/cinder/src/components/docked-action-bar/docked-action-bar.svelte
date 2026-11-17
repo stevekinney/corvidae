@@ -21,7 +21,7 @@
   import { onMount } from 'svelte';
 
   import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
-  import { trackDockedBarHeight } from '../../_internal/docked-bar-height.ts';
+  import { trackDockedBar } from '../../_internal/docked-bar-height.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import StaleRegion from '../stale-region/stale-region.svelte';
   import type { DockedActionBarProps } from './docked-action-bar.types.ts';
@@ -42,12 +42,12 @@
 
   let barElement: HTMLDivElement | undefined = $state();
 
-  // Publish the bar's height so a toast sits above it, and the keyboard's height so the bar rides
-  // above the keyboard (rows 04u, 04w).
+  // Track the bar so a toast sits above it while it is docked, and publish the keyboard's height so
+  // the bar rides above the keyboard (rows 04u, 04w).
   onMount(() => trackKeyboardInset());
   $effect(() => {
     if (!barElement) return;
-    return trackDockedBarHeight(barElement);
+    return trackDockedBar(barElement);
   });
 </script>
 

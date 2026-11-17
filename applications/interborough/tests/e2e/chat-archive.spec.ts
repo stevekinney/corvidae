@@ -5,8 +5,9 @@
  * keeps it. The chat list leaves the archived chat out and ends with one Archived chats row, which
  * opens the archived chats in the same pane with Chats as the way back (owner decision, 2026-11-14);
  * the chat is there and opens from it. Unarchive brings the composer back with the focus in its box,
- * and once no chat is archived the row is gone. A chat that waits on an approval is not archived, and
- * says why. Each case runs at a phone's width, where the list is a screen of its own, and a desktop's.
+ * and once no chat is archived the row is gone. While a chat waits on an approval its menu holds
+ * Archive back, and says why. Each case runs at a phone's width, where the list is a screen of its
+ * own, and a desktop's.
  *
  * Each case starts chats of its own on the main host and deletes them afterwards, so the sample
  * world, which other specs count, is never archived. Only this file archives chats, and its cases
@@ -147,9 +148,11 @@ for (const viewport of VIEWPORTS) {
       // The row opens the archived chats in the same pane, with Chats as the way back.
       await archivedEntry(page).click();
       await expect(page).toHaveURL(/\/chats\?view=archived$/);
-      const back = page.getByRole('link', { name: LIST.backToChats, exact: true });
+      // Its visible label is its name, and it has no tooltip to open on the focus it is given.
+      const back = page.locator('[data-chats-view-back]');
       await expect(back).toBeFocused();
-      await expect(back).toHaveText(CHAT_COPY.sessionsTitle);
+      await expect(back).toHaveAccessibleName(CHAT_COPY.sessionsTitle);
+      await expect(back).not.toHaveAttribute('aria-describedby');
       await expect(chatRow(page, threadId)).toBeVisible();
       await expect(archivedEntry(page)).toHaveCount(0);
       await checkA11y(`the archived chats at ${viewport.width}px`);
@@ -177,23 +180,31 @@ for (const viewport of VIEWPORTS) {
       await expect(archivedEntry(page)).toHaveCount(0);
     });
 
-    test('refuses to archive a chat that waits on an approval, and says why', async ({
+    test('holds Archive back, with the reason, while the chat waits on an approval', async ({
       page,
       request,
       checkA11y,
     }) => {
       // The tool runner asks before it refunds, so its chat waits on the person.
       await openChat(page, request, 'archive-busy', 'demo:tool-runner', 'Refund order-1001');
+      await expect(page.locator('[data-approval-decision]')).toBeVisible();
 
       await moreButton(page).click();
-      await page.getByRole('menuitem', { name: MORE.archive, exact: true }).click();
-
-      await expect(page.locator('.cinder-toast', { hasText: MORE.archiving.busy })).toBeVisible();
+      const archive = page.getByRole('menuitem', { name: MORE.archive, exact: true });
+      await expect(archive).toBeVisible();
+      // Cinder's menu item marks itself disabled with `aria-disabled`, and stays focusable.
+      await expect(archive).toHaveAttribute('aria-disabled', 'true');
+      // The reason is drawn under Archive, with no hover, and is the item's description.
+      await expect(archive).not.toHaveAttribute('title');
+      await expect(archive).toHaveAccessibleDescription(MORE.archiveBlocked.approval);
+      await expect(archive.getByText(MORE.archiveBlocked.approval, { exact: true })).toBeVisible();
+      await expect(page.locator('.cinder-toast', { hasText: MORE.archiving.busy })).toHaveCount(0);
       await expect(archivedBar(page)).toHaveCount(0);
-      await checkA11y(`an archive refused at ${viewport.width}px`);
+      await checkA11y(`Archive held back at ${viewport.width}px`);
+      // The open menu, with Archive held back, is the state the design review reads.
       await captureForDesignReview(page, {
         route: '/chats/:chat',
-        state: 'archive refused while waiting',
+        state: 'archive held while waiting',
         source: SOURCE,
       });
     });

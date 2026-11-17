@@ -47,6 +47,11 @@ const schema = {
       type: 'boolean',
       description: 'When true the item is inert: click is blocked and aria-disabled is set.',
     },
+    disabledReason: {
+      type: 'string',
+      description:
+        "Why the item is off. While `disabled` is set it is drawn under the label as a second line in\nthe muted text colour, and it is the item's description (`aria-describedby`), so it reads on\na phone and by keyboard with no hover. Ignored while the item is enabled. Use it in place of\na `title`, which touch never shows.",
+    },
   },
   additionalProperties: false,
   metadata: {

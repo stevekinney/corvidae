@@ -117,11 +117,15 @@ describe('the chat list and archived chats', () => {
     expect(archivedEntry(region)).toBeNull();
   });
 
-  test('draws the row under the empty state when every chat is archived', async () => {
+  test('says no chat is open, not that there are none, over the row when every chat is archived', async () => {
     serveChats({ current: [] });
-    const { region, findByRole } = await openList();
+    const { region, findByRole, queryByRole } = await openList();
 
-    const title = await findByRole('heading', { level: 3, name: LIST.emptyTitle });
+    const title = await findByRole('heading', { level: 3, name: LIST.allArchived.title });
+    expect(title.closest('.cinder-empty-state')?.textContent).toContain(
+      LIST.allArchived.description,
+    );
+    expect(queryByRole('heading', { level: 3, name: LIST.emptyTitle })).toBeNull();
     await waitFor(() => expect(archivedEntry(region)).not.toBeNull());
     expect(
       title.compareDocumentPosition(archivedEntry(region)!) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -140,8 +144,11 @@ describe('the chat list and archived chats', () => {
     expect(within(region).getByRole('heading', { name: LIST.archivedTitle })).not.toBeNull();
     // The status segments count the chats that are not archived, so the view has none.
     expect(within(region).queryByRole('radiogroup', { name: LIST.segmentsLabel })).toBeNull();
-    const back = within(region).getByRole('link', { name: LIST.backToChats });
-    expect(back.textContent?.trim()).toBe(CHAT_COPY.sessionsTitle);
+    // Its visible label is its name, with no tooltip to open on the focus it is given.
+    const back = within(region).getByRole('link', { name: CHAT_COPY.sessionsTitle });
+    expect(back.hasAttribute('data-chats-view-back')).toBe(true);
+    expect(back.hasAttribute('aria-label')).toBe(false);
+    expect(back.hasAttribute('aria-describedby')).toBe(false);
     expect(document.activeElement === back).toBe(true);
     // Each archived chat opens as any chat does, and keeps the view.
     expect(region.querySelector('[data-chat="archived-1"] a[href]')?.getAttribute('href')).toBe(
