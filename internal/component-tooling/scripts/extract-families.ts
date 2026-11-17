@@ -48,7 +48,7 @@ import { parseArgs } from 'node:util';
 
 import ts from 'typescript';
 
-import { createPackage } from './create-package.ts';
+import { createPackage, packageManifest } from './create-package.ts';
 import {
   type DerivedFamilies,
   type FamilyRules,
@@ -606,7 +606,13 @@ function rewriteFile(plan: Plan, path: string): void {
     ) {
       continue;
     }
-    const base = joinVirtual(home.virtual, text);
+    // Where the string points now, in its own package or (written by an earlier run) another one;
+    // it is rewritten when the package that holds that file has since moved it.
+    const logical = posix.join(directory, home.virtual);
+    const pointed = packageOf(plan, posix.normalize(posix.join(posix.dirname(logical), text)));
+    if (pointed === undefined) continue;
+    const pointedDirectory = packageDirectory(plan, pointed.name);
+    const base = pointed.virtual;
     const file = resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
     let owner: string | undefined = file === undefined ? undefined : plan.owner.get(file);
     if (owner === undefined) {
@@ -614,14 +620,14 @@ function rewriteFile(plan: Plan, path: string): void {
       if (owners.size === 1) owner = [...owners][0];
       else if (
         owners.size > 1 &&
-        [...owners].some((name) => packageDirectory(plan, name) !== directory)
+        [...owners].some((name) => packageDirectory(plan, name) !== pointedDirectory)
       ) {
         plan.result.warnings.push(`${path}: ${text} names a directory several packages share.`);
       }
     }
-    if (owner === undefined || packageDirectory(plan, owner) === directory) continue;
+    if (owner === undefined || packageDirectory(plan, owner) === pointedDirectory) continue;
     const absoluteTarget = posix.join(packageDirectory(plan, owner), base);
-    let replacement = posix.relative(posix.dirname(path), absoluteTarget);
+    let replacement = posix.relative(posix.dirname(logical), absoluteTarget);
     if (text.endsWith('/') && !replacement.endsWith('/')) replacement += '/';
     if (!replacement.startsWith('.')) replacement = `./${replacement}`;
     rewritten.set(start, { length: text.length, text: replacement });
@@ -654,8 +660,10 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
       return `${packageDirectory(plan, owner)}/${virtual}`;
     });
   }
-  for (const fixup of FIXUPS) {
-    if (plan.extracted.has(fixup.package)) next = next.replaceAll(fixup.from, fixup.to);
+  for (const fixup of fixups(core)) {
+    if (plan.extracted.has(fixup.package) && !next.includes(fixup.to)) {
+      next = next.replaceAll(fixup.from, fixup.to);
+    }
   }
   if (CODE_FILE.test(path)) next = rewriteSegmentedPaths(plan, path, next);
   if (next !== original) write(plan, path, next);
@@ -673,16 +681,29 @@ function ownerOfPath(plan: Plan, virtual: string): string | undefined {
 
 /**
  * Text replacements a move needs that no path pattern finds, applied once the named package has
- * moved: a command that names the package that now runs a script.
+ * moved, and only to a file that does not hold `to` already, so a rerun adds nothing: a command
+ * that names the package that now runs a script, and the inputs that list core's scripts directory
+ * gaining the token scripts beside it (`core` is core's directory).
  */
-const FIXUPS: readonly { package: string; from: string; to: string }[] = [
-  'tokens:generate',
-  'tokens:check',
-].map((script) => ({
-  package: 'tokens',
-  from: `bun run --filter=@lostgradient/cinder ${script}`,
-  to: `bun run --filter=@lostgradient/tokens ${script}`,
-}));
+function fixups(core: string): readonly { package: string; from: string; to: string }[] {
+  return [
+    ...['tokens:generate', 'tokens:check'].map((script) => ({
+      package: 'tokens',
+      from: `bun run --filter=@lostgradient/cinder ${script}`,
+      to: `bun run --filter=@lostgradient/tokens ${script}`,
+    })),
+    {
+      package: 'tokens',
+      from: `"$TURBO_ROOT$/${core}/scripts/**",\n`,
+      to: `"$TURBO_ROOT$/${core}/scripts/**",\n        "$TURBO_ROOT$/components/tokens/scripts/**",\n`,
+    },
+    {
+      package: 'tokens',
+      from: `  '${core}/scripts',\n`,
+      to: `  '${core}/scripts',\n  'components/tokens/scripts',\n`,
+    },
+  ];
+}
 
 const SEGMENTED =
   /(?:(['"])([\w.@-]+)\1\s*,\s*)?(['"])(src|scripts|documentation)\3((?:\s*,\s*(['"])[\w.@-]+\6)+)/g;
@@ -735,8 +756,18 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
     const name = target(virtual.replace(/\/$/, ''));
     return name === undefined ? whole : `${quote}../${name}/${virtual}${quote}`;
   });
+  // A path an earlier run pointed into core (`'../cinder/src/…'`) follows the file when it moves on.
+  next = next.replace(SIBLING_SINGLE, (whole, quote: string, sibling: string, virtual: string) => {
+    if (sibling !== coreName) return whole;
+    const name = target(virtual.replace(/\/$/, ''));
+    return name === undefined || name === coreName
+      ? whole
+      : `${quote}../${name}/${virtual}${quote}`;
+  });
   return next;
 }
+
+const SIBLING_SINGLE = /(['"])\.\.\/([\w-]+)\/((?:src|scripts|documentation)\/[\w.@/-]+)\1/g;
 
 type ExportedNames = { runtime: string[]; types: string[] };
 
@@ -1084,8 +1115,9 @@ function writeManifests(plan: Plan): void {
       dependencies[dependency === 'tooling' ? TOOLING_PACKAGE : `${PACKAGE_SCOPE}${dependency}`] =
         'workspace:*';
     }
+    // The scaffold's tools and what the files import now: a test that moved on takes its own.
     const devDependencies: Record<string, string> = {
-      ...manifest.devDependencies,
+      ...(packageManifest(name)['devDependencies'] as Record<string, string>),
       ...scanned.devDependencies,
     };
     for (const dependency of Object.keys(dependencies)) delete devDependencies[dependency];
