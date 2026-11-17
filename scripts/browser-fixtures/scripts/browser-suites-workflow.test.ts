@@ -54,12 +54,28 @@ describe('the browser suites workflow', () => {
     expect(capture).not.toMatch(/run:[^\n]*\$\{\{ *inputs\./u);
   });
 
-  test('compares screenshots in block mode', () => {
-    expect(jobText('fixtures')).toContain('CINDER_VISUAL_DIFF: block\n');
+  test.each(['fixtures', 'packages'])('compares screenshots in block mode in the %s job', (job) => {
+    expect(jobText(job)).toContain('CINDER_VISUAL_DIFF: block\n');
+  });
+
+  // COR-2080: the specs moved into the chat, editor and terminal packages run only through their
+  // own `test:browser` tasks, so a workflow that stopped running `validate:batch` would drop them
+  // silently. The terminal's moved baselines need the baseline renderer too.
+  test('runs every package browser suite through validate:batch on the baseline renderer', () => {
+    const { playwrightVersion } = readRepositoryPins();
+    const packages = jobText('packages');
+    expect(packages).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
+    expect(packages).toContain('runs-on: ubuntu-24.04-arm\n');
+    expect(packages).toContain('if: ${{ inputs.fixtures }}\n');
+    expect(packages).toContain('- run: bun run validate:batch\n');
+    const manifest = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts['validate:batch']).toContain('bunx turbo run test:browser');
   });
 
   // Both suites gate (COR-2412). Job level only: a report upload step may fail without failing the job.
-  test.each(['fixtures', 'interborough'])('gates on the %s job', (job) => {
+  test.each(['fixtures', 'packages', 'interborough'])('gates on the %s job', (job) => {
     expect(jobText(job)).not.toMatch(/\n {4}continue-on-error:/u);
   });
 });

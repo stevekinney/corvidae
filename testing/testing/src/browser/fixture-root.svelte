@@ -15,6 +15,8 @@
 
   const props: Props = $props();
 
+  // Context is published once, while the root initializes, so the initial value is the one meant.
+  // svelte-ignore state_referenced_locally
   props.provideContext?.();
 
   const Child = $derived(props.component);

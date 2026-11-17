@@ -148,7 +148,7 @@ A blocking finding is one that makes a required task impossible, misleading, or 
 These do not replace the review:
 
 ```sh
-bun run test:browser:terminal
+bun run --cwd components/terminal test:browser:engines
 bunx prettier --check components/terminal/src/lib/components/terminal/terminal.a11y.md documentation/terminal/review-evidence.md documentation/terminal/review-runbook.md
 bun run validate
 ```

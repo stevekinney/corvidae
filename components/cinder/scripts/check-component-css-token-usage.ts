@@ -46,8 +46,9 @@
  *      Cinder component does (e.g. `--cinder-chat-font-size`,
  *      `--cinder-review-editor-popover-width`) — so a stale reference there is
  *      the same defect this audit exists to catch. {@link defaultScanRoots}
- *      additionally walks `components/chat`, `components/editor`, and
- *      `scripts/browser-fixtures/src`: the last has no per-directory
+ *      additionally walks `components/chat`, `components/editor`,
+ *      `scripts/browser-fixtures/src`, and the packages' `browser/fixtures`
+ *      (the application fixtures COR-2080 moved): the fixture trees have no per-directory
  *      component-ownership convention of its own (a test fixture), but COR-348
  *      found undeclared `--cinder-border-*` references in exactly that kind of
  *      tree, so leaving it out would leave the audit blind to the class of site
@@ -487,6 +488,12 @@ export function defaultScanRoots(sourceRoot?: string): ScanRoot[] {
       reportPrefix: 'scripts/browser-fixtures/src',
       componentsPrefix: null,
     },
+    // The application fixtures the chat, editor and terminal packages own (COR-2080).
+    ...['chat', 'editor', 'terminal'].map((name) => ({
+      dir: join(workspaceRoot, `components/${name}/browser/fixtures`),
+      reportPrefix: `${name}/browser/fixtures`,
+      componentsPrefix: null,
+    })),
   );
   return roots;
 }

@@ -9,10 +9,10 @@ import {
   VIEWPORTS,
 } from '@lostgradient/testing';
 
-import { resolve } from 'node:path';
-import { environmentConfiguration } from '../environment-configuration.ts';
 import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { runFixtureSweep } from '@lostgradient/testing/playwright/component-sweep';
+import { resolve } from 'node:path';
+import { environmentConfiguration } from '../environment-configuration.ts';
 
 type LiveManifest = { digest: string; entries: unknown[] };
 type ComponentPage = {
@@ -90,8 +90,8 @@ const filterSlugs = parseComponentFilter(
   environmentConfiguration().cinderTestComponents,
   knownSlugs,
 );
-// The terminal's baselines belong to `terminal-visual.playwright.ts`, so that `test:browser:terminal`
-// owns them; sweeping the entry here as well would write each image from two tests. The Chat stress
+// The terminal's baselines belong to the terminal package's `terminal-visual.playwright.ts`
+// (`components/terminal/browser`), which owns them; sweeping the entry here as well would write each image from two tests. The Chat stress
 // fixture is served by case (`?case=NN`) and captured by `capture-chat-stress.ts`, which owns its
 // images, so this sweep leaves it out too.
 const entries = applyComponentFilter(allEntries, filterSlugs).filter(
