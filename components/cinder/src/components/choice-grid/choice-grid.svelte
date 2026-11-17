@@ -275,7 +275,7 @@
 <Grid
   {...gridRest}
   {...gridLayout}
-  gap="var(--cinder-space-3)"
+  gap={variant === 'row' ? '0' : 'var(--cinder-space-3)'}
   class={classNames('cinder-choice-grid', className)}
   {role}
   aria-label={resolvedAriaLabel}
@@ -284,7 +284,7 @@
   data-cinder-multiple={multiple || undefined}
   data-cinder-disabled={disabled || undefined}
   data-cinder-size={size}
-  data-cinder-variant={variant === 'card' ? 'card' : undefined}
+  data-cinder-variant={variant === 'tile' ? undefined : variant}
 >
   {@render children()}
 </Grid>

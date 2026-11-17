@@ -29,6 +29,32 @@ describe('ChoiceGrid card variant (row 33e)', () => {
     expect(card).toContain('min-block-size: var(--_cinder-choice-card-min-block-size, 0);');
   });
 
+  test('the row variant draws the card’s content as flat rows: no border or fill, a hairline between, and no gap (COR-2402)', async () => {
+    const { container } = render(Fixture, { props: { variant: 'row' } });
+    const [mcp, openapi] = radios(container);
+    for (const row of [mcp, openapi]) {
+      expect(row?.getAttribute('data-cinder-variant')).toBe('row');
+      expect(row?.querySelector('.cinder-choice-grid-item__indicator')).not.toBeNull();
+      expect(row?.querySelector('.cinder-choice-grid-item__description')).not.toBeNull();
+    }
+    expect(
+      container.querySelector('.cinder-choice-grid')?.getAttribute('data-cinder-variant'),
+    ).toBe('row');
+    expect(mcp?.getAttribute('aria-describedby')).toBeTruthy();
+
+    const css = await Bun.file(
+      new URL('../choice-grid-item/choice-grid-item.css', import.meta.url),
+    ).text();
+    const row = /\.cinder-choice-grid-item\[data-cinder-variant='row'\] \{([^}]*)\}/u.exec(
+      css,
+    )?.[1];
+    expect(row).toContain('border: 0;');
+    expect(row).toContain('background: transparent;');
+    expect(css).toMatch(
+      /\.cinder-choice-grid-item\[data-cinder-variant='row'\]\s*\+\s*\.cinder-choice-grid-item\[data-cinder-variant='row'\]::after \{[^}]*border-block-start: 1px solid var\(--cinder-border-muted\)/u,
+    );
+  });
+
   test('each card has an indicator, an icon, a title and a description', () => {
     const { container } = render(Fixture);
     const [mcp, openapi] = radios(container);

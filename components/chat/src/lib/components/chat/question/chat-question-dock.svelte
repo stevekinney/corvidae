@@ -287,8 +287,9 @@
           class="chat-question-dock-options-scroll"
           {@attach scrollEdgeFade('block')}
         >
+          <!-- Flat rows, not bordered cards: the dock is the one box (owner, 2026-11-13, COR-2402). -->
           <ChoiceGrid
-            variant="card"
+            variant="row"
             size="sm"
             columns={1}
             ariaLabelledby={hasMessage ? questionId : legendId}
@@ -518,14 +519,14 @@
     padding: var(--cinder-space-2) 0 var(--cinder-space-1);
   }
 
-  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='row']) {
     padding-block: var(--cinder-space-2);
     gap: var(--cinder-space-2);
   }
 
   .chat-question-dock-body
     :global(
-      .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
+      .cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__description
     ) {
     flex: 1 1 auto;
     line-height: var(--cinder-leading-tight, 1.25);
@@ -533,7 +534,7 @@
 
   /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
   .chat-question-dock-body
-    :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    :global(.cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__card) {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -643,9 +644,8 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding-block-start: var(--cinder-space-2);
-    border-block-start: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface-raised, var(--cinder-surface));
+    /* No band of its own: the actions end the one panel, on its surface (COR-2402, flat dock). */
+    padding-block-start: var(--cinder-space-1);
   }
 
   @media (max-width: 479.98px), (any-pointer: coarse) {

@@ -33,8 +33,8 @@
       "description": "Minimum cell width for `columns=\"responsive\"`. Accepts any CSS\n`<length>` (e.g. `\"12rem\"`, `\"200px\"`). Default: `\"10rem\"`, or `\"6rem\"`\nwhen `size=\"sm\"` — passing `minColumnWidth` explicitly always wins over\neither default."
     },
     "variant": {
-      "enum": ["tile", "card"],
-      "description": "How items are drawn. `'tile'` (the default) keeps the centered quiz tile; `'card'` draws a\nleft-aligned card with a radio (or checkbox when `multiple`) indicator, so each choice can carry\nan icon and a one-sentence description. Selection, roving focus and ARIA roles are identical in\nboth. `size` applies to tiles only.",
+      "enum": ["tile", "card", "row"],
+      "description": "How items are drawn. `'tile'` (the default) keeps the centered quiz tile; `'card'` draws a\nleft-aligned card with a radio (or checkbox when `multiple`) indicator, so each choice can carry\nan icon and a one-sentence description. `'row'` draws the card's content as flat rows with no\nborder or fill of their own and a hairline between them, for choices inside a panel that already\nhas an edge. Selection, roving focus and ARIA roles are identical in all three. `size` applies\nto tiles only.",
       "default": "tile"
     },
     "size": {
