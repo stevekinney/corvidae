@@ -35,7 +35,7 @@
   import { tick } from 'svelte';
   import Button from '../button/button.svelte';
   import { bannerPresetCopy, type BannerPreset } from './banner-presets.ts';
-  import RelativeTime from '../relative-time/relative-time.svelte';
+  import RelativeTime from '@lostgradient/relative-time/components/relative-time/relative-time.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   const FOCUSABLE_SELECTOR =

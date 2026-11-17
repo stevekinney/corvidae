@@ -53,9 +53,9 @@
   import Button from '../button/button.svelte';
   import Input from '../input/input.svelte';
   import SearchField from '../search-field/search-field.svelte';
-  import Toolbar from '../toolbar/toolbar.svelte';
-  import ToolbarGroup from '../toolbar/toolbar-group.svelte';
-  import ToolbarSpacer from '../toolbar/toolbar-spacer.svelte';
+  import Toolbar from '@lostgradient/toolbar/components/toolbar/toolbar.svelte';
+  import ToolbarGroup from '@lostgradient/toolbar/components/toolbar/toolbar-group.svelte';
+  import ToolbarSpacer from '@lostgradient/toolbar/components/toolbar/toolbar-spacer.svelte';
   import {
     DataGridColumnModel,
     getDataGridColumnValue,

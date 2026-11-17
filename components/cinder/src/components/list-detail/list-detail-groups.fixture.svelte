@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SelectableRow } from '../selectable-row/index.ts';
+  import { SelectableRow } from '@lostgradient/selectable-row/components/selectable-row/index.ts';
   // Through the index, which loads the component's stylesheet; the bare `.svelte` file does not.
   import { ListDetail } from './index.ts';
   import type { ListDetailProps } from './list-detail.types.ts';

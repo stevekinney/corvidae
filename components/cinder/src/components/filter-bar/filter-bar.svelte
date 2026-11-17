@@ -40,8 +40,8 @@
   import { default as Checkbox } from '../checkbox/index.ts';
   import { default as Chip } from '../chip/index.ts';
   import { default as Popover } from '../popover/index.ts';
-  import { default as Segment } from '../segment/index.ts';
-  import { default as SegmentedControl } from '../segmented-control/index.ts';
+  import { default as Segment } from '@lostgradient/segmented-control/components/segment/index.ts';
+  import { default as SegmentedControl } from '@lostgradient/segmented-control/components/segmented-control/index.ts';
   import { default as SearchField } from '../search-field/index.ts';
   import { default as Select } from '../select/index.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';

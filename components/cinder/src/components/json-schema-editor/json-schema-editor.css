@@ -2,7 +2,7 @@
 @import '@lostgradient/collapsible/collapsible.css';
 @import '../code-block/code-block.css';
 @import '../input/input.css';
-@import '../textarea/textarea.css';
+@import '@lostgradient/textarea/textarea.css';
 @layer cinder.components {
   /**
  * Layout for the JsonSchemaEditor component.

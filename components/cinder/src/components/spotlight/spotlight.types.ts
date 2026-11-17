@@ -1,6 +1,6 @@
+import type { StatusDotStatus } from '@lostgradient/status-dot/components/status-dot/status-dot.types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 
 /** Props for the Spotlight component. */
 export type SpotlightProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {

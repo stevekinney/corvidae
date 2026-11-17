@@ -27,7 +27,7 @@
   import Button from '../button/button.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
   import Modal from '../modal/modal.svelte';
-  import Steps from '../steps/steps.svelte';
+  import Steps from '@lostgradient/steps/components/steps/steps.svelte';
   import type { RestartStateProps } from './restart-state.types.ts';
 
   const DEFAULT_STEPS = [

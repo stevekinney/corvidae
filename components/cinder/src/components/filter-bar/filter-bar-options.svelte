@@ -6,8 +6,8 @@
    */
   import { default as Button } from '../button/index.ts';
   import { default as Checkbox } from '../checkbox/index.ts';
-  import { default as Radio } from '../_radio/index.ts';
-  import { default as RadioGroup } from '../radio-group/index.ts';
+  import { default as Radio } from '@lostgradient/radio-group/components/_radio/index.ts';
+  import { default as RadioGroup } from '@lostgradient/radio-group/components/radio-group/index.ts';
   import type { ChoiceFacet, FacetOption } from './filter-bar.types.ts';
 
   type Props = {

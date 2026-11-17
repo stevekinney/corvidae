@@ -42,7 +42,9 @@ const calloutMarkup = load('../../../callout/src/components/callout/callout.svel
 const capabilityGate = load('../components/capability-gate/capability-gate.css');
 const jsonSchemaEditor = load('../components/json-schema-editor/json-schema-editor.css');
 const navigationBar = load('../components/navigation-bar/navigation-bar.css');
-const navigationItem = load('../components/navigation-item/navigation-item.css');
+const navigationItem = load(
+  '../../../navigation-item/src/components/navigation-item/navigation-item.css',
+);
 const runStepTimeline = load('../components/run-step-timeline/run-step-timeline.css');
 const statusSurface = load('../../../foundation/src/styles/components/_status-surface.css');
 const utilities = load('../../../foundation/src/styles/utilities.css');

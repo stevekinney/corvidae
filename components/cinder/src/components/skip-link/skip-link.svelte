@@ -19,7 +19,7 @@
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
-  import VisuallyHidden from '../visually-hidden/visually-hidden.svelte';
+  import VisuallyHidden from '@lostgradient/visually-hidden/components/visually-hidden/visually-hidden.svelte';
 
   import type { SkipLinkProps } from './skip-link.types.ts';
 

@@ -36,6 +36,7 @@ import masonryExamplesJson from '@lostgradient/masonry/components/masonry/masonr
 import audioPlayerExamplesJson from '@lostgradient/media-player/components/audio-player/audio-player.examples.json' with { type: 'json' };
 import megaMenuExamplesJson from '@lostgradient/mega-menu/components/mega-menu/mega-menu.examples.json' with { type: 'json' };
 import messageExamplesJson from '@lostgradient/message/components/message/message.examples.json' with { type: 'json' };
+import meterExamplesJson from '@lostgradient/meter/components/meter/meter.examples.json' with { type: 'json' };
 import accessGateExamplesJson from '../components/access-gate/access-gate.examples.json' with { type: 'json' };
 import alertDialogExamplesJson from '../components/alert-dialog/alert-dialog.examples.json' with { type: 'json' };
 import appBarExamplesJson from '../components/app-bar/app-bar.examples.json' with { type: 'json' };
@@ -108,7 +109,6 @@ import listDetailExamplesJson from '../components/list-detail/list-detail.exampl
 import mapLegendExamplesJson from '../components/map-legend/map-legend.examples.json' with { type: 'json' };
 import matrixChartExamplesJson from '../components/matrix-chart/matrix-chart.examples.json' with { type: 'json' };
 import menuBarExamplesJson from '../components/menu-bar/menu-bar.examples.json' with { type: 'json' };
-import meterExamplesJson from '../components/meter/meter.examples.json' with { type: 'json' };
 import modalRegionExamplesJson from '../components/modal-region/modal-region.examples.json' with { type: 'json' };
 import modalExamplesJson from '../components/modal/modal.examples.json' with { type: 'json' };
 import multiSelectExamplesJson from '../components/multi-select/multi-select.examples.json' with { type: 'json' };

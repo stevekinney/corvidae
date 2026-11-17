@@ -18,7 +18,7 @@
 
 <script lang="ts">
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import StatusDot from '../status-dot/status-dot.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
   import type { SpotlightProps } from './spotlight.types.ts';
 
   let {

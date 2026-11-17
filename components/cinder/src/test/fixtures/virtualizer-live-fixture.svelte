@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { TreeVirtualizer } from '../../_internal/use-virtualizer.svelte.ts';
+  import { TreeVirtualizer } from '@lostgradient/tree/_internal/use-virtualizer.svelte.ts';
   import { DataGridVirtualizationAdapter } from '../../components/data-grid/_internal/virtualization-adapter.svelte.ts';
 
   let {

@@ -41,8 +41,8 @@
   } from '@lostgradient/foundation/_internal/viewport-below.svelte.ts';
   import FormFieldFrame from '@lostgradient/foundation/_internal/form-field-frame.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import { createPortalAttachment } from '../portal/index.ts';
-  import { findNearestOpenTopLayer } from '../portal/portal.utilities.svelte.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
+  import { findNearestOpenTopLayer } from '@lostgradient/portal/components/portal/portal.utilities.svelte.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
   import type { MultiSelectItem, MultiSelectProps } from './multi-select.types.ts';
 

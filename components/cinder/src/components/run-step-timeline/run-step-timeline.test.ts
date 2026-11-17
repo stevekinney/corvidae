@@ -2101,8 +2101,8 @@ describe('CSS snapshot', () => {
     expect(css).toContain("@import '@lostgradient/badge/badge.css';");
     expect(css).toContain("@import '@lostgradient/collapsible/collapsible.css';");
     expect(css).toContain("@import '@lostgradient/link/link.css';");
-    expect(css).toContain("@import '../progress/progress.css';");
-    expect(css).toContain("@import '../status-dot/status-dot.css';");
+    expect(css).toContain("@import '@lostgradient/progress/progress.css';");
+    expect(css).toContain("@import '@lostgradient/status-dot/status-dot.css';");
   });
 });
 

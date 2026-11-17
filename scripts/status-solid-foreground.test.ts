@@ -203,7 +203,7 @@ describe('status fills as foreground colors', () => {
     // dismiss button inherit that through `currentColor`. A status fill can tint the chip's
     // surface (the danger toast), but it is not a foreground.
     const css = await Bun.file(
-      join(root, 'components/cinder/src/components/toast-region/toast-region.css'),
+      join(root, 'components/toast-region/src/components/toast-region/toast-region.css'),
     ).text();
     const rule = (selector: string): string => {
       const escaped = selector.replace(/[.[\]'=-]/g, '\\$&');
@@ -234,7 +234,7 @@ describe('status fills as foreground colors', () => {
       /\.chat-input-footer :global\(\.cinder-button\)[^{]*\{[^}]*--cinder-touch-target-min/,
     );
     const toggle = await Bun.file(
-      join(root, 'components/cinder/src/components/toggle/toggle.css'),
+      join(root, 'components/toggle/src/components/toggle/toggle.css'),
     ).text();
     expect(toggle).toContain('@media (any-pointer: coarse)');
     expect(toggle).not.toMatch(/@media \(pointer: coarse\)/);

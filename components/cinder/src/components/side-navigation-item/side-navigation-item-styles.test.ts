@@ -15,7 +15,9 @@ function loadCss(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
 }
 
-const navigationItemCss = loadCss('../navigation-item/navigation-item.css');
+const navigationItemCss = loadCss(
+  '../../../../navigation-item/src/components/navigation-item/navigation-item.css',
+);
 const sideNavigationItemCss = loadCss('./side-navigation-item.css');
 
 function rulesFor(css: string, selector: string): Rule[] {

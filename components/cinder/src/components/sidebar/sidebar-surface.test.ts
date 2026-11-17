@@ -40,7 +40,10 @@ describe('Sidebar surface', () => {
     expect(selected.has('box-shadow')).toBe(false);
 
     const navigationItemCss = await Bun.file(
-      new URL('../navigation-item/navigation-item.css', import.meta.url),
+      new URL(
+        '../../../../navigation-item/src/components/navigation-item/navigation-item.css',
+        import.meta.url,
+      ),
     ).text();
     const focused = declarationsFor(
       navigationItemCss,

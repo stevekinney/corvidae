@@ -17,7 +17,7 @@
 <script lang="ts">
   import type { AvatarProps } from './avatar.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import VisuallyHidden from '../visually-hidden/visually-hidden.svelte';
+  import VisuallyHidden from '@lostgradient/visually-hidden/components/visually-hidden/visually-hidden.svelte';
 
   let {
     src,

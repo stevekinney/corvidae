@@ -1,0 +1,119 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    verdict: {
+      type: 'object',
+      properties: {
+        level: {
+          enum: ['low', 'optimum', 'high', 'unknown'],
+        },
+        label: {
+          type: 'string',
+        },
+      },
+      additionalProperties: false,
+      required: ['label', 'level'],
+      description:
+        'Semantic label for a measurement; `unknown` represents the non-numeric status case.',
+    },
+    segments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: {
+            type: 'string',
+            description: 'Visible name of the share, shown in the legend.',
+          },
+          value: {
+            type: 'number',
+            description:
+              'Size of the share, in the same unit as `max`. Negative and non-finite values count as 0.',
+          },
+          valueLabel: {
+            type: 'string',
+            description:
+              'Text shown beside the label in the legend, such as `28K`. Defaults to the number.',
+          },
+        },
+        additionalProperties: false,
+        required: ['label', 'value'],
+      },
+      description:
+        'Splits the filled part of the track into named shares and lists them in a legend beneath it,\nsuch as the instructions, conversation and tool results that make up a context window. The\nshares stack from the start of the track in the order given, each a lighter tone of the accent,\nso the legend carries the meaning and colour never has to. The reading is their sum, so\n`value` is ignored, and threshold regions are not drawn.',
+    },
+    remainder: {
+      type: 'object',
+      properties: {
+        label: {
+          type: 'string',
+          description: 'Visible name of the unfilled part, such as `Free`.',
+        },
+        valueLabel: {
+          type: 'string',
+          description:
+            'Text shown beside the label in the legend, such as `124K`. Defaults to what is left of `max`.',
+        },
+      },
+      additionalProperties: false,
+      required: ['label'],
+      description:
+        'With `segments`, adds a last legend line for the unfilled track, such as "Free 124K".',
+    },
+    value: {
+      type: 'number',
+      description: 'Current measurement value. Defaults to 0.',
+    },
+    min: {
+      type: 'number',
+      description: 'Lower bound for the range. Defaults to 0.',
+    },
+    max: {
+      type: 'number',
+      description: 'Upper bound for the range. Defaults to 100.',
+    },
+    low: {
+      type: 'number',
+      description: 'Lower threshold boundary for segmented rendering.',
+    },
+    high: {
+      type: 'number',
+      description: 'Upper threshold boundary for segmented rendering.',
+    },
+    optimum: {
+      type: 'number',
+      description:
+        'Optimal target value. Influences computed state semantics to match native\nmeter expectations.',
+    },
+    size: {
+      enum: ['sm', 'md', 'lg'],
+      description: 'Size token for track height. Default `md`.',
+    },
+    ariaValueText: {
+      type: 'string',
+      description:
+        'Human-readable text exposed via `aria-valuetext`.\nWhen omitted, `aria-valuetext` is not rendered.\nExample: `50% (6 hours remaining)`.',
+    },
+    ariaLabel: {
+      type: 'string',
+      description:
+        'Accessible name applied directly to the meter element when no visible\nlabel element is present.',
+    },
+    ariaLabelledby: {
+      type: 'string',
+      description:
+        'Id of a visible element that serves as the accessible name for the meter.\nPrefer this when a visible label exists.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-meter`.',
+    },
+  },
+  additionalProperties: false,
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

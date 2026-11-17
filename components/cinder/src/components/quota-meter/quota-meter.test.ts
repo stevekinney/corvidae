@@ -27,7 +27,7 @@ function textSnippet(text: string) {
 describe('QuotaMeter', () => {
   test('standalone sidecar imports Meter styles', () => {
     const css = readFileSync(new URL('./quota-meter.css', import.meta.url), 'utf8');
-    expect(css).toContain("@import '../meter/meter.css';");
+    expect(css).toContain("@import '@lostgradient/meter/meter.css';");
   });
   test('renders the cinder-quota-meter wrapper with its children', () => {
     const { container } = render(QuotaMeter, {

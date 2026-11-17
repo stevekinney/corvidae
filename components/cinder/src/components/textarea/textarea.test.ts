@@ -10,16 +10,19 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { render, fireEvent } = await import('@testing-library/svelte');
-const { default: Textarea } = await import('./textarea.svelte');
+const { default: Textarea } =
+  await import('@lostgradient/textarea/components/textarea/textarea.svelte');
 const { default: FormFieldTextareaFixture } =
   await import('../../test/fixtures/form-field-textarea-fixture.svelte');
-const { resolveMaximumLength } = await import('../textarea-count.ts');
+const { resolveMaximumLength } =
+  await import('@lostgradient/textarea/components/textarea-count.ts');
 
 // Compile-time contract: `required` and `maxlength` are deliberately narrowed to
 // clean `boolean`/`number` from the inherited `… | null`, so the documented prop
 // surface stays free of the native "remove the attribute" `null` convention. These
 // assertions fail to compile if a future change re-widens (or further narrows) them.
-type TextareaProps = import('./textarea.types.ts').TextareaProps;
+type TextareaProps =
+  import('@lostgradient/textarea/components/textarea/textarea.types.ts').TextareaProps;
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 const requiredIsBoolean: Exact<TextareaProps['required'], boolean | undefined> = true;
 const maxlengthIsNumber: Exact<TextareaProps['maxlength'], number | undefined> = true;
@@ -138,14 +141,18 @@ describe('Textarea', () => {
   });
 
   test('a read-only textarea is told apart from an editable one', async () => {
-    const css = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../textarea/src/components/textarea/textarea.css', import.meta.url),
+    ).text();
     expect(css).toMatch(
       /\.cinder-textarea\[readonly\]:not\(:disabled\)\s*\{[^}]*background:\s*var\(--cinder-surface-inset\);[^}]*border-style:\s*dashed;[^}]*cursor:\s*default;[^}]*caret-color:\s*transparent;/,
     );
   });
 
   test('code variant applies shared monospace metrics via the token set', async () => {
-    const css = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../textarea/src/components/textarea/textarea.css', import.meta.url),
+    ).text();
 
     expect(css).toMatch(
       /\.cinder-textarea\[data-cinder-variant='code'\]\s*\{[^}]*font-family:\s*var\(--cinder-font-mono\);[^}]*font-size:\s*var\(--cinder-text-sm\);[^}]*line-height:\s*var\(--cinder-leading-normal\);[^}]*tab-size:\s*var\(--cinder-type-tab-size\);/,
@@ -158,7 +165,9 @@ describe('Textarea', () => {
     // .cinder-textarea (the control) and the inherit-lock rule (for a
     // hypothetical <code> overlay) carry the metric values; the bare
     // wrapper selector must not.
-    const css = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../textarea/src/components/textarea/textarea.css', import.meta.url),
+    ).text();
 
     expect(css).not.toMatch(
       /\.cinder-textarea-field\[data-cinder-variant='code'\]\s*\{[^}]*font-family:/,
@@ -174,7 +183,9 @@ describe('Textarea', () => {
     // the control without the wrapper itself needing to carry any metric
     // declarations — the wrapper's label/description/error/counter stay in
     // their ordinary font.
-    const css = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
+    const css = await Bun.file(
+      new URL('../../../../textarea/src/components/textarea/textarea.css', import.meta.url),
+    ).text();
 
     expect(css).toMatch(
       /\.cinder-textarea-field\[data-cinder-variant='code'\]\s*:where\(code\)\s*\{\s*all:\s*unset;[^}]*font-family:\s*var\(--cinder-font-mono\);[^}]*font-size:\s*var\(--cinder-text-sm\);[^}]*line-height:\s*var\(--cinder-leading-normal\);[^}]*tab-size:\s*var\(--cinder-type-tab-size\);\s*\}/,
@@ -455,7 +466,9 @@ describe('Textarea — error live region', () => {
   });
 
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
-    const textareaCss = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
+    const textareaCss = await Bun.file(
+      new URL('../../../../textarea/src/components/textarea/textarea.css', import.meta.url),
+    ).text();
     const sharedErrorCss = await Bun.file(
       new URL(
         '../../../../foundation/src/styles/components/_form-field-error.css',

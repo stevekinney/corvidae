@@ -26,7 +26,7 @@
   import { setTooltipTriggerContext } from '@lostgradient/foundation/_internal/tooltip-trigger-context.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
-  import { createPortalAttachment } from '../portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
 
   let {
     text,

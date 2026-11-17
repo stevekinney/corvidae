@@ -40,11 +40,11 @@
   import { createClickOutside } from '@lostgradient/foundation/utilities/attachments.ts';
   import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import Drawer from '../drawer/drawer.svelte';
-  import { createPortalAttachment } from '../portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
   import {
     createInheritedPortalStyle,
     findNearestOpenTopLayer,
-  } from '../portal/portal.utilities.svelte.ts';
+  } from '@lostgradient/portal/components/portal/portal.utilities.svelte.ts';
 
   let {
     id: panelIdProp,

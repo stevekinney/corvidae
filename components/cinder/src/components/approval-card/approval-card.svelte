@@ -54,7 +54,7 @@
   import CopyButton from '../copy-button/copy-button.svelte';
   import Link from '@lostgradient/link/components/link/link.svelte';
   import PayloadInspector from '../payload-inspector/payload-inspector.svelte';
-  import StatusDot from '../status-dot/status-dot.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import ApprovalCardActions from './approval-card-actions.svelte';
   import ApprovalCardDecision from './approval-card-decision.svelte';

@@ -12,7 +12,7 @@ const SIDEBAR_CSS_PATH = new URL('../components/sidebar/sidebar.css', import.met
 const DRAWER_CSS_PATH = new URL('../components/drawer/drawer.css', import.meta.url);
 const BUTTON_CSS_PATH = new URL('../components/button/button.css', import.meta.url);
 const NAVIGATION_ITEM_CSS_PATH = new URL(
-  '../components/navigation-item/navigation-item.css',
+  '../../../navigation-item/src/components/navigation-item/navigation-item.css',
   import.meta.url,
 );
 const SIDE_NAVIGATION_GROUP_CSS_PATH = new URL(

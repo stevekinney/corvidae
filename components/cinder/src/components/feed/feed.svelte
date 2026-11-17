@@ -30,7 +30,7 @@
 
   import type { FeedProps } from './feed.types.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import { default as StatusDot } from '../status-dot/index.ts';
+  import { default as StatusDot } from '@lostgradient/status-dot/components/status-dot/index.ts';
 
   let {
     kind = 'list',

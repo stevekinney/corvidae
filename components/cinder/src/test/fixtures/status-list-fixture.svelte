@@ -4,7 +4,7 @@
    * and optionally announcing inserted rows, so the status column, the group headers and the live
    * insertion can be asserted through the real components.
    */
-  import type { StatusDotWordLabel } from '../../components/status-dot/status-dot.words.ts';
+  import type { StatusDotWordLabel } from '@lostgradient/status-dot/components/status-dot/status-dot.words.ts';
 
   export type StatusListRow = {
     id: string;
@@ -28,7 +28,7 @@
 <script lang="ts">
   import DataList from '../../components/data-list/data-list.svelte';
   import StackedListItem from '../../components/stacked-list-item/stacked-list-item.svelte';
-  import StatusDot from '../../components/status-dot/status-dot.svelte';
+  import StatusDot from '@lostgradient/status-dot/components/status-dot/status-dot.svelte';
 
   let {
     rows,

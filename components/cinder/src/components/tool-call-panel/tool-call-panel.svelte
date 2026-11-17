@@ -42,7 +42,7 @@
   import CopyButton from '../copy-button/copy-button.svelte';
   import Drawer from '../drawer/drawer.svelte';
   import Spinner from '@lostgradient/spinner/components/spinner/spinner.svelte';
-  import Textarea from '../textarea/textarea.svelte';
+  import Textarea from '@lostgradient/textarea/components/textarea/textarea.svelte';
   import ApprovalCardNoteToggle from '../approval-card/approval-card-note-toggle.svelte';
   import type { ToolCallPanelProps, ToolCallPanelStatus } from './tool-call-panel.types.ts';
   import { readPanelPayload, formatJsonText } from './tool-call-panel.utilities.ts';

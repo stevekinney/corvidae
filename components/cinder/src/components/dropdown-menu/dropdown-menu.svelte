@@ -37,7 +37,7 @@
     getDropdownRegister,
     getDropdownSetOpen,
   } from '../dropdown/dropdown.context.ts';
-  import { createPortalAttachment } from '../portal/index.ts';
+  import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
 
   function terminated(declaration: string): string {
     const trimmed = declaration.trim();

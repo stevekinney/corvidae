@@ -3,7 +3,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
-import { TreeVirtualizer, type TreeVirtualizerOptions } from './use-virtualizer.svelte.ts';
+import {
+  TreeVirtualizer,
+  type TreeVirtualizerOptions,
+} from '@lostgradient/tree/_internal/use-virtualizer.svelte.ts';
 
 setupHappyDom();
 

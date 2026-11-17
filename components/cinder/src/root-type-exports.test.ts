@@ -5,7 +5,7 @@ import {
   formatDateTime as ownedFormatDateTime,
   formatRelativeTime as ownedFormatRelativeTime,
 } from '@lostgradient/foundation/utilities/format-date.ts';
-import { isRedispatchedPortaledEvent as ownedPortalEventPredicate } from './components/portal/index.ts';
+import { isRedispatchedPortaledEvent as ownedPortalEventPredicate } from '@lostgradient/portal/components/portal/index.ts';
 import {
   createBodyScrollLock,
   formatDateTime,
@@ -171,13 +171,13 @@ test('root exports retain the component contract types formerly exposed through 
     import('./components/schedule-builder/index.ts').ScheduleValueSchema
   >();
   expectTypeOf<import('./index.ts').SliderRangeProps>().toEqualTypeOf<
-    import('./components/slider/index.ts').SliderRangeProps
+    import('@lostgradient/slider/components/slider/index.ts').SliderRangeProps
   >();
   expectTypeOf<import('./index.ts').PageHeaderHeadingLevel>().toEqualTypeOf<
     import('./components/page-header/index.ts').PageHeaderHeadingLevel
   >();
   expectTypeOf<import('./index.ts').SliderSingleProps>().toEqualTypeOf<
-    import('./components/slider/index.ts').SliderSingleProps
+    import('@lostgradient/slider/components/slider/index.ts').SliderSingleProps
   >();
   expectTypeOf<import('./index.ts').SpeedDialSchemaProps>().toEqualTypeOf<
     import('./components/speed-dial/index.ts').SpeedDialSchemaProps
@@ -201,25 +201,25 @@ test('root exports retain the component contract types formerly exposed through 
     import('./components/timeline/index.ts').TimelineWeekStartsOn
   >();
   expectTypeOf<import('./index.ts').FlattenedTreeDataItem>().toEqualTypeOf<
-    import('./components/tree/index.ts').FlattenedTreeDataItem
+    import('@lostgradient/tree/components/tree/index.ts').FlattenedTreeDataItem
   >();
   expectTypeOf<import('./index.ts').TreeDataItem>().toEqualTypeOf<
-    import('./components/tree/index.ts').TreeDataItem
+    import('@lostgradient/tree/components/tree/index.ts').TreeDataItem
   >();
   expectTypeOf<import('./index.ts').TreeExpandAllProps>().toEqualTypeOf<
-    import('./components/tree/index.ts').TreeExpandAllProps
+    import('@lostgradient/tree/components/tree/index.ts').TreeExpandAllProps
   >();
   expectTypeOf<import('./index.ts').TreeFilterPredicate>().toEqualTypeOf<
-    import('./components/tree/index.ts').TreeFilterPredicate
+    import('@lostgradient/tree/components/tree/index.ts').TreeFilterPredicate
   >();
   expectTypeOf<import('./index.ts').TreeRef>().toEqualTypeOf<
-    import('./components/tree/index.ts').TreeRef
+    import('@lostgradient/tree/components/tree/index.ts').TreeRef
   >();
   expectTypeOf<import('./index.ts').TreeSelectAllProps>().toEqualTypeOf<
-    import('./components/tree/index.ts').TreeSelectAllProps
+    import('@lostgradient/tree/components/tree/index.ts').TreeSelectAllProps
   >();
   expectTypeOf<import('./index.ts').TreeVirtualizedItemRenderState>().toEqualTypeOf<
-    import('./components/tree/index.ts').TreeVirtualizedItemRenderState
+    import('@lostgradient/tree/components/tree/index.ts').TreeVirtualizedItemRenderState
   >();
 });
 

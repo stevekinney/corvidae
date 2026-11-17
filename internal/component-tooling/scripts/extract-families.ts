@@ -1419,6 +1419,7 @@ async function main(argv: string[]): Promise<number> {
       '--',
       core,
       ...result.selected.map((name) => `components/${name}`),
+      ...result.moves.flatMap(({ from, to }) => [from, to]),
       ...result.written,
       'bun.lock',
     ],
