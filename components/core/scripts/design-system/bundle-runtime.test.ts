@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { resetScrollLock } from '../../src/_internal/overlay.ts';
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { ButtonGroup } from '../../src/components/button-group/index.ts';
 import { Button } from '../../src/components/button/index.ts';
 import { Card } from '../../src/components/card/index.ts';

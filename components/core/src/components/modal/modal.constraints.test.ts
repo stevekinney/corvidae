@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
-import { evaluateConstraints, type ConstraintsDocument } from '../../_internal/constraints.ts';
+import {
+  evaluateConstraints,
+  type ConstraintsDocument,
+} from '@lostgradient/foundation/_internal/constraints.ts';
 import { invalid, valid } from './modal.constraints.fixtures.ts';
 import modalConstraintsJson from './modal.constraints.json' with { type: 'json' };
 

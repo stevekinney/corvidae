@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
+import type { NonMetadataHTMLElementTagName } from '@lostgradient/foundation/utilities/html-element-types.ts';
 
 export type TextVariant =
   'display' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body' | 'code';

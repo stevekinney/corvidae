@@ -10,13 +10,13 @@
 <script lang="ts">
   import { default as Input, type InputProps } from '../input/index.ts';
   import type { AutocompleteProps, AutocompleteSuggestion } from './autocomplete.types.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
-  import { resolveFieldControl } from '../../_internal/field-control.ts';
-  import { getFormFieldContext } from '../../_internal/form-field-context.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
+  import { resolveFieldControl } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Popover from '../popover/popover.svelte';
-  import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
+  import VisuallyHiddenLiveRegion from '@lostgradient/foundation/components/_visually-hidden-live-region.svelte';
 
   let {
     id,

@@ -24,7 +24,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { flushSync, tick, untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     buildLineSelection,
     commentableSidesForLine,

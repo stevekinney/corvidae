@@ -9,10 +9,10 @@
     createModalSlot,
     type GuidanceApi,
     type GuidanceClaim,
-  } from '../../_internal/guidance-context.ts';
+  } from '@lostgradient/foundation/_internal/guidance-context.ts';
   import type { GuidanceRegionProps } from './guidance-region.types.ts';
-  import type { ModalApi } from '../../_internal/modal-context.ts';
-  import { useModal } from '../../utilities/use-modal.ts';
+  import type { ModalApi } from '@lostgradient/foundation/_internal/modal-context.ts';
+  import { useModal } from '@lostgradient/foundation/utilities/use-modal.ts';
   import { default as Button } from '../button/index.ts';
   import { default as Popover } from '../popover/index.ts';
   const regionId = $props.id();

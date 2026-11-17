@@ -33,8 +33,8 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useAnnouncer } from '../../utilities/use-announcer.svelte.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useAnnouncer } from '@lostgradient/foundation/utilities/use-announcer.svelte.ts';
   import Badge from '../badge/badge.svelte';
   import Tab from '../tab/tab.svelte';
   import TabList from '../tab-list/tab-list.svelte';

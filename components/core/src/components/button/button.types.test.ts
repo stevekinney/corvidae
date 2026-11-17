@@ -22,7 +22,7 @@ import type {
   DataAttributes,
   PadUnion,
   WithoutDataAttributes,
-} from '../../_internal/union-props.ts';
+} from '@lostgradient/foundation/_internal/union-props.ts';
 import Button from './button.svelte';
 import type { ButtonProps } from './button.types.ts';
 

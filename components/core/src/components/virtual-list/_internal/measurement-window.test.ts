@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { VirtualListKey } from '../../../utilities/fixed-virtual-window.ts';
+import type { VirtualListKey } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 import {
   buildVirtualOffsets,
   computeScrollToIndexOffset,

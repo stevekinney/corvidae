@@ -34,7 +34,8 @@ mock.module('@floating-ui/dom', () => ({
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { tick, flushSync } = await import('svelte');
 const { default: ContextMenuHarness } = await import('./_context-menu-test-harness.svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 
 function queryMenu(): HTMLElement | null {
   return document.body.querySelector<HTMLElement>('[role="menu"]');

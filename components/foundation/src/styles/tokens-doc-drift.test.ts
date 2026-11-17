@@ -34,8 +34,14 @@ import { serializeEntryValue } from '@lostgradient/tokens/tokens/runtime/value-e
 const PACKAGE_ROOT = join(import.meta.dir, '..', '..');
 const TOKENS_CSS = join(PACKAGE_ROOT, '..', 'tokens', 'src', 'styles', 'tokens-base.css');
 const TOKENS_DOC = join(PACKAGE_ROOT, '..', 'tokens', 'documentation', 'tokens.md');
-const FOCUS_RING_POLICY_DOC = join(PACKAGE_ROOT, 'documentation', 'focus-ring-policy.md');
-const THEMING_DOC = join(PACKAGE_ROOT, 'documentation', 'theming.md');
+const FOCUS_RING_POLICY_DOC = join(
+  PACKAGE_ROOT,
+  '..',
+  'core',
+  'documentation',
+  'focus-ring-policy.md',
+);
+const THEMING_DOC = join(PACKAGE_ROOT, '..', 'core', 'documentation', 'theming.md');
 
 /**
  * The corpus's own view of "every base token's `:root` value", built the

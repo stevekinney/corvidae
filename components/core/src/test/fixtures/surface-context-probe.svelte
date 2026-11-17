@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSurfaceContext } from '../../_internal/surface-context.ts';
+  import { getSurfaceContext } from '@lostgradient/foundation/_internal/surface-context.ts';
 
   let { testid = 'probe-tone' }: { testid?: string } = $props();
 

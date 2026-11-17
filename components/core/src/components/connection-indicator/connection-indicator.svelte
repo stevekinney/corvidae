@@ -11,7 +11,7 @@
   import RefreshCcwDot from '@lucide/svelte/icons/refresh-ccw-dot';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import WifiOff from '@lucide/svelte/icons/wifi-off';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type {
     ConnectionIndicatorProps,
     ConnectionIndicatorStatus,

@@ -39,7 +39,8 @@ mock.module('@floating-ui/dom', () => ({
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { tick, flushSync } = await import('svelte');
-const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
+const { pushEscapeHandler, resetEscapeStack } =
+  await import('@lostgradient/foundation/_internal/overlay.ts');
 const { default: CommandMenuHostFixture } =
   await import('../../test/fixtures/command-menu-host-fixture.svelte');
 const { default: CommandMenuFixture } =

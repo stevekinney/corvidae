@@ -2,7 +2,7 @@
 
 **Container width, not viewport width. Native top-layer over hand-rolled geometry.** Those are the two rules every component author must internalize (the [full statements](#the-two-rules-every-component-author-must-internalize) are below). This document is the classification system that backs them: it decides which modern CSS and HTML feature carries correctness, which is progressive enhancement, and which Cinder avoids for now — so components and their `.a11y.md` files don't each re-litigate browser support.
 
-It is the umbrella over three companion policies, which remain authoritative for their domain: [`OVERLAY-POLICY.md`](./OVERLAY-POLICY.md) (`<dialog>`, Popover API, CSS Anchor Positioning, `inert`, top-layer, focus, escape, scroll-lock), [`RESPONSIVE-POLICY.md`](./RESPONSIVE-POLICY.md) (container vs. viewport queries), [`NATIVE-FORM-POLICY.md`](./NATIVE-FORM-POLICY.md) (`field-sizing`, `accent-color`, dialog forms, native validation pseudo-classes), and [`../../documentation/focus-ring-policy.md`](../../documentation/focus-ring-policy.md) (the focus-ring token recipe and forced-colors fallback).
+It is the umbrella over three companion policies, which remain authoritative for their domain: [`OVERLAY-POLICY.md`](./OVERLAY-POLICY.md) (`<dialog>`, Popover API, CSS Anchor Positioning, `inert`, top-layer, focus, escape, scroll-lock), [`RESPONSIVE-POLICY.md`](./RESPONSIVE-POLICY.md) (container vs. viewport queries), [`NATIVE-FORM-POLICY.md`](./NATIVE-FORM-POLICY.md) (`field-sizing`, `accent-color`, dialog forms, native validation pseudo-classes), and [`../../documentation/focus-ring-policy.md`](../../../core/documentation/focus-ring-policy.md) (the focus-ring token recipe and forced-colors fallback).
 
 ## Support tiers
 

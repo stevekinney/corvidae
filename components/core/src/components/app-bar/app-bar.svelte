@@ -24,7 +24,7 @@
 <script lang="ts">
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Button from '../button/button.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import type { AppBarProps } from './app-bar.types.ts';

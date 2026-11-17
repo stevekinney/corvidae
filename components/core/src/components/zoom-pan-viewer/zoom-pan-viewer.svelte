@@ -7,7 +7,7 @@
   import Plus from '@lucide/svelte/icons/plus';
   import Minus from '@lucide/svelte/icons/minus';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { ZoomPanViewerProps } from './zoom-pan-viewer.types.ts';
   let {
     class: customClassName,

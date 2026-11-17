@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, flushSync, tick } from 'svelte';
 
 import { stylesheetImportPattern } from '@lostgradient/component-tooling/test/css.ts';
+import { resetEscapeStack, resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 
 setupHappyDom();
 

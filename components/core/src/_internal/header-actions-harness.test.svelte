@@ -3,7 +3,7 @@
   import Card from '../components/card/card.svelte';
   import SectionHeading from '../components/section-heading/section-heading.svelte';
 
-  import ErrorScope from './error-scope.test.svelte';
+  import ErrorScope from '@lostgradient/foundation/_internal/error-scope.test.svelte';
 
   let {
     kind,

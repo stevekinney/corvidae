@@ -16,7 +16,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Implementation from './json-schema-editor-impl.svelte';
   import type { JsonSchemaEditorProps } from './json-schema-editor.types.ts';
 

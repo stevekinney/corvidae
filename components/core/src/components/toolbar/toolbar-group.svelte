@@ -5,7 +5,7 @@
 <script lang="ts">
   import type { ToolbarGroupProps } from './toolbar.types.ts';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   let { class: className, orientation, children, role, ...rest }: ToolbarGroupProps = $props();
 

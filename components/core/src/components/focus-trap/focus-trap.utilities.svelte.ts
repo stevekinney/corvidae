@@ -1,7 +1,7 @@
 import type { Attachment } from 'svelte/attachments';
 
-import { restoreFocusTo } from '../../utilities/focus.ts';
-import { readOption } from '../../utilities/read-option.ts';
+import { restoreFocusTo } from '@lostgradient/foundation/utilities/focus.ts';
+import { readOption } from '@lostgradient/foundation/utilities/read-option.ts';
 
 export type FocusTargetInput =
   HTMLElement | string | null | undefined | (() => HTMLElement | string | null | undefined);

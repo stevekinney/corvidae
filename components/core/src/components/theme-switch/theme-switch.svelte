@@ -7,8 +7,8 @@
   import Moon from '@lucide/svelte/icons/moon';
   import Sun from '@lucide/svelte/icons/sun';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
 
   import type { ThemeSwitchProps, ThemeSwitchValue } from './theme-switch.types.ts';
 

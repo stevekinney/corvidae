@@ -9,7 +9,7 @@
 <script lang="ts">
   import { Lock } from '@lucide/svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   import AccessGateInline from './access-gate-inline.svelte';
   import type { AccessGateProps } from './access-gate.types.ts';

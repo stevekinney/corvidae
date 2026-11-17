@@ -13,16 +13,19 @@
 <script lang="ts">
   import type { Placement } from '@floating-ui/dom';
   import type { NavigationBarProps, NavigationVariant } from './navigation-bar.types.ts';
-  import type { SequentialFocusTarget } from '../../utilities/composed-tree.ts';
+  import type { SequentialFocusTarget } from '@lostgradient/foundation/utilities/composed-tree.ts';
   import { flushSync, onDestroy } from 'svelte';
   import { BROWSER as browser } from 'esm-env';
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
-  import { trackDockedBar } from '../../_internal/docked-bar-height.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { getSequentialFocusTargets, getTabIndexValue } from '../../utilities/focus.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { createAnchoredOverlayExitState } from '@lostgradient/foundation/_internal/anchored-overlay-exit.svelte.ts';
+  import { trackDockedBar } from '@lostgradient/foundation/_internal/docked-bar-height.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    getSequentialFocusTargets,
+    getTabIndexValue,
+  } from '@lostgradient/foundation/utilities/focus.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import { createPortalAttachment } from '../portal/index.ts';
   import {
     closestAcrossShadow,

@@ -22,7 +22,18 @@ const read = (path: string): string => readFileSync(cinderComponentFile(path), '
 const badge = read('badge/badge.css');
 const stackedListItem = read('stacked-list-item/stacked-list-item.css');
 const recipe = readFileSync(
-  join(import.meta.dir, '..', '..', 'styles', 'components', '_status-surface.css'),
+  join(
+    import.meta.dir,
+    '..',
+    '..',
+    '..',
+    '..',
+    'foundation',
+    'src',
+    'styles',
+    'components',
+    '_status-surface.css',
+  ),
   'utf8',
 );
 

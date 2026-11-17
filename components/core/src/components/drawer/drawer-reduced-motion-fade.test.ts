@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { resetEscapeStack, resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installDrawerDialogStubs } from './drawer-test-helpers.ts';
 
 setupHappyDom();
@@ -10,8 +10,9 @@ installDrawerDialogStubs();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Drawer } = await import('./drawer.svelte');
 const { applyReducedMotionPreference } =
-  await import('../../utilities/use-reduced-motion.svelte.ts');
-const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
+  await import('@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts');
+const { KEYBOARD_INSET_PROPERTY } =
+  await import('@lostgradient/foundation/_internal/keyboard-inset.ts');
 
 type FadeRecord = {
   element: Element;

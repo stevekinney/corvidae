@@ -19,7 +19,7 @@
  * globals. Like `measurement-window.ts`, every branch is testable without a browser.
  */
 
-import type { VirtualListKey } from '../../../utilities/fixed-virtual-window.ts';
+import type { VirtualListKey } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
 
 /**
  * How the item-key sequence changed between two renders of a `reverse` list.

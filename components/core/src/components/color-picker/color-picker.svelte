@@ -10,13 +10,13 @@
   } from '../color-swatch-picker/color-swatch-picker.types.ts';
   import { untrack } from 'svelte';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     canonicalAlpha,
     formatColor,
     formatHex,
     isOpaqueForFormat,
-  } from '../../utilities/color-format.ts';
+  } from '@lostgradient/foundation/utilities/color-format.ts';
   import ColorSwatchPicker from '../color-swatch-picker/color-swatch-picker.svelte';
   import ColorPickerControls from './color-picker-controls.svelte';
   import {

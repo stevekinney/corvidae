@@ -10,7 +10,9 @@ const { render, cleanup } = await import('@testing-library/svelte');
 const { default: FormField } = await import('../../components/form-field/form-field.svelte');
 const { createRawSnippet } = await import('svelte');
 
-const sharedErrorCss = await Bun.file(new URL('./_form-field-error.css', import.meta.url)).text();
+const sharedErrorCss = await Bun.file(
+  new URL('../../../../foundation/src/styles/components/_form-field-error.css', import.meta.url),
+).text();
 
 const emptySnippet = createRawSnippet(() => ({
   render: () => `<span></span>`,

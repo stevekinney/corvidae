@@ -8,7 +8,7 @@
   import type { Component } from 'svelte';
 
   import { setCodeHighlighterContext } from '../../_internal/code-highlighter-context.ts';
-  import type { Highlighter } from '../../utilities/highlighter.ts';
+  import type { Highlighter } from '@lostgradient/foundation/utilities/highlighter.ts';
 
   type Props = {
     highlighter: Highlighter;

@@ -1,6 +1,6 @@
+import type { NonVoidHTMLElementTagName } from '@lostgradient/foundation/utilities/html-element-types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { NonVoidHTMLElementTagName } from '../../utilities/html-element-types.ts';
 
 export type StackDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
 export type StackAlign = 'start' | 'center' | 'end' | 'stretch' | 'baseline';

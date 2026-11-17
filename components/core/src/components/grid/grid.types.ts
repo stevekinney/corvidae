@@ -1,6 +1,6 @@
+import type { NonVoidHTMLElementTagName } from '@lostgradient/foundation/utilities/html-element-types.ts';
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { NonVoidHTMLElementTagName } from '../../utilities/html-element-types.ts';
 
 /** Column definition accepted by Grid. */
 export type GridColumns = number | string;

@@ -27,8 +27,11 @@
   import FilePen from '@lucide/svelte/icons/file-pen';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 
-  import { classNames } from '../../utilities/class-names.ts';
-  import { formatRelativeTime, formatTimeOfDay } from '../../utilities/format-date.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import {
+    formatRelativeTime,
+    formatTimeOfDay,
+  } from '@lostgradient/foundation/utilities/format-date.ts';
   import Badge from '../badge/badge.svelte';
   import Card from '../card/card.svelte';
   import CodeBlock from '../code-block/code-block.svelte';

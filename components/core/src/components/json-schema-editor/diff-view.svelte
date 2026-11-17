@@ -11,7 +11,7 @@
   import type { LineDiff } from '@lostgradient/markdown';
   import { computeLineDiff } from '@lostgradient/markdown';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import Alert from '../alert/alert.svelte';
   import Button from '../button/button.svelte';
   import EmptyState from '../empty-state/empty-state.svelte';

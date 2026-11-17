@@ -9,7 +9,7 @@
   import Info from '@lucide/svelte/icons/info';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { AlertProps } from './alert.types.ts';
 
   const FOCUSABLE_SELECTOR =

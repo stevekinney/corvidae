@@ -21,15 +21,15 @@
   import TableRow from '../table-row/table-row.svelte';
   import TableRoot from '../table/table.svelte';
 
-  import { overflowFadeEdges } from '../../utilities/attachments.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { overflowFadeEdges } from '@lostgradient/foundation/utilities/attachments.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import {
     getFixedVirtualWindow,
     parsePixelLength,
     resolveVirtualItemHeight,
     resolveVirtualOverscan,
-  } from '../../utilities/fixed-virtual-window.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  } from '@lostgradient/foundation/utilities/fixed-virtual-window.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
   import type { DataListGroup } from '../data-list/data-list.types.ts';
   import type { DataTableColumn, DataTableProps, DataTableRow } from './data-table.types.ts';
 

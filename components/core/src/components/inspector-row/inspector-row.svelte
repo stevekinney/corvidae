@@ -12,8 +12,8 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { tick } from 'svelte';
 
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { default as Popover } from '../popover/index.ts';
   import type { InspectorRowProps, InspectorRowValue } from './inspector-row.types.ts';
 

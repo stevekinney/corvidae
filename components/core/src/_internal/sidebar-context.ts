@@ -9,7 +9,7 @@
 
 import { createContext } from 'svelte';
 
-import { optionalContext } from './optional-context.ts';
+import { optionalContext } from '@lostgradient/foundation/_internal/optional-context.ts';
 
 /**
  * Context published by `<Sidebar>` for descendant components. `collapsed` is a

@@ -14,11 +14,11 @@
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import Plus from '@lucide/svelte/icons/plus';
 
-  import { setActionEmphasisContext } from '../../_internal/action-emphasis-context.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { useIntersection } from '../../utilities/use-intersection.svelte.ts';
-  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
-  import CompactActions from '../../_internal/compact-actions.svelte';
+  import { setActionEmphasisContext } from '@lostgradient/foundation/_internal/action-emphasis-context.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { useIntersection } from '@lostgradient/foundation/utilities/use-intersection.svelte.ts';
+  import { useResizeObserver } from '@lostgradient/foundation/utilities/use-resize-observer.svelte.ts';
+  import CompactActions from '@lostgradient/foundation/_internal/compact-actions.svelte';
   import Button from '../button/button.svelte';
   import { Dropdown } from '../dropdown/index.ts';
   import Tooltip from '../tooltip/tooltip.svelte';

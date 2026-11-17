@@ -1,10 +1,10 @@
-import type { Snippet } from 'svelte';
-import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 import type {
   DataAttributes,
   PadUnion,
   WithoutDataAttributes,
-} from '../../_internal/union-props.ts';
+} from '@lostgradient/foundation/_internal/union-props.ts';
+import type { Snippet } from 'svelte';
+import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
 /**
  * Visual palette of the floating action.

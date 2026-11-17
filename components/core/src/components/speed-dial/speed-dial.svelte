@@ -10,11 +10,11 @@
 <script lang="ts">
   import type { Placement } from '@floating-ui/dom';
   import { untrack } from 'svelte';
-  import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
-  import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import { createAnchoredOverlay } from '@lostgradient/foundation/_internal/anchored-overlay.svelte.ts';
+  import { pushEscapeHandler } from '@lostgradient/foundation/_internal/overlay.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { handleRovingKeydown } from '@lostgradient/foundation/utilities/roving-tabindex.ts';
+  import { useReducedMotion } from '@lostgradient/foundation/utilities/use-reduced-motion.svelte.ts';
   import FloatingAction from '../floating-action/floating-action.svelte';
   import { createPortalAttachment } from '../portal/index.ts';
   import {

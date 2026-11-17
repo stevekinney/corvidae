@@ -826,7 +826,10 @@ describe('TimeField', () => {
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
     const timeFieldCss = await Bun.file(new URL('./time-field.css', import.meta.url)).text();
     const sharedErrorCss = await Bun.file(
-      new URL('../../styles/components/_form-field-error.css', import.meta.url),
+      new URL(
+        '../../../../foundation/src/styles/components/_form-field-error.css',
+        import.meta.url,
+      ),
     ).text();
     const removeStyles = injectStrippedStyles(timeFieldCss, sharedErrorCss);
     try {

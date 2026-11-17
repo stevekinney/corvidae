@@ -10,7 +10,7 @@ import {
   DEFAULT_TEST_VIEWPORT,
   setTestViewportWidth,
 } from '@lostgradient/component-tooling/test/viewport.ts';
-import { resetScrollLock } from '../../_internal/overlay.ts';
+import { resetScrollLock } from '@lostgradient/foundation/_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
 setupHappyDom();

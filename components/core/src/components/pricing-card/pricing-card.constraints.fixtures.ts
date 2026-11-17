@@ -1,4 +1,4 @@
-import type { ComponentAttributes } from '../../_internal/constraints.ts';
+import type { ComponentAttributes } from '@lostgradient/foundation/_internal/constraints.ts';
 
 /**
  * Valid attribute sets for the PricingCard component.

@@ -19,7 +19,7 @@
   import { Lock } from '@lucide/svelte';
   import type { Attachment } from 'svelte/attachments';
 
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
 
   const INTERACTIVE_SELECTOR = [
     'button',

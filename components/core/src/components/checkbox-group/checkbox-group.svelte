@@ -9,9 +9,9 @@
     composeDescribedBy,
     describeId,
     errorId as buildErrorId,
-  } from '../../_internal/field-control.ts';
-  import { classNames } from '../../utilities/class-names.ts';
-  import { devWarn } from '../../utilities/dev-warn.ts';
+  } from '@lostgradient/foundation/_internal/field-control.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
+  import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
   const groupId = $props.id();
 

@@ -76,5 +76,5 @@ export {
   WifiOff,
   Workflow,
   X,
-} from '../components/icons/index.ts';
-export type { IconComponent, IconProps } from '../components/icons/index.ts';
+} from '@lostgradient/foundation/components/icons/index.ts';
+export type { IconComponent, IconProps } from '@lostgradient/foundation/components/icons/index.ts';

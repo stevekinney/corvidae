@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  import { classNames } from '../../utilities/class-names.ts';
+  import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import FloatingAction from '../floating-action/floating-action.svelte';
   import { isRedispatchedPortaledEvent } from '../portal/portal.utilities.svelte.ts';
   import { getSpeedDialContext } from '../speed-dial/speed-dial.context.ts';
