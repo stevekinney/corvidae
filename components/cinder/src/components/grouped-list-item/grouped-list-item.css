@@ -185,9 +185,10 @@
     row-gap: var(--cinder-space-0-5);
   }
 
-  /* The name keeps 10rem: a trailing value that would leave it less wraps under, at the end. */
+  /* The name keeps 10rem: a trailing value that would leave it less wraps under, at the end. It
+     does not shrink: a text column that could give up width did, and the value stayed beside it. */
   .cinder-grouped-list-item--timed .cinder-grouped-list-item__text {
-    flex: 1 1 10rem;
+    flex: 1 0 10rem;
   }
 
   .cinder-grouped-list-item--timed .cinder-grouped-list-item__trailing {
@@ -299,7 +300,8 @@
      value nor the title is squeezed into what the other leaves (COR-2329). The title keeps at least
      5rem; a value too long to fit beside that drops to a line of its own under the title. */
   .cinder-grouped-list-item--actions,
-  .cinder-grouped-list-item--trailing {
+  .cinder-grouped-list-item--trailing,
+  .cinder-grouped-list-item--timed {
     container: cinder-grouped-list-item / inline-size;
   }
 
@@ -346,8 +348,7 @@
        trailing value share the first line, and the subtitle takes the width under both, starting
        at the name rather than under the window. The columns after the name are one per trailing
        part, so the gap is each part's own margin. */
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      > .cinder-grouped-list-item__content {
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed > .cinder-grouped-list-item__content {
       display: grid;
       grid-auto-flow: column;
       grid-template-columns: auto minmax(0, 1fr);
@@ -355,24 +356,21 @@
       align-items: start;
     }
 
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      .cinder-grouped-list-item__lead {
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__lead {
       grid-row: 1 / span 2;
       margin-inline-end: var(--cinder-space-3);
     }
 
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      .cinder-grouped-list-item__title {
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__title {
       grid-row: 1;
     }
 
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      .cinder-grouped-list-item__subtitle {
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__subtitle {
       grid-row: 2;
       grid-column: 2 / span 6;
     }
 
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed
       :is(
         .cinder-grouped-list-item__stale,
         .cinder-grouped-list-item__trailing,
@@ -384,16 +382,15 @@
       margin-inline-start: var(--cinder-space-3);
     }
 
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      .cinder-grouped-list-item__trailing {
-      max-inline-size: 7rem;
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__trailing {
+      /* 6rem leaves the name at least 7rem beside the lead on a 390px phone. */
+      max-inline-size: 6rem;
       overflow: visible;
       white-space: normal;
       overflow-wrap: anywhere;
     }
 
-    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
-      .cinder-grouped-list-item__actions {
+    .cinder-grouped-list-item.cinder-grouped-list-item--timed .cinder-grouped-list-item__actions {
       grid-row: 3;
       grid-column: 2 / span 6;
     }

@@ -134,17 +134,23 @@ describe('GroupedListItem time-led row', () => {
   // line, so the subtitle takes the width under both, and the name keeps its room.
   test('a narrow time-led row puts the trailing value on the title line and the subtitle under both', () => {
     const css = stylesheet();
+    // Every time-led row, with a trailing value or without: a row with only a stale marker and a
+    // chevron wrapped its chevron onto a line of its own while only trailing rows took the grid.
     expect(css).toMatch(
-      /--timed\.cinder-grouped-list-item--trailing\s*> \.cinder-grouped-list-item__content \{[^}]*display: grid/,
+      /\.cinder-grouped-list-item\.cinder-grouped-list-item--timed\s*> \.cinder-grouped-list-item__content \{[^}]*display: grid/,
     );
     expect(css).toMatch(
-      /--timed\.cinder-grouped-list-item--trailing\s+\.cinder-grouped-list-item__subtitle \{[^}]*grid-column: 2 \/ span 6/,
+      /\.cinder-grouped-list-item\.cinder-grouped-list-item--timed\s+\.cinder-grouped-list-item__subtitle \{[^}]*grid-column: 2 \/ span 6/,
     );
+    expect(css).toMatch(
+      /\.cinder-grouped-list-item--timed \{\s*container: cinder-grouped-list-item \/ inline-size/,
+    );
+    expect(css).not.toContain('--timed.cinder-grouped-list-item--trailing');
   });
 
   test('a wide time-led row wraps its meta to a line of its own before it squeezes the name', () => {
     const css = stylesheet();
-    expect(css).toMatch(/--timed \.cinder-grouped-list-item__text \{[^}]*flex: 1 1 10rem/);
+    expect(css).toMatch(/--timed \.cinder-grouped-list-item__text \{[^}]*flex: 1 0 10rem/);
   });
 
   // The owner's review (2026-11-15): a 24px lead at weight 750, a 17px title in the heading weight
