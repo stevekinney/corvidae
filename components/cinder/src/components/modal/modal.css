@@ -224,8 +224,10 @@
     /* Rendered last in DOM order so the close button isn't the first focusable
      element on dialog open — but visually positioned in the header corner. */
     position: absolute;
-    inset-block-start: var(--cinder-space-3);
-    inset-inline-end: var(--cinder-space-3);
+    /* 8px from the corner on both edges: the 36px button's centre then sits on the title's line
+       (12px of header padding plus half the title's line box). */
+    inset-block-start: var(--cinder-space-2);
+    inset-inline-end: var(--cinder-space-2);
 
     display: inline-flex;
     align-items: center;
