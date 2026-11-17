@@ -1,6 +1,10 @@
 /** Structural and namespace convention collection for public components. */
 
 import { hasSubstantiveTest } from '@lostgradient/component-tooling/scripts/component-conventions-tests.ts';
+import {
+  cinderComponentFile,
+  cinderComponentRoots,
+} from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { requiredValue } from '@lostgradient/testing';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -13,7 +17,11 @@ import {
   hasPropsTypeExport,
 } from './convention-structural-ast-test-helpers.ts';
 
-const COMPONENTS_DIR = join(import.meta.dir, 'components');
+/**
+ * A file under a components root (`button/button.svelte`), in whichever Cinder package holds it:
+ * core's components directory, or once the split extracts it, the family package's.
+ */
+const componentFile = (...segments: string[]) => cinderComponentFile(join(...segments));
 const UNPREFIXED_ICON_UTILITY_PATTERN = /(?<![\w-])icon-(?:xs|sm|md|lg)(?![\w-])/g;
 
 // Components that are interactive and must have a sibling .a11y.md file.
@@ -102,19 +110,20 @@ const NO_TEST_REQUIRED_ALLOW_LIST = new Set<string>();
  * files for any components that have not yet been migrated.
  */
 export function getPublicComponentSvelteFiles(): string[] {
-  const entries = readdirSync(COMPONENTS_DIR, { withFileTypes: true });
   const files: string[] = [];
-  for (const entry of entries) {
-    if (entry.name.startsWith('_')) continue;
-    if (entry.isFile() && entry.name.endsWith('.svelte')) {
-      files.push(entry.name);
-      continue;
-    }
-    if (entry.isDirectory()) {
-      if (entry.name === 'icons') continue;
-      const inner = `${entry.name}/${entry.name}.svelte`;
-      if (existsSync(join(COMPONENTS_DIR, inner))) {
-        files.push(inner);
+  for (const root of cinderComponentRoots()) {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.name.startsWith('_')) continue;
+      if (entry.isFile() && entry.name.endsWith('.svelte')) {
+        files.push(entry.name);
+        continue;
+      }
+      if (entry.isDirectory()) {
+        if (entry.name === 'icons') continue;
+        const inner = `${entry.name}/${entry.name}.svelte`;
+        if (existsSync(join(root, inner))) {
+          files.push(inner);
+        }
       }
     }
   }
@@ -124,7 +133,9 @@ export function getPublicComponentSvelteFiles(): string[] {
 
 export function getAllComponentSvelteFiles(): string[] {
   const glob = new Bun.Glob('**/*.svelte');
-  const files = [...glob.scanSync({ cwd: COMPONENTS_DIR })];
+  const files = [
+    ...new Set(cinderComponentRoots().flatMap((root) => [...glob.scanSync({ cwd: root })])),
+  ];
   files.sort();
   return files;
 }
@@ -142,7 +153,7 @@ export function collectStructuralConventionErrors(files: readonly string[]): str
 
 function validateComponent(file: string): string[] {
   const name = file.replace(/^.*\//, '').replace(/\.svelte$/, '');
-  const source = readFileSync(join(COMPONENTS_DIR, file), 'utf-8');
+  const source = readFileSync(componentFile(file), 'utf-8');
   const errors = checkSubstantiveTest(file, name);
   let ast: ReturnType<typeof parse>;
   try {
@@ -164,7 +175,7 @@ function checkSubstantiveTest(file: string, name: string): string[] {
   // A component's test may live in the fast lane or, when it starts a process (server rendering,
   // hydration), in the isolated lane under the `*.integration.test.ts` or `*.slow.test.ts` name.
   const passes = ['.test.ts', '.integration.test.ts', '.slow.test.ts'].some(
-    (suffix) => hasSubstantiveTest(join(COMPONENTS_DIR, file.replace(/\.svelte$/, suffix))).pass,
+    (suffix) => hasSubstantiveTest(componentFile(file.replace(/\.svelte$/, suffix))).pass,
   );
   return passes
     ? []
@@ -268,8 +279,8 @@ function checkShapeB(
 
 function checkA11yDoc(file: string, name: string): string[] {
   if (!INTERACTIVE_ALLOW_LIST.has(name)) return [];
-  const adjacent = join(COMPONENTS_DIR, name, `${name}.a11y.md`);
-  const flat = join(COMPONENTS_DIR, `${name}.a11y.md`);
+  const adjacent = componentFile(name, `${name}.a11y.md`);
+  const flat = componentFile(`${name}.a11y.md`);
   return existsSync(adjacent) || existsSync(flat)
     ? []
     : [`${file}: interactive component missing ${name}.a11y.md`];
@@ -278,7 +289,7 @@ function checkA11yDoc(file: string, name: string): string[] {
 export function collectUnprefixedIconUtilityOffenders(files: readonly string[]): string[] {
   const offenders: string[] = [];
   for (const file of files) {
-    const source = readFileSync(join(COMPONENTS_DIR, file), 'utf-8');
+    const source = readFileSync(componentFile(file), 'utf-8');
     const matches = [...source.matchAll(UNPREFIXED_ICON_UTILITY_PATTERN)];
     if (matches.length === 0) continue;
 

@@ -1,9 +1,10 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { parse } from 'postcss';
 
+// A file of Cinder's `src`, in whichever package holds it once the split moves it.
+import { cinderSourceFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
@@ -16,11 +17,9 @@ afterEach(() => cleanup());
 
 const sizes = ['sm', 'md', 'lg'] as const;
 
-const sourceDirectory = resolve(import.meta.dir, '../..');
-
 /** The value of `property` in the first rule whose selector is exactly `selector`. */
 function declarationValue(path: string, selector: string, property: string): string | undefined {
-  const root = parse(readFileSync(resolve(sourceDirectory, path), 'utf8'));
+  const root = parse(readFileSync(cinderSourceFile(path), 'utf8'));
   let found: string | undefined;
   root.walkRules((rule) => {
     if (found !== undefined || rule.selector.replace(/\s+/g, ' ') !== selector) return;
@@ -101,10 +100,7 @@ describe('ButtonGroup with an Input and a Button', () => {
   });
 
   test('the group flattens the field corners that meet a neighbour and stops stretching members', () => {
-    const css = readFileSync(
-      resolve(sourceDirectory, 'components/button-group/button-group.css'),
-      'utf8',
-    );
+    const css = readFileSync(cinderSourceFile('components/button-group/button-group.css'), 'utf8');
     expect(
       declarationValue(
         'components/button-group/button-group.css',

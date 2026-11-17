@@ -8,10 +8,10 @@ import { describe, expect, test } from 'bun:test';
 import { parse } from 'svelte/compiler';
 
 import { hasSubstantiveTest } from '@lostgradient/component-tooling/scripts/component-conventions-tests.ts';
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { getPublicComponentSvelteFiles } from './convention-structural-test-helpers.ts';
 
 const NO_TEST_REQUIRED_ALLOW_LIST = new Set<string>();
-const COMPONENTS_DIR = join(import.meta.dir, 'components');
 
 // ---------------------------------------------------------------------------
 // Regression coverage for convention check #9 (substantive-test requirement).
@@ -169,7 +169,7 @@ describe('convention #9 — substantive-test gate', () => {
         stale.push(`${name} (no matching component .svelte — remove from allow-list)`);
         continue;
       }
-      const testFilePath = join(COMPONENTS_DIR, file.replace(/\.svelte$/, '.test.ts'));
+      const testFilePath = cinderComponentFile(file.replace(/\.svelte$/, '.test.ts'));
       if (hasSubstantiveTest(testFilePath).pass) {
         stale.push(`${name} (now has a substantive test — remove from allow-list)`);
       }

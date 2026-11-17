@@ -1,10 +1,11 @@
 /// <reference lib="dom" />
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { parse, type ChildNode, type Declaration } from 'postcss';
 
+import { cinderSourceFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+import { resolveStylesheetImport } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
@@ -583,14 +584,14 @@ describe('RadioGroup — missing-label dev warning', () => {
  * slim RadioGroup consumer needs today, rather than reaching it transitively.
  */
 describe('RadioGroup — row-direction cascade (COR-452)', () => {
-  const cinderSource = join(import.meta.dir, '..', '..');
-
+  // Cinder's stylesheets are read from whichever package holds each once the split moves it, and
+  // an `@import` by package specifier resolves through that package's exports.
   type FlatCssRule = { selector: string; declarations: string };
 
   function resolveCssImportTarget(fromFile: string, params: string): string | null {
     const match = params.match(/['"]([^'"]+)['"]/);
     if (!match?.[1]) return null;
-    return join(dirname(fromFile), match[1]);
+    return resolveStylesheetImport(fromFile, match[1]);
   }
 
   function flattenCssRules(file: string): FlatCssRule[] {
@@ -655,15 +656,15 @@ describe('RadioGroup — row-direction cascade (COR-452)', () => {
   }
 
   test('RadioGroup all-styles row direction', () => {
-    const rules = flattenCssRules(join(cinderSource, 'styles/all.css'));
+    const rules = flattenCssRules(cinderSourceFile('styles/all.css'));
     expectRowDirectionCascade(rules);
   });
 
   test('RadioGroup slim-styles row direction', () => {
     const rules = [
-      ...flattenCssRules(join(cinderSource, 'styles/index.css')),
-      ...flattenCssRules(join(cinderSource, 'components/form-field/form-field.css')),
-      ...flattenCssRules(join(cinderSource, 'components/radio-group/radio-group.css')),
+      ...flattenCssRules(cinderSourceFile('styles/index.css')),
+      ...flattenCssRules(cinderSourceFile('components/form-field/form-field.css')),
+      ...flattenCssRules(cinderSourceFile('components/radio-group/radio-group.css')),
     ];
     expectRowDirectionCascade(rules);
   });

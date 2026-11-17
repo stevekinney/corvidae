@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+
+import { cinderComponentFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 
 import { NON_TEXT, contrastRatio, wcagLuminance } from '../tokens/runtime/contrast/index.ts';
 import * as values from './check-token-contrast-test-values.ts';
@@ -48,10 +49,9 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
   // `border.muted` reference (parsed out of the fill declaration), and the
   // effective alpha computed from that real text fails the assertion below
   // exactly as it did before the fix.
-  const componentsDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', 'components');
-
+  // Each component's stylesheet, in whichever Cinder package holds the component.
   function readComponentCss(...segments: readonly string[]): string {
-    return readFileSync(join(componentsDirectory, ...segments), 'utf8');
+    return readFileSync(cinderComponentFile(join(...segments)), 'utf8');
   }
 
   /** Which border tier this rule body's fill/border actually references. */
@@ -202,7 +202,6 @@ describe('the warning indicator clears 3:1 on every surface a lone dot sits on',
     }
   }
 
-  const componentsDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', 'components');
   const dotSites: ReadonlyArray<readonly [name: string, file: string, selector: string]> = [
     ['StatusDot', 'status-dot/status-dot.css', "[data-cinder-status='warning'] {"],
     [
@@ -226,7 +225,7 @@ describe('the warning indicator clears 3:1 on every surface a lone dot sits on',
   ];
   for (const [name, file, selector] of dotSites) {
     it(`${name} fills with the warning indicator, not the bright solid`, () => {
-      const body = ruleBody(readFileSync(join(componentsDirectory, file), 'utf8'), selector);
+      const body = ruleBody(readFileSync(cinderComponentFile(file), 'utf8'), selector);
       expect(body).toContain('var(--cinder-status-warning-indicator)');
       expect(body).not.toContain('var(--cinder-status-warning-solid)');
     });

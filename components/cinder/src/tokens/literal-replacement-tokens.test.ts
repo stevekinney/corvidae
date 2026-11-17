@@ -16,10 +16,11 @@ import { join } from 'node:path';
 
 import { parse, type AtRule, type Rule } from 'postcss';
 
+import { cinderSourceFile } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
+
 import { readJsonRecord } from '../styles/token-contrast-test-readers.ts';
 
 const TOKENS_DIRECTORY = import.meta.dirname;
-const SOURCE_DIRECTORY = join(TOKENS_DIRECTORY, '..');
 
 const themes = readdirSync(join(TOKENS_DIRECTORY, 'resolved'))
   .filter((name) => name.endsWith('.json'))
@@ -39,8 +40,9 @@ function readToken(theme: string, path: string): { value: unknown; cssProperty: 
   };
 }
 
+/** A stylesheet of Cinder's `src`, in whichever package holds it once the split moves it. */
 function readStylesheet(...segments: string[]) {
-  return parse(readFileSync(join(SOURCE_DIRECTORY, ...segments), 'utf8'));
+  return parse(readFileSync(cinderSourceFile(join(...segments)), 'utf8'));
 }
 
 /** The value a rule gives `property`, with its `!important` flag. */
