@@ -288,7 +288,13 @@ describe('the committed Chat stress cases', () => {
     expect(textsOf(85)).toEqual(['Reading the refund policy first.']);
   });
 
-  it('holds exactly the 85 cases the board requires, numbered 1 to 85', () => {
+  it('draws case 86 with a single source, so audit row B9 can be judged from captures (COR-2440)', () => {
+    const single = findStressCase(cases, 86);
+    expect(single?.scenario).toBe('citations');
+    expect(buildStressSetup(single!).sources[0]).toHaveLength(1);
+  });
+
+  it('holds exactly the 86 cases the board requires, numbered 1 to 86', () => {
     expect(cases).toHaveLength(STRESS_CASE_COUNT);
     expect(cases.map((stressCase) => stressCase.id)).toEqual(
       Array.from({ length: STRESS_CASE_COUNT }, (_, index) => index + 1),

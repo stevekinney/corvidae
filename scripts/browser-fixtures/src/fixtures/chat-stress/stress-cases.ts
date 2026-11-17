@@ -159,9 +159,10 @@ export const STRESS_NOW = '2026-11-02T16:46:00.000Z';
 /**
  * The number of cases the board requires: the 80 of COR-2289, and case 81, the docked question with
  * four questions asked together (2026-11-13 owner review), and cases 82 to 85, the four situations of
- * a turn's narration (working, folded and closed, folded and open, stopped before an answer).
+ * a turn's narration (working, folded and closed, folded and open, stopped before an answer), and
+ * case 86, a message with a single source (COR-2440, audit row B9).
  */
-export const STRESS_CASE_COUNT = 85;
+export const STRESS_CASE_COUNT = 86;
 
 /** Required owner-audit scenarios and the durable case/variant that captures each one. */
 export const OWNER_AUDIT_SCENARIO_MAPPING = [

@@ -2948,5 +2948,20 @@
     ],
     "variants": [],
     "focusSweep": false
+  },
+  {
+    "id": 86,
+    "slug": "single-source",
+    "title": "A message with a single source shows the one Sources control, saying one source, and its list holds that source.",
+    "provenance": "issue-named",
+    "source": "COR-2440 (audit row B9): the capture had no single-source citation case, so B9 could not be judged from captures.",
+    "rows": ["M4"],
+    "scenario": "citations",
+    "params": {
+      "sourceSet": "single"
+    },
+    "steps": [{ "action": "focus-source" }, { "action": "expect-source-control" }],
+    "variants": [],
+    "focusSweep": false
   }
 ]
