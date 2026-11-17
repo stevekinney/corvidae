@@ -242,7 +242,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   readingFile: 'Reading file',
   uploadFailed: 'Upload failed. Try again, or remove it.',
   approvalWaiting: 'Approval waiting',
-  approvalWaitingText: 'Waiting for your approval.',
+  approvalWaitingText: 'Needs your approval.',
   approvalQueueNote: 'Messages you send now wait until you decide.',
   reviewApproval: 'Review approval',
   reviewApprovalShort: 'Review',
