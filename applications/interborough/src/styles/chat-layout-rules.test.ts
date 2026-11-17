@@ -20,14 +20,29 @@ describe('the chat page’s layout', () => {
   });
 
   test('the outlet pads neither the list nor the conversation, so the list is flush to the rail and the top bar', async () => {
-    const rule = ruleOf(await read('./foundation.css'), '.weft-shell-outlet:has(.ib-chats)');
+    const css = await read('./foundation.css');
+    const rule = ruleOf(css, ".weft-shell-outlet[data-width='panes']");
     expect(rule).toMatch(/padding:\s*0;/);
+    // Keyed on the outlet's own attribute, set from the route on the first frame; a descendant that
+    // appears once the page's code has loaded changed the padding after the panes first measured,
+    // and a saved list width, kept as a share of the first measure, came back wider.
+    expect(css).not.toContain(':has(.ib-chats');
+  });
+
+  test('the chat routes carry the panes width, so the outlet has it before the page loads', async () => {
+    const { routes } = await import('../app/routes.ts');
+    const { pageWidth } = await import('../app/views.ts');
+    for (const pattern of ['/chats', '/chats/new', '/chats/:chat']) {
+      const route = routes.find((candidate) => candidate.pattern === pattern);
+      expect(route?.kind, pattern).toBe('panes');
+      expect(pageWidth(route!.kind), pattern).toBe('panes');
+    }
   });
 
   test('on a phone the outlet keeps only the gutter’s remainder around the conversation, so the composer stands 16px from the sides and from the tab bar', async () => {
     const rule = ruleOf(
       await read('./foundation.css'),
-      '.weft-shell-outlet:has(.ib-chats .weft-chat-route)',
+      ".weft-shell-outlet[data-width='panes']:has(.weft-chat-route)",
     );
     expect(rule).toMatch(
       /padding-inline:\s*calc\(var\(--cinder-space-4\) - var\(--cinder-space-3\)\)/,
