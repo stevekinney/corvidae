@@ -1,7 +1,7 @@
 {
   "version": 1,
   "orderSeed": "sdlc-14ef-2026-11-17",
-  "policySnapshot": "scripts/chef/fixtures/sdlc-policy-baseline.json@0ad1ffcdff72dedf7e253d4a45e93063fa3ad851b5620560ff148f2078978e41",
+  "policySnapshot": "scripts/chef/fixtures/sdlc-policy-baseline.json@8b288e55d76ef0df5b959d0f945b51a8176e270a188c0e6754a22f36b8bb6403",
   "tasks": [
     {
       "id": "local-01",
