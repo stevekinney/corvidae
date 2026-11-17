@@ -110,6 +110,8 @@ Most defects in a generated page come from how the components are arranged, not 
 
 A third applies to lists: trailing row actions sit in a fixed column, so a badge never changes where an action button lands. Put the badge with the metadata in the content column of the [`StackedListItem`](./src/components/stacked-list-item/README.md).
 
+A surface of your own docked to the bottom of the page, such as a composer, takes the `dockedToBottom()` attachment, so a [`ToastRegion`](./src/components/toast-region/README.md#where-the-region-sits) sits above it as it sits above a `DockedActionBar` or a bottom `NavigationBar`.
+
 ## A2UI catalog (experimental)
 
 > [!WARNING] Experimental, pinned to A2UI v0.9.1 The catalog follows A2UI v0.9.1 and may change until a stable A2UI 1.0 compatibility review. It is opt-in: no surface uses it unless a client asks for it.

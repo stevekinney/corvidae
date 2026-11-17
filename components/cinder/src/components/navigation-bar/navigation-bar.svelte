@@ -18,6 +18,7 @@
   import { BROWSER as browser } from 'esm-env';
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
+  import { trackDockedBar } from '../../_internal/docked-bar-height.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { getSequentialFocusTargets, getTabIndexValue } from '../../utilities/focus.ts';
@@ -186,6 +187,13 @@
   onDestroy(() => {
     exitState.destroy();
   });
+
+  // A bottom bar is tracked as a docked action bar is, so a toast sits above it, and above a bar
+  // stacked on it, rather than over its tabs (docked-bar-height.ts). A top bar is not tracked.
+  function publishBottomBarHeight(bar: HTMLElement): (() => void) | undefined {
+    return placement === 'bottom' ? trackDockedBar(bar) : undefined;
+  }
+
   const inheritedPortalStyle = createInheritedPortalStyle(
     () => navigationBarElement,
     // Same retention as `itemsPortalScope` above — keep inheriting the
@@ -800,6 +808,7 @@
   data-cinder-menu-toggle-placement={menuTogglePlacement}
   onclick={handleClick}
   onkeydown={handleKeyDown}
+  {@attach publishBottomBarHeight}
 >
   {#if isCollapsible && menuToggle && menuTogglePlacement === 'before-brand'}
     <div class="cinder-navigation-bar__menu-toggle">

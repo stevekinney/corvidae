@@ -52,6 +52,7 @@
     divider = false,
     status,
     statusPlacement = 'below',
+    narrowActions = 'own-row',
     titleText,
     class: className,
     ...rest
@@ -300,6 +301,7 @@
   class={classNames('cinder-page-header', className)}
   data-cinder-flush={flush ? 'true' : undefined}
   data-cinder-divider={divider && !flush ? 'true' : undefined}
+  data-cinder-narrow-actions={narrowActions === 'beside-status' ? 'beside-status' : undefined}
   data-cinder-variant={resolvedVariant === 'default' ? undefined : resolvedVariant}
   data-cinder-tone={hero ? resolvedTone : undefined}
   data-theme={darkBand ? 'dark' : undefined}

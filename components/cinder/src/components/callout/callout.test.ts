@@ -287,7 +287,7 @@ describe('Callout neutral variant and action', () => {
     );
   });
 
-  test('a fit action is an inline action whose message takes only its words on a phone, so the action stays beside it while both fit', async () => {
+  test('a fit action is an inline action whose message starts at its words on a phone and grows into the row, so the action stays beside it while both fit', async () => {
     const action = createRawSnippet(() => ({ render: () => '<button>Retry all</button>' }));
     const { container } = render(Callout, {
       props: { actionLayout: 'fit', action, children: textSnippet('2 files didn’t upload.') },
@@ -299,7 +299,7 @@ describe('Callout neutral variant and action', () => {
     expect(root.querySelector('.cinder-callout__body > .cinder-callout__action')).not.toBeNull();
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{[\s\S]*?\.cinder-callout--fit-action > \.cinder-callout__body > \.cinder-callout__message \{\s*flex: 0 1 auto;/,
+      /@container \(inline-size < 30rem\) \{[\s\S]*?\.cinder-callout--fit-action > \.cinder-callout__body > \.cinder-callout__message \{\s*flex: 1 1 auto;/,
     );
     cleanup();
     const plain = render(Callout, {

@@ -7,7 +7,7 @@ import { afterEach, expect, jest, test } from 'bun:test';
 
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -60,8 +60,7 @@ test('a running call’s clock keeps counting while it has no answer', async () 
       pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
     },
   } as never);
-  await until(() => expect(container.querySelector('textarea')).not.toBeNull());
-  const box = container.querySelector('textarea') as HTMLTextAreaElement;
+  const box = await loadedComposer(container);
   await fireEvent.input(box, { target: { value: 'Look up 4471' } });
   await fireEvent.keyDown(box, { key: 'Enter' });
   await until(() =>

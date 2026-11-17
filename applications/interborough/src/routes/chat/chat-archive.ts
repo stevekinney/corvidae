@@ -2,9 +2,11 @@
  * Archives a chat or unarchives it (COR-2285 V5), for the More menu and the Archived bar alike, so
  * the two say the same thing. The receipt's time is written into the chat's own read at once, so
  * the composer turns into the Archived bar (or back) without waiting for the read again, and every
- * list of chats is read again, since the chat lists leave archived chats out. A refusal is said in a
- * toast, as Rename's and Delete's are, in plain words: a chat that is working or waiting on an answer
- * cannot be archived until it is stopped or answered, and a goal's chat cannot be archived at all.
+ * list of chats is read again, since the chat lists leave archived chats out. The menu does not offer
+ * Archive while the chat is working or waiting on an answer, so the server's refusal for that is the
+ * race of a chat that got busy as Archive was pressed. A refusal is said in a toast, as Rename's and
+ * Delete's are, in plain words: a chat that is working or waiting on an answer cannot be archived
+ * until it is stopped or answered, and a goal's chat cannot be archived at all.
  */
 import type { QueryClient } from '@tanstack/svelte-query';
 
@@ -55,7 +57,10 @@ export async function setChatArchived(
     ({ archivedAt } = await (archive ? archiveContext(sessionId) : unarchiveContext(sessionId)));
   } catch (error) {
     const { text, variant } = await refusalOf(error, sessionId, archive);
-    showToast(text, { variant, duration: 0 });
+    // A warning (the chat got busy between the menu opening and the click, a goal's chat, a chat
+    // already gone) is said for the usual time, so it never stays over the tab bar or Send; a fault
+    // stays until it is dismissed, as Rename's and Delete's do.
+    showToast(text, variant === 'danger' ? { variant, duration: 0 } : { variant });
     return false;
   }
   const stamp = (context: ChatContext | undefined): ChatContext | undefined =>

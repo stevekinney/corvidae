@@ -1,17 +1,20 @@
 /**
  * Archiving a chat from its page (COR-2285 V5), over a stubbed Bureau: the More menu's Archive turns
  * the composer into Chat's Archived bar with no question asked, an archived chat opens on that bar
- * and its menu offers Unarchive, Unarchive brings the composer back with the focus in its box, a
- * chat that is working is not archived and the toast says why, and a send that loses a race with an
+ * and its menu offers Unarchive, Unarchive brings the composer back with the focus in its box,
+ * Archive is held back with its reason while a run is going or an approval waits, a chat that got
+ * busy as Archive was pressed is not archived and the toast says why, and a send that loses a race with an
  * archive in another window keeps its text and shows the bar, with none of the refusal's words.
  */
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { CHAT_COPY } from '../../app/copy/chat.ts';
+import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   callsTo,
+  describedBy,
   mount,
   openMenu,
   restoreBureau,
@@ -29,6 +32,47 @@ afterEach(() => {
 const MORE = CHAT_COPY.more;
 /** Noon on Nov 3, read in any zone as Nov 3. */
 const ARCHIVED_AT = '2026-11-03T12:00:00.000Z';
+
+const sse = (events: readonly unknown[]) =>
+  new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
+
+/** What the Bureau streams to a page that joins a run parked on a refund's approval. */
+const PARKED = [
+  { type: 'RUN_STARTED', threadId: 'session-1', runId: 'native-1' },
+  {
+    type: 'MESSAGES_SNAPSHOT',
+    messages: [{ id: 'user-1', role: 'user', content: 'Please refund order 4471.' }],
+  },
+  { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+  { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{"orderId":4471,"cents":4200}' },
+  { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+  {
+    type: 'TOOL_CALL_RESULT',
+    messageId: 'result-1',
+    toolCallId: 'call-refund',
+    content: 'requires approval',
+    role: 'tool',
+  },
+  {
+    type: 'RUN_FINISHED',
+    threadId: 'session-1',
+    runId: 'native-1',
+    outcome: {
+      type: 'interrupt',
+      interrupts: [
+        {
+          id: 'approval:native-1:call-refund',
+          reason: 'tool-approval',
+          toolCallId: 'call-refund',
+          message: 'Refund order 4471 for $42.00?',
+          metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round: 0 } },
+        },
+      ],
+    },
+  },
+];
 
 /** The neutral bar Chat draws in place of an archived chat's composer. */
 function archivedBar(view: Mounted): HTMLElement | null {
@@ -121,7 +165,60 @@ describe('the More menu', () => {
     expect(archivedBar(view)).toBeNull();
   });
 
-  test('says a chat that is working or waiting cannot be archived yet, and keeps its composer', async () => {
+  test('holds Archive back, with the reason, while a run is going', async () => {
+    const served = serve(TURNS, {
+      'bureau.contexts.get': () => ({ ...CONTEXT, archivedAt: null, activity: 'running' }),
+    });
+    const view = mount();
+
+    await openMenu(view);
+    const item = view.getByRole('menuitem', { name: MORE.archive });
+
+    expect(item.getAttribute('aria-disabled') === 'true' || item.hasAttribute('disabled')).toBe(
+      true,
+    );
+    // The reason is a second line the item is described by, not a `title` touch never shows.
+    expect(item.hasAttribute('title')).toBe(false);
+    expect(describedBy(item)).toBe(MORE.archiveBlocked.running);
+    await fireEvent.click(item);
+    expect(callsTo(served, 'bureau.contexts.archive')).toHaveLength(0);
+  });
+
+  test('holds Archive back, with the reason in the chat’s words, while an approval waits', async () => {
+    const served = serve(
+      [],
+      {
+        'bureau.contexts.get': () => ({ ...CONTEXT, archivedAt: null, activity: 'awaiting-input' }),
+        'bureau.reviews.list': () => ({
+          reviews: [
+            toolApprovalFixture({
+              sessionId: 'session-1',
+              approval: { ...toolApprovalFixture().approval, callId: 'call-refund' },
+            }),
+          ],
+        }),
+      },
+      undefined,
+      () => sse(PARKED),
+    );
+    const view = mount();
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-approval-decision]')).not.toBeNull(),
+    );
+
+    await fireEvent.click(await view.findByRole('button', { name: MORE.label }));
+    const item = view.getByRole('menuitem', { name: MORE.archive });
+
+    expect(item.getAttribute('aria-disabled') === 'true' || item.hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(item.hasAttribute('title')).toBe(false);
+    expect(describedBy(item)).toBe(MORE.archiveBlocked.approval);
+    await fireEvent.click(item);
+    expect(callsTo(served, 'bureau.contexts.archive')).toHaveLength(0);
+  });
+
+  test('says why when the chat got busy as Archive was pressed (a race), and keeps its composer', async () => {
     serve(TURNS, {
       'bureau.contexts.archive': () => {
         throw new StubFault('Conflict', 409, 'Context "session-1" has a live task.', {

@@ -4,7 +4,7 @@
 
 `FormActions` is the bar at the end of a form. The left side says where the form stands: an unsaved-change count ("2 unsaved changes") and the effect of saving ("Saving raises the policy revision."). The right side holds the buttons, secondary first and the primary submit last, so it sits rightmost. A top divider and the page's canvas fill set the bar apart from the fields above it.
 
-- **Sticky**: `sticky` keeps the bar at the bottom of the nearest scrolling container, so Save is in reach however long the form gets. The bar sits in the flow at the end of the form, so the content above it needs no bottom padding of its own, and it clears the home indicator and rides above the on-screen keyboard. While it is mounted it publishes its height so the toast region sits above it.
+- **Sticky**: `sticky` keeps the bar at the bottom of the nearest scrolling container, so Save is in reach however long the form gets. The bar sits in the flow at the end of the form, so the content above it needs no bottom padding of its own, and it clears the home indicator and rides above the on-screen keyboard. While it is docked to the bottom of the viewport the toast region sits above it.
 - **Failed save**: `error` (and `errorTitle`) draw a danger alert above the buttons. The fields keep what the person entered and Save keeps its label as the retry.
 - **Narrow**: below 28rem of bar width the summary takes its own line and the buttons share the row under it.
 

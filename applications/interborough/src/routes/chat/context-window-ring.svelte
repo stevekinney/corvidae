@@ -11,7 +11,7 @@
    * The composer's meter already says the percentage, so the header shows the ring alone and keeps the
    * reading for a screen reader.
    */
-  import { Button, Meter, Popover } from '@lostgradient/cinder';
+  import { Button, Meter, Popover, Tooltip } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import type { ContextWindow } from '../../lib/bureau-client.ts';
@@ -41,29 +41,33 @@
   {@const scale = Math.max(use.max ?? 0, use.used, 1)}
   <Popover bind:open placement="bottom-end" label={COPY.label} focusManagement="preserve">
     {#snippet trigger()}
-      <Button
-        variant="ghost"
-        size="sm"
-        class="weft-context-ring"
-        aria-label={COPY.trigger(use.percent, used, max)}
-        data-tone={use.tone}
-        onclick={() => (open = !open)}
-      >
-        <svg class="weft-context-ring__svg" viewBox="0 0 20 20" aria-hidden="true">
-          <circle class="weft-context-ring__track" cx="10" cy="10" r={RADIUS} />
-          <circle
-            class="weft-context-ring__fill"
-            cx="10"
-            cy="10"
-            r={RADIUS}
-            stroke-dasharray={`${String(use.drawn * CIRCUMFERENCE)} ${String(CIRCUMFERENCE)}`}
-            transform="rotate(-90 10 10)"
-          />
-        </svg>
-        <span class="weft-context-ring__reading cinder-sr-only"
-          >{COPY.reading(use.percent, used)}</span
+      <!-- The ring has no words of its own, so it says what it is on hover and focus, as its
+           accessible name does (COR-2327: the review read it as an unlabelled empty ring). -->
+      <Tooltip text={COPY.trigger(use.percent, used, max)} describe={false}>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="weft-context-ring"
+          aria-label={COPY.trigger(use.percent, used, max)}
+          data-tone={use.tone}
+          onclick={() => (open = !open)}
         >
-      </Button>
+          <svg class="weft-context-ring__svg" viewBox="0 0 20 20" aria-hidden="true">
+            <circle class="weft-context-ring__track" cx="10" cy="10" r={RADIUS} />
+            <circle
+              class="weft-context-ring__fill"
+              cx="10"
+              cy="10"
+              r={RADIUS}
+              stroke-dasharray={`${String(use.drawn * CIRCUMFERENCE)} ${String(CIRCUMFERENCE)}`}
+              transform="rotate(-90 10 10)"
+            />
+          </svg>
+          <span class="weft-context-ring__reading cinder-sr-only"
+            >{COPY.reading(use.percent, used)}</span
+          >
+        </Button>
+      </Tooltip>
     {/snippet}
     <div class="weft-context-window" data-testid="context-window">
       <p class="weft-context-window__summary">{COPY.summary(used, max)}</p>
