@@ -4,13 +4,17 @@
   "properties": {
     "truncate": {
       "type": "boolean",
-      "description": "Keeps the cell's text on one line and ends it with an ellipsis. The full\ntext is the `title`, so it shows on hover. The text may grow to a maximum\ninline size and no further, so one very long value (a storage key, a hash,\na URL) cannot widen the table. Set it on every cell in the column.\nUnless you pass `title`, the title is read from the rendered text.",
+      "description": "Keeps the cell's text on one line and ends it with an ellipsis. The full\ntext is a tooltip on hover and focus, and the cut text takes focus, so a\nkeyboard or touch user reaches it too. The text may grow to a maximum\ninline size and no further, so one very long value (a storage key, a hash,\na URL) cannot widen the table. Set it on every cell in the column.\nUnless you pass `title`, the tooltip is read from the rendered text.",
       "default": false
     },
     "controls": {
       "enum": [false, true, "fit"],
-      "description": "Marks a cell that holds a form control (a select, an input, a button). The control fills the\ncell, so every control in the column shares the one width the column has, and the cell keeps a\nminimum width so the control stays usable. Set it on every cell in the column. `'fit'` is for a\ncontrol that keeps its own size, such as a checkbox or a switch: the cell does not stretch it or\nset a minimum width.\n\nA table stacks its rows on a narrow container only while a cell has this set. When it\nstacks, the control cells move to a line of their own under the other cells, each at least 44px\ntall, and a `'fit'` cell shows its column's header text beside the control.",
+      "description": "Marks a cell that holds a form control (a select, an input, a button). The control fills the\ncell, so every control in the column shares the one width the column has, and the cell keeps a\nminimum width so the control stays usable. Set it on every cell in the column. `'fit'` is for a\ncontrol that keeps its own size, such as a checkbox or a switch: the cell does not stretch it or\nset a minimum width.\n\nA table that is not `fit` stacks its rows on a narrow container only while a cell has this\nset. When it stacks, the control cells move to a line of their own under the other cells, each\nat least 44px tall, and a `'fit'` cell shows its column's header text beside the control. On a\n`fit` table whose controls are all `'fit'`, the control sits at the trailing edge of the row\nand takes its own accessible name; a control that fills its cell keeps the line of its own.",
       "default": false
+    },
+    "stack": {
+      "enum": ["end", "status", "plain"],
+      "description": "The part this cell plays on a `fit` table's stacked row, below `stackBelow`:\n\n- `'end'`: a short value at the inline end of the title line (a time, a count).\n- `'status'`: a status that starts the second line, never cut.\n- `'plain'`: prose under the title, with no label.\n\nA cell with no `stack` is a line of its column's header text and its value. The title is the\n`as=\"th\"` cell. It has no effect at other widths or on a table that is not `fit`."
     },
     "align": {
       "enum": ["left", "center", "right"],
@@ -38,7 +42,7 @@
       {
         "name": "detail",
         "reason": "function-or-snippet",
-        "description": "Secondary content that follows `children` in the same cell: an identifier, a description, a\nnote. It reads as part of the cell until the table stacks its rows into cards, where it is\ndropped, so the first line of a card carries the name and its one-word facts only (a tool's\nname and risk, not its identifier and description). It is not a place for anything the reader\nneeds on a phone, because it is not drawn there."
+        "description": "Secondary content that follows `children` in the same cell: an identifier, a description, a\nnote. It reads as part of the cell until the table stacks its rows. A table with controls\ndrops it from its cards, so the first line carries the name and its one-word facts only. A\n`fit` table's title cell keeps it as one muted line under the title, cut with an ellipsis, and\ndrops it from every other cell. It is not a place for anything the reader needs on a phone\nbeyond an identifier. Give it block content, so it sits under the name at every width."
       }
     ]
   }

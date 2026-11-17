@@ -55,7 +55,8 @@ type TextContentProps =
        * Keeps the text on one line and ends it with an ellipsis when it is too long, for a long value
        * in a narrow place: a name above its detail in a table row, an identifier in a list. The line
        * takes the typography of what holds it, so it reads as part of that text, and the full text is
-       * its `title` unless `title` is set. Needs `text`.
+       * a tooltip unless `title` is set (the text takes focus, so a keyboard or touch user reaches
+       * it too). Needs `text`.
        */
       truncate: 'end';
       /** The plain text to end with an ellipsis. */

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -9,7 +9,12 @@ import type { TableScrollContainerProps } from './table.types.ts';
 
 setupHappyDom();
 
-const { render, fireEvent } = await import('@testing-library/svelte');
+const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
 
 // Strip the @layer wrapper: happy-dom does not apply layer-nested rules to
@@ -1116,9 +1121,16 @@ describe('Table data display', () => {
     const cells = Array.from(container.querySelectorAll('td[data-cinder-truncate]'));
     expect(cells).toHaveLength(2);
     const text = requiredInstance(cells[0]?.querySelector('.cinder-table__cell-text'), HTMLElement);
-    // The full text is on the title, so nothing is lost when it is clipped.
-    expect(text.getAttribute('title')).toBe(longValue);
+    // The full text is in the DOM and in a tooltip a focus opens, so nothing is lost when it is clipped.
+    expect(text.hasAttribute('title')).toBe(false);
+    expect(text.getAttribute('tabindex')).toBe('0');
     expect(text.textContent?.trim()).toBe(longValue);
+    await fireEvent.focus(text);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longValue),
+    );
+    // The tooltip's panel is not part of the cell, so the cell's text is not read twice.
+    expect(cells[0]?.textContent?.trim()).toBe(longValue);
 
     // The CSS contract that keeps the column from growing with its content.
     const rule = ruleBody('.cinder-table__cell-text');
@@ -1134,12 +1146,27 @@ describe('Table data display', () => {
     const { default: ColumnsFixture } =
       await import('../../test/fixtures/table-columns-fixture.svelte');
     const { container } = render(ColumnsFixture, { values: ['one', 'two'], explicitTitles: true });
-    const titles = Array.from(container.querySelectorAll('.cinder-table__cell-text')).map(
-      (element) => element.getAttribute('title'),
-    );
-    expect(titles).toEqual(['Key 1', 'Key 2']);
-    // The title lives on the text, not on the cell, so it is announced once.
+    const texts = Array.from(container.querySelectorAll<HTMLElement>('.cinder-table__cell-text'));
+    await fireEvent.focus(texts[1] as HTMLElement);
+    await waitFor(() => {
+      const tooltip = document.getElementById(texts[1]?.getAttribute('aria-describedby') ?? '');
+      expect(tooltip?.textContent?.trim()).toBe('Key 2');
+    });
+    // No native title on the text or the cell, so the full text is announced once.
+    expect(texts.every((element) => !element.hasAttribute('title'))).toBe(true);
     expect(container.querySelector('td[data-cinder-truncate]')?.getAttribute('title')).toBeNull();
+  });
+
+  test('a truncating cell is reachable by focus inside a link in a row', async () => {
+    const { default: Fixture } = await import('./table-cell-link.fixture.svelte');
+    const { container } = render(Fixture, { value: longValue });
+    const text = container.querySelector('.cinder-table__cell-text') as HTMLElement;
+    expect(text.querySelector('a')).not.toBeNull();
+    await fireEvent.focus(text);
+    await waitFor(() => {
+      const tooltip = document.getElementById(text.getAttribute('aria-describedby') ?? '');
+      expect(tooltip?.textContent?.trim()).toBe(longValue);
+    });
   });
 
   test('controls in one table column share one width', async () => {

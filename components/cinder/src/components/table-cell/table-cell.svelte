@@ -20,12 +20,14 @@
   import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
 
   let {
     align = 'left',
     as = 'td',
     truncate = false,
     controls = false,
+    stack,
     detail,
     title,
     class: className,
@@ -37,14 +39,51 @@
   const tableContext = tryGetTableContext();
   $effect(() => {
     if (!controls) return;
-    return tableContext?.registerControls?.();
+    return tableContext?.registerControls?.(controls !== 'fit');
   });
+
+  // On a stacked `fit` table the row header is the card's title: it holds to two lines, and the
+  // whole of it opens in a tooltip from the title's link, or from the title itself when it has none.
+  const clampTitle = $derived(as === 'th' && !truncate && tableContext?.stackCard === true);
+  let titleElement = $state<HTMLElement | null>(null);
+  let titleTrigger = $state<HTMLElement | null>(null);
+  let titleText = $state<string | undefined>();
+  const holdTitle: Attachment<HTMLElement> = (element) => {
+    const read = (): void => {
+      const link = element.querySelector<HTMLElement>('a');
+      if (!link) element.tabIndex = 0;
+      titleTrigger = link ?? element;
+      const text = element.textContent?.trim();
+      titleText = text === undefined || text === '' ? undefined : text;
+    };
+    titleElement = element;
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(element, { childList: true, characterData: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (titleElement === element) {
+        titleElement = null;
+        titleTrigger = null;
+      }
+    };
+  };
 
   // A truncating cell shows the full text on hover. Unless the caller supplied
   // a `title`, read it from the rendered text so a snippet child needs no
   // second copy of its own string. The attachment keeps it current when the
   // cell's content changes.
   let renderedText = $state<string | undefined>();
+
+  // The cut text is focusable and opens a tooltip with the whole text, so a keyboard or touch user
+  // reaches it too, in a row as well as in a link inside the cell.
+  let textElement = $state<HTMLElement | null>(null);
+  const holdTextElement: Attachment<HTMLElement> = (element) => {
+    textElement = element;
+    return () => {
+      if (textElement === element) textElement = null;
+    };
+  };
 
   const readRenderedText: Attachment<HTMLElement> = (element) => {
     const read = (): void => {
@@ -67,12 +106,22 @@
   class={classNames('cinder-table__cell', className)}
   data-cinder-align={align}
   data-cinder-truncate={truncate || undefined}
+  data-cinder-stack={stack}
   data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
 >
   {#if truncate}
-    <span class="cinder-table__cell-text" title={title ?? renderedText} {@attach readRenderedText}>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
+    <span
+      class="cinder-table__cell-text"
+      tabindex="0"
+      {@attach readRenderedText}
+      {@attach holdTextElement}
+    >
       {@render children?.()}
-    </span>
+    </span><FullTextTooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
+  {:else if clampTitle}
+    <span class="cinder-table__cell-title" {@attach holdTitle}>{@render children?.()}</span
+    ><FullTextTooltip text={title ?? titleText ?? ''} triggerRef={titleTrigger} />
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}
