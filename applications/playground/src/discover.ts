@@ -13,7 +13,7 @@ import {
   COMPONENT_SOURCES,
   type ComponentSource,
   exampleFilePathIn,
-  examplesDirectoryIn,
+  examplesDirectoriesIn,
   resetComponentLocations,
 } from './component-sources.ts';
 /**
@@ -222,15 +222,16 @@ export async function discoverComponents(): Promise<string[]> {
 
 async function scanExamples(definition: DiscoveredComponent): Promise<string[]> {
   const glob = new Bun.Glob('*.example.svelte');
-  const scenarios: string[] = [];
-  const cwd = examplesDirectoryIn(definition.source, definition.name);
-  // A component without examples has no `examples/` directory, and a glob over a missing
-  // directory throws.
-  if (!(await directoryExists(cwd))) return [];
-  for await (const fileName of glob.scan({ cwd })) {
-    scenarios.push(fileName.replace(/\.example\.svelte$/, ''));
+  const scenarios = new Set<string>();
+  for (const cwd of examplesDirectoriesIn(definition.source, definition.name)) {
+    // A component without examples has no `examples/` directory, and a glob over a missing
+    // directory throws.
+    if (!(await directoryExists(cwd))) continue;
+    for await (const fileName of glob.scan({ cwd })) {
+      scenarios.add(fileName.replace(/\.example\.svelte$/, ''));
+    }
   }
-  return scenarios.toSorted();
+  return [...scenarios].toSorted();
 }
 
 async function directoryExists(path: string): Promise<boolean> {

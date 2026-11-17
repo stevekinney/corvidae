@@ -17,7 +17,8 @@ import { rewriteComponentReadmeLinks } from './component-documentation.ts';
 import {
   componentRoots,
   createCinderComponentSource,
-  examplesDirectoryIn,
+  exampleFilePathIn,
+  examplesDirectoriesIn,
 } from './component-sources.ts';
 
 const fixture = createFamilyFixture();
@@ -53,11 +54,36 @@ describe('a family package core depends on', () => {
       packageName: fixture.familyPackage,
       repositoryDirectory: `packages/fixture-family/src/components/${fixture.familyComponent}`,
     });
-    expect(examplesDirectoryIn(source, fixture.familyComponent)).toBe(
+    expect(examplesDirectoriesIn(source, fixture.familyComponent)).toEqual([
       join(fixture.familyComponentsRoot, fixture.familyComponent, 'examples'),
-    );
+      join(fixture.coreRoot, 'src', 'component-tests', fixture.familyComponent, 'examples'),
+    ]);
     expect(componentRoots(source)).toEqual(
       [fixture.coreComponentsRoot, fixture.familyComponentsRoot].toSorted(),
+    );
+  });
+
+  test('finds an example core holds for the family component, beside the family’s own', () => {
+    const own = join(fixture.familyComponentsRoot, fixture.familyComponent, 'examples');
+    const held = join(
+      fixture.coreRoot,
+      'src',
+      'component-tests',
+      fixture.familyComponent,
+      'examples',
+    );
+    mkdirSync(own, { recursive: true });
+    mkdirSync(held, { recursive: true });
+    writeFileSync(join(own, 'basic.example.svelte'), '');
+    writeFileSync(join(held, 'composed.example.svelte'), '');
+    expect(exampleFilePathIn(source, fixture.familyComponent, 'basic')).toBe(
+      join(own, 'basic.example.svelte'),
+    );
+    expect(exampleFilePathIn(source, fixture.familyComponent, 'composed')).toBe(
+      join(held, 'composed.example.svelte'),
+    );
+    expect(exampleFilePathIn(source, fixture.familyComponent, 'unwritten')).toBe(
+      join(own, 'unwritten.example.svelte'),
     );
   });
 

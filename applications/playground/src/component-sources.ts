@@ -284,18 +284,36 @@ function isWithin(root: string, path: string): boolean {
   );
 }
 
-/** Where a component keeps its `*.example.svelte` files: `examples/` in its own directory. */
-export function examplesDirectoryIn(source: ComponentSource, componentName: string): string {
-  return join(componentDirectory(source, componentName), 'examples');
+/**
+ * Where core keeps, beside its tests, the examples a component's own package cannot hold: one that
+ * shows a package depending on the component's package would make the two depend on each other
+ * (P-COR-101), so it stays in core, which depends on every package.
+ */
+const CORE_HELD_EXAMPLES = ['src', 'component-tests'];
+
+/**
+ * Where a component keeps its `*.example.svelte` files: `examples/` in its own directory, then the
+ * same directory under core's `src/component-tests/` for the examples core holds.
+ */
+export function examplesDirectoriesIn(source: ComponentSource, componentName: string): string[] {
+  const own = join(componentDirectory(source, componentName), 'examples');
+  const held = join(source.packageRoot, ...CORE_HELD_EXAMPLES, componentName, 'examples');
+  return own === held ? [own] : [own, held];
 }
 
-/** The file of one example scenario of one of `source`'s components. */
+/**
+ * The file of one example scenario of one of `source`'s components: the first of its examples
+ * directories that holds it, else (a scenario not yet written) the one in its own directory.
+ */
 export function exampleFilePathIn(
   source: ComponentSource,
   componentName: string,
   scenario: string,
 ): string {
-  return join(examplesDirectoryIn(source, componentName), `${scenario}.example.svelte`);
+  const candidates = examplesDirectoriesIn(source, componentName).map((directory) =>
+    join(directory, `${scenario}.example.svelte`),
+  );
+  return candidates.find((path) => existsSync(path)) ?? (candidates[0] as string);
 }
 
 const DOCUMENTATION_CINDER_COMPONENT_SET = new Set<string>(DOCUMENTATION_CINDER_COMPONENTS);
