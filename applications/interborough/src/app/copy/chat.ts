@@ -514,6 +514,13 @@ export const CHAT_COPY = {
      * goes when the run finishes (COR-2284), so it does not steer the run.
      */
     working: 'A message sent now waits until this run finishes.',
+    /**
+     * The warning drawer above the box while only the host is down (the browser is online): the
+     * host is named, not the network, and the draft stays (COR-2284 C5, row 17b).
+     */
+    hostUnreachable: 'Can’t reach Interborough. Your draft is kept here.',
+    /** Why Send is off while the host is down, read with Send. */
+    unreachable: 'Sending is off until Interborough is reachable',
     restarting: 'Sending resumes when Interborough is back.',
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,

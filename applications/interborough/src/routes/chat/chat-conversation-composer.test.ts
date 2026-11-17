@@ -200,6 +200,30 @@ describe('the draft store (COR-2284 C7)', () => {
     expect(window.localStorage.getItem(KEY)).toBe('');
   });
 
+  test('forgets a queued draft once Send now instead hands it to the running run', async () => {
+    serve({}, { running: true });
+    const view = mountAs();
+    await waitFor(() =>
+      expect(view.container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull(),
+    );
+    const box = composer(view.container)!;
+    await fireEvent.input(box, { target: { value: 'Also check order 4472' } });
+    expect(window.localStorage.getItem(KEY)).toContain('Also check order 4472');
+    await fireEvent.keyDown(box, { key: 'Enter' });
+
+    const sendNow = await waitFor(() => {
+      const found = [...view.container.querySelectorAll('button')].find(
+        (button) =>
+          (button.getAttribute('aria-label') ?? button.textContent?.trim()) === 'Send now instead',
+      );
+      expect(found === undefined).toBe(false);
+      return found!;
+    });
+    await fireEvent.click(sendNow);
+
+    await waitFor(() => expect(window.localStorage.getItem(KEY) === '').toBe(true));
+  });
+
   test('forgets a draft once it is sent, so the chat opens with no draft-restored drawer', async () => {
     // A run that starts and answers at once, so the message is sent.
     const runs: string[] = [];
@@ -270,9 +294,12 @@ describe('a blocked composer', () => {
     expect(router.pathname).toBe('/settings/models');
   });
 
-  test('keeps the text box under the offline drawer while the server does not answer, with no second retry (COR-2284 C5)', async () => {
+  test('keeps the text box under the warning drawer while the server does not answer, with no second retry (COR-2284 C5)', async () => {
     serve();
-    const monitor = new ConnectionMonitor({ probe: () => new Promise<never>(() => undefined) });
+    const monitor = new ConnectionMonitor({
+      probe: () => new Promise<never>(() => undefined),
+      browserOffline: false,
+    });
     monitor.reportUnreachable();
     try {
       const { container } = render(QueryPage, {
@@ -284,9 +311,9 @@ describe('a blocked composer', () => {
         },
       } as never);
 
-      const drawer = () =>
-        container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]');
+      const drawer = () => container.querySelector<HTMLElement>('[data-chat-composer-drawer]');
       await waitFor(() => expect(drawer()).not.toBeNull());
+      expect(drawer()?.textContent).toContain(COPY.hostUnreachable);
       expect(row(container)).toBeNull();
       expect(composer(container)).not.toBeNull();
       expect([...drawer()!.querySelectorAll('a, button')]).toEqual([]);

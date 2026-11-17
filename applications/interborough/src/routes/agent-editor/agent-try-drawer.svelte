@@ -86,6 +86,7 @@
   const composerStatus = $derived(
     composerStatusOf({
       unreachable: connection.unreachable,
+      browserOffline: connection.browserOffline,
       restarting: false,
       ended: false,
       noProvider,

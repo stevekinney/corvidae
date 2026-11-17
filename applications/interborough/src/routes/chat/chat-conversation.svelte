@@ -265,7 +265,7 @@
   const storedDraft = untrack(() =>
     isNew || (draft !== undefined && draft !== '')
       ? undefined
-      : readChatDraft(draftStorage, sessionId),
+      : readChatDraft(draftStorage, sessionId, Date.now()),
   );
   /** When the draft put back in the box was written, until it is sent or discarded. */
   let restoredDraftAt = $state<number | undefined>(untrack(() => storedDraft?.savedAt));
@@ -583,6 +583,7 @@
   const composerStatus = $derived(
     composerStatusOf({
       unreachable: connection.unreachable,
+      browserOffline: connection.browserOffline,
       restarting: restart.running,
       archived:
         archivedAt === null
@@ -656,7 +657,7 @@
       noProvider &&
       composerStatus?.kind !== 'blocked' &&
       composerStatus?.kind !== 'archived' &&
-      composerStatus?.kind !== 'offline'
+      !connection.unreachable
     ) {
       return {
         kind: 'unconfigured',
@@ -2221,6 +2222,7 @@
         {composerStatus}
         messageTurnState={turnState}
         onRetryConnection={() => void session.reconnect()}
+        {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
         onComposerInput={rememberDraft}
         composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
         composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}

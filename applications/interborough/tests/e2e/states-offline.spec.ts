@@ -269,10 +269,12 @@ test.describe('the server stops answering while a page with data is open', () =>
     await refocus(page);
     await expect(banner(page)).toBeVisible();
 
-    // While the host is down the offline drawer sits above the composer (COR-2284 C5): the box keeps
-    // what was typed, Send is off, and Enter sends nothing.
-    const offline = page.locator('[data-chat-composer-drawer="offline"]');
-    await expect(offline).toContainText('Your draft is saved here');
+    // While the host is down a warning drawer naming Interborough sits above the composer (COR-2284
+    // C5, row 17b's words; the browser is online, so it never says "offline"): the box keeps what
+    // was typed, Send is off, and Enter sends nothing.
+    const offline = page.locator('[data-chat-composer-drawer]');
+    await expect(offline).toContainText('Can’t reach Interborough. Your draft is kept here.');
+    await expect(offline).not.toContainText('offline');
     await expect(composer).toHaveValue('Sent after the host is back');
     await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
     await composer.press('Enter');
