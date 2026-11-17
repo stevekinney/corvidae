@@ -13,8 +13,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
+
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
+import { digestOf } from './panel-build.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -26,7 +29,16 @@ afterEach(async () => {
   }
 });
 
-async function start(authenticated = false): Promise<Host> {
+/** A page with the one element the routes' tests look for, and the digest of its bytes. */
+function stubPage(title: string): { html: string; contentDigest: string } {
+  const html = `<meta charset="utf-8"><title>${title}</title><div id="root"></div>`;
+  return { html, contentDigest: digestOf(html) };
+}
+
+async function start(
+  authenticated = false,
+  extra: Partial<Parameters<typeof startHost>[0]> = {},
+): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-panels-'));
   directories.push(home);
   await enableDemoPlugin(home);
@@ -54,6 +66,11 @@ async function start(authenticated = false): Promise<Host> {
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
+    // These tests are about the routes and the tool calls, not about the page's bytes, which the
+    // panel build's own tests and the browser specs cover: a page that is a stub keeps every start
+    // from building three Cinder pages.
+    panelBuild: { build: async (request) => stubPage(request.title) },
+    ...extra,
     ...(authenticated
       ? {
           workspaceAuthentication: {
@@ -216,5 +233,60 @@ describe('the run inspector’s panel', () => {
       const response = await fetch(new URL(path, host.url));
       expect(response.status).toBe(404);
     }
+  });
+});
+
+describe('a panel build that never finishes (COR-2219)', () => {
+  test('is reported panel-failed on its plugin, and the host still listens and serves the other panels', async () => {
+    // The first panel's build never settles, and the others return a page at once. The clock is the
+    // test's own: nothing here waits for the product's 30 seconds.
+    const timers = new Map<number, () => void>();
+    let nextTimer = 1;
+    const built: string[] = [];
+    const clock = {
+      setTimeout: (callback: () => void) => {
+        timers.set(nextTimer, callback);
+        return nextTimer++;
+      },
+      clearTimeout: (handle: unknown) => {
+        timers.delete(handle as number);
+      },
+    };
+    const build = (options: { readonly entry: string; readonly title: string }) => {
+      if (options.title === 'Run inspector') return new Promise<never>(() => {});
+      built.push(options.title);
+      return Promise.resolve(stubPage(options.title));
+    };
+    const starting = start(false, { panelBuild: { build, clock } });
+    // Only the hung build still holds its timer once the others are served; that is when it fires.
+    await waitUntil(() => built.length === 2 && timers.size === 1, {
+      message: 'the two other builds are served and only the stalled one waits',
+    });
+    for (const fire of timers.values()) fire();
+    const host = await starting;
+
+    // The host is listening: it answers, and the pages that built are served.
+    const panelsResponse = await fetch(new URL('/host/panels', host.url));
+    const apps = (await panelsResponse.json()) as {
+      apps: { plugin: string; app: string }[];
+    };
+    expect(apps.apps.map(({ app }) => app).toSorted()).toEqual([
+      'pending-review',
+      'workflow-revision-review',
+    ]);
+    const pluginsResponse = await fetch(new URL('/host/plugins', host.url));
+    const listing = (await pluginsResponse.json()) as {
+      plugins: {
+        descriptor: { name: string };
+        status: string;
+        problems: { code: string; message?: string }[];
+      }[];
+    };
+    const inspectors = listing.plugins.find(({ descriptor }) => descriptor.name === 'inspectors');
+    expect(inspectors?.status).toBe('running');
+    expect(inspectors?.problems.map(({ code }) => code)).toEqual(['panel-failed']);
+    expect(JSON.stringify(inspectors?.problems)).toContain(
+      'did not finish building within 30 seconds',
+    );
   });
 });

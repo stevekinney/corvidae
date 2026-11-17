@@ -58,6 +58,11 @@ const kindsOutput = z.object({
           .describe(
             'The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.',
           ),
+        receives: z
+          .boolean()
+          .describe(
+            'Whether the kind receives requests: a file whose trigger is one is sent its deliveries at `POST /triggers/<workflow-id>` on the host.',
+          ),
         configuration: configurationSchema,
       }),
     )

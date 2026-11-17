@@ -101,6 +101,7 @@ const remainingSlugs = [
   'container',
   'context-menu',
   'copy-button',
+  'copyable-value',
   'data-list',
   'decision-deck',
   'description-list',

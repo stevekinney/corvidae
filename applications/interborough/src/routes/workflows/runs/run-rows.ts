@@ -31,6 +31,7 @@ import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
 import { taskStatusWord, type StatusWord } from '../../../lib/status.ts';
+import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
 import type { MissedRuns } from './missed-runs.ts';
 import { STARTED_BY_KINDS, type StartedBy } from './started-by.ts';
 
@@ -84,8 +85,17 @@ export type RunOrigin =
   | { readonly kind: 'parent'; readonly parentRunId: string; readonly href: string }
   /** Interborough started it for its own bookkeeping, such as the schedule tick (COR-2009). */
   | { readonly kind: 'system' }
-  /** A plugin's trigger started a workflow run (COR-2163). */
-  | { readonly kind: 'trigger' }
+  /**
+   * A plugin's trigger started a workflow run (COR-2163): the plugin that contributes the kind, and
+   * the workflow file whose trigger it is, which `href` is the page of (COR-2171). An origin that
+   * names neither, as none the Bureau writes does, has `null` for both.
+   */
+  | {
+      readonly kind: 'trigger';
+      readonly plugin: string | null;
+      readonly workflowId: string | null;
+      readonly href: string | null;
+    }
   /** A task recorded before origins were kept, which nothing else names. */
   | { readonly kind: 'none' };
 
@@ -170,6 +180,22 @@ function waitSummary(task: TaskView): string {
 }
 
 /** A field of the recorded origin, when it is a non-empty string. */
+/**
+ * A trigger's origin (COR-2171): the plugin it names, and the workflow file whose trigger started
+ * the run, linked to that file's page.
+ */
+export function triggerOrigin(
+  plugin: string | undefined,
+  workflowId: string | undefined,
+): Extract<RunOrigin, { kind: 'trigger' }> {
+  return {
+    kind: 'trigger',
+    plugin: plugin ?? null,
+    workflowId: workflowId ?? null,
+    href: workflowId === undefined ? null : workflowTypePath(workflowId),
+  };
+}
+
 function recordedText(origin: object, key: string): string | undefined {
   const value: unknown = Reflect.get(origin, key);
   return typeof value === 'string' && value !== '' ? value : undefined;
@@ -248,7 +274,7 @@ function recordedOrigin(
     case 'system':
       return { kind: 'system' };
     case 'trigger':
-      return { kind: 'trigger' };
+      return triggerOrigin(recordedText(recorded, 'plugin'), recordedText(recorded, 'workflowId'));
     default:
       return undefined;
   }
@@ -595,6 +621,11 @@ export type RunLineContext = {
   readonly zone: string;
   /** The name an agent goes by, from its identifier. */
   readonly agentLabel: (agentName: string) => string;
+  /**
+   * The title of a plugin, from its identifier, or `undefined` when none is loaded (COR-2171): a
+   * run a trigger started names its plugin ("GitHub"). Left out, the identifier is said.
+   */
+  readonly pluginTitle?: (plugin: string) => string | undefined;
 };
 
 /**
@@ -605,12 +636,16 @@ export type RunLineContext = {
  */
 export function runLineTwo(row: RunRow, context: RunLineContext): string {
   const copy = TASK_COPY.list;
+  // A run with no agent names who started it: Interborough, or the trigger's plugin by its title
+  // (COR-2171), and by its identifier only when no title is loaded; never "An agent".
   const agent =
     row.origin.kind === 'system'
       ? copy.interboroughStarted
-      : row.agentName === null
-        ? TASK_COPY.unknownAgent
-        : context.agentLabel(row.agentName);
+      : row.agentName !== null
+        ? context.agentLabel(row.agentName)
+        : row.origin.kind === 'trigger' && row.origin.plugin !== null
+          ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+          : TASK_COPY.unknownAgent;
   const parts: string[] = [copy.kinds[row.origin.kind], agent];
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
   const took = durationWords(row.updatedAt - row.startedAt);

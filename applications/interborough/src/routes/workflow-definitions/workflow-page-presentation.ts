@@ -8,7 +8,11 @@ import type { WorkflowStatus } from '@lostgradient/weft';
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { calendarDay, clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { workflowRunStatusWord, type StatusWord } from '../../lib/status.ts';
-import { listDate, type TriggerSummary } from './workflow-presentation.ts';
+import {
+  listDate,
+  type PluginTriggerSummary,
+  type TriggerSummary,
+} from './workflow-presentation.ts';
 
 /** One stretch of a header line: plain words, an identifier in monospace, a link, or a status word. */
 export type HeaderRun = {
@@ -36,9 +40,12 @@ function afterStarts(words: string): string {
 }
 
 /** What starts the workflow, as the first fact of its line, or `null` when nothing is known to. */
-export function startsPart(trigger: TriggerSummary | null): HeaderPart | null {
+export function startsPart(
+  trigger: TriggerSummary | PluginTriggerSummary | null,
+): HeaderPart | null {
   if (trigger === null) return null;
   const copy = WORKFLOW_COPY.page.header;
+  if (trigger.kind === 'plugin') return [{ text: copy.startsOnPlugin(trigger.words) }];
   if (trigger.kind === 'signal') {
     return [
       { text: copy.startsOnSignal.before },
@@ -58,7 +65,7 @@ export function startsPart(trigger: TriggerSummary | null): HeaderPart | null {
  * `null`.
  */
 export function startsLine(input: {
-  readonly trigger: TriggerSummary | null;
+  readonly trigger: TriggerSummary | PluginTriggerSummary | null;
   /** A person can start it from the page. */
   readonly canStart: boolean;
   /** The agent's name as a person reads it, or `null` when the file names none. */

@@ -4,7 +4,8 @@
    * newest first, as Cinder's status-first rows: the attempt's status dot and word, "Attempt N" and
    * the time it began on line one, and line two agent first, then how long it took, how it was
    * canceled, or what it waits on (`goal-page-rows.ts`). Each row is the link to the attempt's run.
-   * A goal that has made none says so.
+   * A goal that has made none says so. Each row also has a Verdict button, which opens what the check
+   * decided about that attempt (`goal-verdict-panel.svelte`).
    */
   import { DataList, EmptyState, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
@@ -23,9 +24,11 @@
     allowed: number;
     /** The zone the times are read in. */
     zone: string;
+    /** Opens the verdict of one attempt, by its `attemptIndex` (COR-2124). */
+    onOpenVerdict: (attemptIndex: number) => void;
   }
 
-  let { rows, made, allowed, zone }: Props = $props();
+  let { rows, made, allowed, zone, onOpenVerdict }: Props = $props();
 
   const copy = GOALS_COPY.detail;
   const uid = $props.id();
@@ -61,6 +64,14 @@
             data-attempt={row.id}
             data-run={row.runId}
             data-status-word={row.word}
+            actions={[
+              {
+                label: copy.verdict.action,
+                // The row's own link is the run; the verdict is a separate button beside it.
+                onclick: () => onOpenVerdict(row.attemptIndex),
+              },
+            ]}
+            actionsLabel={copy.verdict.actionLabel(row.number)}
           >
             {#snippet status()}<StatusDot word={row.word} size="sm" />{/snippet}
             {#snippet title()}{row.title}{/snippet}

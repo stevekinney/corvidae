@@ -168,6 +168,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'bureau-task:v1:',
     'a task’s record (ids, status, cleanup) is kept as proof the task happened; its history is emptied at the delete (COR-1481) and its settlement’s message and answer text are dropped by the purge',
   ),
+  kept(
+    'bureau-trigger:v1:',
+    'a workflow file’s listener lease: the id of the process that runs its trigger (COR-2167), not a chat’s',
+  ),
   kept('bureau-workflow-cancelled-run:v1:', 'a workflow run’s cancellation record, not a chat’s'),
   kept(
     'bureau-workflow-revision:v1:',

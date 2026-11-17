@@ -16353,7 +16353,7 @@
       }
     },
     {
-      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped` or `ready`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
+      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped`, `ready` or `standby`, and a failed listener whose attempt finds another Bureau running it is answered `standby`, starting nothing. It answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16441,13 +16441,14 @@
                   "type": "string"
                 },
                 "state": {
-                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.",
                   "enum": [
                     "listening",
                     "waiting-for-secret",
                     "failed",
                     "stopped",
-                    "ready"
+                    "ready",
+                    "standby"
                   ],
                   "type": "string"
                 }
@@ -16495,7 +16496,7 @@
       }
     },
     {
-      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped` or `ready`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
+      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped`, `ready` or `standby`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16610,13 +16611,14 @@
                       "type": "string"
                     },
                     "state": {
-                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.",
                       "enum": [
                         "listening",
                         "waiting-for-secret",
                         "failed",
                         "stopped",
-                        "ready"
+                        "ready",
+                        "standby"
                       ],
                       "type": "string"
                     }
@@ -17030,13 +17032,14 @@
                                 "type": "string"
                               },
                               "state": {
-                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
+                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.",
                                 "enum": [
                                   "listening",
                                   "waiting-for-secret",
                                   "failed",
                                   "stopped",
-                                  "ready"
+                                  "ready",
+                                  "standby"
                                 ],
                                 "type": "string"
                               }
@@ -20845,6 +20848,10 @@
                       "asset.blob.purged",
                       "asset.expired",
                       "definitions.changed",
+                      "trigger.started",
+                      "trigger.stopped",
+                      "trigger.failed",
+                      "trigger.fired",
                       "schedule.missed",
                       "task.cleanup-acknowledged",
                       "notification.created",
@@ -20941,6 +20948,10 @@
                         "asset.blob.purged",
                         "asset.expired",
                         "definitions.changed",
+                        "trigger.started",
+                        "trigger.stopped",
+                        "trigger.failed",
+                        "trigger.fired",
                         "schedule.missed",
                         "task.cleanup-acknowledged",
                         "notification.created",
@@ -21095,6 +21106,10 @@
                       "asset.blob.purged",
                       "asset.expired",
                       "definitions.changed",
+                      "trigger.started",
+                      "trigger.stopped",
+                      "trigger.failed",
+                      "trigger.fired",
                       "schedule.missed",
                       "task.cleanup-acknowledged",
                       "notification.created",
@@ -21191,6 +21206,10 @@
                         "asset.blob.purged",
                         "asset.expired",
                         "definitions.changed",
+                        "trigger.started",
+                        "trigger.stopped",
+                        "trigger.failed",
+                        "trigger.fired",
                         "schedule.missed",
                         "task.cleanup-acknowledged",
                         "notification.created",
@@ -21695,6 +21714,10 @@
                     "description": "The contributing plugin.",
                     "type": "string"
                   },
+                  "receives": {
+                    "description": "Whether the kind receives requests: a file whose trigger is one is sent its deliveries at `POST /triggers/<workflow-id>` on the host.",
+                    "type": "boolean"
+                  },
                   "version": {
                     "description": "The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.",
                     "type": "string"
@@ -21705,6 +21728,7 @@
                   "id",
                   "description",
                   "version",
+                  "receives",
                   "configuration"
                 ],
                 "type": "object"
@@ -21736,7 +21760,7 @@
       }
     },
     {
-      "description": "Lists every guardrail installed in the Bureau, one row per family it serves (`input`, `output`, `tools`, or `memory`, which guards the host’s memory and no agent file chooses): the `id` (`plugin:name`) an agent file’s `guardrails` lists, its `description`, whether it is `configurable` and its `configuration` as JSON Schema (a configurable guardrail is listed in a file as `{ id, configuration }`, and a field the configuration leaves out takes the default the schema shows), and its `source`, a running `plugin` or the `host`, with the `plugin` that contributes it. The host’s come first, then the running plugins’ in load order. Read-only; any authenticated caller may read it.",
+      "description": "Lists every guardrail installed in the Bureau, one row per family it serves (`input`, `output`, `tools`, or `memory`, which guards the host’s memory and no agent file chooses): the `id` (`plugin:name`) an agent file’s `guardrails` lists, its `description`, whether it is `configurable` and its `configuration` as JSON Schema (a configurable guardrail is listed in a file as `{ id, configuration }`, and a field the configuration leaves out takes the default the schema shows), and its `source`, a running `plugin`, the `host`, or the `bungalow` for a guardrail the owner wrote as a file in the Bungalow’s `guardrails` folder, with the `plugin` that contributes it (`null` for an owner’s guardrail, whose `id` is its file’s name, not `plugin:name`). The host’s come first, then the running plugins’ in load order, then the owner’s files by name. Read-only; any authenticated caller may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -21761,7 +21785,7 @@
           "additionalProperties": false,
           "properties": {
             "guardrails": {
-              "description": "Every installed guardrail, one row per family it serves: the host’s first, then the running plugins’ in load order.",
+              "description": "Every installed guardrail, one row per family it serves: the host’s first, then the running plugins’ in load order, then the owner’s files by name.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -21803,14 +21827,18 @@
                     "type": "string"
                   },
                   "plugin": {
-                    "description": "The contributing plugin’s name, the first half of `id`.",
-                    "type": "string"
+                    "description": "The contributing plugin’s name, the first half of `id`; `null` for an owner’s guardrail, whose `id` is its file’s name and which no plugin holds.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "source": {
-                    "description": "Who installed it: a running plugin, or the host that built the Bureau.",
+                    "description": "Who installed it: a running plugin, the host that built the Bureau, or the owner, as a file in the Bungalow’s `guardrails` folder.",
                     "enum": [
                       "plugin",
-                      "host"
+                      "host",
+                      "bungalow"
                     ],
                     "type": "string"
                   }
@@ -21851,7 +21879,7 @@
       }
     },
     {
-      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), and its `source`, the `bureau` kind for a validator the host gave the Bureau or the `plugin` kind for one a running plugin contributes, with that source’s name and version. The host’s come first, then the running plugins’ in load order. The catalog is built at startup, so a plugin enabled or disabled takes effect on the next restart. Read-only; any authenticated caller that can create a goal may read it.",
+      "description": "Lists every validator a goal may name, one row per name and version: its `name` and `version` (what `bureau.goals.create` takes as `validator`), its `determinism` (`deterministic` or `stochastic`, `null` when it did not declare it), its `configuration` (the JSON Schema of what a goal may configure it with, passed as `validator.configuration` to `bureau.goals.create`, or `null` when it takes none), and its `source`, the `bureau` kind for a validator the host gave the Bureau the `plugin` kind for one a running plugin contributes, or the `bungalow` kind for one the owner wrote as a file in the Bungalow’s `validators` folder (its `version` is a digest of what the file says), with that source’s name and version. The host’s come first, then the running plugins’ in load order, then the owner’s files by name. The host’s and the plugins’ are built at startup, so a plugin enabled or disabled takes effect on the next restart; the owner’s files are read as they change. Read-only; any authenticated caller that can create a goal may read it.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -21880,6 +21908,21 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "configuration": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The JSON Schema of the configuration a goal may give it, which the Bureau parses before it stores it; `null` when the validator takes none."
+                  },
                   "determinism": {
                     "anyOf": [
                       {
@@ -21904,19 +21947,20 @@
                     "description": "Who the validator comes from.",
                     "properties": {
                       "kind": {
-                        "description": "`bureau` for a validator the host gave the Bureau; `plugin` otherwise.",
+                        "description": "`bureau` for a validator the host gave the Bureau, `plugin` for one a plugin contributes, `bungalow` for one the owner wrote as a file.",
                         "enum": [
                           "bureau",
-                          "plugin"
+                          "plugin",
+                          "bungalow"
                         ],
                         "type": "string"
                       },
                       "name": {
-                        "description": "`bureau`, or the contributing plugin’s name.",
+                        "description": "`bureau`, the contributing plugin’s name, or `bungalow`.",
                         "type": "string"
                       },
                       "version": {
-                        "description": "Bureau’s version, or the plugin’s.",
+                        "description": "Bureau’s version, the plugin’s, or the file’s version, which is a digest of what it says.",
                         "type": "string"
                       }
                     },
@@ -21936,6 +21980,7 @@
                   "name",
                   "version",
                   "determinism",
+                  "configuration",
                   "source"
                 ],
                 "type": "object"
@@ -25803,7 +25848,8 @@
                       "version"
                     ],
                     "type": "object"
-                  }
+                  },
+                  "validatorConfiguration": {}
                 },
                 "required": [
                   "goalRunId",
@@ -25811,6 +25857,7 @@
                   "agentName",
                   "identity",
                   "validator",
+                  "validatorConfiguration",
                   "status",
                   "terminalReason",
                   "revision",
@@ -26182,7 +26229,8 @@
                 "version"
               ],
               "type": "object"
-            }
+            },
+            "validatorConfiguration": {}
           },
           "required": [
             "goalRunId",
@@ -26190,6 +26238,7 @@
             "agentName",
             "identity",
             "validator",
+            "validatorConfiguration",
             "status",
             "terminalReason",
             "revision",
@@ -26360,7 +26409,8 @@
                         "kind": {
                           "enum": [
                             "bureau",
-                            "plugin"
+                            "plugin",
+                            "bungalow"
                           ],
                           "type": "string"
                         },
@@ -26718,8 +26768,11 @@
           "required": true,
           "schema": {
             "additionalProperties": false,
-            "description": "A validator this Bureau was configured with, by exact name and version.",
+            "description": "A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27042,7 +27095,8 @@
                     "version"
                   ],
                   "type": "object"
-                }
+                },
+                "validatorConfiguration": {}
               },
               "required": [
                 "goalRunId",
@@ -27050,6 +27104,7 @@
                 "agentName",
                 "identity",
                 "validator",
+                "validatorConfiguration",
                 "status",
                 "terminalReason",
                 "revision",
@@ -27230,8 +27285,11 @@
           },
           "validator": {
             "additionalProperties": false,
-            "description": "A validator this Bureau was configured with, by exact name and version.",
+            "description": "A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27493,8 +27551,11 @@
           "required": false,
           "schema": {
             "additionalProperties": false,
-            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version.",
+            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -27600,8 +27661,11 @@
           },
           "validator": {
             "additionalProperties": false,
-            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version.",
+            "description": "The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.",
             "properties": {
+              "configuration": {
+                "description": "The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none."
+              },
               "name": {
                 "minLength": 1,
                 "type": "string"
@@ -33366,6 +33430,10 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
@@ -33830,6 +33898,10 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
@@ -34118,6 +34190,10 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",
@@ -34604,6 +34680,10 @@
                 "asset.blob.purged",
                 "asset.expired",
                 "definitions.changed",
+                "trigger.started",
+                "trigger.stopped",
+                "trigger.failed",
+                "trigger.fired",
                 "schedule.missed",
                 "task.cleanup-acknowledged",
                 "notification.created",

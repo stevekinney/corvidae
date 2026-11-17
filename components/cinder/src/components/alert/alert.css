@@ -20,7 +20,10 @@
     align-items: flex-start;
     gap: var(--cinder-space-3);
     inline-size: 100%;
-    padding: var(--cinder-space-4);
+    padding-block: var(--cinder-space-4);
+    /* The same inline padding as Callout (callout.css), so the two start their text at one inset
+     * (COR-2195). */
+    padding-inline: var(--cinder-space-3);
     border-radius: var(--cinder-radius-lg);
     border: 1px solid var(--cinder-border);
     background: var(--cinder-surface);

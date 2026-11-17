@@ -1,3 +1,4 @@
+import { decisionValidator as pluginDecisionValidator } from '@lostgradient/interborough-plugin';
 import type {
   Decision,
   DecisionRequest,
@@ -34,6 +35,11 @@ const bindings = new WeakMap<Validator, DecisionValidatorOptions>();
  * Pass it in `createBureau({ validators })` like any validator. Bureau answers its question with
  * its own `decisions`, so the validator holds no model and runs only in a Bureau that has one; a
  * validator used outside one is `indeterminate`.
+ *
+ * It is built over the plugin package's `decisionValidator`, so a rejection reads the same: an abort
+ * is `canceled`, a decision nothing can answer (or the model policy forbids) is `unavailable` (a
+ * goal that retries on `validator-unavailable` retries), and any other failure is an `error` whose
+ * code is `DECISION_FAILED`.
  */
 export function decisionValidator(options: DecisionValidatorOptions): Validator {
   const { name, version, request, verdict, principal } = options;
@@ -62,16 +68,22 @@ export function decisionValidator(options: DecisionValidatorOptions): Validator 
 export function bindDecisionValidator(validator: Validator, decisions: DecisionSource): Validator {
   const binding = bindings.get(validator);
   if (binding === undefined) return validator;
-  return {
-    identity: validator.identity,
-    determinism: 'stochastic',
-    validate: async (input, signal) => {
-      const decision = await decisions.decide(binding.request(input), {
-        signal,
-        taskId: input.goalRunId,
-        ...(binding.principal === undefined ? {} : { principal: binding.principal }),
-      });
-      return binding.verdict(decision);
+  const { principal } = binding;
+  // The plugin helper asks a decision as the plugin that holds it; Bureau's validator asks as the
+  // principal it was built with, so its source adds that principal to every call.
+  return pluginDecisionValidator(
+    {
+      decide: (request, options) =>
+        decisions.decide(request, {
+          ...options,
+          ...(principal === undefined ? {} : { principal }),
+        }),
     },
-  };
+    {
+      name: validator.identity.name,
+      version: validator.identity.version,
+      request: binding.request,
+      verdict: binding.verdict,
+    },
+  );
 }

@@ -9,9 +9,9 @@
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
-    "typecheck": "tsc -b tsconfig.json",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts",
-    "test": "bun ../../scripts/bun-test-junit.ts"
+    "test": "bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte"
   },
   "dependencies": {
     "@lostgradient/interborough-plugin": "workspace:*",
@@ -19,10 +19,16 @@
   },
   "devDependencies": {
     "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
+    "happy-dom": "catalog:",
     "oxlint": "catalog:",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:",
     "typescript": "catalog:"
   },
   "sideEffects": false

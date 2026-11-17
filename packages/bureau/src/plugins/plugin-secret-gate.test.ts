@@ -484,7 +484,10 @@ describe('the secret-gating outcome matrix', () => {
       'reaction-dry-run': () => gatedResult.reactions?.[0]?.dryRun?.({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never),
-      scorer: () => gatedResult.scorers?.[0]?.score({} as never, new AbortController().signal),
+      scorer: () =>
+        gatedResult.scorers?.[0]?.score({} as never, new AbortController().signal, {
+          runId: 'run-1',
+        }),
       formatter: () => gatedResult.formatters?.[0]?.format(event),
       agent: () => gatedResult.agents?.[0]?.agent.run('Go.'),
       // The definition resolver Bureau starts, recovers and claims a durable run through.

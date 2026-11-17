@@ -223,3 +223,9 @@ export type AgentSource = DefinitionSource & {
 
 /** The source of workflow definitions. */
 export type WorkflowSource = DefinitionSource & { readonly kind: 'workflow' };
+
+/** The source of owner-defined validator files (COR-2119). */
+export type ValidatorSource = DefinitionSource & { readonly kind: 'validator' };
+
+/** The source of owner-defined guardrail files (COR-2120). */
+export type GuardrailSource = DefinitionSource & { readonly kind: 'guardrail' };

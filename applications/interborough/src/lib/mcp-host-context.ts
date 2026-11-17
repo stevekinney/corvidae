@@ -4,21 +4,30 @@ import type {
   McpUiStyles,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 
-const STYLE_MAP: ReadonlyArray<readonly [McpUiStyleVariableKey, string]> = [
+/**
+ * The MCP Apps style variable the host sends for each public Cinder token it fills, in the order
+ * the panel kit declares them. The kit's `PANEL_TOKEN_MAP` (`@lostgradient/cinder/panel`) is the
+ * same list read the other way, and `mcp-host-context.test.ts` checks the two stay equal. This
+ * module never imports the kit: the kit's stylesheet overrides the very tokens this module reads.
+ */
+export const STYLE_MAP: ReadonlyArray<readonly [McpUiStyleVariableKey, string]> = [
   ['--color-background-primary', '--cinder-surface-canvas'],
   ['--color-background-secondary', '--cinder-surface'],
   ['--color-background-tertiary', '--cinder-surface-raised'],
   ['--color-background-success', '--cinder-status-success-background'],
   ['--color-background-danger', '--cinder-status-danger-background'],
   ['--color-background-warning', '--cinder-status-warning-background'],
+  ['--color-background-info', '--cinder-status-info-background'],
   ['--color-text-primary', '--cinder-text-default'],
-  ['--color-text-secondary', '--cinder-text-secondary'],
-  ['--color-text-tertiary', '--cinder-text-muted'],
+  ['--color-text-secondary', '--cinder-text-muted'],
+  ['--color-text-tertiary', '--cinder-text-subtle'],
   ['--color-text-success', '--cinder-status-success-text'],
   ['--color-text-danger', '--cinder-status-danger-text'],
   ['--color-text-warning', '--cinder-status-warning-text'],
+  ['--color-text-info', '--cinder-status-info-text'],
   ['--color-border-primary', '--cinder-border'],
   ['--color-border-secondary', '--cinder-border-muted'],
+  ['--color-border-info', '--cinder-status-info-border'],
   ['--color-ring-primary', '--cinder-ring-color'],
   ['--color-ring-secondary', '--cinder-ring-offset-color'],
   ['--font-sans', '--cinder-font-sans'],

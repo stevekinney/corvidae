@@ -610,7 +610,7 @@
           aria-label={MEMORY_COPY.quarantinedView.title}
         >
           {#snippet children()}
-            <StackedListItem href={router.href(viewPath(true))}>
+            <StackedListItem href={router.href(viewPath(true))} trailingGlyph>
               {#snippet leading()}<ShieldAlert aria-hidden="true" size={16} />{/snippet}
               {#snippet title()}{MEMORY_COPY.quarantinedView.title}{/snippet}
               {#snippet trailing()}<ChevronRight aria-hidden="true" size={16} />{/snippet}

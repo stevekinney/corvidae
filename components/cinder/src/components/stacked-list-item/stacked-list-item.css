@@ -200,9 +200,13 @@
   }
 
   /* Narrow container query — trailing drops below body. A phone's one menu button (the collapsed
-     actions) is compact and stays beside the body. */
+     actions) and a non-interactive trailing glyph such as a chevron are compact and stay beside
+     the body. */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--has-trailing:not(.cinder-stacked-list-item--collapsed-actions)
+    .cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph
+      )
       .cinder-stacked-list-item__layout {
       grid-template-columns: 1fr;
       grid-template-areas:
@@ -211,7 +215,8 @@
     }
 
     .cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
-        .cinder-stacked-list-item--collapsed-actions
+        .cinder-stacked-list-item--collapsed-actions,
+        .cinder-stacked-list-item--trailing-glyph
       )
       .cinder-stacked-list-item__layout {
       grid-template-columns: auto 1fr;
@@ -482,6 +487,58 @@
     content: ',' / '';
     margin-inline-end: var(--cinder-space-1-5);
     color: var(--cinder-text-subtle);
+  }
+
+  /* A status-first row chooses its arrangement by its own width, not the viewport's: below 448px
+     of row (a list in a narrow pane or a split view, whatever the screen) it takes the phone
+     arrangement above, with the status on line two beside the muted text and the title given the
+     whole first line. A phone row already has it, so this names only the rows that do not. */
+  @container cinder-stacked-list-item (max-width: 448px) {
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-leading:not(
+        [data-cinder-phone]
+      )
+      > .cinder-stacked-list-item__layout {
+      --_cinder-status-track: auto;
+      grid-template-columns:
+        [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
+        [trailing] auto;
+      grid-template-areas:
+        'leading title title time trailing'
+        'leading status line line trailing'
+        '. . details details .';
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-leading:not(
+        [data-cinder-phone]
+      )
+      .cinder-stacked-list-item__status {
+      align-items: center;
+      min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
+      padding-inline-end: 0;
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-leading:not(
+        [data-cinder-phone]
+      )
+      .cinder-stacked-list-item__status::before {
+      display: none;
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-leading:not(
+        [data-cinder-phone]
+      ):not(.cinder-stacked-list-item--no-line-two)
+      .cinder-stacked-list-item__status:has(*)::after {
+      content: ',' / '';
+      margin-inline-end: var(--cinder-space-1-5);
+      color: var(--cinder-text-subtle);
+    }
+
+    .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-leading:not(
+        [data-cinder-phone]
+      )
+      .cinder-stacked-list-item__detail {
+      grid-column: 2 / 5;
+    }
   }
 
   /* ----------------------------------------
@@ -770,11 +827,26 @@
     white-space: nowrap;
   }
 
-  /* The menu button is a square icon button with the shared control height (44px under a coarse
-     pointer), so it is a target as large as the buttons it replaces. */
-  .cinder-stacked-list-item__actions-trigger {
-    inline-size: var(--cinder-control-height-md);
-    min-inline-size: var(--cinder-control-height-md);
+  /* The menu button is a square icon button drawn at the compact height of a small Button, the
+     same as the secondary buttons it replaces beside the other rows. Under a coarse pointer it
+     reaches the 44px touch target through a positioned pseudo-element that takes no layout, as
+     Button does, so the row is never taller for it. */
+  .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger.cinder-dropdown-trigger {
+    position: relative;
+    inline-size: var(--_cinder-painted-height-sm);
+    min-inline-size: var(--_cinder-painted-height-sm);
+    block-size: var(--_cinder-painted-height-sm);
+    min-block-size: var(--_cinder-painted-height-sm);
     padding-inline: 0;
+    padding-block: 0;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-stacked-list-item .cinder-stacked-list-item__actions-trigger::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
   }
 }
