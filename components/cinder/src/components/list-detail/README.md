@@ -195,7 +195,7 @@ Pass `listFooter` for a link to a related list that has no place among the rows,
 
 ## Loading
 
-Set `loading` while the records load. Nothing shows for the first 300 milliseconds, so a fast load never flickers; after that the list pane shows five placeholder rows, the detail pane shows a placeholder block, and `loadingLabel` ("Loading memories") is announced politely. The header stays live. After ten seconds the placeholder adds its own "still loading" line.
+Set `loading` while the records load. Nothing shows for the first 300 milliseconds, so a fast load never flickers; after that the list pane shows five placeholder rows, the detail pane shows a placeholder block (both with no border of their own, since the panes are the frame), and `loadingLabel` ("Loading memories") is announced politely. The header stays live. After ten seconds the placeholder adds its own "still loading" line; pass `onLoadingCancel` to give that line a Cancel button for a read the person can give up on (without it the line has no button). A page that loads a list it will then show passes `items={[]}` with `loading`, so the placeholder sits in the same panes, at the same list width, as the loaded page.
 
 ## The detail pane
 
@@ -243,6 +243,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `listBody` | `(opaque)` | no | — | Draws the whole list pane body itself, in place of the `<li>` rows, for a list that is a table. Give each row a `data-cinder-row-id` equal to its `key` (a `DataTable` does) so the J and K cursor finds it, and call `open` when a row is chosen. `list`, `groupBy` and `listEmpty` are ignored while it is set. Not expressible in JSON Schema; see the component types for the signature. |
 | `listEmpty` | `(opaque)` | no | — | Rendered in the list when `items` is empty. Not expressible in JSON Schema; see the component types for the signature. |
 | `listFooter` | `(opaque)` | no | — | Drawn at the end of the list pane, after the rows or after `listEmpty`, and outside `items`: it is not a row, so it never stops `listEmpty` from drawing, is not selectable, and J and K never land on it. Use it for a link to a related list that has no place among the rows, such as the archived or quarantined ones. It is not drawn while the list is loading. Not expressible in JSON Schema; see the component types for the signature. |
+| `onLoadingCancel` | `(opaque)` | no | — | Adds a Cancel button to the loading placeholder's "still loading" line, for a read the person can give up on. It is called when the button is pressed; the host decides what giving up means (stop the read, show a "canceled" state). Without it the line has no button. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSelectedKeyChange` | `(opaque)` | no | — | Called with the new key when an item opens, and with `null` when the selection is cleared. Not expressible in JSON Schema; see the component types for the signature. |
 | `selectionLocation` | `(opaque)` | no | — | Where the selection is read and written. Defaults to the address bar. Not expressible in JSON Schema; see the component types for the signature. |
 | `storage` | `(opaque)` | no | — | Where the divider width is remembered. Defaults to `localStorage`. Not expressible in JSON Schema; see the component types for the signature. |
