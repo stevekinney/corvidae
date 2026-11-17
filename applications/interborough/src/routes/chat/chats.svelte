@@ -646,25 +646,25 @@
     {listBody}
   >
     {#snippet header()}
-      <div class="ib-chats__controls" bind:clientWidth={paneWidth}>
-        {#if showingArchived}
-          <!-- The archived view's way back to the chats, above its title. Its label says where it
+      <!-- The header's rows are ListDetail's own column (the title row, then the search and the
+           status segments), so it starts the first row after its list toggle. -->
+      {#if showingArchived}
+        <!-- The archived view's way back to the chats, above its title. Its label says where it
                goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
-          <!-- `data-cinder-list-detail-header-start`: ListDetail starts this row after its list
-               toggle while the toggle stands in the header's start corner. -->
-          <div class="ib-chats__back-row" data-cinder-list-detail-header-start>
-            <Button
-              data-chats-view-back
-              href={router.href(viewPath(false))}
-              variant="ghost"
-              size="sm"
-              onclick={(event: MouseEvent) => void switchView(event, false)}
-            >
-              <ChevronLeft aria-hidden="true" size={16} />
-              {CHAT_COPY.sessionsTitle}
-            </Button>
-          </div>
-        {/if}
+        <div class="ib-chats__back-row">
+          <Button
+            data-chats-view-back
+            href={router.href(viewPath(false))}
+            variant="ghost"
+            size="sm"
+            onclick={(event: MouseEvent) => void switchView(event, false)}
+          >
+            <ChevronLeft aria-hidden="true" size={16} />
+            {CHAT_COPY.sessionsTitle}
+          </Button>
+        </div>
+      {/if}
+      <div class="ib-chats__title" bind:clientWidth={paneWidth}>
         <SectionHeading
           level={openId === null ? 1 : 2}
           title={showingArchived
@@ -678,34 +678,34 @@
             {@render newChatButton()}
           {/snippet}
         </SectionHeading>
-        {#if !phone.current}
-          <SearchField
-            size="md"
-            aria-label={CHAT_COPY.list.searchLabel}
-            placeholder={CHAT_COPY.list.searchPlaceholder}
-            bind:value={typed}
-          />
-          {#if segmentsFit && !showingArchived}
-            <SegmentedControl
-              id="chat-status"
-              label={CHAT_COPY.list.segmentsLabel}
-              labelVisible={false}
-              size="sm"
-              value={segment}
-              onValueChange={(next: ChatSegment) => (chosen = next)}
-            >
-              {#each CHAT_SEGMENTS as option (option)}
-                <Segment
-                  value={option}
-                  count={sessions.data === undefined ? 'pending' : counts[option]}
-                >
-                  {CHAT_COPY.list.segments[option]}
-                </Segment>
-              {/each}
-            </SegmentedControl>
-          {/if}
-        {/if}
       </div>
+      {#if !phone.current}
+        <SearchField
+          size="md"
+          aria-label={CHAT_COPY.list.searchLabel}
+          placeholder={CHAT_COPY.list.searchPlaceholder}
+          bind:value={typed}
+        />
+        {#if segmentsFit && !showingArchived}
+          <SegmentedControl
+            id="chat-status"
+            label={CHAT_COPY.list.segmentsLabel}
+            labelVisible={false}
+            size="sm"
+            value={segment}
+            onValueChange={(next: ChatSegment) => (chosen = next)}
+          >
+            {#each CHAT_SEGMENTS as option (option)}
+              <Segment
+                value={option}
+                count={sessions.data === undefined ? 'pending' : counts[option]}
+              >
+                {CHAT_COPY.list.segments[option]}
+              </Segment>
+            {/each}
+          </SegmentedControl>
+        {/if}
+      {/if}
     {/snippet}
     {#snippet detail(row)}
       <ChatPane
