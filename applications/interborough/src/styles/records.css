@@ -44,7 +44,7 @@
 }
 
 /* A table's row header reads as the cell it names: at the leading edge, in the cell's own weight. */
-.ib-records__row-header {
+.ib-records__row-name {
   font-weight: inherit;
   text-align: start;
 }

@@ -115,7 +115,7 @@
           {@const words = internalWords(row.name, row.description)}
           {@const cells = internalCells(activity.data?.get(row.name), now)}
           <Table.Row data-workflow={row.name} data-engine>
-            <Table.Cell as="th" class="ib-records__wrap ib-records__row-header">
+            <Table.Cell as="th" class="ib-records__wrap ib-records__row-name">
               <Link
                 href={router.href(workflowRunsPath(row.name))}
                 onclick={(event) => go(event, workflowRunsPath(row.name))}>{words.title}</Link
