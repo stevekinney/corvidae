@@ -1346,6 +1346,19 @@ describe('SegmentedControl — on a coarse pointer', () => {
     expect(inline / block).toBeGreaterThan(1.2);
   });
 
+  test('a vertical or stacked option, whose hit area could not reach past its neighbours, keeps a list row’s minimum', () => {
+    const flat = css.replace(/\s+/g, ' ');
+    expect(flat).toContain(
+      ".cinder-segmented-control[data-cinder-orientation='vertical']:not([data-cinder-detached]) .cinder-segmented-control-option {",
+    );
+    expect(flat).toContain(
+      'min-block-size: max( calc(var(--_cinder-segmented-control-height) - 2px), var(--cinder-list-row-min-height) );',
+    );
+    expect(flat).toContain(
+      'min-block-size: max(var(--_cinder-segmented-control-height), var(--cinder-list-row-min-height));',
+    );
+  });
+
   test('a horizontal option reaches 44px through a hit area that takes no layout space', () => {
     const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     const rule = /::after \{([^}]*)\}/.exec(coarse)?.[1] ?? '';

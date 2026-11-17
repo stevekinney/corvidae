@@ -290,15 +290,23 @@
     --_cinder-segmented-control-height: var(--_cinder-painted-height-lg);
   }
 
-  /* A stacked control is a list of rows, so each row keeps a list row's minimum: the touch target on
-     a coarse pointer, as tall as its content otherwise. */
+  /* A stacked or vertical control is a column of rows, whose hit areas cannot reach past each other,
+     so each row keeps a list row's minimum: the touch target on a coarse pointer, as tall as its
+     content otherwise. */
   .cinder-segmented-control-container[data-cinder-stacked]
     .cinder-segmented-control
+    .cinder-segmented-control-option,
+  .cinder-segmented-control[data-cinder-orientation='vertical']:not([data-cinder-detached])
     .cinder-segmented-control-option {
     min-block-size: max(
       calc(var(--_cinder-segmented-control-height) - 2px),
       var(--cinder-list-row-min-height)
     );
+  }
+
+  .cinder-segmented-control[data-cinder-orientation='vertical'][data-cinder-detached]
+    .cinder-segmented-control-option {
+    min-block-size: max(var(--_cinder-segmented-control-height), var(--cinder-list-row-min-height));
   }
 
   /* The hit area of a horizontal option on a coarse pointer: 44px tall, centred on the painted
