@@ -11,11 +11,11 @@
  * tree rather than DOM attribute presence.
  */
 import { runAxe } from '@lostgradient/testing';
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 import {
   reviewEditorCommentsRoute,
   reviewEditorReadonlyRoute,
 } from './review-editor-accessibility-route.ts';
-import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 const ROUTE = reviewEditorCommentsRoute;
 

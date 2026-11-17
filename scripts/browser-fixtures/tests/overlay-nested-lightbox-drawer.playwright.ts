@@ -1,6 +1,6 @@
 import { runAxe, THEME_STORAGE_KEY } from '@lostgradient/testing';
-import { expect, test, type Page } from '@playwright/test';
 import { openFixture } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, test, type Page } from '@playwright/test';
 
 test.use({ colorScheme: 'dark', reducedMotion: 'reduce', viewport: { width: 1280, height: 900 } });
 

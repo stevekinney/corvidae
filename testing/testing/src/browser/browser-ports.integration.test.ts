@@ -1,5 +1,5 @@
-import { spawnWithHangGuard } from '../hang-guard.ts';
 import { expect, test } from 'bun:test';
+import { spawnWithHangGuard } from '../hang-guard.ts';
 import { browserPorts } from './browser-ports.ts';
 
 test('allocates distinct ports and propagates them into the environment', () => {

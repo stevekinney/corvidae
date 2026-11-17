@@ -28,8 +28,8 @@
  * DIFFERENT failure mode (the decoration surviving a keystroke it should
  * clear on), not as a second proof of this issue.
  */
-import { expect, test } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
+import { expect, test } from '@playwright/test';
 
 const ROUTE = fixtureRoute('markdown-editor');
 // packages/playground/src/examples/markdown-editor/empty.example.svelte

@@ -8,8 +8,8 @@ import {
 } from '@lostgradient/testing';
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 
-import { environmentConfiguration } from '../environment-configuration.ts';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { environmentConfiguration } from '../environment-configuration.ts';
 import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const HARNESS = '[data-testid="chat-private-harness"]';

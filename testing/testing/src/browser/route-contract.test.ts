@@ -1,5 +1,5 @@
-import type { ComponentEntry } from '../index.ts';
 import { describe, expect, it } from 'bun:test';
+import type { ComponentEntry } from '../index.ts';
 
 import { resolveFixtureRequest } from './route-contract.ts';
 

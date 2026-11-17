@@ -37,8 +37,8 @@
  * fails and the computed box-shadow carries no `inset` keyword.
  */
 
-import { expect, test } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, test } from '@playwright/test';
 import {
   assertRingUnclipped,
   HORIZONTAL_LIST,

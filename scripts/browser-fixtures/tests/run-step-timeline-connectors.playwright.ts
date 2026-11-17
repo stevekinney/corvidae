@@ -9,8 +9,8 @@
  */
 
 import { THEME_STORAGE_KEY } from '@lostgradient/testing';
-import { expect, test, type Browser, type Page } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const TOLERANCE = 0.5;
 

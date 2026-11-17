@@ -4,5 +4,11 @@
     "types": ["bun"]
   },
   "include": ["src", "scripts", "browser"],
-  "exclude": ["node_modules", "coverage", "browser/.playwright", "**/.cinder-ssr-*", "**/.chat-ssr-*"]
+  "exclude": [
+    "node_modules",
+    "coverage",
+    "browser/.playwright",
+    "**/.cinder-ssr-*",
+    "**/.chat-ssr-*"
+  ]
 }

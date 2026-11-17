@@ -328,8 +328,8 @@ function rewriteSpecifier(importer: string, specifier: string, context: Context)
 
 const SPECIFIER = /(\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\2/g;
 
-function rewriteImports(context: Context): number {
-  let rewritten = 0;
+function rewriteImports(context: Context): string[] {
+  const rewritten: string[] = [];
   for (const file of trackedFiles('*.ts', '*.svelte')) {
     const path = join(repositoryRoot, file);
     if (!existsSync(path)) continue;
@@ -342,7 +342,7 @@ function rewriteImports(context: Context): number {
       },
     );
     if (next === source) continue;
-    rewritten += 1;
+    rewritten.push(file);
     console.log(`rewrite ${file}`);
     if (!dryRun) writeFileSync(path, next);
   }
@@ -355,10 +355,20 @@ function main(): number {
   const previous = new Map([...map].map(([from, to]) => [to, from]));
   const context: Context = { map, previous, exportsMap: testingExports(), unresolved: [] };
   const rewritten = rewriteImports(context);
+  // A rewritten specifier can change an import's length or sort order; Prettier settles both.
+  if (!dryRun && rewritten.length > 0) {
+    const format = Bun.spawnSync(['bunx', 'prettier', '--write', ...rewritten], {
+      cwd: repositoryRoot,
+      stdout: 'ignore',
+      stderr: 'inherit',
+    });
+    if (format.exitCode !== 0) return 1;
+  }
   // Only a moved file's unresolved import is this script's to answer; others predate it.
   const stale = context.unresolved.filter((entry) => previous.has(entry.split(': ')[0]!));
   for (const entry of stale) console.error(`unresolved import ${entry}`);
-  console.log(`${moved} files moved, ${rewritten} files rewritten${dryRun ? ' (dry run)' : ''}.`);
+  const summary = `${moved} files moved, ${rewritten.length} files rewritten`;
+  console.log(`${summary}${dryRun ? ' (dry run)' : ''}.`);
   return stale.length === 0 ? 0 : 1;
 }
 

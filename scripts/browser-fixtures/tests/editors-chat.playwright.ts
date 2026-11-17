@@ -1,4 +1,8 @@
-import { colorAlpha, openTouchPage, TOUCH_TARGET_MIN } from '@lostgradient/testing/playwright/editors-complex-support';
+import {
+  colorAlpha,
+  openTouchPage,
+  TOUCH_TARGET_MIN,
+} from '@lostgradient/testing/playwright/editors-complex-support';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 

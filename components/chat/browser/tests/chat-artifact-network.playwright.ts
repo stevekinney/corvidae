@@ -11,9 +11,9 @@
  * untrusted source a test supplies. A control frame built without the policy proves the
  * interceptor would see a request if one were made.
  */
+import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
 
 type PreviewType = 'html' | 'svg';
 

@@ -1,5 +1,5 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openFixture } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 /**
  * `data-cinder-closing` exists ONLY for the duration of the real exit transition

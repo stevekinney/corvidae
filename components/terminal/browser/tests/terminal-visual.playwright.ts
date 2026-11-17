@@ -5,9 +5,9 @@ import {
   VIEWPORTS,
 } from '@lostgradient/testing';
 
-import { TERMINAL_FIXTURE_NAMES } from '../fixtures/terminal/scenarios.ts';
 import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { runFixtureSweep } from '@lostgradient/testing/playwright/component-sweep';
+import { TERMINAL_FIXTURE_NAMES } from '../fixtures/terminal/scenarios.ts';
 
 /**
  * The resting baselines of the terminal's visual fixtures (`documentation/terminal/experience.md`),

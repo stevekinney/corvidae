@@ -1,3 +1,4 @@
+import { expect, test } from '@playwright/test';
 import type {
   ComponentEntry,
   FixtureCategory,
@@ -14,7 +15,6 @@ import {
   runAxe,
   writeScreenshotMetadata,
 } from '../index.ts';
-import { expect, test } from '@playwright/test';
 
 type ComponentPage = {
   open(args: {

@@ -11,8 +11,8 @@
  * The clock is installed before navigation so the 20ms selection debounce is
  * advanced explicitly instead of being waited out.
  */
-import { reviewEditorCommentsRoute } from './review-editor-accessibility-route.ts';
 import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
+import { reviewEditorCommentsRoute } from './review-editor-accessibility-route.ts';
 
 const MOUNT = '#example-mount-with-comments';
 

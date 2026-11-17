@@ -1,7 +1,7 @@
-import type { ComponentEntry, Theme, Viewport } from '../index.ts';
-import { THEME_STORAGE_KEY, themeContextOptions } from '../index.ts';
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
+import type { ComponentEntry, Theme, Viewport } from '../index.ts';
+import { THEME_STORAGE_KEY, themeContextOptions } from '../index.ts';
 
 type OpenArgs = {
   entry: ComponentEntry;

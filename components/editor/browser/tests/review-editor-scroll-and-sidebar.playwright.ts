@@ -29,8 +29,8 @@
  * branch). `componentPage` (reused from the toolbar suite) owns navigation,
  * theme/reduced-motion context, and the `#app` mount wait.
  */
-import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
+import type { Locator, Page } from '@playwright/test';
 
 import { reviewEditorScrollRoute } from './review-editor-accessibility-route.ts';
 

@@ -20,8 +20,8 @@
  * exactly what made cinder#1292's first fix attempt wrong until it was
  * checked against the computed tree instead of just attribute presence.
  */
-import type { Page } from '@playwright/test';
 import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
+import type { Page } from '@playwright/test';
 
 import { runAxe } from '@lostgradient/testing';
 

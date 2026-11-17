@@ -1,6 +1,6 @@
 import { VIEWPORTS } from '@lostgradient/testing';
-import { expect, test, type Page } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
+import { expect, test, type Page } from '@playwright/test';
 
 const INJECTED_CONTENT_ID = 'selection-popover-drag-dismissal-injected-content';
 

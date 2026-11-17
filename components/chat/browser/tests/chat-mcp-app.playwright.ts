@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
+import { expect, test } from '@playwright/test';
 
 test.describe('McpApp host', () => {
   test('renders the app, round-trips a tool call, denies permissions and the network, and tears down', async ({

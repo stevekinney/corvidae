@@ -7,9 +7,9 @@
  */
 
 import { loadManifest } from '@lostgradient/testing';
-import { expect, type Locator } from '@playwright/test';
 import { test } from '@lostgradient/testing/playwright/component-page-fixture';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, type Locator } from '@playwright/test';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'kbd');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'button-shortcut');

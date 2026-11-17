@@ -1,10 +1,10 @@
+import { FIXTURE_PORT } from '@lostgradient/testing/browser/fixture-port';
+import { createFixtureServer } from '@lostgradient/testing/browser/server';
 import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
 import { watch } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { createFixtureServer } from '@lostgradient/testing/browser/server';
 import { buildFixtures } from './build.ts';
-import { FIXTURE_PORT } from '@lostgradient/testing/browser/fixture-port';
 
 // A Playwright run or a capture killed outright stops nothing; the host must not outlive it.
 exitWhenOrphaned();

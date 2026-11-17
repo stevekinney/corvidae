@@ -8,8 +8,8 @@
  */
 
 import { loadManifest } from '@lostgradient/testing';
-import { expect, type Page } from '@playwright/test';
 import { test } from '@lostgradient/testing/playwright/component-page-fixture';
+import { expect, type Page } from '@playwright/test';
 
 const entry = loadManifest().find((candidate) => candidate.slug === 'matrix-chart');
 const fixture = entry?.fixtures?.find((candidate) => candidate.name === 'ramp');

@@ -15,6 +15,8 @@ import { FIXTURE_ORIGIN } from '@lostgradient/testing/browser/fixture-port';
  * streaming cadence reliably observable.
  */
 import { loadManifest, runAxe, THEME_STORAGE_KEY } from '@lostgradient/testing';
+import { environmentConfiguration } from '@lostgradient/testing/environment-configuration';
+import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import {
   expect,
   test,
@@ -26,8 +28,6 @@ import {
   type TestInfo,
 } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { environmentConfiguration } from '@lostgradient/testing/environment-configuration';
-import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 const chatEntry = loadManifest().find((entry) => entry.slug === 'chat');

@@ -1,5 +1,5 @@
-import { loadManifest } from '../index.ts';
 import type { Page } from '@playwright/test';
+import { loadManifest } from '../index.ts';
 
 const manifest = loadManifest();
 

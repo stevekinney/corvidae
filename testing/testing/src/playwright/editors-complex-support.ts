@@ -1,6 +1,6 @@
-import { THEME_STORAGE_KEY } from '../index.ts';
 import type { Browser, Page } from '@playwright/test';
 import { environmentConfiguration } from '../environment-configuration.ts';
+import { THEME_STORAGE_KEY } from '../index.ts';
 
 export const TOUCH_TARGET_MIN = 44;
 

@@ -1,6 +1,6 @@
 import { loadManifest, type Viewport } from '@lostgradient/testing';
-import type { Page } from '@playwright/test';
 import { expect, test } from '@lostgradient/testing/playwright/component-page-fixture';
+import type { Page } from '@playwright/test';
 
 const citationEntry = loadManifest().find((entry) => entry.slug === 'citation');
 

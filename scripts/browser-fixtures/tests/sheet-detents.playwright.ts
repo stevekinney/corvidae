@@ -9,8 +9,12 @@
  * height the page gives it.
  */
 import type { Viewport } from '@lostgradient/testing';
+import {
+  expect,
+  test,
+  type ComponentPageFixture,
+} from '@lostgradient/testing/playwright/component-page-fixture';
 import type { Locator, Page } from '@playwright/test';
-import { expect, test, type ComponentPageFixture } from '@lostgradient/testing/playwright/component-page-fixture';
 import { fixtureEntry } from './layout-fixture.ts';
 
 const phone = { name: 'mobile', width: 390, height: 844 } as const satisfies Viewport;

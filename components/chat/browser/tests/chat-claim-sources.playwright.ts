@@ -5,8 +5,8 @@
  * layout engine run here, for both candidate shapes: a text selection across both claims, and the
  * preview opening and closing without a request.
  */
-import { expect, test, type Page } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/editor-fixture';
+import { expect, test, type Page } from '@playwright/test';
 
 type Representation = 'structured' | 'positional';
 

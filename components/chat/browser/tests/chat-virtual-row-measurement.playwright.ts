@@ -29,8 +29,8 @@
  * another session.
  */
 import { THEME_STORAGE_KEY } from '@lostgradient/testing';
-import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
+import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 

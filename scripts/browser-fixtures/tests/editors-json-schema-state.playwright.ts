@@ -1,10 +1,10 @@
+import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 import {
   fillJson,
   jsonValue,
   openFirstEditor,
   openJsonEditor,
 } from './editors-json-schema-support.ts';
-import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
 
 test.describe('JSON schema editor state contracts', () => {
   test('typing an enum value description promotes to oneOf, and clearing it demotes back to a bare enum', async ({

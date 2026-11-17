@@ -1,7 +1,7 @@
-import type { Locator, Page } from '@playwright/test';
 import { openTouchPage } from '@lostgradient/testing/playwright/editors-complex-support';
-import { measureCloseButton } from './link-popover-close-support.ts';
 import { expect, test } from '@lostgradient/testing/playwright/review-editor-browser-errors';
+import type { Locator, Page } from '@playwright/test';
+import { measureCloseButton } from './link-popover-close-support.ts';
 
 const MARKDOWN_EDITOR_ROUTE = '/page/markdown-editor?snapshot=1';
 

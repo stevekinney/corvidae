@@ -201,8 +201,3 @@ export const appFixtureDeclarations = {
   'chat-composer-popover': ['assertion'],
   'chat-conversation-header': ['assertion'],
 } as const satisfies Record<string, readonly string[]>;
-
-export function declaredAppFixtureNames(component: string): readonly string[] {
-  if (!Object.hasOwn(appFixtureDeclarations, component)) return [];
-  return appFixtureDeclarations[component as keyof typeof appFixtureDeclarations];
-}
