@@ -44,6 +44,7 @@
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@lucide/svelte": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
