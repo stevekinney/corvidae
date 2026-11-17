@@ -317,8 +317,24 @@ export function exampleFilePathIn(
 }
 
 const DOCUMENTATION_CINDER_COMPONENT_SET = new Set<string>(DOCUMENTATION_CINDER_COMPONENTS);
-const CINDER_ROOT_BARREL_IMPORT = /import\s*\{([^}]+)\}\s*from\s*['"]@lostgradient\/cinder['"]/gu;
+/**
+ * Named imports from a package root: Cinder's (`@lostgradient/cinder`) or, after the package split,
+ * a family's (`@lostgradient/checkbox`). Only names Cinder exports for a component count.
+ */
+const CINDER_ROOT_BARREL_IMPORT = /import\s*\{([^}]+)\}\s*from\s*['"]@lostgradient\/[\w-]+['"]/gu;
 const RELATIVE_IMPLEMENTATION_IMPORT = /from\s+['"](\.{1,2}\/[^'"]+\.(?:svelte|ts))['"]/gu;
+/** An implementation module another package exports by subpath (`@lostgradient/modal/components/…`). */
+const PACKAGE_IMPLEMENTATION_IMPORT =
+  /from\s+['"](@lostgradient\/[\w-]+\/[^'"]+\.(?:svelte|ts))['"]/gu;
+
+/** The file a package subpath specifier resolves to through the package's exports, or undefined. */
+function packageImplementationPath(specifier: string): string | undefined {
+  try {
+    return fileURLToPath(import.meta.resolve(specifier));
+  } catch {
+    return undefined;
+  }
+}
 /** A relative stylesheet imported for its side effect: `import './prosemirror.css';`. */
 const SIDE_EFFECT_STYLESHEET_IMPORT = /^[ \t]*import\s+['"](\.{1,2}\/[^'"]+\.css)['"]/gmu;
 
@@ -512,6 +528,13 @@ function implementationDependencies(
       dependencies,
       visitedPaths,
     );
+  }
+  // After the package split, a family reaches another's implementation by package subpath.
+  for (const match of source.matchAll(PACKAGE_IMPLEMENTATION_IMPORT)) {
+    const path = packageImplementationPath(match[1]!);
+    if (path !== undefined) {
+      implementationDependencies(componentSource, path, dependencies, visitedPaths);
+    }
   }
 }
 
