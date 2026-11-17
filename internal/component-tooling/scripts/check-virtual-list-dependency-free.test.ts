@@ -272,7 +272,11 @@ describe('walkDependencyGraph — real virtual-list tree (CIN-522)', () => {
     const result = await walkDependencyGraph(rootFilePaths, declaredDependencyNames);
 
     expect(result.violations).toEqual([]);
-    expect(result.scannedFilePaths.length).toBeGreaterThan(rootFilePaths.length);
+    // Every root is scanned, and whatever the roots reach by relative path besides: while one
+    // package holds the engine and its shared modules that is more than the roots; once the split
+    // names those modules by package specifier, the roots are the whole relative graph.
+    const scanned = new Set(result.scannedFilePaths);
+    for (const root of rootFilePaths) expect(scanned.has(root)).toBe(true);
   });
 
   test('does not rely on the deleted local happy-dom helper', async () => {

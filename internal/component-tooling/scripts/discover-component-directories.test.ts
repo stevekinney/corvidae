@@ -73,12 +73,12 @@ describe('discoverComponentDirectories', () => {
     );
   });
 
-  test('reads only core today, which depends on no family yet', async () => {
+  test('lists the real Cinder once, from core and each family package it depends on', async () => {
     const components = await discoverComponentDirectories();
-    expect(familyPackages()).toEqual([]);
     expect(components.length).toBeGreaterThan(200);
-    expect(new Set(components.map((component) => component.packageRoot))).toEqual(
-      new Set([CORE_ROOT]),
-    );
+    expect(new Set(components.map((component) => component.name)).size).toBe(components.length);
+    // Core's own components while it holds them, and each family's once the split extracts it.
+    const roots = new Set([CORE_ROOT, ...familyPackages().map(([, root]) => root)]);
+    for (const component of components) expect(roots.has(component.packageRoot)).toBe(true);
   });
 });

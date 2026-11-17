@@ -1,9 +1,18 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
+import { cinderPackages } from './discover-component-directories.ts';
 import {
   checkRootRegistries,
   ROOT_REGISTRIES_COMMAND,
@@ -16,17 +25,33 @@ const COMPONENTS_CSS = join('src', 'styles', 'components.css');
 
 const copies: string[] = [];
 
-/** A copy of the package's `src` TypeScript and CSS, the inputs the generator reads. */
+/**
+ * A copy of the package's `src` TypeScript and CSS and its manifest, the inputs the generator
+ * reads, beside a link to each Cinder package core depends on: the packages the split extracts
+ * hold part of core's tree, and the generator finds them beside core.
+ */
 function copyPackage(): string {
-  const root = mkdtempSync(join(tmpdir(), 'cinder-root-registries-'));
-  copies.push(root);
+  const parent = mkdtempSync(join(tmpdir(), 'cinder-root-registries-'));
+  copies.push(parent);
+  const root = join(parent, basename(packageRoot));
   cpSync(join(packageRoot, 'src'), join(root, 'src'), {
     recursive: true,
     filter: (source) =>
       !source.endsWith('.test.ts') &&
       (!/\.[a-z]+$/.test(source) || source.endsWith('.ts') || source.endsWith('.css')),
   });
+  cpSync(join(packageRoot, 'package.json'), join(root, 'package.json'));
+  for (const [, directory] of cinderPackages(packageRoot)) {
+    symlinkSync(directory, join(parent, basename(directory)), 'dir');
+  }
   return root;
+}
+
+/** The line of `text` that `pattern` matches, with its newline. */
+function lineMatching(text: string, pattern: RegExp): string {
+  const line = text.split('\n').find((candidate) => pattern.test(candidate));
+  if (line === undefined) throw new Error(`No line matches ${pattern}.`);
+  return `${line}\n`;
 }
 
 /** A minimal component directory, as `create-component.ts` would scaffold its barrel. */
@@ -117,13 +142,12 @@ describe('root registries', () => {
   test('a registry hand-edited out of step with the component directories fails the check', async () => {
     const root = copyPackage();
     const index = read(root, INDEX);
-    const line = "export { default as Tooltip } from './components/tooltip/index.ts';\n";
-    expect(index).toContain(line);
+    // Each named by a relative path while core holds it, by its package's specifier after the split.
+    const line = lineMatching(index, /^export \{ default as Tooltip \} from '[^']+';$/);
     writeFileSync(join(root, INDEX), index.replace(line, ''));
     const css = read(root, COMPONENTS_CSS);
-    const tooltip = "@import '../components/tooltip/tooltip.css';\n";
-    expect(css).toContain(tooltip);
-    const first = "@import '../components/access-gate/access-gate.css';\n";
+    const tooltip = lineMatching(css, /^@import '[^']*tooltip\/tooltip\.css';$/);
+    const first = lineMatching(css, /^@import '[^']*access-gate\/access-gate\.css';$/);
     writeFileSync(
       join(root, COMPONENTS_CSS),
       css.replace(tooltip, '').replace(first, tooltip + first),
