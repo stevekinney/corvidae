@@ -68,7 +68,15 @@ import { SecretPublicationError } from './workspace-secrets.ts';
  *   writes and records nothing, closes the connection before it answers, runs against its own
  *   deadline ({@link DEFAULT_PROBE_TIMEOUT_MILLISECONDS}), and reports a source that does not
  *   answer as a sentence that holds no address, command or value. An OAuth server that asks for
- *   a sign-in is reported as `needs-authorization`: the sign-in belongs to a saved source.
+ *   a sign-in is reported as `needs-authorization`, unless the probe names a sign-in of the source
+ *   made before it was saved.
+ * - **A sign-in before the source is saved (COR-2436).** {@link ToolSourceManager.beginSignIn}
+ *   keeps the sign-in in memory (`tool-source-pending-sign-ins.ts`) for the administrator who
+ *   started it, with a `state` the host generated; the callback settles it once
+ *   ({@link ToolSourceManager.completePendingSignIn}), refusing a stale, a second or a forged one;
+ *   and {@link ToolSourceManager.connect} takes its tokens by reference, once, writing them to the
+ *   vault with the source and bound to that administrator, as a saved source's sign-in leaves them.
+ *   Nothing is written before that save, and a restart cancels the sign-ins in progress.
  * - **A local command is the owner's.** A source that spawns a process on this machine is probed or added
  *   only by the owner principal ({@link ToolSourceOwnerOnlyError}), and the addition is recorded
  *   in the audit trail with its command line (never its environment).
@@ -143,6 +151,18 @@ import {
   type ToolListingMemory,
 } from './tool-listing-memory.ts';
 import { affectedAgents, type AffectedAgent, type AgentToolUse } from './tool-source-agents.ts';
+import {
+  copiedTokenStorage,
+  createPendingSignIns,
+  pendingTokenStorage,
+  providerReason,
+  randomToken,
+  sameOwner,
+  savedOAuthState,
+  type PendingSignIn,
+  type PendingSignInOutcome,
+  type PendingSignInReason,
+} from './tool-source-pending-sign-ins.ts';
 import {
   refusingWhen,
   unmatchedToolSettings,
@@ -542,6 +562,31 @@ export type ToolSourceProbeRequest = {
   readonly id: unknown;
   /** Who is asking. A local command is spawned only for the owner. */
   readonly principal: string;
+  /**
+   * A sign-in of this source that succeeded before it was saved (COR-2436): the probe uses a copy
+   * of the tokens it got, for its owner only, and keeps nothing.
+   */
+  readonly signIn?: unknown;
+};
+
+/** What starting a sign-in of a source that is not saved reports (COR-2436). */
+export type ToolSourcePendingSignInStart =
+  /** The server asked for no sign-in: there is nothing to sign in to. */
+  | { readonly authorized: true }
+  /** Open `authorizationUrl`; `signIn` is the reference a probe, a save and a read of the outcome name. */
+  | { readonly authorized: false; readonly signIn: string; readonly authorizationUrl: string };
+
+/** Where a sign-in of a source that is not saved stands, for its owner (COR-2436). */
+export type ToolSourcePendingSignInStanding = {
+  readonly signIn: string;
+  readonly outcome: PendingSignInOutcome;
+  readonly reason?: PendingSignInReason;
+};
+
+/** What the callback of a sign-in of a source that is not saved settled (COR-2436). */
+export type ToolSourcePendingCallback = ToolSourcePendingSignInStanding & {
+  /** The origin of the page that started it: the only place the outcome is posted to. */
+  readonly openerOrigin: string;
 };
 
 /** One tool a probe found, under the name an agent file would use once the source is saved. */
@@ -639,6 +684,13 @@ export type ToolSourceConnection = {
    * characters, saved trimmed. Empty text or `null` clears it; omitted, the saved one is kept.
    */
   readonly description?: unknown;
+  /**
+   * A sign-in of this source that succeeded before it was saved (COR-2436): the source is saved
+   * with the tokens that sign-in got, taken from the host by reference, never sent by the page.
+   * Only its owner may name it, only for the description it began for, and only once: a retry of
+   * the same save, under the same operation id, takes it again.
+   */
+  readonly signIn?: unknown;
 };
 
 /** What a change to the per-tool settings of a source asks for. Every field is `unknown` because it arrives from a request. */
@@ -755,6 +807,35 @@ export type ToolSourceManager = {
   editing(id: unknown, mutation?: HostMutationContext): Promise<ToolSourceEditing>;
   /** Start an MCP OAuth sign-in for a configured source. */
   authorize(id: unknown, mutation?: HostMutationContext): Promise<ToolSourceAuthorization>;
+  /**
+   * Start an MCP OAuth sign-in for a source that is not saved (COR-2436): the host generates the
+   * `state`, keeps the sign-in in memory for its owner, and answers the authorization URL to open
+   * with a reference to it. `openerOrigin` is the origin of the page that asks, where the outcome
+   * is posted.
+   */
+  beginSignIn(
+    request: {
+      readonly id: unknown;
+      readonly source: unknown;
+      readonly principal: string;
+      readonly openerOrigin: unknown;
+    },
+    mutation?: HostMutationContext,
+  ): Promise<ToolSourcePendingSignInStart>;
+  /** Where the sign-in `signIn` stands, for its owner; anyone else is answered as if there were none. */
+  pendingSignIn(
+    signIn: unknown,
+    mutation?: HostMutationContext,
+  ): Promise<ToolSourcePendingSignInStanding>;
+  /**
+   * Settle the sign-in of a source that is not saved that the callback URL's `state` names, or
+   * answer `undefined` when it names none (the callback is then a saved source's). Never throws for
+   * a callback it settles: a refusal is an outcome with its reason.
+   */
+  completePendingSignIn(
+    id: unknown,
+    callbackUrl: string,
+  ): Promise<ToolSourcePendingCallback | undefined>;
   /** Finish a sign-in from the URL the browser came back to. */
   completeAuthorization(
     id: unknown,
@@ -939,6 +1020,24 @@ function copyOfJson(value: unknown): unknown {
   } catch {
     throw new ToolSourceInputError('source', 'expected plain JSON.');
   }
+}
+
+/**
+ * The origin of the page that starts a sign-in (COR-2436): an `http` or `https` origin exactly,
+ * where the outcome is posted, never anywhere else.
+ */
+function checkedOrigin(value: unknown): string {
+  if (typeof value === 'string') {
+    try {
+      const url = new URL(value);
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin === value) {
+        return value;
+      }
+    } catch {
+      // Refused below.
+    }
+  }
+  throw new ToolSourceInputError('origin', 'expected the origin of the page that signs in.');
 }
 
 function checkedIdentifier(value: unknown, field: string): string {
@@ -1411,6 +1510,45 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
    * saved description is still the one reached.
    */
   const reached = new Map<string, { description: string; at: number }>();
+  /** Sign-ins of sources that are not saved yet (COR-2436), in memory only. */
+  const pendingSignIns = createPendingSignIns(now, SIGN_IN_TIME_TO_LIVE_MILLISECONDS);
+
+  /**
+   * The pending sign-in `raw` names, for `identity` and source `id`, or the refusal: a reference
+   * that is not one, names no record, names another owner's or another source's, or one that did
+   * not succeed, is the same refusal, so it says nothing of what exists.
+   */
+  function ownedSignIn(
+    raw: unknown,
+    identity: { readonly workspaceId: string; readonly actorId: string; readonly owner: string },
+    id: string,
+    source: ToolSourceDescription,
+    operationId?: string,
+  ): PendingSignIn {
+    const refuse = (problem: string): never => {
+      throw new ToolSourceInputError('signIn', problem);
+    };
+    if (typeof raw !== 'string' || raw === '' || raw.length > 128) {
+      return refuse('expected the sign-in this page started.');
+    }
+    const pending = pendingSignIns.get(raw);
+    if (pending === undefined || !sameOwner(pending.binding, identity) || pending.sourceId !== id) {
+      return refuse('no sign-in of yours is waiting for this source. Sign in again.');
+    }
+    if (pending.revision !== revisionOf(source)) {
+      return refuse('the sign-in was for another address or sign-in. Sign in again.');
+    }
+    if (pending.outcome !== 'succeeded')
+      return refuse('the sign-in did not succeed. Sign in again.');
+    const settled = pending.settledAt ?? pending.startedAt;
+    if (!(now() - settled <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS)) {
+      return refuse('the sign-in has expired. Sign in again.');
+    }
+    if (pending.consumedBy !== undefined && pending.consumedBy !== operationId) {
+      return refuse('the sign-in was already used. Sign in again.');
+    }
+    return pending;
+  }
   const loadedSources: LoadedToolSource[] = [];
   /** The connection each source loaded at boot holds, so a removal can close it. */
   const loadedById = new Map<string, LoadedToolSource>();
@@ -2053,10 +2191,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const supplied = checkedCredentials(request.credentials, referencedCredentials(source));
       const missing = referencedCredentials(source).filter((name) => !supplied.has(name));
       if (closed) throw new Error('The host is shutting down.');
-      // One storage for the whole probe: the loader asks for it more than once.
-      const storage = probeTokenStorage();
       const mutation = input ?? (await createLocalHostMutationContext(bungalow));
-      await assertMutation(mutation, source);
+      const identity = await assertMutation(mutation, source);
+      // One storage for the whole probe: the loader asks for it more than once. A sign-in of this
+      // source that succeeded before it is saved lends a copy of its tokens, which a refresh in the
+      // probe could not use: the probe admits no token request, and keeps nothing (COR-2436).
+      const storage =
+        request.signIn === undefined
+          ? probeTokenStorage()
+          : copiedTokenStorage(savedOAuthState(ownedSignIn(request.signIn, identity, id, source)));
       // An edit of a saved source may leave a stored credential blank (COR-2436): the probe uses
       // the stored value, as the save would, but only while the source still goes to the same
       // place, so a stored credential is never sent to an address a request just typed.
@@ -2203,6 +2346,24 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           if (createOnly && existing !== undefined && priorOperation === undefined) {
             throw new ToolSourceExistsError(id);
           }
+          // A sign-in made before the source was saved (COR-2436) is taken from the host by
+          // reference, for its owner, for this description, once: only a source this request
+          // adds, or a retry of the same save, may take it.
+          const pendingSignIn =
+            request.signIn === undefined
+              ? undefined
+              : ownedSignIn(request.signIn, identity, id, source, operationId);
+          if (pendingSignIn !== undefined) {
+            if (!isOAuth(source)) {
+              throw new ToolSourceInputError('signIn', 'the source does not sign in with OAuth.');
+            }
+            if (existing !== undefined && priorOperation === undefined) {
+              throw new ToolSourceInputError(
+                'signIn',
+                'the source is already saved. Sign in from its page instead.',
+              );
+            }
+          }
           // What is held is carried over only for the same source going to the same place. A new
           // source starts with nothing, whatever an earlier source of the same id left in its
           // secret, and a source that now points elsewhere does not send the old credentials there.
@@ -2291,13 +2452,24 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           try {
             const publication = await vault.write(
               id,
-              {
-                credentials,
-                oauth: keepsSignIn ? previous.oauth : undefined,
-                signIn: keepsSignIn ? previous.signIn : undefined,
-                oauthBinding: keepsSignIn ? previous.oauthBinding : undefined,
-                oauthClaim: keepsSignIn ? previous.oauthClaim : undefined,
-              },
+              pendingSignIn !== undefined
+                ? {
+                    // The tokens and client the sign-in got, bound to the administrator who
+                    // signed in, as a sign-in of a saved source leaves them; never its one-use
+                    // state or verifier.
+                    credentials,
+                    oauth: savedOAuthState(pendingSignIn),
+                    signIn: undefined,
+                    oauthBinding: pendingSignIn.binding,
+                    oauthClaim: undefined,
+                  }
+                : {
+                    credentials,
+                    oauth: keepsSignIn ? previous.oauth : undefined,
+                    signIn: keepsSignIn ? previous.signIn : undefined,
+                    oauthBinding: keepsSignIn ? previous.oauthBinding : undefined,
+                    oauthClaim: keepsSignIn ? previous.oauthClaim : undefined,
+                  },
               { text, revision: mutation.expectedRevision },
               async () => {
                 identity = await assertMutation(mutation, source);
@@ -2317,10 +2489,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
                     // A retry that names other labels is another request, not a replay of this one.
                     name: labels.name,
                     description: labels.description,
+                    // The sign-in taken, by reference: a retry that names another is another request.
+                    signIn: pendingSignIn?.id,
                   },
                 }),
               },
             );
+            // Taken once the save holds it: a retry of this same save may take it again.
+            if (pendingSignIn !== undefined) pendingSignIn.consumedBy = operationId;
             if (publication.publishedNow !== true) {
               if (fences) retired.delete(id);
               return { id, changed: false, restartRequired: true };
@@ -2575,6 +2751,200 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     // Taken in turn with every other change to the configuration and to this source's secret: a
     // removal or a change that arrives during the token exchange waits for it, and one that came
     // first is seen here, so the tokens are never written for a source that is gone or different.
+    // A sign-in for a source that is not saved (COR-2436). Nothing is written: the record lives in
+    // memory, for its owner, until a save takes it or it expires.
+    async beginSignIn(request, input) {
+      assertWritable();
+      const { id, source } = checkedDescription(request, input?.owner ?? owner);
+      const openerOrigin = checkedOrigin(request.openerOrigin);
+      if (!isOAuth(source))
+        throw new ToolSourceInputError('source', 'does not sign in with OAuth.');
+      if (closed) throw new Error('The host is shutting down.');
+      const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+      await assertMutation(mutation, source);
+      // A saved source signs in from its own page, with the sign-in the vault keeps.
+      const { sources } = await readDocument();
+      if (sources.some((entry) => entry.source.id === id)) throw new ToolSourceExistsError(id);
+      const binding: ToolSourceOAuthBinding = {
+        workspaceId: mutation.workspaceId,
+        actorId: mutation.actorId,
+        owner: mutation.owner,
+        flowId: mutation.operationIdFor('tool-source-pending-sign-in', id),
+      };
+      // Only an administrator who may manage the workspace starts one, as for a saved source.
+      await oauthAuthority.identity(binding);
+      const pending: PendingSignIn = {
+        id: randomToken(),
+        sourceId: id,
+        source,
+        revision: revisionOf(source),
+        binding,
+        openerOrigin,
+        startedAt: now(),
+        state: randomToken(),
+        storage: {},
+        outcome: 'waiting',
+        callbackTaken: false,
+        exchanged: false,
+      };
+      // The state the authorization URL carries is the host's: Armorer reads a stored one first.
+      pending.storage = { state: pending.state };
+      let authorizationUrl: URL | undefined;
+      try {
+        const loaded = await within(
+          (signal) =>
+            loadToolSource(source, {
+              resolveCredential: () => undefined,
+              oauth: {
+                tokenStorage: () => pendingTokenStorage(pending),
+                redirectUrl: (sourceId) => `${options.origin()}${oauthCallbackPath(sourceId)}`,
+                onAuthorizationRequired: (_sourceId, url) => {
+                  authorizationUrl = url;
+                },
+                // Starting a sign-in exchanges nothing.
+                beforeTokenRequest: () => {
+                  throw new HostMutationError('forbidden');
+                },
+              },
+              signal,
+              ...fetchOption,
+            }),
+          probeTimeout,
+        );
+        await loaded.close().catch(() => undefined);
+        return { authorized: true };
+      } catch (error) {
+        if (error instanceof HostMutationError) throw error;
+        if (
+          !(error instanceof ToolSourceAuthorizationRequiredError) ||
+          authorizationUrl === undefined ||
+          authorizationUrl.searchParams.get('state') !== pending.state
+        ) {
+          throw new ToolSourceInputError('source', 'the sign-in could not be started.');
+        }
+      }
+      pendingSignIns.add(pending);
+      return { authorized: false, signIn: pending.id, authorizationUrl: authorizationUrl.href };
+    },
+    async pendingSignIn(raw, input) {
+      const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+      const identity = await assertMutation(mutation);
+      const pending = typeof raw === 'string' ? pendingSignIns.get(raw) : undefined;
+      // Someone else's sign-in reads as none.
+      if (pending === undefined || !sameOwner(pending.binding, identity)) {
+        throw new ToolSourceInputError('signIn', 'no such sign-in.', 'unknown-source');
+      }
+      if (
+        pending.outcome === 'waiting' &&
+        !pending.callbackTaken &&
+        !(now() - pending.startedAt <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS)
+      ) {
+        pending.outcome = 'expired';
+        pending.reason = 'expired';
+      }
+      return {
+        signIn: pending.id,
+        outcome: pending.outcome,
+        ...(pending.reason === undefined ? {} : { reason: pending.reason }),
+      };
+    },
+    async completePendingSignIn(rawId, callbackUrl) {
+      const id = checkedIdentifier(rawId, 'source');
+      let parameters: URLSearchParams;
+      try {
+        parameters = new URL(callbackUrl).searchParams;
+      } catch {
+        return undefined;
+      }
+      const states = parameters.getAll('state');
+      if (states.length !== 1 || states[0] === undefined || states[0] === '') return undefined;
+      const pending = pendingSignIns.byState(id, states[0]);
+      if (pending === undefined) return undefined;
+      const answer = (): ToolSourcePendingCallback => ({
+        signIn: pending.id,
+        outcome: pending.outcome,
+        ...(pending.reason === undefined ? {} : { reason: pending.reason }),
+        openerOrigin: pending.openerOrigin,
+      });
+      // One callback settles a sign-in: a second one, even while the first is still exchanging,
+      // is refused and changes nothing. Taken before the first `await`, so two cannot both pass.
+      if (pending.outcome !== 'waiting' || pending.callbackTaken) {
+        return {
+          signIn: pending.id,
+          outcome: 'refused',
+          reason: 'used',
+          openerOrigin: pending.openerOrigin,
+        };
+      }
+      pending.callbackTaken = true;
+      const settle = (outcome: PendingSignInOutcome, reason?: PendingSignInReason) => {
+        pending.outcome = outcome;
+        if (reason === undefined) delete pending.reason;
+        else pending.reason = reason;
+        pending.settledAt = now();
+        // The one-use state and verifier go with the settling, whatever it was.
+        const { state: _state, codeVerifier: _verifier, ...kept } = pending.storage;
+        pending.storage = kept;
+        return answer();
+      };
+      if (!(now() - pending.startedAt <= SIGN_IN_TIME_TO_LIVE_MILLISECONDS)) {
+        return settle('expired', 'expired');
+      }
+      const error = parameters.get('error');
+      if (error !== null) {
+        // The provider's own words are never repeated: only its code, read into a closed set.
+        const { outcome, reason } = providerReason(error);
+        return settle(outcome, reason);
+      }
+      try {
+        // The administrator who started it must still manage the workspace.
+        await oauthAuthority.identity(pending.binding);
+      } catch {
+        return settle('refused', 'not-allowed');
+      }
+      const description = pending.source;
+      const controller = new AbortController();
+      const cancel = schedule(() => controller.abort(), timeout);
+      const baseFetch = options.fetch ?? fetch;
+      const bounded: typeof fetch = Object.assign(
+        (address: RequestInfo | URL, init?: RequestInit) =>
+          baseFetch(address, {
+            ...init,
+            signal:
+              init?.signal === undefined || init.signal === null
+                ? controller.signal
+                : AbortSignal.any([init.signal, controller.signal]),
+          }),
+        baseFetch,
+      );
+      try {
+        await completeToolSourceAuthorization(description, {
+          oauth: {
+            tokenStorage: () => pendingTokenStorage(pending),
+            redirectUrl: (sourceId) => `${options.origin()}${oauthCallbackPath(sourceId)}`,
+            onAuthorizationRequired: () => undefined,
+            // One authorization-code exchange, once: no refresh, no second code.
+            beforeTokenRequest: (_sourceId, tokenRequest) => {
+              if (pending.exchanged || tokenRequest.grantType !== 'authorization_code') {
+                throw new HostMutationError('forbidden');
+              }
+              pending.exchanged = true;
+            },
+          },
+          callbackUrl,
+          fetch: bounded,
+        });
+      } catch {
+        // Nothing from the failure is repeated: it may hold a URL, a code, or the server's words.
+        return settle('refused', 'exchange-failed');
+      } finally {
+        cancel();
+      }
+      return settle(
+        pending.storage.tokens === undefined ? 'refused' : 'succeeded',
+        pending.storage.tokens === undefined ? 'exchange-failed' : undefined,
+      );
+    },
     async completeAuthorization(rawId, callbackUrl, input) {
       assertWritable();
       const id = checkedIdentifier(rawId, 'source');

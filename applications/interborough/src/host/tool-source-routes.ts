@@ -67,8 +67,20 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  * - `POST /host/tool-sources/<id>/authorize` starts an MCP OAuth sign-in and answers with the
  *   authorization URL to open (`{ "authorized": false, "authorizationUrl": "…" }`), or
  *   `{ "authorized": true }` when the stored tokens already work.
+ * - `POST /host/tool-source-sign-ins` with `{ "id", "source" }` starts an MCP OAuth sign-in for a
+ *   source that is not saved (COR-2436) and answers `{ "authorized": false, "signIn",
+ *   "authorizationUrl" }` (or `{ "authorized": true }` for a server that asks for none). The page's
+ *   `Origin` header is required: the outcome is posted there and nowhere else. A source already
+ *   saved answers 409. `GET /host/tool-source-sign-ins/<signIn>` answers `{ signIn, outcome,
+ *   reason? }` to the administrator who started it (`waiting`, `succeeded`, `canceled`,
+ *   `refused`, `expired`); anyone else gets 404. The `PUT` and the probe take `"signIn"` to use its
+ *   tokens by reference, never sent by the page.
  * - `GET /host/oauth/callback/<id>` is where the authorization server sends the browser back. It
- *   answers a small page, never JSON, and never repeats a parameter of the request.
+ *   answers a small page, never JSON, and never repeats a parameter of the request. A callback
+ *   whose `state` is a pending sign-in's settles that sign-in once, and its page posts
+ *   `{ "type": "interborough:tool-source-sign-in", "signIn", "outcome", "reason"? }` to the
+ *   opener at the origin recorded when it started, with a script its content security policy
+ *   allows by digest alone; a reason is one of a closed set, never the provider's words.
  *
  * Every answer but the callback's is JSON. A change answers 200 with `{ id, changed,
  * restartRequired }` (a removal adds `affectedAgents`): with `restartRequired: true` the change is
@@ -82,6 +94,7 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  * @module tool-source-routes
  */
 
+import { createHash, randomUUID } from 'node:crypto';
 import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 import {
   inspectOpenApiAddress,
@@ -100,6 +113,7 @@ import {
   ToolSourceOwnerOnlyError,
   ToolSourceWriteLockedError,
   type ToolSourceManager,
+  type ToolSourcePendingCallback,
 } from './tool-source-manager.ts';
 import { ToolSourceSecretsLockedError } from './tool-source-vault.ts';
 
@@ -120,6 +134,15 @@ export const HOST_TOOL_SOURCE_PROBE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/prob
  * description, labels and credential names, never a value.
  */
 export const HOST_TOOL_SOURCE_EDITING_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/editing`;
+
+/**
+ * The route that starts a sign-in of a source that is not saved (COR-2436): `POST` with
+ * `{ "id", "source" }`. The page's `Origin` is where the outcome is posted.
+ */
+export const HOST_TOOL_SOURCE_SIGN_INS_ROUTE = '/host/tool-source-sign-ins';
+
+/** The route that reads where one such sign-in stands, for its owner. */
+export const HOST_TOOL_SOURCE_SIGN_IN_ROUTE = `${HOST_TOOL_SOURCE_SIGN_INS_ROUTE}/:signIn`;
 
 /** The route that contacts a saved source with what the host holds for it (COR-2022). */
 export const HOST_TOOL_SOURCE_TEST_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/test`;
@@ -279,6 +302,44 @@ function callbackPage(title: string, body: string, status: number): Response {
   );
 }
 
+/** The `type` of the message a sign-in's callback page posts to the page that opened it. */
+export const TOOL_SOURCE_SIGN_IN_MESSAGE = 'interborough:tool-source-sign-in';
+
+/**
+ * The callback page of a sign-in of a source that is not saved (COR-2436): it posts the outcome
+ * to the page that opened it, at that page's own origin and nowhere else, and closes. The message
+ * holds the sign-in's reference, its outcome and a reason from a closed set: never a token, a
+ * code, or anything of the request's address. Its one script is allowed by its digest alone.
+ */
+function signInCallbackPage(settled: ToolSourcePendingCallback): Response {
+  const message = {
+    type: TOOL_SOURCE_SIGN_IN_MESSAGE,
+    signIn: settled.signIn,
+    outcome: settled.outcome,
+    ...(settled.reason === undefined ? {} : { reason: settled.reason }),
+  };
+  // JSON in a script: `<` is escaped so no value can close the element.
+  const json = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c');
+  const script = `if (window.opener) { window.opener.postMessage(${json(message)}, ${json(settled.openerOrigin)}); window.close(); }`;
+  const digest = createHash('sha256').update(script).digest('base64');
+  const words =
+    settled.outcome === 'succeeded'
+      ? 'Signed in. You can close this window.'
+      : settled.outcome === 'canceled'
+        ? 'Sign-in canceled. You can close this window.'
+        : 'The sign-in did not finish. Close this window and try again from Interborough.';
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Sign-in</title></head><body><p>${words}</p><script>${script}</script></body></html>`,
+    {
+      status: settled.outcome === 'succeeded' || settled.outcome === 'canceled' ? 200 : 400,
+      headers: {
+        ...CALLBACK_HEADERS,
+        'content-security-policy': `default-src 'none'; script-src 'sha256-${digest}'; frame-ancestors 'none'`,
+      },
+    },
+  );
+}
+
 /** What the routes read besides the manager. */
 export type ToolSourceRoutesOptions = {
   /** Resolve current transport authority and explicit retry identity. */
@@ -350,6 +411,8 @@ export function toolSourceRoutes(
                 // The labels the request names, or none, which keeps the saved ones.
                 ...(body['name'] === undefined ? {} : { name: body['name'] }),
                 ...(body['description'] === undefined ? {} : { description: body['description'] }),
+                // A sign-in made before the source was saved, by reference (COR-2436).
+                ...(body['signIn'] === undefined ? {} : { signIn: body['signIn'] }),
               },
               mutation,
             );
@@ -386,6 +449,7 @@ export function toolSourceRoutes(
                 source: body['source'],
                 credentials: body['credentials'],
                 principal: mutation.owner,
+                ...(body['signIn'] === undefined ? {} : { signIn: body['signIn'] }),
               },
               mutation,
             );
@@ -407,6 +471,47 @@ export function toolSourceRoutes(
             ),
           'POST',
           HOST_TOOL_SOURCE_TEST_ROUTE,
+          log,
+        ),
+    },
+    [HOST_TOOL_SOURCE_SIGN_INS_ROUTE]: {
+      POST: (request: Request) =>
+        refuse(request) ??
+        respond(
+          async () => {
+            const body = await readObject(request);
+            const mutation = await options.mutation(request, {
+              operationId:
+                typeof body['operationId'] === 'string' ? body['operationId'] : randomUUID(),
+              expectedRevision: null,
+            });
+            return manager.beginSignIn(
+              {
+                id: body['id'],
+                source: body['source'],
+                principal: mutation.owner,
+                // Where the outcome is posted: the page that asks, as its browser names it.
+                openerOrigin: request.headers.get('origin'),
+              },
+              mutation,
+            );
+          },
+          'POST',
+          HOST_TOOL_SOURCE_SIGN_INS_ROUTE,
+          log,
+        ),
+    },
+    [HOST_TOOL_SOURCE_SIGN_IN_ROUTE]: {
+      GET: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_SIGN_IN_ROUTE>) =>
+        refuse(request) ??
+        respond(
+          async () =>
+            manager.pendingSignIn(
+              request.params.signIn,
+              await options.mutation(request, { operationId: 'sign-in', expectedRevision: null }),
+            ),
+          'GET',
+          HOST_TOOL_SOURCE_SIGN_IN_ROUTE,
           log,
         ),
     },
@@ -479,6 +584,18 @@ export function toolSourceRoutes(
       GET: async (request: Bun.BunRequest<typeof HOST_OAUTH_CALLBACK_ROUTE>) => {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
+        // A sign-in of a source that is not saved yet is matched by its `state` alone (COR-2436);
+        // any other callback is a saved source's.
+        try {
+          const pending = await manager.completePendingSignIn(request.params.id, request.url);
+          if (pending !== undefined) return signInCallbackPage(pending);
+        } catch {
+          return callbackPage(
+            'Sign-in failed',
+            'The sign-in could not be completed. Start it again from Interborough.',
+            400,
+          );
+        }
         try {
           const change = await manager.completeAuthorization(request.params.id, request.url);
           return callbackPage(

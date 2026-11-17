@@ -150,6 +150,17 @@ export async function exerciseAdministratorRoutes(
         path: '/host/tool-sources/oauth-source/authorize',
         body: {},
       },
+      // A sign-in before a source is saved (COR-2436); its read names the reference the
+      // administrator's start answered.
+      {
+        key: 'POST /host/tool-source-sign-ins',
+        path: '/host/tool-source-sign-ins',
+        body: { id: 'pending-source', source: { ...oauthSource, id: 'pending-source' } },
+      },
+      {
+        key: 'GET /host/tool-source-sign-ins/:signIn',
+        path: '/host/tool-source-sign-ins/:signIn',
+      },
       {
         key: 'PUT /host/tool-sources/:id',
         path: '/host/tool-sources/new-source',
@@ -169,6 +180,7 @@ export async function exerciseAdministratorRoutes(
       live.map((entry) => entry.key).toSorted(),
     );
     let authorizationUrl: string | undefined;
+    let signIn: string | undefined;
     for (const entry of cases) {
       const method = entry.key.split(' ')[0]!;
       const snapshot = await host.plugins.snapshot();
@@ -181,7 +193,8 @@ export async function exerciseAdministratorRoutes(
               expectedRevision: snapshot.configurationRevision,
             };
       for (const actor of ['alice', 'bob', 'grantee', 'foreign', 'removed', 'admin']) {
-        const response = await fetch(new URL(entry.path, host.url), {
+        const path = entry.path.replace(':signIn', signIn ?? 'none');
+        const response = await fetch(new URL(path, host.url), {
           method,
           headers: {
             'x-api-key': actor,
@@ -204,6 +217,8 @@ export async function exerciseAdministratorRoutes(
         expect(text).not.toContain('workspace-b-private-input');
         if (actor === 'admin' && entry.key === 'POST /host/tool-sources/:id/authorize')
           authorizationUrl = (JSON.parse(text) as { authorizationUrl: string }).authorizationUrl;
+        if (actor === 'admin' && entry.key === 'POST /host/tool-source-sign-ins')
+          signIn = (JSON.parse(text) as { signIn: string }).signIn;
       }
     }
     if (authorizationUrl === undefined) throw new Error('Expected the administrator OAuth flow');
