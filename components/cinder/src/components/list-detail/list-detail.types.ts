@@ -82,6 +82,12 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   loading?: boolean;
   /**
+   * How many placeholder rows the list pane shows while `loading`, for a list whose design draws
+   * fewer or more than five: a short inbox draws three.
+   * @default 5
+   */
+  loadingRows?: number;
+  /**
    * What the loading region announces, politely, once the placeholder appears: "Loading memories".
    * @default 'Loading'
    */

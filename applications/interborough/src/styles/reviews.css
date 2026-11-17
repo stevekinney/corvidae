@@ -181,6 +181,13 @@
   padding-inline-start: 0;
 }
 
+/* What an approval's call was given, on one line (row 26o). */
+.ib-review-pane__input-line {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
 .ib-review-pane__actions {
   display: flex;
   flex-wrap: wrap;

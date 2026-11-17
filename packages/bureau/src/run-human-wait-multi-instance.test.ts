@@ -226,7 +226,7 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
       decision: 'approve',
     });
 
-    expect(listed.result).toEqual({ reviews: [], nextPageToken: null });
+    expect(listed.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
     expect(fetched.error?.data?.httpStatus).toBe(404);
     expect(resolved.error?.data?.httpStatus).toBe(404);
     // Nothing was delivered: no claim, no buffered signal, and the run is still parked.

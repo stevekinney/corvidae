@@ -165,9 +165,9 @@ describe('deciding a Bureau tool approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
-    await findByText('order-1001');
-    expect(container.textContent).toContain('orderId');
-    expect(container.textContent).toContain('4200');
+    // What it was given, on one line with each name in words (row 26o, COR-2426).
+    const input = await findByText('Order ID order-1001, Cents 4200');
+    expect(input.getAttribute('data-testid')).toBe('review-input-line');
   });
 
   test('approves through bureau.reviews.resolve with the review’s id and round, and the row goes', async () => {
@@ -914,6 +914,26 @@ describe('the Done tab', () => {
     expect(
       stub?.callsTo('bureau.reviews.list').some((call) => call.params['status'] === 'resolved'),
     ).toBe(true);
+  });
+
+  test('counts every decided review in its segment, beyond the page it has read (COR-2426)', async () => {
+    // Thirty decided reviews: the tab reads 25 at a time, and the Bureau says how many there are.
+    const decided = Array.from({ length: 30 }, (_, index) =>
+      toolApprovalFixture({
+        id: `approval:run-${String(index)}:call-1`,
+        runId: `run-${String(index)}`,
+        sessionId: `session-${String(index)}`,
+        status: 'approved',
+        resolution: resolution('approve', Date.now() - 60_000 - index * 1_000),
+      }),
+    );
+    const { container, getByRole } = open(
+      { reviews: decided },
+      AUTHORIZATION_SCOPES,
+      '/reviews?tab=done',
+    );
+    await waitFor(() => expect(rows(container).length).toBe(25));
+    expect(getByRole('radio', { name: /^Done\s*,\s*30$/, checked: true })).not.toBeNull();
   });
 
   test('is opened from the tab, and the Waiting tab does not list what is decided', async () => {

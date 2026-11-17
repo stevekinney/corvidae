@@ -77,6 +77,7 @@
     listBody,
     groupBy,
     loading = false,
+    loadingRows = 5,
     loadingLabel = 'Loading',
     onLoadingCancel,
     detail,
@@ -373,7 +374,7 @@
       {#if loading}
         <Skeleton
           variant="list"
-          rows={5}
+          rows={loadingRows}
           framed={false}
           label={loadingLabel}
           delay={LOADING_DELAY_MILLISECONDS}

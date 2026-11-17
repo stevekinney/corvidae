@@ -136,6 +136,18 @@ export class ReviewRoundChangedError extends BureauError {
 }
 
 /**
+ * COR-2426 — `resolveReview` found the review already resolved with another decision than the one
+ * asked: another resolver decided it first, or the agent moved on. Nothing took effect, and the
+ * review is no longer waiting; it is a `CONFLICT` a client tells from any other lost race.
+ */
+export class ReviewAlreadyResolvedError extends BureauError {
+  constructor(message: string) {
+    super(message, 'CONFLICT');
+    this.name = 'ReviewAlreadyResolvedError';
+  }
+}
+
+/**
  * `reviews.resolve` was given an answer that does not satisfy the schema of the human wait it
  * answers (COR-1804), or none where the schema needs one. Nothing was claimed, delivered or
  * audited, so the review stays pending and the caller may answer again. It is a `BAD_REQUEST`

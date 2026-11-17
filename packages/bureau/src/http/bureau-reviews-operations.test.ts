@@ -16,6 +16,7 @@ import { z } from 'zod';
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
+  ReviewAlreadyResolvedError,
   ReviewRoundChangedError,
 } from '../bureau-errors.ts';
 import { createBureau } from '../create-bureau.ts';
@@ -207,7 +208,7 @@ describe('the parks of runs another process holds (COR-1579)', () => {
     const body = await call(serve(host, authenticate), 'bureau.reviews.list', {
       status: 'resolved',
     });
-    expect(body.result).toEqual({ reviews: [], nextPageToken: null });
+    expect(body.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
   });
 
   it('lists every page of running agent runs, by what each page reports, with the local entry winning', async () => {
@@ -293,7 +294,7 @@ describe('a human wait of a run with no session (COR-1577)', () => {
     const hidden = await call(serve(owned), 'bureau.reviews.list', {});
     const visible = await call(serve(owned, operator), 'bureau.reviews.list', {});
 
-    expect(hidden.result).toEqual({ reviews: [], nextPageToken: null });
+    expect(hidden.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
     expect(visible.result).toMatchObject({ reviews: [{ id: 'human-wait:run-2:answer:0' }] });
   });
 });
@@ -306,6 +307,7 @@ describe('bureau.reviews.list', () => {
 
     expect(body.result).toEqual({
       nextPageToken: null,
+      total: 1,
       reviews: [
         {
           source: 'bureau',
@@ -731,6 +733,15 @@ describe('bureau.reviews.resolve', () => {
       (reply.error?.data as { reason?: string } | undefined)?.reason;
     expect(reasonOf(unwritten)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN: ')).toBe(true);
     expect(reasonOf(lost)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN')).toBe(false);
+    // COR-2426: a review already resolved with another decision carries its own token.
+    const alreadyResolved = await call(
+      failing(new ReviewAlreadyResolvedError('Review "x" is already resolved')),
+      'bureau.reviews.resolve',
+      input,
+    );
+    expect(alreadyResolved.error?.data?.httpStatus).toBe(409);
+    expect(reasonOf(alreadyResolved)?.startsWith('REVIEW_ALREADY_RESOLVED: ')).toBe(true);
+    expect(reasonOf(lost)?.startsWith('REVIEW_ALREADY_RESOLVED')).toBe(false);
     expect(JSON.stringify(lost.error)).not.toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
     expect(JSON.stringify(unwritten.error)).not.toContain('"code":"APPROVAL');
   });
@@ -964,9 +975,22 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       const after = await call(handler, 'bureau.reviews.list', {});
-      expect(after.result).toEqual({ reviews: [], nextPageToken: null });
+      expect(after.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
       const again = await call(handler, 'bureau.reviews.resolve', { id, decision: 'approve' });
       expect(again.error?.data?.httpStatus).toBe(404);
+      // COR-2426: another decision on a review that is already resolved is told apart from any other
+      // lost race, so a client can say it is no longer waiting.
+      const other = await call(handler, 'bureau.reviews.resolve', {
+        id,
+        decision: 'reject',
+        reason: 'Too late',
+      });
+      expect(other.error?.data?.httpStatus).toBe(409);
+      expect(
+        String((other.error?.data as { reason?: string } | undefined)?.reason).startsWith(
+          'REVIEW_ALREADY_RESOLVED: ',
+        ),
+      ).toBe(true);
       const resolvedReview = await call(handler, 'bureau.reviews.get', { id });
       expect(resolvedReview.result).toMatchObject({ id, status: 'approved' });
     } finally {
@@ -1442,7 +1466,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       expect(JSON.stringify(get.error).replaceAll(id, '<id>')).toBe(
         JSON.stringify(unknown.error).replaceAll('no-such', '<id>'),
       );
-      expect(list.result).toEqual({ reviews: [], nextPageToken: null });
+      expect(list.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
       // The refusals left the review pending and the run parked.
       expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
       const owner = await callAs(OWNER_KEY, handler, 'bureau.reviews.resolve', {
@@ -1469,7 +1493,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
         const hidden = await callAs(key, keyed, 'bureau.reviews.get', { id });
         expect(hidden.error?.data?.httpStatus).toBe(404);
         const listed = await callAs(key, keyed, 'bureau.reviews.list', {});
-        expect(listed.result).toEqual({ reviews: [], nextPageToken: null });
+        expect(listed.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
       }
       const refused = await callAs(OTHER_KEY, keyed, 'bureau.reviews.resolve', {
         id,

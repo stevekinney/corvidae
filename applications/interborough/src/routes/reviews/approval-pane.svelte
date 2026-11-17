@@ -17,6 +17,7 @@
     reasonSaysAlways,
   } from '../../lib/tool-text.ts';
   import BureauReviewOperation from './bureau-review-operation.svelte';
+  import { inputLine } from './review-items.ts';
   import ReviewResolution from './review-resolution.svelte';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
@@ -80,12 +81,10 @@
     {#if entries.length === 0}
       <p class="ib-review-pane__note">{REVIEWS_COPY.noInput}</p>
     {:else}
-      <dl class="ib-tool__details">
-        {#each entries as [key, value] (key)}
-          <dt>{key}</dt>
-          <dd>{value}</dd>
-        {/each}
-      </dl>
+      <!-- What the call was given, on one line (row 26o). -->
+      <p class="ib-review-pane__input-line" data-testid="review-input-line">
+        {inputLine(review.approval.arguments)}
+      </p>
     {/if}
     {#if operation !== undefined}
       <BureauReviewOperation {operation} />

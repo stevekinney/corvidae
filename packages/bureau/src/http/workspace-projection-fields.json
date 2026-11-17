@@ -1942,7 +1942,8 @@
     "$.reviews[]|oneOf[2].reviewers",
     "$.reviews[]|oneOf[2].runId",
     "$.reviews[]|oneOf[2].source",
-    "$.reviews[]|oneOf[2].status"
+    "$.reviews[]|oneOf[2].status",
+    "$.total"
   ],
   "output:bureau.reviews.resolve": [
     "$.continuation",

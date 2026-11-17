@@ -20,6 +20,8 @@ export const REVIEWS_COPY = {
   wantsToRun: 'It wants to run',
   /** How risky the tool is, by the risk the approval declares; a low risk says nothing. */
   risk: { high: 'Dangerous, Can’t be undone', medium: 'Changes things' },
+  /** On a row's second line, for an approval of a call that cannot be undone (rows 25x, 07c). */
+  cantBeUndone: 'Can’t be undone',
   /** The placeholder of the note field on an approval. */
   notePlaceholder: 'Add a note',
   /** Said in place of a review that left the queue while it was open: the agent moved on. */

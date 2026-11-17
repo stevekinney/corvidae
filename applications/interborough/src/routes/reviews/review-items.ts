@@ -4,9 +4,17 @@
  * key that is unique across the sources, for selection and keyed rendering. The server orders the
  * list (waiting: the longest first; decided: the latest decision first), and this keeps its order.
  */
+import { humanizeIdentifier } from '@lostgradient/cinder';
+
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import type { ListedReview } from '../../lib/bureau-reviews.ts';
-import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
+import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+
+/**
+ * How long a review that is no longer waiting stays in the list, its place saying so, before it
+ * leaves and that is announced (COR-2426, row 26h: "after a moment").
+ */
+export const NO_LONGER_WAITING_LINGER_MILLISECONDS = 3_000;
 
 /** One review of the inbox, with the key the list selects it by. */
 export interface InboxItem {
@@ -64,6 +72,34 @@ export function reviewTitle(review: ListedReview): string {
   }
   if (review.kind === 'human-wait') return review.prompt ?? REVIEWS_COPY.questionFallback;
   return review.reviewType;
+}
+
+/**
+ * A row's second line (rows 25x, 07c): what kind of review it is, the agent that asked by its
+ * display name (`agentName`, already worded by the page), and, for an approval of a call that
+ * cannot be undone (the risk the tool declares high), that it cannot be.
+ */
+export function reviewLineTwo(review: ListedReview, agentName: string | undefined): string {
+  const parts = [reviewKindLabel(review)];
+  if (agentName !== undefined) parts.push(` ${REVIEWS_COPY.fromAgent(agentName)}`);
+  if (
+    review.kind === 'tool-approval' &&
+    review.approval.action.type === 'approval' &&
+    review.approval.action.risk === 'high'
+  ) {
+    parts.push(`, ${REVIEWS_COPY.cantBeUndone}`);
+  }
+  return parts.join('');
+}
+
+/**
+ * What an approval's call was given, on one line as the pane says it (row 26o): each argument by its
+ * name in words and its value, in the order the tool took them ("Order ID order-1001, Cents 4200").
+ */
+export function inputLine(args: unknown): string {
+  return argumentEntries(args)
+    .map(([key, value]) => `${humanizeIdentifier(key, { casing: 'sentence' })} ${value}`)
+    .join(', ');
 }
 
 /** The label of what kind of review it is. */

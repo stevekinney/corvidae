@@ -546,7 +546,7 @@ describe('createBureauHandler authentication matrix', () => {
       const list = await handler(jsonRpc('bureau.reviews.list', {}, credentials));
       const body = (await list.json()) as { result?: unknown };
 
-      expect(body.result).toEqual({ reviews: [], nextPageToken: null });
+      expect(body.result).toEqual({ reviews: [], nextPageToken: null, total: 0 });
     });
   });
 });

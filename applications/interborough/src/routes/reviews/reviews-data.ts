@@ -27,8 +27,10 @@ import {
 } from '@tanstack/svelte-query';
 
 import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
+import { showFault } from '../../app/toast-host.svelte';
 import {
   isApprovalOutcomeNotWritten,
+  isReviewNoLongerWaiting,
   listBureauReviews,
   listPendingReviews,
   pageReviews,
@@ -40,6 +42,7 @@ import {
   type ReviewResolution,
 } from '../../lib/bureau-reviews.ts';
 import { respondToTask, type TaskRespondAnswer } from '../../lib/bureau-tasks.ts';
+import { faultTreatment } from '../../lib/faults.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { invalidateReviewQueries } from '../../lib/review-queries.ts';
 
@@ -225,6 +228,11 @@ export function resolveBureauReviewMutation(): CreateMutationResult<
           outcomeNotWritten: true as const,
         };
       }
+    },
+    // A review that is no longer waiting is said in its place, not as a fault (COR-2426, row 26g);
+    // any other failure is the toast every mutation's failure is.
+    onError: (error) => {
+      if (!isReviewNoLongerWaiting(error)) showFault(faultTreatment(error));
     },
     onSettled: () => {
       void invalidateReviewQueries(queryClient);

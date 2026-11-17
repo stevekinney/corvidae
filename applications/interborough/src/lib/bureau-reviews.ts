@@ -158,6 +158,11 @@ const listAnswerSchema = z.object({
   reviews: z.array(listedReviewSchema),
   // The Bureau always says; a stand-in that leaves it off ends the list.
   nextPageToken: z.string().nullish(),
+  /**
+   * How many reviews the whole listing holds for these filters, on every page (COR-2426); `null`
+   * from a Bureau that predates it, where a count is of the reviews read so far.
+   */
+  total: z.number().int().min(0).nullish(),
 });
 
 /** What `bureau.reviews.list` filters and pages by. */
@@ -180,9 +185,17 @@ export type ReviewsQuery = {
 export async function pageReviews(
   query: ReviewsQuery = {},
   options?: Options,
-): Promise<{ readonly reviews: readonly ListedReview[]; readonly nextPageToken: string | null }> {
+): Promise<{
+  readonly reviews: readonly ListedReview[];
+  readonly nextPageToken: string | null;
+  readonly total: number | null;
+}> {
   const page = listAnswerSchema.parse(await callBureau('bureau.reviews.list', query, options));
-  return { reviews: page.reviews, nextPageToken: page.nextPageToken ?? null };
+  return {
+    reviews: page.reviews,
+    nextPageToken: page.nextPageToken ?? null,
+    total: page.total ?? null,
+  };
 }
 
 /**
@@ -272,6 +285,24 @@ export function isReviewRoundChanged(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
   const reason: unknown = error.data?.['reason'];
   return typeof reason === 'string' && reason.startsWith(`${REVIEW_ROUND_CHANGED}:`);
+}
+
+/**
+ * The token a `Conflict`'s reason begins with when the review was already resolved with another
+ * decision, by another resolver or because the agent moved on: nothing was decided, and it is no
+ * longer waiting (COR-2426, `bureau.reviews.resolve`'s description).
+ */
+export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
+
+/**
+ * Whether a decision found the review no longer waiting: the Bureau says it was already resolved,
+ * or no longer holds it pending at all (a `NotFound`, as when the agent moved on).
+ */
+export function isReviewNoLongerWaiting(error: unknown): boolean {
+  if (!(error instanceof HttpClientError)) return false;
+  if (error.status === 404) return true;
+  const reason: unknown = error.data?.['reason'];
+  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ALREADY_RESOLVED}:`);
 }
 
 /**

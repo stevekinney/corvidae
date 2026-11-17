@@ -162,6 +162,8 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       return {
         reviews: page,
         nextPageToken: offset + page.length < listed.length ? String(offset + page.length) : null,
+        // The whole listing's count, on every page, as the Bureau answers it (COR-2426).
+        total: listed.length,
       };
     },
     'bureau.reviews.get': (params) => {
