@@ -1,6 +1,14 @@
 {
-  "revision": "sdlc-14ef-policy-baseline-2026-11-17",
-  "source": "scripts/chef/brief.ts",
-  "sha256": "53409caab8ca35ab33d1b3294353013ddcc10698b137db9b17af8e938b7a4f65",
-  "immutable": true
+  "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+  "repository": "stevekinney/corvidae",
+  "sources": {
+    ".agents/skills/chef/SKILL.md": "5e46a898180ea0b698b0dae666970c38851ce81740ca2371a77855e2cd287334",
+    ".codex/agents/chef-worker.toml": "c16689f0d62d623f09eed04f2dfcd7d23d4f86328a986d1175d8b6aabae02199",
+    ".codex/agents/chef-reviewer.toml": "eee2003e00eddea83a92556f3df240a9cffbe3db4642de18c0122571c33b2bbc",
+    ".claude/agents/chef-worker.md": "ede039fb772ad3ca538b15f4c3b7d2f54bf5f406089f334851f3098c1cb73ed0",
+    ".claude/agents/chef-reviewer.md": "026d045ceccb7ac566e55bd9128afc7dfbead731284c0356bd410f656cef80b1",
+    ".github/workflows/main.yml": "47a89bb93c961d5e0cb77ba20dc7bbc72ca1216bfc23a0c177cf903b3fd28013",
+    ".github/workflows/pull-request.yml": "5c025169cf806476e0fe76d985e9fc6a9acf949d9312d6dff521baa2746551f6",
+    ".agents/skills/chef/references/execution-record.md": "35accb8aca56d8d1c93a18d903f73eff89dcd59391dd887dbad6b438de17ed64"
+  }
 }
