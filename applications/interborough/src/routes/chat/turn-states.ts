@@ -46,12 +46,19 @@ export function turnStateOf(message: Message, facts: TurnFacts): ChatTurnState |
   return reconnectingTurnState(facts.reconnect, facts.now);
 }
 
-/** The id of the last assistant message of `conversation`, or `undefined` when there is none. */
+/**
+ * The id of the last assistant message of the last turn of `conversation`, after the person's last
+ * message, or `undefined` when that turn has none yet: a stream that drops before the reply has a
+ * row never marks the previous turn's finished answer.
+ */
 export function lastAssistantId(conversation: ConversationHistory): string | undefined {
   for (let index = conversation.ids.length - 1; index >= 0; index -= 1) {
     const id = conversation.ids[index];
     if (id === undefined || !Object.hasOwn(conversation.messages, id)) continue;
-    if (conversation.messages[id]?.role === 'assistant') return id;
+    const row = conversation.messages[id];
+    // A hidden row (the turn a page reads a run it joined under) is not the person's message.
+    if (row?.role === 'user' && row.hidden !== true) return undefined;
+    if (row?.role === 'assistant') return id;
   }
   return undefined;
 }

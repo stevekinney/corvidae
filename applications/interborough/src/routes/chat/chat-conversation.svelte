@@ -295,6 +295,15 @@
         else forgetDraft();
         return adapter.sendMessage(...input);
       },
+      // Send now hands what was queued to the running run: it is sent, so it is no draft either.
+      ...(adapter.sendRunInput === undefined
+        ? {}
+        : {
+            sendRunInput: (...input: Parameters<NonNullable<typeof adapter.sendRunInput>>) => {
+              if (!choosing) forgetDraft();
+              return adapter.sendRunInput!(...input);
+            },
+          }),
     };
   });
 
@@ -2263,6 +2272,8 @@
                     const taken = await session.answerQuestion(request.interruptId, value);
                     // An answer the session did not take leaves the question open, not "answered".
                     if (!taken) sentRequest = undefined;
+                    // An answer typed in the composer was sent, so it is no draft.
+                    else forgetDraft();
                     return taken;
                   }}
                 />

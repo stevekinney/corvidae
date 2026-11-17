@@ -55,6 +55,10 @@ describe('the chat composer while the server does not answer', () => {
     expect(composer()?.value).toBe('What did I approve yesterday?');
     expect(send()?.disabled).toBe(true);
     expect(send()?.getAttribute('aria-describedby')?.split(' ')).toContain(drawer()!.id);
+    // Enter sends nothing either, and the text stays in the box.
+    await fireEvent.keyDown(composer()!, { key: 'Enter' });
+    expect(composer()?.value).toBe('What did I approve yesterday?');
+    expect(view.container.textContent).not.toContain('Not sent');
 
     monitor.reportReachable();
 

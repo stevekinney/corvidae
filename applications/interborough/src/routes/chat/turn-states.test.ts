@@ -57,18 +57,25 @@ describe('the reconnecting turn', () => {
 });
 
 describe('the last assistant turn', () => {
-  test('is the last assistant row of the transcript, or none', () => {
+  test('is the last assistant row after the person’s last message, or none', () => {
     const conversation = createConversationHistory({ id: 'c' });
     expect(lastAssistantId(conversation)).toBeUndefined();
-    const filled = {
+    const answered = {
       ...conversation,
-      ids: ['u1', 'a1', 'u2'],
+      ids: ['u1', 'a1', 'a2'],
       messages: {
         u1: message('u1', 'user'),
         a1: message('a1', 'assistant'),
-        u2: message('u2', 'user'),
+        a2: message('a2', 'assistant'),
       },
     } as unknown as typeof conversation;
-    expect(lastAssistantId(filled)).toBe('a1');
+    expect(lastAssistantId(answered)).toBe('a2');
+    // A turn whose reply has no row yet marks nothing: never the previous turn's finished answer.
+    const asked = {
+      ...answered,
+      ids: ['u1', 'a1', 'u2'],
+      messages: { ...answered.messages, u2: message('u2', 'user') },
+    } as unknown as typeof conversation;
+    expect(lastAssistantId(asked)).toBeUndefined();
   });
 });
