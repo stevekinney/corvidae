@@ -253,6 +253,23 @@ describe('totalUsage', () => {
     expect(totalUsage([])).toEqual({ input: 0, cachedInput: 0, output: 0 });
     expect(() => totalUsage([join(sandbox, 'missing')])).toThrow(UsageError);
   });
+
+  test('deduplicates a transcript named directly and through its parent directory', () => {
+    const path = write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    expect(totalUsage([sandbox, path])).toEqual(totalUsage([sandbox]));
+  });
+
+  test('records malformed and missing usage as incomplete rather than zero usage', () => {
+    const path = write(join(sandbox, 'broken.jsonl'), [
+      { type: 'session_meta', payload: {} },
+      { type: 'event_msg', payload: { type: 'token_count', info: {} } },
+      'not json',
+    ]);
+    expect(readTranscript(path)!.problems).toEqual([
+      expect.objectContaining({ kind: 'missing-usage' }),
+      expect.objectContaining({ kind: 'malformed-line' }),
+    ]);
+  });
 });
 
 describe('the command line', () => {

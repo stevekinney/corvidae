@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "orderSeed": "sdlc-14ef-2026-11-17",
+  "policySnapshot": "scripts/chef/fixtures/sdlc-policy-baseline.json@53409caab8ca35ab33d1b3294353013ddcc10698b137db9b17af8e938b7a4f65",
+  "tasks": [
+    {
+      "id": "local-01",
+      "family": "local-regression",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["scripts/chef/transcript-usage.ts"],
+      "deliveryBoundary": "unit test",
+      "input": { "source": "return 0", "patch": "return 1", "expected": "1" },
+      "oracle": { "command": "bun -e \"console.log('1')\"", "expectedOutput": "1" }
+    },
+    {
+      "id": "local-02",
+      "family": "local-regression",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["scripts/chef/outcome-accounting.ts"],
+      "deliveryBoundary": "unit test",
+      "input": { "source": "b,a", "patch": "sort", "expected": "a,b" },
+      "oracle": { "command": "bun -e \"console.log('a,b')\"", "expectedOutput": "a,b" }
+    },
+    {
+      "id": "contract-01",
+      "family": "cross-workspace-contract",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["scripts/chef/direct-merge.ts"],
+      "deliveryBoundary": "direct merge receipt",
+      "input": { "source": "input", "patch": "map field", "expected": "field" },
+      "oracle": { "command": "bun -e \"console.log('field')\"", "expectedOutput": "field" }
+    },
+    {
+      "id": "contract-02",
+      "family": "cross-workspace-contract",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["scripts/chef/merge-gate.ts"],
+      "deliveryBoundary": "merge gate",
+      "input": { "source": "receipt", "patch": "preserve status", "expected": "accepted" },
+      "oracle": { "command": "bun -e \"console.log('accepted')\"", "expectedOutput": "accepted" }
+    },
+    {
+      "id": "concurrency-01",
+      "family": "concurrency",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["scripts/chef/direct-merge.ts"],
+      "deliveryBoundary": "single merge",
+      "input": { "source": "two claimers", "patch": "lock", "expected": "one winner" },
+      "oracle": {
+        "command": "bun -e \"console.log('one winner')\"",
+        "expectedOutput": "one winner"
+      }
+    },
+    {
+      "id": "concurrency-02",
+      "family": "concurrency",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["scripts/chef/gate-run.ts"],
+      "deliveryBoundary": "settled gate",
+      "input": { "source": "stale generation", "patch": "fence", "expected": "rejected" },
+      "oracle": { "command": "bun -e \"console.log('rejected')\"", "expectedOutput": "rejected" }
+    },
+    {
+      "id": "ui-01",
+      "family": "agreed-ui-behavior",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["applications/interborough/src/views"],
+      "deliveryBoundary": "design review",
+      "input": { "source": "label", "patch": "accessible label", "expected": "visible label" },
+      "oracle": {
+        "command": "bun -e \"console.log('visible label')\"",
+        "expectedOutput": "visible label"
+      }
+    },
+    {
+      "id": "ui-02",
+      "family": "agreed-ui-behavior",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["components/cinder/src"],
+      "deliveryBoundary": "design review",
+      "input": { "source": "token", "patch": "selected token", "expected": "token applied" },
+      "oracle": {
+        "command": "bun -e \"console.log('token applied')\"",
+        "expectedOutput": "token applied"
+      }
+    },
+    {
+      "id": "delivery-01",
+      "family": "interrupted-delivery",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": false,
+      "permittedPaths": ["scripts/chef/deliver.ts"],
+      "deliveryBoundary": "resumed receipt",
+      "input": { "source": "cancelled attempt", "patch": "resume link", "expected": "one outcome" },
+      "oracle": {
+        "command": "bun -e \"console.log('one outcome')\"",
+        "expectedOutput": "one outcome"
+      }
+    },
+    {
+      "id": "delivery-02",
+      "family": "interrupted-delivery",
+      "baseRevision": "721367ba220dc2384c83ee1c33b3a38bdf702e5b",
+      "heldOut": true,
+      "permittedPaths": ["scripts/chef/transcript-usage.ts"],
+      "deliveryBoundary": "outcome report",
+      "input": {
+        "source": "duplicate transcript",
+        "patch": "deduplicate",
+        "expected": "one accounting"
+      },
+      "oracle": {
+        "command": "bun -e \"console.log('one accounting')\"",
+        "expectedOutput": "one accounting"
+      }
+    }
+  ]
+}

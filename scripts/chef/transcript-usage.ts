@@ -37,6 +37,15 @@ export interface TranscriptUsage {
   provider: Provider;
   label: string;
   calls: ModelCall[];
+  /** Input the transcript claimed was a call but whose usage could not be accounted for. */
+  problems: UsageProblem[];
+}
+
+/** A missing or malformed usage record. It is intentionally not represented as zero tokens. */
+export interface UsageProblem {
+  kind: 'malformed-line' | 'missing-usage' | 'malformed-usage';
+  line: number;
+  message: string;
 }
 
 export interface Price {
@@ -100,6 +109,53 @@ function parseLines(text: string): Record<string, unknown>[] {
     }
   }
   return entries;
+}
+
+/** Usage omissions are evidence of incomplete accounting, never a zero-token call. */
+export function usageProblems(text: string, provider: Provider): UsageProblem[] {
+  const problems: UsageProblem[] = [];
+  for (const [index, line] of text.split('\n').entries()) {
+    if (line.trim() === '') continue;
+    let entry: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (parsed === null || typeof parsed !== 'object') {
+        problems.push({ kind: 'malformed-line', line: index + 1, message: 'Not a JSON object.' });
+        continue;
+      }
+      entry = parsed as Record<string, unknown>;
+    } catch {
+      problems.push({ kind: 'malformed-line', line: index + 1, message: 'Invalid JSON.' });
+      continue;
+    }
+    const message = entry['message'] as Record<string, unknown> | undefined;
+    const payload = entry['payload'] as Record<string, unknown> | undefined;
+    const claimsClaudeCall =
+      provider === 'claude-code' &&
+      entry['type'] === 'assistant' &&
+      message?.['model'] !== '<synthetic>';
+    const claimsCodexCall =
+      provider === 'codex' && entry['type'] === 'event_msg' && payload?.['type'] === 'token_count';
+    if (!claimsClaudeCall && !claimsCodexCall) continue;
+    const usage = claimsClaudeCall
+      ? message?.['usage']
+      : (payload?.['info'] as Record<string, unknown> | undefined)?.['last_token_usage'];
+    if (usage === undefined) {
+      problems.push({
+        kind: 'missing-usage',
+        line: index + 1,
+        message: 'Model call has no usage.',
+      });
+      continue;
+    }
+    if (usage === null || typeof usage !== 'object')
+      problems.push({
+        kind: 'malformed-usage',
+        line: index + 1,
+        message: 'Model call usage is not an object.',
+      });
+  }
+  return problems;
 }
 
 /** Which provider wrote `entries`, or `undefined` when neither format is recognized. */
@@ -209,11 +265,12 @@ function labelFor(path: string): string {
 
 /** Read one transcript file, or `undefined` when it is neither provider's format. */
 export function readTranscript(path: string): TranscriptUsage | undefined {
-  const entries = parseLines(readFileSync(path, 'utf8'));
+  const text = readFileSync(path, 'utf8');
+  const entries = parseLines(text);
   const provider = detectProvider(entries);
   if (provider === undefined) return undefined;
   const calls = provider === 'codex' ? codexCalls(entries) : claudeCodeCalls(entries);
-  return { path, provider, label: labelFor(path), calls };
+  return { path, provider, label: labelFor(path), calls, problems: usageProblems(text, provider) };
 }
 
 /** Every `.jsonl` file under `path`, or `path` itself when it is a file. */
@@ -331,7 +388,8 @@ export interface UsageTotals {
  */
 export function totalUsage(paths: string[]): UsageTotals {
   const totals: UsageTotals = { input: 0, cachedInput: 0, output: 0 };
-  for (const usage of paths.flatMap(transcriptFiles).map(readTranscript)) {
+  const files = [...new Set(paths.flatMap(transcriptFiles))];
+  for (const usage of files.map(readTranscript)) {
     if (usage === undefined) continue;
     const summary = report(usage, undefined);
     totals.input += summary.uncachedInput + summary.cacheWrite;
