@@ -101,6 +101,9 @@ function resolveScanRoots(): string[] {
 
 function shouldScanFile(filePath: string): boolean {
   if (filePath.endsWith('.map')) return false;
+  // A component's `examples/` (COR-2081) is documentation a page renders, with placeholder images
+  // of its own, not the package's shipped styles.
+  if (filePath.split('/').includes('examples')) return false;
   const extension = filePath.split('.').pop();
   if (!extension) return false;
   return SCANNED_EXTENSIONS.has(extension);
