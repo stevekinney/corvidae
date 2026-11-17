@@ -38,6 +38,12 @@ const schema = {
         "Visual treatment. `'default'` is a bordered card with a raised trigger.\n`'flat'` drops the border, the raised trigger background, and the horizontal\npadding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.",
       default: 'default',
     },
+    framed: {
+      type: 'boolean',
+      description:
+        "Keeps the frame of a Collapsible that sits inside another Collapsible's panel. Nested, a\ndisclosure is flat by default (a box inside a box reads as clutter); set this to keep the\nbordered card. It changes nothing for a Collapsible that is not nested.",
+      default: false,
+    },
     animated: {
       type: 'boolean',
       description: 'Whether opening and closing uses the slide transition.',

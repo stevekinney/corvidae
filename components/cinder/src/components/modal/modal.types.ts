@@ -16,7 +16,7 @@ type ModalBaseProps = {
    * with the last action (the confirmation) first, and it rides above the
    * on-screen keyboard and the bottom safe area. A CSS length such as `"640px"`, or `false` for the
    * centred card at every width. Ignored for `chrome="none"`.
-   * @default false
+   * @default "640px"
    */
   sheetBelow?: string | false;
   /** Additional class names merged with the component's root class. */

@@ -38,6 +38,12 @@ const schema = {
         'Draw no outline, radius or fill around the table, for a queue or list that sits on the page.\nRows keep their hairlines.',
       default: false,
     },
+    framed: {
+      type: 'boolean',
+      description:
+        "Keeps the table's own frame inside a Card. Inside a Card a table is frameless by default (the\ncard is the frame; a box inside a box reads as clutter); set this to draw the frame anyway. It\nchanges nothing for a table outside a Card.",
+      default: false,
+    },
     fit: {
       type: 'boolean',
       description:

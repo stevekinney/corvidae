@@ -22,7 +22,7 @@
   }: TabsCountFixtureProps = $props();
 </script>
 
-<Tabs bind:value>
+<Tabs bind:value collapseBelow="640px">
   <TabList label="Health sections">
     <Tab value="overview">Overview</Tab>
     <Tab value="workers" count={workers} {countLabel}>Workers</Tab>

@@ -40,14 +40,19 @@ afterAll(() => {
 const observers = new Set<(width: number) => void>();
 const originalResizeObserver = globalThis.ResizeObserver;
 class FakeResizeObserver {
+  private readonly reports = new Set<(width: number) => void>();
   constructor(private readonly callback: (entries: unknown[], observer: unknown) => void) {}
   observe(): void {
     const report = (width: number): void => this.callback([{ contentRect: { width } }], this);
+    this.reports.add(report);
     observers.add(report);
   }
   unobserve(): void {}
+  // Only this observer's own reports go: another control's observer (the segments') disconnecting
+  // when a form unmounts it must not silence the bar's.
   disconnect(): void {
-    observers.clear();
+    for (const report of this.reports) observers.delete(report);
+    this.reports.clear();
   }
 }
 Object.defineProperty(globalThis, 'ResizeObserver', {
@@ -99,7 +104,12 @@ Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
   value(this: Element) {
     if (isRow(this)) return rect(0, barWidth);
     const row = this.parentElement?.closest('.cinder-filter-bar__row');
-    if (row) return rect(0, needs[drawnForm(row)] ?? 0);
+    // A test that names no `search-folded` need draws that form as wide as `wide`, so the bar steps
+    // through it to `medium` as it did before the form existed.
+    if (row) {
+      const form = drawnForm(row);
+      return rect(0, needs[form] ?? (form === 'search-folded' ? (needs['wide'] ?? 0) : 0));
+    }
     return rect(0, 0);
   },
 });
@@ -241,6 +251,33 @@ describe('FilterBar layout by its measured width', () => {
     expect(layoutOf(container)).toBe('medium');
     setBarWidth(1100);
     expect(layoutOf(container)).toBe('wide');
+  });
+
+  test('a narrowing row folds the search to an icon button before the segments to a select', () => {
+    needs = { wide: 1100, 'search-folded': 900, medium: 700, narrow: 300 };
+    const { container } = render(FilterBar, { segments: SEGMENTS, facets: FACETS });
+    const searchField = (): Element | null => container.querySelector('.cinder-filter-bar__search');
+    const searchButton = (): Element | null =>
+      container.querySelector('.cinder-filter-bar__search-button');
+    const segmentsAsRadios = (): boolean => container.querySelector('[role="radiogroup"]') !== null;
+
+    setBarWidth(1200);
+    expect(layoutOf(container)).toBe('wide');
+    expect(searchField()).not.toBeNull();
+    expect(segmentsAsRadios()).toBe(true);
+
+    // Too narrow for the wide form, wide enough for the segments: only the search folds.
+    setBarWidth(1000);
+    expect(layoutOf(container)).toBe('search-folded');
+    expect(segmentsAsRadios()).toBe(true);
+    expect(searchField()).toBeNull();
+    expect(searchButton()).not.toBeNull();
+
+    // Narrower still: now the segments fold too.
+    setBarWidth(800);
+    expect(layoutOf(container)).toBe('medium');
+    expect(segmentsAsRadios()).toBe(false);
+    expect(searchButton()).not.toBeNull();
   });
 
   test('a chip removed from a folded bar draws the wide form again when it now fits', async () => {

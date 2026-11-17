@@ -121,6 +121,20 @@ describe('DescriptionList', () => {
     );
   });
 
+  test('fields variant is flat by default and `framed` opts into the tinted frame', () => {
+    const flat = render(DescriptionList, { items: sampleItems, variant: 'fields' });
+    expect(flat.container.querySelector('dl')?.hasAttribute('data-cinder-framed')).toBe(false);
+    flat.unmount();
+    const framed = render(DescriptionList, { items: sampleItems, variant: 'fields', framed: true });
+    expect(framed.container.querySelector('dl')?.hasAttribute('data-cinder-framed')).toBe(true);
+    const css = readFileSync(new URL('./description-list.css', import.meta.url), 'utf8');
+    const base = css.match(/\[data-cinder-variant='fields'\]\s*\{([^}]*)\}/s)?.[1] ?? '';
+    expect(base).not.toMatch(/background|border-radius|padding-inline-start/);
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+    );
+  });
+
   test('facts variant sets data-cinder-variant and keeps each term before its value', () => {
     const { container } = render(DescriptionList, { items: sampleItems, variant: 'facts' });
     const dl = container.querySelector('.cinder-description-list');
