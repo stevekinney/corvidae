@@ -3266,7 +3266,7 @@
 
   .chat-timeline-focus-label {
     position: sticky;
-    inset-block-start: var(--cinder-space-2);
+    inset-block-start: calc(var(--cinder-space-2) + var(--_cinder-chat-overlay-inset-start));
     align-self: flex-start;
     z-index: 2;
     inline-size: 0;

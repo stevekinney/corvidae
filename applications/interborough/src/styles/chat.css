@@ -203,6 +203,12 @@
   padding-inline: max(var(--_ib-chat-inset), calc((100% - 47.5rem) / 2 + var(--_ib-chat-inset)));
 }
 
+/* The loading placeholder for the heading stays in the flow above the conversation, where the real
+ * header will be laid over it, so nothing moves under it while the chat loads. */
+.weft-chat-head.ib-chat-unavailable__heading {
+  position: static;
+}
+
 /* A new chat has no header, and nothing else may be up there: then the column takes no room. */
 .weft-chat-head:not(:has(*)) {
   display: none;
