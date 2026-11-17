@@ -15,7 +15,7 @@
  * test slot pool per worker (`scripts/bun-test-pool.ts`).
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import {
@@ -29,6 +29,10 @@ import { rootScriptEnvironment } from './environment-configuration.ts';
 import { bunCrashReportsSince, workerCrashMessage } from './worker-crash-report.ts';
 
 export const JUNIT_DIRECTORY = join('test-output', 'junit');
+
+/** The report of a run that found no test file: no suite, no case. */
+export const EMPTY_REPORT =
+  '<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="bun test" tests="0" assertions="0" failures="0" skipped="0" time="0">\n</testsuites>\n';
 
 /** Split the wrapper's own flag from the arguments destined for `bun test`. */
 export function parseWrapperArguments(argumentsList: readonly string[]): {
@@ -91,6 +95,9 @@ async function main(): Promise<number> {
     bunTestArguments: [...bunTestArguments, '--reporter=junit', `--reporter-outfile=${reportPath}`],
   });
   const workspace = relative(join(import.meta.dir, '..'), process.cwd()) || '.';
+  // A passing run that found no test file (`--pass-with-no-tests`, a package whose tests all live in
+  // another) writes no report; leave an empty one, so the duration check sees the lane ran.
+  if (exitCode === 0 && !existsSync(reportPath)) writeFileSync(reportPath, EMPTY_REPORT);
   const reports = existsSync(reportPath) ? [readFileSync(reportPath, 'utf8')] : [];
   const crashMessage = workerCrashMessage(workspace, reports, bunCrashReportsSince(startedAt));
   if (crashMessage !== null) process.stderr.write(crashMessage);

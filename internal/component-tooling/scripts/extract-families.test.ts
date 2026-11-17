@@ -175,6 +175,24 @@ const TREE: Record<string, string> = {
     '</script>',
     '',
   ].join('\n'),
+  // The examples artifact copies each example's body, which follows the example's imports.
+  [`${CORE}/src/components/card/card.examples.json`]: `${JSON.stringify(
+    {
+      examples: [
+        {
+          id: 'basic',
+          code: [
+            '<script lang="ts">',
+            "  import { Button, Card, focus, type ButtonProps } from '@lostgradient/cinder';",
+            '</script>',
+            '',
+          ].join('\n'),
+        },
+      ],
+    },
+    null,
+    2,
+  )}\n`,
   // A button test that needs core's barrel: the map gives it to core, which keeps it under
   // src/component-tests once every family has left.
   [`${CORE}/src/components/button/button-root.test.ts`]: [
@@ -491,6 +509,12 @@ describe('extract-families', () => {
         '</script>',
         '',
       ].join('\n'),
+    );
+    const artifact = JSON.parse(
+      read(root, 'components/card/src/components/card/card.examples.json'),
+    ) as { examples: { code: string }[] };
+    expect(artifact.examples[0]?.code).toBe(
+      read(root, 'components/card/src/components/card/examples/basic.example.svelte'),
     );
     // A baseline entry follows its file, named relative to core as the checks name it.
     expect(read(root, `${CORE}/scripts/raw-color-baseline.json`)).toBe(

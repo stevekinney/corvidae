@@ -39,7 +39,9 @@ export function packageManifest(name: string): Record<string, unknown> {
       types: `bun ${TOOLING_SCRIPTS}/emit-declarations.ts`,
       lint: `oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src && bun ../../scripts/check-inherited-key-reads.ts && bun ${TOOLING_SCRIPTS}/check-prop-conventions.ts src/components`,
       typecheck: 'svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings',
-      test: "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' src",
+      // Four isolated workers, as core runs its tests and the scaffold's bunfig.toml says: the
+      // scroll-settling tests (Carousel's) fail when files share one process.
+      test: "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' src",
       'test:slow':
         'TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts --conditions browser --conditions svelte .slow.test.ts .integration.test.ts',
       'lint:fix': 'oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src',

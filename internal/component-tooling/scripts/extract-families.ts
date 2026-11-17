@@ -852,10 +852,16 @@ function retargetPath(plan: Plan, path: string, logical: string, text: string): 
   if (pointed === undefined) return undefined;
   const pointedDirectory = packageDirectory(plan, pointed.name);
   const base = pointed.virtual;
-  const file = resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
+  // A path that names a directory (`join(import.meta.dir, '..')`, core's `src`) names the
+  // directory, never the `index.ts` a module specifier would resolve it to.
+  const directoryOwners = plan.owner.has(base) ? new Set<string>() : ownersUnder(plan, base);
+  const file =
+    directoryOwners.size > 0
+      ? undefined
+      : resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
   let owner: string | undefined = file === undefined ? undefined : plan.owner.get(file);
   if (owner === undefined) {
-    const owners = ownersUnder(plan, base);
+    const owners = directoryOwners;
     // A package whose files under the directory are kept elsewhere (core's, in its tests directory
     // once every family has left) does not share the directory any more.
     for (const name of owners) {
@@ -1181,6 +1187,50 @@ function rewriteSegmentedPaths(plan: Plan, path: string, text: string): string {
 }
 
 const SIBLING_SINGLE = /(['"])\.\.\/([\w-]+)\/((?:src|scripts|documentation)\/[\w.@/-]+)\1/g;
+
+/** An example's code as a component's `<name>.examples.json` copies it: without its module script. */
+function exampleBody(text: string): string {
+  return text.replace(/^<script lang="ts" module>[\s\S]*?<\/script>\n\n/, '');
+}
+
+/**
+ * Keeps each `<component>.examples.json` a package holds the copy of its examples it was: an
+ * entry whose `code` was its example's body (`examples/<id>.example.svelte`) before the run takes
+ * the body the run wrote, imports from the packages that hold the names included. An entry that
+ * differed from its example before stays as it was.
+ */
+async function syncExampleArtifacts(plan: Plan): Promise<void> {
+  const { root } = plan.options;
+  const updates = new Map<string, { examples?: { id?: unknown; code?: unknown }[] }>();
+  for (const path of plan.result.written) {
+    if (!EXAMPLE_FILE.test(path) || packageOf(plan, path)?.name === 'core') continue;
+    const before = plan.originals.get(path);
+    if (before === undefined) continue;
+    const componentDirectory = posix.dirname(posix.dirname(path));
+    const artifact = posix.join(
+      componentDirectory,
+      `${posix.basename(componentDirectory)}.examples.json`,
+    );
+    if (!existsSync(join(root, artifact))) continue;
+    const parsed =
+      updates.get(artifact) ??
+      (JSON.parse(readFileSync(join(root, artifact), 'utf8')) as {
+        examples?: { id?: unknown; code?: unknown }[];
+      });
+    const id = posix.basename(path).replace(EXAMPLE_FILE, '');
+    const entry = parsed.examples?.find((example) => example.id === id);
+    if (entry === undefined || entry.code !== exampleBody(before)) continue;
+    entry.code = exampleBody(readFileSync(join(root, path), 'utf8'));
+    updates.set(artifact, parsed);
+  }
+  for (const [artifact, parsed] of updates) {
+    const absolute = join(root, artifact);
+    const text = await plan.options.format(absolute, `${JSON.stringify(parsed, null, 2)}\n`);
+    if (text === readFileSync(absolute, 'utf8')) continue;
+    if (!plan.result.written.includes(artifact)) plan.result.written.push(artifact);
+    writeFileSync(absolute, text);
+  }
+}
 
 const SEGMENT_RUN = new RegExp(`${SEGMENT_LITERAL}(?:\\s*,\\s*${SEGMENT_LITERAL})+`, 'g');
 
@@ -1695,7 +1745,20 @@ function writeManifests(plan: Plan): void {
     scripts['lint'] = checks.join(' && ');
     scripts['lint:fix'] =
       `oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json ${sources}`;
-    scripts['test'] = (scripts['test'] ?? '').replace(/ src$/, ` ${sources}`);
+    scripts['test'] = (scripts['test'] ?? '')
+      .replace(/ src$/, ` ${sources}`)
+      .replace(' --pass-with-no-tests', '');
+    // A package whose every test the map gives to core has none of its own, and `bun test` fails
+    // on a run that finds no test file.
+    const tested = [...plan.owner].some(
+      ([file, owner]) => owner === name && /\.test\.[cm]?[jt]s$/.test(file),
+    );
+    if (!tested) {
+      scripts['test'] = scripts['test'].replace(
+        'bun-test-junit.ts ',
+        'bun-test-junit.ts --pass-with-no-tests ',
+      );
+    }
     // svelte-check fails on a package with no Svelte file; TypeScript checks one of those.
     const svelte = [...plan.owner].some(
       ([file, owner]) => owner === name && file.endsWith('.svelte'),
@@ -1911,6 +1974,7 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
     plan.result.written = plan.result.written.filter(
       (path) => readFileSync(join(root, path), 'utf8') !== plan.originals.get(path),
     );
+    await syncExampleArtifacts(plan);
     plan.result.dead = deadPaths(plan);
   }
   return plan.result;
