@@ -1,8 +1,11 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-/** Visual treatment of the disclosure: a bordered card, or a flat row with no box. */
-export type CollapsibleVariant = 'default' | 'flat';
+/**
+ * Visual treatment of the disclosure: a bordered card, a flat row with no box, or `disclosure`,
+ * the one inline disclosure trigger (`DisclosureTrigger`, board row X3) over its region.
+ */
+export type CollapsibleVariant = 'default' | 'flat' | 'disclosure';
 
 /** Where a disclosure's chevron sits: before the label, or at the trailing edge. */
 export type CollapsibleChevron = 'start' | 'end';
@@ -48,6 +51,9 @@ export type CollapsibleProps = Omit<
    * Visual treatment. `'default'` is a bordered card with a raised trigger.
    * `'flat'` drops the border, the raised trigger background, and the horizontal
    * padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.
+   * `'disclosure'` draws the trigger as `DisclosureTrigger`, the one inline disclosure (board row
+   * X3): a 14px muted chevron at the start and medium words, over its region with no box.
+   * `chevron` does not apply to it.
    * @default 'default'
    */
   variant?: CollapsibleVariant;
@@ -114,6 +120,9 @@ export interface CollapsibleSchemaProps {
    * Visual treatment. `'default'` is a bordered card with a raised trigger.
    * `'flat'` drops the border, the raised trigger background, and the horizontal
    * padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.
+   * `'disclosure'` draws the trigger as `DisclosureTrigger`, the one inline disclosure (board row
+   * X3): a 14px muted chevron at the start and medium words, over its region with no box.
+   * `chevron` does not apply to it.
    * @default 'default'
    */
   variant?: CollapsibleVariant;

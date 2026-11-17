@@ -15,7 +15,6 @@
   import {
     Brain,
     Check,
-    ChevronRight,
     CircleAlert,
     CircleDot,
     Globe,
@@ -24,6 +23,7 @@
     Terminal,
     X,
     CopyButton,
+    DisclosureTrigger,
     formatDuration,
     Spinner,
     Tooltip,
@@ -493,14 +493,14 @@
 >
   <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{announcerText}</span>
   <h3 id={headingId} class="chat-tool-call-heading">
-    <button
-      type="button"
+    <!-- The one disclosure trigger (board row X3), as reasoning, a receipt's details and an
+         error's details use. -->
+    <DisclosureTrigger
       class="chat-tool-call-toggle"
-      aria-expanded={groupOpen}
-      aria-controls={listId}
+      open={groupOpen}
+      controls={listId}
       onclick={toggleGroup}
     >
-      <ChevronRight class="chat-tool-call-chevron" aria-hidden="true" />
       <span class="chat-tool-call-summary">
         {#if runningRow?.presentation}
           <!-- The step under way (R1): a spinner, its present-tense title ending in an ellipsis,
@@ -553,7 +553,7 @@
           {/if}
         {/if}
       </span>
-    </button>
+    </DisclosureTrigger>
   </h3>
   <ol id={listId} class="chat-tool-call-list" aria-label={callsLabel} hidden={!groupOpen}>
     {#each listEntries as entry (entryKey(entry))}
@@ -694,7 +694,7 @@
 
   /* The first line of a button's content is where its icon aligns: when a phrase wraps, the
    * chevron and the status icon stay beside the first line, not centered on all of them. */
-  .chat-tool-call-toggle,
+  .chat-tool-call-heading :global(.chat-tool-call-toggle),
   .chat-tool-call-row {
     display: flex;
     align-items: flex-start;
@@ -712,35 +712,16 @@
     cursor: pointer;
   }
 
-  .chat-tool-call-toggle:focus-visible,
   .chat-tool-call-row:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* The chevron is 14px beside 13px text: a glyph follows its text (12 to 14px beside 12 to 13px). */
-  .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-    inline-size: 14px;
-    block-size: 14px;
-    flex: none;
-    margin-block: calc((1lh - 14px) / 2);
-    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  .chat-tool-call-toggle[aria-expanded='true'] :global(.chat-tool-call-chevron) {
-    transform: rotate(90deg);
-  }
-
-  /* The step row takes the message's direction: the chevron leads at the inline start and points
-     toward the text, as the open one points down in either. */
+  /* The chevron is Cinder's DisclosureTrigger's (board row X3): 14px, muted, turning down when the
+     group opens, and mirrored while closed in a right-to-left turn. The step row takes the
+     message's direction, so the chevron leads at the inline start and points toward the text. */
   :global(.chat-message-wrapper[data-message-direction='rtl']) .chat-tool-call-timeline {
     direction: rtl;
-  }
-
-  :global(.chat-message-wrapper[data-message-direction='rtl'])
-    .chat-tool-call-toggle[aria-expanded='false']
-    :global(.chat-tool-call-chevron) {
-    transform: scaleX(-1);
   }
 
   /* On a touch screen a row is still painted at its text line height; its 44px hit area is a
@@ -750,13 +731,13 @@
    * header overhangs on both sides, a step row ends at its own edges, and only the last row
    * overhangs, below: a tap between two rows goes to the nearer one. */
   @media (any-pointer: coarse) {
-    .chat-tool-call-toggle,
+    .chat-tool-call-heading :global(.chat-tool-call-toggle),
     .chat-tool-call-row {
       position: relative;
       z-index: 1;
     }
 
-    .chat-tool-call-toggle::before,
+    .chat-tool-call-heading :global(.chat-tool-call-toggle::before),
     .chat-tool-call-row::before {
       content: '';
       position: absolute;
@@ -764,7 +745,7 @@
       inset-block: 0;
     }
 
-    .chat-tool-call-toggle::before {
+    .chat-tool-call-heading :global(.chat-tool-call-toggle::before) {
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
 
@@ -1171,10 +1152,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-      transition: none;
-    }
-
     .chat-tool-call-activity-icon[data-cinder-tool-activity-active],
     .chat-tool-call-status-icon[data-cinder-tool-activity-active] {
       animation: none;

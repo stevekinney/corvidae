@@ -71,7 +71,10 @@
     position: relative;
   }
 
-  .chat-entry-frame-shell :global(.chat-entry-frame:not([data-cinder-variant='flat'])) {
+  .chat-entry-frame-shell
+    :global(
+      .chat-entry-frame:not([data-cinder-variant='flat'], [data-cinder-variant='disclosure'])
+    ) {
     inline-size: 100%;
     overflow: hidden;
     border: 1px solid var(--_chat-entry-frame-border-color, var(--cinder-border));

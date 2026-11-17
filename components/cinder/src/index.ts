@@ -411,6 +411,9 @@ export type {
   DiffStatisticsVariant,
 } from './components/diff-statistics/index.ts';
 
+export { default as DisclosureTrigger } from './components/disclosure-trigger/index.ts';
+export type { DisclosureTriggerProps } from './components/disclosure-trigger/index.ts';
+
 export { default as Divider } from './components/divider/index.ts';
 export type { DividerOrientation, DividerProps, DividerTone } from './components/divider/index.ts';
 

@@ -508,3 +508,33 @@ describe('Collapsible variant', () => {
     expect(trigger(container).getAttribute('aria-expanded')).toBe('true');
   });
 });
+
+describe('Collapsible variant disclosure (board row X3)', () => {
+  test('draws its trigger as DisclosureTrigger over a region with no box, wired as a disclosure', async () => {
+    const { container } = render(Collapsible, {
+      trigger: 'Thought for 4 s',
+      children: bodySnippet(),
+      variant: 'disclosure',
+      animated: false,
+      triggerClass: 'reasoning-toggle',
+    });
+    const button = container.querySelector<HTMLButtonElement>('.cinder-disclosure-trigger')!;
+    expect(button.classList.contains('reasoning-toggle')).toBe(true);
+    expect(button.classList.contains('cinder-collapsible__trigger')).toBe(false);
+    expect(button.querySelector('.cinder-disclosure-trigger__chevron')).not.toBeNull();
+    expect(container.querySelector('.cinder-collapsible__chevron')).toBeNull();
+    expect(
+      container.querySelector('.cinder-collapsible')?.getAttribute('data-cinder-variant'),
+    ).toBe('disclosure');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+
+    await fireEvent.click(button);
+
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    const region = panel(container)!;
+    expect(button.getAttribute('aria-controls')).toBe(region.id);
+    expect(document.getElementById(region.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
+      'Thought for 4 s',
+    );
+  });
+});
