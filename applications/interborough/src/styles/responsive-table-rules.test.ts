@@ -51,6 +51,25 @@ describe('the tables that hold long values', () => {
     expect(table).not.toContain('hover a time');
   });
 
+  test('the models table gives its narrow columns a width in rem and lets Model take the rest', async () => {
+    // At 768px the content column is about 442px: percentage columns gave Allowed 62px for a
+    // dot and a word that need 71px, and the cell was cut with no ellipsis. Model clamps to two
+    // lines, so it takes what the fixed columns leave.
+    const source = await read('../routes/settings/models/models-section.svelte');
+    const columns = [...source.matchAll(/<col\b([^>]*)\/>/g)].map((match) => match[1] ?? '');
+    expect(columns).toHaveLength(4);
+    expect(columns[0]?.trim()).toBe('');
+    const widths = columns
+      .slice(1)
+      .map((column) => /width:\s*(\d+(?:\.\d+)?)rem/.exec(column)?.[1]);
+    expect(widths.every((width) => width !== undefined)).toBe(true);
+    // The table stays a table down to 26rem (Cinder's `stackBelow` default for stacked flat rows):
+    // Model keeps at least 7rem of it, which is two lines of a name.
+    expect(widths.reduce((sum, width) => sum + Number(width), 0)).toBeLessThanOrEqual(19);
+    // Allowed holds a dot and its longest word (71px measured, at 768px) without a cut.
+    expect(Number(widths[2])).toBeGreaterThanOrEqual(5);
+  });
+
   test('a model name ends each line with an ellipsis and keeps the whole of it reachable by focus', async () => {
     const name = await read('../routes/settings/models/model-name.svelte');
     expect(name).toMatch(/<Text as="span" truncate="end" text=\{name\} \/>/);

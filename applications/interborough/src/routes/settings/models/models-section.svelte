@@ -85,10 +85,12 @@
     <FormSection grouped heading={copy.heading} description={copy.description} />
     <Table caption={copy.tableLabel} density="comfortable" fit bind:sort>
       <colgroup>
-        <col style="width: 40%" />
-        <col style="width: 32%" />
-        <col style="width: 14%" />
-        <col style="width: 14%" />
+        <!-- The three narrow columns are as wide as their content (a status word is never cut, a
+             long list of abilities wraps); Model takes the rest and ends in an ellipsis. -->
+        <col />
+        <col style="width: 7rem" />
+        <col style="width: 5rem" />
+        <col style="width: 6rem" />
       </colgroup>
       <Table.Header>
         <Table.Row>
