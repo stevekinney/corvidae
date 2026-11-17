@@ -228,10 +228,11 @@
         "src/ambient.d.ts",
         "src/inherited-key-reads.test.ts",
         "src/token-root-exports.test.ts",
-        "src/components/svg-data-uri-color-literals.test.ts"
+        "src/components/svg-data-uri-color-literals.test.ts",
+        "src/panel/**"
       ],
       "target": "core",
-      "note": "shell.css aggregates component stylesheets like components.css; it and the four files after it: coordinator, 2026-11-17"
+      "note": "shell.css aggregates component stylesheets like components.css; it and the four files after it: coordinator, 2026-11-17. src/panel (the panel kit, COR-2215) imports src/styles/index.css, so it sits with core (worker, assumed, 2026-11-17)."
     },
     {
       "patterns": [
