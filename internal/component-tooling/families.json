@@ -807,6 +807,11 @@
         "zoom-pan-viewer"
       ],
       "modules": [
+        "src/_internal/anchored-overlay-prefetch.test.ts",
+        "src/_internal/anchored-overlay.test.ts",
+        "src/_internal/header-actions-harness.test.svelte",
+        "src/_internal/header-actions.test.ts",
+        "src/_internal/text-direction-stylesheet-index.test.ts",
         "src/_internal/use-virtualizer.svelte.test.ts",
         "src/ambient.d.ts",
         "src/api-contract.test.ts",
@@ -893,7 +898,11 @@
         "src/test/fixtures/use-mutation-observer-attach-fixture.svelte",
         "src/test/fixtures/use-resize-observer-attach-fixture.svelte",
         "src/test/fixtures/virtualizer-live-fixture.svelte",
-        "src/token-root-exports.test.ts"
+        "src/token-root-exports.test.ts",
+        "src/utilities/json-schema-csp.test.ts",
+        "src/utilities/use-intersection.svelte.test.ts",
+        "src/utilities/use-mutation-observer.svelte.test.ts",
+        "src/utilities/use-resize-observer.svelte.test.ts"
       ]
     },
     "data-grid": {
@@ -1135,9 +1144,7 @@
         "src/_internal/action-emphasis-context.ts",
         "src/_internal/anchored-overlay-exit.svelte.ts",
         "src/_internal/anchored-overlay-exit.test.ts",
-        "src/_internal/anchored-overlay-prefetch.test.ts",
         "src/_internal/anchored-overlay.svelte.ts",
-        "src/_internal/anchored-overlay.test.ts",
         "src/_internal/collection.test.ts",
         "src/_internal/collection.ts",
         "src/_internal/compact-actions.svelte",
@@ -1154,8 +1161,6 @@
         "src/_internal/form-field-provider.svelte",
         "src/_internal/guidance-context.test.ts",
         "src/_internal/guidance-context.ts",
-        "src/_internal/header-actions-harness.test.svelte",
-        "src/_internal/header-actions.test.ts",
         "src/_internal/keyboard-inset.test.ts",
         "src/_internal/keyboard-inset.ts",
         "src/_internal/locale-context.ts",
@@ -1209,7 +1214,6 @@
         "src/_internal/text-direction-sheet-index.ts",
         "src/_internal/text-direction-style-size-container-queries.test.ts",
         "src/_internal/text-direction-stylesheet-access-and-fallback.test.ts",
-        "src/_internal/text-direction-stylesheet-index.test.ts",
         "src/_internal/text-direction-test-helpers.ts",
         "src/_internal/text-direction.ts",
         "src/_internal/toast-context.ts",
@@ -1275,7 +1279,6 @@
         "src/styles/suggested-contrast.test.ts",
         "src/styles/theme-arm-parity.test.ts",
         "src/styles/theme-island-paint.test.ts",
-        "src/styles/token-contrast-test-readers.ts",
         "src/styles/tokens-doc-drift.test.ts",
         "src/styles/tokens-light-ladder.test.ts",
         "src/styles/tokens.test.ts",
@@ -1335,7 +1338,6 @@
         "src/utilities/id-factory.ts",
         "src/utilities/json-highlight.test.ts",
         "src/utilities/json-highlight.ts",
-        "src/utilities/json-schema-csp.test.ts",
         "src/utilities/json-schema-interpreter.test.ts",
         "src/utilities/json-schema-interpreter.ts",
         "src/utilities/overflow-fade-attachment.test.ts",
@@ -1377,17 +1379,14 @@
         "src/utilities/use-history.svelte.test.ts",
         "src/utilities/use-history.svelte.ts",
         "src/utilities/use-history.types.ts",
-        "src/utilities/use-intersection.svelte.test.ts",
         "src/utilities/use-intersection.svelte.ts",
         "src/utilities/use-intersection.types.ts",
         "src/utilities/use-modal.ts",
-        "src/utilities/use-mutation-observer.svelte.test.ts",
         "src/utilities/use-mutation-observer.svelte.ts",
         "src/utilities/use-mutation-observer.types.ts",
         "src/utilities/use-reduced-motion.svelte.test.ts",
         "src/utilities/use-reduced-motion.svelte.ts",
         "src/utilities/use-reduced-motion.types.ts",
-        "src/utilities/use-resize-observer.svelte.test.ts",
         "src/utilities/use-resize-observer.svelte.ts",
         "src/utilities/use-resize-observer.types.ts",
         "src/utilities/use-toast.ts",
@@ -2302,6 +2301,7 @@
         "src/styles/check-token-contrast-readers.test.ts",
         "src/styles/check-token-contrast-test-fixtures.ts",
         "src/styles/check-token-contrast-test-values.ts",
+        "src/styles/token-contrast-test-readers.ts",
         "src/styles/tokens-base.css",
         "src/styles/tokens.css",
         "src/styles/tokens.css.d.ts",
@@ -2512,6 +2512,36 @@
     }
   },
   "testMoves": [
+    {
+      "file": "src/_internal/anchored-overlay-prefetch.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/anchored-overlay-boundary-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/_internal/anchored-overlay.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/anchored-overlay-boundary-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/_internal/header-actions-harness.test.svelte",
+      "from": "foundation",
+      "to": "core",
+      "because": "it needs \"button\", which depends on \"foundation\" (src/_internal/header-actions-harness.test.svelte -> src/components/button/button.svelte)"
+    },
+    {
+      "file": "src/_internal/header-actions.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it imports or builds src/_internal/header-actions-harness.test.svelte, which core owns"
+    },
+    {
+      "file": "src/_internal/text-direction-stylesheet-index.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it needs \"portal\", which depends on \"foundation\" (src/_internal/text-direction-stylesheet-index.test.ts -> src/components/portal/portal.utilities.svelte.ts)"
+    },
     {
       "file": "src/_internal/use-virtualizer.svelte.test.ts",
       "from": "tree",
@@ -2997,6 +3027,30 @@
       "from": "by-imports",
       "to": "core",
       "because": "tests of data-grid, tree import it"
+    },
+    {
+      "file": "src/utilities/json-schema-csp.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it needs \"json-schema-editor\", which depends on \"foundation\" (src/utilities/json-schema-csp.test.ts -> src/components/json-schema-editor/json-schema-editor-types.ts)"
+    },
+    {
+      "file": "src/utilities/use-intersection.svelte.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/use-intersection-attach-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/utilities/use-mutation-observer.svelte.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/use-mutation-observer-attach-fixture.svelte, which core owns"
+    },
+    {
+      "file": "src/utilities/use-resize-observer.svelte.test.ts",
+      "from": "foundation",
+      "to": "core",
+      "because": "it imports or builds src/test/fixtures/use-resize-observer-attach-fixture.svelte, which core owns"
     }
   ],
   "subpathExports": {

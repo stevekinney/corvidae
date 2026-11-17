@@ -554,7 +554,7 @@ function moveToCore(
     const next = queue.shift() as { file: string; because: string };
     const owner = owners.get(next.file);
     if (owner === undefined || owner === '' || owner === 'core') continue;
-    if (owner !== BY_IMPORTS && SHARED_PACKAGES.includes(owner as PackageKind)) continue;
+    if (owner !== BY_IMPORTS && !movesWithItsTests(owner, next.file)) continue;
     owners.set(next.file, 'core');
     testMoves.push({ file: next.file, from: owner, to: 'core', because: next.because });
     for (const importer of importersOf(context, next.file)) {
@@ -570,6 +570,16 @@ function familyOf(owner: string | undefined): owner is string {
     owner !== BY_IMPORTS &&
     !SHARED_PACKAGES.includes(owner as PackageKind)
   );
+}
+
+/**
+ * Whether a file of `owner` can move to core when a test needs it there: any file of a family,
+ * and a test or fixture of foundation or tokens. A foundation test that mounts a family (every
+ * family depends on foundation) would make the packages cycle through their test dependencies.
+ */
+function movesWithItsTests(owner: string | undefined, file: string): owner is string {
+  if (familyOf(owner)) return true;
+  return (owner === 'foundation' || owner === 'tokens') && isTestFile(file);
 }
 
 /**
@@ -613,7 +623,10 @@ function decideByImports(
   }
 }
 
-/** A family test that needs a package depending on its family goes to core; repeats to a fixpoint. */
+/**
+ * A test of a family, foundation or tokens that needs a package depending on its own goes to core;
+ * repeats to a fixpoint.
+ */
 function moveUnmountableTests(
   context: Context,
   owners: Map<string, string>,
@@ -624,7 +637,7 @@ function moveUnmountableTests(
   while (moved) {
     moved = false;
     for (const [file, owner] of [...owners].toSorted(([a], [b]) => a.localeCompare(b))) {
-      if (!isTestFile(file) || !CODE_FILE.test(file) || !familyOf(owner)) continue;
+      if (!isTestFile(file) || !CODE_FILE.test(file) || !movesWithItsTests(owner, file)) continue;
       for (const [needed, chain] of packagesNeeded(context, owners, file, owner)) {
         if (needed !== 'core' && !(graph.reach.get(needed)?.has(owner) ?? false)) continue;
         moveToCore(

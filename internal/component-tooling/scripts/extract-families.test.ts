@@ -154,6 +154,11 @@ const TREE: Record<string, string> = {
     '</script>',
     '',
   ].join('\n'),
+  // A layer-2 family whose fixture mounts card (layer 3): it waits for card.
+  [`${CORE}/src/components/badge/badge.svelte`]:
+    '<script lang="ts">\n  import { focus } from \'../../utilities/focus.ts\';\n</script>\n',
+  [`${CORE}/src/components/badge/badge.fixture.svelte`]:
+    '<script lang="ts">\n  import Card from \'../card/card.svelte\';\n</script>\n',
   'scripts/check.ts': [
     "const button = 'components/cinder/src/components/button/button.css';",
     "const all = 'components/cinder/src/components';",
@@ -235,14 +240,24 @@ describe('the layout', () => {
   });
 
   test('selects a layer by halves, dependencies first', () => {
-    expect(ORIGINAL.layers).toEqual([['tokens'], ['foundation'], ['button'], ['card'], ['core']]);
+    expect(ORIGINAL.layers).toEqual([
+      ['tokens'],
+      ['foundation'],
+      ['badge', 'button'],
+      ['card'],
+      ['core'],
+    ]);
     expect(selectPackages(ORIGINAL, { kind: 'all' })).toEqual([
       'tokens',
       'foundation',
+      'badge',
       'button',
       'card',
     ]);
     expect(selectPackages(ORIGINAL, { kind: 'layer', layer: 0, half: 1 })).toEqual(['tokens']);
+    expect(
+      selectPackages(ORIGINAL, { kind: 'layer', layer: 2, half: 2 }, new Set(['tokens'])),
+    ).toEqual(['foundation', 'button']);
   });
 
   test('reads the order of a components.css with its comments', () => {
@@ -259,8 +274,24 @@ describe('extract-families', () => {
   test('refuses a package whose dependency is still in core', async () => {
     const root = repository();
     expect(await throwingRejectionOf(extract(root, { kind: 'packages', names: ['card'] }))).toThrow(
-      'card depends on button, which is still in core',
+      'card waits for button, which stays in core',
     );
+  });
+
+  test('defers a family whose fixture mounts a family of a higher layer', async () => {
+    const root = repository();
+    const result = await extract(root, { kind: 'layer', layer: 2 });
+    expect(result.selected).toEqual(['tokens', 'foundation', 'button']);
+    expect(result.warnings).toContain(
+      'deferred: badge waits for card, which stays in core (src/components/badge/badge.fixture.svelte imports ../card/card.svelte).',
+    );
+    expect(existsSync(join(root, CORE, 'src/components/badge/badge.svelte'))).toBe(true);
+    const next = await extract(root, { kind: 'layer', layer: 3 });
+    expect(next.selected).toEqual(['badge', 'card']);
+    expect(read(root, 'components/badge/src/components/badge/badge.fixture.svelte')).toContain(
+      "from '@lostgradient/card/components/card/card.svelte'",
+    );
+    expect(manifest(root, 'badge').devDependencies['@lostgradient/card']).toBe('workspace:*');
   });
 
   test('a dry run writes nothing', async () => {

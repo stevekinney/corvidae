@@ -90,6 +90,7 @@ const UNREWRITTEN = [
   'internal/component-tooling/family-rules.json',
   'internal/component-tooling/family-rules.fixture.json',
   'internal/component-tooling/scripts/extract-families.ts',
+  'internal/component-tooling/scripts/move-cinder-tooling.ts',
   'internal/component-tooling/scripts/extract-families.test.ts',
   'internal/component-tooling/scripts/split-layout.ts',
   'internal/component-tooling/scripts/derive-families.ts',
@@ -148,24 +149,36 @@ export function walkFiles(root: string, directory: string): string[] {
 }
 
 /** The packages a selection names, dependencies first. */
-export function selectPackages(families: DerivedFamilies, selection: Selection): string[] {
+/**
+ * The packages a selection names, dependencies first. `--layer N` takes the layer (or its
+ * alphabetical half, rounded up) and every package of a lower layer still in core, so a package an
+ * earlier run deferred moves with the first layer that can take it.
+ */
+export function selectPackages(
+  families: DerivedFamilies,
+  selection: Selection,
+  extracted: ReadonlySet<string> = new Set(),
+): string[] {
   const names = Object.keys(families.packages).filter((name) => !KEPT.has(name));
   let selected: string[];
-  if (selection.kind === 'all') selected = names;
+  if (selection.kind === 'all') selected = names.filter((name) => !extracted.has(name));
   else if (selection.kind === 'packages') {
     const unknown = selection.names.filter((name) => !names.includes(name));
     if (unknown.length > 0)
       throw new Error(`No extractable package is named ${unknown.join(', ')}.`);
     selected = selection.names;
   } else {
-    const layer = names
-      .filter((name) => families.packages[name]?.layer === selection.layer)
-      .toSorted();
-    if (selection.half === undefined) selected = layer;
-    else {
-      const middle = Math.ceil(layer.length / 2);
-      selected = selection.half === 1 ? layer.slice(0, middle) : layer.slice(middle);
-    }
+    const layerOf = (name: string) => families.packages[name]?.layer ?? 0;
+    const layer = names.filter((name) => layerOf(name) === selection.layer).toSorted();
+    const middle = Math.ceil(layer.length / 2);
+    const own =
+      selection.half === undefined
+        ? layer
+        : selection.half === 1
+          ? layer.slice(0, middle)
+          : layer.slice(middle);
+    const earlier = names.filter((name) => layerOf(name) < selection.layer);
+    selected = [...earlier, ...own].filter((name) => !extracted.has(name));
   }
   const layerOf = (name: string) => families.packages[name]?.layer ?? 0;
   return [...new Set(selected)].toSorted((a, b) => layerOf(a) - layerOf(b) || a.localeCompare(b));
@@ -380,7 +393,75 @@ function packageOf(plan: Plan, path: string): { name: string; virtual: string } 
     if (path.startsWith(prefix)) return { name, virtual: path.slice(prefix.length) };
   }
   const prefix = `${plan.options.core}/`;
-  return path.startsWith(prefix) ? { name: 'core', virtual: path.slice(prefix.length) } : undefined;
+  if (!path.startsWith(prefix)) return undefined;
+  const virtual = path.slice(prefix.length);
+  // A dry run moves nothing, so a file still in core counts as its new package's.
+  const owner = plan.owner.get(virtual);
+  if (plan.options.dryRun && owner !== undefined && plan.selected.includes(owner)) {
+    return { name: owner, virtual };
+  }
+  return { name: 'core', virtual };
+}
+
+/** The packages each candidate's files import by relative path, each with one importing file. */
+function importedPackages(
+  plan: Plan,
+  candidates: ReadonlySet<string>,
+): Map<string, Map<string, string>> {
+  const imported = new Map<string, Map<string, string>>();
+  for (const [path, name] of plan.owner) {
+    if (!candidates.has(name) || !CODE_FILE.test(path)) continue;
+    const text = read(plan, currentPath(plan, name, path));
+    for (const match of text.matchAll(SPECIFIER)) {
+      const specifier = match[3] ?? '';
+      if (!specifier.startsWith('.')) continue;
+      const target = resolveVirtual(plan, path, specifier);
+      const owner = target === undefined ? undefined : plan.owner.get(target);
+      if (owner === undefined || owner === name || owner === 'tooling') continue;
+      const packages = imported.get(name) ?? new Map<string, string>();
+      if (!packages.has(owner)) packages.set(owner, `${path} imports ${specifier}`);
+      imported.set(name, packages);
+    }
+  }
+  return imported;
+}
+
+/**
+ * The candidates that can move now: a package moves only once everything its files import has
+ * (its source dependencies, and what its tests and fixtures mount), so a family whose fixture
+ * mounts a family of a higher layer waits for it. Repeats to a fixpoint; the rest are deferred.
+ */
+function closeSelection(
+  plan: Plan,
+  candidates: readonly string[],
+): { ready: string[]; deferred: string[] } {
+  const imported = importedPackages(plan, new Set(candidates));
+  const ready = new Set(candidates);
+  const reasons = new Map<string, string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    // Deleting the current element while iterating a Set is safe.
+    for (const name of ready) {
+      const needs = new Map(imported.get(name));
+      for (const dependency of plan.options.families.packages[name]?.dependencies ?? []) {
+        if (!needs.has(dependency)) needs.set(dependency, `families.json lists ${dependency}`);
+      }
+      for (const [needed, witness] of needs) {
+        if (needed === 'tooling' || plan.extracted.has(needed) || ready.has(needed)) continue;
+        ready.delete(name);
+        reasons.set(name, `${name} waits for ${needed}, which stays in core (${witness}).`);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return {
+    ready: candidates.filter((name) => ready.has(name)),
+    deferred: candidates
+      .filter((name) => !ready.has(name))
+      .map((name) => reasons.get(name) ?? name),
+  };
 }
 
 /**
@@ -707,7 +788,11 @@ function packageNameOf(specifier: string): string | undefined {
   if (specifier.startsWith('.') || specifier.startsWith('/') || BUILTIN.test(specifier))
     return undefined;
   const parts = specifier.split('/');
-  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  const name = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  // Text a pattern caught in a generated or minified file is no package name.
+  return name !== undefined && /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/.test(name)
+    ? name
+    : undefined;
 }
 
 function sortRecord(record: Record<string, string>): Record<string, string> {
@@ -779,8 +864,9 @@ function writeManifests(plan: Plan): void {
       exportsField['./*'] = './src/*';
     }
     const previous = manifest.exports ?? {};
+    // Keep the module keys an earlier run added; the scaffold's own keys are replaced above.
     const keys = new Set([
-      ...Object.keys(previous).filter((key) => !(key in exportsField)),
+      ...Object.keys(previous).filter((key) => !(key in exportsField) && key !== './styles'),
       ...(plan.exportKeys.get(name) ?? []),
     ]);
     for (const key of [...keys].toSorted()) {
@@ -825,8 +911,19 @@ function writeManifests(plan: Plan): void {
     if (name === 'foundation') {
       checks.push('bun ../../internal/component-tooling/scripts/check-foundation-imports.ts');
     }
-    for (const moved of Object.keys(movedScripts(plan, coreManifest, name)))
-      checks.push(`bun run ${moved}`);
+    // A moved script core's own scripts ran (`bun run tokens:check` in its lint) joins the lint.
+    for (const moved of Object.keys(movedScripts(plan, coreManifest, name))) {
+      const invoked = Object.values(coreManifest.scripts ?? {}).some((command) =>
+        new RegExp(`\\bbun run ${moved.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`).test(
+          command,
+        ),
+      );
+      if (invoked) checks.push(`bun run ${moved}`);
+    }
+    // …and stays there on a later run, once core no longer holds it.
+    for (const step of (manifest.scripts?.['lint'] ?? '').split(' && ')) {
+      if (/^bun run \S+$/.test(step) && !checks.includes(step)) checks.push(step);
+    }
     scripts['lint'] = checks.join(' && ');
     scripts['lint:fix'] =
       `oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json ${sources}`;
@@ -958,7 +1055,7 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
       ...options,
     },
     extracted: new Set(),
-    selected: selectPackages(options.families, options.selection),
+    selected: [],
     owner: new Map(),
     components: new Map(),
     result: { selected: [], moves: [], created: [], written: [], rewrites: [], warnings: [] },
@@ -966,24 +1063,9 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
     pending: new Map(),
   };
   const { root, core, families } = plan.options;
-  plan.result.selected = plan.selected;
   for (const name of Object.keys(families.packages)) {
     if (!KEPT.has(name) && isExtractedPackage(root, core, name)) plan.extracted.add(name);
   }
-  const missing = plan.selected.flatMap((name) =>
-    (families.packages[name]?.dependencies ?? [])
-      .filter(
-        (dependency) =>
-          !KEPT.has(dependency) &&
-          !plan.extracted.has(dependency) &&
-          !plan.selected.includes(dependency),
-      )
-      .map(
-        (dependency) =>
-          `${name} depends on ${dependency}, which is still in core: extract it first.`,
-      ),
-  );
-  if (missing.length > 0) throw new Error(missing.join('\n'));
   // Ownership reads the tree before this run, so packages selected now are listed from core.
   const problems = buildOwnership(plan);
   if (problems.length > 0) {
@@ -991,6 +1073,16 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
       `families.json is stale; run derive-families.ts and commit the diff:\n- ${problems.join('\n- ')}`,
     );
   }
+  const { ready, deferred } = closeSelection(
+    plan,
+    selectPackages(families, plan.options.selection, plan.extracted),
+  );
+  if (plan.options.selection.kind === 'packages' && deferred.length > 0) {
+    throw new Error(deferred.join('\n'));
+  }
+  plan.result.warnings.push(...deferred.map((reason) => `deferred: ${reason}`));
+  plan.selected = ready;
+  plan.result.selected = ready;
   readOrder(plan);
   planMoves(plan);
   scaffold(plan);
