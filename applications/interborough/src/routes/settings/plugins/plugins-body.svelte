@@ -529,7 +529,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-    max-inline-size: var(--ib-settings-content-width);
+    max-inline-size: var(--ib-settings-measure);
     min-inline-size: 0;
   }
 
