@@ -262,6 +262,28 @@ const runSummarySchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   origin: taskOriginSchema.nullable(),
+  /**
+   * COR-2431 — how far the instance got: how many steps the version it runs has (a `map` step's
+   * nested steps counted, in the order they run) and the one it is at, failed at, or finished on,
+   * from one (`at` is `null` until its history names a step). `null` when that version's steps are
+   * no longer recorded.
+   */
+  steps: z
+    .object({ total: z.number().int(), at: z.number().int().nullable() })
+    .nullable()
+    .describe(
+      'How many steps the version the instance runs has, and the one it is at, failed at, or finished on, from one; `null` when that version’s steps are no longer recorded.',
+    ),
+  awaitingSignal: z
+    .string()
+    .nullable()
+    .describe('The signal an unfinished instance waits for, or `null`.'),
+  failure: z
+    .string()
+    .nullable()
+    .describe(
+      'Why a failed or timed-out instance ended, in the engine’s words, at most 1,000 characters; `null` for any other instance.',
+    ),
 });
 
 const runDetailSchema = runSummarySchema.extend({
@@ -1161,6 +1183,9 @@ export const workflowsRunsGetOperation = defineOperation<
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
       origin: run.origin ?? null,
+      steps: run.steps === null ? null : { total: run.steps.total, at: run.steps.at },
+      awaitingSignal: run.awaitingSignal,
+      failure: run.failure,
       trigger: (run.trigger ?? null) as never,
       result: (run.result ?? null) as never,
       error: run.error ?? null,

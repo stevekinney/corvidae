@@ -108,6 +108,7 @@ import type { WorkflowRevisionSteps } from './workflow-review-waits';
 import { createWorkflowScheduleHolds, type WorkflowScheduleHolds } from './workflow-schedule-holds';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, isMappedWeftName, weftNameOf } from './namespaced-identifier';
+import { boundedStatusMessage, stepOf } from './engine-run-tasks';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import {
   createWorkflowTriggerSupervisor,
@@ -265,6 +266,20 @@ export interface WorkflowRunSummary {
   readonly updatedAt: string;
   /** What started the instance, when the runtime recorded an origin. */
   readonly origin: TaskOrigin | null;
+  /**
+   * COR-2431 — how far the instance got: how many steps the version it runs has (a `map` step's
+   * nested steps counted, in the order they run) and the one it is at, failed at, or finished on,
+   * from one. `at` is `null` when the instance's history names no step yet; the whole is `null`
+   * when the version's steps are no longer recorded.
+   */
+  readonly steps: { readonly total: number; readonly at: number | null } | null;
+  /** COR-2431 — the signal an unfinished instance waits for, or `null` when it waits for none. */
+  readonly awaitingSignal: string | null;
+  /**
+   * COR-2431 — why a failed or timed-out instance ended, in the engine's words, bounded to 1,000
+   * characters; `null` for any other instance.
+   */
+  readonly failure: string | null;
 }
 
 /** One instance with what started it and how it ended. */
@@ -2107,7 +2122,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     createdAt: number;
     updatedAt: number;
     input?: unknown;
-  }): WorkflowRunSummary {
+  }): Omit<WorkflowRunSummary, keyof RunProgress> {
     const input = state.input;
     const origin =
       typeof input === 'object' && input !== null && 'origin' in input
@@ -2121,6 +2136,43 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
       origin,
+    };
+  }
+
+  type RunProgress = Pick<WorkflowRunSummary, 'steps' | 'awaitingSignal' | 'failure'>;
+
+  /**
+   * COR-2431 — how far an instance got, the signal it waits for, and why it failed, as a run's row
+   * says them ("failed at step 2 of 4", "waiting for the signal notes-approved"). The step count is
+   * the version's own; the step reached is the one its history last started, read only for an
+   * instance that has not finished well, and a finished one is on its last step. The same reading
+   * as `engine-run-tasks.ts`, so an instance's summary and its task agree.
+   */
+  async function progressOf(
+    runId: string,
+    type: string,
+    workflowVersion: string,
+    state: WorkflowState | null | undefined,
+  ): Promise<RunProgress> {
+    if (state === null || state === undefined) {
+      return { steps: null, awaitingSignal: null, failure: null };
+    }
+    const revision = await revisionOf(bureauNameOf(type), workflowVersion);
+    const total =
+      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
+    const at =
+      total === undefined
+        ? null
+        : state.status === 'completed'
+          ? total
+          : stepOf(await engine.getEvents(runId));
+    // The engine reports a wait on a signal while the run is `running` as well as `suspended`.
+    const unfinished = IN_FLIGHT_STATUSES.includes(state.status);
+    const failed = state.status === 'failed' || state.status === 'timed-out';
+    return {
+      steps: total === undefined ? null : { total, at },
+      awaitingSignal: unfinished ? (state.waitingForSignals?.[0] ?? null) : null,
+      failure: failed && state.error !== undefined ? boundedStatusMessage(state.error) : null,
     };
   }
 
@@ -2904,7 +2956,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           : (await isWorkflowType(filter.workflow))
             ? [filter.workflow]
             : [];
-      const found: WorkflowRunSummary[] = [];
+      const found: {
+        readonly summary: Omit<WorkflowRunSummary, keyof RunProgress>;
+        readonly type: string;
+        readonly state: WorkflowState | null | undefined;
+      }[] = [];
       for (const type of types) {
         for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
           const page = await engine.list({
@@ -2937,7 +2993,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             ) {
               continue;
             }
-            found.push(summarize({ ...run, input: state?.input }));
+            found.push({
+              summary: summarize({ ...run, input: state?.input }),
+              type: run.type,
+              state,
+            });
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -2945,9 +3005,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const ordered = found.toSorted(
         (left, right) =>
-          right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+          right.summary.createdAt.localeCompare(left.summary.createdAt) ||
+          left.summary.id.localeCompare(right.summary.id),
       );
-      const runs = ordered.slice(filter.offset, filter.offset + filter.limit);
+      // Only the page answered reads how far each instance got, so a long history is never read
+      // for runs the caller does not see.
+      const runs = await Promise.all(
+        ordered
+          .slice(filter.offset, filter.offset + filter.limit)
+          .map(async ({ summary, type, state }): Promise<WorkflowRunSummary> => ({
+            ...summary,
+            ...(await progressOf(summary.id, type, summary.workflowVersion, state)),
+          })),
+      );
       return {
         runs,
         nextOffset:
@@ -3020,6 +3090,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           updatedAt: state.updatedAt,
           input: state.input,
         }),
+        ...(await progressOf(runId, state.type, state.versionTuple.workflowVersion, state)),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),

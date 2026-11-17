@@ -120,7 +120,8 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function truncated(text: string): string {
+/** A failure message cut to the length a task's own is bounded to; instance summaries share it. */
+export function boundedStatusMessage(text: string): string {
   return text.length <= STATUS_MESSAGE_LIMIT ? text : text.slice(0, STATUS_MESSAGE_LIMIT);
 }
 
@@ -148,8 +149,13 @@ export function instanceStartOf(
   return { origin, scheduleId: null };
 }
 
-/** How far an instance got, from the step its history last started. */
-function stepOf(events: readonly { type: string; data: Record<string, unknown> }[]): number | null {
+/**
+ * How far an instance got, from the step its history last started, from one. The workflow
+ * runtime's instance summaries read it too (COR-2431), so a run's row and its task agree.
+ */
+export function stepOf(
+  events: readonly { type: string; data: Record<string, unknown> }[],
+): number | null {
   const started = events.findLast((event) => event.type === 'file-workflow:step-started');
   const index = started?.data['step'];
   return typeof index === 'number' && Number.isSafeInteger(index) && index >= 0 ? index + 1 : null;
@@ -213,7 +219,7 @@ export function createEngineRunTasks(dependencies: EngineRunTasksDependencies): 
         status === 'failed' ? (state.status === 'timed-out' ? 'timed-out' : 'error') : null,
       statusMessage:
         status === 'failed'
-          ? truncated(
+          ? boundedStatusMessage(
               state.error ??
                 (state.status === 'timed-out' ? 'The run timed out.' : 'The run failed.'),
             )
