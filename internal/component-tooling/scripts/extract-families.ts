@@ -747,19 +747,10 @@ function relativePaths(path: string, text: string): { start: number; text: strin
 
 /**
  * Where a relative path `path` writes should point now, or undefined when it still reaches its
- * file. It is resolved from where the file is, in its own package or (written by an earlier run)
- * another one, and rewritten when the package that holds the file it names has since moved it.
+ * file. It is resolved from `logical`, where the file is, and names a file in core or (written by an
+ * earlier run) another package; it is rewritten when the package that holds that file has moved it.
  */
-function retargetPath(
-  plan: Plan,
-  path: string,
-  home: { name: string; virtual: string },
-  text: string,
-): string | undefined {
-  const logical = posix.join(
-    packageDirectory(plan, home.name),
-    physicalPath(plan, home.name, home.virtual),
-  );
+function retargetPath(plan: Plan, path: string, logical: string, text: string): string | undefined {
   const pointedPath = posix.normalize(posix.join(posix.dirname(logical), text));
   const pointed = packageOf(plan, pointedPath);
   if (pointed === undefined) return undefined;
@@ -769,6 +760,13 @@ function retargetPath(
   let owner: string | undefined = file === undefined ? undefined : plan.owner.get(file);
   if (owner === undefined) {
     const owners = ownersUnder(plan, base);
+    // A package whose files under the directory are kept elsewhere (core's, in its tests directory
+    // once every family has left) does not share the directory any more.
+    for (const name of owners) {
+      if (owners.size > 1 && !physicalPath(plan, name, posix.join(base, 'file')).startsWith(base)) {
+        owners.delete(name);
+      }
+    }
     if (owners.size === 1) owner = [...owners][0];
     else if (
       owners.size > 1 &&
@@ -848,7 +846,8 @@ function rewriteFile(plan: Plan, path: string): void {
   }
   for (const { start, text } of relativePaths(path, original)) {
     if (rewritten.has(start)) continue;
-    const replacement = retargetPath(plan, path, home, text);
+    const logical = posix.join(directory, physicalPath(plan, home.name, home.virtual));
+    const replacement = retargetPath(plan, path, logical, text);
     if (replacement !== undefined) rewritten.set(start, { length: text.length, text: replacement });
   }
   if (rewritten.size === 0) return;
@@ -868,6 +867,19 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
   if (UNREWRITTEN.includes(path) || !TEXT_FILE.test(path)) return;
   const original = read(plan, path);
   let next = original;
+  // A file no package holds (chat, an application, a document) reaching into core by a relative
+  // path follows the file it names to the package that holds it now.
+  if (packageOf(plan, path) === undefined) {
+    const replacements = relativePaths(path, next).flatMap(({ start, text }) => {
+      const replacement = retargetPath(plan, path, path, text);
+      return replacement === undefined ? [] : [{ start, length: text.length, replacement }];
+    });
+    for (const { start, length, replacement } of replacements.toSorted(
+      (a, b) => b.start - a.start,
+    )) {
+      next = `${next.slice(0, start)}${replacement}${next.slice(start + length)}`;
+    }
+  }
   if (next.includes(core)) {
     const pattern = new RegExp(
       `${escapeRegExp(core)}/((?:src|scripts|documentation)(?:/[\\w.@-]+)*)`,

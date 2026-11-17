@@ -194,6 +194,10 @@ const TREE: Record<string, string> = {
   [`${CORE}/src/components/badge/badge.fixture.svelte`]:
     '<script lang="ts">\n  import Card from \'../card/card.svelte\';\n</script>\n',
   [`${CORE}/scripts/design-system/build.ts`]: 'export const build = 1;\n',
+  // Files no package holds that reach into core by relative paths.
+  'components/chat/README.md': 'See [`Button`](../core/src/components/button/README.md#usage).\n',
+  'components/chat/src/focus.test.ts':
+    "const css = new URL('../../core/src/components/button/button.css', import.meta.url);\n",
   'turbo.json':
     '{\n  "inputs": [\n        "$TURBO_ROOT$/components/core/scripts/**",\n        "$TURBO_ROOT$/scripts/**"\n  ]\n}\n',
   'scripts/check.ts': [
@@ -496,6 +500,13 @@ describe('extract-families', () => {
       "'components/button/src/components/button/button.css'",
     );
     expect(read(root, 'scripts/check.ts')).toContain("'components/core/src/components'");
+    // A file no package holds follows what it names into the package that holds it now.
+    expect(read(root, 'components/chat/README.md')).toBe(
+      'See [`Button`](../button/src/components/button/README.md#usage).\n',
+    );
+    expect(read(root, 'components/chat/src/focus.test.ts')).toContain(
+      "new URL('../../button/src/components/button/button.css', import.meta.url)",
+    );
     // A README's link to a component another package holds reaches it there, fragment kept.
     expect(read(root, 'components/card/src/components/card/README.md')).toContain(
       '[`Button`](../../../../button/src/components/button/README.md#usage) and [notes](./notes.md)',
