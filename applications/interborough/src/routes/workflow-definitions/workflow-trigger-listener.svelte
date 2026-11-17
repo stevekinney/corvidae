@@ -125,6 +125,7 @@
     {:else if status.canEdit && editPath !== undefined}
       {@const target = editPath}
       <Button
+        data-changes
         class="ib-workflow-trigger__action"
         variant="secondary"
         size="xs"

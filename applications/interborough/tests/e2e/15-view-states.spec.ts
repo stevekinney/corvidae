@@ -1559,9 +1559,10 @@ test.describe('trigger state', () => {
           tasks: Record<string, unknown>[];
         };
       }
-      const task = {
-        ...listed.tasks[0],
-        id: 'trigger-started-task',
+      // The run page reads the task by its own id, so the id is the real task's and only what the
+      // trigger changes is patched over the host's answer: the agent and the origin.
+      const taskId = String(listed.tasks[0]?.['id']);
+      const triggered = {
         agentName: null,
         origin: { kind: 'trigger', plugin: 'github', workflowId: TRIGGER_FILE },
         status: 'completed',
@@ -1571,9 +1572,10 @@ test.describe('trigger state', () => {
       };
       await withPluginTitles(page);
       await changeBureau(page, {
-        'bureau.tasks.get': (result, params) => (params['taskId'] === task.id ? task : result),
+        'bureau.tasks.get': (result, params) =>
+          params['taskId'] === taskId ? { ...(result as object), ...triggered } : result,
       });
-      await page.goto(`/runs/${task.id}`);
+      await page.goto(`/runs/${taskId}`);
       // Started by names the plugin by its title and leads to the file whose trigger it is.
       const origin = page.getByTestId('run-lineage').locator('[data-origin="trigger"]');
       await expect(origin).toContainText('GitHub');
