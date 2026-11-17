@@ -7,7 +7,7 @@ import type { TimeFieldChange } from './time-field.types.ts';
 
 setupHappyDom();
 
-const inputModule = await import('../input/index.ts');
+const inputModule = await import('@lostgradient/input/components/input/index.ts');
 mock.module('@lostgradient/cinder', () => inputModule);
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
@@ -84,8 +84,10 @@ describe('TimeField', () => {
   test('imports the composed Input API through its public subpath', async () => {
     const componentSource = await Bun.file(new URL('./time-field.svelte', import.meta.url)).text();
 
-    expect(componentSource).toContain("from '../input/index.ts';");
-    expect(componentSource).not.toContain("from '../input/input.svelte'");
+    expect(componentSource).toContain("from '@lostgradient/input/components/input/index.ts';");
+    expect(componentSource).not.toContain(
+      "from '@lostgradient/input/components/input/input.svelte'",
+    );
   });
 
   test('renders a labelled native time input', () => {

@@ -43,7 +43,7 @@
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { createPortalAttachment } from '@lostgradient/portal/components/portal/index.ts';
   import { findNearestOpenTopLayer } from '@lostgradient/portal/components/portal/portal.utilities.svelte.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import type { MultiSelectItem, MultiSelectProps } from './multi-select.types.ts';
 
   const CLEAR_LABEL = 'Clear selected items';

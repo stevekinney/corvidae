@@ -51,7 +51,7 @@
   import { copyToClipboard } from '@lostgradient/foundation/utilities/clipboard.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import Button from '../button/button.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
   import SearchField from '../search-field/search-field.svelte';
   import Toolbar from '@lostgradient/toolbar/components/toolbar/toolbar.svelte';
   import ToolbarGroup from '@lostgradient/toolbar/components/toolbar/toolbar-group.svelte';

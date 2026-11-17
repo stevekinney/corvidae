@@ -1311,6 +1311,35 @@ async function prettierFormat(path: string, text: string): Promise<string> {
   return prettier.format(text, { ...options, filepath: path });
 }
 
+const SIDE_EFFECT_IMPORT = /^\s*import\s+(['"])([^'"\n]+)\1/gm;
+const ORGANIZE_IMPORTS_IGNORE = '// organize-imports-ignore';
+
+/** The specifiers of a file's side-effect imports (`import './x.css'`), in order. */
+export function sideEffectImports(text: string): string[] {
+  return [...text.matchAll(SIDE_EFFECT_IMPORT)].map((match) => match[2] ?? '');
+}
+
+/**
+ * Formats a rewritten file, unless sorting its imports would move a side-effect import: a
+ * rewritten specifier sorts differently (`@lostgradient/input/input.css` before
+ * `../button/button.css`), and the order of stylesheet imports is cascade order in a bundle. Such
+ * a file keeps its order under `// organize-imports-ignore` and is formatted otherwise.
+ */
+export async function formatKeepingImportOrder(
+  path: string,
+  text: string,
+  format: (path: string, text: string) => Promise<string>,
+): Promise<string> {
+  const formatted = await format(path, text);
+  const before = sideEffectImports(text);
+  if (before.join('\n') === sideEffectImports(formatted).join('\n')) return formatted;
+  if (text.includes(ORGANIZE_IMPORTS_IGNORE)) return formatted;
+  const pinned = path.endsWith('.svelte')
+    ? text.replace(/(<script\b[^>]*>)/, `$1\n  ${ORGANIZE_IMPORTS_IGNORE}`)
+    : `${ORGANIZE_IMPORTS_IGNORE}\n${text}`;
+  return format(path, pinned);
+}
+
 function verify(root: string, rewrites: readonly Rewrite[]): string[] {
   const failures: string[] = [];
   for (const { importer, specifier, target } of rewrites) {
@@ -1385,7 +1414,7 @@ async function main(argv: string[]): Promise<number> {
     selection,
     dryRun,
     listFiles: (directory) => trackedFiles(root, directory),
-    format: prettierFormat,
+    format: (path, text) => formatKeepingImportOrder(path, text, prettierFormat),
   });
   const out = (line: string) => process.stdout.write(`${line}\n`);
   out(

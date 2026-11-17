@@ -1,6 +1,6 @@
 <script lang="ts">
   import Form from './form.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
 
   let {
     focusProblemOnSubmit = true,

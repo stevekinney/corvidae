@@ -1,0 +1,30 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    target: {
+      type: 'string',
+      description: 'The `id` of the element to receive focus when the link is activated.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional classes merged onto the visually-hidden anchor.',
+    },
+  },
+  additionalProperties: false,
+  required: ['target'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description: 'Optional override for the visible label. Defaults to "Skip to main content".',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

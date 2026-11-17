@@ -180,7 +180,7 @@ test('root exports retain the component contract types formerly exposed through 
     import('@lostgradient/slider/components/slider/index.ts').SliderSingleProps
   >();
   expectTypeOf<import('./index.ts').SpeedDialSchemaProps>().toEqualTypeOf<
-    import('./components/speed-dial/index.ts').SpeedDialSchemaProps
+    import('@lostgradient/speed-dial/components/speed-dial/index.ts').SpeedDialSchemaProps
   >();
   expectTypeOf<import('./index.ts').TimelineEntry>().toEqualTypeOf<
     import('./components/timeline/index.ts').TimelineEntry

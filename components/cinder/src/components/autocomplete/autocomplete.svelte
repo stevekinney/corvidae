@@ -20,7 +20,7 @@
 </script>
 
 <script lang="ts">
-  import { default as Input, type InputProps } from '../input/index.ts';
+  import { default as Input, type InputProps } from '@lostgradient/input/components/input/index.ts';
   import type { AutocompleteProps, AutocompleteSuggestion } from './autocomplete.types.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import { resolveFieldControl } from '@lostgradient/foundation/_internal/field-control.ts';

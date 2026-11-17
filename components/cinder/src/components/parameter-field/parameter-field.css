@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '@lostgradient/badge/badge.css';
 @import '@lostgradient/grid/grid.css';
-@import '../tooltip/tooltip.css';
+@import '@lostgradient/tooltip/tooltip.css';
 
 @layer cinder.components {
   .cinder-parameter-field {

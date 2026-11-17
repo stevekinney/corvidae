@@ -34,7 +34,7 @@
   import { normalizeDateValue } from '@lostgradient/foundation/_internal/date-value.ts';
   import Calendar from '@lostgradient/calendar/components/calendar/calendar.svelte';
   import Grid from '@lostgradient/grid/components/grid/grid.svelte';
-  import Input from '../input/input.svelte';
+  import Input from '@lostgradient/input/components/input/input.svelte';
   import Popover from '../popover/popover.svelte';
   import {
     composeDescribedBy,

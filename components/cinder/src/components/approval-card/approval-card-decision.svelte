@@ -85,7 +85,7 @@
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
-  import Checkbox from '../checkbox/checkbox.svelte';
+  import Checkbox from '@lostgradient/checkbox/components/checkbox/checkbox.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import Link from '@lostgradient/link/components/link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';

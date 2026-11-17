@@ -1,0 +1,84 @@
+import type { ComponentSchema } from '@lostgradient/component-tooling/schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    value: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+      description:
+        'The currently selected value (single-select mode). Bindable.\nPass `null` or omit to start with no selection.',
+    },
+    values: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        'Currently selected values (multi-select mode). Bindable. Only used when\n`multiple` is `true` — set `multiple` explicitly to switch modes; binding\n`values` alone does NOT enable multi-select.',
+    },
+    multiple: {
+      type: 'boolean',
+      description:
+        'When true the grid allows multiple simultaneous selections and reads/writes\n`values` instead of `value`. The ARIA role switches to `group` (items become\n`checkbox`); single-select uses `radiogroup` (items become `radio`).',
+    },
+    columns: {
+      enum: ['responsive', 1, 2, 3, 4],
+      description:
+        "Column layout.\n- `'responsive'` — `auto-fill` at a minimum cell width (default).\n- `1 | 2 | 3 | 4` — fixed number of columns.",
+    },
+    minColumnWidth: {
+      type: 'string',
+      description:
+        'Minimum cell width for `columns="responsive"`. Accepts any CSS\n`<length>` (e.g. `"12rem"`, `"200px"`). Default: `"10rem"`, or `"6rem"`\nwhen `size="sm"` — passing `minColumnWidth` explicitly always wins over\neither default.',
+    },
+    variant: {
+      enum: ['tile', 'card'],
+      description:
+        "How items are drawn. `'tile'` (the default) keeps the centered quiz tile; `'card'` draws a\nleft-aligned card with a radio (or checkbox when `multiple`) indicator, so each choice can carry\nan icon and a one-sentence description. Selection, roving focus and ARIA roles are identical in\nboth. `size` applies to tiles only.",
+      default: 'tile',
+    },
+    size: {
+      const: 'sm',
+      description:
+        'Compact-only size variant. Omitting it (the default) keeps the current\nappearance. `"sm"` shrinks each item\'s block-size to Cinder\'s `button`\n`sm` height under a fine pointer, and to a 44×44 CSS pixel minimum touch\ntarget under a coarse pointer; it does not change selection, hover,\nfocus, or feedback-state styling. See the ChoiceGrid README\'s "Compact\nsize" section for the full sizing contract.',
+    },
+    ariaLabel: {
+      type: 'string',
+      description: 'Accessible label for the grid (required unless `ariaLabelledby` is set).',
+    },
+    ariaLabelledby: {
+      type: 'string',
+      description: 'Id of an external element that labels this grid.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disables all items in the grid.',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional class names merged with `.cinder-choice-grid`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: '`ChoiceGridItem` children.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

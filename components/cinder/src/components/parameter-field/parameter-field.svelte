@@ -17,7 +17,7 @@
 <script lang="ts">
   import Badge from '@lostgradient/badge/components/badge/badge.svelte';
   import Grid from '@lostgradient/grid/components/grid/grid.svelte';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { ParameterFieldProps } from './parameter-field.types.ts';
 

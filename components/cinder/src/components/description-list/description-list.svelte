@@ -24,7 +24,7 @@
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
   import { formatDate } from '@lostgradient/foundation/utilities/format-date.ts';
   import Button from '../button/button.svelte';
-  import Chip from '../chip/chip.svelte';
+  import Chip from '@lostgradient/chip/components/chip/chip.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
 
   let {

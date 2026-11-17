@@ -2,7 +2,7 @@
   import Pencil from '@lucide/svelte/icons/pencil';
 
   import Button from '../button/button.svelte';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
   import { focusOpenedNote } from './approval-card-state.ts';
 
   type ApprovalCardNoteToggleProps = {

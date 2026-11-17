@@ -233,7 +233,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       occurrences: 2,
     },
   ],
-  'components/cinder/src/components/chip/chip.css': [
+  'components/chip/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
   ],
   'components/cinder/src/components/color-field/color-field.css': [
@@ -272,10 +272,10 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'drawer',
     },
   ],
-  'components/cinder/src/components/feed-boundary/feed-boundary.css': [
+  'components/feed/src/components/feed-boundary/feed-boundary.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/components/feed-event/feed-event.css': [
+  'components/feed/src/components/feed-event/feed-event.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
       declaration: 'background: var(--cinder-border-contrast);',

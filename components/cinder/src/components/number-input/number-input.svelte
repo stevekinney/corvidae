@@ -16,7 +16,7 @@
 </script>
 
 <script lang="ts">
-  import { default as Input } from '../input/index.ts';
+  import { default as Input } from '@lostgradient/input/components/input/index.ts';
   import Minus from '@lucide/svelte/icons/minus';
   import Plus from '@lucide/svelte/icons/plus';
   import type { NumberInputProps } from './number-input.types.ts';

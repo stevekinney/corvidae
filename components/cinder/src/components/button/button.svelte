@@ -31,7 +31,7 @@
   } from '@lostgradient/foundation/_internal/stale-region-context.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
-  import ShortcutHint from '../shortcut-hint/shortcut-hint.svelte';
+  import ShortcutHint from '@lostgradient/shortcut-hint/components/shortcut-hint/shortcut-hint.svelte';
   import type { ButtonProps } from './button.types.ts';
 
   // Destructured props let the Phase 4 analyzer read names + defaults straight off the AST.

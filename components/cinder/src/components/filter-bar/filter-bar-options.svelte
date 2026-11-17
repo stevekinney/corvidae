@@ -5,7 +5,7 @@
    * narrow form's Filter menu both draw it, so a facet reads the same in either place.
    */
   import { default as Button } from '../button/index.ts';
-  import { default as Checkbox } from '../checkbox/index.ts';
+  import { default as Checkbox } from '@lostgradient/checkbox/components/checkbox/index.ts';
   import { default as Radio } from '@lostgradient/radio-group/components/_radio/index.ts';
   import { default as RadioGroup } from '@lostgradient/radio-group/components/radio-group/index.ts';
   import type { ChoiceFacet, FacetOption } from './filter-bar.types.ts';

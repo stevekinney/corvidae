@@ -26,7 +26,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { default as Button } from '../button/index.ts';
-  import { default as Input } from '../input/index.ts';
+  import { default as Input } from '@lostgradient/input/components/input/index.ts';
 
   let {
     idPrefix,

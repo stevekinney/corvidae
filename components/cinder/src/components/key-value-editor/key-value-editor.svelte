@@ -16,7 +16,7 @@
   import X from '@lucide/svelte/icons/x';
   import { tick } from 'svelte';
   import { default as Button } from '../button/index.ts';
-  import { default as Input } from '../input/index.ts';
+  import { default as Input } from '@lostgradient/input/components/input/index.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
   import type { KeyValueEditorProps, KeyValueEntry } from './key-value-editor.types.ts';
   let {

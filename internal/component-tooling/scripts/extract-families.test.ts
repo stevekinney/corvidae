@@ -15,6 +15,8 @@ import {
 import { exportNames } from './export-names.ts';
 import {
   extractFamilies,
+  formatKeepingImportOrder,
+  sideEffectImports,
   readComponentsCssOrder,
   selectPackages,
   walkFiles,
@@ -457,6 +459,37 @@ describe('extract-families', () => {
     expect(again.moves).toEqual([]);
     expect(again.written).toEqual([]);
     expect(snapshot(root)).toEqual(before);
+  });
+});
+
+describe('formatting a rewritten file', () => {
+  // Sorts import lines the way organize-imports would, unless the file opts out.
+  const sortImports = async (_path: string, text: string) => {
+    if (text.includes('// organize-imports-ignore')) return text;
+    const lines = text.split('\n');
+    // Package imports first, then relative ones, each group alphabetical.
+    const rank = (line: string) => `${/['"]\./.test(line) ? 1 : 0}${line}`;
+    const imports = lines
+      .filter((line) => line.startsWith('import '))
+      .toSorted((a, b) => rank(a).localeCompare(rank(b)));
+    return [...imports, ...lines.filter((line) => !line.startsWith('import '))].join('\n');
+  };
+
+  test('keeps the order of stylesheet imports a sort would change', async () => {
+    const text = "import '../button/button.css';\nimport '@lostgradient/input/input.css';\n";
+    const formatted = await formatKeepingImportOrder('index.ts', text, sortImports);
+    expect(formatted.startsWith('// organize-imports-ignore\n')).toBe(true);
+    expect(sideEffectImports(formatted)).toEqual([
+      '../button/button.css',
+      '@lostgradient/input/input.css',
+    ]);
+  });
+
+  test('formats a file whose stylesheet order a sort leaves alone', async () => {
+    const text = "import { b } from './b.ts';\nimport { a } from './a.ts';\nimport './x.css';\n";
+    expect(await formatKeepingImportOrder('index.ts', text, sortImports)).toBe(
+      "import './x.css';\nimport { a } from './a.ts';\nimport { b } from './b.ts';\n",
+    );
   });
 });
 

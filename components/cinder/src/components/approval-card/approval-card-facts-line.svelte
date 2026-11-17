@@ -2,7 +2,7 @@
   import Clock from '@lucide/svelte/icons/clock';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
 
   type ApprovalCardFactsLineProps = {
     /** How long the approval has left, such as "Expires in 30s", or `undefined` when it has no deadline. */

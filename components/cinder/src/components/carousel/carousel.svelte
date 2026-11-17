@@ -30,7 +30,7 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { onDestroy, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import Tooltip from '@lostgradient/tooltip/components/tooltip/tooltip.svelte';
 
   import { observeTextDirection } from '@lostgradient/foundation/_internal/text-direction.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';

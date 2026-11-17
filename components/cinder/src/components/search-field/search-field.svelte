@@ -23,7 +23,7 @@
   import type { SearchFieldProps } from './search-field.types.ts';
   import { getFormFieldContext } from '@lostgradient/foundation/_internal/form-field-context.ts';
   import { classNames } from '@lostgradient/foundation/utilities/class-names.ts';
-  import { default as Input } from '../input/index.ts';
+  import { default as Input } from '@lostgradient/input/components/input/index.ts';
 
   let {
     id,

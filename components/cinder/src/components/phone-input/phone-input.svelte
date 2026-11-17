@@ -26,7 +26,7 @@
     PhoneInputCountryOption,
     PhoneInputProps,
   } from './phone-input.types.ts';
-  import { default as Input } from '../input/index.ts';
+  import { default as Input } from '@lostgradient/input/components/input/index.ts';
   import { default as Select } from '../select/index.ts';
   import { devWarn } from '@lostgradient/foundation/utilities/dev-warn.ts';
 
