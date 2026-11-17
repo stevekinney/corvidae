@@ -40,7 +40,7 @@ const sideNavigationGroupCss = loadCss(
   '../../../side-navigation/src/components/side-navigation-group/side-navigation-group.css',
 );
 const sliderCss = loadCss('../../../slider/src/components/slider/slider.css');
-const tabsCss = loadCss('../../../cinder/src/components/tabs/tabs.css');
+const tabsCss = loadCss('../../../tabs/src/components/tabs/tabs.css');
 const areaChartCss = loadCss('../components/area-chart/area-chart.css');
 const barChartCss = loadCss('../components/bar-chart/bar-chart.css');
 const lineChartCss = loadCss('../components/line-chart/line-chart.css');
@@ -66,7 +66,7 @@ const transferListCss = loadCss(
   '../../../transfer-list/src/components/transfer-list/transfer-list.css',
 );
 const tableCss = loadCss('../../../table/src/components/table/table.css');
-const menuBarCss = loadCss('../../../cinder/src/components/menu-bar/menu-bar.css');
+const menuBarCss = loadCss('../../../menu-bar/src/components/menu-bar/menu-bar.css');
 
 // Focus-ring sweep targets (15f4d777) — colored outline-only recipes converted
 // to the shared Strategy B / B-inset recipe.
@@ -76,7 +76,7 @@ const accordionItemCss = loadCss(
 const collapsibleCss = loadCss('../../../collapsible/src/components/collapsible/collapsible.css');
 const drawerCss = loadCss('../../../drawer/src/components/drawer/drawer.css');
 const jsonSchemaEditorCss = loadCss(
-  '../../../cinder/src/components/json-schema-editor/json-schema-editor.css',
+  '../../../json-schema-editor/src/components/json-schema-editor/json-schema-editor.css',
 );
 const jsonViewerCss = loadCss('../../../json-viewer/src/components/json-viewer/json-viewer.css');
 const modalCss = loadCss('../../../modal/src/components/modal/modal.css');

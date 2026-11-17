@@ -121,6 +121,13 @@ const TREE: Record<string, string> = {
   [`${CORE}/src/utilities/focus.ts`]:
     "import { resolveTokens } from '../tokens/runtime/index.ts';\n\nexport const focus = resolveTokens;\n",
   [`${CORE}/src/_internal/card-context.ts`]: 'export const cardContext = Symbol();\n',
+  // A foundation test that reads card's stylesheet by path: core holds card when foundation
+  // moves, card's own package once card moves.
+  [`${CORE}/src/utilities/focus.test.ts`]: [
+    "const css = new URL('../components/card/card.css', import.meta.url);",
+    "const joined = join(packageRoot, 'src', 'components', 'card', 'card.css');",
+    '',
+  ].join('\n'),
   [`${CORE}/src/components/button/index.ts`]: [
     "import './button.css';",
     "import Button from './button.svelte';",
@@ -165,6 +172,9 @@ const TREE: Record<string, string> = {
     '<script lang="ts">\n  import { focus } from \'../../utilities/focus.ts\';\n</script>\n',
   [`${CORE}/src/components/badge/badge.fixture.svelte`]:
     '<script lang="ts">\n  import Card from \'../card/card.svelte\';\n</script>\n',
+  [`${CORE}/scripts/design-system/build.ts`]: 'export const build = 1;\n',
+  'turbo.json':
+    '{\n  "inputs": [\n        "$TURBO_ROOT$/components/cinder/scripts/**",\n        "$TURBO_ROOT$/scripts/**"\n  ]\n}\n',
   'scripts/check.ts': [
     "const button = 'components/cinder/src/components/button/button.css';",
     "const all = 'components/cinder/src/components';",
@@ -332,6 +342,9 @@ describe('extract-families', () => {
     );
     expect(manifest(root, 'tokens').scripts['tokens:check']).toBe('bun scripts/tokens/check.ts');
     expect(manifest(root, 'tokens').scripts['lint']).toContain('bun run tokens:check');
+    expect(read(root, 'turbo.json')).toContain(
+      '"$TURBO_ROOT$/components/cinder/scripts/**",\n        "$TURBO_ROOT$/components/tokens/scripts/**",\n        "$TURBO_ROOT$/scripts/**"',
+    );
     expect(read(root, 'scripts/check.ts')).toContain(
       [
         "const runtime = join(root, 'components', 'tokens', 'src', 'tokens', 'runtime', 'index.ts');",
@@ -372,9 +385,15 @@ describe('extract-families', () => {
     expect(read(root, `${CORE}/inherited-key-reads-allowlist.json`)).not.toContain('focus.ts');
     expect(manifest(root, 'foundation').dependencies['@lostgradient/tokens']).toBe('workspace:*');
     expect(manifest(root, 'foundation').scripts['lint']).toContain('check-foundation-imports.ts');
+    const focusTest = 'components/foundation/src/utilities/focus.test.ts';
+    expect(read(root, focusTest)).toContain("'../../../cinder/src/components/card/card.css'");
+    expect(read(root, focusTest)).toContain("'..', 'cinder', 'src', 'components', 'card'");
 
     await extract(root, { kind: 'all' });
     expect(existsSync(join(root, CORE, 'src/components'))).toBe(false);
+    // The paths an earlier run pointed into core follow card into its package.
+    expect(read(root, focusTest)).toContain("'../../../card/src/components/card/card.css'");
+    expect(read(root, focusTest)).toContain("'..', 'card', 'src', 'components', 'card'");
     expect(read(root, 'components/button/src/components/button/button.svelte')).toContain(
       "from '@lostgradient/foundation/utilities/focus.ts'",
     );

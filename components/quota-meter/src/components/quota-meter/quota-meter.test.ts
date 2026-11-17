@@ -149,7 +149,7 @@ describe('QuotaMeter', () => {
         ),
       ).text(),
       Bun.file(
-        new URL('../../../../cinder/src/components/citation/README.md', import.meta.url),
+        new URL('../../../../citation/src/components/citation/README.md', import.meta.url),
       ).text(),
     ]);
     expect(quotaReadme).toContain('<QuotaMeter used={72} />');

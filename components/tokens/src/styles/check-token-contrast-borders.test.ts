@@ -371,12 +371,12 @@ describe('field edges (COR-1814)', () => {
   // clear 3:1 against the page and the field's own fill once the person asks for more contrast.
   const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
   const fieldStylesheets = {
-    input: '../../../cinder/src/components/input/input.css',
-    select: '../../../cinder/src/components/select/select.css',
-    combobox: '../../../cinder/src/components/combobox/combobox.css',
-    multiSelect: '../../../cinder/src/components/multi-select/multi-select.css',
-    textarea: '../../../cinder/src/components/textarea/textarea.css',
-    inputFrame: '../../../cinder/src/styles/components/_input-frame.css',
+    input: '../../../input/src/components/input/input.css',
+    select: '../../../select/src/components/select/select.css',
+    combobox: '../../../combobox/src/components/combobox/combobox.css',
+    multiSelect: '../../../multi-select/src/components/multi-select/multi-select.css',
+    textarea: '../../../textarea/src/components/textarea/textarea.css',
+    inputFrame: '../../../foundation/src/styles/components/_input-frame.css',
   } as const;
 
   it('the field edge tokens alias the control border tiers', async () => {

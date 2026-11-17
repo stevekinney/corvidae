@@ -39,7 +39,6 @@
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "postcss": "catalog:",
-    "shiki": "catalog:",
     "svelte-check": "catalog:",
     "typescript": "catalog:"
   },
