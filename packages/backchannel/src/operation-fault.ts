@@ -36,6 +36,7 @@
  */
 
 import type { FaultCode } from './fault-code.ts';
+import type { UnprocessableFaultData } from './unprocessable-fault-data.ts';
 
 /** Transports `executeOperation` sees; `mcp` (a catalog MCP mount) admits `mcpExposable` ones. */
 export type TransportKind =
@@ -98,18 +99,7 @@ export type OperationFault =
         sourceValidationReasons?: readonly string[] | undefined;
       };
     }
-  | {
-      code: 'Unprocessable';
-      message: string;
-      data: {
-        reason: string;
-        // A write the file system refused (`reason: 'write-failed'`): the file's name as the
-        // caller knows it, never an absolute path, and a closed-set cause such as
-        // `permission-denied`. JSON-RPC only, as `reason` is.
-        file?: string | undefined;
-        cause?: string | undefined;
-      };
-    }
+  | { code: 'Unprocessable'; message: string; data: UnprocessableFaultData }
   | { code: 'PayloadTooLarge'; message: string; data: { maxBytes: number } }
   // `Timeout` allows callers to construct `data: { operationName: undefined }`
   // legally — the wire serializers strip undefined-valued keys via

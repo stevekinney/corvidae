@@ -35,10 +35,7 @@ import {
 
 describe('COR-2432: a write the host’s file system refused', () => {
   const refusal = (data: Record<string, unknown>) =>
-    new HttpClientError(422, 'refused', {
-      faultCode: 'Unprocessable',
-      data: { weftCode: 'Unprocessable', ...data },
-    });
+    new HttpClientError(422, 'refused', { data: { weftCode: 'Unprocessable', ...data } });
 
   test('is read as the file’s name and a closed cause', () => {
     expect(

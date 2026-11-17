@@ -137,3 +137,4 @@ export {
   type Cursor,
   type SequencedEventEnvelope,
 } from './sequence-cursor.ts';
+export type { UnprocessableFaultData } from './unprocessable-fault-data.ts';

@@ -225,7 +225,7 @@ describe('the new-workflow editor', () => {
   });
 
   test('says only that the save failed for a fault that names nothing the person can act on', async () => {
-    const { container, getByRole, findByRole } = open();
+    const { container, findByRole } = open();
     await openJson(container);
     await typeInto(container, withName('fresh-flow'));
     const faults = [

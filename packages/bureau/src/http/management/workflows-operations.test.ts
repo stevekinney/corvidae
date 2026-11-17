@@ -1167,10 +1167,10 @@ describe('faults', () => {
     // Neither the operating system's words nor its absolute path reach the caller.
     expect(JSON.stringify(createRefused.error)).not.toContain('/private/var/secret');
     expect(JSON.stringify(createRefused.error)).not.toContain('EACCES');
-    expect(
-      (await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'morning-briefing' })).error?.data
-        ?.httpStatus,
-    ).toBe(404);
+    const notWritten = await ownerRpc(served.owner, 'bureau.workflows.get', {
+      id: 'morning-briefing',
+    });
+    expect(notWritten.error?.data?.httpStatus).toBe(404);
 
     spy = refuse('ENOSPC');
     const updateRefused = await ownerRpc(served.owner, 'bureau.workflows.update', {
