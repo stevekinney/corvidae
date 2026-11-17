@@ -44,8 +44,11 @@ test.describe('flat by default, framed on request', () => {
     page,
   }) => {
     await page.goto(fixtureRoute('table'), { waitUntil: 'load' });
-    const flat = page.getByTestId('table-in-card-flat').locator('table.cinder-table');
-    const framed = page.getByTestId('table-in-card-framed').locator('table.cinder-table');
+    // The scroll box owns a Table's frame when it has one; a Table without one draws its own.
+    const frameOf = (testId: string) =>
+      page.getByTestId(testId).locator('.cinder-table-scroll, table.cinder-table').first();
+    const flat = frameOf('table-in-card-flat');
+    const framed = frameOf('table-in-card-framed');
     for (const property of FRAME) {
       await expect(framed).not.toHaveCSS(property, property.endsWith('width') ? '0px' : 'none');
     }

@@ -23,8 +23,13 @@ for (const { name, width } of WIDTHS) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
         const host = page.getByTestId(`skeleton-footprint-${pair}`);
-        const placeholderRows = host.locator('.cinder-skeleton-row');
-        const loadedRows = host.locator('.cinder-stacked-list-item');
+        // A placeholder row is a real StackedListItem row, so each side is scoped to its own half.
+        const placeholderRows = host
+          .getByTestId('footprint-placeholder')
+          .locator('.cinder-skeleton-row');
+        const loadedRows = host
+          .getByTestId('footprint-loaded')
+          .locator('.cinder-stacked-list-item');
         await expect(placeholderRows).toHaveCount(2);
         await expect(loadedRows).toHaveCount(2);
 

@@ -77,7 +77,9 @@
     void measureRequest;
     const wasStacked = stacked;
     const container = containerElement;
-    if (container === undefined || orientation !== 'horizontal') {
+    // A toolbar is one row and owns its own overflow, so a toolbar-density control never stacks:
+    // three radio rows would make the bar three rows tall.
+    if (container === undefined || orientation !== 'horizontal' || density === 'toolbar') {
       if (wasStacked) stacked = false;
       return;
     }

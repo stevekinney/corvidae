@@ -128,6 +128,26 @@ describe('SegmentedControl falls back when its options do not fit (COR-2448 AC3)
     ).toEqual(['Manual', 'Schedule', 'Signal', 'Webhook']);
   });
 
+  test('a toolbar-density control never stacks, since a toolbar is one row and owns its overflow', () => {
+    geometry.room = 375;
+    geometry.need = 460;
+    const { container } = render(Fixture, {
+      props: {
+        id: 'diff-mode',
+        value: 'manual',
+        label: 'Diff view mode',
+        density: 'toolbar',
+        options: startsOptions,
+      },
+    });
+    flushSync();
+
+    expect(stacked(container)).toBe(false);
+    expect(
+      container.querySelector('[role="radiogroup"]')?.getAttribute('data-cinder-orientation'),
+    ).toBe('horizontal');
+  });
+
   test('it is the attached row again once the room fits the options', () => {
     geometry.room = 375;
     geometry.need = 460;
