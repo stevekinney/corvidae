@@ -306,7 +306,8 @@ describe('documentationExampleStylesheetUrls', () => {
         'basic',
         'disabled-fieldset',
       ]),
-    ).toEqual(['checkbox', 'checkbox-group', 'form-field'].map(cinderStylesheet).toSorted());
+      // In component-name order, the order the collector reads them in.
+    ).toEqual(['checkbox', 'checkbox-group', 'form-field'].map(cinderStylesheet));
   });
 
   it('collects root-barrel imports and recursively follows local implementation modules', () => {
