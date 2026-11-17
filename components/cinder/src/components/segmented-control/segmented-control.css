@@ -256,20 +256,22 @@
 
   /* ── Size variants ──────────────────────────────────────────────────────── */
 
-  /* The control's outer box is the shared `--cinder-control-height-*` step for
- * its size, so a SegmentedControl lines up with a Button, Input, or Select of
- * the same size, and a coarse pointer lifts it to the 44px touch target. An
- * attached control wraps its options in 1px of padding and no border (the
+  /* The control's outer box is a Button's painted height for its size, so a
+ * SegmentedControl lines up with a Button of the same size at every pointer. A
+ * coarse pointer does not draw it 44px tall (COR-2489: 42px options with 12px
+ * at the sides read as tall buttons with thin padding on a phone); each option
+ * reaches 44px through a hit area that takes no layout space, as a Button does.
+ * An attached control wraps its options in 1px of padding and no border (the
  * track is a tone step, COR-2311), so each attached option is 2px shorter than
  * the step; a detached option carries its own 1px border and takes the full
  * step.
  * density="toolbar" resolves to data-cinder-size="sm" in the component, so a
  * toolbar SegmentedControl is the same height as a toolbar Chip and a
- * size="sm" Button. At `sm` an attached option is 24px, the WCAG 2.5.8
+ * size="sm" Button. At `sm` an attached option is 26px, above the WCAG 2.5.8
  * minimum target for options that sit flush against each other; do not
  * shrink `sm` below 28px. */
   .cinder-segmented-control {
-    --_cinder-segmented-control-height: var(--cinder-control-height-md);
+    --_cinder-segmented-control-height: var(--_cinder-painted-height-md);
   }
 
   .cinder-segmented-control .cinder-segmented-control-option {
@@ -281,11 +283,40 @@
   }
 
   .cinder-segmented-control[data-cinder-size='sm'] {
-    --_cinder-segmented-control-height: var(--cinder-control-height-sm);
+    --_cinder-segmented-control-height: var(--_cinder-painted-height-sm);
   }
 
   .cinder-segmented-control[data-cinder-size='lg'] {
-    --_cinder-segmented-control-height: var(--cinder-control-height-lg);
+    --_cinder-segmented-control-height: var(--_cinder-painted-height-lg);
+  }
+
+  /* A stacked control is a list of rows, so each row keeps a list row's minimum: the touch target on
+     a coarse pointer, as tall as its content otherwise. */
+  .cinder-segmented-control-container[data-cinder-stacked]
+    .cinder-segmented-control
+    .cinder-segmented-control-option {
+    min-block-size: max(
+      calc(var(--_cinder-segmented-control-height) - 2px),
+      var(--cinder-list-row-min-height)
+    );
+  }
+
+  /* The hit area of a horizontal option on a coarse pointer: 44px tall, centred on the painted
+     option, taking no layout space. `min()` leaves an option already 44px or taller alone. The
+     selected tab of a tablist draws its indicator in this pseudo-element, and needs no larger
+     target: it is already chosen. */
+  @media (any-pointer: coarse) {
+    .cinder-segmented-control[data-cinder-orientation='horizontal']:not(
+        [data-cinder-variant='tablist']
+      )
+      .cinder-segmented-control-option::after,
+    .cinder-segmented-control[data-cinder-orientation='horizontal'][data-cinder-variant='tablist']
+      .cinder-segmented-control-option:not([data-cinder-selected])::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
   }
 
   .cinder-segmented-control[data-cinder-size='sm'] .cinder-segmented-control-option {

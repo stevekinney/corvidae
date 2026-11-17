@@ -99,20 +99,16 @@ describe('filled controls size from the control-height steps', () => {
       /\.cinder-chip\[data-cinder-density='toolbar'\] \{[^}]*min-block-size: var\(--cinder-control-height-sm\);/,
     );
 
+    // SegmentedControl is drawn at a Button's painted height and reaches 44px through a hit area
+    // on a coarse pointer, as Button does (COR-2489): segmented-control.test.ts pins the shape.
     const segmented = await component('segmented-control');
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      expect(segmented).toContain(
+        `--_cinder-segmented-control-height: var(--_cinder-painted-height-${size});`,
+      );
+    }
     expect(segmented).toContain(
-      '--_cinder-segmented-control-height: var(--cinder-control-height-md);',
-    );
-    expect(segmented).toContain(
-      '--_cinder-segmented-control-height: var(--cinder-control-height-sm);',
-    );
-    expect(segmented).toContain(
-      '--_cinder-segmented-control-height: var(--cinder-control-height-lg);',
-    );
-    // The track is the 1px padding around its options and no border, so a coarse step of 44px
-    // gives a 44px track.
-    expect(segmented).toContain(
-      'min-block-size: calc(var(--_cinder-segmented-control-height) - 2px);',
+      'inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
     );
     expect(tokens).toContain('--cinder-touch-target-min: 44px;');
   });

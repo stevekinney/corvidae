@@ -20,7 +20,7 @@ Compact segmented selector for a small fixed set of options, including bindable 
 
 A SegmentedControl is as wide as its options and no wider: it never stretches to fill a grid cell or a column, and its options never wrap onto a second line. When its options do not fit the room it has, a horizontal control falls back to a stacked radio list, one full-width option per row, so no option is clipped mid-word; it is the attached row again once the room fits them. A `density="toolbar"` control never stacks: a toolbar is one row and owns its own overflow. The arrow keys reach every option in both forms. `fullWidth` is the one explicit opt-in that spans the container.
 
-The selected (or pressed) segment is a raised pill with a 1px ring in the control tier (`--cinder-border-control`), so the selection clears 3:1 against the track in both themes; the `segmented-control:selected-indicator:*` contrast pairings hold it there. The control's height is the `--cinder-control-height-*` step for its size, which a coarse pointer raises to the 44px touch target.
+The selected (or pressed) segment is a raised pill with a 1px ring in the control tier (`--cinder-border-control`), so the selection clears 3:1 against the track in both themes; the `segmented-control:selected-indicator:*` contrast pairings hold it there. The control's height is a Button's painted height for its size at every pointer: a coarse pointer does not draw it 44px tall, and each horizontal option reaches the 44px touch target through a hit area that takes no layout space. A stacked control's rows keep a list row's minimum.
 
 ## Counts
 
