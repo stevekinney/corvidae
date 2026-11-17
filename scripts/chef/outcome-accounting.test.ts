@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   accountOutcome,
   assessBudget,
+  validatePolicySnapshot,
   verifyTaskBank,
   type OutcomeRecord,
 } from './outcome-accounting.ts';
@@ -113,28 +114,62 @@ describe('outcome accounting', () => {
     const malformed = [
       { type: 'session_meta', payload: {} },
       { type: 'turn_context', payload: { model: 'gpt-test' } },
-      { type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: {}, last_token_usage: { input_tokens: -1, cached_input_tokens: 0, output_tokens: 1 } } } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {},
+            last_token_usage: { input_tokens: -1, cached_input_tokens: 0, output_tokens: 1 },
+          },
+        },
+      },
     ];
     const path = write('malformed-counters.jsonl', malformed);
-    const result = accountOutcome(outcome(path), { 'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } });
+    const result = accountOutcome(outcome(path), {
+      'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    });
     expect(result.cost).toBe('unknown');
     expect(result.incompleteUsage.length).toBeGreaterThan(0);
   });
 
   test('keeps malformed Claude token fields incomplete while pricing a valid control', () => {
-    const price = { 'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } };
-    const entry = (usage: Record<string, number>) => ({ type: 'assistant', timestamp: '2026-11-17T20:58:08.000Z', message: { id: 'm1', model: 'claude-test', usage, content: [{ type: 'text', text: 'x' }] } });
+    const price = {
+      'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    };
+    const entry = (usage: Record<string, number>) => ({
+      type: 'assistant',
+      timestamp: '2026-11-17T20:58:08.000Z',
+      message: { id: 'm1', model: 'claude-test', usage, content: [{ type: 'text', text: 'x' }] },
+    });
     for (const usage of [
       { input_tokens: -1, output_tokens: 1 },
       { input_tokens: 1, output_tokens: -1 },
       { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: -1 },
       { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: -1 },
     ]) {
-      const result = accountOutcome(outcome(write(`claude-${JSON.stringify(usage)}.jsonl`, [entry(usage)])), price);
+      const result = accountOutcome(
+        outcome(write(`claude-${JSON.stringify(usage)}.jsonl`, [entry(usage)])),
+        price,
+      );
       expect(result.incompleteUsage.length).toBeGreaterThan(0);
       expect(result.cost).toBe('unknown');
     }
-    expect(accountOutcome(outcome(write('claude-valid.jsonl', [entry({ input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })])), price).cost).toBeCloseTo(0.000002);
+    expect(
+      accountOutcome(
+        outcome(
+          write('claude-valid.jsonl', [
+            entry({
+              input_tokens: 1,
+              output_tokens: 1,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+            }),
+          ]),
+        ),
+        price,
+      ).cost,
+    ).toBeCloseTo(0.000002);
   });
 
   test('preserves absent allowances and stops dispatch when cumulative reservations reach one', () => {
@@ -172,5 +207,27 @@ describe('outcome accounting', () => {
   test('freezes two tasks in every family with one held out', async () => {
     const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text());
     expect(verifyTaskBank(bank)).toEqual([]);
+  });
+
+  test('rejects malformed and mismatched frozen policy source hashes before Git reads', async () => {
+    const snapshot = JSON.parse(
+      await Bun.file('scripts/chef/fixtures/sdlc-policy-baseline.json').text(),
+    ) as { baseRevision: string; repository: string; sources: Record<string, string> };
+    const malformed = structuredClone(snapshot);
+    malformed.sources['AGENTS.md'] = 'not-a-sha256';
+    expect(validatePolicySnapshot(malformed)).toContain(
+      'Task bank policy snapshot has an invalid source digest: AGENTS.md.',
+    );
+    const traversal = structuredClone(snapshot);
+    delete traversal.sources['AGENTS.md'];
+    traversal.sources['../AGENTS.md'] = 'a'.repeat(64);
+    expect(validatePolicySnapshot(traversal)).toContain(
+      'Task bank policy snapshot has an unsafe source path: ../AGENTS.md.',
+    );
+    const mismatch = structuredClone(snapshot);
+    mismatch.sources['AGENTS.md'] = 'a'.repeat(64);
+    expect(validatePolicySnapshot(mismatch, () => new TextEncoder().encode('different'))).toContain(
+      'Task bank policy snapshot source digest differs at its base: AGENTS.md.',
+    );
   });
 });
