@@ -7,9 +7,8 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
-
-import { declarationsFor } from '../../test/css.ts';
 
 const sectionHeadingCss = await Bun.file(
   new URL('../section-heading/section-heading.css', import.meta.url),

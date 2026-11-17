@@ -171,6 +171,11 @@
     { "patterns": ["src/_internal/time-parts.ts"], "target": "time-field" },
     { "patterns": ["src/components/textarea-count.ts"], "target": "textarea" },
     {
+      "patterns": ["src/_internal/full-text-tooltip.svelte"],
+      "target": "tooltip",
+      "note": "It imports Tooltip and Portal, so foundation cannot hold it; Badge, Text and TableCell draw it."
+    },
+    {
       "patterns": ["src/components/_sortable-item.svelte"],
       "target": "sortable-list",
       "note": "It imports Button and SortableList, so foundation cannot hold it (coordinator, 2026-11-17)."

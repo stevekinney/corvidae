@@ -4,7 +4,7 @@
     "packages": 188,
     "multiComponentFamilies": 23,
     "singleComponentFamilies": 162,
-    "layerSizes": [2, 81, 25, 15, 36, 18, 8, 1, 1, 1]
+    "layerSizes": [2, 79, 24, 13, 38, 18, 9, 3, 1, 1]
   },
   "layers": [
     ["foundation", "tokens"],
@@ -16,7 +16,6 @@
       "aspect-ratio",
       "attempts-indicator",
       "backdrop",
-      "badge",
       "calendar",
       "callout",
       "capability-gate",
@@ -76,7 +75,6 @@
       "status-dot",
       "steps",
       "surface",
-      "table",
       "table-of-contents",
       "tag-input",
       "terminal-output",
@@ -94,7 +92,6 @@
     [
       "avatar",
       "checkbox",
-      "chip",
       "choice-grid",
       "docked-action-bar",
       "drawer",
@@ -120,18 +117,16 @@
     ],
     [
       "avatar-group",
+      "badge",
       "button",
       "carousel",
       "copy-button",
       "modal",
       "multi-select",
       "number-input",
-      "parameter-field",
-      "policy-lock",
       "popover",
       "search-field",
       "share-card",
-      "side-navigation",
       "text",
       "time-field"
     ],
@@ -141,7 +136,7 @@
       "autocomplete",
       "banner",
       "breadcrumbs",
-      "chart",
+      "chip",
       "citation",
       "code-block",
       "color-picker",
@@ -152,7 +147,6 @@
       "date-picker",
       "date-range-field",
       "decision-deck",
-      "description-list",
       "dropdown",
       "empty-state",
       "error-state",
@@ -166,9 +160,12 @@
       "json-editor",
       "key-value-editor",
       "load-more",
+      "parameter-field",
+      "policy-lock",
       "pricing-card",
       "select",
       "setting-row",
+      "side-navigation",
       "skeleton",
       "sortable-list",
       "zoom-pan-viewer"
@@ -179,31 +176,32 @@
       "command-palette",
       "context-menu",
       "data-list",
+      "description-list",
       "duration-field",
       "filter-bar",
       "kanban-board",
       "menu-bar",
       "modal-region",
       "page-header",
-      "payload-inspector",
       "phone-input",
       "restart-state",
       "run-step-timeline",
-      "statistic",
+      "table",
       "tabs",
       "tool-picker"
     ],
     [
-      "approval-card",
+      "chart",
       "data-table",
       "invocation-rule-builder",
       "json-schema-editor",
       "list-detail",
+      "payload-inspector",
       "schedule-builder",
       "schema-form",
       "timeline"
     ],
-    ["tool-call-rail"],
+    ["approval-card", "statistic", "tool-call-rail"],
     ["tool-call-panel"],
     ["core"]
   ],
@@ -257,7 +255,7 @@
     },
     "approval-card": {
       "kind": "family",
-      "layer": 6,
+      "layer": 7,
       "components": ["approval-card"],
       "dependencies": [
         "alert",
@@ -324,9 +322,9 @@
     },
     "badge": {
       "kind": "family",
-      "layer": 1,
+      "layer": 3,
       "components": ["badge"],
-      "dependencies": ["foundation"],
+      "dependencies": ["foundation", "tooltip"],
       "modules": []
     },
     "banner": {
@@ -390,7 +388,7 @@
     },
     "chart": {
       "kind": "family",
-      "layer": 4,
+      "layer": 6,
       "components": [
         "area-chart",
         "bar-chart",
@@ -464,7 +462,7 @@
     },
     "chip": {
       "kind": "family",
-      "layer": 2,
+      "layer": 4,
       "components": ["chip"],
       "dependencies": ["badge", "foundation"],
       "modules": []
@@ -938,7 +936,7 @@
     },
     "description-list": {
       "kind": "family",
-      "layer": 4,
+      "layer": 5,
       "components": ["description-list"],
       "dependencies": ["button", "chip", "copy-button", "foundation"],
       "modules": []
@@ -1129,6 +1127,8 @@
         "src/_internal/compact-actions.svelte",
         "src/_internal/constraints.test.ts",
         "src/_internal/constraints.ts",
+        "src/_internal/cut-layout-stub.ts",
+        "src/_internal/cut-text.svelte.ts",
         "src/_internal/date-value.test.ts",
         "src/_internal/date-value.ts",
         "src/_internal/docked-bar-height.test.ts",
@@ -1713,14 +1713,14 @@
     },
     "parameter-field": {
       "kind": "family",
-      "layer": 3,
+      "layer": 4,
       "components": ["parameter-field"],
       "dependencies": ["badge", "foundation", "grid", "tooltip"],
       "modules": []
     },
     "payload-inspector": {
       "kind": "family",
-      "layer": 5,
+      "layer": 6,
       "components": ["payload-inspector"],
       "dependencies": [
         "badge",
@@ -1760,7 +1760,7 @@
     },
     "policy-lock": {
       "kind": "family",
-      "layer": 3,
+      "layer": 4,
       "components": ["policy-lock"],
       "dependencies": ["badge", "foundation", "tooltip"],
       "modules": []
@@ -2009,7 +2009,7 @@
     },
     "side-navigation": {
       "kind": "family",
-      "layer": 3,
+      "layer": 4,
       "components": ["side-navigation", "side-navigation-group", "side-navigation-item", "sidebar"],
       "dependencies": ["badge", "drawer", "foundation", "navigation-item", "status-dot", "tooltip"],
       "modules": [
@@ -2093,7 +2093,7 @@
     },
     "statistic": {
       "kind": "family",
-      "layer": 5,
+      "layer": 7,
       "components": ["statistic", "statistic-group"],
       "dependencies": ["chart", "foundation", "skeleton"],
       "modules": []
@@ -2126,7 +2126,7 @@
     },
     "table": {
       "kind": "family",
-      "layer": 1,
+      "layer": 5,
       "components": [
         "table",
         "table-body",
@@ -2135,7 +2135,7 @@
         "table-header-cell",
         "table-row"
       ],
-      "dependencies": ["foundation"],
+      "dependencies": ["foundation", "select", "tooltip"],
       "modules": [
         "src/test/fixtures/empty-table-cell-fixture.svelte",
         "src/test/fixtures/table-cell-detail-fixture.svelte",
@@ -2409,7 +2409,7 @@
       "layer": 2,
       "components": ["tooltip"],
       "dependencies": ["foundation", "portal"],
-      "modules": []
+      "modules": ["src/_internal/full-text-tooltip.svelte"]
     },
     "transfer-list": {
       "kind": "family",
@@ -2963,6 +2963,7 @@
     "src/_internal/button-group-context.ts": ["dropdown"],
     "src/_internal/chart/chart-utilities.ts": ["statistic"],
     "src/_internal/code-highlighter-context.ts": ["core"],
+    "src/_internal/full-text-tooltip.svelte": ["badge", "table", "text"],
     "src/components/_sortable-item.svelte": ["kanban-board"],
     "src/components/chart.types.ts": ["core", "statistic"],
     "src/highlighters/shiki/default.ts": ["core"],
