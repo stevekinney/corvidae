@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, jest, test } from 'bun:test';
+import { parse } from 'postcss';
 import { createRawSnippet, flushSync } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -254,6 +255,89 @@ describe('Skeleton loading timing', () => {
     }
     // Nothing centres the line under the placeholders any more: it starts at the inline start.
     expect(skeletonCss).not.toMatch(/> \.cinder-skeleton-status \{\s*justify-content: center/);
+  });
+
+  // COR-2489: in the bars, card and form placeholders the line was inserted above the bars when it
+  // appeared, so everything under the placeholder moved down by a line and a gap.
+  describe('the line holds its place in a bars, card or form placeholder', () => {
+    /** Every rule as [selector with collapsed whitespace, declarations]. */
+    const rules = (() => {
+      const found: Array<[string, Map<string, string>]> = [];
+      parse(skeletonCss).walkRules((rule) => {
+        const declarations = new Map<string, string>();
+        rule.each((node) => {
+          if (node.type === 'decl') declarations.set(node.prop, node.value);
+        });
+        found.push([rule.selector.replace(/\s+/g, ' '), declarations]);
+      });
+      return found;
+    })();
+    /** The declarations of every rule whose selector names `variant` and ends with `tail`. */
+    const forVariant = (variant: string, tail: string) =>
+      rules
+        .filter(
+          ([selector]) =>
+            selector.includes(`[data-cinder-variant='${variant}']`) &&
+            selector.endsWith(tail.replace(/\s+/g, ' ')),
+        )
+        .map(([, declarations]) => declarations);
+
+    const cases: Array<[string, string, Record<string, unknown>]> = [
+      ['bars', 'row', { lines: 3 }],
+      ['card', 'card', { variant: 'card', lines: 2 }],
+      ['form', 'form', { variant: 'form', rows: 2 }],
+    ];
+
+    for (const [name, variant, props] of cases) {
+      test(`${name}: the line and the bars share one cell, and the bars give way to it`, () => {
+        const { container } = mountUnderFakeTimers({ stillLoadingAfter: 10_000, ...props });
+        const group = container.querySelector('.cinder-skeleton-group');
+        expect(group?.getAttribute('data-cinder-variant')).toBe(variant);
+        advance(10_000);
+        expect(container.querySelector('.cinder-skeleton-status')?.textContent).toContain(
+          'Still loading.',
+        );
+
+        // The group is one grid cell holding the line over the placeholder, so its height is the
+        // placeholder's whether or not the line shows.
+        expect(forVariant(variant, '').some((rule) => rule.get('display') === 'grid')).toBe(true);
+        expect(
+          forVariant(variant, '> :is(.cinder-skeleton-status, .cinder-skeleton-lines)').some(
+            (rule) => rule.get('grid-area') === '1 / 1',
+          ),
+        ).toBe(true);
+        const line = forVariant(variant, '> .cinder-skeleton-status');
+        expect(line.some((rule) => rule.get('align-self') === 'start')).toBe(true);
+        expect(
+          forVariant(
+            variant,
+            ':has(> .cinder-skeleton-status:not(:empty)) > .cinder-skeleton-lines > .cinder-skeleton',
+          ).some((rule) => rule.get('visibility') === 'hidden'),
+        ).toBe(true);
+        cleanup();
+      });
+    }
+
+    test('a card keeps its surface, with the line inside its padding and border', () => {
+      const line = declarationsFor(
+        skeletonCss,
+        ".cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-status",
+      );
+      expect(line.get('padding')).toBe('calc(var(--cinder-density-pad-card) + 1px)');
+      const surface = declarationsFor(
+        skeletonCss,
+        ".cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-lines",
+      );
+      expect(surface.get('padding')).toBe('var(--cinder-density-pad-card)');
+      expect(surface.get('border')).toBe('1px solid var(--cinder-border-muted)');
+    });
+
+    test('a page’s own placeholder still takes the line in the block it marks', () => {
+      expect(rules.some(([selector]) => selector.includes("[data-cinder-variant='custom']"))).toBe(
+        false,
+      );
+      expect(skeletonCss).toContain('.cinder-skeleton-status-place {');
+    });
   });
 
   test('the Still loading status is outside the aria-hidden placeholder', () => {

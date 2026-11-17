@@ -285,7 +285,9 @@
    * placeholder rather than being inserted above it, so nothing moves when it appears or when the
    * data arrives (COR-2329). In a grouped or list placeholder it lies over the first row, whose bars
    * give way to it; in a page's own placeholder the block marked `holdsStatusLine` draws it in its
-   * own box. A group of bars, a card or a form has no row tall enough, so its line leads it. */
+   * own box; in a group of bars, a card or a form it lies over the placeholder from its top and the
+   * bars give way to it (COR-2489: the line used to be inserted above them and pushed the page
+   * down). */
   .cinder-skeleton-group:is([data-cinder-variant='grouped'], [data-cinder-variant='list']) {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -322,6 +324,52 @@
       .cinder-skeleton-list > .cinder-skeleton-day-band + .cinder-skeleton-row
     )
     .cinder-skeleton {
+    visibility: hidden;
+  }
+
+  /* Bars, a card and a form: the line and the placeholder share one cell, so the line takes the
+   * placeholder's place and the group is as tall as it was. A card keeps its surface and the line
+   * sits inside its padding and border, where the heading bar was. */
+  .cinder-skeleton-group:is(
+    [data-cinder-variant='row'],
+    [data-cinder-variant='card'],
+    [data-cinder-variant='form']
+  ) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cinder-skeleton-group:is(
+      [data-cinder-variant='row'],
+      [data-cinder-variant='card'],
+      [data-cinder-variant='form']
+    )
+    > :is(.cinder-skeleton-status, .cinder-skeleton-lines) {
+    grid-area: 1 / 1;
+  }
+
+  .cinder-skeleton-group:is(
+      [data-cinder-variant='row'],
+      [data-cinder-variant='card'],
+      [data-cinder-variant='form']
+    )
+    > .cinder-skeleton-status {
+    position: relative;
+    z-index: 1;
+    align-self: start;
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='card'] > .cinder-skeleton-status {
+    padding: calc(var(--cinder-density-pad-card) + 1px);
+  }
+
+  .cinder-skeleton-group:is(
+      [data-cinder-variant='row'],
+      [data-cinder-variant='card'],
+      [data-cinder-variant='form']
+    ):has(> .cinder-skeleton-status:not(:empty))
+    > .cinder-skeleton-lines
+    > .cinder-skeleton {
     visibility: hidden;
   }
 
