@@ -3,8 +3,9 @@
    * The run page's message bar for a chat's run that is going: a "Send a message" field docked at the
    * bottom of the page, which the person uses to add something the agent reads at its next step
    * (`bureau.contexts.input`, steer delivery; COR-2424, row 06b). The page scrolls behind it. Cancel
-   * run stays in the header. A run that is waiting on a person, or is over, has no such bar: the
-   * question has its own controls, and nothing is left to add to a run that ended.
+   * run sits in the bar beside Send, at the inline end, and the header keeps only More (rows 06b,
+   * 54l). A run that is waiting on a person, or is over, has no such bar: the question has its own
+   * controls, and nothing is left to add to a run that ended.
    */
   import { Button, DockedActionBar, Input } from '@lostgradient/cinder';
   import { SendHorizontal } from '@lucide/svelte';
@@ -13,16 +14,20 @@
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { showFault, showToast } from '../../../app/toast-host.svelte';
   import { sendContextInput } from '../../../lib/bureau-client.ts';
+  import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
+  import RunCancel from './run-cancel.svelte';
   import { newMessageIdentifier } from './run-send-message.ts';
 
   interface RunSendMessageProps {
     /** The session the run is in, which the message is sent to. */
     contextId: string;
     runId: string;
+    /** The run's task, whose Cancel run sits in the bar beside Send (rows 06b, 54l). */
+    task?: TaskView | undefined;
   }
 
-  let { contextId, runId }: RunSendMessageProps = $props();
+  let { contextId, runId, task = undefined }: RunSendMessageProps = $props();
 
   const copy = RUN_DETAIL_COPY.sendMessage;
   // hidden-label-allowed: the bar's placeholder says Send a message, and a docked bar draws no label above its field
@@ -83,6 +88,7 @@
       >
         {#snippet leadingIcon()}<SendHorizontal aria-hidden="true" size={16} />{/snippet}
       </Button>
+      {#if task !== undefined}<RunCancel {task} />{/if}
     {/snippet}
   </DockedActionBar>
 </form>

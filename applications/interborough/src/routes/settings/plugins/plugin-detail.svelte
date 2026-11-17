@@ -277,7 +277,14 @@
     flex-direction: column;
     gap: var(--cinder-space-4);
     min-width: 0;
-    padding: var(--cinder-space-4);
+    /* A readable line on a wide desktop: the pane can be wider than a line of text should be, so
+       what it holds stops at 40rem (about 80 characters of body text at most), which is still wider
+       than the 30rem a setting row needs to sit side by side. At 1280px and below the pane is the
+       narrower one and this changes nothing. */
+    max-inline-size: 40rem;
+    /* The ListDetail pane already insets its content by the same amount on every side, so the
+       detail adds none inline: its content box keeps 2rem more than the 30rem a setting row needs. */
+    padding: var(--cinder-space-4) 0;
   }
 
   .ib-plugin__top {
@@ -417,5 +424,10 @@
   .ib-plugin__secret-key {
     flex: 0 1 auto;
     min-width: 0;
+  }
+
+  /* The row's one action sits at its inline end. */
+  .ib-plugin__secret > :global(:last-child) {
+    margin-inline-start: auto;
   }
 </style>

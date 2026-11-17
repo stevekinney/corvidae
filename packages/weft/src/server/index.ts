@@ -5,24 +5,28 @@
  * @module server
  */
 
+import type {
+  AuthConfig,
+  CorsOptions,
+  DiscoveryInfo,
+  PackageAuthorizationScope,
+  RateLimitConfig,
+} from '@lostgradient/backchannel';
+import {
+  type RegistrableOperation,
+  overlapsReservedRoute,
+} from '@lostgradient/backchannel/internals';
 import { requireStorageCapability } from '@lostgradient/storage';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import type { RetryPolicy } from '../core/types.ts';
 import type { PrometheusExporter } from '../observability/metrics.ts';
-import type { RoutingPolicy } from '../worker/registry.ts';
-import { WorkerRegistry } from '../worker/registry.ts';
-import type { AuthConfig, RateLimitConfig } from './authentication.ts';
-import type { PackageAuthorizationScope } from './authorization-scope.ts';
-import type { DiscoveryInfo } from './discovery-info.ts';
+import { type RoutingPolicy, WorkerRegistry } from '../worker/registry.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
-import type { RegistrableOperation } from './operation-catalog.ts';
-import { overlapsReservedRoute } from './route-model.ts';
 import { createServerWebSocketHandlers } from './runtime/authentication-bridge.ts';
-import type { CorsOptions } from './runtime/cors.ts';
 import {
-  wireEventBroadcasting,
   type EventBroadcastingHandle,
+  wireEventBroadcasting,
 } from './runtime/event-broadcasting.ts';
 import {
   shutdownAllWorkers as shutdownAllWorkersImpl,
@@ -30,8 +34,11 @@ import {
 } from './runtime/shutdown.ts';
 import { stopBunServerForShutdown } from './runtime/stop-server.ts';
 import { cancelTask, dispatchTaskImpl } from './runtime/task-dispatch.ts';
-import type { TaskResultView } from './runtime/task-result-view.ts';
-import { adoptTaskResultImpl, getTaskResultViewImpl } from './runtime/task-result-view.ts';
+import {
+  type TaskResultView,
+  adoptTaskResultImpl,
+  getTaskResultViewImpl,
+} from './runtime/task-result-view.ts';
 import { publishTokenMessage, publishWatchMessage } from './runtime/websocket-stream.ts';
 import {
   buildBunServeConfig,
@@ -59,42 +66,11 @@ export {
   type EventBroadcastingHandle,
 } from './runtime/event-broadcasting.ts';
 
-export type { CorsOptions } from './runtime/cors.ts';
 export type {
   WorkerAdmissionDecision,
   WorkerAdmissionPolicy,
   WorkerAdmissionRequest,
 } from './worker-admission-policy.ts';
-
-export {
-  AUTHORIZATION_SCOPES,
-  isAuthorizationScope,
-  isPackageAuthorizationScope,
-  PACKAGE_AUTHORIZATION_SCOPE_PATTERN,
-  type AuthorizationScope,
-  type BuiltInAuthorizationScope,
-  type PackageAuthorizationScope,
-} from './authorization-scope.ts';
-
-export type { GetPrincipalOutput } from './operations/get-principal.ts';
-
-export {
-  createRateLimiter,
-  createRotatingApiKeyStore,
-  defaultAuthAuditSink,
-  isSensitiveHeader,
-  redactCredential,
-  redactHeaders,
-  validateRateLimitConfig,
-  type ApiKeyRegistration,
-  type AuthAuditEvent,
-  type AuthAuditSink,
-  type AuthConfig,
-  type RateLimitConfig,
-  type RateLimitDecision,
-  type RateLimiter,
-  type RotatingApiKeyStore,
-} from './authentication.ts';
 
 // Re-export every option/handle *type* named in ServeOptions / WeftServer /
 // TaskDispatch so a consumer of `@lostgradient/weft` can name them all
@@ -112,9 +88,7 @@ export type {
 } from '../conformance/targets.ts';
 export type { RetryPolicy } from '../core/types.ts';
 export type { PrometheusExporter } from '../observability/metrics.ts';
-export { WorkerRegistry } from '../worker/registry.ts';
-export type { RoutingPolicy } from '../worker/registry.ts';
-export type { DiscoveryInfo } from './discovery-info.ts';
+export { WorkerRegistry, type RoutingPolicy } from '../worker/registry.ts';
 export type { TaskResultView } from './runtime/task-result-view.ts';
 export type { SchedulingPolicy } from './task-queue-types.ts';
 export { TaskQueue } from './task-queue.ts';

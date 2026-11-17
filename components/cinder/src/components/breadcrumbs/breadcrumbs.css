@@ -6,18 +6,27 @@
  * ======================================== */
 
   .cinder-breadcrumbs {
+    /* How far a crumb link's hit area reaches past its 20px line on each side: 2px, so a press
+       target is the 24px minimum (WCAG 2.5.8). */
+    --_cinder-breadcrumbs-link-overhang: var(--cinder-space-0-5);
+
     container-type: inline-size;
     container-name: cinder-breadcrumbs;
   }
 
   .cinder-breadcrumbs__list {
     list-style: none;
-    padding: 0;
-    margin: 0;
+    /* Room inside the list's clip for a crumb link's hit area (below), given back by a matching
+       negative margin, so the trail's layout does not move. */
+    padding: var(--_cinder-breadcrumbs-link-overhang) 0;
+    margin: calc(var(--_cinder-breadcrumbs-link-overhang) * -1) 0;
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
     font-size: var(--cinder-text-sm);
+    /* The type scale's 20px line for 13px text, as the navigation rows use: the page's 1.5 would
+       make every crumb a 19.5px box whose centre sits on a half pixel beside the selector. */
+    line-height: 1.25rem;
     color: var(--cinder-text-muted);
     /* A long trail never wraps to a second row: earlier ancestors fold into the "…" menu
      (`maxVisible`), and what is left clips with an ellipsis. */
@@ -50,15 +59,28 @@
   }
 
   .cinder-breadcrumbs__link {
+    position: relative;
     min-width: 0;
     flex: 1 1 auto;
     color: var(--cinder-text-muted);
     text-decoration: none;
     border-radius: var(--cinder-radius-sm);
     transition: color var(--cinder-duration-fast) var(--cinder-ease-standard);
-    overflow: hidden;
+    /* Clipped for the ellipsis, but the clip reaches as far as the hit area below, so it answers a
+       press there; the text never paints past the box, which its ellipsis truncates. */
+    overflow: clip;
+    overflow-clip-margin: var(--_cinder-breadcrumbs-link-overhang);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The link's 20px line is under the 24px minimum target: a pseudo-element that takes no layout
+     space and paints nothing extends its hit area to 24px, so the crumb is drawn exactly as before. */
+  .cinder-breadcrumbs__link::before {
+    content: '';
+    position: absolute;
+    inset-block: calc(var(--_cinder-breadcrumbs-link-overhang) * -1);
+    inset-inline: 0;
   }
 
   .cinder-breadcrumbs__link:hover {
@@ -151,6 +173,36 @@
     .cinder-breadcrumbs__trigger:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: 3px;
+    }
+  }
+
+  /* On a coarse pointer the current page's popover trigger paints 30px and its hit area reaches
+     44px through a positioned pseudo-element that takes no layout space. The trail's list clips
+     what overflows it, and the trigger clipped its own overflow too, so a hit area drawn past the
+     trigger's edge would be cut back to 30px: the trigger lets its overflow show (its label
+     truncates itself), and the list gains room inside its clip with padding that a matching
+     negative margin gives back, so the trail's layout does not move. */
+  @media (any-pointer: coarse) {
+    .cinder-breadcrumbs__trigger {
+      position: relative;
+      overflow: visible;
+    }
+
+    .cinder-breadcrumbs__trigger::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+
+    .cinder-breadcrumbs__list:has(> .cinder-breadcrumbs__item > .cinder-breadcrumbs__trigger) {
+      --_cinder-breadcrumbs-hit-overhang: max(
+        0px,
+        calc((var(--cinder-touch-target-min) - 1.875rem) / 2)
+      );
+
+      padding-block: var(--_cinder-breadcrumbs-hit-overhang);
+      margin-block: calc(var(--_cinder-breadcrumbs-hit-overhang) * -1);
     }
   }
 

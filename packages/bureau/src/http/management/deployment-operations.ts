@@ -17,7 +17,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module deployment-operations
  */
 
-import { defineOperation, type Principal } from '@lostgradient/weft';
+import { defineOperation, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { AgentMediaCapabilities } from '../../agent-catalog.ts';

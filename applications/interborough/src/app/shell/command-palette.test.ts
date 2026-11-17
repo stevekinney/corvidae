@@ -12,7 +12,7 @@ import type { NotificationEntry } from '../notification-items.ts';
 import { memoryStore } from '../notification-store.test-support.ts';
 import { schedulePath, toolPath, workerPath } from './command-palette-search.ts';
 import CommandPaletteLauncher from './command-palette.svelte';
-import { registerShellShortcuts } from './destinations.ts';
+import { pluginPaletteActions, registerShellShortcuts } from './destinations.ts';
 
 let restore: (() => void) | undefined;
 /** What the palette asked `bureau.tasks.list` for, in order. */
@@ -432,6 +432,68 @@ describe('every kind of result, in order', () => {
     ).toBe('New chat C');
     // The actions carry no heading of their own while nothing is typed, only their group's name.
     expect(view.queryByText(PALETTE_COPY.groups.actions)).toBeNull();
+  });
+
+  test('lists every plugin page with the Go to rows, as "Go to <title>" with where it comes from and no keys, and opens it (COR-2213, PL8-06)', async () => {
+    const { registry } = shellRegistry();
+    const opened: string[] = [];
+    const pluginActions = pluginPaletteActions(
+      [
+        {
+          plugin: 'acme',
+          app: 'queue',
+          title: 'Review queue',
+          path: 'reviews/queue',
+          sidebar: { group: 'work' },
+        },
+        // A page placed with no sidebar entry is in the palette all the same.
+        { plugin: 'acme', app: 'hidden', title: 'Hidden page', path: 'hidden', sidebar: undefined },
+      ],
+      () => 'Acme reports',
+      (path) => opened.push(path),
+    );
+    const view = open({ registry, pluginActions });
+
+    const queue = await view.findByRole('option', {
+      name: 'Go to Review queue, From Acme reports',
+    });
+    expect(queue.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Go to Review queue From Acme reports',
+    );
+    await view.findByRole('option', { name: 'Go to Hidden page, From Acme reports' });
+    // They sit among the Go to rows, before New chat, and carry no keys.
+    const labels = view
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('aria-label') ?? '');
+    expect(labels.indexOf('Go to Review queue, From Acme reports')).toBeLessThan(
+      labels.indexOf('New chat'),
+    );
+    expect(queue.querySelector('kbd')).toBeNull();
+
+    await fireEvent.input(view.getByRole('combobox'), { target: { value: 'hidden' } });
+    await fireEvent.click(
+      await view.findByRole('option', { name: 'Go to Hidden page, From Acme reports' }),
+    );
+    expect(opened).toEqual(['/plugins/acme/hidden']);
+  });
+
+  test('says nothing of where a page comes from until the host has named its plugin', async () => {
+    const { registry } = shellRegistry();
+    const pluginActions = pluginPaletteActions(
+      [
+        {
+          plugin: 'acme',
+          app: 'queue',
+          title: 'Review queue',
+          path: 'reviews/queue',
+          sidebar: undefined,
+        },
+      ],
+      () => undefined,
+      () => {},
+    );
+    const view = open({ registry, pluginActions });
+    expect(await view.findByRole('option', { name: 'Go to Review queue' })).not.toBeNull();
   });
 
   test('the key hints are gone while single-key shortcuts are off, and the rows still run', async () => {

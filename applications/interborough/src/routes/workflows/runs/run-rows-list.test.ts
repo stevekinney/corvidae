@@ -134,6 +134,7 @@ describe('a goal’s attempts', () => {
 
   test('one that missed the check is Done, said "Check not met", with which attempt it was', () => {
     const goal = goalFixture('draft-release-notes', {
+      identity: { name: 'Draft release notes', version: '1' },
       bounds,
       attempts: [
         goalAttemptFixture('draft-a5', {
@@ -436,6 +437,68 @@ describe('the page of ten, and the missed runs', () => {
         .map((entry) => entry.key)
         .at(-1),
     ).toBe('missed:daily-summary');
+  });
+});
+
+describe('a failed instance’s line two', () => {
+  test('says what the run said in a few words, never the error’s own JSON (rows 09r, 52i, 05x, 52t)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'release-notes-run',
+          contextId: 'release-notes-run',
+          kind: 'catalog',
+          agentName: null,
+          status: 'failed',
+          statusMessage:
+            'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub didn’t answer (HTTP 503)","cause":{"name":"Error","message":"GitHub didn’t answer (HTTP 503)"}}',
+          origin: { kind: 'schedule', scheduleId: 'release-notes-digest', fireId: '' },
+          createdAt: '2026-10-30T11:00:00-05:00',
+          updatedAt: '2026-10-30T11:00:03-05:00',
+          workflow: workflowOf('release-notes', {
+            scheduleId: 'release-notes-digest',
+            steps: { total: 4, at: 2 },
+          }),
+        }),
+      ],
+      goals: [],
+      chats: [],
+      scheduleNames: new Map([['release-notes-digest', 'Release notes digest']]),
+    });
+    const line = runLineTwo(row, context);
+    expect(line).toBe(
+      'Schedule, Release notes digest, failed at step 2 of 4, GitHub didn’t answer (HTTP 503), 3 s',
+    );
+    expect(line).not.toContain('{');
+  });
+});
+
+describe('a goal attempt’s title', () => {
+  test('is the goal’s own name, and its identifier in words only when the name is empty (rows 52i, 09r, 53l)', () => {
+    const named = buildRunRows({
+      tasks: [],
+      goals: [
+        goalFixture('16e7c79642a7c4e1-sample-goal-summarize-open-refunds', {
+          identity: { name: 'Summarize open refunds', version: '1' },
+          attempts: [goalAttemptFixture('named-a0')],
+        }),
+      ],
+      chats: [],
+      scheduleNames: new Map(),
+    });
+    expect(named[0]?.title).toBe('Summarize open refunds');
+    const unnamed = buildRunRows({
+      tasks: [],
+      goals: [
+        goalFixture('summarize-open-refunds', {
+          identity: { name: ' ', version: '1' },
+          attempts: [goalAttemptFixture('unnamed-a0')],
+        }),
+      ],
+      chats: [],
+      scheduleNames: new Map(),
+    });
+    expect(unnamed[0]?.title).toBe('Summarize open refunds');
   });
 });
 

@@ -54,6 +54,81 @@ test('the run outcome kinds are in the catalog, so a workspace hook gets its own
   }
 });
 
+test('a workspace hook gets the child, handoff, hook-plan and steering events of its own runs and sessions only (COR-2097)', async () => {
+  const project = workspaceHookEvents(workspace, async ({ kind, ...resource }) => {
+    if (!('id' in resource)) return undefined;
+    if (kind === 'run' && resource.id === 'run-a') return 'owner-a';
+    if (kind === 'session' && resource.id === 'session-a') return 'owner-a';
+    return undefined;
+  });
+  const ofRun = [
+    event('multiagent.child-workflow.started', {
+      parentRunId: 'run-a',
+      childRunId: 'child-1',
+      childAgentName: 'worker',
+    }),
+    event('multiagent.child-workflow.completed', { parentRunId: 'run-a', childRunId: 'child-1' }),
+    event('multiagent.child-workflow.failed', {
+      parentRunId: 'run-a',
+      childRunId: 'child-1',
+      finishReason: 'error',
+    }),
+    event('multiagent.child-workflow.aborted', { parentRunId: 'run-a', childRunId: 'child-1' }),
+    event('multiagent.handoff.occurred', { runId: 'run-a', sourceAgentName: 'a' }),
+    event('hook-plan.failed', { runId: 'run-a', hookId: 'h', errorCode: 'INTERNAL_ERROR' }),
+  ];
+  const ofSession = [
+    'steering.applied',
+    'steering.rejected',
+    'steering.superseded',
+    'steering.failed',
+  ].map((kind) => event(kind, { sessionId: 'session-a', failureReason: 'policy-denied' }));
+  for (const delivered of [...ofRun, ...ofSession]) {
+    expect(await project('owner-a', delivered)).toEqual(delivered);
+    expect(await project('owner-b', delivered)).toBeUndefined();
+  }
+  // A child whose parent is not a run the hook's owner can read is not delivered.
+  expect(
+    await project(
+      'owner-a',
+      event('multiagent.child-workflow.started', { parentRunId: 'run-b', childRunId: 'child-2' }),
+    ),
+  ).toBeUndefined();
+});
+
+test('a workspace hook is never given a version mismatch, which names no run, session or owner (COR-2097)', async () => {
+  const project = workspaceHookEvents(workspace, async () => 'owner-a');
+  const mismatch = event('workflow.version-mismatch', {
+    workflowId: 'run-a',
+    storedVersion: 'v1',
+    registeredVersion: 'v2',
+  });
+
+  expect(await project('owner-a', mismatch)).toBeUndefined();
+});
+
+test('[COR-2100, matrix 122] a skills definitions.changed passes its five fields to every member’s hook', async () => {
+  const project = workspaceHookEvents(workspace, async () => undefined);
+  const changed = await project(
+    'owner-b',
+    event('definitions.changed', {
+      catalog: 'skills',
+      added: ['alpha'],
+      changed: ['beta'],
+      removed: ['gamma'],
+      rejected: ['alpha'],
+      sessionId: 'PRIVATE-SENTINEL',
+    }),
+  );
+  expect(changed?.payload).toEqual({
+    catalog: 'skills',
+    added: ['alpha'],
+    changed: ['beta'],
+    removed: ['gamma'],
+    rejected: ['alpha'],
+  });
+});
+
 test('shared configuration hook events copy only their explicit metadata fields', async () => {
   const project = workspaceHookEvents(workspace, async () => undefined);
   const created = await project(

@@ -22,7 +22,7 @@ import {
   type MemoryVectorReference,
   type MemoryVectorStore,
 } from '../../src/memory-vector-store';
-import { createTestEmbedders, TEST_EMBEDDER_ID } from '../../src/test/index';
+import { createTestEmbedders, TEST_EMBEDDER_ID, TEST_EMBEDDER_MODEL } from '../../src/test/index';
 import {
   createGovernedFixture,
   type GovernedBackend,
@@ -47,6 +47,7 @@ const PROFILE: MemoryEmbeddingProfile = {
   embedderId: TEST_EMBEDDER_ID,
   dimension: DIMENSION,
   generation: 1,
+  model: TEST_EMBEDDER_MODEL,
 };
 
 function referenceTo(id: string): MemoryVectorReference {
@@ -117,7 +118,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       const record = await fixture.storage.get(id, reference.scope);
       expect(record!.vector.length).toBe(0);
       expect(await fixture.memory.embedding.status()).toEqual({
-        active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION },
+        active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION, model: TEST_EMBEDDER_MODEL },
       });
     });
 
@@ -222,7 +223,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
         restarted.write(principalA, 'beta note', { collection: 'notes', source: 'conversation' }),
       );
       expect(await restarted.embedding.status()).toEqual({
-        active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION },
+        active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION, model: TEST_EMBEDDER_MODEL },
         problem: 'embedder-unavailable',
       });
       expect(await storedVectorKeys(fixture)).toHaveLength(1);
@@ -359,6 +360,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
               id: 'remote',
               embedder: keyword,
               dimension: DIMENSION,
+              model: 'remote-model',
               availability: () => 'needs-setup',
             },
           ]),
@@ -368,7 +370,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       expect(fixture.memory.embedding.availability('remote')).toBe('needs-setup');
       expect(fixture.memory.embedding.availability('missing')).toBe('not-loaded');
       expect(await fixture.memory.embedding.status()).toEqual({
-        active: { embedder: 'hashing', dimension: HASHING_EMBEDDER_DIMENSION },
+        active: { embedder: 'hashing', dimension: HASHING_EMBEDDER_DIMENSION, model: 'hashing' },
       });
     });
   });
@@ -415,7 +417,7 @@ describe('governed embedding status', () => {
       runtime: createManualRuntimeServices({ identifierSeed: 'governed-embedding-status' }),
     });
     expect(await embedding.status()).toEqual({
-      active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION },
+      active: { embedder: TEST_EMBEDDER_ID, dimension: DIMENSION, model: TEST_EMBEDDER_MODEL },
     });
     expect(await vectors.getActiveProfile()).toBeUndefined();
     expect(await vectors.listProfiles()).toEqual([]);

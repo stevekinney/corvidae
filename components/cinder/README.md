@@ -113,6 +113,8 @@ Most defects in a generated page come from how the components are arranged, not 
 
 A third applies to lists: trailing row actions sit in a fixed column, so a badge never changes where an action button lands. Put the badge with the metadata in the content column of the [`StackedListItem`](./src/components/stacked-list-item/README.md).
 
+A surface of your own docked to the bottom of the page, such as a composer, takes the `dockedToBottom()` attachment, so a [`ToastRegion`](./src/components/toast-region/README.md#where-the-region-sits) sits above it as it sits above a `DockedActionBar` or a bottom `NavigationBar`.
+
 ## A2UI catalog (experimental)
 
 > [!WARNING] Experimental, pinned to A2UI v0.9.1 The catalog follows A2UI v0.9.1 and may change until a stable A2UI 1.0 compatibility review. It is opt-in: no surface uses it unless a client asks for it.
@@ -144,6 +146,10 @@ bun run --filter=@lostgradient/cinder design-system:url
 ```
 
 On the first publish, create the artifact from the Design System type with Claude Code's Artifact tool, then save its URL with `design-system:url --set <url>` or by writing the file by hand. Later runs republish to that URL. First list the artifact's files (`action: "list"`, `scope: "files"`), because the tool refuses to overwrite files the session has not seen; an account that can't open the artifact can't republish it, and creates its own instead. Then publish once for each entry of `tmp/cinder-design-system/out/publish-batches.json`, in order. Each publish passes the artifact's `url`, `root` set to `tmp/cinder-design-system/out`, and that entry's paths as `files`. A batch holds at most 240 files, and the last one holds only the index, `project/design-system.json`, so the system never points at files that have not arrived. A publish keeps files it does not name, so when a component leaves Cinder, remove its paths with `null` entries.
+
+## Panels
+
+A plugin's panel is one self-contained document in a sandboxed frame, and `@lostgradient/cinder/panel` is the kit that makes it look like the application that hosts it. It exports `mountPanel(component, { target, props })`, which wraps Svelte's `mount` and defaults the target to the document body, and `PANEL_TOKEN_MAP`, the `[specKey, cinderToken]` pairs. Importing the entry loads Cinder's shared layers and an unlayered `:root` rule in which each `--cinder-*` token the MCP Apps spec maps reads `var(--color-…, <Cinder default>)`. The host's theme variables win where the host sends them, the fallback is Cinder's own value, and every other token keeps Cinder's default. The entry does not depend on `@modelcontextprotocol/ext-apps`: the panel applies the host's theme with that SDK, and the variables it writes are what the stylesheet reads. Dialogs, popovers and toasts stay inside the frame, focus does not flow between the host and the panel, and navigation, links, resizing and notifications go through the host's bridge. The [plugin SDK](../../packages/interborough-plugin/README.md) documents the same limits for a plugin author.
 
 ## Icons
 

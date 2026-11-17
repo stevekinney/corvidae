@@ -70,6 +70,7 @@ import {
   type QueryDefinition,
   type RegisteredWorkflowDefinition,
   type RetentionOverview,
+  type RetryFailedWorkflowResult,
   type ReviewListEntry,
   type ReviewListFilter,
   type RunConcurrencySnapshot,
@@ -303,6 +304,7 @@ import {
   runRetentionSweep,
   setNextRetentionSweepAt,
 } from './retention.ts';
+import { reactivateOneFailedWorkflow } from './retry-failed-workflow.ts';
 import {
   getReview as getReviewFromInternals,
   listReviews as listReviewsFromInternals,
@@ -2350,6 +2352,37 @@ export class Engine<
       options,
       this.#createLifecycleCallbacks(),
     );
+  }
+  /**
+   * Resume one failed run in place, from its checkpoint, on the revision it is pinned to: the
+   * operation that failed runs again, and every operation the checkpoint already holds is replayed
+   * from it, never run again. The run keeps its id. Answers `not-failed` for a run in any other
+   * status (a second retry of a run already running again included), `no-checkpoint` for a failed
+   * run with nothing to resume from, and `not-found` for an unknown id; none of them changes
+   * anything. Unlike {@link Engine.retryFailedAll}, it never starts a run again from its input.
+   * Throws `WorkflowRevisionUnavailableError` when the run's pinned revision is not registered in
+   * this process, and leaves the run failed.
+   *
+   * @example
+   * ```ts
+   * import { Engine } from '@lostgradient/weft';
+   *
+   * async function retry(engine: Engine, workflowId: string): Promise<boolean> {
+   *   const outcome = await engine.retryFailed(workflowId);
+   *   return outcome.status === 'retried';
+   * }
+   * void retry;
+   * ```
+   */
+  async retryFailed(workflowId: string): Promise<RetryFailedWorkflowResult> {
+    // Reactivation is engine-owned work, as `resume` is: the lease first, then the catalog.
+    assertLeaseHeldForEngineWork(getInternals(this));
+    if (!isWorkflowCatalogReady(this as unknown as Engine)) {
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    }
+    const outcome = await reactivateOneFailedWorkflow(getInternals(this), workflowId);
+    if (outcome.status === 'retried') await this.resume(workflowId);
+    return outcome;
   }
   async signalAll(
     filter: ListFilter,

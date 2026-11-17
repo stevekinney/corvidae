@@ -83,7 +83,7 @@ import { createToolbox, type ToolRequestContext } from 'armorer';
 import { describeDefinitionDrift, pinOf } from './agent-definition-pin';
 import { isTryAgentName } from './agent-try';
 import { type GoalAttemptTarget, registerGoalAttemptFence } from './goal-attempt-fence';
-import { bufferMissedFires } from './bureau-event-forwarders';
+import { bufferMissedFires, bufferWorkflowVersionMismatches } from './bureau-event-forwarders';
 import { ownerOrLocal } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import { createSessionTaintSeam, type SessionTaintSeam } from './session-taint-seam';
@@ -93,6 +93,7 @@ import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolver,
   DurableComposition,
+  PendingApprovalPersistHookFactory,
   RuntimeComposition,
   RuntimeCompositionDependencies,
   RuntimeCompositionOptions,
@@ -112,6 +113,7 @@ import {
   BUREAU_HOOK_TIER,
   registerGuardrailInvariants,
   registerIdentityInvariant,
+  registerTrailingOnStep,
 } from './bureau-invariant-hooks';
 import { hasPersistedScheduleMarker, recoveredMarkerSessionId } from './schedule-run-marker';
 
@@ -197,6 +199,9 @@ async function buildRuntimeComposition(
     string,
     { storedVersion: string; registeredVersion: string }
   >();
+
+  // COR-2097: the same observations, held for the Bureau's event feed — see DurableComposition.versionMismatches.
+  const versionMismatchEvents = bufferWorkflowVersionMismatches();
 
   // COR-1916: see RuntimeComposition.unrebuildableRecoveredRuns.
   const unrebuildableRecoveredRuns = new Set<string>();
@@ -381,6 +386,7 @@ async function buildRuntimeComposition(
           storedVersion: event.storedVersion,
           registeredVersion: event.registeredVersion,
         });
+        versionMismatchEvents.push(event);
         diagnose({
           level: 'warn',
           scope: 'recovery',
@@ -397,6 +403,7 @@ async function buildRuntimeComposition(
     durable = {
       ...createdEngine,
       missedFires: bufferMissedFires(createdEngine.engine),
+      versionMismatches: versionMismatchEvents,
       workflowLogs: logStore,
     };
 
@@ -720,8 +727,26 @@ async function buildRuntimeComposition(
   const composeHooks = (tiers: RunHookTiers): HookRegistry<OperativeHookMap> =>
     composeRunHooks(options.agentContributions, tiers);
 
+  // Wired by `createBureau` ahead of the catalog resolver, which every run rebuilt after a restart
+  // waits for, so a rebuilt run always reads it.
+  let pendingApprovalPersistHook: PendingApprovalPersistHookFactory | undefined;
+  /** {@link RuntimeComposition.withPendingApprovalPersist}. */
+  const withPendingApprovalPersist = (
+    hooks: HookRegistry<OperativeHookMap>,
+    runId: string,
+    sessionId: string,
+  ): HookRegistry<OperativeHookMap> =>
+    pendingApprovalPersistHook === undefined
+      ? hooks
+      : registerTrailingOnStep(
+          hooks,
+          'bureau:pending-approval-persist',
+          pendingApprovalPersistHook(runId, sessionId),
+        );
+
   const core: CompositionCore = {
     options,
+    withPendingApprovalPersist,
     dependencies,
     maximumSteps,
     systemPrompt,
@@ -1337,6 +1362,10 @@ async function buildRuntimeComposition(
       catalogAgentRunOptionsResolver = resolver;
       if (resolver !== undefined) openCatalogResolverGate();
     },
+    setPendingApprovalPersistHook(factory) {
+      pendingApprovalPersistHook = factory;
+    },
+    withPendingApprovalPersist,
     abandonCatalogAgentRunOptionsResolver(reason) {
       if (dependencies.awaitsCatalogAgentRunOptionsResolver !== true) return;
       catalogResolverAbandonedReason ??= reason;

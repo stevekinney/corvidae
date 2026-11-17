@@ -84,6 +84,15 @@ function expectAt(iso: string | null | undefined, moment: number): void {
   expect(at - moment).toBeLessThan(SLACK);
 }
 
+type CheckRow = {
+  kind: string;
+  checkId: string;
+  outcome: string;
+  timestamp: string;
+  runId: string;
+  score: number | null;
+};
+
 type ContextRow = {
   id: string;
   title: string | null;
@@ -371,6 +380,48 @@ describe('the sample world, part A', () => {
       origin: 'chat',
     });
     expect(contexts.map((context) => context.id)).not.toContain(SAMPLE_WORLD_SCRATCH_CHAT.threadId);
+  });
+
+  test('lists check results of every kind, across two days, with a second page behind Load more (COR-2114)', async () => {
+    const first = await call<{ checks: CheckRow[]; nextCursor: string | null }>(
+      'bureau.checks.list',
+      { limit: 50 },
+    );
+    expect(first.checks).toHaveLength(50);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await call<{ checks: CheckRow[]; nextCursor: string | null }>(
+      'bureau.checks.list',
+      { limit: 50, cursor: first.nextCursor },
+    );
+    expect(second.checks.length).toBeGreaterThan(0);
+    const every = [...first.checks, ...second.checks];
+    // Newest first, and no row twice.
+    const times = every.map((row) => Date.parse(row.timestamp));
+    expect(times).toEqual(times.toSorted((left, right) => right - left));
+    expect(
+      new Set(every.map((row) => `${row.kind}|${row.runId}|${row.checkId}|${row.timestamp}`)),
+    ).toHaveProperty('size', every.length);
+    expect(new Set(every.map((row) => row.kind))).toEqual(
+      new Set([
+        'goal.attempt.validated',
+        'run.guardrail',
+        'run.tripwire',
+        'scorer.recorded',
+        'session.tainted',
+      ]),
+    );
+    // A goal check that was met and one that was not, a block, a tripwire, a scorer with a score, one
+    // that could not check, and a flagged chat.
+    const outcomes = new Set(every.map((row) => row.outcome));
+    for (const outcome of ['pass', 'fail', 'block', 'tripwire', 'error', 'tainted']) {
+      expect(outcomes, outcome).toContain(outcome);
+    }
+    expect(every.find((row) => row.kind === 'scorer.recorded' && row.score !== null)).toBeDefined();
+    // Two days, in the viewer's zone the story is told in.
+    const days = new Set(every.map((row) => new Date(row.timestamp).toISOString().slice(0, 10)));
+    expect(days.size).toBeGreaterThanOrEqual(2);
+    // No message, and no flagged text, on any row.
+    expect(JSON.stringify(every)).not.toContain('said ');
   });
 
   test('leaves the audit entries of the Nov 2 story, each at its moment', async () => {

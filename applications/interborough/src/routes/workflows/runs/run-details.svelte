@@ -15,7 +15,6 @@
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
-  import { viewerTimeZone } from '../../../lib/format/clock.ts';
   import { goalPath } from '../../../lib/identifier-paths.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
@@ -50,10 +49,9 @@
     /** The workflow a run of a workflow file belongs to, from the Bureau's record of it. */
     recordWorkflow?: string | undefined;
     workflowOrigin?: Extract<WorkflowFileRun['origin'], { readonly kind: 'agent-run' }> | null;
-    /** When the run started and last changed, in milliseconds. */
+    /** When the run started, in milliseconds. */
     startedAt?: number | undefined;
-    updatedAt?: number | undefined;
-    /** Whether the run is over, so its time is the time it took. */
+    /** Whether the run is over, which says what its Related runs are. */
     over?: boolean;
     /** Which version the run ran and whether it is the workflow's current one, when read (COR-2424). */
     versionStanding?: VersionStanding | undefined;
@@ -61,6 +59,10 @@
     schedule?: BureauSchedule | undefined;
     /** How many occurrences that schedule missed and has not fired since. */
     missedSince?: number | undefined;
+    /** The origin the Bureau recorded for a workflow file's run, which has no task (COR-2424). */
+    recordOrigin?: object | null | undefined;
+    /** Who is viewing the page: their own run reads "You" in Started by. */
+    viewer?: string | null | undefined;
   }
 
   let {
@@ -73,11 +75,12 @@
     recordWorkflow,
     workflowOrigin,
     startedAt,
-    updatedAt,
     over = false,
     versionStanding,
     schedule,
     missedSince,
+    recordOrigin = undefined,
+    viewer = undefined,
   }: RunDetailsProps = $props();
 
   const principal = getPrincipalStore();
@@ -160,7 +163,8 @@
     if (goal !== undefined) {
       list.push({ id: 'goal', term: RUN_DETAIL_COPY.facts.goal, definition: goalLink });
     }
-    if (workflowType !== undefined) {
+    // A goal's attempt names its goal and its agent; the workflow behind it is not a fact (row 55h).
+    if (workflowType !== undefined && goal === undefined) {
       list.push({ id: 'workflow', term: RUN_PAGE_COPY.facts.workflow, definition: workflowLink });
     }
     const agentName = task?.agentName ?? goal?.agentName;
@@ -183,27 +187,8 @@
       term: RUN_PAGE_COPY.facts.runId,
       definition: { type: 'identifier', value: runId, visibleCharacters: 24 },
     });
-    if (startedAt !== undefined) {
-      list.push({
-        id: 'started',
-        term: RUN_PAGE_COPY.facts.started,
-        definition: { type: 'timestamp', value: startedAt, timeZone: viewerTimeZone() },
-      });
-    }
-    if (updatedAt !== undefined && over) {
-      list.push({
-        id: 'updated',
-        term: RUN_PAGE_COPY.facts.updated,
-        definition: { type: 'timestamp', value: updatedAt, timeZone: viewerTimeZone() },
-      });
-    }
-    if (startedAt !== undefined && updatedAt !== undefined && over) {
-      list.push({
-        id: 'took',
-        term: RUN_PAGE_COPY.facts.took,
-        definition: durationWords(Math.max(0, updatedAt - startedAt)),
-      });
-    }
+    // When the run started and how long it took are said once, in the header's status line, and the
+    // rail does not say them again (rows 54j, 54p, 55d, 55m list its facts without them).
     if (showDeadline && deadlineRemaining !== null) {
       list.push({
         id: 'deadline',
@@ -217,7 +202,9 @@
     if (workflow !== undefined || versionStanding !== undefined) {
       list.push({ id: 'version', term: RUN_PAGE_COPY.facts.version, definition: version });
     }
-    if (workflow !== undefined) {
+    // An instance of a workflow file names its version above, which is the whole of what the rail
+    // says about it (rows 54p, 55d); the revision is for the runs that have no such version.
+    if (workflow !== undefined && versionStanding === undefined) {
       list.push({ id: 'revision', term: RUN_PAGE_COPY.facts.revision, definition: revision });
     }
     if (finalizer?.tooltip !== undefined) {
@@ -249,7 +236,18 @@
     </span>
   {:else}
     <ol class="ib-run-lineage" data-testid="run-lineage">
-      <RunLineage {runId} {task} {goal} {chat} {schedule} />
+      <RunLineage
+        {runId}
+        {task}
+        {goal}
+        {chat}
+        {schedule}
+        {recordOrigin}
+        {viewer}
+        startedRun={workflowType === undefined || startedAt === undefined
+          ? undefined
+          : { title: workflowTypeName(workflowType), startedAt }}
+      />
     </ol>
   {/if}
 {/snippet}
@@ -331,9 +329,18 @@
   <h2 id="ib-run-details" class="ib-run__heading-2">{RUN_PAGE_COPY.detailsHeading}</h2>
   <DescriptionList {items} variant="default" />
   {#if engine !== undefined && workflow !== undefined}
-    <RunTags client={engine.client} {workflow} {tagGate} />
+    <!-- A run a schedule started has no Tags row (row 55m). -->
+    {#if schedule === undefined}
+      <RunTags client={engine.client} {workflow} {tagGate} />
+    {/if}
     <!-- The goal's other attempts and the schedule's last run are said inside the engine's one Related runs. -->
-    <RunRelated client={engine.client} {workflow} extra={relatedExtra} hasExtra={relatedHasExtra} />
+    <RunRelated
+      client={engine.client}
+      {workflow}
+      extra={relatedExtra}
+      hasExtra={relatedHasExtra}
+      {over}
+    />
     <RunLogs client={engine.client} workflowId={workflow.id} />
   {:else}
     <RunRelatedRuns {runId} {goal} {schedule} {missedSince} {startedAt} />

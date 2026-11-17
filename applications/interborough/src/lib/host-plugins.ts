@@ -141,12 +141,12 @@ export function didNotLoadCount(snapshot: PluginsSnapshot): number {
 /**
  * How many plugins need attention after a startup with problems: when any plugin did not load, every
  * plugin that has a problem to fix (one waiting for a secret beside one that was skipped) and every
- * folder it could not load a plugin from. It is the number of plugins the Plugins page lists
- * problems for, so the banner and the list agree. A startup where nothing failed to load has none:
- * a plugin that only waits for its key is not a problem startup (`didNotLoadCount`). A plugin whose
- * only problem is a changed panel is left out: its panel is still served and nothing it adds is
+ * folder it could not load a plugin from. A startup where nothing failed to load has none: a plugin
+ * that only waits for its key is not a problem startup (`didNotLoadCount`). A plugin whose only
+ * problem is a changed panel is left out: its panel is still served and nothing it adds is
  * unavailable, so the banner's "show as unavailable" would be wrong about it (COR-2210). Its card
- * still shows on the Plugins page.
+ * still shows on the Plugins page, so that page can list one more plugin with a card than the
+ * banner counts: the two agree except for a plugin whose only problem is `panel-changed`.
  */
 export function needAttentionCount(snapshot: PluginsSnapshot): number {
   if (didNotLoadCount(snapshot) === 0) return 0;

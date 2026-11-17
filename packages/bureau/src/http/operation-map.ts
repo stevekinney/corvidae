@@ -190,6 +190,7 @@ export const OPERATION_MAP = {
   'bureau.workflows.runs.list': { workspaceClass: 'private-owned', member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { workspaceClass: 'private-owned', member: 'workflows.getRun' },
   'bureau.workflows.runs.cancel': { workspaceClass: 'private-owned', member: 'workflows.cancel' },
+  'bureau.workflows.runs.retry': { workspaceClass: 'private-owned', member: 'workflows.retryRun' },
   'bureau.workflows.runs.history': {
     workspaceClass: 'private-owned',
     member: 'workflows.historyRuns',
@@ -221,6 +222,15 @@ export const OPERATION_MAP = {
     member: 'memory.releaseQuarantine',
   },
   'bureau.memory.export': { workspaceClass: 'private-owned', member: 'memory.export' },
+  // COR-2188: the deployment's embedding, guarded by the settings scopes, so an administrator's.
+  'bureau.memory.embedding': {
+    workspaceClass: 'administrator-shared',
+    member: 'memory.embedding.status',
+  },
+  'bureau.memory.embedding.cancel': {
+    workspaceClass: 'administrator-shared',
+    member: 'memory.embedding.cancel',
+  },
 
   'bureau.assets.get': { workspaceClass: 'explicit-share', member: 'assets.inspect' },
   'bureau.assets.uploads.create': { workspaceClass: 'private-owned', member: 'assets.beginUpload' },
@@ -232,6 +242,11 @@ export const OPERATION_MAP = {
   'bureau.assets.uploads.abort': { workspaceClass: 'private-owned', member: 'assets.abortUpload' },
 
   'bureau.audit.query': { workspaceClass: 'private-owned', member: 'audit.query' },
+  // COR-2113: check results across runs and goals, composed from the audit trail and the goal store.
+  'bureau.checks.list': {
+    workspaceClass: 'private-owned',
+    exempt: 'composed from the audit trail and the goal store',
+  },
 
   'bureau.notifications.list': { workspaceClass: 'private-owned', member: 'notifications.list' },
   'bureau.notifications.markread': {

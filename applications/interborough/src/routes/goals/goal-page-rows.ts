@@ -19,10 +19,11 @@ import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal } from '../../lib/bureau-goals.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import type { TaskView } from '../../lib/bureau-tasks.ts';
+import { checkText } from '../../lib/check-text.ts';
 import { clockTime } from '../../lib/format/clock.ts';
 import { goalPath } from '../../lib/identifier-paths.ts';
 import { durationWords, waitedWords } from '../workflows/runs/run-rows.ts';
-import { checkText, goalListWord } from './goal-rows.ts';
+import { goalListWord } from './goal-rows.ts';
 
 const copy = GOALS_COPY.detail;
 
@@ -212,6 +213,8 @@ export type AttemptRow = {
   readonly runId: string;
   /** The attempt's number, counting from 1. */
   readonly number: number;
+  /** The attempt's `attemptIndex`, counting from 0, which its verdict is read by. */
+  readonly attemptIndex: number;
   /** "Attempt 3". */
   readonly title: string;
   readonly word: StatusDotWordLabel;
@@ -225,8 +228,15 @@ export type AttemptRow = {
  * waits on, when it does; only that attempt's run is read for it.
  */
 export function attemptRows(
-  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt'>,
-  context: Omit<AttemptLineContext, 'wait'> & { readonly liveWait: AttemptWait | undefined },
+  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt' | 'agentName'>,
+  context: Omit<AttemptLineContext, 'wait'> & {
+    readonly liveWait: AttemptWait | undefined;
+    /**
+     * The name an agent goes by on screen, for an attempt that ran as another agent than the goal's
+     * current one. Omitted, the agent's identifier is said as it is.
+     */
+    readonly agentLabel?: (agentName: string) => string;
+  },
 ): AttemptRow[] {
   return goal.attempts
     .toSorted((left, right) => right.attemptIndex - left.attemptIndex)
@@ -239,10 +249,20 @@ export function attemptRows(
         id: attempt.attemptId,
         runId: attempt.runId,
         number,
+        attemptIndex: attempt.attemptIndex,
         title: copy.attemptTitle(number),
         word: attemptWord(attempt, wait),
         startedAt: instant(attempt.startedAt),
-        lineTwo: attemptLineTwo(attempt, { ...context, wait, agentEndedAt }),
+        // An attempt that ran as another agent than the goal's now says its own.
+        lineTwo: attemptLineTwo(attempt, {
+          ...context,
+          agent:
+            attempt.agentName === undefined || attempt.agentName === goal.agentName
+              ? context.agent
+              : (context.agentLabel?.(attempt.agentName) ?? attempt.agentName),
+          wait,
+          agentEndedAt,
+        }),
       };
     });
 }
@@ -350,7 +370,12 @@ export function goalNote(
 }
 
 /** One fact of the Details panel beside the attempts. */
-export type GoalFact = { readonly term: string; readonly definition: string };
+export type GoalFact = {
+  readonly term: string;
+  readonly definition: string;
+  /** A muted line under the definition. */
+  readonly note?: string;
+};
 
 /**
  * The Details panel: the check, the agent, the attempt limit, when it stops, and when it was made
@@ -358,7 +383,7 @@ export type GoalFact = { readonly term: string; readonly definition: string };
  * "Asked" (`goal-asked.svelte`), for the owner whose read carries it.
  */
 export function goalFacts(
-  goal: Pick<Goal, 'validator' | 'bounds' | 'createdAt' | 'owner'>,
+  goal: Pick<Goal, 'validator' | 'validatorConfiguration' | 'bounds' | 'createdAt' | 'owner'>,
   context: {
     readonly agent: string;
     readonly zone: string;
@@ -369,7 +394,12 @@ export function goalFacts(
   const created = instant(goal.createdAt);
   const by = context.viewer === goal.owner ? copy.createdByYou : goal.owner;
   return [
-    { term: copy.checkFact, definition: checkText(goal.validator.name) },
+    {
+      term: copy.checkFact,
+      definition: checkText(goal.validator.name, goal.validatorConfiguration),
+      // The validator by the exact name and version it holds now, which the check's words stand for.
+      note: copy.validatorValue(goal.validator),
+    },
     { term: copy.agentFact, definition: context.agent },
     { term: copy.limitFact, definition: copy.attemptLimit(goal.bounds.maximumAttempts) },
     { term: copy.stopsFact, definition: copy.stops },

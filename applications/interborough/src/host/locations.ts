@@ -5,11 +5,17 @@ import { DEFAULT_SOURCE_PRECEDENCE } from '@lostgradient/bureau/skills';
 import type {
   AgentSource,
   DirectorySourceOptions,
+  GuardrailSource,
+  ValidatorSource,
   WorkflowSource,
 } from '@lostgradient/bureau/sources';
 import {
   agentFileDirectory,
   agentObjectSource,
+  guardrailFileDirectory,
+  guardrailObjectSource,
+  validatorFileDirectory,
+  validatorObjectSource,
   workflowFileDirectory,
   workflowObjectSource,
 } from '@lostgradient/bureau/sources';
@@ -123,6 +129,18 @@ export type ContentKind = {
     content: ContentLocation,
     directory: LocalDirectoryOptions,
   ) => WorkflowSource;
+  /** The source of the owner's validator files at `content` (COR-2119). */
+  readonly createValidatorSource: (
+    bungalow: Bungalow,
+    content: ContentLocation,
+    directory: LocalDirectoryOptions,
+  ) => ValidatorSource;
+  /** The source of the owner's guardrail files at `content` (COR-2120). */
+  readonly createGuardrailSource: (
+    bungalow: Bungalow,
+    content: ContentLocation,
+    directory: LocalDirectoryOptions,
+  ) => GuardrailSource;
   /** The location as a person reads it. */
   readonly describe: (content: ContentLocation) => string;
   /** The directory on this machine that holds the content, or `undefined` when it is not in one. */
@@ -208,6 +226,10 @@ export const DEFAULT_CONTENT_KINDS: ContentKinds = {
       agentFileDirectory(directoryPath(content), { tools, ...directoryOptionsOf(directory) }),
     createWorkflowSource: (_bungalow, content, directory) =>
       workflowFileDirectory(directoryPath(content), directoryOptionsOf(directory)),
+    createValidatorSource: (_bungalow, content, directory) =>
+      validatorFileDirectory(directoryPath(content), directoryOptionsOf(directory)),
+    createGuardrailSource: (_bungalow, content, directory) =>
+      guardrailFileDirectory(directoryPath(content), directoryOptionsOf(directory)),
     describe: directoryPath,
     localDirectory: directoryPath,
   },
@@ -220,6 +242,16 @@ export const DEFAULT_CONTENT_KINDS: ContentKinds = {
       }),
     createWorkflowSource: (bungalow, content) =>
       workflowObjectSource(bucketOf(content), {
+        client: requireClient(bungalow),
+        pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
+      }),
+    createValidatorSource: (bungalow, content) =>
+      validatorObjectSource(bucketOf(content), {
+        client: requireClient(bungalow),
+        pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
+      }),
+    createGuardrailSource: (bungalow, content) =>
+      guardrailObjectSource(bucketOf(content), {
         client: requireClient(bungalow),
         pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
       }),
@@ -321,6 +353,12 @@ export type HostPathsReport = {
    * know the public origin, so the host says.
    */
   readonly a2aDirectoryUrl: string;
+  /**
+   * COR-2171 — where a trigger that receives is sent its deliveries, before the workflow's
+   * identifier: `<origin>/triggers/`, under the public origin when the operator set one (COR-2169),
+   * else the host's own, as for {@link a2aDirectoryUrl}.
+   */
+  readonly triggersUrl: string;
 };
 
 /**
@@ -339,7 +377,7 @@ export function hostPathsReport(
   >,
   content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
   providers: readonly { readonly name: string; readonly secretKey: string }[],
-  a2aDirectoryUrl: string,
+  addresses: { readonly a2aDirectoryUrl: string; readonly triggersUrl: string },
   kinds: { readonly database?: DatabaseKinds; readonly content?: ContentKinds } = {},
 ): HostPathsReport {
   return {
@@ -353,7 +391,8 @@ export function hostPathsReport(
       name,
       secretFile: `workspace:${bungalow.workspaceId}/${secretKey}`,
     })),
-    a2aDirectoryUrl,
+    a2aDirectoryUrl: addresses.a2aDirectoryUrl,
+    triggersUrl: addresses.triggersUrl,
   };
 }
 
@@ -446,6 +485,26 @@ export function createPluginSkillSource(plugin: string, content: URL): SkillSour
     precedence: DEFAULT_SOURCE_PRECEDENCE.plugin,
     plugin,
   };
+}
+
+/** The source of the owner's guardrail files at `content`: a directory, or a bucket prefix polled for changes. */
+export function createGuardrailSource(
+  bungalow: Bungalow,
+  content: ContentLocation,
+  directory: LocalDirectoryOptions = {},
+  kinds: ContentKinds = DEFAULT_CONTENT_KINDS,
+): GuardrailSource {
+  return contentKindOf(content, kinds).createGuardrailSource(bungalow, content, directory);
+}
+
+/** The source of the owner's validator files at `content`: a directory, or a bucket prefix polled for changes. */
+export function createValidatorSource(
+  bungalow: Bungalow,
+  content: ContentLocation,
+  directory: LocalDirectoryOptions = {},
+  kinds: ContentKinds = DEFAULT_CONTENT_KINDS,
+): ValidatorSource {
+  return contentKindOf(content, kinds).createValidatorSource(bungalow, content, directory);
 }
 
 /** The source of workflow definitions at `content`: a directory, or a bucket prefix polled for changes. */

@@ -26,12 +26,17 @@
   font-size: var(--cinder-text-base);
 }
 
+/* The column clips what overflows it but is never a scroll container: the phone's tab bar draws its
+ * focus-ring room a few pixels past the column's bottom, and a hidden-overflow column could then be
+ * scrolled by those pixels when a focus or `scrollIntoView` reached for an element near the bottom,
+ * lifting the whole page under the tab bar. `clip` cuts the same overflow and has no scroll offset
+ * to take (COR-2327). The outlet below is the one scrolling region. */
 .weft-shell-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
 }
 
 /* The outlet is the one place a page is padded: a route adds none of its own, so padding never
@@ -240,13 +245,16 @@
 .weft-shell-topbar__trail {
   flex: 1 1 0;
   min-width: 0;
-  /* The back link on a phone is painted as tall as its text and reaches 44px through a hit area
-   * that takes no layout, so the clip below must hold that whole area: the trail is a touch target
-   * tall, with the breadcrumbs centered in it (the bar is taller still, so nothing moves). */
+  /* The back link and the title switcher on a phone are painted as tall as their text and reach
+   * 44px through hit areas that take no layout. The trail is a touch target tall, with the
+   * breadcrumbs centered in it (the bar is taller still, so nothing moves), and it clips only
+   * sideways: the switcher sits a little above the trail's centre, and a vertical clip cut the top
+   * of its hit area (COR-2327 B2). `clip`, unlike `hidden`, leaves the other axis visible. */
   display: grid;
   align-content: center;
   min-block-size: var(--cinder-touch-target-min);
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   font-size: var(--cinder-text-sm);
   white-space: nowrap;
 }
@@ -357,6 +365,15 @@
   .weft-shell-outlet {
     --weft-outlet-gutter: var(--cinder-space-4);
     padding-block-start: var(--cinder-space-3);
+  }
+
+  /* A conversation insets its own column (`chat.css`: the header, the transcript, the reminder and
+   * the composer share Chat's narrow inset, --cinder-space-3, from its container query). On a phone
+   * the outlet gives it only what is left of the phone gutter, so the column's shared edge stands
+   * --cinder-space-4 from the screen, as on every other phone page, and the composer gains the
+   * width (COR-2327). */
+  .weft-shell-outlet:has(.weft-chat-route) {
+    --weft-outlet-gutter: calc(var(--cinder-space-4) - var(--cinder-space-3));
   }
 }
 

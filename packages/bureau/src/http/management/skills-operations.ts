@@ -19,7 +19,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module skills-operations
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { readInstructions, type SkillArtifactLoader } from '../../skills/client/artifact-loader.ts';

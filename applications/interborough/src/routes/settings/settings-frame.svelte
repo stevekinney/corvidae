@@ -44,6 +44,13 @@
     /** Names the page for tests and the responsive specification. */
     page: string;
     /**
+     * How wide the section's column is. `default` is the reading width every section shares (46rem).
+     * `wide` is for a section that draws a list beside a detail (64rem), and, on a wide desktop, puts
+     * the restart notice in the same column, so the notice, the heading and the content share one
+     * inline start and one inline end.
+     */
+    measure?: 'default' | 'wide';
+    /**
      * The section's settings. It draws straight into the page's grid, so it places what it draws
      * in the grid areas `banner` (a sticky notice over the whole page) and `content` (the reading
      * column); a section saves each setting as it is left. `setHeaderStatus` puts a status at the
@@ -60,7 +67,7 @@
     >;
   }
 
-  let { title, intro, page, body }: Props = $props();
+  let { title, intro, page, measure = 'default', body }: Props = $props();
 
   /** Whether the section navigation sits beside the content: 640px and wider. */
   const wide = new MediaQuery('(min-width: 40rem)', true);
@@ -147,7 +154,12 @@
   </span>
 {/snippet}
 
-<section class="weft-settings" aria-label={title} data-page={page}>
+<section
+  class="weft-settings"
+  aria-label={title}
+  data-page={page}
+  data-measure={measure === 'wide' ? 'wide' : undefined}
+>
   <div class="weft-settings__nav"><SettingsSectionNav /></div>
   <div class="weft-settings__title-area">
     <PageHeader
@@ -225,6 +237,11 @@
   .weft-settings {
     /* One reading width for every section, so the column ends at the same edge on each of them. */
     --ib-settings-content-width: 46rem;
+    /* The measure the heading area and the content share. The Plugins page is a list beside a
+       detail, so it takes a wider one: below the cap the column is the room the shell leaves, and
+       the detail pane's content box reaches the 30rem at which a setting row sits side by side
+       (about 52rem at 1280px, less the 17.5rem list, the pane's own inset and the divider). */
+    --ib-settings-measure: var(--ib-settings-content-width);
     display: grid;
     grid-template-columns: 170px minmax(0, 1fr);
     grid-template-areas:
@@ -237,6 +254,25 @@
     align-items: start;
   }
 
+  /* A section asks for the wide measure with the frame's `measure` property; the frame does not know
+     a section by name. */
+  .weft-settings[data-measure='wide'] {
+    --ib-settings-measure: 64rem;
+  }
+
+  /* Where the cap binds (a wide desktop) the restart notice takes the content column too, under the
+     empty cell above the navigation, and the same cap, so its two edges are the heading's and the
+     content's. Below this the notice spans the page, over the navigation, as on every section. */
+  @media (min-width: 90rem) {
+    .weft-settings[data-measure='wide'] {
+      --ib-settings-banner-measure: var(--ib-settings-measure);
+      grid-template-areas:
+        '. banner'
+        'nav header'
+        'nav content';
+    }
+  }
+
   .weft-settings__nav {
     grid-area: nav;
     min-inline-size: 0;
@@ -244,7 +280,7 @@
 
   .weft-settings__title-area {
     grid-area: header;
-    max-inline-size: var(--ib-settings-content-width);
+    max-inline-size: var(--ib-settings-measure);
     min-inline-size: 0;
     margin-block-end: var(--cinder-space-6);
   }
@@ -254,7 +290,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-    max-inline-size: var(--ib-settings-content-width);
+    max-inline-size: var(--ib-settings-measure);
     min-inline-size: 0;
   }
 

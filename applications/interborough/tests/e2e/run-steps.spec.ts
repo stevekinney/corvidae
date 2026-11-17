@@ -189,6 +189,8 @@ test('a checkpoint opens as a replay with an Alert and no colored edge', async (
   if (withCheckpoints === undefined) throw new Error('No order-processing run keeps checkpoints.');
 
   await page.goto(`/runs/${encodeURIComponent(withCheckpoints)}`);
+  // Checkpoints are in How it ran's Events and logs tab (COR-2424).
+  await page.getByRole('tab', { name: 'Events and logs' }).click();
   await page.getByRole('button', { name: 'Checkpoints' }).click();
   const list = page.locator('.weft-checkpoints-tab__list');
   await expect(list).toBeVisible();

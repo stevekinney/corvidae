@@ -10,7 +10,7 @@
  * @module tasks-operations
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { TaskListingTokenError } from '../../task-list-snapshots.ts';

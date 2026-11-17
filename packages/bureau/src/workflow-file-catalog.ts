@@ -65,6 +65,8 @@ export interface WorkflowListing {
   readonly inputSchema: Readonly<Record<string, unknown>> | null;
   /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none or is invalid. */
   readonly outputSchema: Readonly<Record<string, unknown>> | null;
+  /** The name of what an instance produces (COR-2424), or `null` when the file gives none or is invalid. */
+  readonly outputName: string | null;
   /** The `kind` of the file's trigger, for a ready file, and `null` for an invalid one. */
   readonly triggerKind: string | null;
   /**
@@ -399,6 +401,7 @@ export function createWorkflowFileCatalog(
       paused: entry.file?.paused ?? false,
       inputSchema: entry.file?.inputSchema ?? null,
       outputSchema: entry.file?.outputSchema ?? null,
+      outputName: entry.file?.outputName ?? null,
       triggerKind: entry.file?.document.trigger.kind ?? null,
       trigger: entry.file?.trigger ?? null,
       steps: entry.file?.steps ?? null,
@@ -522,6 +525,7 @@ export function createWorkflowFileCatalog(
           // Pausing changes nothing else in the file: schemas, titles, and the trigger as written.
           ...(parsed.file.inputSchema === null ? {} : { inputSchema: parsed.file.inputSchema }),
           ...(parsed.file.outputSchema === null ? {} : { outputSchema: parsed.file.outputSchema }),
+          ...(parsed.file.outputName === null ? {} : { outputName: parsed.file.outputName }),
           trigger: parsed.file.trigger,
           steps: parsed.file.steps,
         });

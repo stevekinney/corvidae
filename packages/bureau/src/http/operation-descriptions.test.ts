@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { findUndescribedOperations } from '@lostgradient/weft';
+import { findUndescribedOperations } from '@lostgradient/backchannel';
 
 import { BUREAU_HANDLER_OPERATIONS } from './create-bureau-handler.ts';
 

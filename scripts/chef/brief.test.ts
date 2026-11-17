@@ -10,6 +10,7 @@ import {
   designLinks,
   designRowIds,
   pathsIn,
+  pushRule,
   renderBrief,
   rowCarriage,
   run,
@@ -283,6 +284,18 @@ describe('charter rules', () => {
     expect(rules).toContain('you do not merge');
   });
 
+  test('tell a worker to push its own branch after every commit, never to main', () => {
+    const rule = charterRules.find((candidate) => candidate.startsWith('**Push:**')) ?? '';
+    expect(rule).toContain('after every commit, push your own branch to origin');
+    expect(rule).toContain('never to `main`');
+    expect(rule).toContain('do not wait for the focused checks before that push');
+    expect(rule).toContain('still gate ready-for-review');
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
+      expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
+    }
+  });
+
   // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a
   // charter rule and the phrase of the governing rule it restates, in AGENTS.md or in the execution
   // record's remaining coordinator text, so a change to either side that drops the rule fails here.
@@ -296,9 +309,9 @@ describe('charter rules', () => {
     ['`bun scripts/chef/focused-checks.ts`', agents, '`bun scripts/chef/focused-checks.ts`'],
     ['is named `*.integration.test.ts`', agents, 'is named `*.integration.test.ts`'],
     [
-      'bun scripts/affected-tests.ts run --isolated',
+      'local checks run only direct tests (owner decision, 2026-11-16)',
       agents,
-      'bun scripts/affected-tests.ts run --isolated',
+      'local checks run only direct tests (owner decision, 2026-11-16)',
     ],
     ['the full suite only for a one-way door', agents, 'to a one-way door'],
     ['delivery runs no gate', agents, 'delivery runs no gate'],
@@ -361,7 +374,7 @@ describe('charter rules', () => {
       'design-review capture',
       '`validate` or `harden` on this host',
       '`gh workflow run main.yml --ref <branch>`',
-      'wait for it in a background command',
+      'do not wait on it',
       'read the failing test names',
       "download the failing shard's artifact",
     ])
@@ -630,6 +643,69 @@ describe('run', () => {
       scratches.push(parsed.scratch);
     }
     expect(scratches[0]).not.toBe(scratches[1]);
+  });
+
+  test('several IDs write one batch brief: each issue under its own heading, in order, charter once', async () => {
+    const blocker = (identifier: string) => ({
+      type: 'blocks',
+      issue: {
+        identifier,
+        title: `Blocker ${identifier}`,
+        state: { name: 'Ready', type: 'unstarted' },
+      },
+    });
+    const batchFetch: FetchLike = async (_url, init) => {
+      const { query, variables } = JSON.parse(init.body as string) as {
+        query: string;
+        variables: { id: string };
+      };
+      const second = variables.id === 'COR-8';
+      const data = query.includes('IssueRelations')
+        ? {
+            issue: {
+              id: `uuid-${variables.id}`,
+              identifier: variables.id,
+              relations: { nodes: [], pageInfo: { hasNextPage: false } },
+              inverseRelations: {
+                nodes: second ? [blocker('COR-7'), blocker('COR-5')] : [],
+                pageInfo: { hasNextPage: false },
+              },
+            },
+          }
+        : query.includes('IssueComments')
+          ? {
+              issue: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+            }
+          : {
+              issue: {
+                ...issue(description),
+                identifier: variables.id,
+                title: second ? 'Second thing' : 'Add the thing',
+              },
+            };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+    const result = await run(['COR-7', 'COR-8', '--out-dir', sandbox, '--json'], {
+      ...dependencies,
+      fetch: batchFetch,
+    });
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.output) as { path: string };
+    expect(parsed.path).toBe(join(sandbox, 'COR-7_COR-8.md'));
+    const text = readFileSync(parsed.path, 'utf8');
+    expect(text.indexOf('## COR-7: Add the thing')).toBeGreaterThan(-1);
+    expect(text.indexOf('## COR-8: Second thing')).toBeGreaterThan(text.indexOf('## COR-7:'));
+    expect(text.match(/### Acceptance criteria/g)).toHaveLength(2);
+    expect(text.match(/^## Charter rules$/gm)).toHaveLength(1);
+    // COR-7 is in the batch, so COR-8's blocker on it is cleared; COR-5 stays open.
+    expect(text).toContain('- COR-5 [Ready] Blocker COR-5');
+    expect(text).not.toContain('- COR-7 [Ready]');
+    for (const rule of charterRules) expect(text).toContain(rule);
+  });
+
+  test('a batch of repeated or malformed IDs is a UsageError', async () => {
+    expect(await rejectionOf(run(['COR-7', 'COR-7'], dependencies))).toBeInstanceOf(UsageError);
+    expect(await rejectionOf(run(['COR-7', 'nope'], dependencies))).toBeInstanceOf(UsageError);
   });
 
   test('a read-only --stdout brief creates and names no scratch directory', async () => {

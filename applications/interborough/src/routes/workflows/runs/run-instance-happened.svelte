@@ -6,15 +6,22 @@
    * why it failed under it and no banner above the page (row 14t). The entries are made from the
    * history the Bureau keeps of the instance (`run-instance.ts`).
    */
-  import { Badge, Collapsible, Section } from '@lostgradient/cinder';
+  import { Badge, Button, Collapsible, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { CircleX } from '@lucide/svelte';
+  import { CircleX, Play, RefreshCw } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
+  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import { failureHeading, type InstanceEntry, type InstanceProgress } from './run-instance.ts';
+  import {
+    failureHeading,
+    triesTookWords,
+    type InstanceEntry,
+    type InstanceProgress,
+  } from './run-instance.ts';
+  import { oneLine } from '../../../lib/one-line.ts';
   import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { durationWords } from './run-rows.ts';
 
@@ -31,6 +38,34 @@
     /** What kind of failure the engine says it was, and its stack, for an operator. */
     category?: WorkflowState['failureCategory'];
     errorStack?: string | undefined;
+    /** How long the failing step's tries took, in milliseconds, when the history says (row 55b). */
+    triesTook?: number | undefined;
+    /**
+     * The version a retry runs on, when Retry from this step is offered: the block then says what
+     * the retry keeps and runs again (row 55b).
+     */
+    retryVersion?: string | undefined;
+    /**
+     * The actions the block carries (row 14t): Retry from step N runs the step again, Run again sets
+     * up another run (not drawn while no provider is connected, because the header says why it is
+     * held), and Open step N opens the step in How it ran.
+     */
+    retry?:
+      | {
+          readonly onRetry: () => void;
+          readonly busy?: boolean | undefined;
+          readonly gate?: ScopeGate | undefined;
+        }
+      | undefined;
+    runAgain?:
+      | {
+          readonly href?: string | undefined;
+          readonly onRun?: (() => void) | undefined;
+          readonly blocked?: boolean | undefined;
+          readonly busy?: boolean | undefined;
+        }
+      | undefined;
+    onOpenStep?: (() => void) | undefined;
   }
 
   let {
@@ -41,11 +76,50 @@
     failure = undefined,
     category = undefined,
     errorStack = undefined,
+    triesTook = undefined,
+    retryVersion = undefined,
+    retry = undefined,
+    runAgain = undefined,
+    onOpenStep = undefined,
   }: RunInstanceHappenedProps = $props();
 
   const copy = RUN_DETAIL_COPY.instance;
+
+  // "Interborough tried 3 times in 3.4 s.", said after why it failed when the step was tried again.
+  const tried = $derived(
+    progress === undefined || progress.tries < 2
+      ? undefined
+      : copy.triedIn(
+          progress.tries,
+          triesTook === undefined ? undefined : triesTookWords(triesTook),
+        ),
+  );
+  const retryKeeps = $derived(
+    retryVersion === undefined || progress?.at === null || progress?.at === undefined
+      ? undefined
+      : copy.retryKeeps(progress.at, retryVersion),
+  );
+
+  // What the step said, in its own words and never the error's JSON (row 55b): "GitHub didn’t
+  // answer (HTTP 503)". The stack below says the rest.
+  const said = $derived(
+    failure === undefined || failure === ''
+      ? undefined
+      : oneLine(failure, { keepParenthetical: true }) || failure,
+  );
   const heading = $derived(progress === undefined ? undefined : failureHeading(progress));
+  const stepNumber = $derived(progress?.at ?? undefined);
+  // A cancellation is a person's doing; any other failure of a step is not (row 14t).
+  const notYourFault = $derived(category !== 'cancellation');
   const healthPath = TASK_COPY.list.loadFailed.healthPath;
+
+  function openLink(event: MouseEvent, path: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(path);
+  }
 
   function openHealth(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -88,19 +162,76 @@
       {#if category !== undefined}
         <p class="weft-overview-tab__failure-explanation">{failureCategoryExplanation(category)}</p>
       {/if}
-      {#if failure !== undefined && failure !== ''}
+      {#if said !== undefined}
         <p class="weft-overview-tab__failure-explanation">
           <strong>{copy.whyItFailed}.</strong>
-          {failure}
+          {said}{#if notYourFault}{` ${copy.notYourFault}`}{/if}{#if tried !== undefined}{` ${tried}`}{/if}
         </p>
+      {:else if tried !== undefined}
+        <p class="weft-overview-tab__failure-explanation">{tried}</p>
       {/if}
-      <p class="weft-overview-tab__failure-explanation">
-        {copy.checkHealth.before}<a href={router.href(healthPath)} onclick={openHealth}
-          >{copy.checkHealth.link}</a
+      <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>
+        {#if retryKeeps !== undefined}{`${retryKeeps} `}{/if}{copy.checkHealth.before}<a
+          href={router.href(healthPath)}
+          onclick={openHealth}>{copy.checkHealth.link}</a
         >{copy.checkHealth.after}
       </p>
+      {#if retry !== undefined || (runAgain !== undefined && runAgain.blocked !== true) || (onOpenStep !== undefined && stepNumber !== undefined)}
+        <div class="ib-run-happened__actions" data-run-failure-actions>
+          {#if retry !== undefined && stepNumber !== undefined}
+            {@const retrying = retry}
+            <Button
+              variant="primary"
+              size="sm"
+              label={copy.inBlock.retry(stepNumber)}
+              title={retrying.gate?.title}
+              disabled={retrying.gate?.disabled === true}
+              loading={retrying.busy === true}
+              onclick={() => retrying.onRetry()}
+            >
+              {#snippet leadingIcon()}<RefreshCw aria-hidden="true" size={14} />{/snippet}
+            </Button>
+            {#if retryVersion !== undefined}
+              <span class="ib-run-happened__offset">{copy.inBlock.runsOn(retryVersion)}</span>
+            {/if}
+          {/if}
+          {#if runAgain !== undefined && runAgain.blocked !== true}
+            {@const again = runAgain}
+            {#if again.href !== undefined}
+              {@const path = again.href}
+              <Button
+                variant="secondary"
+                size="sm"
+                href={router.href(path)}
+                label={copy.inBlock.runAgain}
+                onclick={(event) => openLink(event, path)}
+              >
+                {#snippet leadingIcon()}<Play aria-hidden="true" size={14} />{/snippet}
+              </Button>
+            {:else}
+              <Button
+                variant="secondary"
+                size="sm"
+                label={copy.inBlock.runAgain}
+                loading={again.busy === true}
+                onclick={() => again.onRun?.()}
+              >
+                {#snippet leadingIcon()}<Play aria-hidden="true" size={14} />{/snippet}
+              </Button>
+            {/if}
+          {/if}
+          {#if onOpenStep !== undefined && stepNumber !== undefined}
+            <Button
+              variant="ghost-accent"
+              size="sm"
+              label={copy.inBlock.openStep(stepNumber)}
+              onclick={onOpenStep}
+            />
+          {/if}
+        </div>
+      {/if}
       {#if errorStack !== undefined && errorStack.length > 0}
-        <Collapsible variant="flat" trigger="Show full stack trace">
+        <Collapsible variant="flat" trigger={copy.inBlock.errorDetails}>
           <pre class="weft-send-tab__result">{errorStack}</pre>
         </Collapsible>
       {/if}

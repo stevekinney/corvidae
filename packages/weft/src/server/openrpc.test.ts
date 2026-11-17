@@ -14,20 +14,21 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { accessPolicyMetadataExamples } from './access-policy-metadata.test-support.ts';
-import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
-import type { ParameterizedAccessHint } from './operation-catalog/types.ts';
-import type { UnarySchemaOperationDefinition } from './operation-registry.ts';
-import { defineOperation } from './operation-registry.ts';
+import { type UnarySchemaOperationDefinition, defineOperation } from '@lostgradient/backchannel';
+import {
+  type ParameterizedAccessHint,
+  OpenRpcDocumentSchema,
+  createOperationRegistry,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
+import { accessPolicyMetadataExamples } from '@lostgradient/backchannel/testing';
 import { isRecord } from './protocol.test-support.ts';
 
 function makeOp(overrides: {
   readonly name: string;
   readonly inputSchema?: z.ZodObject;
   readonly outputSchema?: z.ZodType;
-  readonly access?: import('./authorization.ts').AccessPolicy;
+  readonly access?: import('@lostgradient/backchannel/internals').AccessPolicy;
   readonly discoverable?: boolean;
   readonly mcpExposable?: boolean;
   readonly mcpTool?: { readonly workflowType: string };

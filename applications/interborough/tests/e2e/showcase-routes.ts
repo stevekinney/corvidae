@@ -44,6 +44,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/runs': '/runs',
     '/runs/new': '/runs/new',
     '/runs/:run': `/runs/${encodeURIComponent(world.runs.done)}`,
+    '/checks': '/checks',
     '/schedules': '/schedules',
     '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${schedule}`,
@@ -68,8 +69,17 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',
+    // The showcase host loads no plugin that places a page, so the address is one nobody serves.
+    '/plugins/:plugin/*': '/plugins/nobody/overview',
   };
 }
+
+/**
+ * The routes the showcase host has no content for, so their address is never `ready` there: a
+ * plugin's page needs a plugin that places one, and the showcase's plugins are the real ones, which
+ * place none. `plugin-page.spec.ts` shows those pages, on a host with fixture plugins.
+ */
+export const SHOWCASE_ROUTES_WITHOUT_CONTENT: readonly string[] = ['/plugins/:plugin/*'];
 
 /**
  * Addresses of a route in another state, by `<pattern> (<state>)`: the sample world's other chats
@@ -101,6 +111,9 @@ export function showcaseVariants(world: SampleWorldRecords): Readonly<Record<str
     '/workflows/:workflow (runs tab)': `${workflow}?tab=runs`,
     '/workflows/:workflow (history tab)': `${workflow}?tab=history`,
     '/workflows/:workflow (can’t load)': `/workflows/${encodeURIComponent(world.workflows.orderRefund)}`,
+    // The Runs list narrowed (COR-2423, rows 05x, 52t, 52x): failed runs, and the runs goals made.
+    '/runs (failed)': '/runs?status=failed',
+    '/runs (started by goals)': '/runs?startedBy=goal',
     '/runs/:run (failed)': run(world.runs.failed),
     '/runs/:run (waiting on you)': run(world.runs.waiting),
     '/runs/:run (canceled)': run(world.runs.canceled),

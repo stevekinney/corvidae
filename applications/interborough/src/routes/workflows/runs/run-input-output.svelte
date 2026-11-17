@@ -59,6 +59,8 @@
      * workflow file, row 14t), so this section does not tell it a second time.
      */
     failureOnStep?: boolean;
+    /** The step a failed instance failed at, counted from one, which its Output card names (row 55c). */
+    failedAt?: number | undefined;
   }
 
   /** The reply is held to this many characters of text before Show all. */
@@ -76,6 +78,7 @@
     onShowRaw,
     showRaw = true,
     failureOnStep = false,
+    failedAt = undefined,
   }: RunInputOutputProps = $props();
 
   const copy = RUN_DETAIL_COPY.io;
@@ -108,12 +111,19 @@
       : messageInOfRun(task.id, thread.data),
   );
 
+  // A workflow still going says what it "will produce" (row 54p).
+  const workflowGoing = $derived.by(() => {
+    const status = workflow?.status ?? record?.status;
+    return status === 'pending' || status === 'running' || status === 'suspended';
+  });
   const description = $derived(
     task !== undefined
       ? scheduled
         ? copy.scheduleDescription
         : copy.chatDescription
-      : copy.workflowDescription,
+      : workflowGoing
+        ? copy.workflowDescriptionLive
+        : copy.workflowDescription,
   );
   // What stands in the reply's place: why a run that waits on a person has none yet, or that the
   // agent has not answered, or that it finished without a written answer.
@@ -206,7 +216,7 @@
     {/if}
 
     {#if task === undefined || showRaw}
-      <RunPayloadCards {workflow} {record} />
+      <RunPayloadCards {workflow} {record} {failedAt} />
     {/if}
 
     {#if workflow !== undefined && workflow.status === 'failed' && !failureOnStep}

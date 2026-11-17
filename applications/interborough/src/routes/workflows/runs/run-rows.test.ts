@@ -30,6 +30,7 @@ const chat = {
 
 const goal = {
   goalRunId: 'seeded-goal',
+  identity: { name: 'Seeded goal', version: '1' },
   agentName: 'assistant',
   bounds: { maximumAttempts: 1 },
   attempts: [
@@ -408,7 +409,11 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       title: 'Refund order 1234',
       href: '/chats/chat-1',
     });
-    expect(rowOf(ORIGINS.person)).toEqual({ kind: 'person', surface: 'palette' });
+    expect(rowOf(ORIGINS.person)).toEqual({
+      kind: 'person',
+      surface: 'palette',
+      principal: 'me',
+    });
     expect(rowOf(ORIGINS.schedule)).toMatchObject({
       kind: 'schedule',
       scheduleId: 'nightly',
@@ -435,7 +440,13 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       href: '/runs/wf-instance',
     });
     expect(rowOf(ORIGINS.system)).toEqual({ kind: 'system' });
-    expect(rowOf(ORIGINS.trigger)).toEqual({ kind: 'trigger' });
+    // COR-2171: which trigger, by its plugin, and the file whose trigger it is.
+    expect(rowOf(ORIGINS.trigger)).toEqual({
+      kind: 'trigger',
+      plugin: 'linear',
+      workflowId: 'sync',
+      href: '/workflows/sync',
+    });
   });
 
   test('is the recorded origin, not what the task’s chats and goals suggest', () => {
@@ -453,7 +464,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       goals: [],
       chats: [chat],
     });
-    expect(row?.origin).toEqual({ kind: 'person', surface: 'api' });
+    expect(row?.origin).toEqual({ kind: 'person', surface: 'api', principal: 'me' });
   });
 
   test('keeps a goal’s session from the goal list when the task’s origin names the goal', () => {

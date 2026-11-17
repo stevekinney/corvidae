@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import type { QueryClient } from '@tanstack/svelte-query';
 import {
   billingThreadWithPartialReply,
   ENDED_PARTIAL_REPLY,
@@ -22,7 +23,7 @@ import {
 } from '../../../fixtures/chat-states.ts';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
-import { createQueryClient } from '../../lib/query.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
@@ -172,7 +173,7 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
 describe('a chat waiting on an approval with no provider connected (19h)', () => {
   const messages = heldByPluginMessages();
 
-  test('keeps Approve and Deny enabled and says the agent continues once a provider is connected', async () => {
+  test('keeps Approve and Deny enabled, and leaves the Connect prompt to the blocked row alone (COR-2327 N4)', async () => {
     serve(messages, { hasKey: false, connected: false });
     const { container, findByRole } = mount();
 
@@ -181,11 +182,15 @@ describe('a chat waiting on an approval with no provider connected (19h)', () =>
     expect((approve as HTMLButtonElement).disabled).toBe(false);
     const deny = await findByRole('button', { name: 'Deny' });
     expect(deny.getAttribute('aria-disabled')).not.toBe('true');
+    // The composer's blocked row says Connect a model provider, with the way to connect one, so
+    // the approval does not say it again.
     await waitFor(() =>
-      expect(container.querySelector('.weft-chat-approval__provider-note')?.textContent).toBe(
-        'Tool runner continues once a provider is connected.',
-      ),
+      expect(
+        container.querySelector('[data-chat-composer-status="blocked"]')?.textContent,
+      ).toContain('Connect a model provider'),
     );
+    expect(container.querySelector('.weft-chat-approval__provider-note')).toBeNull();
+    expect(container.textContent).not.toContain('continues once a provider is connected');
   });
 
   test('says nothing about a provider when one is connected', async () => {
@@ -318,8 +323,204 @@ describe('an existing chat with no message yet (COR-2285 V1)', () => {
       return found;
     });
     expect(state.textContent).toContain('Connect a model provider');
+    // One person runs Interborough: there is no admin to wait for (COR-2327 N1).
+    expect(state.textContent).toContain(CHAT_COPY.composer.unconfiguredDescription);
+    expect(state.textContent).not.toContain('admin');
     expect(await findByRole('button', { name: 'Connect provider' })).not.toBeNull();
     expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+  });
+});
+
+describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
+  const withExamples = {
+    'bureau.agents.list': () => ({
+      agents: [
+        { ...RUNNER, description: 'Runs the tools you name.', examples: ['List the tools'] },
+        AGENT,
+      ],
+    }),
+  };
+
+  /** Serves the chat as `serve` does, with its history held until `release` is called. */
+  function serveHeld(messages: readonly Record<string, unknown>[], hasKey: boolean) {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const served = bureau(
+      {
+        'bureau.agents.list': withExamples['bureau.agents.list'],
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.contexts.window': () => ({
+          maxTokens: 200_000,
+          usedEstimated: 76_000,
+          usedReported: null,
+          categories: [],
+        }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+      },
+      (url) => {
+        if (url.endsWith('/host/providers')) return provider(hasKey);
+        if (url.endsWith('/messages')) {
+          return held.then(() => Response.json({ threadId: 'session-1', messages }));
+        }
+        if (!url.includes('/threads/')) return undefined;
+        return new Response(
+          `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+    return { ...served, release: () => release() };
+  }
+
+  /** Mounts the chat with a query client the test can read. */
+  function mountWithClient() {
+    const client = createQueryClient();
+    const view = render(QueryPage, {
+      props: {
+        page: ChatConversation,
+        pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+        client,
+      },
+    } as never);
+    return { ...view, client };
+  }
+
+  /**
+   * Waits until the page holds the agents (with their prompts) and the providers, so every empty
+   * state could show, and the transcript is drawn loading.
+   */
+  async function settledAround(client: QueryClient, container: HTMLElement) {
+    await waitFor(() => {
+      expect(client.getQueryState(queryKeys.agents.list())?.status).toBe('success');
+      expect(client.getQueryState(queryKeys.hostProviders())?.status).toBe('success');
+      expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull();
+    });
+  }
+
+  for (const hasKey of [true, false]) {
+    test(`shows the transcript loading, with no empty state and no prompt, while it is read (provider ${hasKey ? 'connected' : 'missing'})`, async () => {
+      const served = serveHeld(heldByPluginMessages(), hasKey);
+      const { container, queryByRole, findByRole, client } = mountWithClient();
+
+      await settledAround(client, container);
+      expect(container.querySelector('.chat-empty')).toBeNull();
+      expect(container.querySelector('[data-chat-availability="unconfigured"]')).toBeNull();
+      expect(container.textContent).not.toContain(CHAT_COPY.emptyTranscript.title);
+      expect(container.textContent).not.toContain('Connect a model provider');
+      expect(queryByRole('button', { name: 'List the tools' })).toBeNull();
+      expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+      // The editor stays, for what the person types while the chat is read.
+      expect(container.querySelector('textarea')).not.toBeNull();
+
+      served.release();
+
+      // The history arrives: the waiting approval is on screen, and the loading state is gone.
+      expect(await findByRole('button', { name: 'Approve' })).not.toBeNull();
+      await waitFor(() =>
+        expect(container.querySelector('[data-chat-availability="loading"]') === null).toBe(true),
+      );
+      expect(container.querySelector('.chat-empty')).toBeNull();
+      expect(served.calls.length).toBeGreaterThan(0);
+    });
+  }
+
+  test('a first read that fails says so with Reconnect, keeps the composer, and offers no prompt', async () => {
+    restore = bureau(
+      {
+        'bureau.agents.list': withExamples['bureau.agents.list'],
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.contexts.window': () => ({
+          maxTokens: 200_000,
+          usedEstimated: 76_000,
+          usedReported: null,
+          categories: [],
+        }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+      },
+      (url) => {
+        if (url.endsWith('/host/providers')) return provider(true);
+        // The thread cannot be read, in a way a retry cannot change: the session gives up at once.
+        if (url.includes('/threads/')) return new Response('', { status: 403 });
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole, client } = mountWithClient();
+
+    expect(await findByRole('button', { name: CHAT_COPY.disconnected.reconnect })).not.toBeNull();
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
+    );
+    // The read settled, though it failed: no skeleton behind the alert, and the composer stays.
+    expect(container.querySelector('[data-chat-availability="loading"]') === null).toBe(true);
+    expect(container.querySelector('textarea')).not.toBeNull();
+    // The chat may hold history the page could not read, so nothing offers to send a prompt.
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+  });
+
+  test('a first read that fails offers no prompt while it is tried again, and offers them once a retry reads the empty thread', async () => {
+    let failedReads = 0;
+    restore = bureau(
+      {
+        'bureau.agents.list': withExamples['bureau.agents.list'],
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.contexts.window': () => ({
+          maxTokens: 200_000,
+          usedEstimated: 76_000,
+          usedReported: null,
+          categories: [],
+        }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+      },
+      (url) => {
+        if (url.endsWith('/host/providers')) return provider(true);
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (!url.includes('/threads/')) return undefined;
+        // The first read cannot reach the server; the retry that follows can.
+        if (failedReads === 0) {
+          failedReads += 1;
+          throw new TypeError('Failed to fetch');
+        }
+        return new Response(
+          `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByText, findByRole, client } = mountWithClient();
+
+    expect(await findByText('Failed to fetch')).not.toBeNull();
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
+    );
+    // The read failed and is being tried again: the chat may hold history, so no prompt is offered.
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+
+    // The retry reads the thread, which is empty: now the first-use prompts are offered.
+    expect(await findByRole('group', { name: 'Suggested prompts' })).not.toBeNull();
+  });
+
+  test('an empty thread is the first-use state once its read has settled', async () => {
+    const served = serveHeld([], true);
+    const { container, findByRole, client } = mountWithClient();
+
+    await settledAround(client, container);
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+
+    served.release();
+
+    await findByRole('heading', { level: 2, name: CHAT_COPY.emptyTranscript.title });
+    expect(await findByRole('group', { name: 'Suggested prompts' })).not.toBeNull();
   });
 });
 

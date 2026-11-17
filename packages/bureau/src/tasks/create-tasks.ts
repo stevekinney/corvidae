@@ -1,3 +1,4 @@
+import type { HookPlanDescription } from '@lostgradient/lifecycle';
 import {
   rebuildEffectiveContexts,
   type AgentRun,
@@ -16,6 +17,8 @@ import {
   type TaskHandle,
   type TaskInput,
   type TaskInspection,
+  type TaskInspectionFailedHook,
+  type TaskInspectionHook,
 } from '../bureau-types/tasks.ts';
 import {
   type DurableEventHistoryRead,
@@ -53,11 +56,53 @@ export type TasksDependencies = {
   readonly subscribeEventHistory: DurableEventHistorySubscribe;
   /** The run's step records from its checkpoint, oldest first; empty for a Bureau that keeps none. */
   readonly steps: (runId: string) => Promise<readonly StepRecord[]>;
+  /**
+   * The hook plan the run holds in this process, redacted, or `undefined` for a run this process
+   * does not hold or whose plan cannot be read (COR-2115). `inspect` asks only for a run that is
+   * still going.
+   */
+  readonly hookPlan: (runId: string) => HookPlanDescription | undefined;
+  /** The registrations of the run's plan that threw, from the audit trail (COR-2115). */
+  readonly failedHooks: (runId: string) => Promise<readonly TaskInspectionFailedHook[]>;
   /** The error a missing task is refused with. */
   readonly notFound: (message: string) => Error;
   /** The reviews, ledger, and refusals {@link BureauTasks.respond} answers with, over `registry`. */
   readonly responder: Omit<TaskResponderDependencies, 'registry'>;
 };
+
+/** The most registrations one inspection lists, so a plan that grows without bound stays a bounded answer. */
+export const INSPECTED_HOOK_LIMIT = 500;
+
+/** The text a registration's identity is cut to on the wire. */
+const HOOK_TEXT_LIMIT = 256;
+
+/**
+ * The plan of a run that is still going, as the inspector lists it, or `null` for a run that has
+ * ended and for a plan that cannot be read. A plan with no entries is an empty list: the run is
+ * live and holds no hook.
+ */
+function livePlan(
+  status: string,
+  read: () => HookPlanDescription | undefined,
+): readonly TaskInspectionHook[] | null {
+  if (status === 'completed' || status === 'failed' || status === 'canceled') return null;
+  let description: HookPlanDescription | undefined;
+  try {
+    description = read();
+  } catch {
+    return null;
+  }
+  if (description === undefined) return null;
+  // Each entry is built field by field, so a field a plan entry gains reaches no client until it is
+  // added here on purpose.
+  return description.entries.slice(0, INSPECTED_HOOK_LIMIT).map((entry) => ({
+    id: entry.id.slice(0, HOOK_TEXT_LIMIT),
+    hookPoint: entry.hookName.slice(0, HOOK_TEXT_LIMIT),
+    source: entry.source === undefined ? null : entry.source.slice(0, HOOK_TEXT_LIMIT),
+    priority: Number.isFinite(entry.priority) ? entry.priority : 0,
+    replay: entry.replay === 'safe' ? 'safe' : 'effectful',
+  }));
+}
 
 /**
  * Build `bureau.tasks`. `start`, `detail`, `receipt`, the durable reads, and `snapshot` are the
@@ -108,6 +153,10 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
             );
       return {
         task,
+        hooks: {
+          plan: livePlan(task.status, () => dependencies.hookPlan(id)),
+          failed: await dependencies.failedHooks(id),
+        },
         liveness: dependencies.detail(id)?.liveness,
         children: children.map((child) => ({
           childRunId: child.childRunId,

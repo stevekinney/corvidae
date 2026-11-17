@@ -32,6 +32,7 @@ import { createBureau } from './create-bureau';
 import {
   ActionEvent,
   type BureauEventMap,
+  HookPlanFailedRecordedEvent,
   RunGuardrailRecordedEvent,
   RunTripwireRecordedEvent,
 } from './events';
@@ -3890,6 +3891,68 @@ describe('a guardrail’s trip in the trail (COR-2096)', () => {
     } finally {
       await bureau.dispose();
     }
+  });
+});
+
+describe('a failed hook in the trail (COR-2097)', () => {
+  const failedHook = (runId: string): Action => ({
+    type: 'hook-plan.failed',
+    timestamp: 5000,
+    sequence: 4,
+    runId,
+    detail: {
+      hookName: 'prepareStep',
+      hookId: 'agent:guard',
+      source: 'agent',
+      durationMilliseconds: 7,
+      error: new Error('the hook said CANARY-2097-AUDIT'),
+      runId,
+    },
+  });
+
+  it('records it from its own event, once, though the store’s run raises the action event too', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau, emit } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+    const action = failedHook('run-store');
+
+    emit(new HookPlanFailedRecordedEvent(action));
+    emit(new ActionEvent(action));
+
+    const records = await trail.query({ runId: 'run-store' });
+    expect(records.map((record) => record.type)).toEqual(['hook-plan.failed']);
+    expect(records[0]).toMatchObject({
+      actionSequence: 4,
+      detail: { hookId: 'agent:guard', hookName: 'prepareStep', source: 'agent' },
+    });
+    trail.dispose();
+  });
+
+  it('records it for a run whose actions never reach the action stream, and stops when disposed', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const { bureau, emit } = createStubBureau();
+    const trail = createAuditTrail(bureau, kv);
+
+    emit(new HookPlanFailedRecordedEvent(failedHook('run-catalog')));
+    const recorded = await trail.query({ runId: 'run-catalog' });
+    expect(recorded.map((record) => record.type)).toEqual(['hook-plan.failed']);
+
+    await trail.dispose();
+    emit(new HookPlanFailedRecordedEvent(failedHook('run-after')));
+    expect(await trail.query({ runId: 'run-after' })).toEqual([]);
+  });
+
+  it('keeps the registration, the hook point and the registrant of a purged run’s record, and none of the error', () => {
+    const redacted = redactAuditDetail('hook-plan.failed', failedHook('run-1').detail);
+
+    expect(redacted).toEqual({
+      redacted: true,
+      runId: 'run-1',
+      hookName: 'prepareStep',
+      hookId: 'agent:guard',
+      source: 'agent',
+    });
+    expect(JSON.stringify(redacted)).not.toContain('CANARY-2097-AUDIT');
   });
 });
 

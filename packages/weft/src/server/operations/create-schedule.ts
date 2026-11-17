@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import { type UnknownRestBinding, invalidParamsFault } from '@lostgradient/backchannel/internals';
 import type { ScheduleOptions, ScheduleSpec } from '../../core/types.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
 import {
   mapScheduleErrorToFault,
   validateScheduleInputCadence,

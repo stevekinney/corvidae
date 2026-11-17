@@ -33,11 +33,11 @@
  */
 
 import { sha256HexSync } from '@lostgradient/cryptography';
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauGoalCreateOutcome, BureauGoalUpdateOutcome } from '../../goal-types.ts';
-import type { GoalState } from '../../goal-state.ts';
+import { attemptAgentName, type GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../bureau-types/facade.ts';
 import {
@@ -74,6 +74,45 @@ const goalStatus = z.enum([
 ]);
 const goalIdentifier = z.string().min(1).max(256);
 
+/**
+ * The `InvalidParams` fault of a refused request. A configuration the validator's schema refused
+ * (COR-2117) names each field, at `validator.configuration` and the field's own path in it, so a
+ * client can show the refusal beside the field; any other refusal names the goal.
+ */
+function invalidParams(outcome: {
+  readonly reason: string;
+  readonly issues?: readonly {
+    readonly path: readonly (string | number)[];
+    readonly message: string;
+  }[];
+}): OperationFault {
+  const issues =
+    outcome.issues === undefined
+      ? [{ path: ['goal'], message: outcome.reason, code: 'custom' }]
+      : outcome.issues.map((issue) => ({
+          path: ['validator', 'configuration', ...issue.path],
+          message: issue.message,
+          code: 'custom',
+        }));
+  return { code: 'InvalidParams', message: outcome.reason, data: { issues } };
+}
+
+/**
+ * COR-2117 — a validator as a request names it: its identity, and the configuration its schema
+ * takes. What the configuration may hold is the validator's own schema, which `bureau.validators.list`
+ * serves as JSON Schema, so it is parsed when the goal is created or changed and not here.
+ */
+const validatorRequest = z.strictObject({
+  name: z.string().min(1),
+  version: z.string().min(1),
+  configuration: z
+    .unknown()
+    .optional()
+    .describe(
+      'The validator’s configuration, parsed by its schema (see `bureau.validators.list`). A validator with no schema takes none.',
+    ),
+});
+
 const usageSchema = z.object({
   steps: z.number(),
   tokens: z.number(),
@@ -81,6 +120,8 @@ const usageSchema = z.object({
 });
 
 const attemptViewSchema = z.object({
+  /** The agent the attempt ran as, which differs from the goal's `agentName` once the goal's agent changed. */
+  agentName: z.string(),
   attemptId: z.string(),
   attemptIndex: z.number().int(),
   runId: z.string(),
@@ -101,6 +142,12 @@ const goalViewSchema = z.object({
   identity: z.object({ name: z.string(), version: z.string() }),
   /** The check the goal runs, by the exact name and version it was created or last changed with. */
   validator: z.object({ name: z.string(), version: z.string() }),
+  /**
+   * The configuration the check was parsed with and runs with from now on (COR-2117), as the goal's
+   * record stores it: JSON, or `null` when the goal named none. It is the check's own text, so it is
+   * part of the check the view already names.
+   */
+  validatorConfiguration: z.unknown(),
   status: goalStatus,
   terminalReason: z.string().nullable(),
   /** Advances on every write to the goal's record: pass it back as `expectedRevision`. */
@@ -174,6 +221,7 @@ function viewOf(goal: GoalState): GoalView {
     agentName: goal.objective.agentName,
     identity: { name: goal.identity.name, version: goal.identity.version },
     validator: { name: goal.validator.name, version: goal.validator.version },
+    validatorConfiguration: goal.validatorConfiguration ?? null,
     status: goal.status,
     terminalReason: goal.terminalReason ?? null,
     revision: goal.revision,
@@ -202,6 +250,7 @@ function viewOf(goal: GoalState): GoalView {
       durationMs: goal.usage.durationMs,
     },
     attempts: goal.attempts.map((attempt) => ({
+      agentName: attemptAgentName(goal, attempt.attemptIndex),
       attemptId: attempt.attemptId,
       attemptIndex: attempt.attemptIndex,
       runId: attempt.runId,
@@ -367,7 +416,7 @@ const verdictOutput = z.object({
     .object({
       validator: z.object({ name: z.string(), version: z.string() }),
       source: z.object({
-        kind: z.enum(['bureau', 'plugin']),
+        kind: z.enum(['bureau', 'plugin', 'bungalow']),
         name: z.string(),
         version: z.string(),
       }),
@@ -501,9 +550,9 @@ const createInput = z.object({
   identity: z
     .strictObject({ name: z.string().min(1), version: z.string().min(1) })
     .describe('The name and version that identify this goal in its events.'),
-  validator: z
-    .strictObject({ name: z.string().min(1), version: z.string().min(1) })
-    .describe('A validator this Bureau was configured with, by exact name and version.'),
+  validator: validatorRequest.describe(
+    'A validator this Bureau was configured with, by exact name and version, with the configuration its schema takes.',
+  ),
   bounds: z
     .strictObject({
       maximumAttempts: positiveInteger,
@@ -586,11 +635,7 @@ function refusal(
     case 'invalid-configuration':
     case 'invalid-goal-run-id':
     case 'objective-too-large':
-      return {
-        code: 'InvalidParams',
-        message: outcome.reason,
-        data: { issues: [{ path: ['goal'], message: outcome.reason, code: 'custom' }] },
-      };
+      return invalidParams(outcome);
     case 'record-unreadable':
       return {
         code: 'Unavailable',
@@ -821,11 +866,10 @@ const updateInput = z.object({
     .describe(
       'The catalog agent that runs the attempts the goal opens from now on; an attempt already opened keeps the agent it ran as. It must be in the catalog and able to run durably, and it changes only while an attempt is in flight.',
     ),
-  validator: z
-    .strictObject({ name: z.string().min(1), version: z.string().min(1) })
+  validator: validatorRequest
     .optional()
     .describe(
-      'The validator each check from now on runs: one this Bureau was configured with, by exact name and version.',
+      'The validator each check from now on runs: one this Bureau was configured with, by exact name and version. A different validator clears the goal’s stored configuration, so name the one it takes; the same validator keeps its configuration unless one is named.',
     ),
   maximumAttempts: positiveInteger
     .optional()
@@ -853,11 +897,7 @@ function updateRefusal(
       return resourceNotFound('agent', agentName ?? '');
     case 'invalid-configuration':
     case 'objective-too-large':
-      return {
-        code: 'InvalidParams',
-        message: outcome.reason,
-        data: { issues: [{ path: ['goal'], message: outcome.reason, code: 'custom' }] },
-      };
+      return invalidParams(outcome);
     case 'terminal':
     case 'cancellation-requested':
     case 'agent-between-attempts':

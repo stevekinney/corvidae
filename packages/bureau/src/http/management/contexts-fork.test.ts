@@ -4,7 +4,7 @@
  * branch can be refused is a typed fault with a stable `data.reason`, and nothing is created.
  */
 import { createAgent } from '@lostgradient/operative';
-import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, BureauShuttingDownError } from '../../bureau-errors.ts';

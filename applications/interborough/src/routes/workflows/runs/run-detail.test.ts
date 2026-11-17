@@ -420,7 +420,7 @@ describe('the page', () => {
     // A finished run's how it ran is folded up; a person opens it for the activity.
     expect(view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading })).not.toBeNull();
     expect(view.queryByRole('heading', { level: 3, name: 'Activity' })).toBeNull();
-    for (const name of ['Input and output', 'Details']) {
+    for (const name of ['Input and output', 'Run details']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     // What only the workflow's reader may do is not drawn, and the page is whole without it.
@@ -444,7 +444,8 @@ describe('a goal’s attempt', () => {
   ] as const)('an attempt that %s is shown as %s', async (status, state) => {
     const view = open('/runs/goal-1-a0', { goals: [attempt(status)], scopes: BUREAU_ONLY });
 
-    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    // The goal's own name, which the fixture writes as "Goal goal-1".
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     expect(header(view.container)?.textContent).toContain(WORD[state]);
     expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
@@ -472,7 +473,7 @@ describe('a goal’s attempt', () => {
       throw new Error('No such session');
     });
 
-    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });

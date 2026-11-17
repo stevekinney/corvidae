@@ -1,9 +1,10 @@
 import { cosineSimilarity } from 'armorer';
 
-import type {
-  MemoryEmbeddingProfile,
-  MemoryVectorReference,
-  StoredMemoryVector,
+import {
+  type MemoryEmbeddingProfile,
+  MemoryVectorProfileMissingError,
+  type MemoryVectorReference,
+  type StoredMemoryVector,
 } from '../memory-vector-store';
 import type { GovernanceContext, ResolvedRecord } from './governance-context';
 import { type ActiveEmbedding, cachingEmbedders } from './governed-embedding';
@@ -119,25 +120,59 @@ async function copyScopeInlineVectors(
 }
 
 /**
+ * Records the registered embedder's model on a stored active profile that has none (COR-2184): a
+ * profile stored before COR-2184 holds no model, and memory has no record of any other than the one
+ * its embedder is registered with now, so it adopts that one. The swap is one compare-and-swap (see
+ * {@link MemoryVectorStore.adoptModel}), so two processes starting together leave one consistent
+ * profile, and a process that stops before it lands leaves the store as it was, which the next
+ * start adopts again. Nothing is adopted while the profile's embedder is not registered, or is
+ * registered with another dimension (nothing says which model made those vectors), or while a switch
+ * runs; the profile stays usable without a model until a later start.
+ */
+export async function adoptActiveModel(context: GovernanceContext): Promise<void> {
+  const { vectors, initialProfile, registry } = context.embedding;
+  const profile = await vectors.activeProfile(initialProfile);
+  if (profile.model !== undefined) return;
+  const registered = registry.describe(profile.embedderId);
+  if (registered === undefined || registered.dimension !== profile.dimension) return;
+  // `false` means another process adopted it, or a switch started: nothing is left to do here.
+  await vectors.adoptModel(profile, registered.model);
+}
+
+/**
  * Copies the vectors records held inline before COR-1898 into the profile memory starts with, once
  * per store. Those vectors were made by the embedder memory was built with, which is the initial
  * embedder now, so they belong to its generation-1 profile; a record's vector of any other length
  * is not one of them and is left. A record the profile already holds keeps its vector. A crash part
  * way leaves the store unmarked, and the next start copies what is still missing. When the active
- * profile is another, an embedding already replaced the initial one, and nothing is copied.
+ * profile is another, an embedding already replaced the initial one, and nothing is copied. A
+ * process that adopts the profile's model (COR-2184) while this copies changes the profile's marker,
+ * which refuses the copy's writes; the copy then reads the active profile again and goes on.
  */
 export async function copyInlineVectors(context: GovernanceContext): Promise<void> {
   const { vectors, initialProfile } = context.embedding;
   if (await vectors.inlineVectorsCopied()) return;
-  const profile = await vectors.activeProfile(initialProfile);
-  const initial =
-    profile.embedderId === initialProfile.embedderId &&
-    profile.dimension === initialProfile.dimension &&
-    profile.generation === initialProfile.generation;
-  if (initial) {
-    for (const scope of await context.ledger.listScopes()) {
-      await copyScopeInlineVectors(context, profile, scope);
+  for (let attempt = 1; ; attempt++) {
+    const profile = await vectors.activeProfile(initialProfile);
+    const initial =
+      profile.embedderId === initialProfile.embedderId &&
+      profile.dimension === initialProfile.dimension &&
+      profile.generation === initialProfile.generation;
+    try {
+      if (initial) {
+        for (const scope of await context.ledger.listScopes()) {
+          await copyScopeInlineVectors(context, profile, scope);
+        }
+      }
+      break;
+    } catch (error) {
+      if (!(error instanceof MemoryVectorProfileMissingError) || attempt >= COPY_ATTEMPTS) {
+        throw error;
+      }
     }
   }
   await vectors.markInlineVectorsCopied();
 }
+
+/** How many times the inline copy reads the active profile again after another process rewrote its marker. */
+const COPY_ATTEMPTS = 3;

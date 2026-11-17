@@ -21,16 +21,15 @@
 
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import { type UnknownRestBinding, invalidParamsFault } from '@lostgradient/backchannel/internals';
 import {
-  WorkflowRefreshError,
   type WorkflowCatalogActivationResult,
+  WorkflowRefreshError,
   type WorkflowRefreshFailureReason,
   type WorkflowRefreshResult,
 } from '../../core/catalog/index.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { assertOperationWorkflowMethods, invalidParamsFault } from './operation-helpers.ts';
+import { assertOperationWorkflowMethods } from './operation-helpers.ts';
 import {
   readWorkflowCatalogRestBody,
   throwWorkflowCatalogOperationFault,

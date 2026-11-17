@@ -154,6 +154,17 @@ describe('RunRelated', () => {
     expect(queryByRole('button', { name: 'Topology' })).toBeNull();
   });
 
+  test('says nothing came from a run that is over, not nothing yet (55d)', async () => {
+    const { findByText } = render(RunRelatedHarness, {
+      props: {
+        client: client({ empty: true }),
+        workflow: { ...selfRun, parentWorkflowId: undefined },
+        over: true,
+      },
+    });
+    expect(await findByText('No other runs came from this one.')).not.toBeNull();
+  });
+
   test('shows an error state with a way to try again when the runs cannot be read', async () => {
     const { findByText, findByRole } = render(RunRelatedHarness, {
       props: { client: client({ failList: true }), workflow: selfRun },

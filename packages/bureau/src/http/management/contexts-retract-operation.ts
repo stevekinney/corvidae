@@ -23,7 +23,7 @@
  */
 
 import { sessionOwnerOf, type SessionInputRetractionOutcome } from '@lostgradient/operative';
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';

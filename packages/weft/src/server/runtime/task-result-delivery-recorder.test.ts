@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
@@ -14,7 +15,6 @@ import {
 } from '../../core/task-ledger/task-result-delivery.ts';
 import type { ServeOptions } from '../index.ts';
 import { leasedFixture, putLedgerRecord } from '../operations/get-task-detail.test-support.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { minimalServerContext } from './server-context.test-support.ts';
 import { recordTaskResultDelivery } from './task-result-delivery-recorder.ts';
 import { handleTaskResultRequest } from './task-result-submission.ts';

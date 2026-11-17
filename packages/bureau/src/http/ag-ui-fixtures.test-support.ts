@@ -23,7 +23,7 @@ import {
   createOperationHandler,
   principalFromApiKey,
   type AuthorizationScope,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';

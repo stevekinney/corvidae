@@ -60,6 +60,7 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /host/plugins': 'administrator-shared',
   'PUT /host/plugins/:name': 'administrator-shared',
   'PUT /host/plugins/:name/secrets/:key': 'administrator-shared',
+  'DELETE /host/plugins/:name/secrets/:key': 'administrator-shared',
   'GET /host/clean-up': 'deployment-operator',
   'POST /host/clean-up': 'deployment-operator',
   'GET /host/panels': 'member-shared-read',

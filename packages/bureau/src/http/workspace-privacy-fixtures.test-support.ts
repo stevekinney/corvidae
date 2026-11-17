@@ -1,4 +1,4 @@
-import { principalFromApiKey, type AuthConfig } from '@lostgradient/weft';
+import { principalFromApiKey, type AuthConfig } from '@lostgradient/backchannel';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';
 import { waitForCondition } from '../test';

@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 
+import { type AuthorizationScope, principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { AsyncActivityTokenNotFoundError, Engine } from '../../core/engine.ts';
-import type { ActivityContext, WorkflowContext } from '../../core/types.ts';
-import { activity, workflow } from '../../core/types.ts';
+import {
+  type ActivityContext,
+  type WorkflowContext,
+  activity,
+  workflow,
+} from '../../core/types.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import {
   completeAsyncActivityOperation,
   completeAsyncActivityRestBinding,

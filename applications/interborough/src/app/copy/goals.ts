@@ -1,3 +1,5 @@
+import type { StatusDotWordLabel } from '@lostgradient/cinder';
+
 /**
  * The words the goals list (`/goals`) uses. The list draws its own empty, loading and failed states
  * under its own header (`ownsStatesOnPatterns` in `views.ts`), so `VIEW_COPY.goals` takes its empty
@@ -152,6 +154,9 @@ export const GOALS_COPY = {
     when: (day: string, clock: string): string => `${day} at ${clock}`,
     detailsHeading: 'Details',
     checkFact: 'Check',
+    /** The validator behind the check, by the exact name and version the Bureau holds it under: the Check fact's note. */
+    validatorValue: (validator: { readonly name: string; readonly version: string }): string =>
+      `${validator.name}, version ${validator.version}`,
     agentFact: 'Agent',
     limitFact: 'Attempt limit',
     stopsFact: 'Stops',
@@ -178,6 +183,62 @@ export const GOALS_COPY = {
       title: 'The goal could not be loaded',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
+    /** What each attempt's verdict panel says (COR-2124). */
+    verdict: {
+      /** The button on an attempt's row, named for the attempt it opens. */
+      action: 'Verdict',
+      actionLabel: (attempt: number): string => `Open the verdict of attempt ${String(attempt)}`,
+      title: (attempt: number): string => `Attempt ${String(attempt)} verdict`,
+      closeLabel: 'Close',
+      loading: 'Loading the verdict',
+      /**
+       * The status word each kind of verdict opens the panel with. A pass and a miss say what an
+       * attempt's row says (Done, Check not met); each other kind has a word of its own.
+       */
+      word: {
+        pass: 'Done',
+        fail: 'Check not met',
+        error: 'Check not met, check error',
+        unavailable: 'Unavailable, check could not run',
+        canceled: 'Canceled, check stopped',
+        indeterminate: 'Check not met, could not decide',
+      } as const satisfies Record<
+        'pass' | 'fail' | 'error' | 'unavailable' | 'canceled' | 'indeterminate',
+        StatusDotWordLabel
+      >,
+      evidenceTerm: 'Evidence',
+      detailTerm: 'Detail',
+      /** A verdict written before the Bureau kept what judged it names only the validator. */
+      validatorOnly: (validator: { readonly name: string; readonly version: string }): string =>
+        `${validator.name}, version ${validator.version}`,
+      /**
+       * "contains-phrase, version 1, built in" or "demo:accepts-any-answer, version 1, from the
+       * Demo plugin": the validator by its exact name and version, and where it comes from. The
+       * release of what ships it is not said (a tooltip may carry it).
+       */
+      judgedBy: (
+        validator: { readonly name: string; readonly version: string },
+        source: {
+          readonly kind: 'bureau' | 'plugin' | 'bungalow';
+          readonly name: string;
+          readonly version: string;
+        },
+        pluginTitle: string,
+      ): string =>
+        source.kind === 'bungalow'
+          ? `${validator.name}, version ${validator.version}, from your own validator file`
+          : source.kind === 'bureau'
+            ? `${validator.name}, version ${validator.version}, built in`
+            : `${validator.name}, version ${validator.version}, from the ${pluginTitle} plugin`,
+      /** The verdict of a goal the viewer does not own and holds no content scope for. */
+      privateTitle: 'This verdict is private',
+      private: 'Only the goal’s owner, or someone allowed to read goal content, can see it.',
+      /** The attempt has no verdict yet. */
+      notJudgedTitle: 'Not judged yet',
+      notJudged: 'The check has not given a verdict on this attempt.',
+      failedTitle: 'The verdict could not be loaded',
+      failed: 'The server did not answer.',
+    },
   },
   /** The words for attempts used, of the most the goal may make. */
   attempts: (used: number, most: number): string => `${String(used)} of ${String(most)}`,
@@ -197,9 +258,24 @@ export const GOALS_COPY = {
       'Say what the agent should do. The first line becomes the goal’s name, shown in Goals and on each attempt.',
     promptRequired: 'Say what the agent should do.',
     checkLabel: 'Check',
-    checkDescription: 'Write it as a statement that is true or false about the result.',
-    checkPlaceholder: 'How will we know it worked?',
-    checkRequired: 'Say how to tell the goal is done, such as “Reply says hello”.',
+    checkDescription: 'The check that decides when the goal is done.',
+    checkPlaceholder: 'Choose a check',
+    checkRequired: 'Choose how to tell the goal is done.',
+    /** The Bureau lists no check, so no goal can be made. */
+    noChecks: 'This installation lists no checks, so a goal can’t say when it is done.',
+    /** The version, small, beside a check's name in the picker. */
+    checkVersion: (version: string): string => `version ${version}`,
+    checkUnavailableDescription: 'The checks could not be listed. Reload the page to try again.',
+    /** The version beside the goal's own check once the Bureau no longer lists it. */
+    checkVersionNotInstalled: (version: string): string => `version ${version}, not installed`,
+    /** What the description under the picker says of a check the goal names that is not installed. */
+    checkUnlisted: 'Not installed any more. The goal keeps this check until you choose another.',
+    /** The headings the picker lists checks under, by where each comes from. A plugin's is its name in words. */
+    checkGroups: { builtIn: 'Built in', own: 'Your validator files' },
+    /** The term of the settings a check not installed still holds, when they are not a set of named values. */
+    checkSettingsTerm: 'Settings',
+    checkConfigurationNone: 'This check takes no settings.',
+    checkConfigurationUnavailable: 'This check’s settings can’t be drawn here.',
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
     agentDescription: 'The agent that makes each attempt.',

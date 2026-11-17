@@ -23,10 +23,23 @@ import { type AgentStepResult, WorkflowAgentStepError } from './workflow-host';
  * The id of the standalone run an `agent` step starts: a function of the instance and the step, so
  * a step a restart re-executes finds its own run. A hash and not a concatenation, because a
  * workflow id can already be close to Weft's 128 characters.
+ *
+ * `generation` is how many times the instance was retried from a failed step (COR-2424,
+ * `workflow-retry-receipts.ts`): each retry's steps run under ids of their own, so the step that
+ * failed does not find the run that failed it. Generation 0, every instance that was never
+ * retried, keeps the id it always had.
  */
-export function workflowStepRunId(workflowId: string, stepAddress: number | string): string {
+export function workflowStepRunId(
+  workflowId: string,
+  stepAddress: number | string,
+  generation = 0,
+): string {
   const digest = createHash('sha256')
-    .update(`${workflowId}:${String(stepAddress)}`)
+    .update(
+      generation === 0
+        ? `${workflowId}:${String(stepAddress)}`
+        : `${workflowId}:${String(stepAddress)}:retry-${String(generation)}`,
+    )
     .digest('hex');
   return `workflow-agent-${digest.slice(0, 32)}`;
 }

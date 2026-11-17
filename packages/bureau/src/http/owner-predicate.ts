@@ -11,7 +11,7 @@
  * @module owner-predicate
  */
 
-import type { Principal } from '@lostgradient/weft';
+import type { Principal } from '@lostgradient/backchannel';
 
 import { ANONYMOUS_LOCAL_OWNER, apiKeyOwner } from '../owner-of-record.ts';
 import type { BureauScope } from './bureau-scopes.ts';

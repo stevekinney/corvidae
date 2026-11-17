@@ -91,6 +91,21 @@ A refresh is two commits on one branch, then a control:
 
 After the pull request merges, run the same visual command against the merged commit and record the result. That run, not provenance, proves the set reproduces on `main`.
 
+## Refreshing changed baselines from a CI run
+
+When this host cannot start Docker, a baseline that changed can come from a `main.yml` run instead (COR-2457). The fixtures job runs in the renderer's image and, when it fails, uploads `playwright-fixtures-<shard>` with the `*-actual.png` files Playwright wrote for each failed comparison. Those come from the baseline renderer.
+
+- Commit the change and push the branch, then run `gh workflow run main.yml --ref <branch>` and wait for the run.
+- Run `bun scripts/browser-fixtures/scripts/baselines-from-run.ts <run-id>`. It downloads the run's `playwright-fixtures-*` artifacts into a temporary directory (printed at the end), and lists each actual with the baseline it would replace, as `changed`, `new`, or `unmatched`. It copies nothing.
+- Look at the images before `--write`. An actual is whatever the renderer drew, including a regression; classify each one as described in the review report below.
+- Run the same command with `--write` to copy the changed (and new) actuals over the baselines, then commit them.
+
+The script refuses, and copies nothing, when the run's head SHA is not the current `HEAD`. An actual whose path does not have the shape `<component>/<theme>-<viewport>-<fixture>-actual.png` is listed as unmatched and never copied; resolve it by hand.
+
+A fixture with no baseline yet does not get an actual from this route. Block mode (`CINDER_VISUAL_DIFF=block`, which the job sets) throws the missing-baseline error in `captureBlockMode` before it calls `toHaveScreenshot`, so Playwright never writes an `-actual.png` for it. The first baseline for a new fixture needs the local Docker pass (`bun run test:browser:update:docker`). The script would map a `new` actual if one appeared, but the job does not upload one today.
+
+A CI run does not write `provenance.json`, so this route changes images only; it is for a baseline whose source commit is already recorded, and a full refresh still runs the Docker workflow above.
+
 ## The review report
 
 `scripts/browser-fixtures/scripts/baseline-diff-report.ts` compares every regenerated baseline with the committed one it replaces and writes `baseline-diff-report.json`, `baseline-diff-report.md`, and a diff image per changed baseline:
@@ -120,6 +135,7 @@ All live in `scripts/browser-fixtures/scripts/`, each with a unit test:
 - `suite-results.ts`: summaries of Playwright's JSON report, the incomplete-run check, the apply decision, and the stability comparison (`compare` command).
 - `docker-baseline-runner.ts`: the shared host load record, image build, archive, container run, kill-on-signal, and apply step.
 - `baseline-diff-report.ts`: the review report.
+- `baselines-from-run.ts`: copies a CI run's `-actual.png` artifacts over the baselines they replace, behind `--write`.
 - `snapshot-change-detection.ts`: exits 0 when the working tree has baseline or provenance changes, 1 when it has none.
 
 ## Terminal fixtures

@@ -8,11 +8,11 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { serve, type WeftServer } from './index.ts';
 import { openWebSocket, waitForMessage } from './json-rpc-websocket-client.test-support.ts';
-import { defineOperation } from './operation-registry.ts';
 
 const staleWithNaN = defineOperation({
   name: 'weft.test.stale.nan',

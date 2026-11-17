@@ -1,4 +1,4 @@
-import type { WorkspaceIdentity } from '@lostgradient/weft';
+import type { WorkspaceIdentity } from '@lostgradient/backchannel';
 import {
   createLocalHostMutationContext,
   HostMutationError,
@@ -7,8 +7,7 @@ import {
 import { secretPublicationDigest } from './secret-publication-digest.ts';
 import { createToolSourceOAuthAuthority } from './tool-source-oauth-authority.ts';
 import type { ToolSourceOAuthBinding } from './tool-source-oauth-session.ts';
-import type { WorkspaceSecrets } from './workspace-secrets.ts';
-import { SecretPublicationError } from './workspace-secrets.ts';
+import { SecretPublicationError, type WorkspaceSecrets } from './workspace-secrets.ts';
 /**
  * The host's saved tool sources while it runs (COR-1930): the MCP servers and OpenAPI services
  * `toolSources` in `configuration.json` names (`tool-sources-configuration.ts`), whose tools an

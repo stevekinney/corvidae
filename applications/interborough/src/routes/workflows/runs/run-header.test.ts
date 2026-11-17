@@ -70,6 +70,17 @@ describe('the run page header', () => {
     ).toContain('notes-approved');
   });
 
+  test('leaves out the day and time when the phrases say how long ago the run started (row 54l)', () => {
+    const view = renderHeader({
+      startedAt: Date.parse('2026-11-02T10:45:00-06:00'),
+      showStamp: false,
+      phrases: ['Started 40 s ago', 'step 2 of 4'],
+    });
+
+    expect(view.container.querySelector('time')).toBeNull();
+    expect(view.container.textContent).toMatch(/Running\s*, Started 40 s ago, step 2 of 4/);
+  });
+
   test('a status word with a qualifier is one status, drawn once', () => {
     const view = renderHeader({ status: 'Running, checking the result' });
 
@@ -157,6 +168,47 @@ describe('the run page header', () => {
     expect(await fireEvent.click(link, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('session-1');
+  });
+
+  test('a failed run of a workflow file offers Retry from this step first, with the words beside the buttons (COR-2424, row 54z)', async () => {
+    let retried = 0;
+    const view = renderHeader({
+      status: 'Failed',
+      retry: { onRetry: () => (retried += 1) },
+      runAgain: { href: '/workflows/release-notes/start' },
+      besideButtons:
+        'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    });
+
+    // Retry from this step comes before Run again, which is a link to set up another run.
+    const retry = view.getByRole('button', { name: 'Retry from this step' });
+    const again = view.getByRole('link', { name: 'Run again' });
+    expect(retry.compareDocumentPosition(again) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(view.container.querySelector('[data-run-beside]')?.textContent).toBe(
+      'Retry from this step runs on 1.2.0, like this run. Run again runs on 1.3.0, the current version.',
+    );
+    await fireEvent.click(view.getByRole('button', { name: 'Retry from this step' }));
+    expect(retried).toBe(1);
+  });
+
+  test('holds Retry from this step for a caller the scope gate refuses', () => {
+    const view = renderHeader({
+      status: 'Failed',
+      retry: { onRetry: () => {}, gate: { disabled: true, title: 'Requires workflows:write' } },
+    });
+    const retry = view.getByRole('button', { name: 'Retry from this step' });
+    expect(retry.hasAttribute('disabled') || retry.getAttribute('aria-disabled') === 'true').toBe(
+      true,
+    );
+  });
+
+  test('leaves Cancel run out of the header while the docked message bar holds it (rows 06b, 54l)', () => {
+    const view = renderHeader({
+      task: taskFixture({ id: 'run-1', status: 'working' }),
+      cancelInHeader: false,
+    });
+    expect(view.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+    expect(view.getByRole('button', { name: 'More actions' })).not.toBeNull();
   });
 
   test('a task offers Cancel run beside More, and the engine’s own cancel is not offered twice', async () => {

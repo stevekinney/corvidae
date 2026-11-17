@@ -796,9 +796,9 @@ export type ProjectedValidatorOutcome =
 export interface ValidatorJudge {
   /** The name and version of the validator that ran. */
   readonly validator: ValidatorIdentity;
-  /** Who the validator comes from: Bureau or a plugin, by name and version. */
+  /** Who the validator comes from: Bureau, a plugin, or the owner's own file (COR-2119), by name and version. */
   readonly source: {
-    readonly kind: 'bureau' | 'plugin';
+    readonly kind: 'bureau' | 'plugin' | 'bungalow';
     readonly name: string;
     readonly version: string;
   };

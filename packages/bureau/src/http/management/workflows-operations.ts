@@ -40,12 +40,8 @@ import {
  * @module workflows-operations
  */
 
-import {
-  defineOperation,
-  type OperationFault,
-  type Principal,
-  type WorkflowCompatibilityReason,
-} from '@lostgradient/weft';
+import { type WorkflowCompatibilityReason } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
@@ -61,6 +57,10 @@ import {
 } from '../../workflow-runtime.ts';
 import { TASK_PERSON_SURFACES } from '../../task-origin.ts';
 import { WorkflowInputInvalidError } from '../../workflow-schema.ts';
+import {
+  WORKFLOW_RETRY_ID_MAXIMUM_LENGTH,
+  WorkflowRetryRefusedError,
+} from '../../workflow-run-retry.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -106,9 +106,9 @@ const jsonSchemaField = z.record(z.string(), z.unknown());
  */
 const listenerSchema = z.object({
   state: z
-    .enum(['listening', 'waiting-for-secret', 'failed', 'stopped', 'ready'])
+    .enum(['listening', 'waiting-for-secret', 'failed', 'stopped', 'ready', 'standby'])
     .describe(
-      '`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.',
+      '`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, `ready` for a kind that only receives requests and has no listener to start, and `standby` while another Bureau sharing this one’s storage runs the listener, which this one takes over when that Bureau stops.',
     ),
   since: z.string().describe('When `state` last changed. A change of `code` alone keeps it.'),
   code: z
@@ -143,6 +143,8 @@ const workflowListingSchema = z.object({
   inputSchema: jsonSchemaField.nullable(),
   /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
   outputSchema: jsonSchemaField.nullable(),
+  /** The name of what an instance produces, such as `notes`, or `null` when the file gives none. */
+  outputName: z.string().nullable(),
   version: z.string().nullable(),
   /**
    * The file's trigger as written, `{ kind, ... }` with a schedule's `timezone`, `catchUp`, `name`, and `input`, for
@@ -205,6 +207,12 @@ const definitionSchema = z
       .describe(
         'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. An instance whose result breaks it fails with `output-invalid`.',
       ),
+    outputName: z
+      .string()
+      .optional()
+      .describe(
+        'The name of what an instance produces, such as `notes`, shown on the run page’s Output card: at most 64 characters, a letter or underscore first, then letters, digits, underscores and hyphens. Bureau strips it before Weft sees the document, so it is no part of a revision.',
+      ),
     trigger: z
       .looseObject({ kind: z.string() })
       .describe(
@@ -217,7 +225,7 @@ const definitionSchema = z
       ),
   })
   .describe(
-    'The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.',
+    'The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema`, `outputSchema` and `outputName`, and the `steps`.',
   );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
@@ -265,6 +273,12 @@ const runDetailSchema = runSummarySchema.extend({
    * the workflow’s schema (`error` lists the issues), else `null`.
    */
   finishReason: z.enum(['input-invalid', 'output-invalid']).nullable(),
+  /**
+   * The name of what the instance produces (COR-2424), as the version it ran declares it: the
+   * file’s when the instance runs on the file’s current version, else the newest saved version of
+   * that revision’s. `null` when that version declares none, or its content is no longer recorded.
+   */
+  outputName: z.string().nullable(),
 });
 
 const runHistoryEventSchema = z.object({
@@ -353,6 +367,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     paused: listing.paused,
     inputSchema: listing.inputSchema === null ? null : { ...listing.inputSchema },
     outputSchema: listing.outputSchema === null ? null : { ...listing.outputSchema },
+    outputName: listing.outputName,
     version: listing.version ?? null,
     trigger: listing.trigger === null ? null : { ...listing.trigger },
     listener: listing.listener === null ? null : { ...listing.listener },
@@ -705,7 +720,7 @@ export const workflowsTriggersRetryOperation = defineOperation<
   mcpExposable: false,
   summary: 'Retry a failed trigger now',
   description:
-    'Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped` or `ready`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.',
+    'Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped`, `ready` or `standby`, and a failed listener whose attempt finds another Bureau running it is answered `standby`, starting nothing. It answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: retryInput,
@@ -751,7 +766,7 @@ export const workflowsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one workflow',
   description:
-    'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped` or `ready`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+    'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped`, `ready` or `standby`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: getInput,
@@ -1114,7 +1129,7 @@ export const workflowsRunsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one instance of a workflow',
   description:
-    'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',
+    'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. `finishReason` is `input-invalid` or `output-invalid` for an instance that failed because its input or its result broke the workflow’s schema, and `null` for any other; the failed instance’s `error` lists the issues. `outputName` is the name the version it ran gives what it produces, or `null`. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: runsGetInput,
@@ -1150,6 +1165,7 @@ export const workflowsRunsGetOperation = defineOperation<
       result: (run.result ?? null) as never,
       error: run.error ?? null,
       finishReason: run.finishReason,
+      outputName: run.outputName,
     };
   },
 });
@@ -1200,6 +1216,94 @@ export const workflowsRunsCancelOperation = defineOperation<
     } catch (error) {
       if (error instanceof BureauError && error.code === 'NOT_FOUND')
         throw resourceNotFound('run', input.runId);
+      throw error;
+    }
+  },
+});
+
+const runsRetryInput = z.object({
+  runId: z.string().min(1).describe('The identifier of the failed workflow instance to run again.'),
+  step: z
+    .number()
+    .int()
+    .min(1)
+    .describe(
+      'The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.',
+    ),
+  retryId: z
+    .string()
+    .min(1)
+    .max(WORKFLOW_RETRY_ID_MAXIMUM_LENGTH)
+    .optional()
+    .describe(
+      'The caller’s identifier of this request. The same request repeated with it answers what the first did, and finishes it when the first stopped partway; without it, a repeat finds the instance running and is refused `run-not-failed`.',
+    ),
+});
+const runsRetryOutput = z.object({
+  runId: z.string(),
+  step: z.number().int().describe('The step that runs again, counted from 1.'),
+  workflowVersion: z.string().describe('The revision the instance runs on: the one it began on.'),
+  retryId: z.string().nullable(),
+});
+
+export const workflowsRunsRetryOperation = defineOperation<
+  typeof runsRetryInput,
+  typeof runsRetryOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.runs.retry',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.runs.retry'),
+  mcpExposable: false,
+  summary: 'Run a failed workflow run again from the step it failed at',
+  description:
+    'Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: runsRetryInput,
+  outputSchema: runsRetryOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'Unprocessable', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    // Authorized as `bureau.workflows.runs.cancel` is: the owner or the write scope, and for a
+    // workspace member, the run's own owner with the right to manage.
+    const workflows = workflowsFor(
+      host,
+      principal,
+      principal.method === 'unauthenticated' || principal.workspace === undefined
+        ? 'bureau.workflows:write'
+        : 'bureau.workflows:read',
+      'run',
+      input.runId,
+    );
+    if (
+      principal.method !== 'unauthenticated' &&
+      principal.workspace !== undefined &&
+      !host.ownership.mayAccess({
+        principal,
+        resourceOwner: await host.ownership.runOwner(input.runId),
+        operatorScope: 'bureau.workflows:write',
+      })
+    ) {
+      throw resourceNotFound('run', input.runId);
+    }
+    try {
+      return await workflows.retryRun(input.runId, {
+        step: input.step,
+        ...(input.retryId === undefined ? {} : { retryId: input.retryId }),
+      });
+    } catch (error) {
+      if (error instanceof BureauError && error.code === 'NOT_FOUND')
+        throw resourceNotFound('run', input.runId);
+      if (error instanceof WorkflowRetryRefusedError) {
+        throw {
+          code: 'Unprocessable',
+          message: error.message,
+          data: { reason: error.code },
+        } satisfies OperationFault;
+      }
       throw error;
     }
   },
@@ -1513,6 +1617,12 @@ const revisionChangeSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('input-schema'), breaking: z.literal(true) }),
   z.object({ kind: z.literal('output-schema'), breaking: z.literal(true) }),
+  z.object({
+    kind: z.literal('output-name'),
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    breaking: z.literal(false),
+  }),
   z.object({ kind: z.literal('step-added'), step: z.number().int(), breaking: z.literal(false) }),
   z.object({ kind: z.literal('step-removed'), step: z.number().int(), breaking: z.literal(true) }),
   z.object({ kind: z.literal('step-replaced'), step: z.number().int(), breaking: z.literal(true) }),
@@ -1583,6 +1693,10 @@ const historyOutput = z.object({
       steps: z.array(z.record(z.string(), z.unknown())),
       inputSchema: jsonSchemaField.nullable(),
       outputSchema: jsonSchemaField.nullable(),
+      outputName: z
+        .string()
+        .nullable()
+        .describe('The name of what an instance produces, or `null` when the version gives none.'),
       previousVersion: z.string().nullable(),
       changes: z.array(revisionChangeSchema),
       compatibility: revisionCompatibilitySchema,
@@ -1638,6 +1752,7 @@ export const workflowsHistoryOperation = defineOperation<
         inputSchema: entry.content.inputSchema === null ? null : { ...entry.content.inputSchema },
         outputSchema:
           entry.content.outputSchema === null ? null : { ...entry.content.outputSchema },
+        outputName: entry.content.outputName ?? null,
         previousVersion: entry.previousVersion,
         changes: entry.changes.map((change) => ({ ...change })),
         compatibility: entry.compatibility,
@@ -1728,6 +1843,7 @@ export const bureauWorkflowsOperations = [
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
   workflowsRunsCancelOperation,
+  workflowsRunsRetryOperation,
   workflowsRunsHistoryOperation,
   workflowsStartOperation,
   workflowsInternalGetOperation,

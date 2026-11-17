@@ -29,9 +29,11 @@ import {
 } from '../../../lib/bureau-tasks.ts';
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
+import { oneLine } from '../../../lib/one-line.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
 import { taskStatusWord, type StatusWord } from '../../../lib/status.ts';
 import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
+import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
 import type { MissedRuns } from './missed-runs.ts';
 import { STARTED_BY_KINDS, type StartedBy } from './started-by.ts';
 
@@ -41,7 +43,12 @@ export type RunPersonSurface = 'web' | 'palette' | 'api';
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
   /** A person started it outside a chat, from the surface the origin names. */
-  | { readonly kind: 'person'; readonly surface: RunPersonSurface | null }
+  | {
+      readonly kind: 'person';
+      readonly surface: RunPersonSurface | null;
+      /** Who started it, as the Bureau recorded them, when it did: "You" when it is the viewer. */
+      readonly principal?: string | null | undefined;
+    }
   /**
    * A schedule's fire. The origin names the schedule (`scheduleId`, and `schedulePath` is its page)
    * and whether a person fired it by hand. A task recorded before origins were kept says it only
@@ -86,8 +93,17 @@ export type RunOrigin =
   | { readonly kind: 'parent'; readonly parentRunId: string; readonly href: string }
   /** Interborough started it for its own bookkeeping, such as the schedule tick (COR-2009). */
   | { readonly kind: 'system' }
-  /** A plugin's trigger started a workflow run (COR-2163). */
-  | { readonly kind: 'trigger' }
+  /**
+   * A plugin's trigger started a workflow run (COR-2163): the plugin that contributes the kind, and
+   * the workflow file whose trigger it is, which `href` is the page of (COR-2171). An origin that
+   * names neither, as none the Bureau writes does, has `null` for both.
+   */
+  | {
+      readonly kind: 'trigger';
+      readonly plugin: string | null;
+      readonly workflowId: string | null;
+      readonly href: string | null;
+    }
   /** A task recorded before origins were kept, which nothing else names. */
   | { readonly kind: 'none' };
 
@@ -248,12 +264,41 @@ function waitSummary(task: TaskView): string {
 }
 
 /** A field of the recorded origin, when it is a non-empty string. */
+/**
+ * A trigger's origin (COR-2171): the plugin it names, and the workflow file whose trigger started
+ * the run, linked to that file's page.
+ */
+export function triggerOrigin(
+  plugin: string | undefined,
+  workflowId: string | undefined,
+): Extract<RunOrigin, { kind: 'trigger' }> {
+  return {
+    kind: 'trigger',
+    plugin: plugin ?? null,
+    workflowId: workflowId ?? null,
+    href: workflowId === undefined ? null : workflowTypePath(workflowId),
+  };
+}
+
 function recordedText(origin: object, key: string): string | undefined {
   const value: unknown = Reflect.get(origin, key);
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 const PERSON_SURFACES: readonly RunPersonSurface[] = ['web', 'palette', 'api'];
+
+/**
+ * A run a person started by hand, from the `person` origin the Bureau recorded: the surface they
+ * started it from and who they are, so the page can say "You" for the viewer's own (COR-2424).
+ */
+export function personOrigin(recorded: object): Extract<RunOrigin, { kind: 'person' }> {
+  const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
+  return {
+    kind: 'person',
+    surface: surface ?? null,
+    principal: recordedText(recorded, 'principal') ?? null,
+  };
+}
 
 /**
  * What started the task, read from the origin the Bureau recorded with it. An origin of a kind
@@ -276,10 +321,8 @@ function recordedOrigin(
         href: chatSessionPath(contextId),
       };
     }
-    case 'person': {
-      const surface = PERSON_SURFACES.find((one) => one === recordedText(recorded, 'surface'));
-      return { kind: 'person', surface: surface ?? null };
-    }
+    case 'person':
+      return personOrigin(recorded);
     case 'schedule': {
       const scheduleId = recordedText(recorded, 'scheduleId');
       return {
@@ -327,7 +370,7 @@ function recordedOrigin(
     case 'system':
       return { kind: 'system' };
     case 'trigger':
-      return { kind: 'trigger' };
+      return triggerOrigin(recordedText(recorded, 'plugin'), recordedText(recorded, 'workflowId'));
     default:
       return undefined;
   }
@@ -479,7 +522,9 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
         session:
           attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
       },
-      title: goalTitle(goal.goalRunId),
+      // The goal's own name, as the goals list says it; the identifier only when it has none.
+      title:
+        goal.identity.name.trim() === '' ? goalTitle(goal.goalRunId) : goal.identity.name.trim(),
       summary: attempt.status === 'passed' ? '' : (attempt.finishReason ?? ''),
       startedAt,
       updatedAt: completedAt ?? startedAt,
@@ -751,6 +796,11 @@ export type RunLineContext = {
   readonly zone: string;
   /** The name an agent goes by, from its identifier. */
   readonly agentLabel: (agentName: string) => string;
+  /**
+   * The title of a plugin, from its identifier, or `undefined` when none is loaded (COR-2171): a
+   * run a trigger started names its plugin ("GitHub"). Left out, the identifier is said.
+   */
+  readonly pluginTitle?: (plugin: string) => string | undefined;
 };
 
 /**
@@ -767,14 +817,18 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   // that place when there is one, and nothing does when a person started it.
   const instance =
     workflow !== null && workflow.type !== SCHEDULE_TICK_TYPE && isInstanceWorkflow(workflow.type);
+  // A run with no agent names who started it: Interborough, or the trigger's plugin by its title
+  // (COR-2171), and by its identifier only when no title is loaded; never "An agent".
   const agent =
     row.origin.kind === 'system'
       ? copy.interboroughStarted
       : instance
         ? (row.scheduleName ?? null)
-        : row.agentName === null
-          ? TASK_COPY.unknownAgent
-          : context.agentLabel(row.agentName);
+        : row.agentName !== null
+          ? context.agentLabel(row.agentName)
+          : row.origin.kind === 'trigger' && row.origin.plugin !== null
+            ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+            : TASK_COPY.unknownAgent;
   // A run of a workflow file that nothing recorded an origin for is still a workflow's.
   const kind =
     instance && row.origin.kind === 'none' ? copy.kinds.parent : copy.kinds[row.origin.kind];
@@ -815,7 +869,11 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       if (steps !== null && steps !== undefined && reached !== null) {
         parts.push(copy.failedAtStep(reached, steps.total));
       }
-      if (row.summary !== '') parts.push(row.summary);
+      // What the run said, never the error's own JSON: "GitHub didn’t answer (HTTP 503)".
+      if (row.summary !== '') {
+        const said = oneLine(row.summary, { keepParenthetical: true });
+        if (said !== '') parts.push(said);
+      }
       parts.push(took);
       break;
     case 'completed':

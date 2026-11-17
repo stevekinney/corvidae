@@ -14,7 +14,7 @@ const API_KEY_SECRET = 'voyage-api-key';
 export default definePlugin({
   name: 'voyage',
   title: 'Voyage',
-  version: '1.0.0',
+  version: '1.1.0',
   description: 'Embeds memory with the Voyage AI Embeddings API. Needs a Voyage API key.',
   configuration: z.object({
     /** The Voyage embedding model. */
@@ -31,6 +31,7 @@ export default definePlugin({
       embedders: [
         {
           name: 'embed',
+          model,
           dimensions,
           async embed(requested, options): Promise<EmbeddingVector[]> {
             // Snapshot: the caller owns the array, and it is read after the first await.

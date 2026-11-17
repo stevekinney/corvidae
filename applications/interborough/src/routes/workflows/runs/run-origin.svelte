@@ -9,7 +9,7 @@
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { goalTitle, type RunAttempt, type RunOrigin } from './run-rows.ts';
-  import { STARTED_BY_LABELS } from './started-by.ts';
+  import { STARTED_BY_FILTER_LABELS, STARTED_BY_LABELS } from './started-by.ts';
 
   interface RunOriginProps {
     origin: RunOrigin;
@@ -20,9 +20,29 @@
      * identifier: "Schedule Daily summary, every day at 3:00 AM (9:00 AM UTC)" (COR-2424).
      */
     scheduleLine?: { readonly name: string; readonly cadence: string } | undefined;
+    /** Who is viewing the page: a run this principal started by hand reads "You" (COR-2424). */
+    viewer?: string | null | undefined;
+    /**
+     * The title of a plugin, for a run its trigger started ("GitHub"); the identifier is said when
+     * none is loaded.
+     */
+    pluginTitle?: ((plugin: string) => string | undefined) | undefined;
   }
 
-  let { origin, attempt = null, scheduleLine = undefined }: RunOriginProps = $props();
+  let {
+    origin,
+    attempt = null,
+    scheduleLine = undefined,
+    viewer = undefined,
+    pluginTitle = undefined,
+  }: RunOriginProps = $props();
+
+  /** Whether `who`, the principal a person origin records, is the one viewing the page. */
+  function isViewer(who: string | null | undefined): boolean {
+    return (
+      who !== null && who !== undefined && viewer !== null && viewer !== undefined && who === viewer
+    );
+  }
 
   /** Opens a link in place, and leaves a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
@@ -54,6 +74,9 @@
   {#if origin.kind === 'chat'}
     <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.chat}</span>
     {@render link(origin.href)}
+  {:else if origin.kind === 'person' && isViewer(origin.principal)}
+    <!-- The viewer's own run reads "You" (COR-2424, row 54l). -->
+    {STARTED_BY_FILTER_LABELS.person}
   {:else if origin.kind === 'person'}
     {origin.surface === null
       ? STARTED_BY_LABELS.person
@@ -104,7 +127,20 @@
   {:else if origin.kind === 'system'}
     {STARTED_BY_LABELS.system}
   {:else if origin.kind === 'trigger'}
-    {STARTED_BY_LABELS.trigger}
+    {#if origin.plugin === null}
+      {STARTED_BY_LABELS.trigger}
+    {:else}
+      <!-- COR-2171: which trigger, by its plugin's title, linked to the file whose trigger it is. -->
+      {@const plugin = pluginTitle?.(origin.plugin) ?? origin.plugin}
+      <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.trigger}</span>
+      {#if origin.href !== null}
+        {@const triggerPath = origin.href}
+        <a href={router.href(triggerPath)} onclick={(event) => open(event, triggerPath)}>{plugin}</a
+        >
+      {:else}
+        {plugin}
+      {/if}
+    {/if}
   {:else}
     {TASK_COPY.originUnrecorded}
   {/if}

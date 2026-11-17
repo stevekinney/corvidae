@@ -2,6 +2,7 @@
 /* SideNavigationItem renders a StatusDot and a Tooltip around NavigationItem, so the
  * styles it needs travel with it. Sibling-leaf paths resolve identically in `src/` and the
  * verbatim-copied `dist/` because the layout mirrors. */
+@import '../badge/badge.css';
 @import '../navigation-item/navigation-item.css';
 @import '../status-dot/status-dot.css';
 @import '../tooltip/tooltip.css';
@@ -51,6 +52,15 @@
     font-variant-numeric: tabular-nums;
     line-height: 1.25rem;
     text-align: end;
+  }
+
+  /* A badge takes the trailing edge where a count sits. It is never cut: the label gives up room
+   * first, ending in an ellipsis, so a long title cannot push the mark out of the row. */
+  .cinder-side-navigation-item__badge {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-inline-start: auto;
   }
 
   /* The dot sits right after the label, nudged in so it reads as part of the word. */
@@ -106,6 +116,12 @@
     line-height: 0;
     /* A ring in the sidebar's own surface separates the dot from the icon beneath it. */
     box-shadow: 0 0 0 2px var(--cinder-surface);
+  }
+
+  /* The rail has no room for a word: the badge steps aside and the tooltip says it. */
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__badge {
+    display: none;
   }
 
   .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]

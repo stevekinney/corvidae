@@ -151,6 +151,17 @@ export const settingsSchema = z
     'decisions.maximumPerTask': positiveInteger.describe(
       'The most decision calls one task may make.',
     ),
+    'scorers.sampleRate': z
+      .number()
+      .finite()
+      .min(0)
+      .max(1)
+      .describe(
+        'The share of finished runs that scorers score, from 0 (none) to 1 (every run). At 0 no run is scored by any scorer, whatever rate a scorer asks for, though the scorers plugins add are still listed. Above 0, a scorer that asks for a rate of its own uses that one instead. A run that fails or is canceled is never scored.',
+      ),
+    'scorers.dailyBudget': nonNegativeInteger.describe(
+      'The most times scorers may run in one UTC day, counting each scorer on each scored run. Once the day’s count reaches it no scorer runs until the next UTC day; 0 stops scoring. Unset, there is no limit.',
+    ),
     'context.summarizerModel': z
       .string()
       .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
@@ -328,6 +339,10 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'decisions.model': 'live',
   'decisions.fallbackModel': 'live',
   'decisions.maximumPerTask': 'live',
+  // Read when each run finishes (COR-2202), so a new rate applies to the next run to finish.
+  'scorers.sampleRate': 'live',
+  // Read at each scorer's reservation (COR-2205), so a new budget applies to the next scorer to run.
+  'scorers.dailyBudget': 'live',
   'context.summarizerModel': 'live',
   'retention.audit': 'live',
   'retention.runs': 'live',

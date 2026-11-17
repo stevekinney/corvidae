@@ -88,3 +88,31 @@ export type CancelWorkflowResult =
         'completed' | 'failed' | 'cancelled' | 'timed-out'
       >;
     };
+
+/**
+ * Outcome of `engine.retryFailed(workflowId)`: one failed run resumed in place from its checkpoint,
+ * or why it was not. `retried` means the run is `running` again on the revision it is pinned to,
+ * with every operation its checkpoint holds replayed from that checkpoint and never run again.
+ * `not-failed` is a run in any other status (`currentStatus`), `no-checkpoint` a failed run with
+ * no checkpoint to resume from (it failed before its first one, or the checkpoint is gone), and
+ * `not-found` an id the engine has no run for. Only `retried` changed anything.
+ *
+ * @example
+ * ```ts
+ * import type { RetryFailedWorkflowResult } from '@lostgradient/weft';
+ *
+ * function said(result: RetryFailedWorkflowResult): string {
+ *   return result.status === 'retried' ? `${result.workflowId} is running again` : result.status;
+ * }
+ * void said;
+ * ```
+ */
+export type RetryFailedWorkflowResult =
+  | { readonly workflowId: string; readonly status: 'retried' }
+  | {
+      readonly workflowId: string;
+      readonly status: 'not-failed';
+      readonly currentStatus: WorkflowStatus;
+    }
+  | { readonly workflowId: string; readonly status: 'no-checkpoint' }
+  | { readonly workflowId: string; readonly status: 'not-found' };

@@ -1383,11 +1383,15 @@ describe('ApprovalCard row layout', () => {
       }),
     });
 
-    const labels = [...container.querySelectorAll('.cinder-approval-card__pair-label')];
-    expect(labels.map((label) => label.textContent)).toEqual(['Order ID', 'Order ID']);
-    expect(squash(container.querySelector('.cinder-approval-card__input-pairs')?.textContent)).toBe(
-      'Order ID 4471, Order ID 4472',
-    );
+    const rows = [...container.querySelectorAll('.cinder-description-list__row')];
+    expect(rows.map((row) => squash(row.querySelector('dt')?.textContent))).toEqual([
+      'Order ID',
+      'Order ID',
+    ]);
+    expect(rows.map((row) => squash(row.querySelector('dd')?.textContent))).toEqual([
+      '4471',
+      '4472',
+    ]);
   });
 
   test('renders the shared approval row: question, irreversible marker, command, Input, note, Deny and Approve', () => {
@@ -1416,9 +1420,15 @@ describe('ApprovalCard row layout', () => {
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',
     );
+    // The input is in the open: one pair per line, in a group named Input, with no disclosure.
+    expect(container.querySelector('.cinder-approval-card__input-toggle')).toBeNull();
+    const input = getByRole('group', { name: 'Input' });
     expect(
-      squash(container.querySelector('.cinder-approval-card__input-toggle')?.textContent),
-    ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
+      [...input.querySelectorAll('.cinder-description-list__row')].map((row) =>
+        squash(row.textContent),
+      ),
+    ).toEqual(['Order ID 4471', 'Amount $42.00', 'Reason Arrived damaged']);
+    expect(queryByRole('button', { name: /^Show all/ })).toBeNull();
     // The row draws its command as the same CodeBlock the decision layout does.
     expect(
       container.querySelector('.cinder-approval-card__command .cinder-code-block--wrap'),
@@ -1459,8 +1469,8 @@ describe('ApprovalCard row layout', () => {
     expect(onAskAgain).toHaveBeenCalledTimes(1);
   });
 
-  test('does not repeat a command-only preview in the row Input disclosure', () => {
-    const { container } = render(ApprovalCard, {
+  test('does not repeat a command-only preview in the row input', () => {
+    const { container, queryByRole } = render(ApprovalCard, {
       props: refundRow({
         operation: {
           kind: 'command',
@@ -1471,11 +1481,11 @@ describe('ApprovalCard row layout', () => {
     });
 
     expect(container.querySelector('.cinder-approval-card__command')).not.toBeNull();
-    expect(container.querySelector('.cinder-approval-card__input-toggle')).toBeNull();
+    expect(queryByRole('group', { name: 'Input' })).toBeNull();
   });
 
-  test('keeps the row Input disclosure when a command preview has additional values', () => {
-    const { container } = render(ApprovalCard, {
+  test('keeps the row input when a command preview has additional values', () => {
+    const { container, getByRole } = render(ApprovalCard, {
       props: refundRow({
         operation: {
           kind: 'command',
@@ -1486,7 +1496,11 @@ describe('ApprovalCard row layout', () => {
     });
 
     expect(container.querySelector('.cinder-approval-card__command')).not.toBeNull();
-    expect(container.querySelector('.cinder-approval-card__input-toggle')).not.toBeNull();
+    expect(
+      [
+        ...getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
+      ].map((row) => squash(row.textContent)),
+    ).toEqual(['Command refund-order --id 4471', 'Order ID 4471']);
   });
 
   test('writes the identifier small and keeps the irreversible marker in the title', () => {
@@ -1574,50 +1588,144 @@ describe('ApprovalCard row layout', () => {
     ]);
   });
 
-  test('Input discloses the operation and the arguments as the Fields view', async () => {
+  test('shows the input in the open as label and value rows, with no disclosure', () => {
     const { container, getByRole } = render(ApprovalCard, {
       props: refundRow({
+        id: 'refund-row',
         operation: {
           kind: 'command',
           command: 'bun run refund',
-          argsPreview: { orderId: 4471, amount: '$42.00' },
+          argsPreview: { orderId: 4471, amount: '$42.00', note: null },
         },
       }),
     });
-    const toggle = getByRole('button', { name: /^Input/ });
-    const region = requiredInstance(
-      container.querySelector('.cinder-approval-card__row-input'),
-      HTMLElement,
+    const input = getByRole('group', { name: 'Input' });
+
+    expect(input.id).toBe('refund-row-input');
+    expect(input.closest('button')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__input-chevron')).toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
+    const rows = [...input.querySelectorAll('.cinder-description-list__row')];
+    // DescriptionList's grid: a real dl, each term over its value, in DOM order.
+    expect(
+      input.querySelector('dl.cinder-description-list')?.getAttribute('data-cinder-variant'),
+    ).toBe('grid');
+    expect(rows.map((row) => squash(row.querySelector('dt')?.textContent))).toEqual([
+      'Order ID',
+      'Amount',
+      'Note',
+    ]);
+    expect(rows.map((row) => squash(row.querySelector('dd')?.textContent))).toEqual([
+      '4471',
+      '$42.00',
+      'None',
+    ]);
+    // An empty field reads as a quiet word, not a value someone typed.
+    expect(rows[2]?.querySelector('.cinder-description-list__empty')?.textContent).toBe('None');
+    // Short values share the row's columns.
+    expect(rows.some((row) => row.hasAttribute('data-cinder-wide'))).toBe(false);
+  });
+
+  test('a long, multi-line or structured value takes the whole row of the grid', () => {
+    const { getByRole } = render(ApprovalCard, {
+      props: refundRow({
+        operation: {
+          kind: 'other',
+          argsPreview: {
+            orderId: 4471,
+            reason: 'Arrived damaged, the box was crushed and the mug inside it broke',
+            note: 'first line\nsecond line',
+            items: [{ sku: 'A-1' }],
+          },
+        },
+      }),
+    });
+    const rows = [
+      ...getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
+    ];
+
+    expect(rows.map((row) => row.hasAttribute('data-cinder-wide'))).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  test('writes a nested value whole, in the code font, with a secret inside it masked', () => {
+    const { getByRole } = render(ApprovalCard, {
+      props: refundRow({
+        operation: {
+          kind: 'other',
+          argsPreview: { items: [{ sku: 'A-1', quantity: 2 }], auth: { apiKey: 'sk-live-123' } },
+        },
+      }),
+    });
+    const values = [...getByRole('group', { name: 'Input' }).querySelectorAll<HTMLElement>('dd')];
+
+    const code = values[0]?.querySelector('.cinder-description-list__code');
+    expect(code?.tagName).toBe('CODE');
+    expect(code?.textContent).toBe('[{"sku":"A-1","quantity":2}]');
+    expect(values[1]?.textContent).not.toContain('sk-live-123');
+  });
+
+  test('a long input shows its first rows and a Show all toggle that opens the rest in place', async () => {
+    const argsPreview = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`field${index + 1}`, `value ${index + 1}`]),
     );
+    const { getByRole } = render(ApprovalCard, {
+      props: refundRow({ id: 'long-row', operation: { kind: 'other', argsPreview } }),
+    });
+    const input = getByRole('group', { name: 'Input' });
+    const toggle = getByRole('button', { name: 'Show all 9' });
+    const rest = requiredInstance(input.querySelector('#long-row-input-rest'), HTMLElement);
 
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(region.hidden).toBe(true);
-    expect(toggle.getAttribute('aria-controls')).toBe(region.id);
+    expect(toggle.getAttribute('aria-controls')).toBe('long-row-input-rest');
+    expect(rest.hidden).toBe(true);
+    expect(rest.querySelectorAll('.cinder-description-list__row')).toHaveLength(5);
+    expect(
+      input.querySelectorAll(
+        '.cinder-approval-card__input-rows:not([hidden]) .cinder-description-list__row',
+      ),
+    ).toHaveLength(4);
+    // The toggle is under the rows, inside the group.
+    expect(input.lastElementChild).toBe(toggle);
 
     await fireEvent.click(toggle);
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(region.hidden).toBe(false);
-    expect(region.textContent).toContain('bun run refund');
-    const inspector = requiredInstance(
-      region.querySelector('.cinder-payload-inspector'),
-      HTMLElement,
-    );
-    expect(inspector.getAttribute('aria-label')).toBe('Input');
-    expect(region.querySelector('.cinder-json-viewer')).toBeNull();
+    expect(toggle.textContent?.trim()).toBe('Show less');
+    expect(rest.hidden).toBe(false);
   });
 
-  test('Input lists touched files and is absent when there is nothing to show', async () => {
+  test('shows the touched files and a patch in the open, and no input when there is nothing to show', () => {
     const withFiles = render(ApprovalCard, {
       props: refundRow({ operation: { kind: 'file-write', filesTouched: ['notes/plan.md'] } }),
     });
-    await fireEvent.click(withFiles.getByRole('button', { name: /^Input/ }));
     expect(withFiles.container.textContent).toContain('notes/plan.md');
+    expect(withFiles.queryByRole('group', { name: 'Input' })).toBeNull();
+    cleanup();
+
+    const withPatch = render(ApprovalCard, {
+      props: refundRow({ operation: { kind: 'patch', diff: '--- a\n+++ b\n@@ -1 +1 @@\n-a\n+b' } }),
+    });
+    expect(withPatch.container.querySelector('.cinder-code-block')).not.toBeNull();
     cleanup();
 
     const empty = render(ApprovalCard, { props: refundRow({ operation: { kind: 'other' } }) });
-    expect(empty.queryByRole('button', { name: /^Input/ })).toBeNull();
+    expect(empty.queryByRole('group', { name: 'Input' })).toBeNull();
     expect(empty.getByRole('button', { name: 'Approve' })).not.toBeNull();
+  });
+
+  test('writes a preview that is not an object as one Value row', () => {
+    const { getByRole } = render(ApprovalCard, {
+      props: refundRow({ operation: { kind: 'other', argsPreview: 'refund order 4471' } }),
+    });
+
+    expect(squash(getByRole('group', { name: 'Input' }).textContent)).toBe(
+      'Value refund order 4471',
+    );
   });
 
   test('shows no Allow checkbox unless the tool offers one', () => {
@@ -1804,7 +1912,7 @@ describe('ApprovalCard row layout', () => {
     }
     expect(onResolve).not.toHaveBeenCalled();
     expect(getByRole('button', { name: 'Add note' })).not.toBeNull();
-    expect(getByRole('button', { name: /^Input/ })).not.toBeNull();
+    expect(getByRole('group', { name: 'Input' })).not.toBeNull();
   });
 
   test('an unavailable approval shows the neutral word, its input and the reason, with no decision buttons', () => {
@@ -1828,9 +1936,12 @@ describe('ApprovalCard row layout', () => {
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
       'Publish notes, Changes things, Approval from Release helper, 12 min ago',
     );
+    // The input is the waiting card's grid, at the content edge, with no "Input" word.
     expect(
-      squash(container.querySelector('.cinder-approval-card__input-summary')?.textContent),
-    ).toBe('Version 2.4, Changes 12');
+      [...container.querySelectorAll('.cinder-description-list__row')].map((row) =>
+        squash(row.textContent),
+      ),
+    ).toEqual(['Version 2.4', 'Changes 12']);
     expect(
       getByText(
         "Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.",
@@ -1969,7 +2080,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         ),
       ).toBe('Refund order 4471 for $42.00? Approved by you in Reviews, 10:46 AM');
       expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
-      expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__input-list')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__outcome-dot')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
       const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
@@ -1997,8 +2108,8 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       expect(glyph?.querySelector('svg')?.classList.contains('lucide-ban')).toBe(true);
     });
 
-    test('a row decided here keeps its tool line, its Input summary and the dot', () => {
-      const { container } = render(ApprovalCard, {
+    test('a row decided here keeps its tool line, its input in the waiting card’s grid and the dot', () => {
+      const { container, getByRole } = render(ApprovalCard, {
         props: refundRow({
           state: 'approved',
           decidedBy: 'you',
@@ -2006,7 +2117,11 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         }),
       });
       expect(container.querySelector('.cinder-approval-card__line')).not.toBeNull();
-      expect(container.querySelector('.cinder-approval-card__decided-input')).not.toBeNull();
+      // One pattern for the input: the same grid as a waiting card, no "Input" word, no indent.
+      const input = getByRole('group', { name: 'Input' });
+      expect(input.querySelector('dl')?.getAttribute('data-cinder-variant')).toBe('grid');
+      expect(container.querySelector('.cinder-approval-card__input-word')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__outcome-dot')).not.toBeNull();
       expect(container.querySelector('.cinder-approval-card__decided-glyph')).toBeNull();
     });
@@ -2208,10 +2323,13 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       });
 
       test('inputLabel renames the Input block', () => {
-        const { container } = render(ApprovalCard, {
+        const { container, getByRole } = render(ApprovalCard, {
           props: refundRow({ layout, inputLabel: 'Runs with' }),
         });
-        expect(container.textContent).toContain('Runs with');
+        // The row's input is rows in the open, a group the label names; the card and the detail
+        // page write the label on their arguments block.
+        if (layout === 'row') expect(getByRole('group', { name: 'Runs with' })).not.toBeNull();
+        else expect(container.textContent).toContain('Runs with');
       });
 
       test('a context slot writes its line above the question', () => {
@@ -2417,14 +2535,16 @@ describe('ApprovalCard outcome', () => {
     ).toBe('Your note: Check the carrier’s claim first. Sent to the agent as the reason.');
   });
 
-  test('keeps the input line on a decided row', () => {
-    const { container } = render(ApprovalCard, {
+  test('keeps the input on a decided row, in the waiting card’s grid', () => {
+    const { getByRole } = render(ApprovalCard, {
       props: refundRow({ state: 'approved', decidedBy: 'you', inputLabel: 'Input' }),
     });
 
     expect(
-      squash(container.querySelector('.cinder-approval-card__decided-input')?.textContent),
-    ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
+      [
+        ...getByRole('group', { name: 'Input' }).querySelectorAll('.cinder-description-list__row'),
+      ].map((row) => squash(row.textContent)),
+    ).toEqual(['Order ID 4471', 'Amount $42.00', 'Reason Arrived damaged']);
   });
 
   test('says nothing more than the outcome when no notice or reason was given', () => {
@@ -2466,7 +2586,7 @@ describe('ApprovalCard line wrapping', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(
-      /@container \(inline-size < 17rem\) \{[^@]*__line \.cinder-approval-card__time-separator \{\s*display: none;[^@]*__line time \{\s*display: block;/,
+      /@container \(inline-size < 14rem\) \{[^@]*__line \.cinder-approval-card__time-separator \{\s*display: none;[^@]*__line time \{\s*display: block;/,
     );
     expect(css).toMatch(
       /@container \(inline-size < 19rem\) \{[^@]*__eyebrow \.cinder-approval-card__time-separator,[^@]*__detail-ask \.cinder-approval-card__time-separator \{\s*display: none;/,
@@ -2494,11 +2614,24 @@ describe('ApprovalCard line wrapping', () => {
 
 describe('ApprovalCard view', () => {
   test('shows the JSON view of its input when view is json', async () => {
-    const { container, getByRole } = render(ApprovalCard, { props: refundRow({ view: 'json' }) });
+    const { container, getByRole } = render(ApprovalCard, {
+      props: refundRow({ layout: 'card', view: 'json' }),
+    });
 
-    await fireEvent.click(getByRole('button', { name: /^Input/ }));
+    await fireEvent.click(getByRole('button', { name: /^Arguments/ }));
 
     expect(container.querySelector('.cinder-payload-inspector')?.textContent).toContain('orderId');
+  });
+
+  test('the row and decision layouts show their input as rows, so view does not apply there', () => {
+    for (const layout of ['row', 'decision'] as const) {
+      const { container, getByRole } = render(ApprovalCard, {
+        props: refundRow({ layout, view: 'json' }),
+      });
+      expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
+      expect(getByRole('group', { name: 'Input' })).not.toBeNull();
+      cleanup();
+    }
   });
 });
 
@@ -2764,7 +2897,7 @@ describe('ApprovalCard decided row order', () => {
     const order = [
       '.cinder-approval-card__row-question',
       '.cinder-approval-card__line',
-      '.cinder-approval-card__decided-input',
+      '.cinder-approval-card__input-list',
       '.cinder-approval-card__outcome',
     ].map((selector) => container.querySelector(selector));
     for (const [index, element] of order.entries()) {

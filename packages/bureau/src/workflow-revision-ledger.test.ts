@@ -18,6 +18,8 @@ import {
   compatibilityOf,
   createWorkflowRevisionLedger,
   type ObservedWorkflowFile,
+  revisionContentDigest,
+  revisionContentOf,
   type WorkflowRevisionContent,
   workflowRevisionLabel,
 } from './workflow-revision-ledger';
@@ -53,6 +55,7 @@ function contentOf(definition: WorkflowFileDefinition): WorkflowRevisionContent 
     steps: definition.steps,
     inputSchema: definition.inputSchema ?? null,
     outputSchema: definition.outputSchema ?? null,
+    ...(definition.outputName === undefined ? {} : { outputName: definition.outputName }),
   };
 }
 
@@ -192,6 +195,7 @@ describe('the ledger', () => {
       stepAnnotations: [],
       document: { name: 'release-notes', trigger: { kind: 'manual' }, steps: [] },
       ...contentOf(definition),
+      outputName: definition.outputName ?? null,
     };
   }
 
@@ -220,6 +224,36 @@ describe('the ledger', () => {
     );
     expect(await ledger.list('release-notes')).toHaveLength(1);
     expect(await ledger.list('linear:release-notes')).toHaveLength(1);
+  });
+
+  it('records no new version for a file written before outputName existed, and a compatible one when it gains a name (COR-2424)', async () => {
+    // The content a version recorded before the field existed: no `outputName` key at all.
+    const before = {
+      title: RELEASE_NOTES.title ?? null,
+      description: RELEASE_NOTES.description ?? null,
+      trigger: RELEASE_NOTES.trigger,
+      steps: RELEASE_NOTES.steps,
+      inputSchema: null,
+      outputSchema: null,
+    };
+    const file = observed(RELEASE_NOTES, 'a');
+    expect(revisionContentDigest(revisionContentOf(file))).toBe(revisionContentDigest(before));
+
+    const store = textValueStore(new MemoryStorage());
+    const ledger = createWorkflowRevisionLedger({ store, nowISO: () => new Date(0).toISOString() });
+    await ledger.observe(file, { origin: 'file' });
+    await ledger.observe(observed(RELEASE_NOTES, 'b'), { origin: 'file' });
+    expect(await ledger.list('release-notes')).toHaveLength(1);
+
+    const named = await ledger.observe(observed({ ...RELEASE_NOTES, outputName: 'notes' }, 'c'), {
+      origin: 'file',
+    });
+    expect(named.version).toBe('1.1.0');
+    expect(named.content.outputName).toBe('notes');
+    expect(named.changes).toEqual([
+      { kind: 'output-name', from: null, to: 'notes', breaking: false },
+    ]);
+    expect(named.compatibility).toBe('compatible');
   });
 });
 

@@ -5,6 +5,22 @@
  * @internal
  */
 
+import {
+  createAuthenticator,
+  createRateLimiter,
+  validateAuthConfig,
+  validateRateLimitConfig,
+  type Authenticator,
+} from '@lostgradient/backchannel';
+import {
+  buildTLSOptions,
+  createAdditionalScopeSet,
+  filterRecognizedScopes,
+  resolveCorsPolicy,
+  tlsOptionsVerifyClientCertificates,
+  validateCorsOptions,
+  type AdditionalScopeSet,
+} from '@lostgradient/backchannel/internals';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine } from '../core/engine.ts';
 import { getEnginePayloadSizeMaxBytes } from '../core/engine/payload-size-policy.ts';
@@ -13,27 +29,15 @@ import { createMetricsCollectorExporter, MetricsCollector } from '../observabili
 import { resolveServerEnvironment } from '../runtime/environment-configuration.ts';
 import { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import { WorkerRegistry } from '../worker/registry.ts';
-import {
-  buildTLSOptions,
-  createAuthenticator,
-  createRateLimiter,
-  tlsOptionsVerifyClientCertificates,
-  validateAuthConfig,
-  validateRateLimitConfig,
-  type Authenticator,
-} from './authentication.ts';
-import {
-  createAdditionalScopeSet,
-  filterRecognizedScopes,
-  type AdditionalScopeSet,
-} from './authorization-scope.ts';
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
 import { SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import type { ServeOptions } from './index.ts';
-import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
-import { closeJsonRpcSessionsForShutdown } from './json-rpc-websocket-runtime.ts';
+import {
+  closeJsonRpcSessionsForShutdown,
+  type WebSocketData,
+} from './json-rpc-websocket-runtime.ts';
 import { createLiveRestBindings } from './rest-bindings.ts';
 import {
   createServerWebSocketHandlers,
@@ -46,7 +50,6 @@ import type {
   PendingWorkerRequeue,
   ServerContext,
 } from './runtime/context.ts';
-import { resolveCorsPolicy, validateCorsOptions } from './runtime/cors.ts';
 import {
   registerWorkflowEventLifecycle,
   type EventBroadcastingHandle,

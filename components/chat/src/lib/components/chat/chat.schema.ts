@@ -36,7 +36,7 @@ const schema = {
     scrollFadeVisible: {
       type: 'boolean',
       description:
-        'Show a scroll-driven edge fade on the top and bottom of the message\ntimeline as it overflows. Opt-in and presentation-only — never the sole\nsignal that more messages exist; the jump-to-latest button and unread\ncount remain the authoritative affordances. Only visible when\n`surfaceMode` is `\'default\'`: with `surfaceMode="transparent"` the\ntimeline paints no background of its own, so there is no color the fade\ncould correctly fade toward, and it stays inert rather than painting an\nincorrect opaque band. Default `false`.',
+        "Show a scroll-driven edge fade on the top and bottom of the message\ntimeline as it overflows. Opt-in and presentation-only — never the sole\nsignal that more messages exist; the jump-to-latest button and unread\ncount remain the authoritative affordances. With `surfaceMode` `'default'`\nit is an opaque overlay in the timeline's own surface colour; with\n`surfaceMode=\"transparent\"` the timeline paints no background, so it masks\nthe edge instead and the host's background shows through. Either edge\nfades only while content lies past it, and reduced transparency or forced\ncolours keep a plain edge. Default `false`.",
     },
     answerInComposer: {
       type: 'boolean',

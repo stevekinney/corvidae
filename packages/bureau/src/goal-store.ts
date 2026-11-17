@@ -39,10 +39,14 @@ import {
   canTransitionGoalRun,
   type GoalRunStatus,
   type GoalRunTerminalReason,
+  type JSONValue,
   TERMINAL_STATUS_BY_REASON,
   type ValidatorIdentity,
 } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
+
+import { canonicalJson } from './canonical-json';
+import type { ValidatorFileDefinition } from './validator-file';
 
 import {
   auditEventForRestart,
@@ -183,6 +187,19 @@ export interface GoalConfigurationPatch {
   readonly agentName?: string | undefined;
   /** The validator each check from now on runs. */
   readonly validator?: ValidatorIdentity | undefined;
+  /**
+   * COR-2117 — the parsed configuration of the validator the patch names. When the patch changes the
+   * validator it replaces the stored configuration (absent here clears it), so a configuration never
+   * outlives the validator it was parsed for; when it leaves the validator as it is, absent here
+   * keeps the stored configuration.
+   */
+  readonly validatorConfiguration?: JSONValue | undefined;
+  /**
+   * COR-2119 — the definition of the owner-defined validator the patch names. It travels with the
+   * validator as the configuration does: a changed validator takes the patch's (absent clears it),
+   * the same validator keeps what the record holds.
+   */
+  readonly validatorDefinition?: ValidatorFileDefinition | undefined;
   /** How many attempts the goal may make in all, the ones it has made included. */
   readonly maximumAttempts?: number | undefined;
 }
@@ -281,6 +298,32 @@ export interface GoalStore {
     patch: GoalConfigurationPatch,
     now: string,
     expectedRevision: number,
+  ): Promise<GoalConfigurationResult>;
+  /**
+   * COR-2425 — the start of attempt `attemptIndex` takes a pending prompt edit: one compare-and-swap
+   * clears `objective.promptPending` and records `promptRevisedAtAttempt: attemptIndex`, and the
+   * start seats its attempt from the record this answers, so the marker says exactly what the
+   * attempt was given. With no edit pending nothing is written (`unchanged`); an edit that lands
+   * after this write stays pending for the attempt after it. Like `updateConfiguration` it advances
+   * `revision` and never `transitionSeq`.
+   */
+  consumePromptEdit(
+    goalRunId: string,
+    attemptIndex: number,
+    now: string,
+  ): Promise<GoalConfigurationResult>;
+  /**
+   * Gives back the edit `consumePromptEdit` took for attempt `attemptIndex` when that start ended
+   * without creating the attempt's run (it adopted a run another try created, or stood down): one
+   * compare-and-swap sets `objective.promptPending` again and restores `previousMarker`, the
+   * marker the record held before the consume, so the record never says an attempt was given a
+   * prompt it never got. A record whose marker is no longer `attemptIndex` is `unchanged`.
+   */
+  restorePromptEdit(
+    goalRunId: string,
+    attemptIndex: number,
+    previousMarker: number | undefined,
+    now: string,
   ): Promise<GoalConfigurationResult>;
   /**
    * Increments `controllerRestarts`. A terminal goal is `rejected`. With
@@ -588,6 +631,59 @@ export function createGoalStore(
         (record) => ({ status: 'updated', record }),
       );
     },
+    consumePromptEdit(goalRunId, attemptIndex, now) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) =>
+          current.objective.promptPending === true
+            ? {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  objective: {
+                    agentName: current.objective.agentName,
+                    prompt: current.objective.prompt,
+                    ...(current.objective.instructions === undefined
+                      ? {}
+                      : { instructions: current.objective.instructions }),
+                    promptRevisedAtAttempt: attemptIndex,
+                  },
+                  updatedAt: now,
+                },
+              }
+            : { outcome: 'done', result: { status: 'unchanged', record: current } },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
+    restorePromptEdit(goalRunId, attemptIndex, previousMarker, now) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) =>
+          current.objective.promptRevisedAtAttempt === attemptIndex
+            ? {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  objective: {
+                    agentName: current.objective.agentName,
+                    prompt: current.objective.prompt,
+                    ...(current.objective.instructions === undefined
+                      ? {}
+                      : { instructions: current.objective.instructions }),
+                    ...(previousMarker === undefined
+                      ? {}
+                      : { promptRevisedAtAttempt: previousMarker }),
+                    promptPending: true,
+                  },
+                  updatedAt: now,
+                },
+              }
+            : { outcome: 'done', result: { status: 'unchanged', record: current } },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
     async recordControllerRestart(goalRunId, now, expectedCount) {
       const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
@@ -670,11 +766,18 @@ function evaluateConfigurationUpdate(
   const prompt = patch.prompt ?? objective.prompt;
   const agentName = patch.agentName ?? objective.agentName;
   const nextValidator = patch.validator ?? validator;
+  const validatorChanged = !sameValidator(nextValidator, validator);
+  // The configuration was parsed for the validator the patch names, so it never carries over to
+  // another one: a changed validator takes the patch's, or none.
+  const nextConfiguration = validatorChanged
+    ? patch.validatorConfiguration
+    : (patch.validatorConfiguration ?? current.validatorConfiguration);
   const maximumAttempts = patch.maximumAttempts ?? bounds.maximumAttempts;
   if (
     prompt === objective.prompt &&
     agentName === objective.agentName &&
-    sameValidator(nextValidator, validator) &&
+    !validatorChanged &&
+    canonicalJson(nextConfiguration) === canonicalJson(current.validatorConfiguration) &&
     maximumAttempts === bounds.maximumAttempts
   ) {
     return done({ status: 'unchanged', record: current });
@@ -694,19 +797,27 @@ function evaluateConfigurationUpdate(
         attempt.agentName === undefined ? { ...attempt, agentName: objective.agentName } : attempt,
       )
     : current.attempts;
-  // The next attempt that opens is the first to be given the edited prompt, which a retry under the
-  // `continue` policy reads (`goalAttemptInput`). The attempts opened so far keep the prompt they
-  // were given, and the one in flight keeps it too.
+  // The edit is pending until an attempt's start takes it (`consumePromptEdit`): that start, not
+  // this write, says which attempt is the first given the edited prompt, because a start already
+  // under way read the record before this write and seats its attempt from that copy.
   const promptEdited = prompt !== objective.prompt;
+  const nextDefinition = validatorChanged ? patch.validatorDefinition : current.validatorDefinition;
+  const {
+    validatorConfiguration: _replacedConfiguration,
+    validatorDefinition: _replacedDefinition,
+    ...withoutValidatorCopies
+  } = current;
   const next: GoalState = {
-    ...current,
+    ...withoutValidatorCopies,
     objective: {
       ...objective,
       prompt,
       agentName,
-      ...(promptEdited && opened > 0 ? { promptRevisedAtAttempt: opened } : {}),
+      ...(promptEdited ? { promptPending: true } : {}),
     },
     validator: { name: nextValidator.name, version: nextValidator.version },
+    ...(nextConfiguration === undefined ? {} : { validatorConfiguration: nextConfiguration }),
+    ...(nextDefinition === undefined ? {} : { validatorDefinition: nextDefinition }),
     bounds: { ...bounds, maximumAttempts },
     attempts,
     updatedAt: now,

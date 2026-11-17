@@ -15,8 +15,10 @@ import {
   newThreadId,
   releaseBarrier,
   runToEnd,
+  untilChatLoaded,
 } from './chat-support.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const BARRIER = 'barrier';
 const BARRIER_SHORT = 'barrier-short';
@@ -49,6 +51,7 @@ async function sendFollowUp(page: Page, text: string): Promise<void> {
 }
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   await composer(page).fill(text);
   await composer(page).press('Enter');
 }
@@ -601,12 +604,12 @@ for (const width of [375, 1280] as const) {
       const button = page.getByTestId('agent-prompts').getByRole('button', { name: prompt });
       await expect(button).toBeVisible();
       const outlet = page.locator('main.weft-shell-outlet');
-      const outletBox = await outlet.boundingBox();
-      const buttonBox = await button.boundingBox();
-      expect(buttonBox?.x ?? 0).toBeGreaterThanOrEqual((outletBox?.x ?? 0) - 1);
-      expect((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0)).toBeLessThanOrEqual(
-        (outletBox?.x ?? 0) + (outletBox?.width ?? 0) + 1,
-      );
+      const { outletBox, buttonBox } = await readBoxes(page, {
+        outletBox: outlet,
+        buttonBox: button,
+      });
+      expect(buttonBox.x).toBeGreaterThanOrEqual(outletBox.x - 1);
+      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(outletBox.x + outletBox.width + 1);
       // It wrapped: taller than a line and a half of its own text.
       expect(
         await button.evaluate(

@@ -1,11 +1,15 @@
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  type UnknownRestBinding,
+  createStoredChunkSSEStream,
+  invalidParamsFault,
+  parseOptionalSequenceCursor,
+  SSE_RESPONSE_HEADERS,
+} from '@lostgradient/backchannel/internals';
 import type { StoredStreamChunk } from '../../core/context.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { parseOptionalSequenceCursor } from '../sequence-cursor.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
-import { createStoredChunkSSEStream, SSE_RESPONSE_HEADERS } from './sse-stream.ts';
+import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 // `after` is permissive at the schema boundary so REST and JSON-RPC clients
 // share one validation path. extractInput passes through the raw query

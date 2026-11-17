@@ -17,6 +17,7 @@ import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { touchHeight } from './hit-area.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -57,6 +58,85 @@ const chatList = (page: Page) => page.getByRole('region', { name: 'Chats' });
 const openChat = (page: Page) => page.getByRole('region', { name: 'Open chat' });
 const blockedRow = (page: Page) => page.locator('[data-chat-composer-status="blocked"]');
 
+/**
+ * The waiting approval's placement, read in one layout pass: the transcript's box, the card's box,
+ * Deny's and Approve's boxes with whether a tap at each centre reaches the button (a composer, the
+ * reminder or the tab bar over it is a miss), and whether the reminder is drawn.
+ */
+async function readApprovalPlacement(page: Page) {
+  return page.evaluate(() => {
+    const rectOf = (node: Element | null) => {
+      if (node === null) return null;
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    const decision = document.querySelector('[data-approval-decision]');
+    const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
+      ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
+    );
+    const question = decision?.querySelector('.cinder-approval-card__row-question') ?? null;
+    const questionBox = question?.getBoundingClientRect();
+    const questionHit =
+      questionBox === undefined
+        ? null
+        : document.elementFromPoint(
+            questionBox.x + questionBox.width / 2,
+            questionBox.y + questionBox.height / 2,
+          );
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      transcript: rectOf(document.querySelector('.chat-timeline')),
+      card: rectOf(decision),
+      question: rectOf(question),
+      questionHitsItself:
+        questionHit !== null && question !== null && question.contains(questionHit),
+      reminder: document.querySelector('[data-chat-approval-drawer]') !== null,
+      blocked: rectOf(document.querySelector('[data-chat-composer-status="blocked"]')),
+      buttons: buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return { box: rectOf(button), hitsItself: hit !== null && button.contains(hit) };
+      }),
+    };
+  });
+}
+
+type ApprovalPlacement = Awaited<ReturnType<typeof readApprovalPlacement>>;
+
+/** Deny and Approve are inside the transcript's visible box, a tap reaches each, and no reminder. */
+function expectDecisionInView(read: ApprovalPlacement): void {
+  expect(read.buttons).toHaveLength(2);
+  const transcript = read.transcript!;
+  for (const button of read.buttons) {
+    const box = button.box!;
+    expect(box.y).toBeGreaterThanOrEqual(transcript.y - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(transcript.y + transcript.height + 1);
+    expect(button.hitsItself).toBe(true);
+  }
+  // The reminder is for Deny and Approve out of view, so with both in view it is not drawn.
+  expect(read.reminder).toBe(false);
+}
+
+/**
+ * The narrow card says things once, so at 320 by 640 the whole of it fits: its question and Approve
+ * are both inside the viewport and the transcript's visible box, and a tap reaches each (COR-2327).
+ */
+function expectQuestionAndApproveInView(read: ApprovalPlacement): void {
+  const transcript = read.transcript!;
+  const question = read.question!;
+  const approve = read.buttons.at(-1)!.box!;
+  for (const [name, box] of [
+    ['question', question],
+    ['Approve', approve],
+  ] as const) {
+    expect(box.y, `${name} top`).toBeGreaterThanOrEqual(Math.max(0, transcript.y - 1));
+    expect(box.y + box.height, `${name} bottom`).toBeLessThanOrEqual(
+      Math.min(read.viewport.height, transcript.y + transcript.height + 1),
+    );
+  }
+  expect(read.questionHitsItself).toBe(true);
+}
+
 /** The box of `locator`, which must be on the page. */
 async function boxOf(locator: Locator) {
   const box = await locator.boundingBox();
@@ -87,11 +167,12 @@ async function expectApprovalTitleInView(page: Page): Promise<void> {
   const transcript = page.locator('.chat-timeline').first();
   await expect
     .poll(async () => {
-      const [titleBox, transcriptBox] = await Promise.all([
-        title.boundingBox(),
-        transcript.boundingBox(),
-      ]);
-      if (titleBox === null || transcriptBox === null) return false;
+      // A poll that throws would not retry, so a missing element is "not yet", as before.
+      const boxes = await readBoxes(page, { titleBox: title, transcriptBox: transcript }).catch(
+        () => null,
+      );
+      if (boxes === null) return false;
+      const { titleBox, transcriptBox } = boxes;
       return (
         titleBox.y >= transcriptBox.y - 1 &&
         titleBox.y + titleBox.height <= transcriptBox.y + transcriptBox.height + 1
@@ -187,6 +268,188 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await connected.close();
   });
 
+  test('the header’s More and the title switcher paint compact and answer a 44px press (COR-2327 B2)', async ({
+    page,
+  }) => {
+    await openRefundFromList(page);
+    await expect(trail(page).getByRole('button', { name: REFUND })).toBeVisible();
+    // One layout, read once: each control's painted height, and whether presses at its centre and
+    // 21px above and below it land on it.
+    const read = await page.evaluate(() => {
+      const measure = (control: Element | null) => {
+        if (control === null) return null;
+        const box = control.getBoundingClientRect();
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        // What a press lands on: the control itself, or the name of what took it instead.
+        const lands = (at: number) => {
+          const hit = document.elementFromPoint(x, at);
+          return hit !== null && control.contains(hit)
+            ? 'control'
+            : `${hit?.tagName.toLowerCase() ?? 'nothing'}.${hit?.className ?? ''}`;
+        };
+        return { height: box.height, centre: lands(y), above: lands(y - 21), below: lands(y + 21) };
+      };
+      return {
+        more: measure(
+          document.querySelector('[data-testid="chat-header"] .cinder-dropdown-trigger'),
+        ),
+        title: measure(document.querySelector('.cinder-breadcrumbs__trigger')),
+      };
+    });
+    expect(read.more).not.toBeNull();
+    expect(read.more!.height).toBeLessThanOrEqual(32.5);
+    expect(read.title).not.toBeNull();
+    expect(read.title!.height).toBeLessThanOrEqual(30.5);
+    // The title switcher sits a little above the top bar's centre, so the top bar's trail must not
+    // clip its hit area vertically (CI run 43635945611 found it cut at the top).
+    for (const [name, control] of [
+      ['More', read.more!],
+      ['title switcher', read.title!],
+    ] as const) {
+      expect(control.centre, `${name} centre`).toBe('control');
+      expect(control.above, `${name}, 21px above`).toBe('control');
+      expect(control.below, `${name}, 21px below`).toBe('control');
+    }
+  });
+
+  test('at 320 by 640 the waiting approval opens with Deny and Approve in view and not covered, no reminder, and the reminder is one row once scrolled away (COR-2327 B1)', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const row = page.locator('[data-approval-decision]');
+    await expect(row).toBeFocused();
+    // The narrow card says things once, so the whole of it, question to Approve, fits above the
+    // blocked row. Each attempt reads the whole layout in one pass and judges that pass, so a frame
+    // mid-settle is never acted on.
+    await expect(async () => {
+      const read = await readApprovalPlacement(page);
+      expectDecisionInView(read);
+      expectQuestionAndApproveInView(read);
+      // The blocked row stands under the transcript; its action has a line of its own (06m).
+      expect(read.blocked).not.toBeNull();
+    }).toPass();
+    // Settled, not a passing moment: after the fonts and two more frames the card is where it was,
+    // still whole, and the reminder has not come and moved it (COR-2327).
+    const settled = await readApprovalPlacement(page);
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+    });
+    const again = await readApprovalPlacement(page);
+    expectDecisionInView(again);
+    expectQuestionAndApproveInView(again);
+    expect(Math.abs(again.question!.y - settled.question!.y)).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(again.buttons.at(-1)!.box!.y - settled.buttons.at(-1)!.box!.y),
+    ).toBeLessThanOrEqual(0.5);
+
+    // Scrolled back up, the approval leaves the view and the reminder comes: one row, its glyph,
+    // its words and a small Review at the row's end, never a button stacked under the words.
+    const transcriptLocator = page.locator('.chat-timeline').first();
+    await transcriptLocator.hover();
+    await page.mouse.wheel(0, -4000);
+    const drawer = page.locator('[data-chat-approval-drawer]');
+    await expect(drawer).toBeVisible();
+    const review = drawer.getByRole('button', { name: 'Review approval' });
+    await expect(review).toHaveText('Review', { useInnerText: true });
+    const reminder = await drawer.evaluate((element) => {
+      const rectOf = (node: Element | null) => {
+        const { x, y, width, height } = node!.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      // The next drawn surface in the docked stack: the blocked row or the composer.
+      let next = element.nextElementSibling;
+      while (next !== null && next.getBoundingClientRect().height === 0) {
+        next = next.nextElementSibling;
+      }
+      const space = document.createElement('div');
+      space.style.blockSize = 'var(--cinder-space-3)';
+      element.parentElement!.append(space);
+      const token = space.getBoundingClientRect().height;
+      space.remove();
+      const words = element.querySelector('.chat-approval-drawer-text')!;
+      return {
+        // A `normal` line height reads as no number; the font's 1.5 stands in for it then.
+        lineHeight:
+          Number.parseFloat(getComputedStyle(words).lineHeight) ||
+          Number.parseFloat(getComputedStyle(words).fontSize) * 1.5,
+        drawer: rectOf(element),
+        text: rectOf(words),
+        button: rectOf(element.querySelector('button')),
+        gapBelow:
+          next === null
+            ? null
+            : next.getBoundingClientRect().top - element.getBoundingClientRect().bottom,
+        token,
+      };
+    });
+    // The docked stack keeps one gap: the reminder stands --cinder-space-3 clear of the row under it.
+    expect(reminder.gapBelow).not.toBeNull();
+    expect(Math.abs(reminder.gapBelow! - reminder.token)).toBeLessThanOrEqual(0.5);
+    expect(reminder.token).toBe(12);
+    // The reminder's own state, for design review: the transcript scrolled up so it shows, its
+    // bottom edge fading into the docked stack.
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'approval reminder, transcript scrolled up',
+      source: SOURCE,
+    });
+    expect(reminder.drawer.height).toBeLessThanOrEqual(60);
+    // Its words are one line beside Review at 320 (COR-2327 N1).
+    expect(reminder.text.height).toBeLessThanOrEqual(reminder.lineHeight + 1);
+    expect(reminder.button.x).toBeGreaterThanOrEqual(reminder.text.x + reminder.text.width - 1);
+    expect(reminder.button.y).toBeLessThan(reminder.text.y + reminder.text.height);
+    expect(
+      reminder.drawer.x + reminder.drawer.width - (reminder.button.x + reminder.button.width),
+    ).toBeLessThan(20);
+  });
+
+  test('at 320 by 640 with a provider connected, the waiting approval’s decision row is in view and not covered by the live composer (COR-2327 B1)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    // The live composer, not the blocked row, stands under the transcript.
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    await expect(blockedRow(page)).toHaveCount(0);
+    const row = page.locator('[data-approval-decision]');
+    await expect(row).toBeFocused();
+    // Deny and Approve in the transcript's view, a tap at each centre reaching it past the live
+    // composer, the question in view too, and no reminder; each attempt judges one whole-layout read.
+    await expect(async () => {
+      const read = await readApprovalPlacement(page);
+      expectDecisionInView(read);
+      expectQuestionAndApproveInView(read);
+    }).toPass();
+  });
+
+  test('on a phone tall enough for the whole waiting approval, the card opens whole, Deny and Approve in view, with no reminder (COR-2327 B1)', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 320, height: 1000 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const row = page.locator('[data-approval-decision]');
+    await expect(row).toBeFocused();
+    await expect(async () => {
+      const read = await readApprovalPlacement(page);
+      expectDecisionInView(read);
+      // The card fits the transcript, so all of it, its question through Deny and Approve, is in view.
+      const transcript = read.transcript!;
+      const card = read.card!;
+      expect(card.height).toBeLessThan(transcript.height);
+      expect(card.y).toBeGreaterThanOrEqual(transcript.y - 1);
+      expect(card.y + card.height).toBeLessThanOrEqual(transcript.y + transcript.height + 1);
+    }).toPass();
+  });
+
   test('draws Deny and the primary as compact buttons on one row, the primary last, each with a 44px hit area and neither clipped by the card (06m)', async ({
     page,
   }) => {
@@ -270,12 +533,60 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     });
   });
 
+  test('on a phone the conversation column stands the phone gutter from each side: the title and the composer share the 16px edge (COR-2327)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.getByRole('heading', { level: 1, name: REFUND })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    // Each attempt reads every edge in one pass and judges that pass, never a frame mid-layout.
+    await expect(async () => {
+      const read = await page.evaluate(() => {
+        const box = (selector: string) => {
+          const element = document.querySelector(selector);
+          if (element === null) return null;
+          const { left, right } = element.getBoundingClientRect();
+          return { left, right };
+        };
+        const gutter = document.createElement('div');
+        gutter.style.inlineSize = 'var(--cinder-space-4)';
+        document.body.append(gutter);
+        const phoneGutter = gutter.getBoundingClientRect().width;
+        gutter.remove();
+        return {
+          viewport: document.documentElement.clientWidth,
+          phoneGutter,
+          title: box('h1.cinder-page-header__title'),
+          head: box('.weft-chat-head'),
+          composer: box('.chat-input-shell'),
+        };
+      });
+      expect(read.phoneGutter).toBe(16);
+      expect(read.title).not.toBeNull();
+      expect(read.composer).not.toBeNull();
+      expect(Math.abs(read.title!.left - read.composer!.left)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(read.composer!.left - read.phoneGutter)).toBeLessThanOrEqual(0.5);
+      // Symmetrical: the column ends the same gutter from the right edge.
+      expect(Math.abs(read.viewport - read.composer!.right - read.phoneGutter)).toBeLessThanOrEqual(
+        0.5,
+      );
+      expect(Math.abs(read.head!.right - read.composer!.right)).toBeLessThanOrEqual(0.5);
+    }).toPass();
+  });
+
   test('docks the composer at the bottom of the screen, blocked or live (04y)', async ({
     page,
   }) => {
     await openRefundFromList(page);
     // Under 700 pixels the shell's tab bar holds the bottom edge (COR-2315), so the composer docks on
     // top of it: the page's own margin and the pane's border lie between them, and nothing else.
+    // The shell's column never scrolls: the tab bar's focus-ring room overhangs it by a few pixels,
+    // and a focus that scrolled the column by them lifted the page 5px under the tab bar (CI run
+    // 43635945611 read 41px here).
+    expect(
+      await page.evaluate(() => document.querySelector('.weft-shell-main')?.scrollTop ?? -1),
+    ).toBe(0);
     const tabBar = await boxOf(page.getByRole('navigation', { name: NAVIGATION_COPY.tabBar }));
     const blocked = await boxOf(blockedRow(page));
     expect(tabBar.y - (blocked.y + blocked.height)).toBeGreaterThanOrEqual(0);
@@ -286,6 +597,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await open(connected, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const composer = connected.getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeVisible();
+    // The chat's history is in (COR-2327 B3): its waiting approval is drawn, and Send is Send.
+    await expect(connected.locator('[data-approval-decision]')).toBeVisible();
     const send = await boxOf(connected.getByRole('button', { name: 'Send message' }));
     // The hint line sits under the composer; the composer's own bottom is within it of the tab bar.
     const liveTabBar = await boxOf(

@@ -214,12 +214,26 @@ for (const width of WIDTHS) {
       await expect(main).toContainText('Model switcher has no runs. Try another agent.');
       await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
       if (width >= 1024) {
-        for (const [word] of SEGMENTS) {
-          await expect(
-            main.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*0$`) }),
-          ).toBeVisible();
+        // The bar draws its segments as radios when its row fits; with the Workflow and Started by
+        // chips beside the Agent chip it steps down to a Status select that holds the same counts.
+        const status = main.getByRole('combobox', { name: 'Status' });
+        if ((await main.getByRole('radio').count()) > 0 || (await status.count()) === 0) {
+          for (const [word] of SEGMENTS) {
+            await expect(
+              main.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*0$`) }),
+            ).toBeVisible();
+          }
+          await expect(main.getByRole('radio', { name: /^Waiting\s*,/ })).toHaveCount(0);
+        } else {
+          await status.click();
+          for (const [word] of SEGMENTS) {
+            await expect(
+              page.getByRole('option', { name: new RegExp(`^${word}\\s*0$`) }),
+            ).toBeVisible();
+          }
+          await expect(page.getByRole('option', { name: /^Waiting\s*\d/ })).toHaveCount(0);
+          await page.keyboard.press('Escape');
         }
-        await expect(main.getByRole('radio', { name: /^Waiting\s*,/ })).toHaveCount(0);
         await expect(
           main.getByRole('button', { name: 'Agent: Model switcher', exact: true }),
         ).toBeVisible();
@@ -311,6 +325,113 @@ for (const width of WIDTHS) {
       await expect(main.locator('li[data-run]').first()).toBeVisible();
       await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');
     });
+  });
+}
+
+/** A workflow instance's task, as `bureau.tasks.list` answers it, for the states the sample world lacks. */
+function instanceTask(
+  id: string,
+  type: string,
+  fields: {
+    readonly createdAt: string;
+    readonly status: 'working';
+    readonly steps: { readonly total: number; readonly at: number };
+    readonly awaitingSignal?: string;
+    readonly wakeAt?: string;
+    readonly scheduleName?: string;
+  },
+) {
+  return {
+    id,
+    contextId: id,
+    agentName: null,
+    owner: 'anonymous:local',
+    actor: null,
+    kind: 'catalog',
+    origin: null,
+    status: fields.status,
+    finishReason: null,
+    statusMessage: null,
+    createdAt: fields.createdAt,
+    updatedAt: fields.createdAt,
+    cleanup: null,
+    openWaits: [],
+    wakeAt: fields.wakeAt ?? null,
+    workflow: {
+      type,
+      scheduleId: null,
+      scheduleName: fields.scheduleName ?? null,
+      tick: null,
+      steps: fields.steps,
+      awaitingSignal: fields.awaitingSignal ?? null,
+    },
+  };
+}
+
+for (const width of WIDTHS) {
+  test(`the row states the sample world lacks, a Running, a Waiting for a signal and a Scheduled row, at ${width} pixels (10h)`, async ({
+    page,
+  }) => {
+    // The sample world's own runs, with three more the Bureau would list in a busier world: a
+    // workflow running at step 2 of 4, one parked on the signal notes-approved, and one asleep until
+    // its due time (Monday, Nov 2, 11:00 AM Central, after the sample clock's 10:46 AM).
+    const extra = [
+      instanceTask('row-states-running', 'release-notes', {
+        createdAt: '2026-11-02T16:31:00.000Z',
+        status: 'working',
+        steps: { total: 4, at: 2 },
+      }),
+      instanceTask('row-states-waiting', 'release-notes', {
+        createdAt: '2026-11-02T16:20:00.000Z',
+        status: 'working',
+        steps: { total: 4, at: 2 },
+        awaitingSignal: 'notes-approved',
+      }),
+      instanceTask('row-states-scheduled', 'weekly-refund-audit', {
+        createdAt: '2026-11-02T16:40:00.000Z',
+        status: 'working',
+        steps: { total: 3, at: 1 },
+        wakeAt: '2026-11-02T17:00:00.000Z',
+        scheduleName: 'Weekly refund audit',
+      }),
+    ];
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        method?: string;
+        id?: unknown;
+      };
+      if (body.method !== 'bureau.tasks.list') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const answer = (await response.json()) as {
+        result?: { tasks?: unknown[]; nextPageToken?: string | null };
+      };
+      const tasks = answer.result?.tasks ?? [];
+      await route.fulfill({
+        response,
+        json: { ...answer, result: { ...answer.result, tasks: [...tasks, ...extra] } },
+      });
+    });
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/runs');
+    const main = page.locator('main');
+    await expect(main.locator('li[data-run="row-states-running"]')).toBeVisible();
+    await expect(main.locator('li[data-run="row-states-running"]')).toHaveAttribute(
+      'data-status',
+      'Running',
+    );
+    await expect(main.locator('li[data-run="row-states-waiting"]')).toHaveAttribute(
+      'data-status',
+      'Waiting',
+    );
+    await expect(main.locator('li[data-run="row-states-scheduled"]')).toHaveAttribute(
+      'data-status',
+      'Scheduled',
+    );
+    await captureForDesignReview(page, { route: '/runs', state: 'row states', source: SOURCE });
   });
 }
 

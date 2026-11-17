@@ -1,22 +1,24 @@
 import type { ServerWebSocket } from 'bun';
 
+import type { Authenticator, Principal, RateLimiter } from '@lostgradient/backchannel';
+import type {
+  ConnectionLease,
+  JsonRpcWebSocketSession,
+  OpenApiSecuritySchemeName,
+  ResolvedCorsPolicy,
+} from '@lostgradient/backchannel/internals';
 import type { McpEndpoint } from '../../mcp/http.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
-import type { Authenticator, RateLimiter } from '../authentication.ts';
 import type { DeadlineTracker } from '../deadline-tracker.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
-import type { JsonRpcWebSocketSession } from '../json-rpc-websocket.ts';
-import type { OpenApiSecuritySchemeName } from '../openapi.ts';
-import type { Principal } from '../principal.ts';
 import type { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import type { WatchEventFeed } from '../watch-event-feed-backend.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
-import type { ResolvedCorsPolicy } from './cors.ts';
 
 /**
  * Startup task-ledger recovery gate (WFT-23). `ready` resolves once every
@@ -159,8 +161,6 @@ export interface ServerContext {
    */
   stopping: boolean;
 }
-
-export type ConnectionLease = Readonly<{ release(): void }>;
 
 export function acquireFleetSseConnection(context: ServerContext): ConnectionLease {
   return acquireConnection(context, 'fleetSse');

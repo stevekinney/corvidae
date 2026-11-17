@@ -992,6 +992,7 @@ describe('workflows-list', () => {
           description: null,
           inputSchema: null,
           outputSchema: null,
+          outputName: null,
           problem: 'invalid-json',
         },
         {
@@ -1004,6 +1005,7 @@ describe('workflows-list', () => {
           description: null,
           inputSchema: null,
           outputSchema: null,
+          outputName: null,
           problem: null,
         },
         {
@@ -1016,6 +1018,7 @@ describe('workflows-list', () => {
           description: null,
           inputSchema: null,
           outputSchema: null,
+          outputName: null,
           problem: null,
         },
       ],

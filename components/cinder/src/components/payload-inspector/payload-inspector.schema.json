@@ -30,6 +30,10 @@
       "type": "string",
       "description": "A heading drawn at the left of the header row, before the Fields / JSON\nswitch, such as \"Input\" or \"Output\". It also names the card for assistive\ntechnology; without one the card is named \"Payload\"."
     },
+    "labelCode": {
+      "type": "string",
+      "description": "A name drawn after the label, set in code, such as an output's name: with `label` \"Output\" and\n`labelCode` \"notes\" the header reads \"Output, `notes`\" and the card is named \"Output, notes\".\nIgnored without a `label`."
+    },
     "redact": {
       "type": "array",
       "items": {

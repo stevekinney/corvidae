@@ -5,13 +5,14 @@
 import { describe, expect, it } from 'bun:test';
 import type { Engine } from '../../core/engine.ts';
 
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { handleRequest } from '../handler.ts';
 import { createJsonRequest } from '../http-request.test-support.ts';
-import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { waitForStatus } from '../workflow-status.test-support.ts';
 import {
   createBulkTestEngine,

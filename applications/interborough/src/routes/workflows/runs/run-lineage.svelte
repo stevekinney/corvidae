@@ -19,10 +19,17 @@
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import type { BureauSchedule } from '../../../lib/bureau-schedules.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';
+  import { dayStamp, viewerTimeZone } from '../../../lib/format/clock.ts';
+  import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import { scheduleDetailPath } from '../../../lib/router.svelte.ts';
   import { cadenceClauseOf } from './run-schedule-cadence.ts';
   import RunOrigin from './run-origin.svelte';
-  import { buildRunRows, type RunAttempt, type RunOrigin as Origin } from './run-rows.ts';
+  import {
+    buildRunRows,
+    personOrigin,
+    type RunAttempt,
+    type RunOrigin as Origin,
+  } from './run-rows.ts';
 
   interface RunLineageProps {
     runId: string;
@@ -34,6 +41,18 @@
     chat?: ChatContext | undefined;
     /** The schedule that started the run, when the page has read it. */
     schedule?: BureauSchedule | undefined;
+    /**
+     * The origin the Bureau recorded for an instance of a workflow file, which has no task: a person
+     * who started it by hand is said as "You" when they are the viewer (COR-2424, row 54l).
+     */
+    recordOrigin?: object | null | undefined;
+    /** Who is viewing the page, the principal's subject. */
+    viewer?: string | null | undefined;
+    /**
+     * The run a person started, as the chain names it between the person and "This run" (row 54l):
+     * "Run Release notes, Mon, Nov 2, 10:45 AM". Drawn only after a person, for a run with no task.
+     */
+    startedRun?: { readonly title: string; readonly startedAt: number } | undefined;
   }
 
   /** How many origins the list follows, this run's included. */
@@ -45,7 +64,16 @@
     readonly origin: Origin;
   }
 
-  let { runId, task, goal, chat, schedule }: RunLineageProps = $props();
+  let {
+    runId,
+    task,
+    goal,
+    chat,
+    schedule,
+    recordOrigin = undefined,
+    viewer = undefined,
+    startedRun = undefined,
+  }: RunLineageProps = $props();
 
   function rowOf(
     id: string,
@@ -75,6 +103,8 @@
     return origin.kind === 'agent' || origin.kind === 'parent' ? origin.parentRunId : undefined;
   }
 
+  // A run a trigger started names its plugin by its title.
+  const pluginTitle = usePluginTitle();
   const recordedOriginOfRun = $derived(originOf(runId, task, goal, chat));
   // An instance of a workflow file a schedule fired records no origin of its own: the schedule the
   // page read for it is what started it (COR-2424).
@@ -88,7 +118,12 @@
           schedulePath: scheduleDetailPath(schedule.id),
           manual: false,
         }
-      : recordedOriginOfRun,
+      : recordedOriginOfRun.kind === 'none' &&
+          recordOrigin !== null &&
+          recordOrigin !== undefined &&
+          Reflect.get(recordOrigin, 'kind') === 'person'
+        ? personOrigin(recordOrigin)
+        : recordedOriginOfRun,
   );
   // The schedule as the chain says it: its name and when it runs, in the viewer's time (row 55i).
   const scheduleLine = $derived(
@@ -126,16 +161,25 @@
 </script>
 
 <li class="ib-run-lineage__item" data-depth="1">
-  <RunOrigin {origin} {attempt} {scheduleLine} />
+  <RunOrigin {origin} {attempt} {scheduleLine} {viewer} {pluginTitle} />
 </li>
 {#each ancestors.data ?? [] as ancestor, index (ancestor.runId)}
   <li class="ib-run-lineage__item" data-depth={index + 2}>
-    <RunOrigin origin={ancestor.origin} />
+    <RunOrigin origin={ancestor.origin} {viewer} {pluginTitle} />
   </li>
 {/each}
-<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal or a schedule, which are what the chain names (rows 55f, 55i, 54y). -->
-{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule'}
-  <li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
+{#if origin.kind === 'person' && task === undefined && startedRun !== undefined}
+  <li class="ib-run-lineage__item" data-depth="2" data-started-run>
+    <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
+    {startedRun.title}, {dayStamp(startedRun.startedAt, viewerTimeZone())}
+  </li>
+{/if}
+<!-- The run's own row says where it sits in a chain, so it is drawn when another run is in it, and after a goal, a schedule or a person, which are what the chain names (rows 55f, 55i, 54y, 54l). -->
+{#if (ancestors.data?.length ?? 0) > 0 || origin.kind === 'goal' || origin.kind === 'schedule' || (origin.kind === 'person' && task === undefined)}
+  <li
+    class="ib-run-lineage__self"
+    data-depth={(ancestors.data?.length ?? 0) + (startedRun === undefined ? 2 : 3)}
+  >
     <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
     {RUN_DETAIL_COPY.lineage.thisRun}
   </li>

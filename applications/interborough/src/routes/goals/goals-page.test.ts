@@ -20,11 +20,19 @@ import { taskFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test
 import {
   installBureauStub,
   StubFault,
+  type BureauHandler,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import {
+  chooseOption,
+  listboxTrigger,
+  optionLabels,
+  shownChoice,
+} from '../chat/listbox.test-support.ts';
 import { landAt } from '../chat/pages.test-support.ts';
+import { GOAL_FIELD_IDS } from './goal-form-state.svelte.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -41,7 +49,8 @@ function goal(id: string, overrides: Record<string, unknown> = {}) {
     owner: 'anonymous:local',
     agentName: 'assistant',
     identity: { name: `Goal ${id}`, version: '1' },
-    validator: { name: 'reply-says-hello', version: '1' },
+    validator: { name: 'contains-phrase', version: '1' },
+    validatorConfiguration: { phrase: 'hello' },
     status: 'running',
     terminalReason: null,
     revision: 2,
@@ -76,9 +85,30 @@ const AGENTS = ['assistant', 'tool-runner'].map((name) => ({
   a2a: false,
 }));
 
-/** The only check this Bureau was configured with, as a person writes it and as its validator is named. */
-const KNOWN_CHECK = 'Accepts any answer';
+/** The check a new goal starts with: the first this Bureau lists, which takes no configuration. */
 const KNOWN_VALIDATOR = { name: 'accepts-any-answer', version: '1' };
+const KNOWN_CHECK_LABEL = 'Accepts any answer';
+
+/** The checks this Bureau lists (`bureau.validators.list`): one with no settings, one that takes a phrase. */
+const VALIDATORS = [
+  {
+    ...KNOWN_VALIDATOR,
+    determinism: 'deterministic',
+    configuration: null,
+    source: { kind: 'bureau', name: 'bureau', version: '1.0.0' },
+  },
+  {
+    name: 'contains-phrase',
+    version: '1',
+    determinism: 'deterministic',
+    configuration: {
+      type: 'object',
+      properties: { phrase: { type: 'string', minLength: 1, title: 'Phrase' } },
+      required: ['phrase'],
+    },
+    source: { kind: 'bureau', name: 'bureau', version: '1.0.0' },
+  },
+];
 
 type Served = { goals: GoalRow[]; pageSize: number };
 
@@ -93,6 +123,12 @@ function open(
     controller?: { status: 'started' | 'not-needed' | 'start-failed'; reason: string | null };
     /** The agents the Bureau lists, which are {@link AGENTS} unless said. */
     agents?: readonly Record<string, unknown>[];
+    /** The checks the Bureau lists, which are {@link VALIDATORS} unless said. */
+    validators?: readonly Record<string, unknown>[];
+    /** The fault the Bureau answers a create with, in place of making the goal. */
+    createFault?: StubFault;
+    /** How the Bureau answers an attempt's verdict (`bureau.goals.verdict`), which is missing unless said. */
+    verdict?: BureauHandler;
     /** The providers `/host/providers` reports; left out, the host does not say. */
     hostProviders?: readonly { name: string; hasKey: boolean; connected?: boolean }[];
   } = {},
@@ -102,6 +138,12 @@ function open(
   stub = installBureauStub(
     {
       'bureau.agents.list': () => ({ agents: options.agents ?? AGENTS }),
+      'bureau.validators.list': () => ({ validators: options.validators ?? VALIDATORS }),
+      'bureau.goals.verdict':
+        options.verdict ??
+        (() => {
+          throw new StubFault('NotFound', 404, 'No such verdict.');
+        }),
       'bureau.goals.list': (params) => {
         const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
         // The Bureau never answers more than a page holds, however many the caller asks for.
@@ -119,26 +161,22 @@ function open(
         return found;
       },
       'bureau.goals.create': (params) => {
-        const validator = params['validator'] as { name: string; version: string };
-        if (
-          validator.name !== KNOWN_VALIDATOR.name ||
-          validator.version !== KNOWN_VALIDATOR.version
-        ) {
-          throw new StubFault(
-            'Unprocessable',
-            422,
-            `The validator "${validator.name}@${validator.version}" is not configured on this Bureau.`,
-            { reason: 'validator-not-found' },
-          );
-        }
+        if (options.createFault !== undefined) throw options.createFault;
         created += 1;
         const bounds = params['bounds'] as { maximumAttempts: number; maximumTotalSteps?: number };
         // As the Bureau does: a goal needs a bound on all its attempts together, besides how many.
         if (bounds.maximumTotalSteps === undefined) {
           throw new StubFault('InvalidParams', 400, 'missing-aggregate-bound', {});
         }
+        const named = params['validator'] as {
+          name: string;
+          version: string;
+          configuration?: unknown;
+        };
         const made = goal(`goal-created-${String(created)}`, {
           agentName: String(params['agentName']),
+          validator: { name: named.name, version: named.version },
+          validatorConfiguration: named.configuration ?? null,
           status: 'pending',
           revision: 1,
           bounds: {
@@ -217,15 +255,21 @@ async function setAttemptLimit(element: HTMLElement, value: string) {
   await fireEvent.blur(field);
 }
 
-/** Fills the prompt and the check, which are what a goal needs besides the agent the form starts with. */
-async function fillGoal(element: HTMLElement, values: { check?: string } = {}) {
+/** The id of the check picker, a listbox whose trigger shows the check chosen. */
+const CHECK_ID = GOAL_FIELD_IDS.check;
+
+/** Waits for the check picker to settle on the first check the Bureau lists, which a new goal starts with. */
+async function waitForDefaultCheck(element: HTMLElement): Promise<void> {
+  await waitFor(() => expect(shownChoice(element, CHECK_ID)).toBe(KNOWN_CHECK_LABEL));
+}
+
+/** Fills the prompt, which is what a goal needs besides the agent and the check the form starts with. */
+async function fillGoal(element: HTMLElement) {
   const dialog = within(element);
   await waitForDefaultAgent(element);
+  await waitForDefaultCheck(element);
   await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.promptLabel), {
     target: { value: 'Say hello.' },
-  });
-  await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.checkLabel), {
-    target: { value: values.check ?? KNOWN_CHECK },
   });
 }
 
@@ -267,7 +311,7 @@ describe('creating a goal', () => {
       prompt: 'Say hello.\nThen keep trying.',
       // The first line of the prompt names the goal, at the form's own version.
       identity: { name: 'Say hello.', version: '1' },
-      // The check is the validator's name as a slug.
+      // The check is the row the picker offered, by its exact name and version.
       validator: KNOWN_VALIDATOR,
       // The Bureau needs a bound on all the attempts together besides how many it makes.
       bounds: { maximumAttempts: 4, maximumTotalSteps: 50 },
@@ -276,8 +320,70 @@ describe('creating a goal', () => {
     await waitFor(() => expect(router.pathname).toBe('/goals/goal-created-1'));
   });
 
-  test('says Unprocessable above the buttons for a check the Bureau does not have, creates nothing, and keeps what was typed', async () => {
-    const { view, served } = open([]);
+  test('offers only the checks the Bureau lists, each with its version small, draws the settings of one that takes them, and sends its name, version and configuration', async () => {
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    const element = await openCreatePage(view);
+    const dialog = within(element);
+    await fillGoal(element);
+
+    // Exactly the rows of `bureau.validators.list`, the version beside each name.
+    expect(await optionLabels(element, CHECK_ID)).toEqual([
+      'Accepts any answer, version 1',
+      'Contains phrase, version 1',
+    ]);
+    // The first takes no settings, so none are drawn.
+    expect(dialog.queryByTestId('goal-check-settings')).toBeNull();
+
+    await chooseOption(element, 'Contains phrase, version 1', CHECK_ID);
+    await waitFor(() => expect(shownChoice(element, CHECK_ID)).toBe('Contains phrase'));
+    const phrase = await dialog.findByLabelText('Phrase');
+    await fireEvent.input(phrase, { target: { value: 'staging fix' } });
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.goals.create')[0]?.params).toMatchObject({
+      validator: {
+        name: 'contains-phrase',
+        version: '1',
+        configuration: { phrase: 'staging fix' },
+      },
+    });
+    await waitFor(() => expect(router.pathname).toBe('/goals/goal-created-1'));
+  });
+
+  test('says at the field the setting the Bureau refused, and keeps what was typed', async () => {
+    const { view } = open([goal('goal-1')], {
+      createFault: new StubFault('InvalidParams', 400, 'The configuration is refused: phrase', {
+        issues: [
+          { path: ['validator', 'configuration', 'phrase'], message: 'Too short', code: 'custom' },
+          { path: ['goal'], message: 'Not about the configuration', code: 'custom' },
+        ],
+      }),
+    });
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    const element = await openCreatePage(view);
+    const dialog = within(element);
+    await fillGoal(element);
+    await chooseOption(element, 'Contains phrase, version 1', CHECK_ID);
+    await fireEvent.input(await dialog.findByLabelText('Phrase'), { target: { value: 'x' } });
+
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
+
+    await dialog.findByText('Too short');
+    expect(dialog.queryByText('Not about the configuration')).toBeNull();
+    expect((dialog.getByLabelText('Phrase') as HTMLInputElement).value).toBe('x');
+  });
+
+  test('says Unprocessable above the buttons for a check the Bureau no longer has, creates nothing, and keeps what was chosen', async () => {
+    const { view, served } = open([], {
+      createFault: new StubFault(
+        'Unprocessable',
+        422,
+        'The validator "accepts-any-answer@1" is not registered.',
+        { reason: 'validator-missing' },
+      ),
+    });
     // The header's "+" and the empty state's primary button both make a goal.
     const makers = await view.findAllByRole('button', { name: GOALS_COPY.newAction });
     await fireEvent.click(makers[0] as HTMLElement);
@@ -285,28 +391,27 @@ describe('creating a goal', () => {
     expect(router.pathname).toBe('/goals/new');
     const element = view.container;
     const dialog = within(element);
-    await fillGoal(element, { check: 'No such validator' });
+    await fillGoal(element);
 
     await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
 
     const fault = await dialog.findByTestId('goal-fault');
     expect(fault.getAttribute('data-fault-code')).toBe('Unprocessable');
     expect(fault.textContent).toContain(GOALS_COPY.form.failedTitle);
-    expect(fault.textContent).toContain('no-such-validator@1');
+    expect(fault.textContent).toContain('accepts-any-answer@1');
     expect(fault.textContent).toContain(GOALS_COPY.form.kept);
     expect(dialog.getByRole('button', { name: GOALS_COPY.form.tryAgain })).not.toBeNull();
     expect(served.goals).toEqual([]);
-    // What was typed is still there, so the check can be corrected.
-    expect((dialog.getByLabelText(GOALS_COPY.form.checkLabel) as HTMLInputElement).value).toBe(
-      'No such validator',
-    );
+    // What was chosen and typed is still there, so it can be corrected.
+    expect(shownChoice(element, CHECK_ID)).toBe(KNOWN_CHECK_LABEL);
     expect((dialog.getByLabelText(GOALS_COPY.form.promptLabel) as HTMLTextAreaElement).value).toBe(
       'Say hello.',
     );
   });
 
   test('stays live with nothing typed, says what is missing at the field and in the footer, and focuses the first', async () => {
-    const { view } = open([goal('goal-1')]);
+    // The Bureau lists no check, so there is nothing to choose and a goal cannot say when it is done.
+    const { view } = open([goal('goal-1')], { validators: [] });
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
     const element = await openCreatePage(view);
     const dialog = within(element);
@@ -326,10 +431,9 @@ describe('creating a goal', () => {
 
     await fireEvent.input(prompt, { target: { value: 'Say hello.' } });
     await fireEvent.click(create);
-    const check = dialog.getByLabelText(GOALS_COPY.form.checkLabel);
+    const check = listboxTrigger(element, CHECK_ID);
     await waitFor(() => expect(document.activeElement === check).toBe(true));
-    expect(check.getAttribute('placeholder')).toBe(GOALS_COPY.form.checkPlaceholder);
-    expect(dialog.getByText(GOALS_COPY.form.checkRequired)).not.toBeNull();
+    expect(dialog.getByText(GOALS_COPY.form.noChecks)).not.toBeNull();
     expect(dialog.getByTestId('goal-form-note').textContent).toBe(GOALS_COPY.form.footer.check);
     expect(create).not.toBeDisabled();
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
@@ -501,7 +605,10 @@ describe('a goal’s page', () => {
     ).not.toBeNull();
     const facts = within(view.getByTestId('goal-facts'));
     expect(facts.getByText(GOALS_COPY.detail.checkFact)).not.toBeNull();
-    expect(facts.getByText('Reply says hello')).not.toBeNull();
+    // The check once, in words, with the validator by the exact name and version beneath (COR-2124).
+    expect(facts.getByText('Contains phrase "hello"')).not.toBeNull();
+    expect(facts.getByText('contains-phrase, version 1')).not.toBeNull();
+    expect(facts.queryByText('Validator')).toBeNull();
     expect(facts.getByText('3 attempts')).not.toBeNull();
     expect(frameState(view.container)).toBe('ready');
   });
@@ -757,6 +864,159 @@ describe('a goal’s page', () => {
   test('is not found for a goal the Bureau does not have', async () => {
     const { view } = open([], { path: '/goals/missing' });
     await waitFor(() => expect(frameState(view.container)).toBe('not-found'));
+  });
+});
+
+describe('an attempt’s verdict (COR-2124)', () => {
+  const VERDICT = {
+    goalRunId: 'goal-1',
+    attemptId: 'goal-1-a0',
+    attemptIndex: 0,
+    outcome: 'fail',
+    feedback: 'The answer doesn’t mention “staging fix”.',
+    retryable: true,
+    evidence: [{ source: 'contains-phrase', detail: { answer: 'EVIDENCE-SENTINEL-6d2f' } }],
+    reason: null,
+    error: null,
+    validator: { name: 'contains-phrase', version: '1' },
+    configuration: { phrase: 'staging fix' },
+    judgedBy: {
+      validator: { name: 'contains-phrase', version: '1' },
+      source: { kind: 'bureau', name: 'bureau', version: '1.2.3' },
+      configuration: { phrase: 'staging fix' },
+    },
+    startedAt: '2026-10-19T08:02:00.000Z',
+    completedAt: '2026-10-19T08:02:01.000Z',
+  };
+
+  const ATTEMPT = {
+    attemptId: 'goal-1-a0',
+    attemptIndex: 0,
+    runId: 'run-a',
+    sessionId: 'session-a',
+    status: 'failed',
+    startedAt: '2026-10-19T08:01:00.000Z',
+    completedAt: '2026-10-19T08:02:00.000Z',
+    finishReason: 'validator-rejected',
+    usage: { steps: 1, tokens: 1, costUsd: null },
+  };
+
+  /** The goal page, with the attempt's row ready. `owner` is who made it: the harness's viewer is `tester`. */
+  async function openAttempt(owner: string, verdict: BureauHandler) {
+    const { view } = open([goal('goal-1', { owner, status: 'exhausted', attempts: [ATTEMPT] })], {
+      path: '/goals/goal-1',
+      verdict,
+    });
+    await view.findByRole('heading', { level: 1, name: 'Goal goal-1' });
+    const attemptRow = await waitFor(() => {
+      const found = view.container.querySelector<HTMLElement>('[data-attempt]');
+      if (found === null) throw new Error('The attempt row is not drawn yet.');
+      return found;
+    });
+    return { view, attemptRow };
+  }
+
+  test('opens from the row’s own Verdict button, beside the run link, and shows the word, feedback, evidence, and the check with the settings it was given', async () => {
+    const { view, attemptRow } = await openAttempt('tester', () => VERDICT);
+    // The row keeps its link to the run; the verdict is a separate button.
+    expect(attemptRow.querySelector('a')?.getAttribute('href')).toBe('/runs/run-a');
+
+    await fireEvent.click(
+      within(attemptRow).getByRole('button', { name: GOALS_COPY.detail.verdict.action }),
+    );
+
+    const body = await within(document.body).findByTestId('goal-verdict-body');
+    expect(stub?.callsTo('bureau.goals.verdict')[0]?.params).toEqual({
+      goalRunId: 'goal-1',
+      attemptIndex: 0,
+    });
+    const text = body.textContent ?? '';
+    expect(body.getAttribute('data-outcome')).toBe('fail');
+    // It opens with the dot and word of a miss, as the row does, then says what was wrong.
+    const status = within(body).getByTestId('goal-verdict-status');
+    expect(status.textContent).toContain('Check not met');
+    expect(within(body).getByTestId('goal-verdict-feedback').textContent).toBe(
+      'The answer doesn’t mention “staging fix”.',
+    );
+    expect(text).toContain('EVIDENCE-SENTINEL-6d2f');
+    // The check in words with its settings, and its exact name and version beneath, with no release.
+    expect(text).toContain('Contains phrase "staging fix"');
+    expect(text).toContain('contains-phrase, version 1, built in');
+    expect(text).not.toContain('1.2.3');
+    // The settings are not a section of their own.
+    expect(within(body).queryByText('Configuration')).toBeNull();
+    expect(view.queryByTestId('goal-verdict-note')).toBeNull();
+  });
+
+  test('leaves out the feedback paragraph and the Evidence section a verdict has none of', async () => {
+    const { attemptRow } = await openAttempt('tester', () => ({
+      ...VERDICT,
+      outcome: 'pass',
+      feedback: null,
+      evidence: [],
+    }));
+
+    await fireEvent.click(
+      within(attemptRow).getByRole('button', { name: GOALS_COPY.detail.verdict.action }),
+    );
+
+    const body = await within(document.body).findByTestId('goal-verdict-body');
+    expect(within(body).getByTestId('goal-verdict-status').textContent).toContain('Done');
+    expect(within(body).queryByTestId('goal-verdict-feedback')).toBeNull();
+    expect(within(body).queryByText(GOALS_COPY.detail.verdict.evidenceTerm)).toBeNull();
+    // Nothing says "None" for what is not there.
+    expect(body.textContent).not.toMatch(/\bNone\b/);
+  });
+
+  test('offers Try again when the read failed, and shows the verdict once the second read answers', async () => {
+    let reads = 0;
+    const { attemptRow } = await openAttempt('tester', () => {
+      reads += 1;
+      if (reads === 1) throw new StubFault('Unavailable', 503, 'The server did not answer.');
+      return VERDICT;
+    });
+
+    await fireEvent.click(
+      within(attemptRow).getByRole('button', { name: GOALS_COPY.detail.verdict.action }),
+    );
+
+    const note = await within(document.body).findByTestId('goal-verdict-note');
+    expect(note.getAttribute('data-reason')).toBe('unreadable');
+    expect(note.textContent).not.toContain('Close this');
+    await fireEvent.click(within(note).getByRole('button', { name: RETRY_LABEL }));
+
+    await within(document.body).findByTestId('goal-verdict-body');
+    expect(reads).toBe(2);
+    expect(within(document.body).queryByTestId('goal-verdict-note')).toBeNull();
+  });
+
+  test('says the verdict is private to a viewer who does not own the goal', async () => {
+    const { attemptRow } = await openAttempt('someone-else', () => {
+      throw new StubFault('NotFound', 404, 'No such goal.');
+    });
+
+    await fireEvent.click(
+      within(attemptRow).getByRole('button', { name: GOALS_COPY.detail.verdict.action }),
+    );
+
+    const note = await within(document.body).findByTestId('goal-verdict-note');
+    expect(note.getAttribute('data-reason')).toBe('private');
+    expect(note.textContent).toContain(GOALS_COPY.detail.verdict.privateTitle);
+    expect(within(document.body).queryByTestId('goal-verdict-body')).toBeNull();
+  });
+
+  test('says an attempt that has no verdict yet is not judged yet, to its owner', async () => {
+    const { attemptRow } = await openAttempt('tester', () => {
+      throw new StubFault('NotFound', 404, 'No verdict yet.', { resource: 'verdict' });
+    });
+
+    await fireEvent.click(
+      within(attemptRow).getByRole('button', { name: GOALS_COPY.detail.verdict.action }),
+    );
+
+    const note = await within(document.body).findByTestId('goal-verdict-note');
+    expect(note.getAttribute('data-reason')).toBe('not-judged');
+    expect(note.textContent).toContain(GOALS_COPY.detail.verdict.notJudgedTitle);
   });
 });
 

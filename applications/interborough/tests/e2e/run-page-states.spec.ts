@@ -94,6 +94,8 @@ for (const width of WIDTHS) {
         (await connect.getAttribute('id')) ?? '',
       );
       await page.getByRole('button', { name: /^How it ran/ }).click();
+      // The Run inspector card is on How it ran's Inspector tab (row 54i).
+      await page.getByRole('tab', { name: 'Inspector' }).click();
       await expect(page.locator('[data-section="run-inspector"]')).toContainText(
         'Finished; nothing left to do',
       );

@@ -38,6 +38,7 @@
       "dependencies": {
         "@ag-ui/client": "catalog:",
         "@ag-ui/core": "catalog:",
+        "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/bungalow": "workspace:*",
         "@lostgradient/bureau": "workspace:*",
         "@lostgradient/chat": "workspace:*",
@@ -54,6 +55,7 @@
         "@lostgradient/plugin-anthropic": "workspace:*",
         "@lostgradient/plugin-demo": "workspace:*",
         "@lostgradient/plugin-gemini": "workspace:*",
+        "@lostgradient/plugin-github": "workspace:*",
         "@lostgradient/plugin-guardrails": "workspace:*",
         "@lostgradient/plugin-inspectors": "workspace:*",
         "@lostgradient/plugin-ollama": "workspace:*",
@@ -324,6 +326,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/backchannel": {
+      "name": "@lostgradient/backchannel",
+      "dependencies": {
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/bungalow": {
       "name": "@lostgradient/bungalow",
       "devDependencies": {
@@ -339,6 +355,7 @@
       "dependencies": {
         "@a2a-js/sdk": "catalog:",
         "@ag-ui/core": "catalog:",
+        "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
@@ -404,6 +421,7 @@
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -481,6 +499,7 @@
     "packages/operative": {
       "name": "@lostgradient/operative",
       "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
@@ -747,6 +766,7 @@
         "weft-mcp": "src/cli-mcp.ts",
       },
       "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
@@ -833,6 +853,20 @@
         "typescript": "catalog:",
       },
     },
+    "plugins/github": {
+      "name": "@lostgradient/plugin-github",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/guardrails": {
       "name": "@lostgradient/plugin-guardrails",
       "dependencies": {
@@ -857,10 +891,16 @@
       },
       "devDependencies": {
         "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@testing-library/dom": "catalog:",
+        "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
+        "happy-dom": "catalog:",
         "oxlint": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -1300,6 +1340,8 @@
 
     "@loaderkit/resolve": ["@loaderkit/resolve@1.0.6", "", { "dependencies": { "@braidai/lang": "^1.0.0" } }, "sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg=="],
 
+    "@lostgradient/backchannel": ["@lostgradient/backchannel@workspace:packages/backchannel"],
+
     "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
 
     "@lostgradient/bungalow": ["@lostgradient/bungalow@workspace:packages/bungalow"],
@@ -1347,6 +1389,8 @@
     "@lostgradient/plugin-demo": ["@lostgradient/plugin-demo@workspace:plugins/demo"],
 
     "@lostgradient/plugin-gemini": ["@lostgradient/plugin-gemini@workspace:plugins/gemini"],
+
+    "@lostgradient/plugin-github": ["@lostgradient/plugin-github@workspace:plugins/github"],
 
     "@lostgradient/plugin-guardrails": ["@lostgradient/plugin-guardrails@workspace:plugins/guardrails"],
 

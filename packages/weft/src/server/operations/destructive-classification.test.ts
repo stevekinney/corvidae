@@ -16,10 +16,12 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import {
+  type RegistrableOperation,
+  createOperationRegistry,
+} from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
-import type { RegistrableOperation } from '../operation-catalog.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { defineOperation } from '../operation-registry.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 
 /**

@@ -51,6 +51,11 @@ const hostPathsSchema = z.object({
    * agents are on offer. It names the public origin when the operator set one.
    */
   a2aDirectoryUrl: z.string().min(1),
+  /**
+   * Where a trigger that receives is sent its deliveries, before the workflow's identifier
+   * (`<origin>/triggers/`): under the public origin when the operator set one, as above (COR-2171).
+   */
+  triggersUrl: z.string().min(1),
 });
 
 /**

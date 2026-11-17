@@ -36,6 +36,7 @@
   import { getClient } from '../../lib/client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
+  import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowRunPath } from '../../lib/router.svelte.ts';
   import { listWorkflowFileRuns } from '../../lib/workflow-files.ts';
@@ -109,6 +110,9 @@
   function agentLabel(name: string): string {
     return agentLabelOf(name, undefined);
   }
+
+  // A run a trigger started names its plugin by its title.
+  const pluginTitle = usePluginTitle();
 
   const everyRun = $derived<RunRow[]>(workflowRunRows(runs.data ?? [], { title, agentName }));
 
@@ -253,7 +257,14 @@
           groupBy={(row: RunRow) => runDayGroup(row.startedAt, now, zone)}
         >
           {#snippet children(row: RunRow)}
-            <RunListRow {row} {now} {zone} {agentLabel} href={workflowRunPath(type, row.id)} />
+            <RunListRow
+              {row}
+              {now}
+              {zone}
+              {agentLabel}
+              {pluginTitle}
+              href={workflowRunPath(type, row.id)}
+            />
           {/snippet}
         </DataList>
       </div>

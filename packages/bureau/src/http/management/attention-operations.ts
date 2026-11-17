@@ -14,7 +14,8 @@ import {
  * @module attention-operations
  */
 
-import { defineOperation, type AlertMetric } from '@lostgradient/weft';
+import { type AlertMetric } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import {

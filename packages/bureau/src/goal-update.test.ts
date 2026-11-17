@@ -313,7 +313,8 @@ describe('the goal store’s configuration update', () => {
   it('stamps the next attempt with the goal’s agent, keeps a stamp a replacement does not carry, and leaves an unchanged goal unstamped', async () => {
     const unchanged = await goalWithAttemptInFlight();
     await toRetrying(unchanged.store);
-    expect((await unchanged.store.applyTransition(openNextAttempt())).status).toBe('applied');
+    const openedPlain = await unchanged.store.applyTransition(openNextAttempt());
+    expect(openedPlain.status).toBe('applied');
     const plain = (await unchanged.store.get('g'))!;
     expect(plain.attempts.map((attempt) => attempt.agentName)).toEqual([undefined, undefined]);
     expect(plain.attempts[1]).not.toHaveProperty('agentName');
@@ -323,8 +324,10 @@ describe('the goal store’s configuration update', () => {
     // The controller's patches carry no agent: the store records the goal's own on the attempt that
     // opens, and keeps the one attempt 0 ran as when the controller rewrites it.
     await toRetrying(store);
-    expect((await store.get('g'))!.attempts[0]).toMatchObject({ agentName: 'worker' });
-    expect((await store.applyTransition(openNextAttempt())).status).toBe('applied');
+    const rewritten = (await store.get('g'))!;
+    expect(rewritten.attempts[0]).toMatchObject({ agentName: 'worker' });
+    const openedStamped = await store.applyTransition(openNextAttempt());
+    expect(openedStamped.status).toBe('applied');
     const stored = (await store.get('g'))!;
     expect(stored.attempts.map((attempt) => attempt.agentName)).toEqual(['worker', 'helper']);
     expect(isGoalState(stored)).toBe(true);
@@ -347,26 +350,105 @@ describe('the goal store’s configuration update', () => {
     expect(refused).toMatchObject({ status: 'rejected', reason: 'agent-between-attempts' });
     expect(await store.get('g')).toEqual(between);
     // Other fields change between attempts, as before.
-    expect(
-      (await store.updateConfiguration('g', { prompt: 'work harder' }, NOW, between.revision))
-        .status,
-    ).toBe('updated');
+    const edited = await store.updateConfiguration(
+      'g',
+      { prompt: 'work harder' },
+      NOW,
+      between.revision,
+    );
+    expect(edited.status).toBe('updated');
   });
 
-  it('gives the retry after a prompt edit under continue the edit, once', async () => {
-    const { store, record } = await goalWithAttemptInFlight();
-    expect(record.objective).not.toHaveProperty('promptRevisedAtAttempt');
+  describe('a prompt edit is taken by the start of an attempt (COR-2425)', () => {
+    it('is pending after an edit, whatever the goal is doing, and writes no attempt index itself', async () => {
+      const { store, record } = await goalWithAttemptInFlight();
+      expect(record.objective).not.toHaveProperty('promptPending');
 
-    await store.updateConfiguration('g', { prompt: 'work harder' }, NOW, record.revision);
+      await store.updateConfiguration('g', { prompt: 'work harder' }, NOW, record.revision);
 
-    const stored = (await store.get('g'))!;
-    expect(isGoalState(stored)).toBe(true);
-    // One attempt was opened, so the next attempt (index 1) is the first to be given the edit.
-    expect(stored.objective).toMatchObject({ prompt: 'work harder', promptRevisedAtAttempt: 1 });
-    // A pending goal has opened no attempt, so its first attempt simply runs the new prompt.
-    const { store: pendingStore, state } = await pendingGoal();
-    await pendingStore.updateConfiguration('g', { prompt: 'work harder' }, NOW, state.revision);
-    expect((await pendingStore.get('g'))!.objective).not.toHaveProperty('promptRevisedAtAttempt');
+      const stored = (await store.get('g'))!;
+      expect(isGoalState(stored)).toBe(true);
+      expect(stored.objective).toMatchObject({ prompt: 'work harder', promptPending: true });
+      expect(stored.objective).not.toHaveProperty('promptRevisedAtAttempt');
+    });
+
+    it('is taken by the next start, which records its own index and clears the pending edit', async () => {
+      const { store, record } = await goalWithAttemptInFlight();
+      await store.updateConfiguration('g', { prompt: 'work harder' }, NOW, record.revision);
+      await toRetrying(store);
+
+      const taken = await store.consumePromptEdit('g', 1, NOW);
+
+      expect(taken.status).toBe('updated');
+      const stored = (await store.get('g'))!;
+      expect(isGoalState(stored)).toBe(true);
+      expect(stored.objective).toMatchObject({ prompt: 'work harder', promptRevisedAtAttempt: 1 });
+      expect(stored.objective).not.toHaveProperty('promptPending');
+      // A start retried after a crash finds the edit taken and seats the same turn: nothing written.
+      const again = await store.consumePromptEdit('g', 1, NOW);
+      expect(again.status).toBe('unchanged');
+      expect((await store.get('g'))!.revision).toBe(stored.revision);
+    });
+
+    it('is taken by the start of attempt 0 for a goal edited before its first attempt', async () => {
+      const { store, state } = await pendingGoal();
+      await store.updateConfiguration('g', { prompt: 'work harder' }, NOW, state.revision);
+
+      const taken = await store.consumePromptEdit('g', 0, NOW);
+      expect(taken.status).toBe('updated');
+
+      expect((await store.get('g'))!.objective).toMatchObject({
+        prompt: 'work harder',
+        promptRevisedAtAttempt: 0,
+      });
+    });
+
+    it('leaves an edit that lands after a start took the previous one pending for the attempt after it', async () => {
+      const { store, record } = await goalWithAttemptInFlight();
+      await store.updateConfiguration('g', { prompt: 'first edit' }, NOW, record.revision);
+      await toRetrying(store);
+      await store.consumePromptEdit('g', 1, NOW);
+      const afterTake = (await store.get('g'))!;
+
+      // The second edit lands while attempt 1 is being started, after the start's write.
+      await store.updateConfiguration('g', { prompt: 'second edit' }, NOW, afterTake.revision);
+      expect((await store.get('g'))!.objective).toMatchObject({
+        prompt: 'second edit',
+        promptRevisedAtAttempt: 1,
+        promptPending: true,
+      });
+      // Attempt 2's start takes it; attempt 1 keeps the marker it was seated with until then.
+      await store.consumePromptEdit('g', 2, NOW);
+      expect((await store.get('g'))!.objective).toMatchObject({ promptRevisedAtAttempt: 2 });
+      expect((await store.get('g'))!.objective).not.toHaveProperty('promptPending');
+    });
+
+    it('takes two edits made before a start as one: the start is given the later prompt', async () => {
+      const { store, record } = await goalWithAttemptInFlight();
+      await store.updateConfiguration('g', { prompt: 'one' }, NOW, record.revision);
+      const afterOne = (await store.get('g'))!;
+      await store.updateConfiguration('g', { prompt: 'two' }, NOW, afterOne.revision);
+      await toRetrying(store);
+
+      await store.consumePromptEdit('g', 1, NOW);
+
+      expect((await store.get('g'))!.objective).toMatchObject({
+        prompt: 'two',
+        promptRevisedAtAttempt: 1,
+      });
+    });
+
+    it('writes nothing for a goal with no edit pending, and still reads a record written before it', async () => {
+      const { store, record } = await goalWithAttemptInFlight();
+      // A record from before the change carries neither key and is a valid goal.
+      expect(isGoalState(record)).toBe(true);
+      const untouched = await store.consumePromptEdit('g', 1, NOW);
+      expect(untouched.status).toBe('unchanged');
+      expect(await store.get('g')).toEqual(record);
+      // A record that carries the older marker alone still decodes.
+      const legacy = { ...record, objective: { ...record.objective, promptRevisedAtAttempt: 1 } };
+      expect(isGoalState(legacy)).toBe(true);
+    });
   });
 
   it('refuses a goal whose cancellation is recorded', async () => {

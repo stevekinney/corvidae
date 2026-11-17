@@ -192,6 +192,10 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The hold-release receipt contains the memory identifier, changed flag, and hold status, not memory content (holdOutput).',
   'bureau.memory.quarantine':
     'The quarantine receipt contains the memory identifier and affected and changed counts, not memory content (quarantineOutput).',
+  'bureau.memory.embedding':
+    'The embedding status contains embedder identifiers, dimensions, model names, availability, switch progress counts and a failure code from a closed set, never memory content or an embedder’s own error text (memoryEmbeddingOperation output schema).',
+  'bureau.memory.embedding.cancel':
+    'The cancel receipt contains only whether a switch was cancelled, not memory content (memoryEmbeddingCancelOperation output schema).',
   'bureau.memory.quarantine.release':
     'The release receipt contains the memory identifier and changed flag, not memory content (transitionOutput).',
   'bureau.assets.uploads.abort':
@@ -212,6 +216,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'Uploads supply only bytes and an optional media type; assetView returns metadata and stable rejection information, never the uploaded bytes (createInput and assetView).',
   'bureau.workflows.runs.cancel':
     'The workflow cancellation output is a run identifier and cancellation status, not workflow input or result (workflowsRunsCancelOperation).',
+  'bureau.workflows.runs.retry':
+    'The retry output is a run identifier, the step number, the revision and the caller’s own retry identifier, not workflow input or result (workflowsRunsRetryOperation).',
   'bureau.workflows.runs.history':
     'historyRuns projects bounded event type, time, step and summary and never returns raw event data (workflow-runtime historyEventOf).',
   'bureau.settings.events':
@@ -259,6 +265,7 @@ export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {
                     'bureau.tasks.respond',
                     'bureau.reviews.resolve',
                     'bureau.audit.query',
+                    'bureau.checks.list',
                     'bureau.assets.get',
                     'bureau.assets.uploads.create',
                     'bureau.assets.uploads.append',

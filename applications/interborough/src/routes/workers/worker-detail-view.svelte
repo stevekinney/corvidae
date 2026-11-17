@@ -7,13 +7,14 @@
    * under a warning notice, a facts row (the queue, what it runs now, what it serves, its
    * version), and the tasks on its queue, which the route supplies.
    *
-   * An id too long to sit beside the heading (a generated one) wraps on its own line under it with
-   * a Copy button, and the list shows its end, which is what tells such workers apart.
+   * An id too long to sit beside the heading (a generated one) wraps on its own line under it as a
+   * Cinder `CopyableValue`, with its Copy button beside the last character, and the list shows its
+   * end, which is what tells such workers apart.
    */
   import {
     Alert,
     Button,
-    CopyButton,
+    CopyableValue,
     DescriptionList,
     StatusDot,
     Tooltip,
@@ -129,13 +130,12 @@
       </div>
       {#if longId}
         <div class="ib-worker-detail__long-id">
-          <code class="ib-worker-detail__id" data-testid="worker-id">{worker.id}</code>
-          <span class="ib-worker-detail__copy">
-            <CopyButton value={worker.id} label={copy.copyLabel} copiedLabel={copy.copied}>
-              {copy.copy}
-              {#snippet confirmation()}{copy.copied}{/snippet}
-            </CopyButton>
-          </span>
+          <CopyableValue
+            value={worker.id}
+            label={copy.copyLabel}
+            copiedLabel={copy.copied}
+            data-testid="worker-id"
+          />
         </div>
       {/if}
       <p class="ib-worker-detail__status">
@@ -205,22 +205,11 @@
     overflow-wrap: anywhere;
   }
 
-  /* The full id wraps inside its own column and the Copy button stays beside it (row 79g). */
+  /* The full id wraps inside its own column and the Copy button stays beside its last character
+     (row 79g): the value is Cinder's CopyableValue, which keeps the two together. */
   .ib-worker-detail__long-id {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: flex-start;
-    gap: var(--cinder-space-2);
     min-width: 0;
-  }
-
-  .ib-worker-detail__long-id .ib-worker-detail__id {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-
-  .ib-worker-detail__copy {
-    flex: none;
+    font-size: var(--cinder-text-xs);
   }
 
   .ib-worker-detail__status {

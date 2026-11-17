@@ -64,9 +64,9 @@ test.describe('an approval in the chat', () => {
 
     const approval = page.locator('[data-approval-decision]');
     await expect(approval).toBeVisible();
-    // Cinder's shared approval row: the Input disclosure, a note on request, the grant for the rest
-    // of the chat as a checkbox on its own line, then Deny and Approve.
-    for (const name of ['Input', 'Add note', 'Deny', 'Approve']) {
+    // Cinder's shared approval row: the input in the open, a note on request, the grant for the
+    // rest of the chat as a checkbox on its own line, then Deny and Approve.
+    for (const name of ['Add note', 'Deny', 'Approve']) {
       await expect(approval.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
     await expect(
@@ -74,14 +74,11 @@ test.describe('an approval in the chat', () => {
     ).toBeVisible();
     await checkA11y('a chat waiting on an approval');
 
-    // The input stays out of the row until it is asked for.
-    const input = approval.getByRole('button', { name: /^Input/ });
-    await expect(input).toHaveAttribute('aria-expanded', 'false');
-    await input.click();
-    await expect(input).toHaveAttribute('aria-expanded', 'true');
-    await expect(approval).toContainText('Order ID');
-    await input.click();
-    await expect(input).toHaveAttribute('aria-expanded', 'false');
+    // The input is in the open, one pair per line, with no disclosure to open first.
+    const input = approval.getByRole('group', { name: 'Input' });
+    await expect(input).toBeVisible();
+    await expect(input).toContainText('Order ID');
+    await expect(approval.getByRole('button', { name: /^Input/ })).toHaveCount(0);
   });
 
   test('resumes the run with remember when allowed for the rest of the chat, and the call is settled', async ({

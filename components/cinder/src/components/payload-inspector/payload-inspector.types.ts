@@ -65,6 +65,12 @@ export type PayloadInspectorProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 
    */
   label?: string;
   /**
+   * A name drawn after the label, set in code, such as an output's name: with `label` "Output" and
+   * `labelCode` "notes" the header reads "Output, `notes`" and the card is named "Output, notes".
+   * Ignored without a `label`.
+   */
+  labelCode?: string;
+  /**
    * Which view the payload shows. `'fields'` lists each property with a
    * sentence-case label; `'json'` shows the stored payload with its raw keys.
    * Bindable, and switched by the Fields / JSON control in the header row.
@@ -195,6 +201,12 @@ export type PayloadInspectorSchemaProps = {
    * technology; without one the card is named "Payload".
    */
   label?: string;
+  /**
+   * A name drawn after the label, set in code, such as an output's name: with `label` "Output" and
+   * `labelCode` "notes" the header reads "Output, `notes`" and the card is named "Output, notes".
+   * Ignored without a `label`.
+   */
+  labelCode?: string;
   /**
    * Secret paths: values to hide in both views and in Copy, before anything is
    * laid out. Each path is dot-separated property names from the root, array

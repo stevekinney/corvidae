@@ -8,7 +8,9 @@
    * in `goal-page-rows.ts`. The goal's owner reads its prompt and each attempt's check feedback too
    * (COR-2425): the prompt shows under "Asked" (`goal-asked.svelte`), held to three lines with
    * Show all, and a failed attempt says what the check said on line two. A read without them says
-   * neither.
+   * neither. Each attempt's Verdict button opens what the check decided about it, read from
+   * `bureau.goals.verdict` (`goal-verdict-panel.svelte`), and the Details panel names the
+   * validator by its exact name and version beside the check's words (COR-2124).
    *
    * The header's actions follow the goal, all secondary: Edit on every goal; Stop goal, the page's
    * main action, while it works, behind a confirmation; and Start again on a goal that ended without meeting its
@@ -58,6 +60,7 @@
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import GoalAsked from './goal-asked.svelte';
   import GoalAttempts from './goal-attempts.svelte';
+  import GoalVerdictPanel from './goal-verdict-panel.svelte';
   import {
     attemptRows,
     attemptWaitOf,
@@ -209,6 +212,9 @@
     return target.kind === 'run' ? workflowDetailPath(target.runId) : reviewPath(target.reviewKey);
   }
 
+  // The attempt whose verdict panel is open, by its `attemptIndex`, or `undefined` while none is.
+  let verdictAttempt = $state<number | undefined>(undefined);
+
   // Stop goal asks first. The dialog stays open until the Bureau answers, so a stop that fails says
   // why where it was asked, and pressing Stop goal again is the retry.
   let confirmingStop = $state(false);
@@ -250,7 +256,7 @@
     {@const actions = goalActions(found)}
     {@const agent = agentLabel(found.agentName)}
     {@const note = goalNote(found, { zone, liveWait })}
-    {@const rows = attemptRows(found, { agent, zone, now, liveWait })}
+    {@const rows = attemptRows(found, { agent, zone, now, liveWait, agentLabel })}
     {@const facts = goalFacts(found, {
       agent,
       zone,
@@ -361,6 +367,7 @@
           made={found.usage.attempts}
           allowed={found.bounds.maximumAttempts}
           {zone}
+          onOpenVerdict={(attemptIndex) => (verdictAttempt = attemptIndex)}
         />
         <aside class="ib-goal__details" aria-labelledby={`${uid}-details`}>
           <h2 class="ib-goal__details-heading" id={`${uid}-details`}>{copy.detailsHeading}</h2>
@@ -368,6 +375,14 @@
         </aside>
       </div>
     </StaleRegion>
+
+    <GoalVerdictPanel
+      goalRunId={found.goalRunId}
+      owner={found.owner}
+      viewer={principalStore?.principal?.subject}
+      attemptIndex={verdictAttempt}
+      onClose={() => (verdictAttempt = undefined)}
+    />
 
     <ConfirmDialog
       open={confirmingStop}

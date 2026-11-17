@@ -18,6 +18,7 @@ import {
   SessionDeletedEvent,
   SessionSavedEvent,
   SteeringAcceptedEvent,
+  WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 
 import { runOfPayload } from './hooks/hook-origin.ts';
@@ -37,13 +38,30 @@ import {
   ActionEvent,
   AssetLifecycleEvent,
   BureauDisposedEvent,
+  ChildWorkflowAbortedRecordedEvent,
+  ChildWorkflowCompletedRecordedEvent,
+  ChildWorkflowFailedRecordedEvent,
+  ChildWorkflowStartedRecordedEvent,
+  HandoffOccurredRecordedEvent,
+  HookPlanFailedRecordedEvent,
+  PluginSecretRemovedEvent,
+  PluginSecretSetEvent,
+  PluginSettingsChangedEvent,
+  PluginStatusChangedEvent,
+  SteeringAppliedRecordedEvent,
+  SteeringCommandFailedEvent,
+  SteeringCommandRejectedEvent,
+  SteeringCommandSupersededEvent,
   DecisionMadeEvent,
   DefinitionsChangedEvent,
   DiagnosticEvent,
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
+  HookDeliveryFailedEvent,
+  HookDeliveryGaveUpEvent,
   NotificationCreatedEvent,
   SessionTaintEvent,
+  TriggerLifecycleEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
@@ -63,6 +81,7 @@ import {
   RunGuardrailRecordedEvent,
   RunRegisteredEvent,
   RunTripwireRecordedEvent,
+  ScorerThresholdBreachedEvent,
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
   RunRemovedEvent,
@@ -118,6 +137,7 @@ const GOAL = (kind: ConstructorParameters<typeof GoalLifecycleEvent>[0]) => ({
         validator: { name: 'check', version: '1' },
         source: { kind: 'bureau', name: 'bureau', version: '0.1.0' },
       },
+      retryReason: 'failed',
       terminalReason: 'done',
       validatorError: { kind: 'error', code: 'E', message: 'dropped' },
       controllerRestarts: 1,
@@ -156,6 +176,12 @@ const GUARDRAIL_DETAIL = {
   confidence: 0.9,
 };
 const TOOL_DETAIL = { toolName: 'refund', toolCallId: 'call-1' };
+const CHILD_DETAIL = {
+  parentAgentName: 'planner',
+  parentRunId: 'run-1',
+  childAgentName: 'worker',
+  childRunId: 'child-1',
+};
 
 const SKILL = (
   Skill:
@@ -174,6 +200,9 @@ const SKILL = (
  * `PUBLISHED_BUREAU_EVENT_KINDS` is a compile error here until it has a builder. `fullest` is given
  * where a kind has optional fields, so a field the catalog does not declare is found too.
  */
+/** What every trigger event names. */
+const TRIGGER_BASE = { workflowId: 'w-1', trigger: 'x:watch', version: '1.0.0' } as const;
+
 const EVENTS: Record<
   PublishedBureauEventKind,
   { readonly sparsest: () => unknown; readonly fullest?: () => unknown }
@@ -226,6 +255,65 @@ const EVENTS: Record<
     sparsest: () =>
       new ToolErrorRecordedEvent(
         recordedAction('tool.error', { ...TOOL_DETAIL, error: new Error('no code') }),
+      ),
+  },
+  // COR-2097: what a run records of its children, its handoffs, its steering and its hook plan.
+  'multiagent.child-workflow.started': {
+    sparsest: () =>
+      new ChildWorkflowStartedRecordedEvent(
+        recordedAction('multiagent.child-workflow.started', CHILD_DETAIL),
+      ),
+  },
+  'multiagent.child-workflow.completed': {
+    sparsest: () =>
+      new ChildWorkflowCompletedRecordedEvent(
+        recordedAction('multiagent.child-workflow.completed', CHILD_DETAIL),
+      ),
+  },
+  'multiagent.child-workflow.failed': {
+    sparsest: () =>
+      new ChildWorkflowFailedRecordedEvent(
+        recordedAction('multiagent.child-workflow.failed', { ...CHILD_DETAIL, reason: 'error' }),
+      ),
+  },
+  'multiagent.child-workflow.aborted': {
+    sparsest: () =>
+      new ChildWorkflowAbortedRecordedEvent(
+        recordedAction('multiagent.child-workflow.aborted', CHILD_DETAIL),
+      ),
+  },
+  'multiagent.handoff.occurred': {
+    sparsest: () =>
+      new HandoffOccurredRecordedEvent(
+        recordedAction('multiagent.handoff.occurred', {
+          sourceAgentName: 'planner',
+          targetAgentName: 'worker',
+        }),
+      ),
+  },
+  'steering.applied': {
+    sparsest: () =>
+      new SteeringAppliedRecordedEvent(
+        recordedAction('steering.applied', { sessionId: 'session-1', effective: {} }),
+      ),
+  },
+  'hook-plan.failed': {
+    sparsest: () =>
+      new HookPlanFailedRecordedEvent(
+        recordedAction('hook-plan.failed', {
+          hookName: 'prepareStep',
+          hookId: 'agent:own',
+          error: new Error('no code'),
+        }),
+      ),
+    fullest: () =>
+      new HookPlanFailedRecordedEvent(
+        recordedAction('hook-plan.failed', {
+          hookName: 'prepareStep',
+          hookId: 'agent:own',
+          source: 'agent',
+          error: new Error('no code'),
+        }),
       ),
   },
   'run.registered': { sparsest: () => new RunRegisteredEvent('run-1') },
@@ -326,10 +414,60 @@ const EVENTS: Record<
   },
   'review.superseded': reviewOf(ReviewSupersededEvent),
   'steering.accepted': { sparsest: () => new SteeringAcceptedEvent('s', 'command-1', 2) },
+  'steering.rejected': {
+    sparsest: () =>
+      new SteeringCommandRejectedEvent({ sessionId: 's', failureReason: 'policy-denied' }),
+    fullest: () =>
+      new SteeringCommandRejectedEvent({
+        sessionId: 's',
+        commandId: 'command-1',
+        failureReason: 'policy-denied',
+      }),
+  },
+  'steering.superseded': {
+    sparsest: () =>
+      new SteeringCommandSupersededEvent({ sessionId: 's', failureReason: 'superseded-by' }),
+    fullest: () =>
+      new SteeringCommandSupersededEvent({
+        sessionId: 's',
+        commandId: 'command-1',
+        failureReason: 'superseded-by',
+      }),
+  },
+  'steering.failed': {
+    sparsest: () =>
+      new SteeringCommandFailedEvent({ sessionId: 's', failureReason: 'deadline-passed' }),
+    fullest: () =>
+      new SteeringCommandFailedEvent({
+        sessionId: 's',
+        commandId: 'command-1',
+        failureReason: 'deadline-passed',
+      }),
+  },
+  'workflow.version-mismatch': {
+    sparsest: () => new WorkflowVersionMismatchEvent('workflow-1', '1.0.0', '2.0.0'),
+  },
   'goal.started': GOAL('goal.started'),
   'goal.attempt.started': GOAL('goal.attempt.started'),
   'goal.attempt.evaluating': GOAL('goal.attempt.evaluating'),
   'goal.attempt.validated': GOAL('goal.attempt.validated'),
+  // The two live-only kinds are always built whole, so each field is required.
+  'goal.feedback.recorded': {
+    sparsest: () =>
+      new GoalLifecycleEvent('goal.feedback.recorded', {
+        goalRunId: 'goal-1',
+        attemptId: 'attempt-1',
+        feedbackDigest: 'digest',
+      }),
+  },
+  'goal.retrying': {
+    sparsest: () =>
+      new GoalLifecycleEvent('goal.retrying', {
+        goalRunId: 'goal-1',
+        attemptIndex: 0,
+        retryReason: 'failed',
+      }),
+  },
   'goal.succeeded': GOAL('goal.succeeded'),
   'goal.exhausted': GOAL('goal.exhausted'),
   'goal.canceled': GOAL('goal.canceled'),
@@ -343,11 +481,48 @@ const EVENTS: Record<
     sparsest: () =>
       new DefinitionsChangedEvent('agents', { added: [], changed: [], removed: [], rejected: [] }),
   },
+  'trigger.started': { sparsest: () => new TriggerLifecycleEvent('trigger.started', TRIGGER_BASE) },
+  'trigger.stopped': { sparsest: () => new TriggerLifecycleEvent('trigger.stopped', TRIGGER_BASE) },
+  'trigger.failed': {
+    sparsest: () =>
+      new TriggerLifecycleEvent('trigger.failed', { ...TRIGGER_BASE, errorCode: 'START_FAILED' }),
+  },
+  'trigger.fired': {
+    sparsest: () =>
+      new TriggerLifecycleEvent('trigger.fired', { ...TRIGGER_BASE, outcome: 'skipped' }),
+    fullest: () =>
+      new TriggerLifecycleEvent('trigger.fired', {
+        ...TRIGGER_BASE,
+        outcome: 'refused',
+        runId: 'run-1',
+        errorCode: 'INPUT_INVALID',
+      }),
+  },
   'schedule.missed': { sparsest: () => new ScheduleMissedEvent('s-1', 1, 10, 20, 'late') },
   'task.cleanup-acknowledged': {
     sparsest: () => new TaskCleanupAcknowledgedEvent('task-1', 'cleaned-up'),
   },
   'notification.created': { sparsest: () => new NotificationCreatedEvent('n-1', 'run.failed') },
+  'hook.delivery.failed': {
+    sparsest: () =>
+      new HookDeliveryFailedEvent({
+        hookId: 'hook-1',
+        deliveryId: 'hook-delivery-1',
+        attempt: 1,
+        outcome: 'network-error',
+      }),
+    fullest: () =>
+      new HookDeliveryFailedEvent({
+        hookId: 'hook-1',
+        deliveryId: 'hook-delivery-1',
+        attempt: 2,
+        outcome: 'response',
+        status: 500,
+      }),
+  },
+  'hook.delivery.gave-up': {
+    sparsest: () => new HookDeliveryGaveUpEvent('hook-1', 'hook-delivery-1', 3),
+  },
   diagnostic: { sparsest: () => new DiagnosticEvent('warn', 'hooks') },
   'memory.governance': {
     sparsest: () =>
@@ -368,6 +543,16 @@ const EVENTS: Record<
         operationId: 'op-1',
       }),
   },
+  // COR-2098: what a host reports of its plugins and their secrets.
+  'secret.set': { sparsest: () => new PluginSecretSetEvent('kit', 'kit-api-key') },
+  'secret.removed': { sparsest: () => new PluginSecretRemovedEvent('kit', 'kit-api-key') },
+  'plugin.settings-changed': {
+    sparsest: () => new PluginSettingsChangedEvent('kit', false, true),
+  },
+  'plugin.status-changed': {
+    sparsest: () =>
+      new PluginStatusChangedEvent('kit', 'running', 'needs-setup', ['secret-missing']),
+  },
   // Sparsest: a refusal no model was reached for. Fullest: every field set.
   'decision.made': {
     sparsest: () => new DecisionMadeEvent({ kind: 'boolean', outcome: 'refused' }),
@@ -378,6 +563,24 @@ const EVENTS: Record<
         row: 'anthropic/claude-haiku-5-5',
         path: 'native',
         taskId: 'task-1',
+      }),
+  },
+  // Sparsest: a `fail` the scorer gave no score for. Fullest: every field set.
+  'scorer.threshold-breached': {
+    sparsest: () =>
+      new ScorerThresholdBreachedEvent({
+        runId: 'run-1',
+        scorerName: 'quality',
+        scorerVersion: '1.0.0',
+        outcome: 'fail',
+      }),
+    fullest: () =>
+      new ScorerThresholdBreachedEvent({
+        runId: 'run-1',
+        scorerName: 'quality',
+        scorerVersion: '1.0.0',
+        outcome: 'pass',
+        score: 0.2,
       }),
   },
 };
@@ -473,14 +676,20 @@ describe('the Bureau event catalog', () => {
         'decision.made',
         'definitions.changed',
         'diagnostic',
+        'hook.delivery.failed',
+        'hook.delivery.gave-up',
         'memory.governance',
         'notification.created',
+        'plugin.settings-changed',
+        'plugin.status-changed',
         'schedule.attempted',
         'schedule.cancelled',
         'schedule.created',
         'schedule.paused',
         'schedule.resumed',
         'schedule.skipped',
+        'secret.removed',
+        'secret.set',
         'session.created',
         'session.deleted',
         'session.saved',
@@ -490,6 +699,15 @@ describe('the Bureau event catalog', () => {
         'skill.loaded',
         'skill.rejected',
         'steering.accepted',
+        'steering.applied',
+        'steering.failed',
+        'steering.rejected',
+        'steering.superseded',
+        'trigger.failed',
+        'trigger.fired',
+        'trigger.started',
+        'trigger.stopped',
+        'workflow.version-mismatch',
       ].toSorted(),
     );
     // A narrow allowlist: each needs an argument that no run can cause it (see the catalog).
@@ -526,7 +744,7 @@ describe('the Bureau event catalog', () => {
           (field) =>
             !field.optional &&
             field.type === 'string' &&
-            ['runId', 'goalRunId', 'taskId'].includes(field.name),
+            ['runId', 'goalRunId', 'taskId', 'parentRunId'].includes(field.name),
         );
         expect(requiredRunField).toBe(true);
       }
@@ -544,6 +762,57 @@ describe('the Bureau event catalog', () => {
         expect(Object.keys(payload).toSorted()).toEqual([...declared.keys()].toSorted());
       }
     });
+  });
+});
+
+describe('the trigger kinds (COR-2250)', () => {
+  const TRIGGER_KINDS = ['trigger.started', 'trigger.stopped', 'trigger.failed', 'trigger.fired'];
+
+  it('are in the published catalog', () => {
+    for (const kind of TRIGGER_KINDS) {
+      expect(PUBLISHED_BUREAU_EVENT_KINDS as readonly string[]).toContain(kind);
+      expect(BUREAU_EVENT_CATALOG[kind as PublishedBureauEventKind].kind as string).toBe(kind);
+    }
+  });
+
+  it('are unattributed with no scope: a run can write the file or cause the delivery, and runId is optional', () => {
+    for (const kind of TRIGGER_KINDS) {
+      expect(BUREAU_EVENT_CATALOG[kind as PublishedBureauEventKind]).toMatchObject({
+        origin: 'unattributed',
+        scopes: [],
+      });
+    }
+  });
+
+  it('name exactly the file, the kind, its version, the outcome, the run and a code: never the payload or the key', () => {
+    const fields = (kind: string) =>
+      BUREAU_EVENT_CATALOG[kind as PublishedBureauEventKind].payload.map((field) => [
+        field.name,
+        field.optional,
+      ]);
+    const base = [
+      ['workflowId', false],
+      ['trigger', false],
+      ['version', false],
+    ];
+    expect(fields('trigger.started')).toEqual(base);
+    expect(fields('trigger.stopped')).toEqual(base);
+    expect(fields('trigger.failed')).toEqual([...base, ['errorCode', false]]);
+    expect(fields('trigger.fired')).toEqual([
+      ...base,
+      ['outcome', false],
+      ['runId', true],
+      ['errorCode', true],
+    ]);
+    const payload = wirePayload(EVENTS['trigger.fired'].fullest!(), 'trigger.fired');
+    expect(Object.keys(payload)).toEqual([
+      'workflowId',
+      'trigger',
+      'version',
+      'outcome',
+      'runId',
+      'errorCode',
+    ]);
   });
 });
 
@@ -608,6 +877,13 @@ describe('the guardrail, budget and tool kinds (COR-2096)', () => {
     ],
     'tool.policy-denied': TOOL_FIELDS,
     'tool.error': [...TOOL_FIELDS, ['errorCode', false]],
+    'scorer.threshold-breached': [
+      ['runId', false],
+      ['scorerName', false],
+      ['scorerVersion', false],
+      ['outcome', false],
+      ['score', true],
+    ],
   } as const;
 
   it.each(Object.entries(FIELDS_BY_KIND))(

@@ -63,6 +63,12 @@
     color: var(--cinder-text-default);
   }
 
+  /* The name after the label ("Output, notes"), in the code face at the label's size. */
+  .cinder-payload-inspector__label-code {
+    font-family: var(--cinder-font-mono);
+    font-weight: var(--cinder-font-normal);
+  }
+
   .cinder-payload-inspector__header-actions {
     display: flex;
     align-items: center;

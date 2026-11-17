@@ -319,14 +319,16 @@
           ...visible,
         ],
   );
-  const listState = $derived.by<'loading' | 'failed' | 'first-use' | 'no-match' | 'none' | 'rows'>(
-    () => {
-      if (shownList.data === undefined) return shownList.isError ? 'failed' : 'loading';
-      if (visible.length > 0) return 'rows';
-      if (!showingArchived && allRows.length === 0) return 'first-use';
-      return searching ? 'no-match' : 'none';
-    },
-  );
+  // A list with no open chat is first use only when nothing is archived either: with archived
+  // chats it says that none is open, over the row that opens the archived ones.
+  const listState = $derived.by<
+    'loading' | 'failed' | 'first-use' | 'all-archived' | 'no-match' | 'none' | 'rows'
+  >(() => {
+    if (shownList.data === undefined) return shownList.isError ? 'failed' : 'loading';
+    if (visible.length > 0) return 'rows';
+    if (!showingArchived && allRows.length === 0) return hasArchived ? 'all-archived' : 'first-use';
+    return searching ? 'no-match' : 'none';
+  });
   const noChats = $derived(sessions.data !== undefined && allRows.length === 0);
 
   function clearFilters(): void {
@@ -516,6 +518,28 @@
         </Button>
       {/snippet}
     </EmptyState>
+  {:else if listState === 'all-archived'}
+    {@const empty = CHAT_COPY.list.allArchived}
+    <EmptyState
+      kind="filtered"
+      size="compact"
+      headingLevel={3}
+      title={empty.title}
+      description={empty.description}
+    >
+      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
+      {#snippet action()}
+        <Button
+          data-changes
+          href={router.href('/chats/new')}
+          variant="secondary"
+          size="sm"
+          onclick={openNewChat}
+        >
+          {CHAT_COPY.newChat}
+        </Button>
+      {/snippet}
+    </EmptyState>
   {:else if listState === 'no-match'}
     <EmptyState
       kind="not-found"
@@ -590,7 +614,7 @@
         aria-label={CHAT_COPY.list.archivedTitle}
       >
         {#snippet children()}
-          <StackedListItem href={router.href(viewPath(true))}>
+          <StackedListItem href={router.href(viewPath(true))} trailingGlyph>
             {#snippet leading()}<Archive aria-hidden="true" size={16} />{/snippet}
             {#snippet title()}{CHAT_COPY.list.archivedTitle}{/snippet}
             {#snippet trailing()}<ChevronRight aria-hidden="true" size={16} />{/snippet}
@@ -623,21 +647,19 @@
     {#snippet header({ listToggle })}
       <div class="ib-chats__controls" bind:clientWidth={paneWidth}>
         {#if showingArchived}
-          <!-- The archived view's way back to the chats, above its title. -->
+          <!-- The archived view's way back to the chats, above its title. Its label says where it
+               goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
           <div class="ib-chats__back-row">
-            <Tooltip text={CHAT_COPY.list.backToChats}>
-              <Button
-                data-chats-view-back
-                href={router.href(viewPath(false))}
-                variant="ghost"
-                size="sm"
-                aria-label={CHAT_COPY.list.backToChats}
-                onclick={(event: MouseEvent) => void switchView(event, false)}
-              >
-                <ChevronLeft aria-hidden="true" size={16} />
-                {CHAT_COPY.sessionsTitle}
-              </Button>
-            </Tooltip>
+            <Button
+              data-chats-view-back
+              href={router.href(viewPath(false))}
+              variant="ghost"
+              size="sm"
+              onclick={(event: MouseEvent) => void switchView(event, false)}
+            >
+              <ChevronLeft aria-hidden="true" size={16} />
+              {CHAT_COPY.sessionsTitle}
+            </Button>
           </div>
         {/if}
         <div class="ib-chats__title-row">

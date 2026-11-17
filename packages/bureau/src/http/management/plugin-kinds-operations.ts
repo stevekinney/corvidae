@@ -17,7 +17,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module plugin-kinds-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { type BureauEventFormatter, FORMATTED_EVENT_TIERS } from '../../bureau-event-formatting.ts';
@@ -57,6 +57,11 @@ const kindsOutput = z.object({
           .string()
           .describe(
             'The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.',
+          ),
+        receives: z
+          .boolean()
+          .describe(
+            'Whether the kind receives requests: a file whose trigger is one is sent its deliveries at `POST /triggers/<workflow-id>` on the host.',
           ),
         configuration: configurationSchema,
       }),

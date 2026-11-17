@@ -17,6 +17,7 @@ import {
   createWeftMemoryRecordStorage,
   type GovernedMemory,
   HASHING_EMBEDDER_ID,
+  HASHING_EMBEDDER_MODEL,
   type MemoryEmbeddingProfile,
 } from '@lostgradient/memory';
 import { createAgent } from '@lostgradient/operative';
@@ -31,6 +32,7 @@ import type { Bureau } from './bureau-types/facade.ts';
 
 const BUREAU_ID = 'memory-embedder-setting';
 const FAKE = 'fake';
+const FAKE_MODEL = 'fake-model';
 const NEEDS_SETUP = 'needs-setup-embedder';
 const DIMENSION = 8;
 
@@ -81,6 +83,8 @@ async function start(
     withFake?: boolean;
     withMemory?: boolean;
     fakeAvailability?: () => 'available' | 'needs-setup';
+    /** The model the fake embedder is registered with; another than a restart's changes it under its id. */
+    fakeModel?: string;
   } = {},
 ): Promise<Harness> {
   const runtime = createManualRuntimeServices({ identifierSeed: BUREAU_ID });
@@ -97,6 +101,7 @@ async function start(
               id: FAKE,
               embedder: fake.embed,
               dimension: DIMENSION,
+              model: options.fakeModel ?? FAKE_MODEL,
               ...(options.fakeAvailability === undefined
                 ? {}
                 : { availability: options.fakeAvailability }),
@@ -106,6 +111,7 @@ async function start(
         id: NEEDS_SETUP,
         embedder: fake.embed,
         dimension: DIMENSION,
+        model: FAKE_MODEL,
         availability: () => 'needs-setup' as const,
       },
     ]),
@@ -205,7 +211,7 @@ describe('memory.embedder', () => {
     await bureau.maintain();
 
     expect(await memory.embedding.status()).toEqual({
-      active: { embedder: FAKE, dimension: DIMENSION },
+      active: { embedder: FAKE, dimension: DIMENSION, model: FAKE_MODEL },
     });
     expect(await embedderSetting(bureau)).toBe(FAKE);
   });
@@ -220,10 +226,14 @@ describe('memory.embedder', () => {
     expect(second.outcome === 'rejected' && second.message).toContain(
       `A switch to the embedder "${FAKE}" is running`,
     );
+    // COR-2188: the refusal names the operation that cancels it.
+    expect(second.outcome === 'rejected' && second.message).toContain(
+      'cancel it with bureau.memory.embedding.cancel or wait for it to finish',
+    );
     expect(await embedderSetting(bureau)).toBe(FAKE);
   });
 
-  it('sets the embedder back and deletes the partial profile when the switch is cancelled', async () => {
+  it('sets the embedder back on the next pass and deletes the partial profile when the switch is cancelled (COR-2188)', async () => {
     const { bureau, memory, durable } = await start();
     await remember(memory, 'alpha answer');
     await setEmbedder(bureau, FAKE);
@@ -286,7 +296,8 @@ describe('memory.embedder', () => {
     const status = await memory.embedding.status();
     expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
     expect(status.job).toMatchObject({ target: FAKE, state: 'failed', done: 0, total: 1 });
-    expect(status.job?.error).toBe('The fake embedder is down.');
+    // A code, never the text the embedder gave (COR-2188).
+    expect(status.job?.error).toBe('embedder-failed');
     expect(await embedderSetting(bureau)).toBe(HASHING_EMBEDDER_ID);
   });
 
@@ -305,7 +316,9 @@ describe('memory.embedder', () => {
 
     expect(await embedderSetting(bureau)).toBe(HASHING_EMBEDDER_ID);
     const after = await memory.embedding.status();
-    expect(after).toEqual({ active: { embedder: HASHING_EMBEDDER_ID, dimension: 256 } });
+    expect(after).toEqual({
+      active: { embedder: HASHING_EMBEDDER_ID, dimension: 256, model: HASHING_EMBEDDER_MODEL },
+    });
   });
 
   it('fails a switch whose embedder a restart no longer loads, and sets the embedder back', async () => {
@@ -346,5 +359,89 @@ describe('memory.embedder', () => {
 
     expect(await vectorStoreKeys(durable, 'v:')).toEqual([]);
     expect(await vectorStoreKeys(durable, 'd:')).toEqual([]);
+  });
+});
+
+/**
+ * COR-2184: an embedder reconfigured to another model under its own id leaves the active profile
+ * unusable (`problem: 'embedder-unavailable'`), and the setting that names it needs a switch the
+ * id alone no longer asks for.
+ *
+ * | Setting              | Event                                              | Required result |
+ * | -------------------- | -------------------------------------------------- | --------------- |
+ * | the active id        | write the active id, a problem set, embedder loaded | a switch starts; a pass completes it into the new model |
+ * | the active id        | a pass, with no write (the process stopped)         | the switch starts, as it does for a write whose switch never started |
+ * | the active id        | the switch failed; a pass, twice                    | no new switch: the failed record stays and the setting is left as it is |
+ * | the active id        | write the active id, no problem                     | nothing starts |
+ */
+describe('memory.embedder after the active embedder changed its model (COR-2184)', () => {
+  /** The fake embedder made active at model A, and the same memory restarted on model B over its store. */
+  async function afterModelChange() {
+    const first = await start();
+    await remember(first.memory, 'alpha answer');
+    expect(await setEmbedder(first.bureau, FAKE)).toMatchObject({ outcome: 'applied' });
+    await first.bureau.maintain();
+    const before = await first.memory.embedding.status();
+    expect(before.active.model).toBe(FAKE_MODEL);
+    const second = await start({ durable: first.durable, fakeModel: 'fake-model-2' });
+    expect(await embedderSetting(second.bureau)).toBe(FAKE);
+    expect(await second.memory.embedding.status()).toMatchObject({
+      active: { embedder: FAKE, model: FAKE_MODEL },
+      problem: 'embedder-unavailable',
+    });
+    return second;
+  }
+
+  it('starts a switch when the active id is written again, and a pass completes it (AC5)', async () => {
+    const { bureau, memory } = await afterModelChange();
+
+    expect(await setEmbedder(bureau, FAKE)).toMatchObject({ outcome: 'applied' });
+    const running = await memory.embedding.status();
+    expect(running.job).toMatchObject({ target: FAKE, state: 'running' });
+    await bureau.maintain();
+
+    expect(await memory.embedding.status()).toEqual({
+      active: { embedder: FAKE, dimension: DIMENSION, model: 'fake-model-2' },
+    });
+    expect(await embedderSetting(bureau)).toBe(FAKE);
+  });
+
+  it('starts the switch from a pass when no write started it', async () => {
+    const { bureau, memory } = await afterModelChange();
+
+    await bureau.maintain();
+    const started = await memory.embedding.status();
+    expect(started.job).toMatchObject({ target: FAKE, state: 'running' });
+    await bureau.maintain();
+
+    const finished = await memory.embedding.status();
+    expect(finished.active.model).toBe('fake-model-2');
+    expect(finished.problem).toBeUndefined();
+  });
+
+  it('does not start the switch again on every pass after it failed', async () => {
+    const { bureau, memory, fake, durable } = await afterModelChange();
+    fake.fail();
+    expect(await setEmbedder(bureau, FAKE)).toMatchObject({ outcome: 'applied' });
+
+    await bureau.maintain();
+    const failed = await memory.embedding.status();
+    expect(failed.job).toMatchObject({ target: FAKE, state: 'failed' });
+    await bureau.maintain();
+    await bureau.maintain();
+
+    expect(await memory.embedding.status()).toEqual(failed);
+    expect(await createMemoryVectorStore(durable).listProfiles()).toHaveLength(2);
+    expect(await embedderSetting(bureau)).toBe(FAKE);
+  });
+
+  it('starts nothing when the active id is written and nothing is wrong with it', async () => {
+    const { bureau, memory } = await start();
+
+    expect(await setEmbedder(bureau, HASHING_EMBEDDER_ID)).toMatchObject({ outcome: 'applied' });
+    await bureau.maintain();
+
+    const status = await memory.embedding.status();
+    expect(status.job).toBeUndefined();
   });
 });

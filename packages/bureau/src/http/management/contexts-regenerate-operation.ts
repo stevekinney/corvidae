@@ -35,7 +35,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  */
 
 import { sessionOwnerOf } from '@lostgradient/operative';
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';

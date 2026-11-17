@@ -8,8 +8,48 @@
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
   "suiteExitCode": 0,
   "componentRenders": {
+    "approval-card": {
+      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "suiteExitCode": 0
+    },
+    "breadcrumbs": {
+      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
+      "suiteExitCode": 0
+    },
+    "card": {
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "chat": {
+      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "suiteExitCode": 0
+    },
+    "chat-composer-popover": {
+      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "suiteExitCode": 0
+    },
+    "chat-mcp-app": {
+      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "suiteExitCode": 0
+    },
+    "chat-sub-session": {
+      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "suiteExitCode": 0
+    },
+    "description-list": {
+      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "suiteExitCode": 0
+    },
+    "page-header": {
+      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
+      "suiteExitCode": 0
+    },
     "schema-form": {
-      "renderedSourceSha": "01b3fc822ab9b053849fc352dbf97fd57404b642",
+      "renderedSourceSha": "2c1dd08e6818d3f33badb9148af72c4e85aa60a5",
+      "suiteExitCode": 0
+    },
+    "stacked-list-item": {
+      "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
       "suiteExitCode": 0
     }
   }

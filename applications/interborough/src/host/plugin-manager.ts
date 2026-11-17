@@ -34,17 +34,21 @@ import { createHash, randomUUID } from 'node:crypto';
 import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import {
   pluginLoadOrder,
+  type BureauHostEvent,
   type BureauPluginEntry,
   type BureauPluginSecrets,
   type BureauPluginSettings,
   type PluginListing,
   type PluginLoadSource,
   type PluginProblem,
+  type PluginProblemCode,
+  type PluginStatus,
   type SettingLockReason,
 } from '@lostgradient/bureau';
 import { z } from 'zod';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
+import type { HostEventPublisher } from './host-events.ts';
 import { hostWriteLocks } from './locations.ts';
 import { parsePluginSettings, readPluginSettings } from './plugins.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
@@ -198,14 +202,14 @@ export type PluginSettingsChange = {
   readonly restartRequired: boolean;
 };
 
-/** What a saved secret reports: that it is set, never its value. */
+/** What a saved or removed secret reports: whether it is set, never its value. */
 export type PluginSecretChange = {
   /** The plugin. */
   readonly plugin: string;
-  /** The secret key. */
+  /** The secret key, as the plugin declares it. */
   readonly key: string;
-  /** Always `true`: the value is stored. */
-  readonly set: true;
+  /** `true` for a value that was stored, `false` for one that was removed. */
+  readonly set: boolean;
 };
 
 /** The plugins a running host loads and how the owner changes them. See the module comment. */
@@ -247,6 +251,16 @@ export type PluginManager = {
     name: string,
     key: string,
     value: unknown,
+    mutation?: HostMutationContext,
+  ): Promise<PluginSecretChange>;
+  /**
+   * Remove the secret `key` of `name` (COR-2098), as a provider's key is removed on disconnect: an
+   * empty value is published for it. The same checks as {@link saveSecret} run first, so a key the
+   * plugin does not declare is refused and never echoed.
+   */
+  removeSecret(
+    name: string,
+    key: string,
     mutation?: HostMutationContext,
   ): Promise<PluginSecretChange>;
   /** Refuse every later change. The host calls it as it shuts down. */
@@ -302,6 +316,15 @@ export type PluginManagerOptions = {
   readonly applySecret?: (plugin: string) => Promise<void>;
   /** Records committed plugin configuration metadata without exposing request values. */
   readonly audit?: (entry: PluginAuditEntry) => Promise<void>;
+  /**
+   * Where a committed write is reported (COR-2098): `plugin.settings-changed` after a plugin's
+   * choices are written, `secret.set` and `secret.removed` after a secret is stored or removed
+   * (and `secret.set` for each secret an enabled plugin has the host create), and
+   * `plugin.status-changed` after one of them changes a plugin's status. Each goes out after the
+   * write is committed and audited, in that order, and never for a write that did not commit.
+   * Starting the host and creating generated secrets at startup report nothing.
+   */
+  readonly events?: HostEventPublisher;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin that declares one is skipped, since it would read or overwrite it. */
@@ -349,6 +372,20 @@ function isGenerated(declaration: string | { readonly generated?: boolean }): bo
 /** Whether a non-empty value is stored: an empty one is how a secret is removed. */
 function isSet(value: string | undefined): boolean {
   return value !== undefined && value !== '';
+}
+
+/** A plugin's status and the distinct codes of the problems it lists, as `plugin.status-changed` reports them. */
+type Standing = {
+  readonly status: PluginStatus;
+  readonly problemCodes: readonly PluginProblemCode[];
+};
+
+/** Whether two standings are the same: the status, and the same codes whatever order they came in. */
+function sameStanding(left: Standing, right: Standing): boolean {
+  return (
+    left.status === right.status &&
+    [...left.problemCodes].toSorted().join('\n') === [...right.problemCodes].toSorted().join('\n')
+  );
 }
 
 /**
@@ -541,9 +578,14 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
   /**
    * Generate only against the configuration revision that proved the key absent. Another host
    * can win that revision; its committed value is retained without retrying this publication.
+   * Returns the secrets this call committed, each with the plugin that declares it (COR-2098), and
+   * adds each to `committed` as it commits it, so a caller whose generation fails partway still
+   * knows what was written. Startup discards them: nothing is reported while the host starts.
    */
-  async function generate(): Promise<void> {
-    if (!workspaceSecrets.writable) return;
+  async function generate(
+    committed: Array<{ readonly plugin: string; readonly key: string }> = [],
+  ): Promise<Array<{ readonly plugin: string; readonly key: string }>> {
+    if (!workspaceSecrets.writable) return committed;
     for (const entry of loadable) {
       if (!enabledIn(persisted, entry)) continue;
       for (const declaration of entry.descriptor.secrets ?? []) {
@@ -563,6 +605,107 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
           throw new SecretProviderError('unavailable', 'The generated secret was not published.');
         }
         secretChanged(key);
+        committed.push({ plugin: entry.descriptor.name, key });
+      }
+    }
+    return committed;
+  }
+
+  // COR-2098 — what the host last reported of each plugin's standing. It is seeded lazily, just
+  // before the first write that could change one, so starting the host reports nothing; later it
+  // holds the standing last published, so a write that leaves it as it was reports nothing either.
+  const standings = new Map<string, Standing>();
+
+  /**
+   * A plugin's standing now: Bureau's listing, with `secret-missing` and the status it implies read
+   * from the secrets themselves. Bureau's gate rechecks a key after the write that changed it
+   * returns (`plugin-secret-gate.ts`), so its listing can still show the standing from before a
+   * write that has already committed. A key that cannot be read counts as missing, as it does in
+   * the gate. `undefined` when Bureau lists no such plugin (it is not up yet).
+   */
+  async function standingNow(entry: BureauPluginEntry): Promise<Standing | undefined> {
+    const listings = await options.listing();
+    const listed = listings.find(
+      (candidate) => candidate.source === entry.source && candidate.location === entry.location,
+    );
+    if (listed === undefined) return undefined;
+    let status: PluginStatus = listed.status;
+    let codes: PluginProblemCode[] = listed.problems.map((problem) => problem.code);
+    if (status === 'running' || status === 'needs-setup') {
+      let missing = false;
+      for (const declaration of entry.descriptor.secrets ?? []) {
+        try {
+          if (!isSet(await workspaceSecrets.read(declaredKey(declaration)))) missing = true;
+        } catch {
+          missing = true;
+        }
+      }
+      status = missing ? 'needs-setup' : 'running';
+      const listedMissing = codes.includes('secret-missing');
+      if (missing && !listedMissing) codes = [...codes, 'secret-missing'];
+      if (!missing && listedMissing) codes = codes.filter((code) => code !== 'secret-missing');
+    }
+    return { status, problemCodes: [...new Set(codes)] };
+  }
+
+  /** Records the standing of every plugin that has none yet, before a write changes it. */
+  async function seedStandings(): Promise<void> {
+    for (const entry of loadable) {
+      if (standings.has(entry.descriptor.name)) continue;
+      const standing = await standingNow(entry).catch(() => undefined);
+      if (standing !== undefined) standings.set(entry.descriptor.name, standing);
+    }
+  }
+
+  /**
+   * The `plugin.status-changed` events a write implies: one for each of `names` whose standing now
+   * differs from the one last reported, which is then what is last reported.
+   */
+  async function statusChanges(names: Iterable<string>): Promise<BureauHostEvent[]> {
+    const pending: BureauHostEvent[] = [];
+    for (const name of new Set(names)) {
+      const entry = entryNamed(name);
+      if (entry === undefined || refusals.has(entry)) continue;
+      const after = await standingNow(entry).catch(() => undefined);
+      if (after === undefined) continue;
+      const before = standings.get(name);
+      standings.set(name, after);
+      if (before === undefined || sameStanding(before, after)) continue;
+      pending.push({
+        kind: 'plugin.status-changed',
+        payload: {
+          plugin: name,
+          previousStatus: before.status,
+          status: after.status,
+          problemCodes: after.problemCodes,
+        },
+      });
+    }
+    return pending;
+  }
+
+  /** Reports each committed change, in order. Never throws: the writer's work is done. */
+  function announce(pending: readonly BureauHostEvent[]): void {
+    const publisher = options.events;
+    if (publisher === undefined) return;
+    for (const event of pending) {
+      try {
+        switch (event.kind) {
+          case 'secret.set':
+            publisher.publish('secret.set', event.payload);
+            break;
+          case 'secret.removed':
+            publisher.publish('secret.removed', event.payload);
+            break;
+          case 'plugin.settings-changed':
+            publisher.publish('plugin.settings-changed', event.payload);
+            break;
+          case 'plugin.status-changed':
+            publisher.publish('plugin.status-changed', event.payload);
+            break;
+        }
+      } catch {
+        // The listener is Bureau's; its failure is not the writer's.
       }
     }
   }
@@ -630,7 +773,11 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       persisted = readPluginSettings(await readText(), location);
       for (const key of watchers.keys()) secretChanged(key);
     },
-    ensureGeneratedSecrets: () => serialized(async () => generate()),
+    // What startup creates is reported to no one (COR-2098): the secrets are discarded here.
+    ensureGeneratedSecrets: () =>
+      serialized(async () => {
+        await generate();
+      }),
     close() {
       closed = true;
     },
@@ -738,6 +885,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (enabled !== undefined && !identity.capabilities.includes('deployment:operate'))
           throw new HostMutationError('forbidden');
         mutationOwner = authority.owner;
+        // The standings the write is compared with are taken before it changes them (COR-2098).
+        await seedStandings();
         const snapshot = await bungalow.readConfiguration();
         const text = snapshot.text;
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
@@ -788,22 +937,51 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         // A plugin turned on gets the secrets it asks the host to create, now, so the next start
         // finds them. They are created after the choice is stored: a failure here leaves the choice
         // made, and the same request again finishes the job.
-        if (enabledIn(persisted, entry)) await generate();
-        return changeOf(entry);
-      });
-      await options
-        .audit?.({
-          runId: `plugin:${name}`,
-          type: 'plugin.configured',
-          principal: mutationOwner,
-          detail: {
-            outcome: 'committed',
-            changedKeys,
-            hash: createHash('sha256').update(committedText).digest('hex'),
-            previousRevision,
+        const generated: Array<{ readonly plugin: string; readonly key: string }> = [];
+        let generationFailure: { readonly error: unknown } | undefined;
+        if (enabledIn(persisted, entry)) {
+          try {
+            await generate(generated);
+          } catch (error) {
+            generationFailure = { error };
+          }
+        }
+        const result = changeOf(entry);
+        // COR-2098 — the choice is committed, so it is reported (and each secret created with it),
+        // then the standing of every plugin whose secrets changed. The audit comes first, inside
+        // the queue, so two writes announce in the order they committed.
+        const pending: BureauHostEvent[] = [
+          {
+            kind: 'plugin.settings-changed',
+            payload: {
+              plugin: name,
+              enabled: result.enabled,
+              restartRequired: result.restartRequired,
+            },
           },
-        })
-        .catch(() => undefined);
+          ...generated.map(({ plugin, key }): BureauHostEvent => ({
+            kind: 'secret.set',
+            payload: { plugin, key },
+          })),
+          ...(await statusChanges([name, ...generated.map(({ plugin }) => plugin)])),
+        ];
+        await options
+          .audit?.({
+            runId: `plugin:${name}`,
+            type: 'plugin.configured',
+            principal: mutationOwner,
+            detail: {
+              outcome: 'committed',
+              changedKeys,
+              hash: createHash('sha256').update(committedText).digest('hex'),
+              previousRevision,
+            },
+          })
+          .catch(() => undefined);
+        announce(pending);
+        if (generationFailure !== undefined) throw generationFailure.error;
+        return result;
+      });
       // Applied outside the queue, which the work shares. A change to `enabled` alone waits for a restart.
       if (live && (configuration !== undefined || clearsConfiguration)) {
         await options.applyConfiguration?.(name);
@@ -812,22 +990,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     },
 
     async saveSecret(name, key, value, mutation) {
-      assertWritable();
-      const entry = entryNamed(name);
-      if (entry === undefined) throw new PluginNotFoundError(name);
-      // A skipped plugin's declarations are not honored, and one of them may be the host's own key.
-      if (refusals.has(entry)) {
-        throw new PluginInputError(
-          'plugin',
-          `the plugin "${name}" is skipped and takes no secrets.`,
-        );
-      }
-      const declares = (entry.descriptor.secrets ?? []).some(
-        (declaration) => declaredKey(declaration) === key,
-      );
-      if (!declares) {
-        throw new PluginInputError('key', `the plugin "${name}" does not declare this secret.`);
-      }
+      checkDeclaredSecret(name, key);
       if (typeof value !== 'string') throw new PluginInputError('value', 'expected text.');
       const trimmed = value.trim();
       if (trimmed === '') throw new PluginInputError('value', 'expected a value, and it is empty.');
@@ -838,54 +1001,111 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
         throw new PluginInputError('value', 'contains a line break or another control character.');
       }
-      let publishedNow = false;
-      const change = await serialized(async () => {
-        assertWritable();
-        const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
-        if (authority.workspaceId !== bungalow.workspaceId)
-          throw new HostMutationError('forbidden');
-        await authority.revalidate();
-        const snapshot = await bungalow.readConfiguration();
-        try {
-          const result = await workspaceSecrets.publish({
-            operationId: authority.operationIdFor('plugin-secret', JSON.stringify([name, key])),
-            requestDigest: secretPublicationDigest({
-              operation: 'plugin-secret',
-              target: JSON.stringify([name, key]),
-              expectedRevision: authority.expectedRevision,
-              payload: { value: trimmed },
-            }),
-            key,
-            value: trimmed,
-            document: parseDocument(snapshot.text, location),
-            expectedRevision: authority.expectedRevision,
-            authorize: async () => {
-              await authority.revalidate();
-            },
-          });
-          if (result.outcome !== 'committed') throw new SecretPublicationError(result.outcome);
-          publishedNow = result.publishedNow === true;
-        } finally {
-          if (publishedNow) secretChanged(key);
-        }
-        if (publishedNow)
-          await options
-            .audit?.({
-              runId: `plugin:${name}`,
-              type: 'plugin.configured',
-              principal: authority.owner,
-              detail: {
-                outcome: 'committed',
-                changedKeys: ['secret'],
-                previousRevision: authority.expectedRevision,
-              },
-            })
-            .catch(() => undefined);
-        return { plugin: name, key, set: true } as const;
-      });
-      // Applied outside the queue, which the work shares.
-      if (publishedNow) await options.applySecret?.(name);
-      return change;
+      return writeDeclaredSecret(name, key, trimmed, mutation);
+    },
+
+    // The key is checked as `saveSecret` checks it, and an empty value is published for it, as a
+    // provider's key is removed on disconnect (COR-2098).
+    async removeSecret(name, key, mutation) {
+      checkDeclaredSecret(name, key);
+      return writeDeclaredSecret(name, key, '', mutation);
     },
   };
+
+  /**
+   * Refuses a write the plugin's declarations do not allow, before anything is read from the
+   * request but its two names: the home must be writable, the plugin loaded and not skipped, and
+   * the key one the plugin declares. No message repeats the key, which until it is declared is
+   * only text from a request.
+   */
+  function checkDeclaredSecret(name: string, key: string): void {
+    assertWritable();
+    const entry = entryNamed(name);
+    if (entry === undefined) throw new PluginNotFoundError(name);
+    // A skipped plugin's declarations are not honored, and one of them may be the host's own key.
+    if (refusals.has(entry)) {
+      throw new PluginInputError('plugin', `the plugin "${name}" is skipped and takes no secrets.`);
+    }
+    const declares = (entry.descriptor.secrets ?? []).some(
+      (declaration) => declaredKey(declaration) === key,
+    );
+    if (!declares) {
+      throw new PluginInputError('key', `the plugin "${name}" does not declare this secret.`);
+    }
+  }
+
+  /**
+   * Publishes `value` for the declared secret `key` of `name`, which removes it when it is empty,
+   * and reports it (COR-2098): once the write has committed and been audited, `secret.set` or
+   * `secret.removed`, then `plugin.status-changed` when the write changed the plugin's standing. A
+   * write that did not commit now (a retry the publication already holds) audits and reports
+   * nothing. The key reported is the declared one, which `checkDeclaredSecret` has matched to the
+   * request's, never the request's own text; the value is never part of any of it.
+   */
+  async function writeDeclaredSecret(
+    name: string,
+    key: string,
+    value: string,
+    mutation: HostMutationContext | undefined,
+  ): Promise<PluginSecretChange> {
+    const removal = value === '';
+    const operation = removal ? 'plugin-secret-remove' : 'plugin-secret';
+    let publishedNow = false;
+    const change = await serialized(async () => {
+      assertWritable();
+      const authority = mutation ?? (await createLocalHostMutationContext(bungalow));
+      if (authority.workspaceId !== bungalow.workspaceId) throw new HostMutationError('forbidden');
+      await authority.revalidate();
+      // The standings the write is compared with are taken before it changes them.
+      await seedStandings();
+      const snapshot = await bungalow.readConfiguration();
+      try {
+        const result = await workspaceSecrets.publish({
+          operationId: authority.operationIdFor(operation, JSON.stringify([name, key])),
+          requestDigest: secretPublicationDigest({
+            operation,
+            target: JSON.stringify([name, key]),
+            expectedRevision: authority.expectedRevision,
+            payload: removal ? {} : { value },
+          }),
+          key,
+          value,
+          document: parseDocument(snapshot.text, location),
+          expectedRevision: authority.expectedRevision,
+          authorize: async () => {
+            await authority.revalidate();
+          },
+        });
+        if (result.outcome !== 'committed') throw new SecretPublicationError(result.outcome);
+        publishedNow = result.publishedNow === true;
+      } finally {
+        if (publishedNow) secretChanged(key);
+      }
+      if (publishedNow) {
+        // The status is read after the watchers heard, from the secrets themselves, because
+        // Bureau's gate rechecks a key after the write that changed it returns.
+        const pending: BureauHostEvent[] = [
+          { kind: removal ? 'secret.removed' : 'secret.set', payload: { plugin: name, key } },
+          ...(await statusChanges([name])),
+        ];
+        await options
+          .audit?.({
+            runId: `plugin:${name}`,
+            type: 'plugin.configured',
+            principal: authority.owner,
+            detail: {
+              outcome: 'committed',
+              changedKeys: ['secret'],
+              previousRevision: authority.expectedRevision,
+            },
+          })
+          .catch(() => undefined);
+        announce(pending);
+      }
+      return { plugin: name, key, set: !removal };
+    });
+    // Applied outside the queue, which the work shares.
+    if (publishedNow) await options.applySecret?.(name);
+    return change;
+  }
 }

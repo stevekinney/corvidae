@@ -15,6 +15,7 @@ import {
   getWorkflowFile,
   getWorkflowRunHistory,
   listWorkflowRevisions,
+  listWorkflowVersionLabels,
 } from '../../../lib/workflow-files.ts';
 import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import {
@@ -42,6 +43,7 @@ export class RunInstance {
   readonly #history;
   readonly #revisions;
   readonly #file;
+  readonly #labels;
 
   constructor(source: () => RunInstanceSource) {
     this.#source = source;
@@ -86,6 +88,16 @@ export class RunInstance {
         retry: false,
       };
     });
+    this.#labels = createQuery(() => {
+      const read = source();
+      return {
+        queryKey: ['run-instance', 'version-labels', read.type ?? ''] as const,
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          listWorkflowVersionLabels(read.type ?? '', { signal }),
+        enabled: asked(),
+        retry: false,
+      };
+    });
   }
 
   /** The steps of the version the run ran, when the workflow's revisions say. */
@@ -110,7 +122,7 @@ export class RunInstance {
   get version(): VersionStanding | undefined {
     const ran = this.#source().ranVersion;
     if (ran === undefined || this.#file.data === undefined) return undefined;
-    return versionStanding(ran, this.#file.data.version);
+    return versionStanding(ran, this.#file.data.version, this.#labels.data);
   }
 
   /**

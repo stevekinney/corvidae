@@ -2042,12 +2042,18 @@ export class HookPlanFailedEvent extends Event {
   readonly durationMilliseconds: number;
   readonly error: unknown;
   readonly runId: string | undefined;
+  /**
+   * Who registered the entry, when one said (`HookRegistrationOptions.source`, COR-1269): the
+   * registry's own stamp, carried through so a consumer can tell which tier or plugin's hook threw.
+   */
+  readonly source: string | undefined;
   constructor(
     hookName: string,
     hookId: string,
     durationMilliseconds: number,
     error: unknown,
     runId?: string,
+    source?: string,
   ) {
     super(HookPlanFailedEvent.type);
     this.hookName = hookName;
@@ -2055,6 +2061,7 @@ export class HookPlanFailedEvent extends Event {
     this.durationMilliseconds = durationMilliseconds;
     this.error = error;
     this.runId = runId;
+    this.source = source;
   }
 }
 

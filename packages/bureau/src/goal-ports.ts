@@ -105,6 +105,8 @@ import {
 } from './goal-state';
 import type { GoalStore } from './goal-store';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
+import { ownerOrLocal } from './owner-of-record';
+import { decodeStoredValidatorDefinition } from './validator-file';
 import type { CancelDurableRunOutcome } from './bureau-types/runs';
 
 /** The deterministic names the workflow and the store share. */
@@ -435,9 +437,45 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       );
     }
     if (await mustStandDown(true)) return standDown();
-    const seat = await conversations.seat(record, request);
-    if (seat.status === 'failed') return failed(seat.detail);
-    if (await mustStandDown(true)) return standDown();
+    // A prompt edited since the last start is taken by this start, in its own write: the attempt is
+    // seated from the record that write answers, so what the record says the attempt was given is
+    // what it was given, and an edit that lands after it waits for the next attempt. A start that is
+    // retried finds the edit already taken (the marker is this attempt's) and seats the same turn.
+    const taken = await store.consumePromptEdit(
+      request.goalRunId,
+      request.attemptIndex,
+      runtime.clock.nowISO(),
+    );
+    // A write that lost every compare-and-swap is a fault of this process: the activity retries.
+    if (taken.status === 'stale') {
+      throw new Error(
+        `Goal "${request.goalRunId}" changed under every try to take its prompt edit.`,
+      );
+    }
+    const seated =
+      taken.status === 'updated' || taken.status === 'unchanged' ? taken.record : record;
+    // The edit this try took was meant for the run it creates. A try that ends without creating
+    // it (it adopts a run another try created, stands down, or fails the attempt) gives the edit
+    // back, so the record never says an attempt was given a prompt it never got. A try that throws
+    // keeps it: its retry finds the marker as its own attempt's and seats the same turn.
+    const giveBackEdit = async (): Promise<void> => {
+      if (taken.status !== 'updated') return;
+      await store.restorePromptEdit(
+        request.goalRunId,
+        request.attemptIndex,
+        record.objective.promptRevisedAtAttempt,
+        runtime.clock.nowISO(),
+      );
+    };
+    const seat = await conversations.seat(seated, request);
+    if (seat.status === 'failed') {
+      await giveBackEdit();
+      return failed(seat.detail);
+    }
+    if (await mustStandDown(true)) {
+      await giveBackEdit();
+      return standDown();
+    }
     let started: GoalAttemptRun;
     try {
       started = startAttemptRun({
@@ -460,10 +498,18 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       // activity, which the controller treats as its own failure and recovery
       // restarts, rather than ending the goal over a transient fault.
       const raced = await adopt();
-      if (raced !== undefined) return raced;
+      if (raced !== undefined) {
+        // The run is another try's, seated from the prompt that try read: this attempt was not
+        // given the edit this start took.
+        await giveBackEdit();
+        return raced;
+      }
       // The goal tombstoned this attempt's claim between this start's read of the
       // goal and its own claim: it ended over the attempt, so nothing starts.
-      if (error instanceof GoalAttemptTombstonedError) return standDown();
+      if (error instanceof GoalAttemptTombstonedError) {
+        await giveBackEdit();
+        return standDown();
+      }
       // A permanent property of the agent is a verdict on the attempt, not a
       // fault to retry.
       if (
@@ -471,6 +517,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         error instanceof GoalAttemptInvalidCostEstimationError ||
         error instanceof DefinitionDriftedError
       ) {
+        await giveBackEdit();
         return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(`${error.reason}: ${error.message}`));
       }
       throw error;
@@ -523,7 +570,21 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       };
     };
 
-    const resolution = catalog.resolve(request.validator);
+    // COR-2119: a goal that copied an owner-defined validator's definition runs that copy, which
+    // came in the request beside the identity, and never reads the file. A copy that does not decode
+    // is a record fault, answered as the validator being unavailable.
+    const stored =
+      request.validatorDefinition === undefined
+        ? undefined
+        : decodeStoredValidatorDefinition(request.validatorDefinition);
+    if (request.validatorDefinition !== undefined && stored === undefined) {
+      return unavailable(
+        'unavailable',
+        'VALIDATOR_DEFINITION_INVALID',
+        `The stored definition of the validator "${request.validator.name}@${request.validator.version}" cannot be read.`,
+      );
+    }
+    const resolution = catalog.resolve(request.validator, stored);
     if (!resolution.ok) {
       const message =
         resolution.reason === 'missing'
@@ -585,6 +646,14 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         attemptIndex: request.attemptIndex,
         result: reading.result,
         history: record.attempts.slice(0, request.attemptIndex).map(toAttemptRecord),
+        // COR-2117: the configuration travels in the request beside the identity, read in the same
+        // load of the record, so a validator is never run with another validator's configuration
+        // when the goal is updated between that load and this check.
+        ...(request.validatorConfiguration === undefined
+          ? {}
+          : { configuration: request.validatorConfiguration }),
+        // COR-2123: a validator that spends (a judge's model call) does it as the goal's owner.
+        principal: ownerOrLocal(record.principal),
       },
       // The activity's signal, which Weft aborts when the controller is cancelled
       // or the try times out; the executor composes it with the validator's own
@@ -600,12 +669,12 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     });
     // COR-2112: what judged the attempt is taken from the entry that ran, here and now, and
     // travels with the verdict: the goal's validator may change before or after this commits.
-    // No validator takes a configuration yet (COR-2117), so none was passed.
+    // The configuration is the exact one passed to the validator (COR-2117), `null` when none was.
     const { identity, source } = resolution.entry;
     const judgedBy: ValidatorJudge = {
       validator: { name: identity.name, version: identity.version },
       source: { kind: source.kind, name: source.name, version: source.version },
-      configuration: null,
+      configuration: request.validatorConfiguration ?? null,
     };
     return { ...projected, outcome: boundValidationOutcome(projected.outcome), judgedBy };
   }

@@ -44,7 +44,7 @@ import {
   projectDescriptor,
   type AgentSkillDescriptor,
 } from '@lostgradient/operative';
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { DROPPED_CODE_AGENT_BEHAVIORS, type AgentDefinitions } from '../../agent-catalog.ts';

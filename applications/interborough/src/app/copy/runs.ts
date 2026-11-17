@@ -1,3 +1,5 @@
+import type { StatusDotWordLabel } from '@lostgradient/cinder';
+
 /** The words the run page uses for its steps, and for the lines the run logged. */
 export const RUN_STEPS_COPY = {
   heading: 'Steps',
@@ -69,6 +71,8 @@ export const RUN_RELATED_COPY = {
   revisionTitle: (revision: string): string => `Revision (exact executable artifact): ${revision}`,
   /** Said under the heading when no run started this one and it has not started any. */
   none: 'No other runs yet.',
+  /** The same, for a run that is over: nothing came from it (row 55d). */
+  noneOver: 'No other runs came from this one.',
   loadFailedTitle: 'Related runs could not be read',
   openRun: (label: string): string => `Open run ${label}`,
 } as const;
@@ -145,7 +149,10 @@ export const RUN_PAGE_COPY = {
   eventsLockedTitle: 'Events are locked',
   checkpointsHeading: 'Checkpoints',
   lineageHeading: 'Lineage',
-  detailsHeading: 'Details',
+  detailsHeading: 'Run details',
+  /** Under Tags when the run has none, and the field's placeholder (rows 54j, 54p, 55d, 55h). */
+  noTags: 'None',
+  addTag: 'Add a tag',
   attributesAndWorkerLabel: 'Attributes and worker',
   changeHeading: 'Change or ask this run',
   changeIntro: 'Send a message to the run, or read something from it, without leaving the page.',
@@ -250,7 +257,77 @@ export const RUN_DETAIL_COPY = {
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',
   /** The disclosure under what happened, for what only an operator reads. */
-  howItRan: { heading: 'How it ran', caption: 'For operators', rawPayloads: 'Raw payloads' },
+  /**
+   * The hooks of a run (COR-2115, the agreed design): the section after What happened that lists a
+   * live run's hook plan with the hooks that threw first, and a settled run's failed hooks alone. It
+   * says "Run hooks", never "Hooks", which is the page of webhooks. No row has a retry or a reason:
+   * the record names the registration, the hook point and who registered it, and nothing of the error.
+   */
+  hooks: {
+    heading: 'Run hooks',
+    /** The accessible name of the list of hooks. */
+    listLabel: 'Run hooks',
+    descriptionLive: 'In the order they run, failed hooks first.',
+    /** For a settled run, verbatim from the brief. */
+    descriptionSettled: 'The full hook plan is shown while a run is live.',
+    descriptionUnreadable: 'This run’s hook plan can’t be read.',
+    /** The accessible name of the placeholders while a live run’s hooks load. */
+    loading: 'Loading this run’s hooks',
+    loadFailed: {
+      title: 'Couldn’t load this run’s hooks.',
+      description: 'The rest of the run is shown.',
+    },
+    forbidden: {
+      title: 'Your sign-in can’t see this run’s hooks',
+      /** The scope Interborough’s API checks before it lets the inspection through (`host/scope-gate.ts`). */
+      requirement: 'runs:read',
+    },
+    /** A hook that threw: its one status word, with how many times when it was more than once. */
+    failed: (count: number): StatusDotWordLabel =>
+      count > 1 ? `Failed, ${String(count)} times` : 'Failed',
+    priority: (priority: number): string => `priority ${String(priority)}`,
+    replay: { safe: 'no side effects', effectful: 'has side effects' },
+    /** Who registered a hook, for the sources that are not a plugin or the run’s agent. */
+    sources: { bureau: 'Interborough', direct: 'This run' },
+    /** The hook points, in the person’s words. A point this table does not know is shown as its name, in code. */
+    points: {
+      prepareStep: 'Before each step',
+      onStep: 'After each step',
+      beforeToolExecution: 'Before a tool runs',
+      afterToolExecution: 'After a tool runs',
+      selectTools: 'When tools are chosen',
+      selectToolChoice: 'When the tool choice is made',
+      validateResponse: 'When a reply is checked',
+      validateToolResult: 'When a tool’s result is checked',
+      beforeGenerate: 'Before the model is asked',
+      afterGenerate: 'After the model answers',
+      onLLMInput: 'Watching what the model is sent',
+      onLLMOutput: 'Watching what the model sends back',
+      beforeCompaction: 'Before the conversation is shortened',
+      beforeBackgroundCompaction: 'Before a background shortening',
+      afterCompaction: 'After the conversation is shortened',
+      onRunStart: 'When the run starts',
+      onRunComplete: 'When the run finishes',
+      onRunError: 'When the run fails',
+      onRunAbort: 'When the run is stopped',
+      onError: 'When a step fails',
+    } as Readonly<Record<string, string>>,
+  },
+  howItRan: {
+    heading: 'How it ran',
+    caption: 'For operators',
+    rawPayloads: 'Raw payloads',
+    /** The tabs inside How it ran (row 54i); Versioning and Search attributes only when filled. */
+    tabs: {
+      label: 'How it ran',
+      steps: 'Steps',
+      inspector: 'Inspector',
+      raw: 'Raw payloads',
+      events: 'Events and logs',
+      versioning: 'Versioning',
+      attributes: 'Search attributes',
+    },
+  },
   /** Related runs in the rail of a run that is only the Bureau's: the other runs of its chat. */
   related: {
     heading: 'Related runs',
@@ -304,6 +381,11 @@ export const RUN_DETAIL_COPY = {
    * and the steps of the version it ran: how far it got, the step that failed, and which version.
    */
   instance: {
+    /**
+     * The status line of an instance of a workflow file that is still going (row 54l): how long ago
+     * it started, in place of the day, the time and "so far", then the step.
+     */
+    startedAgo: (duration: string): string => `Started ${duration} ago`,
     /** After the time of a run still going: "step 2 of 4". */
     stepOf: (at: number, total: number): string => `step ${String(at)} of ${String(total)}`,
     /** After the word Failed: "at step 2 of 4". */
@@ -318,6 +400,19 @@ export const RUN_DETAIL_COPY = {
       `Step ${String(at)}${name === undefined ? '' : `, ${name}`}`,
     /** The block's heading for the reason, and the sentence that follows the reason. */
     whyItFailed: 'Why it failed',
+    /**
+     * Said after the reason when the failure was not the person's (row 14t): every failure of a
+     * step except a cancellation, which a person asked for.
+     */
+    notYourFault: 'It wasn’t anything you did.',
+    /** The actions inside the failure block (row 14t), beside the header's own. */
+    inBlock: {
+      retry: (at: number): string => `Retry from step ${String(at)}`,
+      runsOn: (version: string): string => `runs on ${version}`,
+      runAgain: 'Run again',
+      openStep: (at: number): string => `Open step ${String(at)}`,
+      errorDetails: 'Show the error details',
+    },
     /** The sentence under the reason: where to look when it keeps failing, with Health as a link. */
     checkHealth: { before: 'If it keeps failing, check ', link: 'Health', after: '.' },
     /** The Version row: which version the run ran, and where it stands against the current one. */
@@ -325,6 +420,42 @@ export const RUN_DETAIL_COPY = {
     versionOlder: (version: string): string => `${version}, older version`,
     versionOlderNote: (current: string): string =>
       `Ran on an older version of this workflow. The current one is ${current}.`,
+    /** The header's primary action on a failed run of a workflow file (row 54z). */
+    retryFromStep: 'Retry from this step',
+    /**
+     * The text beside the header's buttons on a failed run (row 54z): which version each runs on.
+     * `current` is `null` when the run ran on the current version.
+     */
+    besideButtons: (ran: string, current: string | null): string =>
+      current === null
+        ? `Retry from this step and Run again both run on ${ran}, the current version.`
+        : `Retry from this step runs on ${ran}, like this run. Run again runs on ${current}, the current version.`,
+    /** After why it failed: how often the step was tried, and how long that took (row 55b). */
+    triedIn: (tries: number, took: string | undefined): string =>
+      took === undefined
+        ? `Interborough tried ${String(tries)} times.`
+        : `Interborough tried ${String(tries)} times in ${took}.`,
+    /** What Retry from this step does (row 55b): the steps it keeps, and the version it runs on. */
+    retryKeeps: (at: number, ran: string): string =>
+      at <= 1
+        ? `Retry from this step runs step 1 again on version ${ran}, the version this run used.`
+        : `Retry from this step keeps ${
+            at === 2 ? 'step 1’s result' : `the results of steps 1 to ${String(at - 1)}`
+          } and runs step ${String(at)} again on version ${ran}, the version this run used.`,
+    /** Said in the status line once the retry is under way, and when it was refused. */
+    retrying: 'running again from the failed step',
+    retryRefused: {
+      'run-not-failed': 'This run is no longer failed, so there is nothing to retry.',
+      'step-not-found': 'This step is not part of the version this run used.',
+      'earlier-steps-incomplete': 'A step before this one did not finish, so it cannot run again.',
+      'step-completed': 'This step finished, so it does not need to run again.',
+      'step-not-retryable':
+        'This step would fail the same way again. Run the workflow again instead.',
+      'no-checkpoint': 'Nothing was kept to retry from. Run the workflow again instead.',
+      'version-unavailable':
+        'The version this run used is no longer available. Run the workflow again instead.',
+    } as Readonly<Record<string, string>>,
+    retryFailed: 'The step was not retried',
   },
   /** The heading of a page whose run is not yet known: the run's identifier names it. */
   runHeading: (runId: string): string => `Run ${runId}`,
@@ -453,6 +584,8 @@ export const RUN_DETAIL_COPY = {
       'The message that started the run, what it answered, and the steps in between.',
     /** Under the heading of a run of a workflow: its input and what it produced. */
     workflowDescription: 'What this run was started with, and what it produced.',
+    /** The same while the run is still going (row 54p). */
+    workflowDescriptionLive: 'What this run was started with, and what it will produce.',
     /** Under the heading of a run a schedule started, which has no chat. */
     scheduleDescription:
       'A schedule run has no chat, so the schedule’s prompt is the input and the result is the output.',
@@ -484,6 +617,9 @@ export const RUN_DETAIL_COPY = {
     appearsWhenFinished: 'Appears when the run finishes.',
     /** The output of a run that failed. */
     noOutputFailed: 'No output. The run failed, so it never produced one.',
+    /** The output of a run that failed at a step, named by the workflow's `outputName` (row 55c). */
+    noOutputFailedAt: (at: number, name: string): string =>
+      `No output. The run failed at step ${String(at)}, so ${name} was never produced.`,
     /** The output of a run that ended without one. */
     noOutputEnded: (how: string): string => `No output. The run ${how}.`,
     /** A long reply held to a few lines, and the control that opens it. */

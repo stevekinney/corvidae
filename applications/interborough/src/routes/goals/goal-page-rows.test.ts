@@ -40,7 +40,8 @@ function draftReleaseNotes(): Goal {
   const took = [8, 6, 5, 7, 6];
   return goalFixture('draft-release-notes', {
     identity: { name: 'Draft release notes', version: '1' },
-    validator: { name: 'Notes mention the staging fix', version: '1' },
+    validator: { name: 'contains-phrase', version: '1' },
+    validatorConfiguration: { phrase: 'staging fix' },
     status: 'exhausted',
     createdAt: '2026-10-30T13:12:00.000Z',
     closedAt: '2026-10-30T13:21:06.000Z',
@@ -63,7 +64,8 @@ function summarizeRefunds(): Goal {
   return goalFixture('summarize-open-refunds', {
     agentName: 'tool-runner',
     identity: { name: 'Summarize open refunds', version: '1' },
-    validator: { name: 'summary-lists-every-refund-waiting-for-approval', version: '1' },
+    validator: { name: 'contains-phrase', version: '1' },
+    validatorConfiguration: { phrase: 'waiting for approval' },
     status: 'canceled',
     createdAt: '2026-10-30T15:05:00.000Z',
     closedAt: '2026-10-30T15:08:12.000Z',
@@ -91,7 +93,8 @@ function summarizeRefunds(): Goal {
 function sayHello(): Goal {
   return goalFixture('say-hello', {
     identity: { name: 'Say hello', version: '1' },
-    validator: { name: 'reply-says-hello', version: '1' },
+    validator: { name: 'contains-phrase', version: '1' },
+    validatorConfiguration: { phrase: 'hello' },
     status: 'succeeded',
     createdAt: '2026-10-30T12:48:00.000Z',
     closedAt: '2026-10-30T12:48:08.000Z',
@@ -277,6 +280,34 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     expect(new Set(rows.map((row) => row.word))).toEqual(new Set(['Check not met']));
   });
 
+  test('name the agent an attempt ran as when it is not the goal’s current one (COR-2425)', () => {
+    const goal = draftReleaseNotes();
+    const changed: Goal = {
+      ...goal,
+      agentName: 'helper',
+      attempts: goal.attempts.map((attempt) =>
+        attempt.attemptIndex < 2
+          ? { ...attempt, agentName: 'worker' }
+          : { ...attempt, agentName: 'helper' },
+      ),
+    };
+    const rows = attemptRows(changed, {
+      agent: 'Helper',
+      zone: ZONE,
+      now: 0,
+      liveWait: undefined,
+      agentLabel: (name) => (name === 'worker' ? 'Worker' : name),
+    });
+    // Newest first: attempts 5 to 3 ran as the goal's agent, attempts 2 and 1 as Worker.
+    expect(rows.map((row) => row.lineTwo.split(',')[0])).toEqual([
+      'Helper',
+      'Helper',
+      'Helper',
+      'Worker',
+      'Worker',
+    ]);
+  });
+
   test('have a neutral note that says when it gave up, and opens its last attempt', () => {
     const note = goalNote(draftReleaseNotes(), { zone: ZONE, liveWait: undefined });
     expect(note?.tone).toBe('neutral');
@@ -289,14 +320,18 @@ describe('the attempts of a goal that gave up (rows 67i and 67l)', () => {
     });
   });
 
-  test('have Details with the check, the agent, the limit, when it stops and when it was made (row 67m)', () => {
+  test('have Details with the check once, in words with its validator beneath, the agent, the limit, when it stops and when it was made (row 67m)', () => {
     const facts = goalFacts(draftReleaseNotes(), {
       agent: 'Assistant',
       zone: ZONE,
       viewer: 'anonymous:local',
     });
     expect(facts).toEqual([
-      { term: 'Check', definition: 'Notes mention the staging fix' },
+      {
+        term: 'Check',
+        definition: 'Contains phrase "staging fix"',
+        note: 'contains-phrase, version 1',
+      },
       { term: 'Agent', definition: 'Assistant' },
       { term: 'Attempt limit', definition: '5 attempts' },
       { term: 'Stops', definition: 'When the check passes, or after the last attempt' },
@@ -335,9 +370,9 @@ describe('a goal that was stopped (rows 67q, 67r and 67s)', () => {
       zone: ZONE,
       viewer: 'someone-else',
     });
-    expect(facts[0]).toEqual({
+    expect(facts[0]).toMatchObject({
       term: 'Check',
-      definition: 'Summary lists every refund waiting for approval',
+      definition: 'Contains phrase "waiting for approval"',
     });
     expect(facts[4]?.definition).toBe('Fri, Oct 30, 10:05 AM by anonymous:local');
   });

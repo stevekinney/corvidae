@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
-import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';
 import { startHost } from '../src/host/host.ts';
 import { expectedReleaseSourceSha, pluginIdentityBase } from './environment-configuration.ts';

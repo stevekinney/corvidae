@@ -196,7 +196,6 @@ const focusedChecks = await outcomeOf(async () => {
     existing: [],
     workspaces: [{ name: '@fixture/example', directory: 'packages/example' }],
     base: 'origin/main',
-    selectsIsolatedTest: false,
   }).find((planned) => planned.name === 'turbo');
   expect(step).toBeDefined();
   // The planned launcher and `run`, with the fixture's task in place of lint and type-check.

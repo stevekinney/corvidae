@@ -2,7 +2,9 @@
   import { browserWorkspaceStorage } from '../../../app/workspace-lifetime.ts';
 
   /**
-   * `/runs/:run`: one run, as one page with one header and one status, and no tabs. The header says
+   * `/runs/:run`: one run, as one page with one header and one status; only How it ran, the
+   * disclosure for operators, holds tabs (Steps, Inspector, Raw payloads, Events and logs, and
+   * Versioning and Search attributes when the run has something in them, COR-2424). The header says
    * what ran and how the run stands, with Open chat and Cancel run beside a More menu for the rest.
    * Below it, in this order: what the run is waiting on a person for (a question is answered right
    * there, with the chat's own question control), what went in and came out, what the run did, and
@@ -75,16 +77,27 @@
   import { RunEngine } from './run-engine.svelte.ts';
   import RunHappened from './run-happened.svelte';
   import RunHeader from './run-header.svelte';
+  import RunHooks from './run-hooks.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunInspector from './run-inspector.svelte';
-  import { instanceEntries, progressPhrase } from './run-instance.ts';
+  import { instanceEntries, progressPhrase, triesOfStep } from './run-instance.ts';
+  import { workflowTimelineQueryKey } from '../detail/workflow-timeline-data.ts';
   import RunInstanceHappened from './run-instance-happened.svelte';
   import { RunInstance } from './run-instance.svelte.ts';
+  import { RunRetry } from './run-retry.svelte.ts';
   import RunHowItRan from './run-how-it-ran.svelte';
+  import RunHowItRanTabs from './run-how-it-ran-tabs.svelte';
+  import RunEngineHistory from './run-engine-history.svelte';
+  import { attributesClientOf, hasVersioning } from './run-engine-attributes.ts';
+  import { attributesQueryKey, readAttributes } from '../detail/attributes/attributes-data.ts';
+  import {
+    getScheduleProvenance,
+    scheduleProvenanceQueryKey,
+  } from '../detail/workflow-observability.ts';
   import RunPanels from './run-panels.svelte';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
-  import { runStatusLine } from './run-status-line.ts';
+  import { runStatusLine, startedAgoPhrases } from './run-status-line.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
@@ -381,10 +394,27 @@
   );
   // A failed run says where it failed right after the word; a run going on says it after how long.
   const stepNote = $derived(instanceFailed ? stepPhrase : undefined);
+  // An instance of a workflow file that is going on says "Started 40 s ago, step 2 of 4" in place of
+  // the day, the time and "so far" (row 54l); a chat's run keeps its day, time and "so far" (06b).
+  const startedAgo = $derived(
+    summary === undefined
+      ? undefined
+      : startedAgoPhrases({
+          status: summary.status,
+          over: summary.over,
+          failed: instanceFailed,
+          stepPhrase,
+          signals: statusLine?.signals ?? [],
+          startedAt: summary.startedAt,
+          now: engine.clock.now,
+        }),
+  );
+  const startedAgoLine = $derived(startedAgo !== undefined);
   const statusPhrases = $derived(
-    stepPhrase === undefined || instanceFailed || summary?.over === true
-      ? statusLine?.phrases
-      : [...(statusLine?.phrases ?? []), stepPhrase],
+    startedAgo ??
+      (stepPhrase === undefined || instanceFailed || summary?.over === true
+        ? statusLine?.phrases
+        : [...(statusLine?.phrases ?? []), stepPhrase]),
   );
   const instanceEntryList = $derived(
     progress === undefined || progress.at === null || summary === undefined
@@ -435,8 +465,10 @@
   // The goals are looked at only to find a goal's attempt: when they cannot be read and the engine,
   // or the Bureau's record of a workflow file, holds the run, that run is shown, not an error about
   // a read it did not need (COR-2424).
+  // A read that fails after the task was read leaves the page as it was, as the run list does while
+  // the server does not answer (C3-23): the shell's banner says it once.
   const failed = $derived(
-    (task.isError && !notFound) ||
+    (task.isError && !notFound && task.data === undefined) ||
       (notFound && goals.isError && summary === undefined && !engineAsking),
   );
   // Nothing knows this run: the Bureau has no task, no goal made it (the goals were read), and the
@@ -610,6 +642,95 @@
     };
   });
 
+  // Whether the run has search attributes, which is when How it ran has a Search attributes tab
+  // (row 54i). The panel in that tab reads the same key, so this is one request.
+  const attributesClient = $derived(attributesClientOf(engine.client));
+  const attributes = createQuery(
+    () => ({
+      queryKey: attributesQueryKey(initialRunId),
+      queryFn: () => readAttributes(attributesClient!, initialRunId),
+      enabled:
+        workflow !== undefined &&
+        attributesClient !== undefined &&
+        principal.hasScope('attributes:read'),
+      retry: false,
+    }),
+    undefined,
+  );
+  const hasAttributes = $derived(attributes.data?.kind === 'present');
+  // A run a schedule launched has the schedule in its lineage, on the Versioning tab with its worker
+  // binding and the runs it replaced or was forked from. The lineage panel reads the same key.
+  const scheduleProvenance = createQuery(
+    () => ({
+      queryKey: scheduleProvenanceQueryKey(initialRunId),
+      queryFn: () => getScheduleProvenance(engine.client, initialRunId),
+      enabled: workflow !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+  const versioningShown = $derived(
+    workflow !== undefined &&
+      (hasVersioning(workflow) ||
+        (scheduleProvenance.data !== undefined && scheduleProvenance.data !== null)),
+  );
+
+  // How many times the failed step was tried, and how long that took: the engine's timeline keeps
+  // one entry per try, which the Bureau's history does not (row 55b). The Timeline section reads the
+  // same key, so this is one request.
+  const failedTimeline = createQuery(
+    () => ({
+      queryKey: workflowTimelineQueryKey(initialRunId),
+      queryFn: () => engine.client.getTimeline(initialRunId),
+      enabled: instanceFailed && workflow !== undefined && task.data === undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+  const stepTries = $derived(
+    progress?.at === null || progress?.at === undefined || failedTimeline.data === undefined
+      ? undefined
+      : triesOfStep(failedTimeline.data, progress.at),
+  );
+  const failureProgress = $derived(
+    progress === undefined || stepTries === undefined
+      ? progress
+      : { ...progress, tries: Math.max(progress.tries, stepTries.tries) },
+  );
+
+  // Retry from this step: a failed instance of a workflow file runs again in place from the step it
+  // failed at, on the version it ran (COR-2424, rows 54z, 14t, 55b). Any other run has none.
+  // Held, like Restart in More, for a caller without `workflows:write`.
+  const retryGate = $derived(engine.actionGate);
+  const runRetry = new RunRetry(() => ({
+    runId: initialRunId,
+    failedStep: progress?.at ?? undefined,
+    failedInstance:
+      instanceFailed &&
+      task.data === undefined &&
+      attempt === undefined &&
+      instance.name !== undefined &&
+      !readOnlyRun &&
+      // A run whose input or result broke the schema failed outside a step: nothing to retry.
+      (record?.finishReason === null || record?.finishReason === undefined),
+  }));
+  const retryAction = $derived(
+    runRetry.step === undefined
+      ? undefined
+      : { onRetry: () => runRetry.retry(), busy: runRetry.busy, gate: retryGate },
+  );
+  // Beside the buttons, which version each runs on: the one this run ran, and the current one.
+  const besideButtons = $derived.by(() => {
+    const standing = instance.version;
+    if (retryAction === undefined || standing === undefined || standing.state === 'unknown') {
+      return undefined;
+    }
+    return RUN_DETAIL_COPY.instance.besideButtons(
+      standing.ran,
+      standing.state === 'older' ? standing.current : null,
+    );
+  });
+
   // How it ran is closed for a finished run of the Bureau's, which a person reads for what happened,
   // and open for any other: a run still going shows its approvals there, and a run only the engine
   // holds has nothing else. The default is settled once, when the run is first known, so a run that
@@ -621,6 +742,8 @@
     howDefault = !(task.data !== undefined && summary.over);
   });
   const howOpen = $derived(howOverride ?? howDefault ?? true);
+  /** The tab open in How it ran: Steps, unless the link under a reply opened Raw payloads. */
+  let howTab = $state('steps');
   let restartOpen = $state(false);
   /** Whether an answer to the run's question is in its Undo window, which the status line says. */
   let answerHeld = $state(false);
@@ -707,6 +830,7 @@
         fallbackTitle={TASK_COPY.runTitle}
         status={statusLine?.word ?? summary.status}
         startedAt={summary.startedAt}
+        showStamp={!startedAgoLine}
         tookMilliseconds={summary.over && attemptLine?.checking !== true
           ? Math.max(0, summary.updatedAt - summary.startedAt)
           : undefined}
@@ -716,9 +840,12 @@
         cancelRun={(statusLine?.signals.length ?? 0) > 0}
         tookWord={summary.status === 'Canceled' ? 'ran' : 'took'}
         task={task.data}
+        cancelInHeader={!(task.data !== undefined && canSendMessage(task.data))}
         chat={chatLink}
         owner={ownerLink}
         runAgain={runAgainAction}
+        retry={retryAction}
+        {besideButtons}
         note={answerHeld ? TASK_COPY.answerSentStatus(answerUndoSeconds) : undefined}
         engineStatus={readOnlyRun ? undefined : workflow?.status}
         pendingAction={engine.pendingAction}
@@ -762,19 +889,31 @@
             {record}
             showRaw={false}
             failureOnStep={instanceEntryList !== undefined && task.data === undefined}
+            failedAt={instanceFailed ? (progress?.at ?? undefined) : undefined}
             onShowRaw={task.data !== undefined && (workflow !== undefined || record !== undefined)
-              ? () => (howOverride = true)
+              ? () => {
+                  howOverride = true;
+                  howTab = 'raw';
+                }
               : undefined}
           />
           {#if task.data === undefined && instanceEntryList !== undefined}
             <RunInstanceHappened
               entries={instanceEntryList}
               startedAt={summary.startedAt}
-              {progress}
+              progress={failureProgress}
               failed={instanceFailed}
               category={workflow?.failureCategory}
               errorStack={workflow?.errorStack}
               failure={instanceFailed ? (workflow?.error ?? record?.error ?? undefined) : undefined}
+              triesTook={stepTries?.took}
+              retryVersion={retryAction === undefined ? undefined : instance.version?.ran}
+              retry={retryAction}
+              runAgain={runAgainAction}
+              onOpenStep={() => {
+                howOverride = true;
+                howTab = 'steps';
+              }}
             />
           {/if}
           {#if task.data !== undefined}
@@ -784,25 +923,13 @@
               startedAt={summary.startedAt}
               events={taskEvents}
             />
+            <!-- Directly after What happened and before How it ran, at every width, so a settled
+                 run's failed hooks are never inside the disclosure that is closed for it. -->
+            <RunHooks task={task.data} over={summary.over} events={taskEvents} />
           {/if}
-          <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
-            {#if task.data !== undefined && (workflow !== undefined || record !== undefined)}
-              <Section
-                level={3}
-                title={RUN_DETAIL_COPY.howItRan.rawPayloads}
-                data-section="raw-payloads"
-              >
-                <RunPayloadCards {workflow} {record} />
-              </Section>
-            {/if}
-            {#if task.data !== undefined}
-              <RunInspector
-                task={task.data}
-                followState={follower.state}
-                waitingForSignals={workflow?.waitingForSignals}
-                builtIn={isBuiltInWorkflow(task.data.workflow?.type ?? '')}
-              />
-            {/if}
+          <!-- COR-2424, row 54i: Steps, Inspector, Raw payloads and Events and logs, then
+               Versioning and Search attributes only when the run has something in them. -->
+          {#snippet stepsTab()}
             <RunActivity
               task={task.data}
               threadId={goalTask ? attemptThreadId : undefined}
@@ -811,14 +938,9 @@
               engine={workflow === undefined ? undefined : engine}
               {workflow}
               decideApprovals={false}
+              history={false}
             />
-            {#if task.data !== undefined}
-              <RunPanels taskId={task.data.id} />
-            {/if}
-            {#if workflow !== undefined}
-              {#if !readOnlyRun}<RunChange {engine} {workflow} />{/if}
-              <RunEnginePanels {engine} {workflow} />
-            {:else if engine.fault !== null}
+            {#if workflow === undefined && engine.fault !== null}
               <!-- The Bureau's side is shown; the engine's could not be read, and that is said. -->
               <ErrorState
                 variant="flat"
@@ -832,6 +954,55 @@
                   })}
               />
             {/if}
+          {/snippet}
+          {#snippet inspectorTab()}
+            {#if task.data !== undefined}
+              <RunInspector
+                task={task.data}
+                followState={follower.state}
+                waitingForSignals={workflow?.waitingForSignals}
+                builtIn={isBuiltInWorkflow(task.data.workflow?.type ?? '')}
+              />
+              <RunPanels taskId={task.data.id} />
+            {/if}
+            {#if workflow !== undefined && !readOnlyRun}<RunChange {engine} {workflow} />{/if}
+          {/snippet}
+          {#snippet rawTab()}
+            <Section
+              level={3}
+              title={RUN_DETAIL_COPY.howItRan.rawPayloads}
+              data-section="raw-payloads"
+            >
+              <RunPayloadCards {workflow} {record} />
+            </Section>
+          {/snippet}
+          {#snippet eventsTab()}
+            {#if workflow !== undefined}<RunEngineHistory {engine} {workflow} />{/if}
+          {/snippet}
+          {#snippet versioningTab()}
+            {#if workflow !== undefined}
+              <RunEnginePanels {engine} {workflow} part="versioning" />
+            {/if}
+          {/snippet}
+          {#snippet attributesTab()}
+            {#if workflow !== undefined}
+              <RunEnginePanels {engine} {workflow} part="attributes" />
+            {/if}
+          {/snippet}
+          <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
+            <RunHowItRanTabs
+              bind:active={howTab}
+              steps={stepsTab}
+              inspector={task.data !== undefined || (workflow !== undefined && !readOnlyRun)
+                ? inspectorTab
+                : undefined}
+              raw={task.data !== undefined && (workflow !== undefined || record !== undefined)
+                ? rawTab
+                : undefined}
+              events={workflow === undefined ? undefined : eventsTab}
+              versioning={versioningShown ? versioningTab : undefined}
+              attributes={hasAttributes ? attributesTab : undefined}
+            />
           </RunHowItRan>
         {/if}
       </div>
@@ -846,17 +1017,18 @@
           recordWorkflow={record?.workflow}
           workflowOrigin={record?.origin?.kind === 'agent-run' ? record.origin : null}
           startedAt={summary.startedAt}
-          updatedAt={summary.updatedAt}
           over={summary.over}
           versionStanding={instance.version}
           schedule={startingSchedule}
           {missedSince}
+          recordOrigin={task.data === undefined ? record?.origin : undefined}
+          viewer={principal.principal?.subject}
         />
       {/if}
     </div>
     <!-- A chat's run that is going takes a message, docked at the bottom of the page (row 06b). -->
     {#if task.data !== undefined && canSendMessage(task.data)}
-      <RunSendMessage contextId={task.data.contextId} runId={initialRunId} />
+      <RunSendMessage contextId={task.data.contextId} runId={initialRunId} task={task.data} />
     {/if}
   </article>
 

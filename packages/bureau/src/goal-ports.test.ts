@@ -454,6 +454,40 @@ describe('startAttempt', () => {
     );
   });
 
+  it('gives a prompt edit back when the start that took it adopts a run another try created (COR-2425)', async () => {
+    const raced = await world({
+      startAttemptRun: () => {
+        throw new Error('Run "goal-g1-a0" already exists');
+      },
+    });
+    // Try A, which Weft timed out, created the run and seated the prompt as it was.
+    raced.markRunAsGoals('goal-g1-a0');
+    createActiveRun(
+      agentOptions(() => new Promise(() => {})),
+      { ...raced.durable, runId: 'goal-g1-a0', prompt: 'work' },
+    );
+    const original = raced.engine.get.bind(raced.engine);
+    await pollUntil(async () => (await original('goal-g1-a0')) !== null);
+    // The edit lands after try A read the goal.
+    const before = (await raced.store.get('g1'))!;
+    await raced.store.updateConfiguration('g1', { prompt: 'a new prompt' }, NOW, before.revision);
+    const edited = await raced.store.get('g1');
+    expect(edited?.objective.promptPending).toBe(true);
+    // Try B finds no run when it first looks, takes the edit, and then its start finds try A's run.
+    let reads = 0;
+    raced.engine.get = (id: string) =>
+      id === 'goal-g1-a0' && reads++ === 0 ? Promise.resolve(null) : original(id);
+
+    const answer = await raced.ports.startAttempt(startRequest());
+    expect(answer.status).toBe('adopted');
+
+    // Nothing was given the new prompt: the edit waits for an attempt that is.
+    const after = (await raced.store.get('g1'))!;
+    expect(after.objective.promptPending).toBe(true);
+    expect(after.objective.promptRevisedAtAttempt).toBeUndefined();
+    expect(after.objective.prompt).toBe('a new prompt');
+  });
+
   it("does not answer until the attempt's workflow is durably started", async () => {
     const started = Promise.withResolvers<void>();
     const { ports, watched } = await world({

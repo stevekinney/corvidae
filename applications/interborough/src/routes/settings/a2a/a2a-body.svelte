@@ -17,9 +17,8 @@
    */
   import {
     Button,
-    CopyButton,
+    CopyableValue,
     FormSection,
-    Input,
     SettingRow,
     Skeleton,
     Toggle,
@@ -303,21 +302,18 @@
       >
         {#snippet control()}
           <div class="ib-a2a__card">
-            <div class="ib-a2a__address">
-              <Input
-                id="ib-a2a-card-url"
-                variant="code"
-                readonly
-                value={hostPaths.data?.a2aDirectoryUrl ?? copy.cardUrl.unavailable}
-                data-testid="a2a-card-url"
-              />
-            </div>
             {#if hostPaths.data !== undefined}
-              <CopyButton
+              <CopyableValue
+                id="ib-a2a-card-url"
                 value={hostPaths.data.a2aDirectoryUrl}
                 label={copy.cardUrl.copy}
                 copiedLabel={copy.cardUrl.copied}
+                data-testid="a2a-card-url"
               />
+            {:else}
+              <span id="ib-a2a-card-url" class="ib-a2a__muted" data-testid="a2a-card-url"
+                >{copy.cardUrl.unavailable}</span
+              >
             {/if}
           </div>
         {/snippet}
@@ -383,16 +379,9 @@
   }
 
   .ib-a2a__card {
-    display: flex;
-    gap: var(--cinder-space-2);
-    align-items: center;
     inline-size: 100%;
     min-inline-size: 0;
-  }
-
-  .ib-a2a__address {
-    flex: 1;
-    min-inline-size: 0;
+    font-size: var(--cinder-text-sm);
   }
 
   .ib-a2a__agents {

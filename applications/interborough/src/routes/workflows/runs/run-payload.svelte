@@ -37,9 +37,11 @@
      * and the Fields view says how many more are in JSON (COR-2424, row 28e).
      */
     ownRunId?: string | undefined;
+    /** A name drawn after the heading in code, such as the workflow's output name (row 54p). */
+    labelCode?: string | undefined;
   }
 
-  let { value, label, ownRunId = undefined }: RunPayloadProps = $props();
+  let { value, label, ownRunId = undefined, labelCode = undefined }: RunPayloadProps = $props();
 
   const jsonOnly = $derived(ownRunIdKeys(value, ownRunId));
 
@@ -115,6 +117,7 @@
   <PayloadInspector
     {value}
     {label}
+    {...labelCode === undefined ? {} : { labelCode }}
     redact={[]}
     {jsonOnly}
     {linkFor}

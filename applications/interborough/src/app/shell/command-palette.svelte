@@ -49,7 +49,7 @@
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { newChatPath } from '../../routes/agents/agent-presentation.ts';
-  import { actionIcon } from './destinations.ts';
+  import { actionIcon, type PluginPaletteAction } from './destinations.ts';
   import { PALETTE_COPY } from '../copy/shell.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';
   import {
@@ -79,6 +79,12 @@
     store?: NotificationStore | undefined;
     /** The shortcuts the palette lists as actions. The shell's registry when omitted. */
     registry?: ShortcutRegistry | undefined;
+    /**
+     * A "Go to <title>" action for every page a plugin adds, with no keys. They are not in the
+     * registry, so the shortcut map never lists one, and they are listed with the registry's own
+     * "Go to" rows. None when omitted.
+     */
+    pluginActions?: readonly PluginPaletteAction[] | undefined;
     /** Whether the principal holds `schedules:read`; without it schedules are not searched. Open when omitted. */
     scheduleReadGate?: ScopeGate | undefined;
     /** `workflows:read`, for workflow types and runs. Open when omitted. */
@@ -96,6 +102,7 @@
     client,
     store,
     registry = shortcuts,
+    pluginActions = [],
     scheduleReadGate = OPEN_GATE,
     workflowReadGate = OPEN_GATE,
     reviewReadGate = OPEN_GATE,
@@ -158,7 +165,7 @@
   const actions = $derived(
     open && (all || actionsOnly)
       ? matchActions(
-          registry.actions(),
+          [...registry.actions(), ...pluginActions],
           parsed.text,
           actionsOnly || parsed.text.length === 0 ? NARROWED_RESULTS : undefined,
         )
@@ -416,16 +423,30 @@
     {#if actions.length > 0 || shown.newChats.length > 0 || topic !== undefined}
       {#snippet actionRows()}
         {#each actions as action (action.label)}
-          {@const Icon = actionIcon(action.label)}
-          <CommandItem
-            value={`action-${action.label}`}
-            accessibleLabel={action.label}
-            keys={action.keys.length > 0 ? action.keys : undefined}
-            onSelect={() => run({ ...action })}
-          >
-            {action.label}
-            {#snippet leading()}<Icon />{/snippet}
-          </CommandItem>
+          {@const page = pluginActions.find((entry) => entry === action)}
+          {@const Icon = actionIcon(action.label, page?.icon)}
+          {#if page?.meta !== undefined}
+            <!-- A plugin's page says where it comes from, in the one provenance phrase. -->
+            <CommandItem
+              value={`action-${action.label}`}
+              accessibleLabel={`${action.label}, ${page.meta}`}
+              onSelect={() => run({ ...action })}
+            >
+              {action.label}
+              {#snippet leading()}<Icon />{/snippet}
+              {#snippet meta()}{page.meta}{/snippet}
+            </CommandItem>
+          {:else}
+            <CommandItem
+              value={`action-${action.label}`}
+              accessibleLabel={action.label}
+              keys={action.keys.length > 0 ? action.keys : undefined}
+              onSelect={() => run({ ...action })}
+            >
+              {action.label}
+              {#snippet leading()}<Icon />{/snippet}
+            </CommandItem>
+          {/if}
         {/each}
         {#each shown.newChats as agent (agent.name)}
           <CommandItem

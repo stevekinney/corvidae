@@ -18,8 +18,13 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * - A scope is required, not an alternative to ownership. `bureau.memory:read` serves `list`,
  *   `search`, `get` and `export`, `bureau.memory:write` serves `remember`, `forget`, `correct`,
  *   `share`, `revokeShare` and `quarantine`, and `bureau.memory:govern` serves `hold`, `releaseHold`
- *   (COR-1809), `quarantine.release` and `list` with `state: 'quarantined'` (COR-2195). A caller without the operation's scope is answered `Forbidden`, though every record
- *   is its own. No scope grants another owner's memory; the one door to it is a share, which lets
+ *   (COR-1809), `quarantine.release` and `list` with `state: 'quarantined'` (COR-2195). The two
+ *   embedding operations, `embedding` and `embedding.cancel` (COR-2188), read and change the
+ *   deployment's embedding, not an owner's records, so they take `bureau.settings:read` and
+ *   `bureau.settings:write`, the scopes of the `memory.embedder` setting that starts the switch
+ *   they cancel, and build no memory authority. A caller without the operation's scope is answered
+ *   `Forbidden`, though every record is its own. No scope grants another owner's memory; the one
+ *   door to it is a share, which lets
  *   the grantee `get` the record and nothing else.
  * - Another owner's record is answered `NotFound`, in the words of a missing one, because the
  *   governed predicate scopes every read to the caller's own partition.
@@ -35,6 +40,7 @@ import {
   type GovernedMemoryRecord,
   MEMORY_CLASSES,
   MEMORY_DELETION_TARGETS,
+  MEMORY_EMBEDDING_FAILURES,
   MEMORY_RELEASE_REJECTIONS,
   MEMORY_SOURCE_KINDS,
   MEMORY_TRUST_LEVELS,
@@ -43,7 +49,7 @@ import {
   type MemoryDeletionReceipt,
   type MemoryGovernanceEvent,
 } from '@lostgradient/memory';
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauScope } from '../bureau-scopes.ts';
@@ -256,7 +262,7 @@ const ACCESS = {
   },
 } as const satisfies Record<string, Access>;
 
-function forbidden(scope: Access['scope']): OperationFault {
+function forbidden(scope: BureauScope): OperationFault {
   return {
     code: 'Forbidden',
     message: `This operation requires ${scope}`,
@@ -1232,7 +1238,144 @@ export const memoryExportOperation = defineOperation<
   },
 });
 
-/** The thirteen memory operations, in the order the documentation lists them. */
+const embeddingStatusInput = z.object({});
+const embeddingStatusOutput = z.object({
+  /** The embedding recall and admission use. */
+  active: z.object({
+    /** The registry id of its embedder, such as `ollama:embed`. */
+    embedder: z.string(),
+    /** How many entries each of its vectors has. */
+    dimension: z.number().int(),
+    /** The model that made its vectors; `null` for one stored before models were recorded and not adopted yet. */
+    model: z.string().nullable(),
+  }),
+  /** What keeps the active embedding from working fully; `null` when nothing does. */
+  problem: z.enum(['embedder-unavailable']).nullable(),
+  /** The switch that is running, or the last one that failed or was cancelled; `null` when there is none. */
+  job: z
+    .object({
+      /** The registry id of the embedder the switch re-embeds memory with. */
+      target: z.string(),
+      state: z.enum(['running', 'failed', 'cancelled']),
+      /** How many stored memories the switch has embedded. */
+      done: z.number().int(),
+      /** How many memories are stored. */
+      total: z.number().int(),
+      /** Why a `failed` switch failed, as a code and never an embedder's text; `null` otherwise. */
+      error: z.enum(MEMORY_EMBEDDING_FAILURES).nullable(),
+    })
+    .nullable(),
+  /** Every registered embedder, in registry order, with whether memory could embed with it now. */
+  embedders: z.array(
+    z.object({
+      id: z.string(),
+      dimension: z.number().int(),
+      availability: z.enum(['available', 'needs-setup']),
+    }),
+  ),
+});
+
+/**
+ * The governed memory's embedding side for a caller holding `scope`: a missing scope is `Forbidden`
+ * whatever the Bureau holds, then a Bureau with no memory is `UnsupportedCapability`. Neither
+ * operation reads a record, so no memory authority is built: the embedding is the deployment's,
+ * and `bureau.settings` scopes guard it as they guard the setting that names it.
+ */
+function embeddingOf(
+  host: BureauMemoryOperationHost,
+  principal: Principal,
+  scope: Extract<BureauScope, 'bureau.settings:read' | 'bureau.settings:write'>,
+): GovernedMemory['embedding'] {
+  if (!holdsScope(principal, scope)) throw forbidden(scope);
+  const memory = host.memory.governed;
+  if (memory === undefined) throw noMemory();
+  return memory.embedding;
+}
+
+/** `bureau.memory.embedding`: the active embedding, the switch to another, and what could replace it. */
+export const memoryEmbeddingOperation = defineOperation<
+  typeof embeddingStatusInput,
+  typeof embeddingStatusOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.embedding',
+  authorize: authorizeWorkspaceOperation('bureau.memory.embedding'),
+  mcpExposable: false,
+  summary: 'Read the embedding memory uses, and the switch to another',
+  description:
+    'Returns the embedding recall and admission use as `active` (its `embedder`, `dimension` and `model`; `model` is `null` for a profile stored before models were recorded that no process has adopted one for), a `problem` (`embedder-unavailable` while that embedder is not loaded, is loaded with another dimension or model than made its vectors, or needs setup; recall then scores by text alone), the `job`, the switch to another embedder that is running or that last failed or was cancelled (`target`, `state`, `done` of `total` memories, and `error`, a code: `target-unavailable`, `target-missing`, `embedder-failed` or `embedder-timeout`, never an embedder’s own text), and every registered `embedders` entry with its `dimension` and whether it is `available` or `needs-setup`. Each of `problem` and `job` is `null` when there is none. A switch is started by writing the `memory.embedder` setting and cancelled by `bureau.memory.embedding.cancel`. Requires `bureau.settings:read`; a caller without it is `Forbidden`, whatever the Bureau holds.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: embeddingStatusInput,
+  outputSchema: embeddingStatusOutput,
+  producibleFaults: ['Forbidden', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ host, principal }) => {
+    const embedding = embeddingOf(host, principal, 'bureau.settings:read');
+    const status = await embedding.status();
+    return {
+      active: {
+        embedder: status.active.embedder,
+        dimension: status.active.dimension,
+        model: status.active.model ?? null,
+      },
+      problem: status.problem ?? null,
+      job:
+        status.job === undefined
+          ? null
+          : {
+              target: status.job.target,
+              state: status.job.state,
+              done: status.job.done,
+              total: status.job.total,
+              error: status.job.error ?? null,
+            },
+      embedders: embedding.embedders().map(({ id, dimension, availability }) => ({
+        id,
+        dimension,
+        availability,
+      })),
+    };
+  },
+});
+
+const embeddingCancelInput = z.object({});
+const embeddingCancelOutput = z.object({
+  /** Whether this call cancelled a running switch. */
+  cancelled: z.boolean(),
+});
+
+/** `bureau.memory.embedding.cancel`: cancels the running switch to another embedder. */
+export const memoryEmbeddingCancelOperation = defineOperation<
+  typeof embeddingCancelInput,
+  typeof embeddingCancelOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.embedding.cancel',
+  authorize: authorizeWorkspaceOperation('bureau.memory.embedding.cancel'),
+  mcpExposable: false,
+  summary: 'Cancel the running switch to another embedder',
+  description:
+    'Cancels the running switch to another embedder and deletes the profile it was filling; memory keeps the embedding it had, which the switch never touched. `cancelled` is `true` when this call cancelled a running switch, and `false` when none was running, when it had failed or been cancelled already, or when it completed (or another call cancelled it) first; cancelling is not an error then. The `memory.embedder` setting still names the cancelled embedder until the next maintenance pass sets it back to the active one. Requires `bureau.settings:write`; a caller without it is `Forbidden`, whatever the Bureau holds.',
+  destructive: true,
+  tags: ['Memory'],
+  inputSchema: embeddingCancelInput,
+  outputSchema: embeddingCancelOutput,
+  producibleFaults: ['Forbidden', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ host, principal }) => {
+    const embedding = embeddingOf(host, principal, 'bureau.settings:write');
+    return { cancelled: await embedding.cancel() };
+  },
+});
+
+/** The fifteen memory operations, in the order the documentation lists them. */
 export const bureauMemoryOperations = [
   memoryListOperation,
   memorySearchOperation,
@@ -1247,4 +1390,6 @@ export const bureauMemoryOperations = [
   memoryQuarantineOperation,
   memoryReleaseQuarantineOperation,
   memoryExportOperation,
+  memoryEmbeddingOperation,
+  memoryEmbeddingCancelOperation,
 ] as const;

@@ -66,6 +66,7 @@
     maxBytes = 1_048_576,
     parse,
     label,
+    labelCode,
     view = $bindable('fields'),
     bare = false,
     plain = false,
@@ -84,6 +85,14 @@
   }: PayloadInspectorProps = $props();
 
   const switchId = $props.id();
+  // The card's name: the label, with the name drawn in code after it ("Output, notes").
+  const accessibleLabel = $derived(
+    label === undefined
+      ? 'Payload'
+      : labelCode === undefined || labelCode === ''
+        ? label
+        : `${label}, ${labelCode}`,
+  );
 
   // --------------------------------------------------------------------------
   // Parsing: preserve plain string values, while still accepting serialized JSON
@@ -280,7 +289,7 @@
 <div
   {...rest}
   role="group"
-  aria-label={label ?? 'Payload'}
+  aria-label={accessibleLabel}
   data-cinder-state={mode}
   data-cinder-bare={bare || undefined}
   class={classNames('cinder-payload-inspector', className)}
@@ -290,7 +299,11 @@
   {:else}
     <div class="cinder-payload-inspector__header">
       {#if label !== undefined}
-        <span class="cinder-payload-inspector__label">{label}</span>
+        <span class="cinder-payload-inspector__label"
+          >{label}{#if labelCode !== undefined && labelCode !== ''}, <code
+              class="cinder-payload-inspector__label-code">{labelCode}</code
+            >{/if}</span
+        >
       {/if}
       {#if showSwitch}
         <SegmentedControl

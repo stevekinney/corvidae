@@ -12,19 +12,34 @@
 import type { Page } from '@playwright/test';
 
 import { PLUGINS_COPY } from '../../src/app/copy/plugins.ts';
+import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { withSampleCatalog } from './sample-catalog.ts';
 
 const SOURCE = 'settings-plugins.spec.ts';
 const ROUTE = '/settings/plugins';
 
-/** Captures the screen at the three widths Settings is drawn at: desktop, tablet and phone. */
-async function captureAtEveryWidth(page: Page, state: string, route = ROUTE) {
-  for (const width of [1280, 768, 375] as const) {
+/** The wide desktops Settings › Plugins is also judged at, where its column stops growing (COR-2509). */
+const WIDE_DESKTOP_WIDTHS = [1440, 1920] as const;
+
+/**
+ * Captures the screen at the three widths Settings is drawn at: desktop, tablet and phone, and at
+ * `widths` when a scene is also judged at others. A scene whose state a resize rebuilds passes
+ * `ready`, which brings the state back before each screenshot.
+ */
+async function captureAtEveryWidth(
+  page: Page,
+  state: string,
+  route = ROUTE,
+  widths: readonly number[] = [1280, 768, 375],
+  ready?: (page: Page) => Promise<void>,
+) {
+  for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
-    await captureForDesignReview(page, { route, state, source: SOURCE });
+    await captureForDesignReview(page, { route, state, source: SOURCE, ready });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 }
@@ -113,7 +128,104 @@ test.describe('Settings › Plugins', () => {
     await expect(opened.getByTestId('plugin-in-use')).toContainText('In use.');
 
     await checkA11y('settings plugins at 1280px');
-    await captureAtEveryWidth(page, 'list-and-detail');
+
+    // On a phone the restart banner's two buttons are compact and side by side, not bars across
+    // the banner (COR-2511). The sample world holds one change that waits for a restart.
+    const summary = page.getByTestId('settings-restart-summary');
+    for (const width of [375, 320] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(summary).toBeVisible();
+      await expect(page.getByTestId('settings-revert')).toBeVisible();
+      await expect(summary.getByRole('button', { name: 'Restart now' })).toBeVisible();
+      // One evaluation reads every box, so they all come from one layout.
+      const boxes = await readBoxes(page, {
+        banner: summary,
+        revert: page.getByTestId('settings-revert'),
+        restartNow: summary.getByRole('button', { name: 'Restart now' }),
+      });
+      for (const key of ['revert', 'restartNow'] as const) {
+        expect(
+          boxes[key].width,
+          `${key} is narrower than half the banner at ${width}px`,
+        ).toBeLessThan(boxes.banner.width / 2);
+      }
+      if (width === 375) {
+        const { revert, restartNow } = boxes;
+        expect(
+          revert.y < restartNow.y + restartNow.height && restartNow.y < revert.y + revert.height,
+          'the two buttons share a line at 375px',
+        ).toBe(true);
+      }
+    }
+
+    // On a phone the plugin is flat on the page: no border, radius or background of its own, and
+    // its text starts where the page's heading does, with nothing overflowing (COR-2512).
+    const frame = page.locator('.ib-plugins__frame');
+    for (const width of [375, 320] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(opened.getByRole('heading', { level: 3, name: 'Guardrails' })).toBeVisible();
+      const flat = await frame.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          border: style.borderTopWidth,
+          radius: style.borderTopLeftRadius,
+          background: style.backgroundColor,
+        };
+      });
+      expect(flat, `the frame is a plain wrapper at ${width}px`).toEqual({
+        border: '0px',
+        radius: '0px',
+        background: 'rgba(0, 0, 0, 0)',
+      });
+      const overflow = await page.evaluate(() => {
+        const scroller = document.scrollingElement;
+        return scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
+      });
+      expect(overflow, `nothing overflows horizontally at ${width}px`).toBe(0);
+      if (width === 320) {
+        const boxes = await readBoxes(page, {
+          pageHeading: page.getByRole('heading', {
+            level: 1,
+            name: SETTINGS_COPY.general.narrowTitle,
+          }),
+          pluginName: opened.getByRole('heading', { level: 3, name: 'Guardrails' }),
+        });
+        expect(
+          Math.abs(boxes.pluginName.x - boxes.pageHeading.x),
+          'the plugin text starts at the page heading’s edge at 320px',
+        ).toBeLessThanOrEqual(2);
+      }
+    }
+
+    // On a wide desktop the restart notice, the heading area and the frame share one inline start
+    // and one inline end (COR-2509), with the restart still pending.
+    for (const width of WIDE_DESKTOP_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(summary).toBeVisible();
+      await expect(opened.getByRole('heading', { level: 3, name: 'Guardrails' })).toBeVisible();
+      const edges = await readBoxes(page, {
+        banner: summary,
+        heading: page.locator('.weft-settings__title-area'),
+        frame,
+      });
+      for (const key of ['heading', 'frame'] as const) {
+        expect(
+          Math.abs(edges[key].x - edges.banner.x),
+          `${key} starts where the banner does at ${width}px`,
+        ).toBeLessThanOrEqual(2);
+        expect(
+          Math.abs(edges[key].x + edges[key].width - (edges.banner.x + edges.banner.width)),
+          `${key} ends where the banner does at ${width}px`,
+        ).toBeLessThanOrEqual(2);
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await captureAtEveryWidth(page, 'list-and-detail', ROUTE, [
+      1280,
+      768,
+      375,
+      ...WIDE_DESKTOP_WIDTHS,
+    ]);
   });
 
   test('with nothing named in the address the first plugin is open beside the list, and below the push breakpoint the list comes first', async ({
@@ -156,7 +268,7 @@ test.describe('Settings › Plugins', () => {
     const save = detail(page, 'guardrails').getByRole('button', { name: 'Save configuration' });
     await save.click();
 
-    const failure = page.getByTestId('plugin-configuration-failed');
+    const failure = detail(page, 'guardrails').locator('.cinder-form-actions__error');
     await expect(failure).toContainText('Couldn’t save the configuration.');
     await expect(failure).toContainText('Interborough didn’t answer.');
     await expect(field).toHaveValue('0.5');
@@ -245,8 +357,88 @@ test.describe('Settings › Plugins', () => {
     }
     await expect(configuration.locator('[data-cinder-field="region"] select')).toHaveValue('');
     await checkA11y('settings plugins, every kind of configuration field, at 1280px');
-    for (const width of [1280, 320] as const) {
+
+    // Wide: a row's label leads and its control sits to the right on the same line (a text, a select
+    // and a switch), and Save sits at the inline end of the form (COR-2500).
+    const controlOf = (key: string, selector: string) =>
+      configuration.locator(`[data-cinder-field="${key}"]`).locator(selector).first();
+    const labelOf = (key: string) =>
+      configuration.locator(`[data-cinder-field="${key}"] .cinder-form-field__label`).first();
+    // At 1264px a 15px scrollbar that never hides takes the room the rows need, so the rows must
+    // still sit side by side there.
+    for (const wideWidth of [1264, 1280, ...WIDE_DESKTOP_WIDTHS] as const) {
+      await page.setViewportSize({ width: wideWidth, height: 900 });
+      // Settled: every control is visible at this width before any box is read.
+      await expect(controlOf('includeSnippets', '[role="switch"]')).toBeVisible();
+      await expect(controlOf('blockedSites', '.cinder-tag-input__control')).toBeVisible();
+      const saveButton = configuration.getByRole('button', { name: 'Save configuration' });
+      await expect(saveButton).toBeVisible();
+      // One evaluation reads every box, so they all come from one layout.
+      const boxes = await readBoxes(page, {
+        searchAddressLabel: labelOf('searchAddress'),
+        searchAddress: controlOf('searchAddress', 'input'),
+        regionLabel: labelOf('region'),
+        region: controlOf('region', 'select'),
+        limitLabel: labelOf('limit'),
+        limit: controlOf('limit', 'input'),
+        owner: controlOf('account', 'input'),
+        includeSnippetsLabel: labelOf('includeSnippets'),
+        includeSnippets: controlOf('includeSnippets', '[role="switch"]'),
+        tagsRow: configuration.locator('[data-cinder-field="blockedSites"] .cinder-setting-row'),
+        tags: controlOf('blockedSites', '.cinder-tag-input__control'),
+        form: configuration.locator('form'),
+        save: saveButton,
+      });
+      for (const key of ['searchAddress', 'region', 'limit', 'includeSnippets'] as const) {
+        const label = boxes[`${key}Label`];
+        const control = boxes[key];
+        expect(
+          control.x,
+          `${key} control sits right of its label at ${wideWidth}px`,
+        ).toBeGreaterThan(label.x);
+        expect(control.y < label.y + label.height && label.y < control.y + control.height).toBe(
+          true,
+        );
+      }
+      // Text entry shares one leading edge down the rows.
+      expect(Math.abs(boxes.region.x - boxes.searchAddress.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(boxes.limit.x - boxes.searchAddress.x)).toBeLessThanOrEqual(1);
+      // A group of one short field draws it in the same column: the Owner control starts where the
+      // text control does, not at the row's start (COR-2510).
+      expect(Math.abs(boxes.owner.x - boxes.searchAddress.x)).toBeLessThanOrEqual(2);
+      // The tag list sits under its row at the row's width, not squeezed into the control column.
+      expect(boxes.tags.width).toBeGreaterThan(boxes.tagsRow.width * 0.6);
+      expect(
+        Math.abs(boxes.form.x + boxes.form.width - (boxes.save.x + boxes.save.width)),
+      ).toBeLessThanOrEqual(2);
+      if (wideWidth === 1920) {
+        // No paragraph of the detail pane is wider than about 90 characters of its own type (the
+        // widest a line can be); the rows above stayed side by side at this width.
+        const widest = await detail(page, 'guardrails').evaluate((pane) => {
+          let most = 0;
+          for (const paragraph of pane.querySelectorAll('p')) {
+            const probe = document.createElement('span');
+            probe.style.cssText = 'position: absolute; visibility: hidden; inline-size: 1ch';
+            paragraph.append(probe);
+            const characterWidth = probe.getBoundingClientRect().width;
+            probe.remove();
+            most = Math.max(most, paragraph.getBoundingClientRect().width / characterWidth);
+          }
+          return most;
+        });
+        expect(widest, 'the longest line of text at 1920px, in characters').toBeLessThanOrEqual(90);
+      }
+    }
+
+    for (const width of [1280, 320, ...WIDE_DESKTOP_WIDTHS] as const) {
       await page.setViewportSize({ width, height: 900 });
+      if (width === 320) {
+        const overflow = await page.evaluate(() => {
+          const scroller = document.scrollingElement;
+          return scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
+        });
+        expect(overflow, 'nothing overflows horizontally at 320px').toBe(0);
+      }
       await configuration.scrollIntoViewIfNeeded();
       await captureForDesignReview(page, {
         route: ROUTE,
@@ -292,7 +484,16 @@ test.describe('Settings › Plugins', () => {
     const secret = anthropic.locator('[data-secret="anthropic-api-key"]');
     await expect(secret).toContainText('anthropic-api-key');
     await expect(secret).toContainText('Missing');
-    await expect(secret.getByRole('button', { name: /Add the key/ })).toBeVisible();
+    const addKey = secret.getByRole('button', { name: /Add the key/ });
+    await expect(addKey).toBeVisible();
+    // At 1280px the row's one action sits at its inline end.
+    const { secretBox, addKeyBox } = await readBoxes(page, {
+      secretBox: secret,
+      addKeyBox: addKey,
+    });
+    expect(
+      Math.abs(secretBox.x + secretBox.width - (addKeyBox.x + addKeyBox.width)),
+    ).toBeLessThanOrEqual(2);
     await expect(anthropic.getByTestId('plugin-secret-note')).toContainText(
       'readable only by you. The models appear as soon as the key passes a test.',
     );
@@ -341,12 +542,29 @@ test.describe('Settings › Plugins', () => {
     // The navigation and the heading are real while the rows are placeholders.
     await expect(page.getByRole('heading', { level: 1, name: 'Plugins' })).toBeVisible();
     await page.clock.runFor(400);
-    await expect(page.locator('.cinder-skeleton-group')).toBeVisible();
-    await captureAtEveryWidth(page, 'loading');
-    await page.clock.runFor(10_000);
-    await expect(page.getByText(PLUGINS_COPY.loading.stillLoading)).toBeVisible();
-    await expect(page.getByRole('button', { name: PLUGINS_COPY.loading.cancel })).toBeVisible();
-    await captureAtEveryWidth(page, 'still-loading');
+    // The placeholder is the page's own list and detail panes, announced once as loading (COR-2513).
+    const loading = page.getByTestId('plugins-loading');
+    await expect(loading.locator('.cinder-skeleton-row').first()).toBeVisible();
+    // One live region says it, however many rows are drawn; the still-loading line is empty so far.
+    await expect(loading.getByText(PLUGINS_COPY.loading.label, { exact: true })).toHaveCount(1);
+    await expect(loading.getByText(PLUGINS_COPY.loading.stillLoading)).toHaveCount(0);
+    // A resize across the list-and-detail layouts builds the placeholder again, so each capture
+    // brings the state back first: the rows after their delay, then the still-loading line.
+    await captureAtEveryWidth(page, 'loading', ROUTE, [1280, 768, 375], async (capturePage) => {
+      await capturePage.clock.runFor(400);
+      await expect(
+        capturePage.getByTestId('plugins-loading').locator('.cinder-skeleton-row').first(),
+      ).toBeVisible();
+    });
+    const stillLoading = async (capturePage: Page) => {
+      await capturePage.clock.runFor(10_400);
+      await expect(capturePage.getByText(PLUGINS_COPY.loading.stillLoading)).toBeVisible();
+      await expect(
+        capturePage.getByRole('button', { name: PLUGINS_COPY.loading.cancel }),
+      ).toBeVisible();
+    };
+    await stillLoading(page);
+    await captureAtEveryWidth(page, 'still-loading', ROUTE, [1280, 768, 375], stillLoading);
 
     release?.();
     const failed = page.getByTestId('plugins-load-failed');
@@ -360,6 +578,58 @@ test.describe('Settings › Plugins', () => {
       '/health',
     );
     await captureAtEveryWidth(page, 'load-failed');
+  });
+
+  test('the loading placeholder has the loaded page’s shape: its frame, list column and detail pane sit where the loaded ones do, and the heading does not move', async ({
+    page,
+  }) => {
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/host/plugins', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await held;
+      return route.fallback();
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+
+    const frame = page.locator('.ib-plugins__frame');
+    const placeholder = page.getByTestId('plugins-loading');
+    const regions = {
+      heading: page.getByRole('heading', { level: 1, name: 'Plugins' }),
+      frame,
+      list: frame.locator('.cinder-list-detail__list'),
+      detail: frame.locator('.cinder-list-detail__detail'),
+    };
+    // Settled: the placeholder rows are drawn (they wait 300 ms) before any box is read.
+    await expect(placeholder.locator('.cinder-skeleton-row').first()).toBeVisible();
+    await expect(regions.detail).toBeVisible();
+    const waiting = await readBoxes(page, regions);
+
+    release?.();
+    await expect(row(page, 'inspectors')).toBeVisible();
+    await expect(detail(page, 'inspectors')).toBeVisible();
+    await expect(placeholder).toHaveCount(0);
+    const loaded = await readBoxes(page, regions);
+
+    expect(Math.abs(waiting.frame.x - loaded.frame.x), 'frame left edge').toBeLessThanOrEqual(2);
+    expect(
+      Math.abs(waiting.frame.x + waiting.frame.width - (loaded.frame.x + loaded.frame.width)),
+      'frame right edge',
+    ).toBeLessThanOrEqual(2);
+    expect(Math.abs(waiting.frame.y - loaded.frame.y), 'frame top edge').toBeLessThanOrEqual(2);
+    // The list column keeps its width and sits beside the detail pane.
+    expect(
+      Math.abs(waiting.list.width - loaded.list.width),
+      'list column width',
+    ).toBeLessThanOrEqual(2);
+    expect(waiting.detail.x, 'the detail pane is beside the list').toBeGreaterThan(
+      waiting.list.x + waiting.list.width - 2,
+    );
+    expect(
+      Math.abs(waiting.heading.y - loaded.heading.y),
+      'heading does not move',
+    ).toBeLessThanOrEqual(1);
   });
 
   test('enabling a disabled plugin asks first, in a confirm dialog that says it restarts, and Cancel changes nothing', async ({
