@@ -23,6 +23,7 @@ import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 
 import type { GoalState } from './goal-state';
 import type { GoalValidatorSource } from './goal-validator-catalog';
+import type { GoalConfigurationIssue } from './goal-validator-configuration';
 import type { DurableEventHistoryRead, DurableEventHistorySubscribe } from './bureau-types/common';
 
 /** The slice of the durable engine the goal control plane drives. */
@@ -35,6 +36,15 @@ export type GoalEngine = Pick<
 // create
 // ---------------------------------------------------------------------------
 
+/**
+ * COR-2117 — the validator a goal names: its pinned identity, and the configuration its
+ * `configuration` schema parses. A validator without a schema takes none, and the schema decides
+ * whether leaving it out is allowed.
+ */
+export interface BureauGoalValidatorRequest extends ValidatorIdentity {
+  readonly configuration?: unknown;
+}
+
 export interface BureauGoalRequest<TName extends string = string> {
   /** The catalog agent that runs each attempt. It must be able to run durably. */
   readonly agentName: TName;
@@ -42,8 +52,11 @@ export interface BureauGoalRequest<TName extends string = string> {
   /** Stored with the objective. The `fresh-from-artifact` policy seeds each fresh conversation with it, and requires it. */
   readonly instructions?: string | undefined;
   readonly identity: GoalIdentity;
-  /** Resolved from `BureauOptions.validators` by exact name and version. */
-  readonly validator: ValidatorIdentity;
+  /**
+   * Resolved from `BureauOptions.validators` by exact name and version, with the configuration its
+   * schema parses (COR-2117), which the goal's record stores.
+   */
+  readonly validator: BureauGoalValidatorRequest;
   readonly bounds: GoalBudget;
   /**
    * Defaults to `{ kind: 'continue' }`. Each policy keeps the goal's
@@ -134,6 +147,8 @@ export type BureauGoalCreateOutcome =
       readonly reason: string;
       /** For `validator-version-mismatch`: the versions that are registered. */
       readonly availableVersions?: readonly string[];
+      /** For a configuration the validator's schema refused (COR-2117): each field, by path within the configuration. */
+      readonly issues?: readonly GoalConfigurationIssue[];
     };
 
 // ---------------------------------------------------------------------------
@@ -352,8 +367,13 @@ export interface BureauGoalUpdateRequest<TName extends string = string> {
    * claims the first attempt's run as soon as the goal is created.
    */
   readonly agentName?: TName | undefined;
-  /** The validator each check from now on runs, resolved from `BureauOptions.validators` by exact name and version. */
-  readonly validator?: ValidatorIdentity | undefined;
+  /**
+   * The validator each check from now on runs, resolved from `BureauOptions.validators` by exact
+   * name and version. Its `configuration` is parsed by the rules `create` uses. A different
+   * validator clears the stored configuration, so one it takes is named here; the same validator
+   * keeps its configuration unless one is named (COR-2117).
+   */
+  readonly validator?: BureauGoalValidatorRequest | undefined;
   /**
    * How many attempts the goal may make in all, at most 256. It must leave room for another
    * attempt beyond those already opened (`attempt-limit-too-low` otherwise), and a goal whose last
@@ -408,6 +428,8 @@ export type BureauGoalUpdateOutcome =
       readonly reason: string;
       /** For `validator-version-mismatch`: the versions that are registered. */
       readonly availableVersions?: readonly string[];
+      /** For a configuration the validator's schema refused (COR-2117): each field, by path within the configuration. */
+      readonly issues?: readonly GoalConfigurationIssue[];
     }
   | { readonly outcome: 'stale-revision'; readonly goal: GoalState }
   | { readonly outcome: 'contended'; readonly goal: GoalState }
@@ -516,6 +538,11 @@ export interface BureauGoalValidatorListing {
   readonly version: string;
   /** Whether it supplies deterministic evidence; `null` when it did not declare it. */
   readonly determinism: 'deterministic' | 'stochastic' | null;
+  /**
+   * COR-2117 — the JSON Schema of the configuration a goal may give it, or `null` when it takes
+   * none.
+   */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
   /** Who the validator comes from. */
   readonly source: GoalValidatorSource;
 }

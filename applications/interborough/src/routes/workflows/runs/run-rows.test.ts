@@ -435,7 +435,13 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       href: '/runs/wf-instance',
     });
     expect(rowOf(ORIGINS.system)).toEqual({ kind: 'system' });
-    expect(rowOf(ORIGINS.trigger)).toEqual({ kind: 'trigger' });
+    // COR-2171: which trigger, by its plugin, and the file whose trigger it is.
+    expect(rowOf(ORIGINS.trigger)).toEqual({
+      kind: 'trigger',
+      plugin: 'linear',
+      workflowId: 'sync',
+      href: '/workflows/sync',
+    });
   });
 
   test('is the recorded origin, not what the task’s chats and goals suggest', () => {

@@ -18,8 +18,8 @@
   import {
     Alert,
     Button,
+    DescriptionList,
     FormActions,
-    Input,
     NumberInput,
     PageHeader,
     Select,
@@ -30,6 +30,7 @@
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { agentLabel as agentName } from '../../lib/agent-label.ts';
   import type { GoalCreated } from '../../lib/bureau-goals.ts';
+  import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import type { GoalFormFailure } from './goal-form-failure.ts';
   import {
@@ -46,6 +47,8 @@
     agents: readonly AgentSummary[] | undefined;
     /** The agent list could not be read. */
     agentsFailed: boolean;
+    /** The list of checks could not be read. */
+    checksFailed: boolean;
     /** Whether a provider holds a key, or `undefined` while that is not known. */
     providerConnected: boolean | undefined;
     /** The scripted agent the alert offers instead, when the catalog has one. */
@@ -69,6 +72,7 @@
     mode,
     agents,
     agentsFailed,
+    checksFailed,
     providerConnected,
     scripted,
     busy,
@@ -95,6 +99,25 @@
     { value: '', label: copy.agentPlaceholder, disabled: true },
     ...(agents ?? []).map((agent) => ({ value: agent.name, label: agentNameOf(agent.name) })),
   ]);
+
+  /** The check chosen, with the schema its settings are drawn from. */
+  const choice = $derived(form.chosen);
+  /** The checks the picker offers, each named in words with its version small beside it. */
+  const checkOptions = $derived(
+    form.choices.map((entry) => {
+      const version = entry.listed
+        ? copy.checkVersion(entry.version)
+        : copy.checkVersionNotInstalled(entry.version);
+      return {
+        value: entry.key,
+        label: entry.label,
+        suffix: version,
+        triggerSuffix: version,
+        // Grouped by where each comes from; the goal's own check that is not installed has no group.
+        ...(entry.group === undefined ? {} : { group: entry.group }),
+      };
+    }),
+  );
 
   /** The note beside the buttons, in the order of what matters most. */
   const note = $derived.by(() => {
@@ -180,17 +203,46 @@
       readonly={busy}
       bind:value={form.prompt}
     />
-    <Input
+    <!-- The check is one the Bureau lists, with its version small beside the name. A check that
+         takes a configuration draws its settings from the schema the Bureau gives, under the picker. -->
+    <Select
       id={GOAL_FIELD_IDS.check}
       label={copy.checkLabel}
-      description={copy.checkDescription}
-      placeholder={copy.checkPlaceholder}
+      description={checksFailed
+        ? copy.checkUnavailableDescription
+        : choice?.listed === false && form.validators !== undefined
+          ? copy.checkUnlisted
+          : copy.checkDescription}
       required
+      presentation="listbox"
+      placeholder={copy.checkPlaceholder}
       error={problems.check ?? ''}
-      disabled={locked}
+      disabled={locked || form.validators === undefined}
       readonly={busy}
+      options={checkOptions}
       bind:value={form.check}
     />
+    {#if choice !== undefined && choice.listed && choice.configuration !== null}
+      <div class="ib-goal-form__settings" data-testid="goal-check-settings">
+        <ContributedConfigurationForm
+          kindId={choice.key}
+          schema={choice.configuration}
+          value={form.configuration}
+          hosted
+          disabled={locked || busy}
+          issues={form.configurationIssues}
+          noFieldsText={copy.checkConfigurationNone}
+          unavailableText={copy.checkConfigurationUnavailable}
+          onChange={(next) => (form.configuration = next)}
+        />
+      </div>
+    {:else if form.storedSettings !== undefined}
+      <!-- A check the Bureau no longer lists has no schema to draw a form from, so what the goal
+           keeps of it is read, never edited, and never lost. -->
+      <div class="ib-goal-form__stored" data-testid="goal-check-stored-settings">
+        <DescriptionList items={[...form.storedSettings]} variant="fields" />
+      </div>
+    {/if}
     <div class="ib-goal-form__pair">
       <div class="ib-goal-form__agent">
         <Select
@@ -296,6 +348,19 @@
   .ib-goal-form__agent {
     flex: 1 1 14rem;
     min-inline-size: 0;
+  }
+
+  /* The check's settings sit under its picker on the field edge, --cinder-space-3 under the
+     picker's description: the form's gap is --cinder-space-4, so the settings take the difference back. */
+  .ib-goal-form__settings {
+    min-inline-size: 0;
+    margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-4));
+  }
+
+  /* What an unlisted check still holds, read-only, in the same place as its settings would be. */
+  .ib-goal-form__stored {
+    min-inline-size: 0;
+    margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-4));
   }
 
   .ib-goal-form__alert-title {

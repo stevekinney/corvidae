@@ -50,6 +50,11 @@ import {
 
 import { principalDefect } from './owner-of-record';
 import { isPluginName } from '@lostgradient/interborough-plugin';
+import {
+  decodeStoredValidatorDefinition,
+  type ValidatorFileDefinition,
+  validatorFileVersion,
+} from './validator-file';
 
 // ---------------------------------------------------------------------------
 // Caps, keys, and identifiers
@@ -275,6 +280,21 @@ export interface GoalState {
   readonly objective: GoalObjective;
   /** Pinned at create time; resolved from the validator catalog on every use. */
   readonly validator: ValidatorIdentity;
+  /**
+   * COR-2117 — what the goal's owner configured the validator with: the value the validator's
+   * `configuration` schema parsed when the goal was created or last updated, copied here so the
+   * check that judges an attempt reads this and nothing the Bureau holds now. Absent when the goal
+   * named none, and on a record written before it.
+   */
+  readonly validatorConfiguration?: JSONValue | undefined;
+  /**
+   * COR-2119 — for a goal that names an owner-defined validator (a JSON file in the Bungalow), the
+   * parsed definition the file said when the goal was created or the validator was last changed,
+   * copied here. The check runs from this copy, on every attempt and after a restart, and never reads
+   * the file again, so editing or deleting the file leaves a goal's verdicts as they were. Its
+   * digest is the validator's version. Absent for a validator the host or a plugin gave the Bureau.
+   */
+  readonly validatorDefinition?: ValidatorFileDefinition | undefined;
   readonly requireDeterministicValidation: boolean;
   readonly validatorTimeoutMs?: number | undefined;
   readonly conversationPolicy: GoalConversationPolicy;
@@ -607,7 +627,7 @@ const hasExactKeys = (value: PlainRecord, allowed: readonly string[]): boolean =
 
 const MAXIMUM_JSON_DEPTH = 64;
 
-function isJsonValue(value: unknown, depth = 0): value is JSONValue {
+export function isJsonValue(value: unknown, depth = 0): value is JSONValue {
   if (depth > MAXIMUM_JSON_DEPTH) return false;
   if (value === null) return true;
   switch (typeof value) {
@@ -743,7 +763,7 @@ export function isValidatorJudge(value: unknown): value is ValidatorJudge {
     isValidatorIdentity(value['validator']) &&
     isPlainRecord(source) &&
     hasExactKeys(source, ['kind', 'name', 'version']) &&
-    (source['kind'] === 'bureau' || source['kind'] === 'plugin') &&
+    (source['kind'] === 'bureau' || source['kind'] === 'plugin' || source['kind'] === 'bungalow') &&
     isNonEmptyString(source['name']) &&
     isNonEmptyString(source['version']) &&
     value['configuration'] !== undefined &&
@@ -972,6 +992,8 @@ const TOP_LEVEL_KEYS = [
   'identity',
   'objective',
   'validator',
+  'validatorConfiguration',
+  'validatorDefinition',
   'requireDeterministicValidation',
   'validatorTimeoutMs',
   'conversationPolicy',
@@ -1448,6 +1470,23 @@ function isConsistent(value: PlainRecord): boolean {
   );
 }
 
+/**
+ * A goal's copy of an owner-defined validator's definition (COR-2119), checked where the record is
+ * read: absent, or exactly a definition whose digest is the version the record names the validator
+ * at, so a copy that is not the validator the goal pinned is refused as a corrupt record.
+ */
+function isStoredValidatorDefinition(value: PlainRecord): boolean {
+  const stored = value['validatorDefinition'];
+  if (stored === undefined) return true;
+  const definition = decodeStoredValidatorDefinition(stored);
+  const validator = value['validator'];
+  return (
+    definition !== undefined &&
+    isPlainRecord(validator) &&
+    validator['version'] === validatorFileVersion(definition)
+  );
+}
+
 function isShape(value: PlainRecord): boolean {
   return (
     (value['workspaceAuthority'] === undefined ||
@@ -1463,6 +1502,9 @@ function isShape(value: PlainRecord): boolean {
     isIdentity(value['identity']) &&
     isObjective(value['objective']) &&
     isValidatorIdentity(value['validator']) &&
+    (value['validatorConfiguration'] === undefined ||
+      isJsonValue(value['validatorConfiguration'])) &&
+    isStoredValidatorDefinition(value) &&
     typeof value['requireDeterministicValidation'] === 'boolean' &&
     (value['validatorTimeoutMs'] === undefined ||
       (isNonNegativeNumber(value['validatorTimeoutMs']) && value['validatorTimeoutMs'] > 0)) &&
@@ -1522,6 +1564,10 @@ export interface CreateGoalStateInput {
   readonly identity: GoalIdentity;
   readonly objective: GoalObjective;
   readonly validator: ValidatorIdentity;
+  /** COR-2117 — see {@link GoalState.validatorConfiguration}. */
+  readonly validatorConfiguration?: JSONValue | undefined;
+  /** COR-2119 — see {@link GoalState.validatorDefinition}. */
+  readonly validatorDefinition?: ValidatorFileDefinition | undefined;
   readonly requireDeterministicValidation?: boolean | undefined;
   readonly validatorTimeoutMs?: number | undefined;
   readonly conversationPolicy: GoalConversationPolicy;
@@ -1687,6 +1733,8 @@ export function createGoalState(input: CreateGoalStateInput): GoalState {
       identity: input.identity,
       objective: input.objective,
       validator: input.validator,
+      validatorConfiguration: input.validatorConfiguration,
+      validatorDefinition: input.validatorDefinition,
       requireDeterministicValidation: input.requireDeterministicValidation ?? false,
       validatorTimeoutMs: input.validatorTimeoutMs,
       conversationPolicy: input.conversationPolicy,

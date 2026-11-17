@@ -56,6 +56,15 @@ describe('toGoalWorkflowView', () => {
     });
   });
 
+  it('carries the validator configuration beside the validator it belongs to (COR-2117)', () => {
+    const configured = { ...record, validatorConfiguration: { phrase: 'staging fix' } };
+
+    expect(toGoalWorkflowView(configured).validatorConfiguration).toEqual({
+      phrase: 'staging fix',
+    });
+    expect(Object.hasOwn(toGoalWorkflowView(record), 'validatorConfiguration')).toBe(false);
+  });
+
   it('carries nothing a Bureau goal record holds beyond the workflow record', () => {
     const wide = {
       ...record,

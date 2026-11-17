@@ -44,6 +44,12 @@ const inbox = definePlugin({
         }),
         start: async () => () => undefined,
       },
+      {
+        name: 'webhook',
+        description: 'A delivery arrives.',
+        configuration: z.object({}),
+        receive: async () => new Response(null, { status: 202 }),
+      },
     ],
     formatters: [
       {
@@ -89,13 +95,16 @@ describe('bureau.plugins.contributions', () => {
     const body = await rpc(opened.handler, 'bureau.plugins.contributions', {}, 'alice-key');
     expect(body.error).toBeUndefined();
     const triggers = body.result!['triggers'] as Array<Record<string, unknown>>;
-    expect(triggers).toHaveLength(1);
+    expect(triggers).toHaveLength(2);
     expect(triggers[0]).toMatchObject({
       plugin: 'inbox',
       id: 'inbox:message',
       description: 'A message arrives in a mailbox.',
       version: '2.0.0',
+      receives: false,
     });
+    // COR-2171: a kind that defines `receive` says so, for the page that shows its address.
+    expect(triggers[1]).toMatchObject({ id: 'inbox:webhook', receives: true });
     const configuration = triggers[0]!['configuration'] as {
       properties: Record<string, { type: string; description?: string }>;
       required: string[];

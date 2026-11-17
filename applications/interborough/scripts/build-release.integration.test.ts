@@ -1,19 +1,75 @@
+import type { PluginPanel } from '@lostgradient/interborough-plugin';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { digestOf } from '../src/host/panel-build.ts';
+import { prebuiltPanelSchema } from '../src/host/panel-mounts.ts';
 import {
+  PANEL_RUNTIME_PACKAGES,
   buildRelease,
   parseReleaseArguments,
+  prebuildPanels,
   readRepositoryState,
   runCommand,
   runReleaseCommand,
+  workspacePanels,
   type ReleaseOperations,
   type RepositoryState,
+  type WorkspacePanel,
 } from './build-release.ts';
 
 const FIXTURE_SOURCE_SHA = '0123456789abcdef0123456789abcdef01234567';
+
+/** What the fixture's frozen install holds of each package a runtime panel build needs. */
+const PANEL_RUNTIME_FIXTURE: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  svelte: {
+    'package.json': JSON.stringify({
+      name: 'svelte',
+      version: '5.0.0',
+      exports: { '.': './src/index.js', './compiler': './compiler/index.js' },
+    }),
+    'src/index.js': 'export {};',
+    'compiler/index.js': 'export const compile = () => ({});',
+  },
+  '@lostgradient/cinder': {
+    'package.json': JSON.stringify({
+      name: '@lostgradient/cinder',
+      version: '0.0.0',
+      exports: { './panel': './src/panel/index.ts' },
+    }),
+    'src/panel/index.ts': 'export const mountPanel = () => {};',
+    'src/panel/panel.css': ':root{}',
+  },
+  '@modelcontextprotocol/ext-apps': {
+    'package.json': JSON.stringify({
+      name: '@modelcontextprotocol/ext-apps',
+      version: '1.0.0',
+      main: './dist/index.js',
+    }),
+    'dist/index.js': 'export {};',
+  },
+};
+
+function fixturePanel(name: string): PluginPanel {
+  return {
+    name,
+    title: `The ${name} panel`,
+    uri: `ui://fixture/${name}/v1`,
+    entry: pathToFileURL(join(tmpdir(), `${name}.ts`)),
+    styles: '',
+    allowedTools: [`bureau.fixture.${name}`],
+  };
+}
+
+/** Two workspace plugins, three panels: the release prebuilds every one of them. */
+const FIXTURE_PANELS: readonly WorkspacePanel[] = [
+  { plugin: 'inspectors', app: fixturePanel('run-inspector') },
+  { plugin: 'inspectors', app: fixturePanel('pending-review') },
+  { plugin: 'reporter', app: fixturePanel('weekly-report') },
+];
 const cleanRepositoryState = async (): Promise<RepositoryState> => ({
   status: '',
   sourceSha: FIXTURE_SOURCE_SHA,
@@ -39,6 +95,8 @@ async function releaseFixture(
     readonly missingDependency?: boolean;
     readonly productionEntryInExcludedDirectory?: boolean;
     readonly invalidExportMap?: boolean;
+    /** A package of {@link PANEL_RUNTIME_FIXTURE} the frozen install leaves out. */
+    readonly missingPanelRuntime?: string;
     readonly runtimeFailure?:
       | 'missing-link'
       | 'wrong-link'
@@ -46,6 +104,7 @@ async function releaseFixture(
       | 'not-running'
       | 'missing-contribution'
       | 'malformed-html'
+      | 'plain-html'
       | 'poll-error';
     readonly markerPath?: string;
   } = {},
@@ -132,7 +191,7 @@ if (behavior === 'poll-error') await Bun.sleep(100);
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
   if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: behavior === 'not-running' ? 'stopped' : 'running', contributions: behavior === 'missing-contribution' ? [] : [{ kind: 'panel', id: 'runtime-proof:external-proof' }] }] });
-  if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return Response.json({ html: behavior === 'malformed-html' ? 42 : '<html>external runtime</html>' });
+  if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return Response.json({ html: behavior === 'malformed-html' ? 42 : behavior === 'plain-html' ? '<html>external runtime</html>' : '<html>external runtime<style>:root{--cinder-status-info-background:red}</style></html>' });
   return new Response('not found', { status: 404 });
 } });
 await writeFile(join(home, 'server-port'), String(server.port));
@@ -160,6 +219,13 @@ await new Promise(() => {});
         const installed = join(destination, 'applications', 'interborough', 'node_modules');
         await mkdir(join(installed, '@lostgradient'), { recursive: true });
         await cp(sdk, join(installed, '@lostgradient', 'interborough-plugin'), { recursive: true });
+        for (const [name, files] of Object.entries(PANEL_RUNTIME_FIXTURE)) {
+          if (options.missingPanelRuntime === name) continue;
+          for (const [file, contents] of Object.entries(files)) {
+            await mkdir(dirname(join(installed, name, file)), { recursive: true });
+            await writeFile(join(installed, name, file), contents);
+          }
+        }
         if (options.recursiveDependency && !options.missingDependency) {
           const store = join(
             destination,
@@ -195,7 +261,11 @@ await new Promise(() => {});
       await writeFile(join(outdir, 'index.html'), '<html>fixture</html>');
       return { directory: outdir, files: ['index.html'], metafile: {} } as never;
     },
-    buildPanelPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
+    buildPanelPage: async (options) => {
+      const html = `<html>${options.title}</html>`;
+      return { html, contentDigest: digestOf(html) };
+    },
+    workspacePanels: async () => FIXTURE_PANELS,
   };
   // Fixtures control repository state so a dirty checkout cannot stop the assertions early.
   const operations: ReleaseOperations = {
@@ -449,7 +519,8 @@ describe('release arguments', () => {
 
   // spawn-free: the validation fixtures own and clean their guarded child processes.
   test('covers relocated host validation failures', async () => {
-    await expectRelocatedFailure('missing-inspector', 'Prebuilt inspector is missing');
+    await expectRelocatedFailure('missing-inspector', 'Prebuilt panel run-inspector is missing');
+    await expectRelocatedFailure('plain-html', 'was not a self-contained Cinder page');
     const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
     const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'not-running' });
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-not-running-'));
@@ -545,6 +616,143 @@ describe('release arguments', () => {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
     }
+  });
+
+  // spawn-free: the release fixture controls every child process boundary deterministically.
+  test('prebuilds every panel of every workspace plugin, each page the host will accept', async () => {
+    const fixture = await releaseFixture();
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-prebuilt-'));
+    try {
+      await buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations);
+      const panels = join(output, 'interborough', 'share', 'interborough', 'panels');
+      const written = await readdir(panels);
+      expect(written.toSorted()).toEqual([
+        'pending-review.json',
+        'run-inspector.json',
+        'weekly-report.json',
+      ]);
+      for (const { plugin, app } of FIXTURE_PANELS) {
+        const prebuilt = prebuiltPanelSchema.parse(
+          await Bun.file(join(panels, `${app.name}.json`)).json(),
+        );
+        expect(prebuilt.uri, `${plugin}: ${app.name}`).toBe(app.uri);
+        expect(digestOf(prebuilt.html), `${plugin}: ${app.name}`).toBe(prebuilt.contentDigest);
+        expect(prebuilt.html).toContain(app.title);
+      }
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the release fixture controls every child process boundary deterministically.
+  test('fails the release when two plugins contribute a panel of one name', async () => {
+    const fixture = await releaseFixture();
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-clash-'));
+    try {
+      expect(
+        await throwingRejectionOf(
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+            ...fixture.operations,
+            workspacePanels: async () => [
+              ...FIXTURE_PANELS,
+              { plugin: 'another', app: fixturePanel('run-inspector') },
+            ],
+          }),
+        ),
+      ).toThrow('The plugins inspectors and another both contribute a panel named run-inspector');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the release fixture controls every child process boundary deterministically.
+  test('refuses to write a page the host would refuse', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-release-refused-'));
+    try {
+      expect(
+        await throwingRejectionOf(
+          prebuildPanels(directory, FIXTURE_PANELS.slice(0, 1), async () => ({
+            html: '<html></html>',
+            contentDigest: 'sha256:fixture',
+          })),
+        ),
+      ).toThrow();
+      expect(await readdir(directory)).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the release fixture controls every child process boundary deterministically.
+  test('stages the Svelte compiler, Svelte, Cinder source and the MCP Apps SDK for runtime panel builds', async () => {
+    expect(PANEL_RUNTIME_PACKAGES).toEqual([
+      'svelte',
+      '@lostgradient/cinder',
+      '@modelcontextprotocol/ext-apps',
+    ]);
+    const fixture = await releaseFixture();
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-staged-'));
+    try {
+      await buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations);
+      const runtime = join(
+        output,
+        'interborough',
+        'share',
+        'interborough',
+        'plugin-runtime',
+        'node_modules',
+      );
+      for (const [name, files] of Object.entries(PANEL_RUNTIME_FIXTURE)) {
+        for (const file of Object.keys(files)) {
+          expect(await Bun.file(join(runtime, name, file)).exists(), `${name}/${file}`).toBe(true);
+        }
+      }
+      // The staged files the host reads: the compiler and the panel kit's entry.
+      expect(await Bun.file(join(runtime, 'svelte', 'compiler', 'index.js')).exists()).toBe(true);
+      expect(
+        await Bun.file(
+          join(runtime, '@lostgradient', 'cinder', 'src', 'panel', 'index.ts'),
+        ).exists(),
+      ).toBe(true);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the release fixture controls every child process boundary deterministically.
+  test.each(PANEL_RUNTIME_PACKAGES.map((name) => [name]))(
+    'rejects a release whose frozen install has no %s to stage',
+    async (name) => {
+      const fixture = await releaseFixture({ missingPanelRuntime: name });
+      const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-runtime-'));
+      try {
+        expect(
+          await throwingRejectionOf(
+            buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+          ),
+        ).toThrow(`Frozen production install cannot resolve ${name}`);
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+        await rm(output, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // spawn-free: reading the workspace plugins' panels starts no process.
+  test('reads the panels of the real workspace plugins, the inspectors among them', async () => {
+    const panels = await workspacePanels();
+    const byPlugin = Object.groupBy(panels, ({ plugin }) => plugin);
+    expect(byPlugin['inspectors']?.map(({ app }) => app.name)).toEqual([
+      'run-inspector',
+      'pending-review',
+      'workflow-revision-review',
+    ]);
+    // Names are unique across the workspace, so a prebuilt page is named by its panel alone.
+    const names = panels.map(({ app }) => app.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   // spawn-free: the release fixture controls every child process boundary deterministically.

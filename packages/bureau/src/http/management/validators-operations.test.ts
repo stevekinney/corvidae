@@ -7,6 +7,7 @@ import { definePlugin } from '@lostgradient/interborough-plugin';
 import type { Validator } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { BUREAU_VERSION } from '../../bureau-version.ts';
 import { BUREAU_PLUGIN_NAME } from '../../plugins/bureau-plugin.ts';
@@ -78,21 +79,47 @@ describe('bureau.validators.list', () => {
         name: 'host-check',
         version: '7',
         determinism: 'stochastic',
+        configuration: null,
         source: { kind: 'bureau', name: BUREAU_PLUGIN_NAME, version: BUREAU_VERSION },
       },
       {
         name: 'plain',
         version: '1',
         determinism: null,
+        configuration: null,
         source: { kind: 'bureau', name: BUREAU_PLUGIN_NAME, version: BUREAU_VERSION },
       },
       {
         name: 'checks:tidy',
         version: '1',
         determinism: 'deterministic',
+        configuration: null,
         source: { kind: 'plugin', name: 'checks', version: '2.3.4' },
       },
     ]);
+  });
+
+  it('lists the configuration schema of a validator that takes one, and null for one that takes none (COR-2117)', async () => {
+    const opened = await openBureau({
+      validators: [
+        {
+          ...validator('contains-phrase', '1', 'deterministic'),
+          configuration: z.strictObject({ phrase: z.string().min(1) }),
+        },
+        validator('plain', '1'),
+      ],
+    });
+    cleanups.push(() => opened.dispose());
+
+    const rows = await list(opened);
+
+    expect(rows.map((row) => row['name'])).toEqual(['contains-phrase', 'plain']);
+    expect(rows[0]!['configuration']).toMatchObject({
+      type: 'object',
+      properties: { phrase: { type: 'string' } },
+      required: ['phrase'],
+    });
+    expect(rows[1]!['configuration']).toBeNull();
   });
 
   it('leaves out the validators of a plugin that is disabled when the Bureau starts', async () => {

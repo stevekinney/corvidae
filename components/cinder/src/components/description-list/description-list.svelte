@@ -178,6 +178,9 @@
               {/if}
             </span>
           {/if}
+          {#if item.note !== undefined && item.note !== ''}
+            <span class="cinder-description-list__note">{item.note}</span>
+          {/if}
         </div>
         {#if actions}
           <div class="cinder-description-list__actions">{@render actions(item)}</div>

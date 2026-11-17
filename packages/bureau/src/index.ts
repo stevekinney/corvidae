@@ -136,6 +136,8 @@ export type {
   DefinitionSource,
   DefinitionSourceChange,
   DefinitionSourceHost,
+  GuardrailSource,
+  ValidatorSource,
   WorkflowSource,
 } from './sources/definition-source';
 export {
@@ -478,6 +480,8 @@ export type {
   RunFailureDetail,
   RunSettledStatus,
   SteeringOutcomeDetail,
+  TriggerEventKind,
+  TriggerFireOutcome,
 } from './events';
 export {
   ActionEvent,
@@ -509,6 +513,7 @@ export {
   ScorerThresholdBreachedEvent,
   SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
+  TriggerLifecycleEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,

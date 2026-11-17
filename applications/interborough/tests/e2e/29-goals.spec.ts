@@ -3,16 +3,34 @@
  * agent chosen from the agents, and an attempt limit, and changed on `/goals/:goal/edit`. The host
  * seeds a validator that never passes, so a goal whose check names it stays going until it is cancelled,
  * which the list does not offer (a goal's own page stops it), so the test cancels it through the
- * Bureau and sees its row end as Stopped. A validator the Bureau lacks is `Unprocessable`, said on
- * the page. The seeded goal is listed as a status-first row titled by its name, its page lists its
+ * Bureau and sees its row end as Stopped. The check is chosen from the picker the Bureau's list
+ * fills; a check it lacks cannot be typed (its `Unprocessable` is a unit test). The seeded goal is listed as a status-first row titled by its name, its page lists its
  * attempts, and the pages pass axe at the two widths. Goals is in the sidebar, and `g` then `l`
  * opens it.
  */
+import type { Page } from '@playwright/test';
+
 import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
+
+/**
+ * The check picker: a listbox select, drawn as a button with `role="combobox"` that opens a list of
+ * options (it takes no typed text, so a check the Bureau does not list cannot be entered). It is
+ * disabled until the Bureau has listed its checks.
+ */
+const checkPicker = (page: Page) =>
+  page.getByRole('combobox', { name: GOALS_COPY.form.checkLabel });
+
+/** Opens the check picker and chooses the option named `name`. */
+async function chooseCheck(page: Page, name: RegExp): Promise<void> {
+  const picker = checkPicker(page);
+  await expect(picker).toBeEnabled();
+  await picker.click();
+  await page.getByRole('option', { name }).click();
+}
 
 for (const width of WIDTHS) {
   test(`lists the seeded goal at ${width} pixels, and passes axe`, async ({ page, checkA11y }) => {
@@ -88,8 +106,9 @@ test('creates a goal that names the check that never passes, lands on its page, 
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
   await page.getByLabel(GOALS_COPY.form.agentLabel, { exact: true }).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello, and keep trying.');
-  // The check is the validator's name, which the host seeds as one that never passes.
-  await page.getByLabel(GOALS_COPY.form.checkLabel).fill('demo:never-passes');
+  // The check is chosen from the list the Bureau gives, and the host seeds one that never passes.
+  await chooseCheck(page, /never passes/i);
+  await expect(checkPicker(page)).toContainText(/never passes/i);
   await checkA11y('goals — the new goal page');
   await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
 
@@ -130,7 +149,9 @@ test('opens Edit goal from a goal’s page with its check and limit in the field
   await expect(
     page.getByRole('heading', { level: 1, name: GOALS_COPY.form.edit.title }),
   ).toBeVisible();
-  await expect(page.getByLabel(GOALS_COPY.form.checkLabel)).not.toHaveValue('');
+  // The picker shows the goal's check in its trigger, not the placeholder it shows when none is chosen.
+  await expect(checkPicker(page)).toBeEnabled();
+  await expect(checkPicker(page)).not.toContainText(GOALS_COPY.form.checkPlaceholder);
   await expect(
     page.getByLabel(GOALS_COPY.form.maximumAttemptsLabel, { exact: true }),
   ).not.toHaveValue('');
@@ -140,19 +161,30 @@ test('opens Edit goal from a goal’s page with its check and limit in the field
   await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
 });
 
-test('says Unprocessable on the page for a validator the Bureau does not have', async ({
+// A check the Bureau does not have cannot be typed into the picker, so the `Unprocessable` for one
+// that went between the form's load and its submit is tested where the Bureau can be made to refuse
+// it: `goals-page.test.ts` ("says Unprocessable above the buttons for a check the Bureau no longer
+// has"). Here the test asks what the page now guarantees: the picker offers only the checks the
+// Bureau lists, and takes no typed text.
+test('offers the checks the Bureau lists, and no way to name one it does not have', async ({
   page,
 }) => {
   await page.goto('/goals/new');
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
-  await page.getByLabel(GOALS_COPY.form.agentLabel, { exact: true }).selectOption('demo:assistant');
-  await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello.');
-  await page.getByLabel(GOALS_COPY.form.checkLabel).fill('no-such-validator');
+  const picker = checkPicker(page);
+  await expect(picker).toBeEnabled();
 
+  await picker.click();
+
+  await expect(page.getByRole('option', { name: /never passes/i })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: /accepts any answer/i })).toHaveCount(1);
+  // A button, not a field: nothing can be typed into it.
+  await expect(picker).toHaveJSProperty('tagName', 'BUTTON');
+  // Create with no prompt says what is missing at the prompt and creates nothing.
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
-
-  const fault = page.getByTestId('goal-fault');
-  await expect(fault).toHaveAttribute('data-fault-code', 'Unprocessable');
-  await expect(fault).toContainText('no-such-validator');
+  // The sentence is also the start of the prompt's description, so the match is the whole text:
+  // only the error says exactly this and nothing more.
+  await expect(page.getByText(GOALS_COPY.form.promptRequired, { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/goals\/new$/);
 });

@@ -18,6 +18,7 @@
   import { getContext, type ChatContext } from '../../../lib/bureau-client.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';
+  import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
   import RunOrigin from './run-origin.svelte';
   import { buildRunRows, type RunAttempt, type RunOrigin as Origin } from './run-rows.ts';
 
@@ -70,6 +71,8 @@
     return origin.kind === 'agent' || origin.kind === 'parent' ? origin.parentRunId : undefined;
   }
 
+  // A run a trigger started names its plugin by its title.
+  const pluginTitle = usePluginTitle();
   const origin = $derived(originOf(runId, task, goal, chat));
   const attempt: RunAttempt | null = $derived(rowOf(runId, task, goal, chat)?.attempt ?? null);
   const parentRunId = $derived(parentOf(origin));
@@ -100,10 +103,12 @@
   );
 </script>
 
-<li class="ib-run-lineage__item" data-depth="1"><RunOrigin {origin} {attempt} /></li>
+<li class="ib-run-lineage__item" data-depth="1">
+  <RunOrigin {origin} {attempt} {pluginTitle} />
+</li>
 {#each ancestors.data ?? [] as ancestor, index (ancestor.runId)}
   <li class="ib-run-lineage__item" data-depth={index + 2}>
-    <RunOrigin origin={ancestor.origin} />
+    <RunOrigin origin={ancestor.origin} {pluginTitle} />
   </li>
 {/each}
 <!-- The run's own row says where it sits in a chain, so it is drawn only when another run is in it. -->

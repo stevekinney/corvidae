@@ -1,0 +1,26 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * COPYABLE VALUE
+ *
+ * A value in monospace that breaks anywhere when its place is narrow, followed by a copy control.
+ * The value's last character and the control are one stretch that never breaks, so the control
+ * is always on the value's last line.
+ * ======================================== */
+
+  .cinder-copyable-value {
+    font-family: var(--cinder-font-mono);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-copyable-value__end {
+    white-space: nowrap;
+  }
+
+  /* The control sits beside the value's last character, centred on the line. */
+  .cinder-copyable-value__control {
+    display: inline-flex;
+    margin-inline-start: var(--cinder-space-2);
+    vertical-align: middle;
+  }
+}
