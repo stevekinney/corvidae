@@ -130,6 +130,9 @@ const detailSchema = fileSchema.extend({
 /** One file as `bureau.workflows.get` shows it, with its text and its live schedule. */
 export type WorkflowFileDetail = z.infer<typeof detailSchema>;
 
+/** The schema of `bureau.workflows.get`, exported so a capture's stubbed answer is checked against it. */
+export const workflowFileDetailSchema = detailSchema;
+
 /** Weft's verdict on whether a revision is compatible with the workflow's current revision. */
 const compatibilitySchema = z.discriminatedUnion('compatible', [
   z.object({ compatible: z.literal(true) }),

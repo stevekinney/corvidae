@@ -888,6 +888,8 @@ export const WORKFLOW_COPY = {
     json: {
       /** The footer's sentence, once. The Builder tab's reason is the same sentence. */
       fixLine: (line: number): string => `Fix line ${String(line)} to return to the builder.`,
+      /** The toolbar's status for text that does not parse: the footer names the line (rows 65f, 66f). */
+      invalid: 'Invalid JSON',
       /** The toolbar's status for JSON that parses but is not a JSON object. */
       notWorkflow: 'Valid JSON, not a valid workflow',
       /** Under the line a value that is not an object starts on. */

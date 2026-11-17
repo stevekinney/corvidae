@@ -807,6 +807,8 @@
           rows={18}
           value={text}
           error={jsonError}
+          invalidStatusLabel={copy.json.invalid}
+          parserStopVisible={mode === 'edit'}
           {...notWorkflow
             ? {
                 statusLabel: copy.json.notWorkflow,

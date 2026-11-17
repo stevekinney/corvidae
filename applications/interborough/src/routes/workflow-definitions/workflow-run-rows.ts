@@ -79,6 +79,8 @@ export function workflowRunOrigin(origin: WorkflowRunOrigin | null | undefined):
       return {
         kind: 'goal',
         name: origin.goalRunId,
+        // The goal's name in words, never its identifier, as the Runs list says it.
+        title: goalTitle(origin.goalRunId),
         href: goalPath(origin.goalRunId),
         session: null,
       };

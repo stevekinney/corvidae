@@ -125,6 +125,9 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/run-page-live-states.spec.ts',
   // A working goal, Start again held, and Start again pressed (COR-2425).
   'tests/e2e/goal-page-states.spec.ts',
+  // The workflow page and its builder in the states the sample world's routes do not capture
+  // (COR-2431, COR-2432).
+  'tests/e2e/workflow-page-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

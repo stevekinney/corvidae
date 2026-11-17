@@ -584,6 +584,17 @@ describe('an invalid file', () => {
     );
     // The comma is missing at the end of line 3; the parser stops at line 4.
     expect(footer(container)).toBe(WORKFLOW_COPY.builder.json.fixLine(3));
+    // COR-2431: the status reads Invalid JSON, and the mark says where the parser stopped (row 66f).
+    await waitFor(() =>
+      expect(
+        root.querySelector('.cinder-json-editor__status')?.textContent?.replace(/\s+/g, ' ').trim(),
+      ).toBe(WORKFLOW_COPY.builder.json.invalid),
+    );
+    await waitFor(() =>
+      expect(root.querySelector('.cinder-json-editor__problem')?.textContent).toBe(
+        'Missing comma at the end of this line. The parser stopped at line 4.',
+      ),
+    );
 
     const save = getByRole('button', { name: EDITOR.saveAction }) as HTMLButtonElement;
     expect(save.disabled).toBe(false);
