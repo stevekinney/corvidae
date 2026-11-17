@@ -2109,7 +2109,6 @@
           data-testid="chat-header"
           title={markdownTitle}
           headingLevel={1}
-          flush
           narrowActions="beside-status"
           {...context.data?.parentContextId ? { description: details } : {}}
           {...gone ? {} : { actions: headerActions }}

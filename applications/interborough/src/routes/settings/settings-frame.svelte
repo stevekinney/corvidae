@@ -163,7 +163,6 @@
   <div class="weft-settings__nav"><SettingsSectionNav /></div>
   <div class="weft-settings__title-area">
     <PageHeader
-      flush
       title={wide.current ? title : SETTINGS_COPY.general.narrowTitle}
       {...wide.current ? { description: intro } : {}}
       {...headerStatus === undefined ? {} : { actions: headerStatusLine }}

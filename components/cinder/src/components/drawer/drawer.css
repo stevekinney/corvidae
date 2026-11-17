@@ -216,10 +216,16 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-4);
-    padding: var(--cinder-space-4) var(--cinder-space-5);
-    border-block-end: 1px solid var(--cinder-border-muted);
+    /* 12px under the title plus the body's 12px above it: the title stays close to what it
+     * introduces with no rule, and has the same room above and below it when the rule is drawn.
+     * Unconditional, so it cannot change whether the body scrolls. */
+    padding: var(--cinder-space-3) var(--cinder-space-5);
+    /* The rule is drawn only while the body scrolls (below); a short confirmation has nothing to
+     * separate from. The border keeps its width so the header does not move when it appears. */
+    border-block-end: 1px solid;
+    border-block-end-color: transparent;
     flex-shrink: 0;
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
     /* The close button's 44px hit area reaches below the header's padding: the header paints above
      * the content that follows so that part of the area still takes the tap. */
     position: relative;
@@ -312,7 +318,7 @@
   }
 
   .cinder-drawer__body {
-    --_cinder-scroll-fade-color: var(--cinder-surface);
+    --_cinder-scroll-fade-color: var(--cinder-surface-raised);
 
     flex: 1;
     min-block-size: 0;
@@ -321,10 +327,10 @@
        and the footer actions start on one edge (s4#8). No gutter is reserved: a reserved gutter
        made the body's inline-end inset wider than its start whenever the scrollbar is classic,
        even when nothing scrolls. */
-    padding: var(--cinder-space-6) var(--cinder-space-5);
+    padding: var(--cinder-space-3) var(--cinder-space-5) var(--cinder-space-4);
     overscroll-behavior: contain;
     scrollbar-gutter: auto;
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
   }
 
   /* Suppress the focus ring only for programmatic (open-effect) focus — the
@@ -356,9 +362,18 @@
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
-    border-block-start: 1px solid var(--cinder-border-muted);
+    border-block-start: 1px solid;
+    border-block-start-color: transparent;
     flex-shrink: 0;
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-drawer__panel:has(> .cinder-drawer__body[data-cinder-scrollable]) .cinder-drawer__header {
+    border-block-end-color: var(--cinder-border-muted);
+  }
+
+  .cinder-drawer__panel:has(> .cinder-drawer__body[data-cinder-scrollable]) .cinder-drawer__footer {
+    border-block-start-color: var(--cinder-border-muted);
   }
 
   /* A bottom sheet's footer is a bar on a real surface, not a strip over the content (COR-2322
@@ -381,7 +396,7 @@
     background: linear-gradient(
       to bottom,
       transparent,
-      var(--_cinder-drawer-footer-fade-color, var(--cinder-surface))
+      var(--_cinder-drawer-footer-fade-color, var(--cinder-surface-raised))
     );
     pointer-events: none;
   }
@@ -453,7 +468,7 @@
     padding: 0 var(--cinder-space-5);
     padding-block-end: env(safe-area-inset-bottom);
     border: none;
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
     color: var(--cinder-text-default);
     font: inherit;
     text-align: start;

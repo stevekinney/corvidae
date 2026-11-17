@@ -40,6 +40,7 @@
     ListDetail,
     LoadMore,
     SearchField,
+    SectionHeading,
     Segment,
     SegmentedControl,
     Skeleton,
@@ -662,20 +663,20 @@
             </Button>
           </div>
         {/if}
-        <div class="ib-chats__title-row">
-          <svelte:element this={openId === null ? 'h1' : 'h2'} class="ib-chats__title">
-            {showingArchived
-              ? CHAT_COPY.list.archivedTitle
-              : phone.current
-                ? CHAT_COPY.sessionsTitlePhone
-                : CHAT_COPY.sessionsTitle}
-          </svelte:element>
-          <!-- The "+" and, beside an open chat, the toggle that hides the list (COR-2327 AC1). -->
-          <span class="ib-chats__title-actions">
+        <SectionHeading
+          level={openId === null ? 1 : 2}
+          title={showingArchived
+            ? CHAT_COPY.list.archivedTitle
+            : phone.current
+              ? CHAT_COPY.sessionsTitlePhone
+              : CHAT_COPY.sessionsTitle}
+        >
+          {#snippet actions()}
+            <!-- The "+" and, beside an open chat, the toggle that hides the list (COR-2327 AC1). -->
             {@render newChatButton()}
             {@render listToggle?.()}
-          </span>
-        </div>
+          {/snippet}
+        </SectionHeading>
         {#if !phone.current}
           <SearchField
             size="md"

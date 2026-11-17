@@ -82,6 +82,21 @@ describe('Timeline run entry (rows 72k and 73f)', () => {
     expect(group?.entries.map((entry) => entry.connectorAfter)).toEqual(['hidden', 'hidden']);
   });
 
+  test('a past run and a band start at the left edge of the other rows (no inline inset)', () => {
+    // happy-dom lays nothing out, so the shared left edge is asserted from the cascade: the other
+    // rows (marker, Now pill, separator rule) are flush at the list's inline start, and the run
+    // and band rows hold a stacked-list-item that would inset itself by its own inline padding.
+    const rule = css.match(
+      /\.cinder-timeline\s+:is\(\.cinder-timeline-item__run, \.cinder-timeline-item__band\)\s*>\s*\.cinder-stacked-list-item\.cinder-stacked-list-item\s*\{([^}]*)\}/,
+    );
+    expect(rule?.[1]).toMatch(/padding-inline:\s*0;/);
+    const { container } = render(Fixture, {});
+    const row = runRow(container, 0);
+    expect(
+      row.querySelector(':scope > ul.cinder-timeline-item__run > .cinder-stacked-list-item'),
+    ).not.toBeNull();
+  });
+
   test('a run has a hairline under it except the last row', () => {
     expect(css).toMatch(
       /\[data-cinder-kind='run'\]\s*\{[^}]*border-block-end: 1px solid var\(--cinder-border-faint\)/,

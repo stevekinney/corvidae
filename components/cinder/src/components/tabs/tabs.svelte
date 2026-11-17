@@ -19,8 +19,9 @@
   import type { TabsProps } from './tabs.types.ts';
   import { setTabsContext } from './tabs-context.ts';
 
+  import { untrack } from 'svelte';
+  import type { Attachment } from 'svelte/attachments';
   import {
-    PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
     useViewportBelow,
   } from '../../_internal/viewport-below.svelte.ts';
@@ -36,7 +37,8 @@
     onValueChangeRequest,
     onValueChange,
     orientation = 'horizontal',
-    collapseBelow = PHONE_VIEWPORT_BREAKPOINT,
+    collapseOnOverflow = true,
+    collapseBelow = false,
     collapseLabel = 'Tab',
     fill = false,
     activateOnFocus,
@@ -99,7 +101,112 @@
       : undefined,
   );
   const viewport = useViewportBelow(() => collapseBreakpoint);
-  const collapsed = $derived(viewport.current);
+
+  // The bar collapses when it does not fit its container (COR-2448 AC2). While the select stands
+  // in, the bar is hidden and cannot be measured, so the width it needed is remembered from the
+  // moment it overflowed and compared with the container's width as that changes.
+  let rootElement: HTMLDivElement | undefined = $state();
+  let overflowing = $state(false);
+  let measureRequest = $state(0);
+  let overflowNeed = 0;
+  // What the root's width exceeded the bar's own by when the bar overflowed.
+  let overflowSlack = 0;
+  let measuredVersion = -1;
+  // A change of the tabs is waiting for focus to leave the collapsed select before it is measured.
+  let waitingToMeasure = false;
+
+  /** Whether focus, or an open list, is inside the root: drawing the bar would remount the select. */
+  function busy(root: HTMLElement): boolean {
+    return (
+      root.contains(document.activeElement) || root.querySelector('[aria-expanded="true"]') !== null
+    );
+  }
+
+  const collapsed = $derived(
+    orientation === 'horizontal' && (viewport.current || (collapseOnOverflow && overflowing)),
+  );
+
+  $effect(() => {
+    void measureRequest;
+    void version;
+    const stillOverflowing = overflowing;
+    const root = rootElement;
+    if (!collapseOnOverflow || orientation !== 'horizontal' || root === undefined) {
+      if (stillOverflowing) overflowing = false;
+      return;
+    }
+    untrack(() => {
+      if (version !== measuredVersion) {
+        // A tab came, went, or changed its text: what the bar needs is unknown until it is drawn
+        // again, so draw it and measure it. Drawing it unmounts the select, so while someone is in
+        // the select (focus, or its list open) the bar stays collapsed and the measurement waits
+        // for focus to leave: a count that updates live must not close the list under them.
+        if (stillOverflowing && busy(root)) {
+          waitingToMeasure = true;
+          return;
+        }
+        measuredVersion = version;
+        overflowNeed = 0;
+        if (stillOverflowing) {
+          overflowing = false;
+          return;
+        }
+      }
+      waitingToMeasure = false;
+      const available = root.clientWidth;
+      // A hidden tabs root, or a DOM with no layout, measures nothing and keeps what is drawn.
+      if (available <= 0) return;
+      if (stillOverflowing) {
+        // The bar can be as wide as the root less what the root keeps for itself, so this mirrors
+        // the judgement that collapsed it: the tabs against the width the bar itself would have.
+        // Judging by the root's whole width un-collapsed a bar the next pass collapsed again, and
+        // the effect never settled.
+        if (overflowNeed > 0 && available - overflowSlack + 1 >= overflowNeed) overflowing = false;
+        return;
+      }
+      const list = root.querySelector<HTMLElement>(':scope > .cinder-tab-list');
+      if (list === null || list.hidden) return;
+      if (list.scrollWidth - list.clientWidth > 1) {
+        overflowNeed = list.scrollWidth;
+        overflowSlack = Math.max(0, available - list.clientWidth);
+        overflowing = true;
+      }
+    });
+  });
+
+  // The container's own width, text that changes under the bar, and fonts that finish loading all
+  // change what the bar needs without a tab registering.
+  const measureWidth: Attachment<HTMLDivElement> = (node) => {
+    rootElement = node;
+    const request = (): void => {
+      measureRequest += 1;
+    };
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(request);
+    resizeObserver?.observe(node);
+    const mutationObserver =
+      typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(request);
+    mutationObserver?.observe(node, { childList: true, subtree: true, characterData: true });
+    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
+    fonts?.addEventListener('loadingdone', request);
+    // Focus that leaves the collapsed select ends the wait. A move between two controls inside the
+    // root also fires a focusout, with the next control as its related target, which is skipped.
+    const focusMoved = (event: FocusEvent): void => {
+      if (!waitingToMeasure) return;
+      if (event.type === 'focusout' && event.relatedTarget !== null) return;
+      request();
+    };
+    document.addEventListener('focusin', focusMoved);
+    document.addEventListener('focusout', focusMoved);
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      fonts?.removeEventListener('loadingdone', request);
+      document.removeEventListener('focusin', focusMoved);
+      document.removeEventListener('focusout', focusMoved);
+      rootElement = undefined;
+    };
+  };
 
   const collapseOptions = $derived.by(() => {
     void version;
@@ -343,6 +450,7 @@
   data-cinder-orientation={orientation}
   data-cinder-fill={fill ? '' : undefined}
   data-cinder-collapsed={collapsed ? '' : undefined}
+  {@attach measureWidth}
 >
   {#if collapsed}
     <!-- The narrow form: one full-width select reading "Tab: Access". The tab bar below it is

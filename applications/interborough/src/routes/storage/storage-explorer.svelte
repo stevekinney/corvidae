@@ -379,6 +379,7 @@
     <div data-testid="storage-loading" aria-busy="true">
       <Skeleton
         variant="list"
+        framed
         rows={5}
         statusMarker="dot"
         statusColumn={false}

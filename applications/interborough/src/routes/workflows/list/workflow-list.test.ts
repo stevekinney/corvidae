@@ -136,11 +136,12 @@ describe('WorkflowList', () => {
       limit: 50,
     });
 
-    const { findByText } = render(WorkflowListHarness, {
+    const { findAllByText } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('order-processing')).not.toBeNull();
+    // A cut type is also the text of its tooltip, so the name is found more than once.
+    expect(await findAllByText('order-processing')).not.toHaveLength(0);
   });
 
   test('rows across several types issue one active-pointer fetch per distinct type and render the comparison badges (COR-15)', async () => {
@@ -194,14 +195,14 @@ describe('WorkflowList', () => {
       limit: 50,
     });
 
-    const { findByText, getByRole } = render(WorkflowListHarness, {
+    const { findAllByText, getByRole } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('later-page-workflow')).not.toBeNull();
+    expect(await findAllByText('later-page-workflow')).not.toHaveLength(0);
     await fireEvent.click(getByRole('button', { name: 'Failed' }));
 
-    expect(await findByText('first-filtered-workflow')).not.toBeNull();
+    expect(await findAllByText('first-filtered-workflow')).not.toHaveLength(0);
     await waitFor(() => {
       const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
       expect(requestUrl.searchParams.get('offset')).toBe('0');
@@ -221,12 +222,12 @@ describe('WorkflowList', () => {
       limit: 50,
     });
 
-    const { findByText, getByRole } = render(WorkflowListHarness, {
+    const { findAllByText, getByRole } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('payment-failing')).not.toBeNull();
-    expect(await findByText('order-processing')).not.toBeNull();
+    expect(await findAllByText('payment-failing')).not.toHaveLength(0);
+    expect(await findAllByText('order-processing')).not.toHaveLength(0);
     expect(getByRole('heading', { level: 1 }).textContent).toBe('Workflow runs');
     const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
     expect(requestUrl.searchParams.get('status')).toBe('failed');

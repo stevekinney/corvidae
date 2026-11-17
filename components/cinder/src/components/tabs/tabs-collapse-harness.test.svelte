@@ -8,7 +8,8 @@
     active = 'overview',
     onChange,
     labelled = false,
-    collapseBelow,
+    // The viewport rule is spelled out: these tests drive the phone form by the viewport.
+    collapseBelow = '640px',
     collapseLabel,
     orientation,
     refuseTo,
@@ -29,7 +30,7 @@
 <Tabs
   bind:value
   {...onChange === undefined ? {} : { onValueChange: onChange }}
-  {...collapseBelow === undefined ? {} : { collapseBelow }}
+  {collapseBelow}
   {...collapseLabel === undefined ? {} : { collapseLabel }}
   {...orientation === undefined ? {} : { orientation }}
   {...refuseTo === undefined ? {} : { onValueChangeRequest: () => refuseTo }}

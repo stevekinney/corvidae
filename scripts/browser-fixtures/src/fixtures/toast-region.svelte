@@ -64,7 +64,9 @@
       />
     </div>
     <p style="margin-top: 0.75rem; font-size: 0.875rem;">
-      Undo fired: {undoCount} · Pause fired: {pauseCount}
+      <strong>Undo fired:</strong>
+      {undoCount} <strong>Pause fired:</strong>
+      {pauseCount}
     </p>
     {#if bottomTabBar || dockedSurface}
       <!-- One column fixed to the bottom, as a phone shell's page sits on its tabs: whatever is
