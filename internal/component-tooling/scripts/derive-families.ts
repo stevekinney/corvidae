@@ -45,6 +45,12 @@ export interface MoveRule {
 export interface FamilyRules {
   packageRoot: string;
   componentsDirectory: string;
+  /**
+   * Where core keeps its files from under the components directory (the tests and fixtures the
+   * map gives core from inside component directories) once every family has left, so core's
+   * components directory can go (COR-2091): `src/component-tests/<component>/…`.
+   */
+  coreTestsDirectory?: string;
   families: FamilyRule[];
   moves: MoveRule[];
 }
@@ -78,6 +84,8 @@ export interface DerivedFamilies {
   testMoves: TestMove[];
   /** Each family module another package imports, which its package exports by subpath, with its importers. */
   subpathExports: Record<string, string[]>;
+  /** The rules' `coreTestsDirectory`: where core's files from under the components directory go. */
+  coreTestsDirectory?: string;
 }
 
 /** The rules or the tree disagree; `problems` names each disagreement. */
@@ -121,9 +129,14 @@ function resolveImport(
   files: ReadonlyMap<string, string>,
   from: string,
   specifier: string,
+  alias?: SplitPackages['alias'],
 ): string | undefined {
   if (!specifier.startsWith('.')) return undefined;
-  const base = posix.normalize(posix.join(posix.dirname(from), specifier.split('?')[0] ?? ''));
+  let base = posix.normalize(posix.join(posix.dirname(from), specifier.split('?')[0] ?? ''));
+  // A path into core's tests directory names the file the tree keeps under its components path.
+  if (alias !== undefined && base.startsWith(alias.physical)) {
+    base = `${alias.virtual}${base.slice(alias.physical.length)}`;
+  }
   const candidates = [
     base,
     `${base}.ts`,
@@ -148,7 +161,7 @@ function resolveSplitImport(
   seen = new Set<string>(),
 ): string[] {
   if (specifier.startsWith('.')) {
-    const target = resolveImport(files, from, specifier);
+    const target = resolveImport(files, from, specifier, split.alias);
     return target === undefined ? [] : [target];
   }
   const named = virtualPathFor(specifier);
@@ -168,6 +181,8 @@ function resolveSplitImport(
 export interface SplitPackages {
   packages: ReadonlySet<string>;
   generated: ReadonlyMap<string, string>;
+  /** Core's tests directory (`physical`) and the components path its files keep (`virtual`). */
+  alias?: { physical: string; virtual: string };
 }
 
 const UNSPLIT: SplitPackages = { packages: new Set(['tooling']), generated: new Map() };
@@ -838,6 +853,9 @@ function assemble(
         .toSorted(([a], [b]) => a.localeCompare(b))
         .map(([module, importers]) => [module, [...importers].toSorted()]),
     ),
+    ...(context.rules.coreTestsDirectory === undefined
+      ? {}
+      : { coreTestsDirectory: context.rules.coreTestsDirectory }),
   };
 }
 
@@ -888,7 +906,20 @@ export function readRepositoryTree(
       } else files.set(path, content);
     }
   };
-  add('core', readPackageTree(coreRoot));
+  // Core's tests directory holds what the tree keeps under its components path (COR-2091).
+  const alias =
+    rules.coreTestsDirectory === undefined
+      ? undefined
+      : { physical: `${rules.coreTestsDirectory}/`, virtual: `${rules.componentsDirectory}/` };
+  const coreTree = new Map<string, string>();
+  for (const [path, content] of readPackageTree(coreRoot)) {
+    const virtual =
+      alias !== undefined && path.startsWith(alias.physical)
+        ? `${alias.virtual}${path.slice(alias.physical.length)}`
+        : path;
+    coreTree.set(virtual, content);
+  }
+  add('core', coreTree);
   const manifestPath = join(coreRoot, 'package.json');
   const manifest = existsSync(manifestPath)
     ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { dependencies?: Record<string, string> })
@@ -901,7 +932,7 @@ export function readRepositoryTree(
     packages.add(name);
     add(name, readPackageTree(directory));
   }
-  return { files, split: { packages, generated } };
+  return { files, split: { packages, generated, ...(alias === undefined ? {} : { alias }) } };
 }
 
 export const TOOLING_ROOT = resolve(import.meta.dir, '..');

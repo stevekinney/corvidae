@@ -29,6 +29,7 @@ const CORE = 'components/cinder';
 const RULES: FamilyRules = {
   packageRoot: CORE,
   componentsDirectory: 'src/components',
+  coreTestsDirectory: 'src/component-tests',
   families: [],
   moves: [
     {
@@ -154,6 +155,15 @@ const TREE: Record<string, string> = {
     "const css = readFileSync(join(import.meta.dir, '../../styles/components.css'), 'utf8');",
     "const packageRoot = join(import.meta.dir, '..', '..', '..');",
     "const all = readFileSync(join(packageRoot, 'src', 'styles', 'components.css'), 'utf8');",
+    '',
+  ].join('\n'),
+  [`${CORE}/scripts/raw-color-baseline.json`]:
+    '[\n  { "filePath": "src/components/button/button.css", "allowedCount": 1 },\n  { "filePath": "src/styles/components.css", "allowedCount": 1 }\n]\n',
+  // A button test that needs core's barrel: the map gives it to core, which keeps it under
+  // src/component-tests once every family has left.
+  [`${CORE}/src/components/button/button-root.test.ts`]: [
+    "import { Button } from '../../index.ts';",
+    "import ButtonView from './button.svelte';",
     '',
   ].join('\n'),
   [`${CORE}/src/components/card/index.ts`]:
@@ -393,6 +403,17 @@ describe('extract-families', () => {
 
     await extract(root, { kind: 'all' });
     expect(existsSync(join(root, CORE, 'src/components'))).toBe(false);
+    // A baseline entry follows its file, named relative to core as the checks name it.
+    expect(read(root, `${CORE}/scripts/raw-color-baseline.json`)).toBe(
+      '[\n  { "filePath": "../button/src/components/button/button.css", "allowedCount": 1 },\n  { "filePath": "src/styles/components.css", "allowedCount": 1 }\n]\n',
+    );
+    expect(read(root, `${CORE}/src/component-tests/button/button-root.test.ts`)).toBe(
+      [
+        "import { Button } from '../../index.ts';",
+        "import ButtonView from '@lostgradient/button/components/button/button.svelte';",
+        '',
+      ].join('\n'),
+    );
     // The paths an earlier run pointed into core follow card into its package.
     expect(read(root, focusTest)).toContain("'../../../card/src/components/card/card.css'");
     expect(read(root, focusTest)).toContain("'..', 'card', 'src', 'components', 'card'");
@@ -471,10 +492,12 @@ describe('extract-families', () => {
       rules: RULES,
       selection: { kind: 'all' },
     });
-    expect(result.moves).toEqual([{ from: `components/button/${file}`, to: `${CORE}/${file}` }]);
+    // Every family has left, so core keeps it in its tests directory, not its components path.
+    const moved = `${CORE}/src/component-tests/button/button.test.ts`;
+    expect(result.moves).toEqual([{ from: `components/button/${file}`, to: moved }]);
     expect(existsSync(join(root, 'components/button', file))).toBe(false);
     // Its paths into core still reach core from there: a sibling path names core by directory.
-    expect(read(root, `${CORE}/${file}`)).toContain(
+    expect(read(root, moved)).toContain(
       "join(packageRoot, '..', 'cinder', 'src', 'styles', 'components.css')",
     );
   });

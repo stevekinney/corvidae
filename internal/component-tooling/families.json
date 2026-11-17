@@ -3066,5 +3066,6 @@
     "src/components/chart.types.ts": ["core", "statistic"],
     "src/highlighters/shiki/default.ts": ["core"],
     "src/highlighters/shiki/index.ts": ["core", "json-schema-editor"]
-  }
+  },
+  "coreTestsDirectory": "src/component-tests"
 }

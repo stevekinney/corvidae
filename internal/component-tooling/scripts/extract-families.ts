@@ -206,17 +206,41 @@ interface Plan {
   location: Map<string, string>;
   /** Each written file's text before the run (undefined for a new file). */
   originals: Map<string, string | undefined>;
+  /** Whether no family is left in core after this run, so core's tests leave its components path. */
+  relocateCoreTests: boolean;
 }
 
 function packageDirectory(plan: Plan, name: string): string {
   return plan.extracted.has(name) ? posix.join('components', name) : plan.options.core;
 }
 
+/**
+ * Where a package keeps a virtual path: the same path, except that once every family has left,
+ * core keeps its files from under the components directory in the map's `coreTestsDirectory`
+ * (`src/component-tests/<component>/…`), so core's components directory can go (COR-2091).
+ */
+function physicalPath(plan: Plan, name: string, path: string): string {
+  const tests = plan.options.families.coreTestsDirectory;
+  if (name !== 'core' || !plan.relocateCoreTests || tests === undefined) return path;
+  return path.startsWith(COMPONENTS_PREFIX)
+    ? `${tests}/${path.slice(COMPONENTS_PREFIX.length)}`
+    : path;
+}
+
+/** The virtual path a file of core's at `path` (relative to core) stands for. */
+function coreVirtualPath(plan: Plan, path: string): string {
+  const tests = plan.options.families.coreTestsDirectory;
+  if (tests === undefined || !path.startsWith(`${tests}/`)) return path;
+  return `${COMPONENTS_PREFIX}${path.slice(tests.length + 1)}`;
+}
+
+const COMPONENTS_PREFIX = 'src/components/';
+
 /** Where a virtual path of `name` is now: its new home once moved, where it was found until then. */
 function currentPath(plan: Plan, name: string, path: string): string {
-  const home = posix.join(packageDirectory(plan, name), path);
+  const home = posix.join(packageDirectory(plan, name), physicalPath(plan, name, path));
   if (plan.pending.has(home) || existsSync(join(plan.options.root, home))) return home;
-  return posix.join(plan.location.get(path) ?? plan.options.core, path);
+  return plan.location.get(path) ?? posix.join(plan.options.core, path);
 }
 
 function read(plan: Plan, path: string): string {
@@ -276,8 +300,10 @@ function buildOwnership(plan: Plan): string[] {
     }));
   const directories = [core, ...[...plan.extracted].map((name) => posix.join('components', name))];
   for (const directory of directories) {
-    for (const path of listFiles(directory)) {
-      const absolute = join(root, directory, path);
+    for (const listed of listFiles(directory)) {
+      const absolute = join(root, directory, listed);
+      // Core's tests directory holds files the map names by their components path.
+      const path = directory === core ? coreVirtualPath(plan, listed) : listed;
       if (
         CODE_FILE.test(path) &&
         existsSync(absolute) &&
@@ -293,9 +319,9 @@ function buildOwnership(plan: Plan): string[] {
       if (path.startsWith('src/') || directory === core || row !== undefined) {
         const earlier = plan.location.get(path);
         if (earlier !== undefined) {
-          problems.push(`${path} is in both ${earlier} and ${directory}.`);
+          problems.push(`${path} is at both ${earlier} and ${posix.join(directory, listed)}.`);
         }
-        plan.location.set(path, directory);
+        plan.location.set(path, posix.join(directory, listed));
       }
       const component = /^src\/components\/([^/]+)\//.exec(path)?.[1];
       if (path.startsWith('src/') && component !== undefined && componentOwner.has(component)) {
@@ -338,15 +364,14 @@ const PACKAGE_FILES = new Set([
 function planMoves(plan: Plan): void {
   const { root, core } = plan.options;
   for (const [path, name] of plan.owner) {
-    const found = plan.location.get(path);
-    if (found === undefined) continue;
+    const from = plan.location.get(path);
+    if (from === undefined) continue;
     const home =
       plan.selected.includes(name) || plan.extracted.has(name)
         ? posix.join('components', name)
         : core;
-    if (found === home) continue;
-    const from = posix.join(found, path);
-    const to = posix.join(home, path);
+    const to = posix.join(home, physicalPath(plan, name, path));
+    if (from === to) continue;
     if (existsSync(join(root, to))) throw new Error(`Both ${from} and ${to} exist.`);
     plan.result.moves.push({ from, to });
   }
@@ -428,7 +453,8 @@ function writeTsconfigs(plan: Plan): void {
 
 /** The virtual path a relative reference in `importer` names, if the map places it. */
 function resolveVirtual(plan: Plan, importer: string, specifier: string): string | undefined {
-  const base = joinVirtual(importer, specifier);
+  // A path into core's tests directory names the file the map keeps under its components path.
+  const base = coreVirtualPath(plan, joinVirtual(importer, specifier));
   return resolutionCandidates(base).find((candidate) => plan.owner.has(candidate));
 }
 
@@ -454,7 +480,7 @@ function packageOf(plan: Plan, path: string): { name: string; virtual: string } 
   }
   const prefix = `${plan.options.core}/`;
   if (!path.startsWith(prefix)) return undefined;
-  const virtual = path.slice(prefix.length);
+  const virtual = coreVirtualPath(plan, path.slice(prefix.length));
   // A dry run moves nothing, so a file still in core counts as its new package's.
   const owner = plan.owner.get(virtual);
   if (plan.options.dryRun && owner !== undefined && plan.selected.includes(owner)) {
@@ -560,6 +586,28 @@ function closeSelection(
  * Rewrites one file of core or of an extracted package: an import that now crosses packages to a
  * package specifier, and a relative path string that does to a relative path that still reaches it.
  */
+/**
+ * The specifier a file of core's needs for another of core's when core's tests directory took one
+ * of them (COR-2091), or undefined when the written one still reaches it.
+ */
+function movedWithinCore(
+  plan: Plan,
+  home: { name: string; virtual: string },
+  name: string,
+  target: string,
+  specifier: string,
+): string | undefined {
+  if (!plan.relocateCoreTests || home.name !== 'core' || name !== 'core') return undefined;
+  const importer = physicalPath(plan, 'core', home.virtual);
+  const physicalTarget = physicalPath(plan, 'core', target);
+  const reached = posix.normalize(
+    posix.join(posix.dirname(importer), specifier.split('?')[0] ?? ''),
+  );
+  if (resolutionCandidates(reached).includes(physicalTarget)) return undefined;
+  const query = specifier.includes('?') ? specifier.slice(specifier.indexOf('?')) : '';
+  return `${relativeSpecifier(importer, physicalTarget)}${query}`;
+}
+
 function rewriteFile(plan: Plan, path: string): void {
   const home = packageOf(plan, path);
   if (home === undefined || !CODE_FILE.test(path)) return;
@@ -573,7 +621,15 @@ function rewriteFile(plan: Plan, path: string): void {
     const target = resolveVirtual(plan, home.virtual, specifier);
     if (target === undefined) continue;
     const name = plan.owner.get(target) as string;
-    if (packageDirectory(plan, name) === directory) continue;
+    if (packageDirectory(plan, name) === directory) {
+      // Within core, a file core's tests directory took is reached from where each file is now.
+      const moved = movedWithinCore(plan, home, name, target, specifier);
+      if (moved !== undefined) {
+        const start = (match.index ?? 0) + (match[1] ?? '').length + 1;
+        rewritten.set(start, { length: specifier.length, text: moved });
+      }
+      continue;
+    }
     if (name === 'core') {
       plan.result.warnings.push(`${path} imports ${specifier}, which core keeps.`);
       continue;
@@ -590,7 +646,7 @@ function rewriteFile(plan: Plan, path: string): void {
       target:
         name === 'tooling'
           ? posix.join('internal/component-tooling', target)
-          : posix.join(packageDirectory(plan, name), target),
+          : posix.join(packageDirectory(plan, name), physicalPath(plan, name, target)),
     });
   }
   for (const match of original.matchAll(PATH_STRING)) {
@@ -608,8 +664,9 @@ function rewriteFile(plan: Plan, path: string): void {
     }
     // Where the string points now, in its own package or (written by an earlier run) another one;
     // it is rewritten when the package that holds that file has since moved it.
-    const logical = posix.join(directory, home.virtual);
-    const pointed = packageOf(plan, posix.normalize(posix.join(posix.dirname(logical), text)));
+    const logical = posix.join(directory, physicalPath(plan, home.name, home.virtual));
+    const pointedPath = posix.normalize(posix.join(posix.dirname(logical), text));
+    const pointed = packageOf(plan, pointedPath);
     if (pointed === undefined) continue;
     const pointedDirectory = packageDirectory(plan, pointed.name);
     const base = pointed.virtual;
@@ -625,8 +682,13 @@ function rewriteFile(plan: Plan, path: string): void {
         plan.result.warnings.push(`${path}: ${text} names a directory several packages share.`);
       }
     }
-    if (owner === undefined || packageDirectory(plan, owner) === pointedDirectory) continue;
-    const absoluteTarget = posix.join(packageDirectory(plan, owner), base);
+    if (owner === undefined) continue;
+    const absoluteTarget = posix.join(
+      packageDirectory(plan, owner),
+      physicalPath(plan, owner, base),
+    );
+    if (packageDirectory(plan, owner) === pointedDirectory && absoluteTarget === pointedPath)
+      continue;
     let replacement = posix.relative(posix.dirname(logical), absoluteTarget);
     if (text.endsWith('/') && !replacement.endsWith('/')) replacement += '/';
     if (!replacement.startsWith('.')) replacement = `./${replacement}`;
@@ -654,10 +716,11 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
       `${escapeRegExp(core)}/((?:src|scripts|documentation)(?:/[\\w.@-]+)*)`,
       'g',
     );
-    next = next.replace(pattern, (whole, virtual: string) => {
+    next = next.replace(pattern, (whole, written: string) => {
+      const virtual = coreVirtualPath(plan, written);
       const owner = ownerOfPath(plan, virtual);
-      if (owner === undefined || packageDirectory(plan, owner) === core) return whole;
-      return `${packageDirectory(plan, owner)}/${virtual}`;
+      if (owner === undefined) return whole;
+      return `${packageDirectory(plan, owner)}/${physicalPath(plan, owner, virtual)}`;
     });
   }
   // The same path inside a regular expression literal, written with `\/`.
@@ -668,10 +731,13 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
       'g',
     );
     next = next.replace(pattern, (whole, escaped: string) => {
-      const virtual = escaped.replaceAll('\\/', '/');
+      const virtual = coreVirtualPath(plan, escaped.replaceAll('\\/', '/'));
       const owner = ownerOfPath(plan, virtual);
-      if (owner === undefined || packageDirectory(plan, owner) === core) return whole;
-      return `${packageDirectory(plan, owner)}/${virtual}`.replaceAll('/', '\\/');
+      if (owner === undefined) return whole;
+      return `${packageDirectory(plan, owner)}/${physicalPath(plan, owner, virtual)}`.replaceAll(
+        '/',
+        '\\/',
+      );
     });
   }
   for (const fixup of fixups(core)) {
@@ -679,7 +745,10 @@ function rewriteRepositoryPaths(plan: Plan, path: string): void {
       next = next.replaceAll(fixup.from, fixup.to);
     }
   }
-  if (CODE_FILE.test(path)) next = rewriteSegmentedPaths(plan, path, next);
+  // Core's check baselines name files relative to core (`src/…`), so an entry follows its file to
+  // the package that takes it (`../<package>/src/…`), as the checks name it once it has moved.
+  const baseline = path.startsWith(`${core}/scripts/`) && path.endsWith('-baseline.json');
+  if (CODE_FILE.test(path) || baseline) next = rewriteSegmentedPaths(plan, path, next);
   if (next !== original) write(plan, path, next);
 }
 
@@ -1321,6 +1390,7 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
     pending: new Map(),
     location: new Map(),
     originals: new Map(),
+    relocateCoreTests: false,
   };
   const { root, core, families } = plan.options;
   for (const name of Object.keys(families.packages)) {
@@ -1342,6 +1412,9 @@ export async function extractFamilies(options: ExtractOptions): Promise<ExtractR
   }
   plan.result.warnings.push(...deferred.map((reason) => `deferred: ${reason}`));
   plan.selected = ready;
+  plan.relocateCoreTests = Object.entries(families.packages).every(
+    ([name, entry]) => entry.kind !== 'family' || plan.extracted.has(name) || ready.includes(name),
+  );
   plan.result.selected = ready;
   const cycles = selectionCycles(plan);
   if (cycles.length > 0) {
