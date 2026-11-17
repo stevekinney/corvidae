@@ -156,7 +156,11 @@
     gap: var(--cinder-space-4);
     /* Reserve trailing inline space so the title doesn't run under the
      absolute-positioned close button. */
-    padding-block: var(--cinder-space-4);
+    /* The title sits close to what it introduces: 8px under it plus the body's 16px above, so the
+       gap to the first line reads at about the body's own paragraph rhythm whether or not the rule
+       is drawn. Unconditional: the rule's presence follows the body's overflow, and padding that
+       followed it could change whether the body scrolls. */
+    padding-block: var(--cinder-space-4) var(--cinder-space-2);
     padding-inline-start: var(--cinder-space-5);
     padding-inline-end: calc(var(--cinder-space-5) + 2.25rem);
     /* The rule is drawn only while the body scrolls (below); a short confirmation has nothing to
@@ -286,7 +290,7 @@
        and the footer actions start on one edge (s4#8). No gutter is reserved: a reserved gutter
        made the body's inline-end inset wider than its start whenever the scrollbar is classic,
        even when nothing scrolls. */
-    padding: var(--cinder-space-6) var(--cinder-space-5);
+    padding: var(--cinder-space-4) var(--cinder-space-5);
     background: var(--cinder-surface-raised);
     overscroll-behavior: contain;
     scrollbar-gutter: auto;

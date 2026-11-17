@@ -50,6 +50,23 @@ describe('Drawer header and footer rules (COR-2448 AC4)', () => {
     );
   });
 
+  // COR-2448 review B: the same 8px under the title and 16px above the body as the Modal, drawn
+  // whether or not the rule is, and never following `data-cinder-scrollable`.
+  test('the title sits 8px above the body padding, unconditionally', () => {
+    expect(declared('.cinder-drawer__header', 'padding')).toBe(
+      'var(--cinder-space-4) var(--cinder-space-5) var(--cinder-space-2)',
+    );
+    expect(declared('.cinder-drawer__body', 'padding')).toBe(
+      'var(--cinder-space-4) var(--cinder-space-5)',
+    );
+    parse(css).walkRules((rule) => {
+      if (!rule.selector.includes('data-cinder-scrollable')) return;
+      rule.walkDecls(/^padding/, (declaration) => {
+        throw new Error(`${rule.selector} declares ${declaration.prop}`);
+      });
+    });
+  });
+
   test('a two-sentence body is not marked scrollable, a body taller than its box is', () => {
     const cleanupOverflowFade = installOverflowFadeTestEnvironment();
     try {
