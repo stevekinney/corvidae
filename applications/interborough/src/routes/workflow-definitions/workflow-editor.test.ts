@@ -8,6 +8,7 @@
  * changed on disk is "This file changed on disk." with Reload and Keep mine. An invalid file opens
  * on the JSON tab with where it stops being a workflow above it, so it can be fixed.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -920,6 +921,97 @@ describe('the step builder in the editor', () => {
     expect(definition['description']).toBe('Writes the digest.');
     expect(definition['agent']).toBe('writer');
     expect(definition).not.toHaveProperty('name');
+  });
+
+  test('correction round one: a schedule the When block shows but has not passed on refuses Save and goes to the field; fixed, it saves the spec on screen', async () => {
+    const { container, getByRole, getByLabelText } = open('/workflows/digest/edit');
+    await builderReady(container);
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    const minute = getByLabelText('Minute') as HTMLInputElement;
+    await fireEvent.input(minute, { target: { value: '75' } });
+    await waitFor(() => expect(minute.getAttribute('aria-invalid')).toBe('true'));
+
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(document.activeElement === minute).toBe(true));
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+
+    await fireEvent.input(minute, { target: { value: '30' } });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    const definition = stub?.callsTo('bureau.workflows.update')[0]?.params['definition'] as {
+      trigger: Record<string, unknown>;
+    };
+    expect(definition.trigger['spec']).toBe('30 6 * * *');
+  });
+
+  test('correction round one: Discard while the Bureau checks the draft writes nothing and leaves', async () => {
+    const { container, getByRole, findByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    let answer: (value: unknown) => void = () => {};
+    stub?.on(
+      'bureau.workflows.validate',
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Changed.' },
+    });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.validate')).toHaveLength(1));
+    // The check is in flight: Save is busy and Cancel is off, so the form cannot be pressed again.
+    expect((getByRole('button', { name: EDITOR.savingAction }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((getByRole('button', { name: EDITOR.cancelAction }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    // The person leaves by a link (the breadcrumb, say), which asks first, and discards.
+    router.navigate('/workflows/digest');
+    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.builder.discard.title });
+    const discard = [...dialog.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === WORKFLOW_COPY.builder.discard.confirm,
+    );
+    await fireEvent.click(discard as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+
+    answer({ status: 'ok', id: 'digest', hash: 'hash-1' });
+    // The answer reaches the page's continuation, which has been told the press is over: a write
+    // that must not happen gets its chance.
+    await quietFor(200);
+    expect(stub?.callsTo('bureau.workflows.update')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/digest');
+  });
+
+  test('COR-2432: a save the host cannot write names the file and why, nothing saved, Save the retry (row 65w)', async () => {
+    const { container, getByRole } = open('/workflows/digest/edit', {
+      files: [readyFile('digest', { title: 'Release notes' })],
+    });
+    await builderReady(container);
+    stub?.on('bureau.workflows.update', () => {
+      throw workflowFaults.writeFailed('digest.json');
+    });
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Changed.' },
+    });
+    await fireEvent.click(getByRole('button', { name: EDITOR.saveAction }));
+    const body = await waitFor(() => {
+      const found = container.querySelector('.weft-workflow-builder__alert-body');
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(container.querySelector('.weft-workflow-builder__alert-title')?.textContent).toBe(
+      EDITOR.saveFailed('Release notes'),
+    );
+    expect(body.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `${WORKFLOW_COPY.builder.writeFailed('digest.json', 'permission-denied')} ${WORKFLOW_COPY.creator.nothingSaved}`,
+    );
+    expect(field(container, 'workflow-builder-description').value).toBe('Changed.');
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    expect(getByRole('button', { name: EDITOR.saveAction })).toBeTruthy();
   });
 
   test('COR-2432: a file that names its schedule says saving changes that schedule, under its When block (row 65q)', async () => {

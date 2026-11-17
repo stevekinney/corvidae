@@ -41,7 +41,7 @@
     Tabs,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -66,6 +66,7 @@
     updateDefinitionFromText,
     updateWorkflowFile,
     validateWorkflowDefinition,
+    writeFailureOf,
     type WorkflowFileDetail,
   } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
@@ -125,7 +126,10 @@
   /** The Bureau saved the file and the engine could not follow, so what is on disk is the save. */
   let unapplied = $state(false);
   /** The builder, which takes the person to the line the JSON stops being JSON on. */
-  let builder = $state<{ focusProblem: () => Promise<void> }>();
+  let builder = $state<{
+    focusProblem: () => Promise<void>;
+    refuseShownSchedule: () => Promise<boolean>;
+  }>();
   /** The line the Bureau refused the document at, until the text changes (row 65z). */
   let documentProblem = $state<DocumentProblem | null>(null);
   /** The Bureau's checks are being asked before Save, so a second press waits for them. */
@@ -270,6 +274,7 @@
       failure = null;
     },
     onSuccess: () => {
+      checking = false;
       unapplied = false;
       // What was typed is saved, so leaving for the workflow's page asks nothing.
       leaveGuard.release();
@@ -277,16 +282,46 @@
       router.navigate(workflowTypePath(type));
     },
     onError: (error) => {
+      // The write answered, so nothing is in flight: the form is the person's again.
+      checking = false;
       if (isApplyFailure(error)) {
         void adoptWhatIsOnDisk();
+        return;
+      }
+      // The host's file system refused the file, which is what it was: said by its name (65w).
+      const refused = writeFailureOf(error);
+      if (refused !== undefined) {
+        failure = {
+          title: editor.saveFailed(name),
+          message: copy.builder.writeFailed(refused.file, refused.cause),
+        };
         return;
       }
       failWith(agentFaultOf(error), editor.saveFailed(name));
     },
   }));
 
+  // The busy state the check began hands over to the write once the write shows as pending, so
+  // the form never reads idle between the two.
+  $effect(() => {
+    if (save.isPending) untrack(() => (checking = false));
+  });
+
+  /**
+   * Which press of Save is current. Leaving the page (Discard, a link, back) moves it on, so a
+   * press still waiting for the Bureau's checks writes nothing once it answers (correction round
+   * one, item 3).
+   */
+  let submitGeneration = 0;
+  onDestroy(() => {
+    submitGeneration += 1;
+  });
+
   async function submit(): Promise<void> {
     if (base === null || save.isPending || changedOnDisk || checking) return;
+    // A schedule the When block shows but has not passed on is not the one in the text, so
+    // nothing is written until it is fixed (correction round one, item 1).
+    if (await builder?.refuseShownSchedule()) return;
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
       // The JSON tab marks the line to fix, and the footer says it; Save takes the person there.
@@ -297,19 +332,23 @@
     // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Save.
     const asked = text;
     const expectedHash = base;
+    const generation = (submitGeneration += 1);
     checking = true;
     const problem = await documentProblemFor(asked, () =>
       validateWorkflowDefinition({ id: type, expectedHash, definition: parsed.definition }),
-    ).finally(() => {
+    );
+    if (generation !== submitGeneration || text !== asked || base !== expectedHash) {
       checking = false;
-    });
-    if (text !== asked || base !== expectedHash) return;
+      return;
+    }
     if (problem !== undefined) {
+      checking = false;
       documentProblem = problem;
       await tick();
       void builder?.focusProblem();
       return;
     }
+    // The form stays busy from the check into the write: the save's own settling ends it.
     save.mutate({ expectedHash, definition: parsed.definition });
   }
 
@@ -366,7 +405,7 @@
 
   /** What the footer says in place of the read-back: the version a save makes, or is making. */
   const footerStatus = $derived.by((): string | undefined => {
-    if (save.isPending) return editor.savingVersion(saveImpact?.version ?? null);
+    if (save.isPending || checking) return editor.savingVersion(saveImpact?.version ?? null);
     return saveImpact === undefined ? undefined : editor.saveAs(saveImpact.version);
   });
 
@@ -518,7 +557,7 @@
           {text}
           mode="edit"
           error=""
-          saving={save.isPending}
+          saving={save.isPending || checking}
           {failure}
           initialTab={loaded.state === 'invalid' ? 'json' : loadingTab}
           jsonId="workflow-editor-text"
@@ -535,8 +574,11 @@
           }}
         >
           {#snippet actions()}
-            <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
-              >{editor.cancelAction}</Button
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={save.isPending || checking}
+              onclick={cancel}>{editor.cancelAction}</Button
             >
             <Button
               data-changes
@@ -544,8 +586,8 @@
               onclick={() => void submit()}
               variant="primary"
               size="sm"
-              disabled={save.isPending}
-              >{save.isPending ? editor.savingAction : editor.saveAction}</Button
+              disabled={save.isPending || checking}
+              >{save.isPending || checking ? editor.savingAction : editor.saveAction}</Button
             >
           {/snippet}
         </WorkflowBuilder>
@@ -563,7 +605,11 @@
   confirmLabel={copy.builder.discard.confirm}
   cancelLabel={copy.builder.discard.keep}
   destructive
-  onConfirm={() => leaveGuard.leave()}
+  onConfirm={() => {
+    // A press still waiting for the Bureau's checks writes nothing after a discard.
+    submitGeneration += 1;
+    leaveGuard.leave();
+  }}
 />
 
 <style>

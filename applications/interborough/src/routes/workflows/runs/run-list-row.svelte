@@ -37,6 +37,8 @@
      * caller who may not read the engine would find missing; its row then does not open, and says why.
      */
     readable?: boolean;
+    /** Whether the row is listed on its own workflow's page, whose line two then reads its own way (rows 63o, 63p). */
+    withinWorkflow?: boolean;
   }
 
   let {
@@ -48,6 +50,7 @@
     scheduleCadence = undefined,
     href = undefined,
     readable = true,
+    withinWorkflow = false,
   }: Props = $props();
 
   const word = $derived(runStatusWord(row, now));
@@ -56,6 +59,7 @@
       now,
       zone,
       agentLabel,
+      withinWorkflow,
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
       ...(scheduleCadence === undefined ? {} : { scheduleCadence }),
     }),

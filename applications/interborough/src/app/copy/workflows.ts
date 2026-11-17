@@ -654,6 +654,22 @@ export const WORKFLOW_COPY = {
     retryTriggers: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
+    /**
+     * A write the host's file system refused (rows 65n and 65w): "release-notes.json couldn’t be
+     * written: permission denied." `file` is how the page names the file.
+     */
+    writeFailed: (
+      file: string,
+      cause: 'permission-denied' | 'no-space' | 'read-only' | 'other',
+    ): string =>
+      `${file} couldn’t be written: ${
+        {
+          'permission-denied': 'permission denied',
+          'no-space': 'no space left on the disk',
+          'read-only': 'the disk is read-only',
+          other: 'the file system refused it',
+        }[cause]
+      }.`,
     /** Under the When block of a file that names its schedule, on Edit (row 65q). */
     scheduleDefinedNote: (name: string): string =>
       `This file defines the ${name} schedule, so saving changes that schedule. You can also start the workflow yourself.`,

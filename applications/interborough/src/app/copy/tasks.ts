@@ -60,7 +60,9 @@ export const TASK_COPY = {
     failedAtStep: (at: number, total: number): string =>
       `failed at step ${String(at)} of ${String(total)}`,
     /** What an instance parked at an `await-signal` step waits for, and how long it has. */
-    waitingForSignal: (signal: string): string => `waiting for signal ${signal}`,
+    waitingForSignal: (signal: string): string => `waiting for the signal ${signal}`,
+    /** Who started a workflow's run from its page, on that page's own list (row 63o). */
+    you: 'You',
     /** When a run that asked to be woken is due, at the end of line two: "due today at 11:00 AM". */
     dueAt: (when: string): string => `due ${when}`,
     due: { today: 'today', tomorrow: 'tomorrow' },

@@ -438,6 +438,36 @@ const validationSchema = z.discriminatedUnion('status', [
 /** What `bureau.workflows.validate` answers: the draft would be written, is refused with issues, or conflicts. */
 export type WorkflowValidation = z.infer<typeof validationSchema>;
 
+/** Why the host's file system refused to write a workflow file: a closed set (COR-2432). */
+export const WRITE_FAILURE_CAUSES = [
+  'permission-denied',
+  'no-space',
+  'read-only',
+  'other',
+] as const;
+
+/** A write the host's file system refused: the file's name in the workflows directory, and why. */
+export type WorkflowWriteFailure = {
+  readonly file: string;
+  readonly cause: (typeof WRITE_FAILURE_CAUSES)[number];
+};
+
+/**
+ * The refused write a create or an update was answered with (`Unprocessable`, `data.reason`
+ * `write-failed`), or `undefined` for any other error. A cause outside the closed set reads as
+ * `other`, and a file name that is not one plain file name is not trusted, so neither a path nor
+ * the operating system's words ever reach the page.
+ */
+export function writeFailureOf(error: unknown): WorkflowWriteFailure | undefined {
+  if (!(error instanceof HttpClientError)) return undefined;
+  const data = error.data;
+  if (data?.['weftCode'] !== 'Unprocessable' || data['reason'] !== 'write-failed') return undefined;
+  const file = data['file'];
+  if (typeof file !== 'string' || !/^[^/\\]+\.json$/.test(file)) return undefined;
+  const cause = WRITE_FAILURE_CAUSES.find((known) => known === data['cause']) ?? 'other';
+  return { file, cause };
+}
+
 /** The schema of `bureau.workflows.validate`, exported so a capture's stubbed answer is checked against it. */
 export const workflowValidationSchema = validationSchema;
 

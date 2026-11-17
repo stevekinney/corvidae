@@ -235,6 +235,62 @@ describe('COR-2431: how far an instance got, what it waits for, and why it faile
     expect(line).toContain(TASK_COPY.list.stepOf(4, 4));
   });
 
+  test('a run waiting for a person (no awaited signal) is Waiting on you, never the hollow Waiting', () => {
+    const rows = workflowRunRows(
+      [summary({ status: 'suspended', steps: { total: 2, at: 2 }, awaitingSignal: null })],
+      FILE,
+    );
+    const [row] = rows;
+    if (row === undefined) throw new Error('Expected one row');
+    expect(runStatusWord(row)).toBe('Waiting on you');
+    expect(runSegmentCounts(rows).waiting).toBe(1);
+    expect(runSegmentCounts(rows).signal).toBe(0);
+  });
+
+  test('on its workflow’s page a run a person started reads "Workflow, You", the signal before the step (row 63o)', () => {
+    const [row] = workflowRunRows(
+      [
+        summary({
+          status: 'suspended',
+          origin: { kind: 'person', principal: 'local', surface: 'web' },
+          steps: { total: 4, at: 4 },
+          awaitingSignal: 'notes-approved',
+        }),
+      ],
+      FILE,
+    );
+    if (row === undefined) throw new Error('Expected one row');
+    expect(runLineTwo(row, { ...LINE, withinWorkflow: true })).toBe(
+      'Workflow, You, waiting for the signal notes-approved, step 4 of 4',
+    );
+  });
+
+  test('on its workflow’s page a scheduled run says its agent and when the schedule runs, and a failed one its schedule (rows 63p, 62n)', () => {
+    const scheduled = { kind: 'schedule', scheduleId: 'schedule-1', fireId: 'fire-1' } as const;
+    const context = {
+      ...LINE,
+      withinWorkflow: true,
+      scheduleCadence: (id: string) => (id === 'schedule-1' ? 'every day at 8:00 AM' : undefined),
+    };
+    const done = workflowRunRow(summary({ origin: scheduled, steps: { total: 3, at: 3 } }), {
+      ...FILE,
+      agentName: 'Assistant',
+    });
+    expect(runLineTwo(done, context)).toBe('Schedule, Assistant, every day at 8:00 AM, 3 s');
+    const failed = workflowRunRow(
+      summary({
+        status: 'failed',
+        origin: scheduled,
+        steps: { total: 4, at: 2 },
+        failure: 'GitHub didn’t answer',
+      }),
+      { ...FILE, agentName: 'Assistant' },
+    );
+    expect(runLineTwo(failed, context)).toBe(
+      'Schedule, Release notes digest, failed at step 2 of 4, GitHub didn’t answer, 3 s',
+    );
+  });
+
   test('a row with no workflow type says none of them, as before', () => {
     const row = workflowRunRow(
       summary({ status: 'failed', steps: { total: 4, at: 2 }, failure: 'boom' }),

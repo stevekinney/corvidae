@@ -128,18 +128,24 @@ export function refusedValidation(): JsonRecord {
 }
 
 /**
- * The JSON-RPC error a write that the host could not put on disk is answered with, as the client
- * reads a refusal (rows 65n and 65w). `file` is how the page names the file. The host does not
- * answer this sentence today (COR-2432 reports the gap); the capture draws the state the board does.
+ * The JSON-RPC error the Bureau answers a write its file system refused with (rows 65n and 65w):
+ * `Unprocessable` with `data.reason` `write-failed`, the file's name in the workflows directory
+ * (`morning-briefing.json`), and the closed cause `permission-denied`. The page names the file.
  */
 export function unwritableAnswer(id: unknown, file: string): JsonRecord {
   return {
     jsonrpc: '2.0',
     id,
     error: {
-      code: -32000,
+      code: -32022,
       message: `${file} couldn’t be written: permission denied.`,
-      data: { reason: 'workflow-file-unwritable', weftCode: 'Unprocessable', httpStatus: 422 },
+      data: {
+        reason: 'write-failed',
+        file,
+        cause: 'permission-denied',
+        weftCode: 'Unprocessable',
+        httpStatus: 422,
+      },
     },
   };
 }

@@ -134,7 +134,10 @@ export function lastRunLine(input: {
       // A run parked at a signal says which one it waits for (row 63n), not a status word.
       parts.push([{ text: copy.waitingForSignal }, { text: waiting, code: true }]);
     } else {
-      const word = workflowRunStatusWord(last.status);
+      // A file's instance parked at a step that names no signal waits for a person: it reads as
+      // its row does, Waiting on you, never Paused (correction round one, item 2).
+      const word: StatusWord =
+        last.status === 'suspended' ? 'Waiting on you' : workflowRunStatusWord(last.status);
       const step = last.step ?? null;
       // "Failed at step 2" (row 62c): the step a failed run stopped at follows its word.
       parts.push([

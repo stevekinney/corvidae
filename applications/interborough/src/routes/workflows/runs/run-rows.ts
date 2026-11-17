@@ -833,6 +833,14 @@ export type RunLineContext = {
    * identifier, or `undefined` when the schedule was not read (row 53l).
    */
   readonly scheduleCadence?: (scheduleId: string) => string | undefined;
+  /**
+   * The rows are listed on their own workflow's page (the Runs tab), which already names the
+   * workflow and its schedule: an instance a schedule fired says the schedule's cadence after its
+   * agent rather than the schedule's name ("Schedule, Assistant, every day at 8:00 AM, 41 s", row
+   * 63p), and one a person started reads "Workflow, You" (row 63o). A failed one still names its
+   * schedule, where and why it failed (row 62n).
+   */
+  readonly withinWorkflow?: boolean;
 };
 
 /**
@@ -869,20 +877,31 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
           : row.origin.kind === 'trigger' && row.origin.plugin !== null
             ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
             : TASK_COPY.unknownAgent;
-  // A run of a workflow file that nothing recorded an origin for is still a workflow's.
+  // On its own workflow's page an instance reads by who started it and when its schedule runs,
+  // which that page does not already say (rows 63o, 63p); a failed one keeps its schedule's name.
+  const onItsPage = context.withinWorkflow === true && instance;
+  const byYou = onItsPage && row.origin.kind === 'person';
+  // A run of a workflow file that nothing recorded an origin for is still a workflow's, and so is
+  // one a person started from its own page.
   const kind =
-    instance && row.origin.kind === 'none' ? copy.kinds.parent : copy.kinds[row.origin.kind];
+    (instance && row.origin.kind === 'none') || byYou
+      ? copy.kinds.parent
+      : copy.kinds[row.origin.kind];
   const parts: string[] = [kind];
-  if (instance && row.scheduleName !== null && row.scheduleName !== undefined) {
+  const namesSchedule = !onItsPage || row.status === 'failed';
+  if (instance && namesSchedule && row.scheduleName !== null && row.scheduleName !== undefined) {
     parts.push(row.scheduleName);
   }
-  if (agent !== null) parts.push(agent);
+  if (byYou) parts.push(copy.you);
+  else if (agent !== null) parts.push(agent);
   // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,
-  // every day at 3:00 AM, 14 s" (row 53l).
+  // every day at 3:00 AM, 14 s" (row 53l), and so does an instance on its own workflow's page.
   const scheduleId =
     row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
   const cadence =
-    !instance && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
+    (!instance || (onItsPage && !namesSchedule)) && scheduleId !== null
+      ? context.scheduleCadence?.(scheduleId)
+      : undefined;
   if (cadence !== undefined && cadence !== '') parts.push(cadence);
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
   if (tick !== null) {
@@ -902,15 +921,18 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       break;
     case 'submitted':
     case 'working':
+      // What it waits for comes first, then how far it got: "waiting for the signal
+      // notes-approved, step 4 of 4" (row 63o).
+      if (awaiting !== null) parts.push(copy.waitingForSignal(awaiting));
       if (steps !== null && steps !== undefined && reached !== null) {
         parts.push(copy.stepOf(reached, steps.total));
       }
-      if (awaiting !== null) {
-        parts.push(copy.waitingForSignal(awaiting));
-      } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
-        parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
-      } else {
-        parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
+      if (awaiting === null) {
+        parts.push(
+          runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null
+            ? copy.dueAt(dueWords(row.dueAt, context.now, context.zone))
+            : copy.runningFor(durationWords(context.now - row.startedAt)),
+        );
       }
       break;
     case 'canceled':

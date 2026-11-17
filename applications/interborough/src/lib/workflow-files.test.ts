@@ -21,6 +21,7 @@ import {
   signalWorkflows,
   updateDefinitionFromText,
   updateWorkflowFile,
+  writeFailureOf,
 } from './workflow-files.ts';
 import {
   DOCUMENT_TEXT,
@@ -31,6 +32,38 @@ import {
   workflowFaults,
   type WorkflowStub,
 } from './workflow-world.test-support.ts';
+
+describe('COR-2432: a write the host’s file system refused', () => {
+  const refusal = (data: Record<string, unknown>) =>
+    new HttpClientError(422, 'refused', {
+      faultCode: 'Unprocessable',
+      data: { weftCode: 'Unprocessable', ...data },
+    });
+
+  test('is read as the file’s name and a closed cause', () => {
+    expect(
+      writeFailureOf(
+        refusal({ reason: 'write-failed', file: 'release-notes.json', cause: 'no-space' }),
+      ),
+    ).toEqual({ file: 'release-notes.json', cause: 'no-space' });
+  });
+
+  test('reads an unknown cause as other, and trusts no path', () => {
+    expect(
+      writeFailureOf(refusal({ reason: 'write-failed', file: 'a.json', cause: 'EACCES' })),
+    ).toEqual({ file: 'a.json', cause: 'other' });
+    expect(
+      writeFailureOf(
+        refusal({ reason: 'write-failed', file: '/Users/me/.interborough/workflows/a.json' }),
+      ),
+    ).toBeUndefined();
+  });
+
+  test('is no write failure for any other refusal', () => {
+    expect(writeFailureOf(refusal({ reason: 'invalid-document' }))).toBeUndefined();
+    expect(writeFailureOf(new Error('boom'))).toBeUndefined();
+  });
+});
 
 let stub: WorkflowStub | undefined;
 afterEach(() => {

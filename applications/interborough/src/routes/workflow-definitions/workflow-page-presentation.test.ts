@@ -129,6 +129,23 @@ describe('the last run of a workflow', () => {
     ]);
   });
 
+  test('a run waiting for a person, which names no signal, reads Waiting on you (correction round one)', () => {
+    const line = lastRunLine({
+      lastRun: {
+        id: 'run-3',
+        status: 'suspended',
+        createdAt: Date.parse('2026-11-02T10:05:00-06:00'),
+        step: 2,
+        awaitingSignal: null,
+      },
+      fileName: 'release-notes.json',
+      runHref: (id) => `/runs/${id}`,
+      now: NOW,
+      zone: ZONE,
+    });
+    expect(line?.parts[1]).toEqual([{ text: '', word: 'Waiting on you' }]);
+  });
+
   test('says Never run only once the engine says there is no run, and nothing while it has not said', () => {
     const never = lastRunLine({
       lastRun: null,

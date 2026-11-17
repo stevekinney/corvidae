@@ -133,7 +133,9 @@ for (const width of WIDTHS) {
       await expect(line).toContainText('Waiting for the signal');
       await expect(line.locator('code', { hasText: 'notes-approved' })).toBeVisible();
       const runs = detail(page).getByTestId('workflow-recent-runs');
-      await expect(runs).toContainText('waiting for signal notes-approved');
+      await expect(runs).toContainText(
+        'Workflow, You, waiting for the signal notes-approved, step 4 of 4',
+      );
       await expect(runs).toContainText('Waiting');
       await captureForDesignReview(page, {
         route: '/workflows/:workflow',
@@ -394,11 +396,7 @@ for (const width of WIDTHS) {
       test('Create that the host cannot write: the error at the action, nothing saved (65n)', async ({
         page,
       }) => {
-        await answerUnwritable(
-          page,
-          'bureau.workflows.create',
-          '~/.interborough/workflows/morning-briefing.json',
-        );
+        await answerUnwritable(page, 'bureau.workflows.create', 'morning-briefing.json');
         const root = await openBuilder(page, '/workflows/new', width);
         await openJsonTab(root);
         const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);

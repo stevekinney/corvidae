@@ -314,6 +314,13 @@ export const workflowFaults = {
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
+  /** A write the host's file system refused, as the Bureau answers it (COR-2432). */
+  writeFailed: (file: string, cause = 'permission-denied') =>
+    new StubFault('Unprocessable', 422, `${file} couldn’t be written: permission denied.`, {
+      reason: 'write-failed',
+      file,
+      cause,
+    }),
   /**
    * A chat a caller named that the Bureau does not hold for it: under a workspace the Bureau
    * answers a chat that is missing and one that is another owner's the same way, so a page that

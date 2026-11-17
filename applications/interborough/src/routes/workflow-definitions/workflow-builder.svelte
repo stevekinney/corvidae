@@ -190,6 +190,22 @@
 
   /** The JSON tab's editor, which finds and focuses the line its text stops being JSON on. */
   let jsonEditor = $state<{ focusProblem: () => void; focusLine: (line: number) => void }>();
+  /** The schedule's When block, which keeps the last good cadence while a field shows a problem. */
+  let whenBlock = $state<{ isInvalid: () => boolean; focusProblem: () => boolean }>();
+
+  /**
+   * Whether the When block shows a cadence it has not passed on (a custom cron out of range, say),
+   * so the text still holds the schedule before it: a save then would write a schedule other than
+   * the one on screen. When it does, the Builder tab opens and focus goes to the field, and the
+   * page refuses to save (correction round one, item 1).
+   */
+  export async function refuseShownSchedule(): Promise<boolean> {
+    if (whenBlock?.isInvalid() !== true) return false;
+    tab = 'builder';
+    await tick();
+    whenBlock?.focusProblem();
+    return true;
+  }
 
   /**
    * The agents an agent step can name. A host that cannot list them leaves the agent to be typed;
@@ -813,6 +829,7 @@
                    they write is the file's spec, timezone, overlap and catchUp (row 65d). -->
               {@const trigger = view.trigger}
               <ScheduleWhen
+                bind:this={whenBlock}
                 value={scheduleValue}
                 onValueChange={(next) => write(setScheduleFields(text, scheduleFieldsOf(next)))}
                 label={copy.scheduleLabel}

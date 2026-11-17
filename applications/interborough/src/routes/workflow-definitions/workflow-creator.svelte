@@ -16,8 +16,8 @@
    * asks first.
    */
   import { Button, ConfirmDialog, PageHeader } from '@lostgradient/cinder';
-  import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, tick, untrack } from 'svelte';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
@@ -30,7 +30,10 @@
     isApplyFailure,
     isIdentifierTaken,
     validateWorkflowDefinition,
+    writeFailureOf,
   } from '../../lib/workflow-files.ts';
+  import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import WorkflowBuilder from './workflow-builder.svelte';
   import { workflowProblems } from './workflow-builder-problems.ts';
@@ -60,13 +63,26 @@
   /** The ID the Bureau said a file already has. */
   let takenId = $state<string>();
   /** The builder, which takes the person to the first problem. */
-  let builder = $state<{ focusProblem: () => Promise<void> }>();
+  let builder = $state<{
+    focusProblem: () => Promise<void>;
+    refuseShownSchedule: () => Promise<boolean>;
+  }>();
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
   /**
    * The Bureau found a problem the page can point at (a taken ID). The form is read-only while the
    * save is in flight, and a read-only form cannot take focus, so the focus waits for the answer.
    */
   let focusAfterSave = $state(false);
+  // Where the file goes, so a write the host refused names it as a person finds it (row 65n).
+  const hostPaths = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPaths(),
+      queryFn: ({ signal }) => getHostPaths({ signal }),
+      refetchOnWindowFocus: false,
+      retry: false,
+    }),
+    undefined,
+  );
   /** The line the Bureau refused the document at, until the text changes (row 65z). */
   let documentProblem = $state<DocumentProblem | null>(null);
   /** The Bureau's checks are being asked before Create, so a second press waits for them. */
@@ -88,11 +104,26 @@
     onMutate: () => {
       failure = null;
     },
-    onSuccess: (_result, { id }) => created(id),
+    onSuccess: (_result, { id }) => {
+      checking = false;
+      created(id);
+    },
     onError: (error, { id }) => {
+      // The write answered, so nothing is in flight: the form is the person's again.
+      checking = false;
       // The Bureau wrote the file and the engine could not follow: it is there, and applies it again.
       if (isApplyFailure(error)) {
         created(id);
+        return;
+      }
+      // The host's file system refused the file: said with its path as the person knows it (65n).
+      const refused = writeFailureOf(error);
+      if (refused !== undefined) {
+        const directory = hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory;
+        failure = {
+          title: creator.saveFailed,
+          message: copy.builder.writeFailed(workflowFilePath(directory, id), refused.cause),
+        };
         return;
       }
       if (isIdentifierTaken(error)) {
@@ -121,14 +152,33 @@
     },
   }));
 
+  // The busy state the check began hands over to the write once the write shows as pending, so
+  // the form never reads idle between the two.
+  $effect(() => {
+    if (save.isPending) untrack(() => (checking = false));
+  });
+
   $effect(() => {
     if (save.isPending || !focusAfterSave) return;
     focusAfterSave = false;
     untrack(() => void builder?.focusProblem());
   });
 
+  /**
+   * Which press of Create is current. Leaving the page (Discard, a link, back) moves it on, so a
+   * press still waiting for the Bureau's checks writes nothing once it answers (correction round
+   * one, item 3).
+   */
+  let submitGeneration = 0;
+  onDestroy(() => {
+    submitGeneration += 1;
+  });
+
   async function submit(): Promise<void> {
     if (save.isPending || checking) return;
+    // A schedule the When block shows but has not passed on is not the one in the text, so
+    // nothing is written until it is fixed (correction round one, item 1).
+    if (await builder?.refuseShownSchedule()) return;
     const parsed = createDefinitionFromText(text);
     const problems = workflowProblems(text, {
       mode: 'create',
@@ -142,20 +192,24 @@
     // The Bureau's own checks first, so a document it refuses is marked at its line on the JSON
     // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Create.
     const asked = text;
+    const generation = (submitGeneration += 1);
     checking = true;
     const problem = await documentProblemFor(asked, () =>
       validateWorkflowDefinition({ id: parsed.id, definition: parsed.definition }),
-    ).finally(() => {
+    );
+    if (generation !== submitGeneration || text !== asked) {
       checking = false;
-    });
-    if (text !== asked) return;
+      return;
+    }
     if (problem !== undefined) {
+      checking = false;
       documentProblem = problem;
       checked = true;
       await tick();
       void builder?.focusProblem();
       return;
     }
+    // The form stays busy from the check into the write: the save's own settling ends it.
     save.mutate({ id: parsed.id, definition: parsed.definition });
   }
 
@@ -190,7 +244,7 @@
       error=""
       showProblems={checked}
       {...takenId === undefined ? {} : { takenId }}
-      saving={save.isPending}
+      saving={save.isPending || checking}
       {failure}
       {documentProblem}
       jsonId="workflow-creator-text"
@@ -203,7 +257,7 @@
       }}
     >
       {#snippet actions()}
-        <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
+        <Button variant="secondary" size="sm" disabled={save.isPending || checking} onclick={cancel}
           >{creator.cancelAction}</Button
         >
         <Button
@@ -212,8 +266,8 @@
           onclick={() => void submit()}
           variant="primary"
           size="sm"
-          disabled={save.isPending}
-          >{save.isPending ? creator.creatingAction : creator.saveAction}</Button
+          disabled={save.isPending || checking}
+          >{save.isPending || checking ? creator.creatingAction : creator.saveAction}</Button
         >
       {/snippet}
     </WorkflowBuilder>
@@ -228,5 +282,9 @@
   confirmLabel={copy.builder.discard.confirm}
   cancelLabel={copy.builder.discard.keep}
   destructive
-  onConfirm={() => leaveGuard.leave()}
+  onConfirm={() => {
+    // A press still waiting for the Bureau's checks writes nothing after a discard.
+    submitGeneration += 1;
+    leaveGuard.leave();
+  }}
 />

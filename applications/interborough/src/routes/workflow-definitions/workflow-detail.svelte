@@ -85,6 +85,7 @@
   import { kindPlugin } from '../../lib/plugin-title.ts';
   import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
   import { cancelSchedule } from '../schedules/schedule-queries.ts';
+  import { cadenceClauseOf } from '../workflows/runs/run-schedule-cadence.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
   import DeleteWorkflowDialog, { type DeleteDialogSchedule } from './delete-workflow-dialog.svelte';
   import RecentRuns from './recent-runs.svelte';
@@ -640,6 +641,25 @@
       ]),
     ),
   );
+  /** When each schedule runs, in the viewer's time, which a run's row on the Runs tab says (row 63p). */
+  const scheduleCadences = $derived(
+    new Map(
+      (schedules.data ?? []).map((schedule) => [
+        schedule.id,
+        cadenceClauseOf(
+          {
+            cronExpression: schedule.cronExpression ?? null,
+            intervalMs: schedule.intervalMs ?? null,
+            timeZone: schedule.timeZone,
+            nextFireAt:
+              schedule.nextFireAt === null ? null : new Date(schedule.nextFireAt).toISOString(),
+          },
+          undefined,
+          { scheduleZone: false },
+        ),
+      ]),
+    ),
+  );
   const headerSchedules = $derived<HeaderSchedule[]>(
     (schedules.data ?? []).map((schedule) => ({
       label: scheduleName ?? schedule.description ?? schedule.id,
@@ -965,6 +985,7 @@
             {canStart}
             paused={file?.paused === true}
             {scheduleNames}
+            {scheduleCadences}
           />
         </Tabs.Panel>
         {#if tabs.includes('history')}

@@ -70,6 +70,8 @@
     paused: boolean;
     /** The name of each schedule that starts the workflow, by its identifier: line two names it. */
     scheduleNames?: ReadonlyMap<string, string>;
+    /** When each schedule runs, as a clause in the viewer's time ("every day at 8:00 AM", row 63p). */
+    scheduleCadences?: ReadonlyMap<string, string>;
   }
 
   let {
@@ -80,6 +82,7 @@
     canStart,
     paused,
     scheduleNames = new Map<string, string>(),
+    scheduleCadences = new Map<string, string>(),
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.page.runs;
@@ -283,6 +286,8 @@
               {zone}
               {agentLabel}
               {pluginTitle}
+              scheduleCadence={(scheduleId) => scheduleCadences.get(scheduleId)}
+              withinWorkflow
               href={workflowRunPath(type, row.id)}
             />
           {/snippet}

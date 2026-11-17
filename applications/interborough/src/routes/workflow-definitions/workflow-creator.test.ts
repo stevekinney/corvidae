@@ -6,6 +6,7 @@
  * identifier or is `new`, and a taken name show the error and save nothing; a document the Bureau
  * refuses shows its words. A save lands on the new page.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -19,6 +20,7 @@ import {
   emptyWorld,
   installWorkflowWorld,
   readyFile,
+  STUB_WORKFLOW_DIRECTORY,
   workflowFaults,
   type WorkflowStub,
   type World,
@@ -226,15 +228,19 @@ describe('the new-workflow editor', () => {
     const { container, getByRole, findByRole } = open();
     await openJson(container);
     await typeInto(container, withName('fresh-flow'));
-    for (const fault of [
+    const faults = [
       workflowFaults.conflict('agent-file-exists'),
       workflowFaults.stale('hash', 'old'),
       workflowFaults.notFound('workflow'),
-    ]) {
+    ];
+    for (const [index, fault] of faults.entries()) {
       stub?.on('bureau.workflows.create', () => {
         throw fault;
       });
-      await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+      // Each press waits for the last one to answer: Create is back before it is pressed again.
+      const create = await findByRole('button', { name: WORKFLOW_COPY.creator.saveAction });
+      await fireEvent.click(create);
+      await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(index + 1));
       const alert = await findByRole('alert');
       expect(alert.textContent).toContain(WORKFLOW_COPY.creator.saveFailed);
       expect(alert.textContent).not.toContain(fault.message);
@@ -944,6 +950,109 @@ describe('the builder', () => {
       true,
     );
     expect(container.textContent).toContain(BUILDER.phone.message);
+  });
+
+  test('correction round one: a schedule the When block shows but has not passed on refuses Create and goes to the field; fixed, it saves the spec on screen', async () => {
+    const { container, getByLabelText } = open(listed('demo:assistant'));
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-name'), {
+      target: { value: 'cron-check' },
+    });
+    await chooseAgent(container, 1, 'demo:assistant');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: 'Say hello.' },
+    });
+    await fireEvent.click(start(container, 'schedule'));
+    await waitFor(() => expect(getByLabelText('Repeats')).toBeTruthy());
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    const minute = getByLabelText('Minute') as HTMLInputElement;
+    await fireEvent.input(minute, { target: { value: '75' } });
+    await waitFor(() => expect(minute.getAttribute('aria-invalid')).toBe('true'));
+
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+    await waitFor(() => expect(document.activeElement === minute).toBe(true));
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+
+    await fireEvent.input(minute, { target: { value: '15' } });
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/cron-check'));
+    expect(
+      (created()?.definition['trigger'] as Record<string, unknown> | undefined)?.['spec'],
+    ).toBe('15 9 * * 1-5');
+  });
+
+  test('correction round one: leaving while the Bureau checks the draft creates nothing', async () => {
+    const { container, findByRole } = open(listed('demo:assistant'));
+    await ready(container);
+    let answer: (value: unknown) => void = () => {};
+    stub?.on(
+      'bureau.workflows.validate',
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await fireEvent.input(field(container, 'workflow-builder-name'), {
+      target: { value: 'left-behind' },
+    });
+    await chooseAgent(container, 1, 'demo:assistant');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: 'Say hello.' },
+    });
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.validate')).toHaveLength(1));
+    expect(button(container, WORKFLOW_COPY.creator.creatingAction).disabled).toBe(true);
+    expect(button(container, WORKFLOW_COPY.creator.cancelAction).disabled).toBe(true);
+
+    router.navigate('/workflows');
+    const dialog = await findByRole('dialog', { name: BUILDER.discard.title });
+    const discard = [...dialog.querySelectorAll('button')].find(
+      (candidate) => candidate.textContent?.trim() === BUILDER.discard.confirm,
+    );
+    await fireEvent.click(discard as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows'));
+
+    answer({ status: 'ok', id: 'left-behind', hash: 'hash-new' });
+    // A create that must not happen gets its chance.
+    await quietFor(200);
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(router.pathname).toBe('/workflows');
+  });
+
+  test('COR-2432: a file the host cannot write says its path and why, keeps what was typed, and Create is the retry (row 65n)', async () => {
+    const { container } = open(listed('demo:assistant'));
+    await ready(container);
+    stub?.on('bureau.workflows.create', () => {
+      throw workflowFaults.writeFailed('morning-briefing.json');
+    });
+    await openJson(container);
+    const text = JSON.stringify(
+      {
+        name: 'morning-briefing',
+        trigger: { kind: 'manual' },
+        steps: [{ kind: 'sleep', duration: '15m' }],
+      },
+      null,
+      2,
+    );
+    await typeInto(container, text);
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+
+    const alert = await waitFor(() => {
+      const found = container.querySelector('.weft-workflow-builder__alert-body');
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(alert.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `${BUILDER.writeFailed(`${STUB_WORKFLOW_DIRECTORY}/morning-briefing.json`, 'permission-denied')} ${WORKFLOW_COPY.creator.nothingSaved}`,
+    );
+    expect(textarea(container).value).toBe(text);
+    expect(router.pathname).toBe('/workflows/new');
+    expect(
+      [...container.querySelectorAll('button')].some((candidate) =>
+        candidate.textContent?.includes('Try again'),
+      ),
+    ).toBe(false);
   });
 
   test('COR-2432: ⌘Enter creates nothing below 640 pixels, where the builder is read-only', async () => {
