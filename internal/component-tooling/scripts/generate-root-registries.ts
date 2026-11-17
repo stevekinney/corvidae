@@ -169,7 +169,7 @@ function cinderHolders(packageRoot: string): Holder[] {
 }
 
 /** Every directory that holds component directories: core's own, then each Cinder package's. */
-function componentsRoots(packageRoot: string, holders: readonly Holder[]): string[] {
+function cinderComponentsRoots(packageRoot: string, holders: readonly Holder[]): string[] {
   return [packageRoot, ...holders.map((holder) => holder.root)]
     .map((root) => join(root, 'src', 'components'))
     .filter((root) => existsSync(root));
@@ -180,7 +180,10 @@ export function rootBarrelDirectories(
   packageRoot: string = DEFAULT_PACKAGE_ROOT,
   recorded?: readonly string[],
 ): string[] {
-  return barrelDirectories(componentsRoots(packageRoot, cinderHolders(packageRoot)), recorded);
+  return barrelDirectories(
+    cinderComponentsRoots(packageRoot, cinderHolders(packageRoot)),
+    recorded,
+  );
 }
 
 /**
@@ -342,7 +345,7 @@ function sortKey(claim: Claim): string {
 
 function renderIndexRegion(packageRoot: string, handAuthored: Set<string>): string {
   const holders = cinderHolders(packageRoot);
-  const roots = componentsRoots(packageRoot, holders);
+  const roots = cinderComponentsRoots(packageRoot, holders);
   const locations = barrelLocations(roots);
   const directories = barrelDirectories(roots);
   const claimsByName = new Map<string, Claim[]>();
@@ -379,7 +382,7 @@ function renderCssRegion(packageRoot: string): string {
   const holders = cinderHolders(packageRoot);
   const skipped = new Set(CSS_REACHED_THROUGH_IMPORTS);
   // Ordered and pinned by the path core gave each stylesheet, wherever it lives now (P-COR-101).
-  const order = componentsRoots(packageRoot, holders)
+  const order = cinderComponentsRoots(packageRoot, holders)
     .flatMap((componentsRoot) =>
       readdirSync(componentsRoot, { withFileTypes: true })
         .filter(
