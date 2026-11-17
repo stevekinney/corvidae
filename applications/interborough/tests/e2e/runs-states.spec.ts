@@ -214,12 +214,26 @@ for (const width of WIDTHS) {
       await expect(main).toContainText('Model switcher has no runs. Try another agent.');
       await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
       if (width >= 1024) {
-        for (const [word] of SEGMENTS) {
-          await expect(
-            main.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*0$`) }),
-          ).toBeVisible();
+        // The bar draws its segments as radios when its row fits; with the Workflow and Started by
+        // chips beside the Agent chip it steps down to a Status select that holds the same counts.
+        const status = main.getByRole('combobox', { name: 'Status' });
+        if ((await main.getByRole('radio').count()) > 0 || (await status.count()) === 0) {
+          for (const [word] of SEGMENTS) {
+            await expect(
+              main.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*0$`) }),
+            ).toBeVisible();
+          }
+          await expect(main.getByRole('radio', { name: /^Waiting\s*,/ })).toHaveCount(0);
+        } else {
+          await status.click();
+          for (const [word] of SEGMENTS) {
+            await expect(
+              page.getByRole('option', { name: new RegExp(`^${word}\\s*0$`) }),
+            ).toBeVisible();
+          }
+          await expect(page.getByRole('option', { name: /^Waiting\s*\d/ })).toHaveCount(0);
+          await page.keyboard.press('Escape');
         }
-        await expect(main.getByRole('radio', { name: /^Waiting\s*,/ })).toHaveCount(0);
         await expect(
           main.getByRole('button', { name: 'Agent: Model switcher', exact: true }),
         ).toBeVisible();
