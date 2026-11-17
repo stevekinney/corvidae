@@ -30,7 +30,9 @@ test('the address breaks across lines and the control sits on the last of them',
       range.setStart(head, 0);
       range.setEnd(last, last.textContent?.length ?? 0);
       const lines = [...range.getClientRects()].filter((rect) => rect.width > 0);
-      const lastLine = lines.reduce((lowest, rect) => (rect.bottom > lowest.bottom ? rect : lowest));
+      const lastLine = lines.reduce((lowest, rect) =>
+        rect.bottom > lowest.bottom ? rect : lowest,
+      );
       const box = control.getBoundingClientRect();
       return {
         lineCount: new Set(lines.map((rect) => Math.round(rect.top))).size,
