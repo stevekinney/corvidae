@@ -141,8 +141,8 @@ describe('outcome accounting', () => {
     ]);
   });
 
-  test('requires two snapshots per family with one held out', async () => {
+  test('does not call a partial task bank frozen', async () => {
     const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text());
-    expect(verifyTaskBank(bank)).toEqual([]);
+    expect(verifyTaskBank(bank)).toContain('Task bank needs exactly ten tasks.');
   });
 });
