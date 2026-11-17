@@ -30,6 +30,7 @@
 
   import type { Attachment } from 'svelte/attachments';
 
+  import { createCutText } from '../../_internal/cut-text.svelte.ts';
   import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
@@ -83,13 +84,7 @@
   // reaches it too. Inside a page's own Tooltip the label is only that tooltip's trigger: the page's
   // tooltip speaks, so the badge draws no second one and carries no `title`.
   const insideTooltip = getTooltipTriggerContext() !== undefined;
-  let labelElement = $state<HTMLElement | null>(null);
-  const holdLabelElement: Attachment<HTMLElement> = (element) => {
-    labelElement = element;
-    return () => {
-      if (labelElement === element) labelElement = null;
-    };
-  };
+  const labelCut = createCutText();
 
   const subscriptionStateConfiguration = $derived(
     subscriptionState === undefined
@@ -144,10 +139,13 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the label is cut, so focusing it opens the tooltip with the whole label. -->
     <span
       class="cinder-badge__label"
-      tabindex="0"
+      tabindex={labelCut.tabbable || insideTooltip ? '0' : undefined}
       {@attach readLabelText}
-      {@attach holdLabelElement}>{@render children?.()}</span
-    >{#if !insideTooltip}<FullTextTooltip text={labelText ?? ''} triggerRef={labelElement} />{/if}
+      {@attach labelCut.attach}>{@render children?.()}</span
+    >{#if !insideTooltip && labelCut.cut}<FullTextTooltip
+        text={labelText ?? ''}
+        triggerRef={labelCut.trigger}
+      />{/if}
   {:else}
     {@render children?.()}
   {/if}

@@ -17,6 +17,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import { createCutText } from '../../_internal/cut-text.svelte.ts';
   import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -77,13 +78,7 @@
 
   // The cut text is focusable and opens a tooltip with the whole text, so a keyboard or touch user
   // reaches it too, in a row as well as in a link inside the cell.
-  let textElement = $state<HTMLElement | null>(null);
-  const holdTextElement: Attachment<HTMLElement> = (element) => {
-    textElement = element;
-    return () => {
-      if (textElement === element) textElement = null;
-    };
-  };
+  const textCut = createCutText();
 
   const readRenderedText: Attachment<HTMLElement> = (element) => {
     const read = (): void => {
@@ -113,12 +108,15 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
     <span
       class="cinder-table__cell-text"
-      tabindex="0"
+      tabindex={textCut.tabbable ? '0' : undefined}
       {@attach readRenderedText}
-      {@attach holdTextElement}
+      {@attach textCut.attach}
     >
       {@render children?.()}
-    </span><FullTextTooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
+    </span>{#if textCut.cut}<FullTextTooltip
+        text={title ?? renderedText ?? ''}
+        triggerRef={textCut.trigger}
+      />{/if}
   {:else if clampTitle}
     <span class="cinder-table__cell-title" {@attach holdTitle}>{@render children?.()}</span
     ><FullTextTooltip text={title ?? titleText ?? ''} triggerRef={titleTrigger} />

@@ -21,6 +21,7 @@
   import { classNames } from '../../utilities/class-names.ts';
 
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
+  import { createCutText } from '../../_internal/cut-text.svelte.ts';
   import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
   import { fitMiddleHead } from './text-middle.ts';
@@ -65,13 +66,9 @@
   // so a keyboard or touch user reaches it too. Inside a page's own Tooltip the text is only the
   // trigger: that tooltip speaks, so the text draws no second one and carries no `title`.
   const insideTooltip = getTooltipTriggerContext() !== undefined;
-  let endElement = $state<HTMLElement | null>(null);
-  const holdEndElement: Attachment<HTMLElement> = (node) => {
-    endElement = node;
-    return () => {
-      if (endElement === node) endElement = null;
-    };
-  };
+  // Only a value that is actually cut takes a tab stop and a tooltip, and a cut link inside it is the
+  // one stop, so the tooltip anchors to the link and the wrapper stays out of the tab order.
+  const endCut = createCutText();
   const endText = $derived(
     typeof rest.title === 'string' && rest.title !== '' ? rest.title : (text ?? ''),
   );
@@ -145,14 +142,17 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole value. -->
   <svelte:element
     this={element}
-    tabindex="0"
+    tabindex={endCut.tabbable || insideTooltip ? '0' : undefined}
     {...rest}
     title={undefined}
     class={classNames('cinder-text', className)}
     data-cinder-variant={variant}
     data-cinder-truncate="end"
-    {@attach holdEndElement}>{text}</svelte:element
-  >{#if !insideTooltip}<FullTextTooltip text={endText} triggerRef={endElement} />{/if}
+    {@attach endCut.attach}>{text}</svelte:element
+  >{#if !insideTooltip && endCut.cut}<FullTextTooltip
+      text={endText}
+      triggerRef={endCut.trigger}
+    />{/if}
 {:else if middleParts !== undefined}
   <!-- The cut text is focusable, so a keyboard or touch user reaches the whole value in the tooltip. -->
   <Tooltip

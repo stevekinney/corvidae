@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -10,6 +10,7 @@ setupHappyDom();
 
 const { render, waitFor, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Badge } = await import('./badge.svelte');
+const { stubCutLayout } = await import('../../_internal/cut-layout-stub.ts');
 
 afterEach(() => {
   cleanup();
@@ -254,6 +255,38 @@ describe('Badge — hugs its text inside a grid or flex parent (COR-1821)', () =
 
 describe('Badge truncate', () => {
   const longTag = `responsive-tag-${'t'.repeat(200)}`;
+  let restoreLayout: () => void = () => {};
+  beforeEach(() => {
+    restoreLayout = stubCutLayout(true);
+  });
+  afterEach(() => restoreLayout());
+
+  test('a label that is not cut has no tab stop and no tooltip', async () => {
+    restoreLayout();
+    restoreLayout = stubCutLayout(false);
+    const { container } = render(Badge, { truncate: true, children: textSnippet('beta') });
+    const label = container.querySelector('.cinder-badge__label') as HTMLElement;
+    expect(label.hasAttribute('tabindex')).toBe(false);
+    await fireEvent.focus(label);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  test('a cut label holding a link is one stop: the link opens the full text', async () => {
+    const { container } = render(Badge, {
+      truncate: true,
+      children: createRawSnippet(() => ({
+        render: () => `<a href="#tag">${longTag}</a>`,
+      })),
+    });
+    const label = container.querySelector('.cinder-badge__label') as HTMLElement;
+    const link = label.querySelector('a') as HTMLElement;
+    expect(label.hasAttribute('tabindex')).toBe(false);
+    await waitFor(() => expect(link.hasAttribute('aria-describedby')).toBe(true));
+    await fireEvent.focus(link);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longTag),
+    );
+  });
 
   test('wraps the label so it can end with an ellipsis, focusable, with no native title', async () => {
     const { container } = render(Badge, { truncate: true, children: textSnippet(longTag) });
