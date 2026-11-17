@@ -91,11 +91,8 @@ export async function reconcilePluginHooks(input: {
   if (hooks === undefined) return;
   try {
     const known = plugins.knownPlugins();
-    const declaredBy = new Set(
-      (await hooks.list()).flatMap(({ declaredBy: origin }) =>
-        origin === undefined ? [] : [origin.plugin],
-      ),
-    );
+    // The hook records alone: a start reads no delivery.
+    const declaredBy = new Set(await hooks.declaredPlugins());
     for (const { plugin, hooks: declared } of plugins.declaredHooks()) {
       // A plugin that declares none and has none made nothing to withdraw.
       if (declared.length === 0 && !declaredBy.has(plugin)) continue;

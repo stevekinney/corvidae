@@ -90,6 +90,10 @@ import { NOTIFICATION_FIELD_LIMITS } from '../notifications/notification-types.t
 import type { BureauWorkflows } from '../workflow-runtime.ts';
 import { PUBLISHED_BUREAU_EVENT_KINDS, type BureauEventEnvelope } from '../bureau-event-feed.ts';
 import { BUREAU_EVENT_CATALOG, type BureauEventOrigin } from '../bureau-event-catalog.ts';
+import {
+  createBureauEventFormatter,
+  type BureauEventFormatter,
+} from '../bureau-event-formatting.ts';
 import type { AnswerEncryptionKeys } from '../secret-answers.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
 import {
@@ -145,7 +149,11 @@ import {
 } from './hook-scope.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
 import type { EncryptedValue } from '@lostgradient/cryptography';
-import type { PluginReactionContext } from '@lostgradient/interborough-plugin';
+import type {
+  PluginEvent,
+  PluginFormatting,
+  PluginReactionContext,
+} from '@lostgradient/interborough-plugin';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 /** The event kind of a `hooks.test` delivery. It is not a published kind, so no hook can list it. */
@@ -365,6 +373,11 @@ export interface BureauHooks {
    * when there is no such hook; refuses as `create` does.
    */
   duplicate(hookId: string, options?: HookCallOptions): Promise<HookWithSigningSecret | undefined>;
+  /**
+   * COR-2180 — the plugins that made a default hook, withdrawn ones included, each once. It reads
+   * the hook records alone, never a delivery, so a Bureau can ask at start.
+   */
+  declaredPlugins(): Promise<readonly string[]>;
   /** One hook, or `undefined`. */
   get(hookId: string): Promise<Hook | undefined>;
   /**
@@ -422,6 +435,12 @@ export interface HooksDependencies {
     | undefined;
   /** The Bureau's key-value store. */
   readonly kv: ConditionalTextValueStore;
+  /**
+   * COR-2178 — writes an event as a person reads it: what a reaction's `format` returns and what a
+   * `notify` delivery stores as its title and body when a formatter claims the event's kind. Absent,
+   * the Bureau has no formatter, and an event reads as its kind.
+   */
+  readonly formatEvent?: BureauEventFormatter | undefined;
   /** The notifier's delivery machinery. */
   readonly engine: WebhookDeliveryEngine;
   /** The host's secret port; defaults to a store in `kv`. */
@@ -1018,6 +1037,30 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     return configuration;
   }
 
+  const formatEvent = dependencies.formatEvent ?? createBureauEventFormatter(undefined);
+
+  /**
+   * What a reaction's `format` returns (COR-2178): the formatter's title and the rest of its
+   * formatting, without the fields that say which event it was (`kind`, `runId`, `source`) or which
+   * formatter wrote it. A reaction passes any event it likes, so a formatter that throws on it, or an
+   * argument that is no event, reads as its kind, and the failure goes to `diagnose` and nowhere else.
+   */
+  function formatForReaction(event: PluginEvent): PluginFormatting {
+    try {
+      const { title, body, tier, icon, link } = formatEvent(event);
+      return {
+        title,
+        ...(body === undefined ? {} : { body }),
+        tier,
+        ...(icon === undefined ? {} : { icon }),
+        ...(link === undefined ? {} : { link }),
+      };
+    } catch (cause) {
+      dependencies.diagnose('An event formatter failed for a reaction', cause);
+      return { title: typeof event?.kind === 'string' ? event.kind : 'event', tier: 'info' };
+    }
+  }
+
   const actionRunner: HookActionRunner = {
     async run(work, context) {
       // One key per delivery: the delivery is created once per event and hook, and its attempts
@@ -1118,6 +1161,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           signal: context.signal,
           deliveryId: context.deliveryId,
           idempotencyKey: key,
+          format: formatForReaction,
           hookId: context.hookId,
           owner: context.owner,
           attempt: context.attempt,
@@ -1172,6 +1216,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     actionKindAvailable: (plugin, kind) =>
       actionKinds.get(actionKindKey(plugin, kind))?.availability?.() !== 'needs-setup',
     timeoutSignal: dependencies.timeoutSignal,
+    formatEvent,
     audit: (entry) =>
       dependencies.audit({
         runId: `hook:${entry.hookId}`,
@@ -1519,6 +1564,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         enabled: false,
         ...(principal === undefined ? {} : { principal }),
       });
+    },
+    async declaredPlugins() {
+      const plugins = new Set<string>();
+      for (const hook of await store.listHooks()) {
+        if (hook.declaredBy !== undefined) plugins.add(hook.declaredBy.plugin);
+      }
+      return [...plugins];
     },
     async get(hookId) {
       const stored: Stored<HookRecord> | undefined = await store.getHook(hookId);

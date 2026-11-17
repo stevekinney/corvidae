@@ -139,7 +139,7 @@ describe('reconcilePluginHooks (COR-2180)', () => {
     const h = harness();
     const failing = {
       ...h.hooks,
-      list: () => Promise.reject(new Error('the store is gone')),
+      declaredPlugins: () => Promise.reject(new Error('the store is gone')),
     };
     await reconcilePluginHooks({ hooks: failing, plugins: source, diagnose });
     expect(seen.map(({ level, scope }) => [level, scope])).toEqual([['error', 'hooks']]);

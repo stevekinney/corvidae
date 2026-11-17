@@ -443,6 +443,8 @@ export function composeHooks(input: {
   readonly runtimeServices: RuntimeServices;
   readonly auditTrail: AuditTrail | undefined;
   readonly diagnose: DiagnosticSink;
+  /** Writes an event as a person reads it: a reaction's `format`, and a notification's words (COR-2178). */
+  readonly eventFormatter?: HooksDependencies['formatEvent'];
   /** The Bureau's workflows and notifications, read when an action needs them (COR-1940). */
   readonly workflows: () => BureauWorkflows | undefined;
   readonly notifications: () => BureauNotifications | undefined;
@@ -458,6 +460,7 @@ export function composeHooks(input: {
     eventForHookOwner: input.eventForHookOwner,
     mayStartWorkflows: input.mayStartWorkflows,
     configurationSecrets: input.configurationSecrets,
+    formatEvent: input.eventFormatter,
     kv,
     engine,
     secrets: options.secrets,

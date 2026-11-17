@@ -84,6 +84,10 @@ export interface HarnessOptions {
   readonly configurationSecrets?: HooksDependencies['configurationSecrets'];
   /** The workspace the hooks capture their owner's authority from. */
   readonly workspace?: HooksDependencies['workspace'];
+  /** Writes an event as a person reads it: a reaction's `format`, and a notification's words (COR-2178). */
+  readonly formatEvent?: HooksDependencies['formatEvent'];
+  /** What an owner is allowed to see of an event, applied before a delivery is written. */
+  readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
   /** The records a hook's scope is matched against. */
   readonly subjects?: HooksDependencies['subjects'];
 }
@@ -233,6 +237,10 @@ export function harness(options: HarnessOptions = {}) {
       : { configurationSecrets: options.configurationSecrets }),
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.subjects === undefined ? {} : { subjects: options.subjects }),
+    ...(options.formatEvent === undefined ? {} : { formatEvent: options.formatEvent }),
+    ...(options.eventForHookOwner === undefined
+      ? {}
+      : { eventForHookOwner: options.eventForHookOwner }),
   });
   const view = {
     kv,

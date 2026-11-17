@@ -132,7 +132,7 @@ console.log(hook?.action);
 
 ### Notify me
 
-`{ type: 'notify', title? }` writes a notification to the hook's owner through `bureau.notifications` (COR-1941): `kind: 'hook'`, the title (the action's, or `Event <kind>`), and a body naming the hook, the kind and the Bureau. It carries nothing of the payload. The owner is the hook's and nothing in an event can name another. The write is keyed `hook:<hookId>:<deliveryId>`, so a replayed delivery writes one notification.
+`{ type: 'notify', title? }` writes a notification to the hook's owner through `bureau.notifications` (COR-1941): `kind: 'hook'`, the title (the action's; else the title of the plugin formatter that claims the event's kind (COR-2178); else `Event <kind>`), and a body that is that formatter's `body` when it gives one, and otherwise names the hook, the kind and the Bureau. The formatter runs on the event as the hook's owner sees it (`eventForHookOwner`), when the delivery is made, and its words are stored on the delivery, so a retry stores what the first attempt did; a formatter that throws is reported to `diagnose` and the notification keeps its own words. Both are cut to what a notification holds. The `notify` words carry nothing of the payload beyond what a formatter chose to say. The owner is the hook's and nothing in an event can name another. The write is keyed `hook:<hookId>:<deliveryId>`, so a replayed delivery writes one notification.
 
 A notify hook cannot list `notification.created`: the notification it writes is announced by that event, so the hook would write one for each. `create` and `update` refuse it with `InvalidParams` on `events`, and dispatch skips a notify hook whose record lists it anyway.
 

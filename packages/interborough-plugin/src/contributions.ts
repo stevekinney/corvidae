@@ -415,6 +415,16 @@ export interface PluginReactionContext {
    * idempotency key, or a lookup of what it already did) to make the repeat a no-op.
    */
   readonly idempotencyKey: string;
+  /**
+   * An event as a person reads it (COR-2178): the formatting the registered formatter of the event's
+   * kind gives, with the `tier` always set (`info` when the formatter gave none), so a reaction that
+   * posts a message uses the host's own sentence instead of writing one. An event of a kind no
+   * formatter claims, and one whose formatter throws or gives no title, is `{ title: event.kind,
+   * tier: 'info' }`. It never throws, runs no code of the reaction's, and holds nothing the event does
+   * not: the `title` is one line of at most 200 characters, the `body` at most 2,000, and the `link`
+   * a path in the host's router.
+   */
+  format(event: PluginEvent): PluginFormatting;
   /** The id of the hook this attempt runs for. */
   readonly hookId: string;
   /** The principal that owns the hook: `api-key:<subject>` or `anonymous:local`. */
