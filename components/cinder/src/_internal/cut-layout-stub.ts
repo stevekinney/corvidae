@@ -6,7 +6,7 @@
  * @param cut Whether every element reads as cut (its content wider and taller than its box).
  */
 export function stubCutLayout(cut: boolean): () => void {
-  const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const prototype = HTMLElement.prototype;
   const sizes = {
     clientWidth: 100,
     scrollWidth: cut ? 300 : 100,
@@ -20,7 +20,7 @@ export function stubCutLayout(cut: boolean): () => void {
   }
   return () => {
     for (const [name, original] of originals) {
-      if (original === undefined) delete prototype[name];
+      if (original === undefined) Reflect.deleteProperty(prototype, name);
       else Object.defineProperty(prototype, name, original);
     }
   };

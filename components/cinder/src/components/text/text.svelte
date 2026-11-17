@@ -142,7 +142,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole value. -->
   <svelte:element
     this={element}
-    tabindex={endCut.tabbable || insideTooltip ? '0' : undefined}
+    tabindex={endCut.tabbable || insideTooltip ? 0 : undefined}
     {...rest}
     title={undefined}
     class={classNames('cinder-text', className)}

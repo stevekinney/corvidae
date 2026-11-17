@@ -139,7 +139,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the label is cut, so focusing it opens the tooltip with the whole label. -->
     <span
       class="cinder-badge__label"
-      tabindex={labelCut.tabbable || insideTooltip ? '0' : undefined}
+      tabindex={labelCut.tabbable || insideTooltip ? 0 : undefined}
       {@attach readLabelText}
       {@attach labelCut.attach}>{@render children?.()}</span
     >{#if !insideTooltip && labelCut.cut}<FullTextTooltip

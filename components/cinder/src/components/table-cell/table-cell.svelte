@@ -99,7 +99,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
     <span
       class="cinder-table__cell-text"
-      tabindex={textCut.tabbable ? '0' : undefined}
+      tabindex={textCut.tabbable ? 0 : undefined}
       {@attach readRenderedText}
       {@attach textCut.attach}
     >
@@ -112,7 +112,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the title is cut, so focusing it opens the tooltip with the whole title. -->
     <span
       class="cinder-table__cell-title"
-      tabindex={titleCut.tabbable ? '0' : undefined}
+      tabindex={titleCut.tabbable ? 0 : undefined}
       {@attach readTitleText}
       {@attach titleCut.attach}>{@render children?.()}</span
     >{#if titleCut.cut}<FullTextTooltip
