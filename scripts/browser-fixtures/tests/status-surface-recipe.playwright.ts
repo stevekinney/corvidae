@@ -126,8 +126,11 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
     expect(dangerBorder).not.toBe(successBorder);
   });
 
-  // COR-2450: the warning banner read beige beside the amber of a warning badge and band.
-  test('light: a warning banner, badge and band paint one warning tint', async ({ page }) => {
+  // COR-2450: warning banners, alerts and callouts read beige beside the amber of a warning badge
+  // and band.
+  test('light: a warning banner, alert, callout, badge and band paint one warning tint', async ({
+    page,
+  }) => {
     await page.emulateMedia({ colorScheme: 'light' });
     await loadStyledPage(page);
     await page.evaluate(() => {
@@ -136,6 +139,8 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
     await inject(
       page,
       `<div class="cinder-banner cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="warning">banner</div>
+       <div class="cinder-alert cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="warning" role="alert">alert</div>
+       <aside class="cinder-callout cinder-_status-surface cinder-_status-surface-border" data-cinder-variant="warning">callout</aside>
        <span class="cinder-badge" data-cinder-variant="warning">badge</span>
        <div class="cinder-stacked-list-item--tone-warning"><div class="cinder-stacked-list-item__band-surface">band</div></div>`,
     );
@@ -147,6 +152,8 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
       return {
         banner: banner.backgroundColor,
         bannerBorder: banner.borderTopColor,
+        alert: read('.cinder-alert').backgroundColor,
+        callout: read('.cinder-callout').backgroundColor,
         badge: read('.cinder-badge').backgroundColor,
         band: read('.cinder-stacked-list-item__band-surface').backgroundColor,
       };
@@ -155,6 +162,8 @@ test.describe('status-surface recipe — composed soft surfaces paint correctly'
     expect(painted.banner).not.toBe('');
     expect(painted.banner).toBe(painted.badge);
     expect(painted.banner).toBe(painted.band);
+    expect(painted.alert).toBe(painted.banner);
+    expect(painted.callout).toBe(painted.banner);
     expect(painted.bannerBorder).toBe(painted.banner);
   });
 

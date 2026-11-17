@@ -70,13 +70,18 @@
    * and re-reviewing all twelve surfaces — worth doing, deliberately not smuggled
    * into a surface retune. Dark arm untouched.
    *
-   * COR-2450: a composer may name its own light ground in `--_cinder-status-ground-light`, which
-   * the light arm reads before the synthesized tint. A warning Banner sets it to the warning tint
-   * badges and bands paint. Every status surface resets the input at zero specificity, so a
-   * surface nested inside another never inherits its ground, and the composer's own variant rule
-   * still wins on its own element. */
+   * COR-2450: the light arm reads `--_cinder-status-ground-light` before the synthesized tint. A
+   * warning surface (Alert, Banner and Callout alike) sets it here to the warning tint badges and
+   * bands paint, `--cinder-status-warning-background`, because the synthesized 94.5% warning
+   * ground read beige beside their amber. Every status surface resets the input at zero
+   * specificity, so a surface nested inside another never inherits its ground, and the warning
+   * rule below wins on its own element. */
   :where(.cinder-_status-surface) {
     --_cinder-status-ground-light: initial;
+  }
+
+  .cinder-_status-surface[data-cinder-variant='warning'] {
+    --_cinder-status-ground-light: var(--cinder-status-warning-background);
   }
 
   .cinder-_status-surface.cinder-_status-surface {

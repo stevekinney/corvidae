@@ -327,10 +327,6 @@
     --_cinder-status-base: var(--cinder-status-warning-solid);
     --_cinder-status-fg-chroma-light: 0.16;
     --_cinder-status-fg-chroma-dark: 0.14;
-    /* COR-2450: in light, the recipe's 94.5% warning ground read beige beside the amber of a
-     * warning badge or band. The banner paints the warning tint they share, as its ground and its
-     * border; the dark arm stays the recipe's. */
-    --_cinder-status-ground-light: var(--cinder-status-warning-background);
   }
 
   .cinder-banner[data-cinder-variant='danger'] {

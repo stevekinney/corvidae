@@ -1,9 +1,9 @@
 /**
- * COR-2450: a warning banner read beige beside a warning badge and a warning band. The shared
- * status-surface recipe painted it `oklch(from <warning solid> 94.5% 0.026 h)`, about
- * oklch(94.5% 0.026 77), while badges and bands paint `--cinder-status-warning-background`,
- * oklch(96.8% 0.035 88). In light, all three now paint that one token: the banner names it as the
- * recipe's light ground input. The dark arm keeps the recipe's value. happy-dom does not resolve
+ * COR-2450: a warning banner, alert or callout read beige beside a warning badge and a warning
+ * band. The shared status-surface recipe painted them `oklch(from <warning solid> 94.5% 0.026 h)`,
+ * about oklch(94.5% 0.026 77), while badges and bands paint `--cinder-status-warning-background`,
+ * oklch(96.8% 0.035 88). In light, all of them now paint that one token: the recipe names it as
+ * the light ground of every warning surface. The dark arm keeps the recipe's value. happy-dom does not resolve
  * `light-dark()` or `var()`, so the declarations are pinned against the CSS source;
  * `status-surface-recipe.playwright.ts` compares the painted colors in a browser.
  */
@@ -18,7 +18,6 @@ import { declarationsFor } from '../../test/css.ts';
 const COMPONENTS = join(import.meta.dir, '..');
 const read = (path: string): string => readFileSync(join(COMPONENTS, path), 'utf8');
 
-const banner = read('banner/banner.css');
 const badge = read('badge/badge.css');
 const stackedListItem = read('stacked-list-item/stacked-list-item.css');
 const recipe = readFileSync(
@@ -51,16 +50,29 @@ function arms(value: string | undefined): { light: string; dark: string } {
   throw new Error(`No top-level comma in ${text}`);
 }
 
-describe('COR-2450: the warning banner shares the warning tint of badges and bands', () => {
-  test('a warning banner names the warning tint as its light ground', () => {
-    const warning = declarationsFor(banner, ".cinder-banner[data-cinder-variant='warning']");
+describe('COR-2450: warning Banner, Alert and Callout share the warning tint of badges and bands', () => {
+  test('the recipe names the warning tint as the light ground of every warning surface', () => {
+    const warning = declarationsFor(
+      recipe,
+      ".cinder-_status-surface[data-cinder-variant='warning']",
+    );
     expect(normalise(warning.get(GROUND_INPUT))).toBe(WARNING_TINT);
+    // No other status names a ground, so info, success and danger keep the synthesized tint.
+    expect(recipe.match(new RegExp(`${GROUND_INPUT}:`, 'g'))?.length).toBe(2);
   });
 
-  test('no other banner variant names a ground, so they keep the synthesized tint', () => {
-    for (const variant of ['info', 'success', 'danger']) {
-      const rule = declarationsFor(banner, `.cinder-banner[data-cinder-variant='${variant}']`);
-      expect(rule.has(GROUND_INPUT), variant).toBe(false);
+  test('Banner, Alert and Callout each compose the recipe and mark their variant on the same element', () => {
+    for (const component of ['banner', 'alert', 'callout']) {
+      const markup = read(`${component}/${component}.svelte`);
+      expect(markup, component).toContain("'cinder-_status-surface'");
+      expect(markup, component).toContain("'cinder-_status-surface-border'");
+      expect(markup, component).toMatch(/data-cinder-variant=\{/);
+    }
+  });
+
+  test('no composer names its own ground, so the three cannot split again', () => {
+    for (const component of ['banner', 'alert', 'callout']) {
+      expect(read(`${component}/${component}.css`), component).not.toContain(GROUND_INPUT);
     }
   });
 
