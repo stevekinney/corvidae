@@ -101,6 +101,39 @@
     transform: translateY(var(--cinder-space-4)) scale(0.92);
   }
 
+  /* The copy of a card that was just decided: it leaves toward the side of its decision, from where
+   * it was released, and fades. It sits above the deck, takes no input and is gone when the
+   * animation ends. The custom properties are set inline from the decision (the direction already
+   * accounts for right to left). Without animation it is not drawn at all. */
+  .cinder-decision-card[data-cinder-decision-exit] {
+    z-index: 4;
+    cursor: default;
+    pointer-events: none;
+    transition: none;
+    animation: cinder-decision-exit var(--cinder-duration-normal) var(--cinder-ease-standard)
+      forwards;
+  }
+
+  @keyframes cinder-decision-exit {
+    from {
+      opacity: 1;
+      transform: translateX(var(--_cinder-decision-exit-from, 0px))
+        rotate(var(--_cinder-decision-exit-from-turn, 0deg));
+    }
+
+    to {
+      opacity: 0;
+      transform: translate(var(--_cinder-decision-exit-x, 0%), var(--_cinder-decision-exit-y, 0%))
+        rotate(var(--_cinder-decision-exit-turn, 0deg));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cinder-decision-card[data-cinder-decision-exit] {
+      display: none;
+    }
+  }
+
   .cinder-decision-card[data-dragging] {
     transition: none;
     cursor: grabbing;

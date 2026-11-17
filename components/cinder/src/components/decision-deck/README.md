@@ -56,7 +56,7 @@ By default a card shows an `eyebrow`, a `title` and a `description`. Pass a `car
 | `class` | `string` | no | — | Custom class merged with `.cinder-decision-deck`. |
 | `emptyDescription` | `string` | no | — | Supporting line of the empty state. Left unset, it says how many cards were left for later. |
 | `emptyTitle` | `string` | no | — | Title of the empty state shown when every card is decided. Defaults to "All caught up". |
-| `keyboardHint` | `string` | no | — | Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming ArrowRight, ArrowLeft and ArrowDown. |
+| `keyboardHint` | `string` | no | — | Hidden text that names the keys on a focused card, read after the card's name. Defaults to a sentence naming the arrow keys, which follow the reading direction (accept is the arrow toward the inline-end edge). |
 | `label` | `string` | no | — | Accessible name of the deck, such as "Review queue". Left unset, the deck is unnamed. |
 | `laterLabel` | `string` | no | — | Text of the later button. Defaults to "Later". |
 | `rejectLabel` | `string` | no | — | Text of the reject button and the reject stamp. Defaults to "Reject". |
