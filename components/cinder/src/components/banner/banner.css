@@ -356,21 +356,25 @@
     border-radius: var(--cinder-radius-surface);
     /* The wash is the accent mixed over the surface: 9% in light, 18% in dark, where the same 9%
      * of a dim accent over a dark surface reads as a plain dark card (COR-2441). The glow is the
-     * accent at 18% in light and 25% in dark (32% would drop the muted words under 4.5:1 at the glow's peak). `light-dark()` takes colours, so each arm is a whole
-     * mix. */
+     * accent at 18% in light and 25% in dark (32% would drop the muted words under 4.5:1 at the
+     * glow's peak). `light-dark()` takes colours, so each arm is a whole mix. */
+    /* cinder-allow-raw-color: structural-pattern — a theme-arm mix amount of the accent, not a colour literal */
+    --_cinder-banner-glow: light-dark(
+      color-mix(in oklch, var(--cinder-accent-solid) 18%, transparent),
+      color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent)
+    );
+    /* cinder-allow-raw-color: structural-pattern — a theme-arm mix amount of the accent, not a colour literal */
+    --_cinder-banner-wash: light-dark(
+      color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 9%),
+      color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 18%)
+    );
     background:
       radial-gradient(
         ellipse 45% 140% at var(--_cinder-banner-glow-at),
-        light-dark(
-          color-mix(in oklch, var(--cinder-accent-solid) 18%, transparent),
-          color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent)
-        ),
+        var(--_cinder-banner-glow),
         transparent 70%
       ),
-      light-dark(
-        color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 9%),
-        color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 18%)
-      );
+      var(--_cinder-banner-wash);
     color: var(--cinder-text-default);
   }
 

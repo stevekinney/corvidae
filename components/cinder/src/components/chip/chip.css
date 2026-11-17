@@ -335,6 +335,17 @@
     line-height: 0;
   }
 
+  /* The visible cue of a suggested chip that is not colour (COR-2441, WCAG 1.4.1): a small sparkle
+     glyph before the label, in the same accent as the neutral suggested label. The words
+     "Suggested" stay for assistive technology. */
+  .cinder-chip__suggested-mark {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    line-height: 0;
+    color: var(--cinder-accent-text);
+  }
+
   /* ----------------------------------------
  * Remove button
  * ---------------------------------------- */

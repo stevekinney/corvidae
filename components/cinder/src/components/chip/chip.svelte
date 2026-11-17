@@ -27,6 +27,7 @@
 
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check';
+  import Sparkles from '@lucide/svelte/icons/sparkles';
   import type { ChipProps, ChipRemovableProps, ChipToggleProps } from './chip.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
@@ -164,6 +165,12 @@
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
+    {#if suggested}
+      <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). -->
+      <span class="cinder-chip__suggested-mark" aria-hidden="true"
+        ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
+      >
+    {/if}
     <span class="cinder-chip__label"
       >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
     >
@@ -186,6 +193,12 @@
   >
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
+    {/if}
+    {#if suggested}
+      <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). -->
+      <span class="cinder-chip__suggested-mark" aria-hidden="true"
+        ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
+      >
     {/if}
     <span class="cinder-chip__label"
       >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
@@ -216,6 +229,12 @@
   >
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
+    {/if}
+    {#if suggested}
+      <!-- A sighted person sees the suggestion by a glyph, not by colour alone (WCAG 1.4.1). -->
+      <span class="cinder-chip__suggested-mark" aria-hidden="true"
+        ><Sparkles class="cinder-icon-xs" aria-hidden="true" /></span
+      >
     {/if}
     <span class="cinder-chip__label"
       >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
