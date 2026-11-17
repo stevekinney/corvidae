@@ -23,6 +23,7 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -111,8 +112,8 @@ for (const width of WIDTHS) {
         (await reason.getAttribute('id')) ?? '',
       );
       // Beneath the button, never beside the status word.
-      const [button, below] = await Promise.all([again.boundingBox(), reason.boundingBox()]);
-      expect(below!.y).toBeGreaterThanOrEqual(button!.y + button!.height - 1);
+      const { button, below } = await readBoxes(page, { button: again, below: reason });
+      expect(below.y).toBeGreaterThanOrEqual(button.y + button.height - 1);
       await captureForDesignReview(page, {
         route: '/goals/:goal',
         state: 'start again held',

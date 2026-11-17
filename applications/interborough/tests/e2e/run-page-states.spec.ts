@@ -20,6 +20,7 @@ import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { openHowItRan, openTab } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
@@ -56,13 +57,13 @@ for (const width of WIDTHS) {
       // buttons, and the title keeps its line (54z).
       const beside = page.locator('[data-run-beside]');
       await expect(beside).toBeVisible();
-      const [title, caption, retry] = await Promise.all([
-        page.getByRole('heading', { level: 1 }).boundingBox(),
-        beside.boundingBox(),
-        page.getByRole('button', { name: 'Retry from this step' }).boundingBox(),
-      ]);
-      expect(caption!.y).toBeGreaterThanOrEqual(retry!.y + retry!.height - 1);
-      expect(caption!.y).toBeGreaterThan(title!.y);
+      const { title, caption, retry } = await readBoxes(page, {
+        title: page.getByRole('heading', { level: 1 }),
+        caption: beside,
+        retry: page.getByRole('button', { name: 'Retry from this step' }),
+      });
+      expect(caption.y).toBeGreaterThanOrEqual(retry.y + retry.height - 1);
+      expect(caption.y).toBeGreaterThan(title.y);
       await expect(page.locator('.weft-overview-tab__failure')).toHaveCount(1);
       await expect(page.locator('[data-version-state="older"]')).toBeVisible();
       await captureForDesignReview(page, {
