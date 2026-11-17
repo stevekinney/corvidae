@@ -275,7 +275,13 @@ export function unparseableTestJobs(log: string): Set<string> {
       continue;
     }
     const error = BUN_ERROR.exec(line);
-    if (error !== null && files.has(error[1] ?? '')) pending.add(error[1] ?? '');
+    const diagnostic = line.split('error: ').at(-1)?.trim();
+    if (
+      error !== null &&
+      files.has(error[1] ?? '') &&
+      (diagnostic === undefined || !BUN_SCRIPT_EXIT.test(diagnostic))
+    )
+      pending.add(error[1] ?? '');
   }
   return pending;
 }

@@ -76,6 +76,31 @@ describe('failingTests', () => {
     expect(unparseableTestJobs(log)).toEqual(new Set(['Tests (components)']));
   });
 
+  test('does not turn a qualified failure unknown for Bun script-exit wrapper output', () => {
+    const log = [
+      'Tests\tRun bun test\t2026-11-17T19:21:40Z ##[group]src/slow.test.ts:',
+      'Tests\tRun bun test\t2026-11-17T19:21:41Z (fail) slow behavior > remains stable [1ms]',
+      'Tests\tRun bun test\t2026-11-17T19:21:42Z error: script "test:slow" exited with code 1',
+    ].join('\n');
+    const identity = 'src/slow.test.ts › slow behavior > remains stable';
+    expect(failingTests(log)).toEqual(new Map([['Tests', [identity]]]));
+    expect(unparseableTestJobs(log)).toEqual(new Set());
+    expect(
+      compare(failures('candidate', [['Other topology', [identity]]]), [
+        failures('main', [['Tests', [identity]]]),
+      ]).hasNew,
+    ).toBe(false);
+  });
+
+  test('keeps a non-wrapper error after a qualified failure unknown', () => {
+    const log = [
+      'Tests\tRun bun test\t2026-11-17T19:21:40Z ##[group]src/slow.test.ts:',
+      'Tests\tRun bun test\t2026-11-17T19:21:41Z (fail) slow behavior > remains stable [1ms]',
+      'Tests\tRun bun test\t2026-11-17T19:21:42Z error: database connection failed',
+    ].join('\n');
+    expect(unparseableTestJobs(log)).toEqual(new Set(['Tests']));
+  });
+
   test('qualifies identical Bun tests by their Turbo workspace across changed job topology', () => {
     const log = [
       'Affected fast-lane tests\tUNKNOWN STEP\t2026-11-17T18:21:19Z ##[group]@lostgradient/storage-lmdb:test',
