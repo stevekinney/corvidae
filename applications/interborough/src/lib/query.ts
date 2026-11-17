@@ -111,6 +111,8 @@ export const queryKeys = {
     list: () => ['tool-sources', 'list'] as const,
     /** The agent files a removal of one source would leave invalid. */
     removal: (id: string) => ['tool-sources', 'removal', id] as const,
+    /** A saved source as Edit connection reads it (COR-2436). */
+    editing: (id: string) => ['tool-sources', 'editing', id] as const,
   },
   /** The executable skills the host discovered (`bureau.skills.list`). */
   skills: {

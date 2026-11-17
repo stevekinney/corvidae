@@ -23,7 +23,8 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  *   `{ "error": "exists", "field": "id" }` and nothing changes, which is how a page that lists the
  *   sources adds one without replacing one another tab saved a moment before.
  * - `POST /host/tool-sources/<id>/probe` with the same body as the `PUT` contacts a source that is not
- *   saved, with the credentials in the body and none from the host's vault, and answers 200 with
+ *   saved, with the credentials in the body (one left out is the stored one only for a saved
+ *   source of that id that still goes to the same place, COR-2436), and answers 200 with
  *   `{ "outcome": "listed", "tools": [{ "name", "tool", "tier", "title", "description" }], "skipped": […] }`
  *   (for an OpenAPI source also `test`: the first operation that reads and needs no input, called
  *   with the key, `{ "tool", "title", "passed", "message"? }`, so a wrong key shows now), or
@@ -48,6 +49,15 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  *   no entry. A name the server does not list is accepted and reported by `GET` under the
  *   source's `unmatchedSettings`. The change loads at the next start; remote mode answers 403
  *   `deployment` like every other change here.
+ * - `GET /host/tool-sources/<id>/editing` reads a saved source for the Connect tools page to edit
+ *   (COR-2436): `{ id, source, name, description, credentials, configurationRevision }`, the
+ *   description naming its credentials and holding none, and only the names of the credentials
+ *   the host holds. Checked as a change is, before the source is looked up. A source the page
+ *   cannot show exactly answers 409 `{ "error": "not-editable", "reason" }`: `local-command` (its
+ *   command line is never sent), `address-query` (an address holds a query, where a key could
+ *   sit), or `unshown-settings` (it sets something the page would drop). Saving the edit is the
+ *   `PUT` with the revision read here: a credential left out keeps the one stored, `tools` left out
+ *   keeps the per-tool settings, and a change made meanwhile is refused.
  * - `GET /host/tool-sources/<id>/affected-agents` lists the agent files that name the source's
  *   tools, in `tools` or only in `approvals`, and changes nothing. A source the configuration
  *   does not list answers 404.
@@ -86,6 +96,7 @@ import {
   ToolSourceAuditError,
   ToolSourceExistsError,
   ToolSourceInputError,
+  ToolSourceNotEditableError,
   ToolSourceOwnerOnlyError,
   ToolSourceWriteLockedError,
   type ToolSourceManager,
@@ -103,6 +114,12 @@ export const HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE
 
 /** The route that contacts a source before it is saved. */
 export const HOST_TOOL_SOURCE_PROBE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/probe`;
+
+/**
+ * The route that reads a saved source for the Connect tools page to edit (COR-2436): its
+ * description, labels and credential names, never a value.
+ */
+export const HOST_TOOL_SOURCE_EDITING_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/editing`;
 
 /** The route that contacts a saved source with what the host holds for it (COR-2022). */
 export const HOST_TOOL_SOURCE_TEST_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/test`;
@@ -168,6 +185,12 @@ function refusalOf(error: unknown): Response | undefined {
   }
   if (error instanceof ToolSourceExistsError) {
     return Response.json({ error: 'exists', field: 'id', message: error.message }, { status: 409 });
+  }
+  if (error instanceof ToolSourceNotEditableError) {
+    return Response.json(
+      { error: 'not-editable', reason: error.reason, message: error.message },
+      { status: 409 },
+    );
   }
   if (error instanceof ToolSourceOwnerOnlyError) {
     return Response.json({ error: 'owner-only', message: error.message }, { status: 403 });
@@ -324,6 +347,9 @@ export function toolSourceRoutes(
                 principal: mutation.owner,
                 createOnly: body['create'] === true,
                 tools: body['tools'],
+                // The labels the request names, or none, which keeps the saved ones.
+                ...(body['name'] === undefined ? {} : { name: body['name'] }),
+                ...(body['description'] === undefined ? {} : { description: body['description'] }),
               },
               mutation,
             );
@@ -381,6 +407,21 @@ export function toolSourceRoutes(
             ),
           'POST',
           HOST_TOOL_SOURCE_TEST_ROUTE,
+          log,
+        ),
+    },
+    [HOST_TOOL_SOURCE_EDITING_ROUTE]: {
+      GET: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_EDITING_ROUTE>) =>
+        refuse(request) ??
+        respond(
+          async () =>
+            manager.editing(
+              request.params.id,
+              // A read for an edit writes nothing, so it carries no revision.
+              await options.mutation(request, { operationId: 'editing', expectedRevision: null }),
+            ),
+          'GET',
+          HOST_TOOL_SOURCE_EDITING_ROUTE,
           log,
         ),
     },

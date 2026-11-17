@@ -127,6 +127,10 @@ export async function exerciseAdministratorRoutes(
         path: '/host/tool-sources/fixture-source/affected-agents',
       },
       {
+        key: 'GET /host/tool-sources/:id/editing',
+        path: '/host/tool-sources/fixture-source/editing',
+      },
+      {
         key: 'POST /host/tool-sources/:id/probe',
         path: '/host/tool-sources/fixture-source/probe',
         body: { source: source('fixture-source'), credentials: { token: 'route-fixture-token' } },

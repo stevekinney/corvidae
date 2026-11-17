@@ -172,8 +172,25 @@ describe('the header of a source', () => {
       'default',
       'danger',
     ]);
-    // Only Remove source is destructive, and the Connect tools page does not read a saved source yet.
-    expect(items[0]?.getAttribute('aria-disabled')).toBe('true');
+    // Only Remove source is destructive, and Edit connection opens Connect tools on this source.
+    expect(items[0]?.getAttribute('aria-disabled')).not.toBe('true');
+    await fireEvent.click(items[0]!);
+    expect(router.pathname).toBe('/capabilities/connect');
+    expect(router.search.get('source')).toBe('github');
+  });
+
+  test('keeps Edit connection off for a source that runs a command on this machine', async () => {
+    serve({ sources: [source('local', { localCommand: true })] });
+    landAt('/capabilities?tab=sources&source=local');
+    const { findByTestId } = mount();
+    await findByTestId('source-detail');
+
+    await fireEvent.click(buttonNamed(document.body, copy.source.menu.label));
+    await waitFor(() =>
+      expect(document.body.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0),
+    );
+    const [edit] = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(edit?.getAttribute('aria-disabled')).toBe('true');
   });
 
   test('tests the source from the menu as it does from the button', async () => {

@@ -62,7 +62,9 @@ import { SecretPublicationError } from './workspace-secrets.ts';
  *   `deployment` ({@link ToolSourceWriteLockedError}), as for providers and skills.
  * - **A probe contacts a source before it is saved.** {@link ToolSourceManager.probe} checks a
  *   request as {@link ToolSourceManager.connect} does, loads the source with the credentials the
- *   request carries and nothing from the vault, and answers with the tools it lists. It stores,
+ *   request carries, and answers with the tools it lists. A credential the request leaves out is
+ *   read from the vault only for a saved source of that id that still goes to the same place, as
+ *   a save would keep it (COR-2436, Edit connection); otherwise it is required. It stores,
  *   writes and records nothing, closes the connection before it answers, runs against its own
  *   deadline ({@link DEFAULT_PROBE_TIMEOUT_MILLISECONDS}), and reports a source that does not
  *   answer as a sentence that holds no address, command or value. An OAuth server that asks for
@@ -245,6 +247,103 @@ export class ToolSourceOwnerOnlyError extends Error {
     super('Only the owner may add a source that runs a command on this machine.');
     this.name = 'ToolSourceOwnerOnlyError';
   }
+}
+
+/** Why the Connect tools page cannot edit a saved source (COR-2436). */
+export type ToolSourceNotEditableReason =
+  /** It runs a command on this machine, whose command line the host never sends to a page. */
+  | 'local-command'
+  /** An address holds a query or fragment, where a key could sit, which the host never sends. */
+  | 'address-query'
+  /** It sets something the page does not show, so saving the page's form would drop it. */
+  | 'unshown-settings';
+
+/** A saved source the Connect tools page cannot edit: change it in `configuration.json`. */
+export class ToolSourceNotEditableError extends Error {
+  /** Why. */
+  readonly reason: ToolSourceNotEditableReason;
+
+  constructor(reason: ToolSourceNotEditableReason) {
+    super(
+      reason === 'local-command'
+        ? 'This source runs a command on this machine. Change it in configuration.json.'
+        : reason === 'address-query'
+          ? 'An address of this source holds a query, which the page does not show. Change it in configuration.json.'
+          : 'This source sets something the page does not show. Change it in configuration.json.',
+    );
+    this.name = 'ToolSourceNotEditableError';
+    this.reason = reason;
+  }
+}
+
+/** What the Connect tools page edits a saved source from (COR-2436): its description and labels. */
+export type ToolSourceEditing = {
+  /** The source's identifier, which an edit keeps. */
+  readonly id: string;
+  /** The saved description: credentials named, never held. */
+  readonly source: ToolSourceDescription;
+  /** Its saved name, or `null`. */
+  readonly name: string | null;
+  /** Its saved sentence, or `null`. */
+  readonly description: string | null;
+  /** The names of the credentials the host holds for it, never their values. */
+  readonly credentials: readonly string[];
+  /** The configuration revision the description was read at: the save is fenced on it. */
+  readonly configurationRevision: string | null;
+};
+
+/** Whether `value` is an http(s) URL with no query or fragment. */
+function plainAddress(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.search === '' && url.hash === '';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Why the Connect tools page cannot represent `source` exactly, or `undefined` when it can. The
+ * page builds a description from its fields alone, so a description that sets anything else
+ * (another credential name, an OAuth scope, `allowOperations`, a name prefix) would lose it on save.
+ */
+function notEditableReason(source: ToolSourceDescription): ToolSourceNotEditableReason | undefined {
+  if (isLocalCommand(source)) return 'local-command';
+  if (source.kind === 'mcp') {
+    const { transport } = source;
+    if (transport.type !== 'http') return 'local-command';
+    if (!plainAddress(transport.url)) return 'address-query';
+    const authentication = transport.authentication;
+    if (
+      authentication !== undefined &&
+      !(authentication.type === 'bearer' && authentication.credential === 'token') &&
+      !(
+        authentication.type === 'oauth' &&
+        authentication.scope === undefined &&
+        authentication.clientName === undefined
+      )
+    ) {
+      return 'unshown-settings';
+    }
+    return undefined;
+  }
+  if (source.specification.type === 'url' && !plainAddress(source.specification.url)) {
+    return 'address-query';
+  }
+  if (source.baseUrl === undefined) return 'unshown-settings';
+  if (!plainAddress(source.baseUrl)) return 'address-query';
+  if (source.allowOperations !== undefined || source.namePrefix !== undefined) {
+    return 'unshown-settings';
+  }
+  const authentication = source.authentication;
+  if (
+    authentication !== undefined &&
+    !(authentication.type === 'bearer' && authentication.credential === 'token') &&
+    !(authentication.type === 'api-key' && authentication.credential === 'key')
+  ) {
+    return 'unshown-settings';
+  }
+  return undefined;
 }
 
 /** A change that was written and applied, but could not be recorded in the audit trail. The change stands. */
@@ -434,7 +533,10 @@ export type ToolSourceSnapshot = {
 export type ToolSourceProbeRequest = {
   /** The description (`armorer/tool-sources`), as {@link ToolSourceConnection.source}. */
   readonly source: unknown;
-  /** Credential name to value, for every credential the description names: a probe reads none from the vault. */
+  /**
+   * Credential name to value, for every credential the description names. One left out is read
+   * from the vault only for a saved source of the same id that still goes to the same place.
+   */
   readonly credentials?: unknown;
   /** The identifier the request addresses, which the description's `id` must equal. */
   readonly id: unknown;
@@ -631,6 +733,14 @@ export type ToolSourceManager = {
   ): Promise<ToolSourceRemoval>;
   /** The agent files a removal of the source would leave invalid. Changes nothing, and works on a remote home. */
   affectedAgents(id: unknown): Promise<ToolSourceRemovalPreview>;
+  /**
+   * The saved source as the Connect tools page edits it (COR-2436): its description, labels and
+   * credential names, never a credential's value. Checked as a change is, before the source is
+   * looked up; refused on a remote home, and with {@link ToolSourceNotEditableError} for a source
+   * the page cannot represent exactly (a local command, an address with a query, or settings the
+   * page does not show), so a save never drops what it did not show.
+   */
+  editing(id: unknown, mutation?: HostMutationContext): Promise<ToolSourceEditing>;
   /** Start an MCP OAuth sign-in for a configured source. */
   authorize(id: unknown, mutation?: HostMutationContext): Promise<ToolSourceAuthorization>;
   /** Finish a sign-in from the URL the browser came back to. */
@@ -1895,22 +2005,42 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       };
     },
     // The request is checked, as `connect` checks it, before anything is contacted. Nothing is
-    // stored, written to the configuration, put in the audit trail, or taken from the vault: the
+    // stored, written to the configuration or put in the audit trail, and the vault is read only
+    // for a credential an edit left blank, of a source still going to the same place: the
     // credentials live in this call, and a source that answers is closed before it returns.
     async probe(request, input) {
       assertWritable();
       const { id, source } = checkedDescription(request, input?.owner ?? owner);
       const supplied = checkedCredentials(request.credentials, referencedCredentials(source));
-      for (const name of referencedCredentials(source)) {
-        if (!supplied.has(name)) {
-          throw new ToolSourceInputError(`credentials.${name}`, 'a value is required.');
-        }
-      }
+      const missing = referencedCredentials(source).filter((name) => !supplied.has(name));
       if (closed) throw new Error('The host is shutting down.');
       // One storage for the whole probe: the loader asks for it more than once.
       const storage = probeTokenStorage();
       const mutation = input ?? (await createLocalHostMutationContext(bungalow));
       await assertMutation(mutation, source);
+      // An edit of a saved source may leave a stored credential blank (COR-2436): the probe uses
+      // the stored value, as the save would, but only while the source still goes to the same
+      // place, so a stored credential is never sent to an address a request just typed.
+      if (missing.length > 0) {
+        const { sources: savedSources } = await readDocument();
+        const saved = savedSources.find((entry) => entry.source.id === id);
+        const stored =
+          saved !== undefined && recipientOf(saved.source) === recipientOf(source)
+            ? await vault.read(id).catch(() => NO_SECRETS)
+            : NO_SECRETS;
+        for (const name of missing) {
+          const value = stored.credentials.get(name);
+          if (value === undefined) {
+            throw new ToolSourceInputError(
+              `credentials.${name}`,
+              saved !== undefined && recipientOf(saved.source) !== recipientOf(source)
+                ? 'a value is required, because the source now goes somewhere else.'
+                : 'a value is required.',
+            );
+          }
+          supplied.set(name, value);
+        }
+      }
       let loaded: LoadedToolSource;
       try {
         loaded = await within(
@@ -2300,6 +2430,35 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           return { id, changed: true, restartRequired: true, affectedAgents: affected };
         }),
       );
+    },
+    async editing(rawId, input) {
+      assertWritable();
+      const id = checkedIdentifier(rawId, 'id');
+      // Who asks is checked before the source is looked up, so a caller who may not change
+      // sources learns nothing of which exist.
+      const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+      await assertMutation(mutation);
+      const { sources, revision } = await readDocument();
+      const entry = sources.find((candidate) => candidate.source.id === id);
+      if (entry === undefined) {
+        throw new ToolSourceInputError('source', 'not a configured source.', 'unknown-source');
+      }
+      const reason = notEditableReason(entry.source);
+      if (reason !== undefined) throw new ToolSourceNotEditableError(reason);
+      let credentials: readonly string[] = [];
+      try {
+        credentials = await vault.credentialNames(id);
+      } catch {
+        // Unreadable credentials read as none: the page then asks for every one again.
+      }
+      return {
+        id,
+        source: entry.source,
+        name: entry.name ?? null,
+        description: entry.description ?? null,
+        credentials,
+        configurationRevision: revision,
+      };
     },
     async affectedAgents(rawId) {
       const id = checkedIdentifier(rawId, 'id');

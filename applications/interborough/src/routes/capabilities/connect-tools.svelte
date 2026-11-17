@@ -67,6 +67,7 @@
   import { agentTabPath } from '../../lib/agent-paths.ts';
   import {
     connectToolSource,
+    getToolSourceEditing,
     getToolSources,
     HostToolSourceError,
     inspectOpenApi,
@@ -79,8 +80,11 @@
   import { queryKeys } from '../../lib/query.ts';
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import {
+    API_KEY_CREDENTIAL,
     authenticationChoices,
+    BEARER_CREDENTIAL,
     buildToolSourceRequest,
+    editingForm,
     chosenToolCount,
     connectedTools,
     effectiveAuthentication,
@@ -122,7 +126,30 @@
     }),
     undefined,
   );
-  const existing = $derived((sources.data?.sources ?? []).map((source) => source.id));
+  /**
+   * Edit connection (row 32m, COR-2436): `?source=<id>` opens the page on a saved source, filled
+   * in from what the host holds (`GET /host/tool-sources/<id>/editing`) with the token or key left
+   * blank, which keeps the stored one. Saving replaces the same source id, keeps its per-tool
+   * settings (no `tools` is sent), and is fenced on the revision the page read, so a change
+   * another tab saved meanwhile is refused instead of overwritten.
+   */
+  const editId = untrack(() => {
+    const named = router.search.get('source');
+    return named === null || named === '' ? undefined : named;
+  });
+  const editing = createQuery(
+    () => ({
+      queryKey: queryKeys.toolSources.editing(editId ?? ''),
+      queryFn: ({ signal }) => getToolSourceEditing(editId ?? '', { signal }),
+      enabled: editId !== undefined,
+      retry: false,
+      gcTime: 0,
+    }),
+    undefined,
+  );
+  const existing = $derived(
+    (sources.data?.sources ?? []).map((source) => source.id).filter((id) => id !== editId),
+  );
   const locked = $derived(sources.data?.lockReason !== undefined);
 
   // The radio groups and the segmented control hold plain strings; `form` narrows them.
@@ -173,7 +200,8 @@
   const form: ToolSourceForm = $derived({
     ...EMPTY_TOOL_SOURCE_FORM,
     kind: kind === 'openapi' ? 'openapi' : 'mcp',
-    id: toolSourceIdentifier(name),
+    // An edit replaces the source it opened on, whatever it is now called.
+    id: editId ?? toolSourceIdentifier(name),
     name,
     transport: transport === 'stdio' ? 'stdio' : 'http',
     url,
@@ -186,11 +214,51 @@
     secret,
     header,
   });
-  /** The form before anything is filled in: a form that still reads so leaves without asking (row 35b). */
-  const pristine = untrack(() => JSON.stringify(form));
+  /**
+   * The form before anything is filled in, or as an edit filled it: a form that still reads so
+   * leaves without asking (row 35b).
+   */
+  let pristine = $state(untrack(() => JSON.stringify(form)));
+  /** Whether the saved source has filled the form in, which happens once. */
+  let filledFromSaved = $state(false);
+  $effect(() => {
+    const saved = editing.data;
+    if (saved === undefined || filledFromSaved) return;
+    untrack(() => {
+      const filled = editingForm(saved);
+      kind = filled.kind;
+      name = filled.name;
+      transport = filled.transport;
+      url = filled.url;
+      specification = filled.specification;
+      specificationUrl = filled.specificationUrl;
+      documentText = filled.document;
+      baseUrl = filled.baseUrl;
+      header = filled.header;
+      if (filled.kind === 'openapi') openApiAuthentication = filled.authentication;
+      else authentication = filled.authentication;
+      secret = '';
+      filledFromSaved = true;
+      pristine = JSON.stringify(form);
+      // A spec the host holds is read again, so Choose tools and the summary show it.
+      if (filled.kind === 'openapi') {
+        void readSpec(
+          filled.specification === 'url'
+            ? { url: filled.specificationUrl }
+            : { text: filled.document, fileName: '' },
+        );
+      }
+    });
+  });
   const choices = $derived(authenticationChoices(form));
   const activeAuthentication = $derived(effectiveAuthentication(form));
-  const built = $derived(buildToolSourceRequest(form));
+  /** Whether the token or key may be left blank: an edit, and the host holds one for this sign-in. */
+  const keepsStoredSecret = $derived(
+    (editing.data?.credentials ?? []).includes(
+      activeAuthentication === 'api-key' ? API_KEY_CREDENTIAL : BEARER_CREDENTIAL,
+    ),
+  );
+  const built = $derived(buildToolSourceRequest(form, editing.data?.credentials ?? []));
   const signature = $derived('request' in built ? JSON.stringify(built.request) : '');
   const taken = $derived(form.id !== '' && existing.includes(form.id));
   const fileTooLarge = $derived(fileError !== '');
@@ -201,7 +269,9 @@
     if (form.kind !== 'mcp' || form.transport !== 'http') return undefined;
     const address = sourceAddressOf(url);
     if (address === undefined) return undefined;
-    return (sources.data?.sources ?? []).find((source) => source.address === address);
+    return (sources.data?.sources ?? []).find(
+      (source) => source.address === address && source.id !== editId,
+    );
   });
 
   const flow = new ConnectFlow(describe);
@@ -290,9 +360,11 @@
   );
   $effect(() => leaveGuard.attach());
 
-  // A source that asks for a sign-in is signed in to from its own page, so it opens there.
+  // A source that asks for a sign-in is signed in to from its own page, so it opens there, and so
+  // does a source an edit saved: its tools are its own, kept as they were.
   $effect(() => {
-    if (phase.kind !== 'connected' || phase.probe.outcome !== 'needs-authorization') return;
+    if (phase.kind !== 'connected') return;
+    if (phase.probe.outcome !== 'needs-authorization' && editId === undefined) return;
     const id = phase.change.id;
     untrack(() => {
       leaveGuard.release();
@@ -367,7 +439,16 @@
     gcTime: 0,
     // `create`: the host refuses a name another tab saved since this page listed the sources.
     mutationFn: ({ name: id, request, signal }: Ready) =>
-      connectToolSource(id, { ...request, create: true }, { signal }),
+      editing.data === undefined
+        ? connectToolSource(id, { ...request, create: true }, { signal })
+        : // An edit replaces the source it read, fenced on the revision it read it at.
+          connectToolSource(id, request, {
+            signal,
+            mutation: {
+              operationId: crypto.randomUUID(),
+              expectedRevision: editing.data.configurationRevision,
+            },
+          }),
     onSuccess: async () => {
       // Its tools join the catalog an agent's Access tab lists (row 35d).
       await Promise.all([
@@ -393,7 +474,11 @@
         const tools = toolSettingsOf(picked, tiers);
         return connect.mutateAsync({
           name: id,
-          request: Object.keys(tools).length === 0 ? request : { ...request, tools },
+          // An edit keeps the per-tool settings the source holds, so it sends none.
+          request:
+            editId !== undefined || Object.keys(tools).length === 0
+              ? request
+              : { ...request, tools },
           signal,
         });
       },
@@ -570,9 +655,25 @@
 </script>
 
 <section class="ib-connect" data-page="connect-tools" data-phase={phase.kind}>
-  <PageHeader title={copy.title} description={copy.intro} headingLevel={1} />
+  <PageHeader
+    title={editId === undefined ? copy.title : copy.edit.title}
+    description={editId === undefined ? copy.intro : copy.edit.intro}
+    headingLevel={1}
+  />
 
-  {#if phase.kind === 'connected' && phase.probe.outcome !== 'needs-authorization'}
+  {#if editId !== undefined && editing.isError}
+    <!-- The host refused the edit before anything was filled in: why, and the way back. -->
+    <Callout variant="warning" semantic="note" data-testid="connect-edit-refused">
+      {toolSourceFaultTreatment(editing.error).message}
+      {#snippet action()}
+        <Button variant="secondary" size="sm" onclick={() => router.navigate(SOURCES_PATH)}
+          >{copy.edit.back}</Button
+        >
+      {/snippet}
+    </Callout>
+  {:else if editId !== undefined && !filledFromSaved}
+    <InlineLoading status="active" description={copy.edit.loading} />
+  {:else if phase.kind === 'connected' && phase.probe.outcome !== 'needs-authorization' && editId === undefined}
     <div class="ib-connect__success" data-testid="connect-success">
       <EmptyState
         kind="done"
@@ -864,11 +965,13 @@
               id="connect-secret"
               type="password"
               label={copy.secret[activeAuthentication].label}
-              description={copy.secret.description}
+              description={keepsStoredSecret
+                ? `${copy.secret.description} ${copy.edit.secretKept}`
+                : copy.secret.description}
               autocomplete="off"
               spellcheck={false}
               variant="code"
-              required
+              required={!keepsStoredSecret}
               bind:value={secret}
               error={errorOf('secret')}
               disabled={connecting}
@@ -993,9 +1096,11 @@
             onclick={runConnect}
             >{connecting
               ? copy.actions.connecting
-              : listed && chosen > 0
-                ? copy.actions.connectCount(chosen)
-                : copy.actions.connect}</Button
+              : editId !== undefined
+                ? copy.edit.save
+                : listed && chosen > 0
+                  ? copy.actions.connectCount(chosen)
+                  : copy.actions.connect}</Button
           >
         {/snippet}
       </FormActions>

@@ -54,6 +54,7 @@
   } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { CONNECT_TOOLS_PATH } from '../../lib/tool-source-form.ts';
   import {
     riskLabel,
     sourceHeading,
@@ -270,7 +271,15 @@
           <VisuallyHidden>{copy.menu.label}</VisuallyHidden>
         </Dropdown.Trigger>
         <Dropdown.Menu>
-          <Dropdown.Item disabled title={copy.menu.editUnavailable}>{copy.menu.edit}</Dropdown.Item>
+          <!-- Edit connection opens Connect tools on this source (COR-2436). A local command's
+          line never reaches a page, so it is changed in configuration.json. -->
+          <Dropdown.Item
+            disabled={locked || source.localCommand}
+            {...source.localCommand ? { title: copy.menu.editUnavailable } : {}}
+            onclick={() =>
+              router.navigate(`${CONNECT_TOOLS_PATH}?source=${encodeURIComponent(source.id)}`)}
+            >{copy.menu.edit}</Dropdown.Item
+          >
           <Dropdown.Item data-changes onclick={() => testConnection.mutate()}
             >{copy.menu.test}</Dropdown.Item
           >

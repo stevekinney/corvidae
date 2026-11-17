@@ -316,6 +316,8 @@ export type HostToolSourceFaultKind =
   | 'invalid'
   /** The host applied part of the change; `message` says what is left. */
   | 'partial'
+  /** The page cannot edit the saved source (COR-2436); `message` says why and where to change it. */
+  | 'not-editable'
   /** The host could not make the change, or did not answer in a form this page reads. */
   | 'failed';
 
@@ -374,6 +376,7 @@ async function faultOf(response: Response): Promise<HostToolSourceError> {
     case 'owner-only':
     case 'not-found':
     case 'partial':
+    case 'not-editable':
       return new HostToolSourceError(error, message);
     case 'invalid':
       return new HostToolSourceError(
@@ -453,6 +456,33 @@ export async function inspectOpenApi(
  * @throws {HostToolSourceError} When the host refuses the request: no such source (`not-found`),
  * or a local command asked for by anyone but the owner.
  */
+const editingSchema = z.object({
+  id: z.string(),
+  source: z.record(z.string(), z.unknown()),
+  name: z.string().nullable(),
+  description: z.string().nullable(),
+  credentials: z.array(z.string()),
+  configurationRevision: z.string().nullable(),
+});
+
+/** A saved source as Edit connection reads it (COR-2436): no credential's value, only names. */
+export type ToolSourceEditing = z.infer<typeof editingSchema>;
+
+/**
+ * Reads a saved source for Connect tools to edit (COR-2436): its description, labels, the names
+ * of its credentials and the revision the edit is fenced on.
+ *
+ * @throws {HostToolSourceError} `not-editable` for a source the page cannot show exactly,
+ * `not-found` for one that is not saved, `locked` on a remote home.
+ */
+export async function getToolSourceEditing(
+  id: string,
+  options: Options = {},
+): Promise<ToolSourceEditing> {
+  const response = await send(sourcePath(id, '/editing'), { method: 'GET' }, options);
+  return readJson(response, editingSchema);
+}
+
 export async function testToolSource(id: string, options: Options = {}): Promise<ToolSourceProbe> {
   const response = await send(
     sourcePath(id, '/test'),
@@ -660,6 +690,7 @@ export function toolSourceFaultTreatment(error: unknown): FaultTreatment {
       return { kind: 'not-found', message };
     case 'exists':
     case 'invalid':
+    case 'not-editable':
       return { kind: 'invalid', message, fieldErrors: [] };
     case 'partial':
     case 'failed':

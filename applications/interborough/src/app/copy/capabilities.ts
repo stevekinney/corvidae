@@ -338,6 +338,7 @@ export const CAPABILITIES_COPY = {
       'not-found': 'The host has no such source.',
       invalid: 'The host did not accept the value.',
       partial: 'The host made only part of the change.',
+      'not-editable': 'This source can’t be edited here. Change it in configuration.json.',
       failed: 'The host could not make the change.',
     },
     skipped: {
@@ -356,6 +357,16 @@ export const CAPABILITIES_COPY = {
       title: 'Connect tools',
       intro:
         'Add an MCP server or an OpenAPI spec. Its tools are available to agents straight away, with no restart.',
+      /** Edit connection (row 32m, COR-2436): the same page, filled in from the saved source. */
+      edit: {
+        title: 'Edit connection',
+        intro:
+          'Change where the source is and how it signs in. A token or key left blank keeps the one stored, and each tool keeps its settings.',
+        save: 'Save',
+        loading: 'Reading the saved source',
+        back: 'Back to sources',
+        secretKept: 'Leave it blank to keep the one stored.',
+      },
       /** The page's sections, in order (row 33d). */
       sections: {
         source: 'Source',
@@ -631,7 +642,8 @@ export const CAPABILITIES_COPY = {
       label: 'More about this source',
       edit: 'Edit connection',
       /** Editing a saved connection happens on the Connect tools page, which does not read a saved source yet. */
-      editUnavailable: 'Editing a saved connection is not available yet.',
+      editUnavailable:
+        'This source runs a command on this machine, which is changed in configuration.json.',
       test: 'Test connection',
       remove: 'Remove source…',
     },
