@@ -150,7 +150,7 @@ describe('findWorktreeProcesses fails closed', () => {
   });
 
   test('does not report its lsof probe as a worktree leftover', () => {
-    expect(findWorktreeProcesses(sandbox, answer(0, 'p10\nclsof\np11\cbun\n', ''), 0)).toEqual([
+    expect(findWorktreeProcesses(sandbox, answer(0, 'p10\nclsof\np11\ncbun\n', ''), 0)).toEqual([
       { pid: 11, command: 'bun' },
     ]);
   });
