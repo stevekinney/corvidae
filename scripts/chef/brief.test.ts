@@ -273,7 +273,9 @@ describe('renderBrief', () => {
   test('cuts a very long description and says so', () => {
     const text = renderBrief(issue('x'.repeat(40_000)), options);
     expect(text).toContain('description cut at 16000');
-    expect(text.length).toBeLessThan(22_000);
+    // Measure what the description adds, not the whole brief: charter rules grow on their own.
+    const added = text.length - renderBrief(issue('x'), options).length;
+    expect(added).toBeLessThan(16_200);
   });
 });
 
