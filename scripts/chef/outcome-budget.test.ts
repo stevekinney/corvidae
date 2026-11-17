@@ -23,7 +23,6 @@ test('accepts a versioned record with an explicit non-enforced hard-limit state'
   ).not.toThrow();
 });
 
-
 test('rejects malformed durable fields before any persistent operation can use them', () => {
   for (const record of [
     { ...validRecord, hardLimitEnforced: true },

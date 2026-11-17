@@ -25,7 +25,9 @@ const allowanceSnapshotScenario = await (async () => {
 })();
 
 test('initialization snapshots a validated allowance before its first await', () => {
-  expect(allowanceSnapshotScenario).toMatchObject({ allowanceTokens: { amount: 4, provenance: 'user' } });
+  expect(allowanceSnapshotScenario).toMatchObject({
+    allowanceTokens: { amount: 4, provenance: 'user' },
+  });
 });
 
 const restartScenario = await (async () => {
