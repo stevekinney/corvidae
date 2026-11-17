@@ -186,6 +186,47 @@ describe('retrying a failed workflow run from its failed step', () => {
     expect(await storage.get(`${WORKFLOW_RETRY_KEY_PREFIX}${runId}`)).not.toBeNull();
   });
 
+  it('does not reactivate again for a repeated request whose retry already ran and failed again', async () => {
+    const storage = new MemoryStorage();
+    const { harness } = await failingHarness(storage);
+    const runId = await failedRun(harness);
+    const engine = harness.bureau.durableEngine()!;
+    const firstFailure = (await engine.get(runId))!.updatedAt;
+    // The editor stays down: the retry reactivates the run and the step fails again.
+    await harness.bureau.workflows!.retryRun(runId, { step: 2, retryId: 'x' });
+    await waitUntil(
+      async () => {
+        const state = await engine.get(runId);
+        return state?.status === 'failed' && state.updatedAt !== firstFailure;
+      },
+      { message: 'the retried step to fail again' },
+    );
+    const calls = agentCalls(harness, 'editor').length;
+    // The crash: the retry committed, but its `applied` record was never written.
+    const receipts = createWorkflowRetryReceipts({ store: textValueStore(storage) });
+    await receipts.put({
+      schemaVersion: 1,
+      runId,
+      generation: 1,
+      pending: {
+        retryId: 'x',
+        step: 2,
+        requestedAt: new Date(0).toISOString(),
+        failureAt: firstFailure,
+      },
+      applied: null,
+    });
+    // The client repeats the request: it is answered as the first was, and runs nothing.
+    const again = await harness.bureau.workflows!.retryRun(runId, { step: 2, retryId: 'x' });
+    expect(again).toMatchObject({ runId, step: 2, retryId: 'x' });
+    expect(agentCalls(harness, 'editor')).toHaveLength(calls);
+    expect((await engine.get(runId))?.status).toBe('failed');
+    const receipt = await receipts.get(runId);
+    expect(receipt?.generation).toBe(1);
+    expect(receipt?.pending).toBeNull();
+    expect(receipt?.applied?.retryId).toBe('x');
+  });
+
   it('refuses a step that is not the one the run failed at, or not one of its steps', async () => {
     const { harness, control } = await failingHarness();
     const runId = await failedRun(harness);

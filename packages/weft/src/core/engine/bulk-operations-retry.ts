@@ -223,7 +223,27 @@ export async function reactivateFailedWorkflowFromCheckpoint(
   );
 
   if (reactivated.terminalCleanupTimerId !== undefined) {
-    await internals.scheduler.cancel(reactivated.terminalCleanupTimerId, state.id);
+    try {
+      await internals.scheduler.cancel(reactivated.terminalCleanupTimerId, state.id);
+    } catch (error) {
+      throw new ReactivationCleanupError(state.id, error);
+    }
+  }
+}
+
+/**
+ * The reactivation committed and the run is running again; only the cancel of its terminal cleanup
+ * timer failed. A caller must go on and resume the run, not report it as unchanged.
+ */
+export class ReactivationCleanupError extends Error {
+  constructor(workflowId: string, cause: unknown) {
+    super(
+      `Workflow "${workflowId}" was reactivated, but its terminal cleanup timer was not canceled.`,
+      {
+        cause,
+      },
+    );
+    this.name = 'ReactivationCleanupError';
   }
 }
 

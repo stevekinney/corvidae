@@ -34,6 +34,13 @@ export interface WorkflowRetryRequest {
   readonly step: number;
   /** When the request was recorded. */
   readonly requestedAt: string;
+  /**
+   * When the failure the request targets was last updated (the failed state's `updatedAt`, in
+   * epoch milliseconds). A repeat that finds the instance failed with a later update knows the
+   * request already reactivated it and the retried step failed again, so it reactivates nothing.
+   * Absent from a receipt written before this field.
+   */
+  readonly failureAt?: number;
 }
 
 /** The retry receipt of one instance. */
@@ -68,7 +75,8 @@ function isRequest(value: unknown): value is WorkflowRetryRequest {
     (value['retryId'] === null || typeof value['retryId'] === 'string') &&
     typeof value['step'] === 'number' &&
     Number.isSafeInteger(value['step']) &&
-    typeof value['requestedAt'] === 'string'
+    typeof value['requestedAt'] === 'string' &&
+    (value['failureAt'] === undefined || typeof value['failureAt'] === 'number')
   );
 }
 

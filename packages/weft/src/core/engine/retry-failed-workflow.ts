@@ -1,6 +1,9 @@
 import { KEYS } from '../../storage/keys.ts';
 import type { RetryFailedWorkflowResult } from '../types.ts';
-import { reactivateFailedWorkflowFromCheckpoint } from './bulk-operations-retry.ts';
+import {
+  ReactivationCleanupError,
+  reactivateFailedWorkflowFromCheckpoint,
+} from './bulk-operations-retry.ts';
 import type { EngineInternals } from './internals.ts';
 import { loadWorkflowState } from './storage-io.ts';
 
@@ -44,6 +47,9 @@ export async function reactivateOneFailedWorkflow(
   try {
     await reactivateFailedWorkflowFromCheckpoint(internals, state);
   } catch (error) {
+    // The reactivation committed; only its cleanup failed. The run is running again and must be
+    // resumed, so this answers `retried` and leaves the timer for the next sweep.
+    if (error instanceof ReactivationCleanupError) return { workflowId, status: 'retried' };
     // The re-read under the lock found the run changed since the read above.
     const changed = await refusalOf(internals, workflowId);
     if (changed !== undefined) return changed;

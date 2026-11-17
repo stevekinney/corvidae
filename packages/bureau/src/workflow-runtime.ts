@@ -1623,6 +1623,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         `Run "${runId}" is ${state.status}, not failed.`,
       );
     }
+    // The same request again, after it reactivated the instance and the retried step failed again:
+    // the instance is `failed` once more, but not by the failure this request targeted. It is
+    // answered as the first request was and reactivates nothing.
+    const targeted = pending?.pending?.failureAt;
+    if (pending !== undefined && pending.pending !== null && targeted !== undefined) {
+      if (state.updatedAt !== targeted) {
+        await retryReceipts.put({ ...pending, pending: null, applied: pending.pending });
+        return answer(pending.pending.step);
+      }
+    }
     const written = await revisionOf(id, workflowVersion);
     if (written === undefined) {
       throw new WorkflowRetryRefusedError(
@@ -1637,6 +1647,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       retryId,
       step: retryOptions.step,
       requestedAt: options.runtime.clock.nowISO(),
+      failureAt: state.updatedAt,
     };
     const generation = pending?.generation ?? (receipt?.generation ?? 0) + 1;
     // Written before the engine reactivates the instance: a step that runs after it reads the
@@ -1662,7 +1673,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     try {
       outcome = await engine.retryFailed(runId);
     } catch (error) {
-      await clearPending();
+      // The instance reactivated and only the resume failed: the request stays pending, so its
+      // repeat finds it and is not refused as a request that never reactivated anything. Only an
+      // instance still failed was left as it was.
+      const after: WorkflowState | null | undefined = await engine.get(runId);
+      if (after?.status === 'failed') await clearPending();
       if (error instanceof WorkflowRevisionUnavailableError) {
         throw new WorkflowRetryRefusedError(
           'version-unavailable',
