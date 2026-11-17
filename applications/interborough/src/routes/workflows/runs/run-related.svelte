@@ -40,9 +40,11 @@
     readonly extra?: Snippet | undefined;
     /** Whether `extra` says anything, so a run with relatives of its own and nothing else says none. */
     readonly hasExtra?: boolean;
+    /** Whether the run is over, which says nothing came from it rather than nothing yet (row 55d). */
+    readonly over?: boolean;
   }
 
-  let { client, workflow, extra, hasExtra = false }: RunRelatedProps = $props();
+  let { client, workflow, extra, hasExtra = false, over = false }: RunRelatedProps = $props();
 
   let topologyOpen = $state(false);
 
@@ -117,7 +119,7 @@
     {#if hasExtra && extra !== undefined}
       {@render extra()}
     {:else}
-      <p class="ib-run__note">{RUN_RELATED_COPY.none}</p>
+      <p class="ib-run__note">{over ? RUN_RELATED_COPY.noneOver : RUN_RELATED_COPY.none}</p>
     {/if}
   {:else}
     {#if hasExtra && extra !== undefined}{@render extra()}{/if}

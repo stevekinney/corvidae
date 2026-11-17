@@ -420,7 +420,7 @@ describe('the page', () => {
     // A finished run's how it ran is folded up; a person opens it for the activity.
     expect(view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading })).not.toBeNull();
     expect(view.queryByRole('heading', { level: 3, name: 'Activity' })).toBeNull();
-    for (const name of ['Input and output', 'Details']) {
+    for (const name of ['Input and output', 'Run details']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     // What only the workflow's reader may do is not drawn, and the page is whole without it.

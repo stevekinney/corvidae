@@ -87,11 +87,14 @@
   <div class="ib-run-tags__label" id={`workflow-detail-tags-label-${workflow.id}`}>
     {RUN_PAGE_COPY.facts.tags}
   </div>
+  {#if tags.length === 0}
+    <p class="ib-run__note" data-run-tags-none>{RUN_PAGE_COPY.noTags}</p>
+  {/if}
   <TagInput
     {...{ 'data-changes': true }}
     id={`workflow-detail-tags-${workflow.id}`}
     aria-labelledby={`workflow-detail-tags-label-${workflow.id}`}
-    placeholder="Add tag"
+    placeholder={RUN_PAGE_COPY.addTag}
     disabled={tagGate.disabled}
     bind:value={tags}
     onValueChange={changeTags}

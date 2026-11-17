@@ -305,7 +305,7 @@ describe('a run the engine holds', () => {
     const tabs = found.map((tab) => tab.textContent?.trim());
     expect(tabs.slice(0, 1)).toEqual(['Steps']);
     expect(tabs).toContain('Events and logs');
-    for (const name of ['Input and output', 'Details', 'Related runs']) {
+    for (const name of ['Input and output', 'Run details', 'Related runs']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     expect(view.getByRole('heading', { level: 3, name: 'Activity' })).not.toBeNull();
@@ -475,8 +475,12 @@ describe('the Details rail of a run the engine holds', () => {
 
     const view = mount(id);
 
-    await waitFor(() => expect(fact(view, 'Took')).toBeDefined());
+    await waitFor(() => expect(fact(view, 'Version')).toBeDefined());
     expect(fact(view, 'Deadline')).toBeUndefined();
+    // The header says when it started and how long it took; the rail does not say it again.
+    expect(fact(view, 'Took')).toBeUndefined();
+    expect(fact(view, 'Started')).toBeUndefined();
+    expect(fact(view, 'Last changed')).toBeUndefined();
   });
 });
 

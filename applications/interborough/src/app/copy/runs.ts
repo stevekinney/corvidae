@@ -71,6 +71,8 @@ export const RUN_RELATED_COPY = {
   revisionTitle: (revision: string): string => `Revision (exact executable artifact): ${revision}`,
   /** Said under the heading when no run started this one and it has not started any. */
   none: 'No other runs yet.',
+  /** The same, for a run that is over: nothing came from it (row 55d). */
+  noneOver: 'No other runs came from this one.',
   loadFailedTitle: 'Related runs could not be read',
   openRun: (label: string): string => `Open run ${label}`,
 } as const;
@@ -147,7 +149,10 @@ export const RUN_PAGE_COPY = {
   eventsLockedTitle: 'Events are locked',
   checkpointsHeading: 'Checkpoints',
   lineageHeading: 'Lineage',
-  detailsHeading: 'Details',
+  detailsHeading: 'Run details',
+  /** Under Tags when the run has none, and the field's placeholder (rows 54j, 54p, 55d, 55h). */
+  noTags: 'None',
+  addTag: 'Add a tag',
   attributesAndWorkerLabel: 'Attributes and worker',
   changeHeading: 'Change or ask this run',
   changeIntro: 'Send a message to the run, or read something from it, without leaving the page.',
@@ -579,6 +584,8 @@ export const RUN_DETAIL_COPY = {
       'The message that started the run, what it answered, and the steps in between.',
     /** Under the heading of a run of a workflow: its input and what it produced. */
     workflowDescription: 'What this run was started with, and what it produced.',
+    /** The same while the run is still going (row 54p). */
+    workflowDescriptionLive: 'What this run was started with, and what it will produce.',
     /** Under the heading of a run a schedule started, which has no chat. */
     scheduleDescription:
       'A schedule run has no chat, so the schedule’s prompt is the input and the result is the output.',

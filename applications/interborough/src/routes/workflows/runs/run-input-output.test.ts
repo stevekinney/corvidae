@@ -71,6 +71,19 @@ describe('a workflow’s input and output', () => {
     expect(queryByRole('group', { name: copy.output })).toBeNull();
   });
 
+  test('the description says what a running workflow will produce, and what a finished one produced (54p, 55c)', () => {
+    const running = render(Harness, { props: { workflow: workflow({ status: 'running' }) } });
+    expect(running.container.querySelector('[data-section="input-output"]')?.textContent).toContain(
+      'What this run was started with, and what it will produce.',
+    );
+    running.unmount();
+
+    const failed = render(Harness, { props: { workflow: workflow({ status: 'failed' }) } });
+    expect(failed.container.querySelector('[data-section="input-output"]')?.textContent).toContain(
+      'What this run was started with, and what it produced.',
+    );
+  });
+
   // COR-2329: the page drew a spinner of its own; it is Cinder's, hidden behind the sentence.
   test('a running workflow’s note turns with Cinder’s spinner, which the sentence speaks for', () => {
     const { getByText } = render(Harness, {
