@@ -426,6 +426,16 @@ describe('Chat — scrollFadeVisible', () => {
     );
   });
 
+  test('the approval reminder keeps its own words on one line; only the queue note after them wraps', async () => {
+    const drawerPath = new URL('./container/chat-approval-drawer.svelte', import.meta.url);
+    const text = await Bun.file(drawerPath).text();
+    const source = text.replace(/\s+/g, ' ');
+    expect(source).toContain(
+      '<span class="chat-approval-drawer-words">{labels.approvalWaitingText}</span >{#if draft}{\' \'}{labels.approvalQueueNote}{/if}',
+    );
+    expect(source).toContain('.chat-approval-drawer-words { white-space: nowrap; }');
+  });
+
   test('the approval reminder stands one --cinder-space-3 gap clear of the row under it', async () => {
     const drawerPath = new URL('./container/chat-approval-drawer.svelte', import.meta.url);
     const text = await Bun.file(drawerPath).text();

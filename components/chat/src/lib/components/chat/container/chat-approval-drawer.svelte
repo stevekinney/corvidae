@@ -34,9 +34,8 @@
     <Info class="cinder-icon-sm" aria-hidden="true" />
   {/snippet}
   <span class="chat-approval-drawer-text"
-    >{draft
-      ? `${labels.approvalWaitingText} ${labels.approvalQueueNote}`
-      : labels.approvalWaitingText}</span
+    ><span class="chat-approval-drawer-words">{labels.approvalWaitingText}</span
+    >{#if draft}{' '}{labels.approvalQueueNote}{/if}</span
   >
   {#snippet action()}
     <Button
@@ -65,6 +64,14 @@
 
   :global(.chat-approval-drawer-text) {
     min-inline-size: 0;
+  }
+
+  /* The reminder's own two words never break: the Callout sizes its message to the width of its
+     words beside the glyph's indent, and a fraction of a pixel lost to rounding there broke the
+     last word onto a second line beside Review on a 320px phone (COR-2327 N1). The queue note
+     after them still wraps as text does. */
+  .chat-approval-drawer-words {
+    white-space: nowrap;
   }
 
   .chat-approval-drawer-action-short {
