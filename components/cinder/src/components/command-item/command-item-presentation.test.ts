@@ -44,10 +44,24 @@ describe('CommandItem leading tone and meta (row 03c)', () => {
 });
 
 describe('CommandItem meta separator', () => {
-  test('a meta with nothing in it is not drawn, so no stray "," trails the label', async () => {
+  test('a meta with nothing in it is not drawn, so no stray gap trails the label', async () => {
     const css = await Bun.file(new URL('./command-item.css', import.meta.url)).text();
     expect(css).toMatch(/\.cinder-command-item__meta:empty\s*\{\s*display:\s*none;/);
-    expect(css).toMatch(/\.cinder-command-item__meta::before\s*\{[^}]*content:\s*',';/);
+  });
+
+  test('the meta is told apart by a space and a colour step, with no comma or dot drawn', async () => {
+    const css = await Bun.file(new URL('./command-item.css', import.meta.url)).text();
+    const rule = css.match(/\.cinder-command-item__meta\s*\{([^}]*)\}/g)?.join('\n') ?? '';
+    expect(rule).toMatch(/color:\s*var\(--cinder-text-muted\)/);
+    expect(rule).toMatch(/margin-inline-start:/);
+    expect(css).not.toMatch(/\.cinder-command-item__meta::(before|after)/);
+    expect(css).not.toContain("content: ','");
+
+    const { container } = render(Harness, { withMeta: true });
+    const label = container.querySelector('.cinder-command-item__label');
+    const rendered = label?.textContent ?? '';
+    expect(rendered).not.toContain(String.fromCodePoint(0xb7));
+    expect(rendered).not.toMatch(/\?,/);
   });
 });
 

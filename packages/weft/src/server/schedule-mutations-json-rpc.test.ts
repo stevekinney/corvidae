@@ -10,16 +10,14 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, dispatchJsonRpc } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
-import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
-import { createOperationRegistry } from './operation-catalog.ts';
+import { type WorkflowContext, workflow } from '../core/types.ts';
 import { cancelScheduleOperation } from './operations/cancel-schedule.ts';
 import { pauseScheduleOperation } from './operations/pause-schedule.ts';
 import { resumeScheduleOperation } from './operations/resume-schedule.ts';
-import { principalFromApiKey } from './principal.ts';
 
 // JSON-RPC error codes (src/server/operation-fault.ts).
 const NOT_FOUND_CODE = -32020;

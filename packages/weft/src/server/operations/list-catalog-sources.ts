@@ -2,10 +2,10 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { listWorkflowSources } from '../../core/engine/source-listing.ts';
-import { shapeOperationFaultAsJson } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
+import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
 import { assertOperationEngineObject } from './operation-helpers.ts';
 
 const listCatalogSourcesInput = z
@@ -93,5 +93,5 @@ export const listCatalogSourcesRestBinding: UnknownRestBinding = {
     };
   },
   success: { kind: 'json', status: 200 },
-  shapeFault: shapeOperationFaultAsJson,
+  shapeFault: shapeWeftOperationFaultAsJson,
 };

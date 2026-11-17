@@ -15,19 +15,18 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { record, records } from './protocol.test-support.ts';
 
+import { type UnarySchemaOperationDefinition, defineOperation } from '@lostgradient/backchannel';
+import {
+  type ErasedOperation,
+  type OperationRegistry,
+  type ParameterizedAccessHint,
+  createOperationRegistry,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
 import { listMcpTools } from '../mcp/tools.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import {
-  createOperationRegistry,
-  type ErasedOperation,
-  type OperationRegistry,
-} from './operation-catalog.ts';
-import type { ParameterizedAccessHint } from './operation-catalog/types.ts';
-import type { UnarySchemaOperationDefinition } from './operation-registry.ts';
-import { defineOperation } from './operation-registry.ts';
 
 function byString(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -60,7 +59,7 @@ function makeOp(overrides: {
   readonly name: string;
   readonly inputSchema?: z.ZodObject;
   readonly outputSchema?: z.ZodType;
-  readonly access?: import('./authorization.ts').AccessPolicy;
+  readonly access?: import('@lostgradient/backchannel/internals').AccessPolicy;
   readonly discoverable?: boolean;
   readonly mcpExposable?: boolean;
   readonly mcpTool?: { readonly workflowType: string };

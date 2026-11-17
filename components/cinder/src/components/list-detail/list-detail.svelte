@@ -60,6 +60,7 @@
     writeStoredListCollapsed,
     writeStoredListWidth,
   } from './list-detail-state.ts';
+  import CompactActions from '../../_internal/compact-actions.svelte';
   import { Tooltip } from '../tooltip/index.ts';
   import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
   import type { ListDetailProps } from './list-detail.types.ts';
@@ -78,6 +79,7 @@
     groupBy,
     loading = false,
     loadingLabel = 'Loading',
+    onLoadingCancel,
     detail,
     empty,
     listEmpty,
@@ -361,11 +363,13 @@
     {#if header}
       <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
       <header class="cinder-list-detail__header">
-        {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+        <CompactActions>
+          {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+        </CompactActions>
       </header>
     {:else if toggleShown}
       <header class="cinder-list-detail__header" data-cinder-list-toggle="">
-        {@render listToggle()}
+        <CompactActions>{@render listToggle()}</CompactActions>
       </header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
@@ -373,9 +377,11 @@
         <Skeleton
           variant="list"
           rows={5}
+          framed={false}
           label={loadingLabel}
           delay={LOADING_DELAY_MILLISECONDS}
           stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+          {...onLoadingCancel === undefined ? {} : { onCancel: onLoadingCancel }}
           class="cinder-list-detail__loading"
         />
       {:else if listBody}
@@ -456,7 +462,7 @@
     <div class="cinder-list-detail__detail-body">
       {#if loading}
         <div class="cinder-list-detail__loading-detail" aria-hidden="true">
-          <Skeleton variant="card" lines={5} delay={LOADING_DELAY_MILLISECONDS} />
+          <Skeleton lines={5} delay={LOADING_DELAY_MILLISECONDS} />
         </div>
       {:else if selectedEntry}
         {@render detail(selectedEntry.item)}

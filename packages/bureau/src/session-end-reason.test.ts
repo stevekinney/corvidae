@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 
 import { buildBureauHandlerHost } from './http/create-bureau-handler';
 import { contextsGetOperation, contextsListOperation } from './http/management/contexts-operations';

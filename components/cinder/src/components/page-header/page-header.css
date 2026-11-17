@@ -14,18 +14,18 @@
     border-bottom: 1px solid var(--cinder-border);
   }
 
-  /* Flush: the page lays out its own column, so the header draws no rule and no padding, and its
-     title lines up with what is under it. */
-  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__breadcrumbs {
-    padding-inline: 0;
+  /* Flush by default (COR-2448): the header draws no padding beside or around its row, so its title
+     lines up with what is under it. `inset` opts into the padding. */
+  .cinder-page-header[data-cinder-inset='true'] .cinder-page-header__breadcrumbs {
+    padding-inline: var(--cinder-space-4);
   }
 
-  .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__row {
-    padding: 0;
+  .cinder-page-header[data-cinder-inset='true'] .cinder-page-header__row {
+    padding: var(--cinder-space-3) var(--cinder-space-4);
   }
 
   .cinder-page-header__breadcrumbs {
-    padding: var(--cinder-space-3) var(--cinder-space-4) 0;
+    padding: var(--cinder-space-3) 0 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-tight);
@@ -36,7 +36,7 @@
     align-items: flex-start;
     gap: var(--cinder-space-3);
     min-width: 0;
-    padding: var(--cinder-space-3) var(--cinder-space-4);
+    padding: 0;
   }
 
   .cinder-page-header__heading-group {
@@ -142,6 +142,94 @@
 
     .cinder-page-header__status > .cinder-divider[data-cinder-orientation='vertical'] {
       display: none;
+    }
+
+    /* `narrowActions="beside-status"`: the actions sit at the inline end of the status's row
+       instead of a row of their own, which gives that row's height back to the page (a chat on a
+       phone). The heading's parts become the row's grid items: the title across the top, the
+       status and the actions on the line under it, and a description under both. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'] .cinder-page-header__row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--cinder-space-1) var(--cinder-space-3);
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      :is(.cinder-page-header__heading-group, .cinder-page-header__title-line) {
+      display: contents;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'] .cinder-page-header__title {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'] .cinder-page-header__status {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {
+      grid-column: 2;
+      grid-row: 2;
+      justify-self: end;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__description {
+      grid-column: 1 / -1;
+      grid-row: 3;
+    }
+
+    /* The create "+" stays beside the title, as it does in the default narrow layout. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:has(> .cinder-page-header__create-slot)
+      .cinder-page-header__title {
+      grid-column: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__create-slot {
+      grid-column: 2;
+      grid-row: 1;
+      justify-self: end;
+    }
+
+    /* With no status there is no line under the title to share, so the actions sit beside the
+       title on its first line instead of alone on a second one, the create "+" after them, and a
+       description takes the line under the title. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__title {
+      grid-column: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {
+      grid-row: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__create-slot {
+      grid-column: auto;
+    }
+
+    /* Both on the title's line need a column each, so a description still spans the row. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status)):has(
+        > .cinder-page-header__actions:not(.cinder-page-header__create-slot)
+      ):has(> .cinder-page-header__create-slot) {
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__description {
+      grid-row: 2;
     }
   }
 

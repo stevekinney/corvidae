@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { OperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { handleJsonRpcHttpRequestSafely } from './json-rpc-transport-helpers.ts';
 import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
-import type { OperationRegistry } from './operation-catalog.ts';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 
 type OpenRpcMethodDocument = {

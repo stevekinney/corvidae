@@ -5,14 +5,16 @@
 
 import { join } from 'node:path';
 
-import { generateAsyncApiDocument } from './asyncapi.ts';
+import {
+  generateAsyncApiDocument,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import {
   formatGoldenJson,
   withGoldenVersion,
   writeGoldenDirectory,
-} from './golden-files.test-support.ts';
-import { generateOpenApiDocument } from './openapi.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
+} from '@lostgradient/backchannel/testing';
 import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 import { createCatalogSnapshot } from './weft-catalog-snapshot.ts';
 import { weftDiscoveryInfo } from './weft-documents.ts';

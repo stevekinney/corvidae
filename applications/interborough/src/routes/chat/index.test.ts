@@ -232,9 +232,15 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
       'Chat',
       CHAT_COPY.load.crumb,
     ]);
+    // The heading's stand-in sits in the conversation's column, as the loaded header does, and
+    // draws no rule the loaded header lacks, so nothing shifts when the chat arrives (COR-2327 N9).
+    const heading = loading()?.querySelector('.ib-chat-unavailable__heading');
+    expect(heading?.classList.contains('weft-chat-head')).toBe(true);
+    const source = await Bun.file(new URL('./chat-unavailable.svelte', import.meta.url)).text();
+    expect(source).not.toMatch(/border-(?:block-end|bottom)/u);
   });
 
-  test('says it is still loading after 10 s with Cancel, and a canceled read offers Retry and All conversations', async () => {
+  test('says it is still loading after 10 s with Cancel, and a canceled read offers Try again and All conversations', async () => {
     let answers = 0;
     restore = bureau(
       { 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) },
@@ -272,15 +278,28 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(container.textContent).toContain(CHAT_COPY.load.canceledTitle);
     const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
     expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    // Said once (COR-2327 B6): no notice over the composer, and the reason Send is off beside it.
+    expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
+    const send = container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;
+    expect(send.disabled).toBe(true);
+    const reason = container.querySelector('.chat-input-paused-reason');
+    expect(reason?.textContent?.trim()).toBe(CHAT_COPY.load.sendBlocked);
+    expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
+    expect(container.querySelector<HTMLTextAreaElement>('textarea')?.readOnly).toBe(false);
     const asked = answers;
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    // One label for one job (COR-2327 Q1): a canceled read, a failed one and a failing list each
+    // offer Try again.
+    expect(
+      container.querySelector('[data-chat-availability="canceled"]')?.textContent,
+    ).not.toContain('Retry');
+    await fireEvent.click(await findByRole('button', { name: CHAT_COPY.load.tryAgain }));
     await until(() => expect(answers).toBeGreaterThan(asked));
     await until(() =>
       expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
     );
   });
 
-  test('stays canceled when the reads held at Cancel answer late, and reads again only on Retry', async () => {
+  test('stays canceled when the reads held at Cancel answer late, and reads again only on Try again', async () => {
     // Every read of the chat is held: the pane's, and the list's read of the open chat's row.
     const held: Array<() => void> = [];
     let asked = 0;
@@ -351,8 +370,8 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
     const readsBeforeRetry = asked;
 
-    // Retry reads it again, and the chat it answers is shown.
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    // Try again reads it again, and the chat it answers is shown.
+    await fireEvent.click(await findByRole('button', { name: CHAT_COPY.load.tryAgain }));
     await until(() => expect(asked).toBeGreaterThan(readsBeforeRetry));
     for (const answer of held.splice(0)) answer();
     jest.useRealTimers();

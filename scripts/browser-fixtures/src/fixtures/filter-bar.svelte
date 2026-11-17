@@ -67,3 +67,25 @@
   onFacetValuesChange={setFilter}
   onFilterRemove={(key) => setFilter(key, [])}
 />
+
+<!-- The same bar in a column too narrow for the wide form and wide enough to keep its segments
+     (COR-2449): the search folds into an icon button first. The wide form of this content needs
+     about 945px (the controls run about 760px, a gap, then the search field at its 11rem basis);
+     with the search as a 32px icon button it needs about 800px. 880px sits in the middle of the
+     two, so a font that measures a little wider or narrower leaves the bar in the same form. -->
+<div data-testid="filter-bar-search-folded" style="inline-size: 880px; margin-block-start: 2rem;">
+  <FilterBar
+    aria-label="Run filters in a narrower column"
+    {segments}
+    {segmentValue}
+    {facets}
+    {appliedFilters}
+    {searchQuery}
+    searchPlaceholder="Search runs"
+    onSegmentChange={(value) => (segmentValue = value)}
+    onSearchChange={(query) => (searchQuery = query)}
+    onFacetChange={(key, value) => setFilter(key, value === '' ? [] : [value])}
+    onFacetValuesChange={setFilter}
+    onFilterRemove={(key) => setFilter(key, [])}
+  />
+</div>

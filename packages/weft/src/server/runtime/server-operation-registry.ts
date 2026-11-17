@@ -1,9 +1,9 @@
+import type { OperationRegistry } from '@lostgradient/backchannel/internals';
 import type { ConformanceTargetRunner } from '../../conformance/targets.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import type { ServeOptions } from '../index.ts';
-import type { OperationRegistry } from '../operation-catalog.ts';
 import type { WorkerSessionTiming } from '../operations/get-worker-diagnostics.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import type { TaskQueue } from '../task-queue.ts';

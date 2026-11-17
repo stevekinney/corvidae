@@ -4,7 +4,7 @@
  * mount (`agUi`, `mcp`, `publicUrl` and `mounts` unset) over one Bureau.
  */
 
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { join } from 'node:path';
 
 import { buildBureau } from './bureau-handler-fixtures.test-support.ts';

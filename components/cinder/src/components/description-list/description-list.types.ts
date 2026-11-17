@@ -2,7 +2,7 @@ import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 /** Layout variant for the description list. */
 export type DescriptionListVariant =
-  'default' | 'striped' | 'two-column' | 'narrow' | 'facts' | 'fields';
+  'default' | 'striped' | 'two-column' | 'narrow' | 'facts' | 'fields' | 'grid';
 /**
  * A timestamp definition. It reads as a short date and time, and the exact
  * time (full date, seconds and time zone) shows on hover.
@@ -52,9 +52,35 @@ export type DescriptionListTags = {
   onAddTag?: () => void;
 };
 
-/** A definition the list formats itself: a timestamp, an identifier or a tag list. */
+/**
+ * A code definition: text set in the code font and broken anywhere, such as a command or a value
+ * written as JSON. Shown whole, never shortened.
+ */
+export type DescriptionListCode = {
+  /** Marks the definition as code. */
+  type: 'code';
+  /** The text, shown exactly. */
+  value: string;
+};
+
+/**
+ * An empty definition: a field that holds nothing, written as a quiet word such as "None" or
+ * "Empty" so it never reads as a value someone typed.
+ */
+export type DescriptionListEmpty = {
+  /** Marks the definition as empty. */
+  type: 'empty';
+  /** The word for nothing, such as `None` or `Empty`. */
+  label: string;
+};
+
+/** A definition the list formats itself: a timestamp, an identifier, a tag list, code or an empty field. */
 export type DescriptionListFormattedValue =
-  DescriptionListTimestamp | DescriptionListIdentifier | DescriptionListTags;
+  | DescriptionListTimestamp
+  | DescriptionListIdentifier
+  | DescriptionListTags
+  | DescriptionListCode
+  | DescriptionListEmpty;
 
 /** Term definition content: plain text, rich snippet content, or a value the list formats. */
 export type DescriptionListDefinition = string | Snippet | DescriptionListFormattedValue;
@@ -68,9 +94,17 @@ export type DescriptionListItem = {
   term: string;
   /**
    * The value rendered inside `<dd>`. Plain text, a snippet, or a formatted
-   * value: `{ type: 'timestamp' }`, `{ type: 'identifier' }` or `{ type: 'tags' }`.
+   * value: `{ type: 'timestamp' }`, `{ type: 'identifier' }`, `{ type: 'tags' }`,
+   * `{ type: 'code' }` or `{ type: 'empty' }`.
    */
   definition: DescriptionListDefinition;
+  /**
+   * Gives a long value the whole row in the `grid` and `facts` variants instead of one column: a
+   * value that wraps past about two lines in a column, runs over several lines, or is code. The
+   * other variants already give every value the row.
+   * @default false
+   */
+  wide?: boolean;
   /**
    * A muted second line under the definition, for what the value is called elsewhere (a check
    * read in words, with its name and version beneath). It is plain text read with the definition,
@@ -89,11 +123,15 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    * - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when
    *   surrounding context already labels the value. NOT a general compact mode.
    * - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value
-   *   beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text;
+   *   beside it, each row at least 44px tall flat, with a quiet rule under each (`framed` adds a tinted group);
    *   stacks below 28rem.
    * - `facts`: one row of equal columns, each a muted term above its value, between two quiet
    *   rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the
    *   container narrows.
+   * - `grid`: the pairs flow in as many equal columns as the list's own width fits (about 6.5rem
+   *   each), each a muted term above its value at the column's start edge, with no rules and no
+   *   fill: a wide card reads three short pairs on one row, a phone two, a narrow column one. A
+   *   `wide` item takes the whole row.
    */
   variant?: DescriptionListVariant;
   /**
@@ -104,6 +142,13 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    * @default false
    */
   stack?: boolean;
+  /**
+   * Keeps the tinted, rounded frame around the `fields` variant. The variant is flat by default, so
+   * a record inside a pane or a card never draws a box inside a box; set this where the list stands
+   * alone on the page canvas. Has no effect on any other variant.
+   * @default false
+   */
+  framed?: boolean;
   /** Additional class merged onto the `.cinder-description-list` root element. */
   class?: string;
   /**

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import {
+  createReplayLiveFeed,
+  principalFromApiKey,
+  type ReplayLiveSubscribeOptions,
+} from '@lostgradient/backchannel';
+import { createOperationRegistry, executeStream } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
@@ -9,9 +15,6 @@ import {
   type FleetEventFeed,
 } from '../fleet-event-feed.ts';
 import { handleRequest, type HandlerOptions } from '../handler.ts';
-import { createOperationRegistry, executeStream } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
-import { createReplayLiveFeed, type ReplayLiveSubscribeOptions } from '../workflow-event-feed.ts';
 import { fleetEventsSseOperation, fleetEventsSseRestBinding } from './fleet-events-sse.ts';
 
 const registry = createOperationRegistry([fleetEventsSseOperation]);

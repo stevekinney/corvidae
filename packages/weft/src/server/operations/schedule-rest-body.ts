@@ -1,6 +1,10 @@
-import type { RestInputContext } from '../rest-binding.ts';
-import { readOptionalRestJsonBody, readRestJsonBody } from '../rest-body.ts';
-import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
+import {
+  type RestInputContext,
+  invalidParamsFault,
+  isOperationFault,
+  readOptionalRestJsonBody,
+  readRestJsonBody,
+} from '@lostgradient/backchannel/internals';
 
 export type SharedScheduleRestFields = {
   readonly cronExpression: unknown;

@@ -167,6 +167,111 @@ describe('SchemaForm setting-rows variant', () => {
     expect(rowOf(view, 'roots').querySelector('.cinder-schema-form__array-item')).toBeNull();
   });
 
+  describe('a group that holds one short field', () => {
+    const group = (property: Record<string, unknown>) => ({
+      type: 'object',
+      properties: {
+        account: {
+          type: 'object',
+          title: 'Account',
+          description: 'Who the work is billed to.',
+          properties: { owner: { title: 'Owner', ...property } },
+        },
+      },
+    });
+
+    const kinds: Array<[string, Record<string, unknown>, string]> = [
+      ['text', { type: 'string' }, 'textbox'],
+      ['number', { type: 'number' }, 'spinbutton'],
+      ['select', { type: 'string', enum: ['ada', 'grace'] }, 'combobox'],
+      ['duration', { type: 'number', format: 'duration-ms' }, 'spinbutton'],
+      ['switch', { type: 'boolean' }, 'switch'],
+    ];
+
+    for (const [kind, property, role] of kinds) {
+      test(`draws a ${kind} as one row: the group's words lead and the field's label names the control`, async () => {
+        const view = await mount(group(property));
+        // One row, not a row with a field under it.
+        expect(view.container.querySelectorAll('.cinder-setting-row')).toHaveLength(1);
+        const account = rowOf(view, 'account');
+        // The group's title and description are the row's.
+        expect(account.querySelector('.cinder-form-field__label')?.textContent).toContain(
+          'Account',
+        );
+        expect(account.textContent).toContain('Who the work is billed to.');
+        // The control sits in the control column, with the row.
+        const control = screen.getByRole(role, { name: 'Owner' });
+        expect(control.closest('.cinder-setting-row__field')).not.toBeNull();
+        // The group is named by its title and described by its description.
+        const grouped = requiredInstance(account, HTMLElement);
+        expect(grouped.getAttribute('role')).toBe('group');
+        const labelledBy = grouped.getAttribute('aria-labelledby') ?? '';
+        expect(view.container.querySelector(`[id="${labelledBy}"]`)?.textContent).toContain(
+          'Account',
+        );
+        const describedBy = (control.getAttribute('aria-describedby') ?? '').split(' ');
+        const description = describedBy
+          .map((id) => view.container.querySelector(`[id="${id}"]`)?.textContent ?? '')
+          .join(' ');
+        expect(description).toContain('Who the work is billed to.');
+      });
+    }
+
+    test('keeps the switch at the inline end and the other controls stretched', async () => {
+      const text = await mount(group({ type: 'string' }));
+      expect(
+        rowOf(text, 'account')
+          .querySelector('.cinder-setting-row')
+          ?.getAttribute('data-cinder-control-align'),
+      ).toBe('stretch');
+      cleanup();
+      const toggle = await mount(group({ type: 'boolean' }));
+      expect(
+        rowOf(toggle, 'account')
+          .querySelector('.cinder-setting-row')
+          ?.hasAttribute('data-cinder-control-align'),
+      ).toBe(false);
+    });
+
+    test('reports its value in the same draft shape as the default variant', async () => {
+      const view = await mount(group({ type: 'string' }), {
+        value: { account: { owner: 'Operations' } },
+      });
+      const owner = screen.getByRole('textbox', { name: 'Owner' });
+      await fireEvent.input(owner, { target: { value: 'Billing' } });
+      await flush();
+      expect(view.drafts.at(-1)).toEqual({ account: { owner: 'Billing' } });
+    });
+
+    test('shows a host issue on the field as the row error, and marks the control invalid', async () => {
+      const view = await mount(group({ type: 'string' }), {
+        issues: [{ path: ['account', 'owner'], message: 'Name an owner.' }],
+      });
+      expect(rowOf(view, 'account').textContent).toContain('Name an owner.');
+      const owner = screen.getByRole('textbox', { name: 'Owner' });
+      expect(owner.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    test('draws a group of a list of strings, a nested group, or an array of objects under its row as before', async () => {
+      for (const property of [
+        { type: 'array', items: { type: 'string' } },
+        { type: 'object', properties: { name: { type: 'string' } } },
+        { type: 'array', items: { type: 'object', properties: { path: { type: 'string' } } } },
+      ]) {
+        const view = await mount(group(property));
+        const account = rowOf(view, 'account');
+        expect(account.getAttribute('role')).toBeNull();
+        expect(account.querySelector('.cinder-setting-row__field input')).toBeNull();
+        cleanup();
+      }
+    });
+
+    test('draws a group of two fields as before', async () => {
+      const view = await mount(nested);
+      expect(rowOf(view, 'account').getAttribute('role')).toBeNull();
+    });
+  });
+
   test('shows a host issue as the error of the row it names, and clears it when the field is edited', async () => {
     const view = await mount(plugin, {
       value: { searchAddress: 'https://search.example' },

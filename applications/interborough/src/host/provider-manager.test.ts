@@ -1,4 +1,4 @@
-import type { WorkspaceIdentity } from '@lostgradient/weft';
+import type { WorkspaceIdentity } from '@lostgradient/backchannel';
 import {
   createHostMutationContext,
   createLocalHostMutationContext,

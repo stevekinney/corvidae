@@ -107,6 +107,20 @@ describe('DescriptionList', () => {
     );
   });
 
+  test('fields variant is flat by default and `framed` opts into the tinted frame', () => {
+    const flat = render(DescriptionList, { items: sampleItems, variant: 'fields' });
+    expect(flat.container.querySelector('dl')?.hasAttribute('data-cinder-framed')).toBe(false);
+    flat.unmount();
+    const framed = render(DescriptionList, { items: sampleItems, variant: 'fields', framed: true });
+    expect(framed.container.querySelector('dl')?.hasAttribute('data-cinder-framed')).toBe(true);
+    const css = readFileSync(new URL('./description-list.css', import.meta.url), 'utf8');
+    const base = css.match(/\[data-cinder-variant='fields'\]\s*\{([^}]*)\}/s)?.[1] ?? '';
+    expect(base).not.toMatch(/background|border-radius|padding-inline-start/);
+    expect(css).toMatch(
+      /\[data-cinder-variant='fields'\]\[data-cinder-framed\]\s*\{[^}]*background: var\(--cinder-surface-inset\)/s,
+    );
+  });
+
   test('facts variant sets data-cinder-variant and keeps each term before its value', () => {
     const { container } = render(DescriptionList, { items: sampleItems, variant: 'facts' });
     const dl = container.querySelector('.cinder-description-list');
@@ -440,6 +454,56 @@ describe('DescriptionList formatted values', () => {
     expect(dividers).toHaveLength(1);
     expect(descriptionListCss).toMatch(
       /data-cinder-variant='default'\]\s*\.cinder-description-list__row:not\(:first-child\)\s*\{[^}]*border-block-start/,
+    );
+  });
+
+  test('code is shown whole in a code element, and an empty field as a quiet word', () => {
+    const { container } = render(DescriptionList, {
+      items: [
+        { term: 'Payload', definition: { type: 'code', value: '{"orderId":4471}' } },
+        { term: 'Note', definition: { type: 'empty', label: 'None' } },
+      ],
+    });
+    const code = container.querySelector('.cinder-description-list__code');
+    expect(code?.tagName).toBe('CODE');
+    expect(code?.textContent).toBe('{"orderId":4471}');
+    expect(container.querySelector('.cinder-description-list__empty')?.textContent).toBe('None');
+  });
+});
+
+describe('DescriptionList grid variant', () => {
+  const flat = descriptionListCss.replace(/\s+/g, ' ');
+
+  test('flows the pairs in as many equal columns as its own width fits, a term over each value', () => {
+    const grid =
+      /\.cinder-description-list\[data-cinder-variant='grid'\] \{([^}]*)\}/.exec(flat)?.[1] ?? '';
+    // Tracks from the list's own inline size (auto-fill), never a viewport query, at a token width.
+    expect(grid).toContain('display: grid;');
+    expect(grid).toMatch(
+      /grid-template-columns: repeat\( auto-fill, minmax\(min\(100%, var\(--_cinder-description-list-column-min\)\), 1fr\) \);/,
+    );
+    expect(grid).toContain(
+      '--_cinder-description-list-column-min: calc(var(--cinder-space-24) + var(--cinder-space-2));',
+    );
+    expect(grid).toContain('gap: var(--cinder-space-2) var(--cinder-space-3);');
+    // No rules and no fill: neither the list nor its rows draw a border or a background.
+    expect(flat).not.toMatch(/variant='grid'\][^{]*\{[^}]*(border|background)/);
+    expect(flat).not.toMatch(/@media[^{]*\{[^}]*variant='grid'/);
+  });
+
+  test('a wide item takes the whole row, in the grid and facts variants', () => {
+    const { container } = render(DescriptionList, {
+      variant: 'grid',
+      items: [
+        { term: 'Order ID', definition: '4471' },
+        { term: 'Reason', definition: 'A long reason that runs past two lines', wide: true },
+      ],
+    });
+    const rows = [...container.querySelectorAll('.cinder-description-list__row')];
+    expect(rows.map((row) => row.hasAttribute('data-cinder-wide'))).toEqual([false, true]);
+    expect(container.querySelector('dl')?.getAttribute('data-cinder-variant')).toBe('grid');
+    expect(flat).toContain(
+      ".cinder-description-list:is([data-cinder-variant='facts'], [data-cinder-variant='grid']) .cinder-description-list__row[data-cinder-wide] { grid-column: 1 / -1; }",
     );
   });
 });

@@ -142,11 +142,12 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Show a scroll-driven edge fade on the top and bottom of the message
    * timeline as it overflows. Opt-in and presentation-only — never the sole
    * signal that more messages exist; the jump-to-latest button and unread
-   * count remain the authoritative affordances. Only visible when
-   * `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the
-   * timeline paints no background of its own, so there is no color the fade
-   * could correctly fade toward, and it stays inert rather than painting an
-   * incorrect opaque band. Default `false`.
+   * count remain the authoritative affordances. With `surfaceMode` `'default'`
+   * it is an opaque overlay in the timeline's own surface colour; with
+   * `surfaceMode="transparent"` the timeline paints no background, so it masks
+   * the edge instead and the host's background shows through. Either edge
+   * fades only while content lies past it, and reduced transparency or forced
+   * colours keep a plain edge. Default `false`.
    */
   scrollFadeVisible?: boolean;
   /**

@@ -10,6 +10,9 @@ export type PageHeaderHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
  */
 export type PageHeaderStatusPlacement = 'inline' | 'below';
 
+/** Where a narrow header's actions go: on a row of their own, or beside the status. */
+export type PageHeaderNarrowActions = 'own-row' | 'beside-status';
+
 /**
  * The header's layout. `default` is the page title beside its actions. `large` sets the title at
  * the large page-title size and, once it scrolls away, shows it at the default size in a sticky
@@ -158,15 +161,15 @@ export type PageHeaderProps = Omit<
    */
   createAction?: PageHeaderCreateAction;
   /**
-   * Draws the header with no padding around it, so its title lines up with the content beneath
-   * it. A page that lays out its own column, such as a page of settings with a section navigation
-   * beside it, uses this.
+   * Insets the header with padding around it. Off by default: the header is flush with the content
+   * beneath it, so its title lines up with that content. Pass it where the header should sit in
+   * from the edge of its container.
    * @default false
    */
-  flush?: boolean;
+  inset?: boolean;
   /**
    * Draws a rule under the header. Off by default: space separates the header from the page, and
-   * the rule is opt-in. A flush header never draws one.
+   * the rule is opt-in.
    * @default false
    */
   divider?: boolean;
@@ -186,6 +189,15 @@ export type PageHeaderProps = Omit<
    * @default "below"
    */
   statusPlacement?: PageHeaderStatusPlacement;
+  /**
+   * Where the actions go in a narrow header (a phone). `own-row` puts them on a row of their own
+   * under the title and the status. `beside-status` puts them at the inline end of the status's
+   * row instead, which saves that row's height, for a page whose actions are a few compact
+   * controls and whose content below needs the room, such as a chat; with no status they sit
+   * beside the title. A wide header is the same either way.
+   * @default "own-row"
+   */
+  narrowActions?: PageHeaderNarrowActions;
   /**
    * The title's plain text, for the tooltip that shows the full title when it is cut off, when
    * `title` is a snippet. A string `title` is used as it is.
@@ -229,15 +241,15 @@ export interface PageHeaderSchemaProps {
   /** Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet. */
   description?: string;
   /**
-   * Draws the header with no padding around it, so its title lines up with the content beneath
-   * it. A page that lays out its own column, such as a page of settings with a section navigation
-   * beside it, uses this.
+   * Insets the header with padding around it. Off by default: the header is flush with the content
+   * beneath it, so its title lines up with that content. Pass it where the header should sit in
+   * from the edge of its container.
    * @default false
    */
-  flush?: boolean;
+  inset?: boolean;
   /**
    * Draws a rule under the header. Off by default: space separates the header from the page, and
-   * the rule is opt-in. A flush header never draws one.
+   * the rule is opt-in.
    * @default false
    */
   divider?: boolean;
@@ -251,6 +263,12 @@ export interface PageHeaderSchemaProps {
    * @default "below"
    */
   statusPlacement?: PageHeaderStatusPlacement;
+  /**
+   * Where the actions go in a narrow header (a phone): `own-row` on a row of their own under the
+   * title and the status, or `beside-status` at the inline end of the status's row.
+   * @default "own-row"
+   */
+  narrowActions?: PageHeaderNarrowActions;
   /**
    * The accessible name of the overflow menu button.
    * @default "More actions"

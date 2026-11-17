@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, expectTypeOf, it } from 'bun:test';
 import { z } from 'zod';
 
-import { anonymousPrincipal, principalFromApiKey } from '../principal.ts';
-import { createOperationRegistry, executeOperation } from './index.ts';
+import { anonymousPrincipal, principalFromApiKey } from '@lostgradient/backchannel';
+import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import {
   catalogCheckoutWorkflow,
   catalogTransports,

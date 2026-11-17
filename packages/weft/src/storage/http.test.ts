@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { assertCapabilitiesShape } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import { handleRequest } from '../server/handler.ts';
-import { principalFromApiKey } from '../server/principal.ts';
 import { HTTPStorage } from './http.ts';
 
 describe('HTTPStorage capabilities()', () => {

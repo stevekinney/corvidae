@@ -18,6 +18,8 @@
 
 import { z } from 'zod';
 
+import { defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
 import {
   buildRegistrySnapshot,
@@ -27,8 +29,6 @@ import {
   type RegistrySnapshot,
   RegistryWorkflowCountLimitError,
 } from '../../core/registry-snapshot.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getRegistryInput = z.object({});
 

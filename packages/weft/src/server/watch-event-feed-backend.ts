@@ -15,6 +15,8 @@
  * @module server/watch-event-feed-backend
  */
 
+import { encodeCursor } from '@lostgradient/backchannel';
+import { type EventSelector } from '@lostgradient/backchannel/internals';
 import type { Engine } from '../core/engine.ts';
 import { KEYS } from '../storage/keys.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
@@ -26,9 +28,7 @@ import {
 } from './runtime/websocket-stream.ts';
 import {
   createWorkflowEventFeed,
-  encodeCursor,
   type EventEnvelope,
-  type EventSelector,
   type WorkflowEventFeed,
   type WorkflowEventFeedBackend,
 } from './workflow-event-feed.ts';

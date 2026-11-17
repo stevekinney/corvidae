@@ -23,6 +23,17 @@ export function truncateId(id: string): string {
   return `${id.slice(0, 8)}…${id.slice(-4)}`;
 }
 
+/**
+ * Shortens a revision for a narrow column: the repeated `sha256:` prefix is dropped, so the
+ * characters shown tell revisions apart (`1a2b3c…0e6f`, not `sha256:1…0e6f`). The whole revision
+ * stays in the tooltip beside it.
+ */
+export function truncateRevision(revision: string): string {
+  const digest = revision.startsWith('sha256:') ? revision.slice('sha256:'.length) : revision;
+  if (digest.length <= 11) return digest;
+  return `${digest.slice(0, 6)}…${digest.slice(-4)}`;
+}
+
 const DURATION_UNITS: readonly { readonly ms: number; readonly label: string }[] = [
   { ms: 86_400_000, label: 'd' },
   { ms: 3_600_000, label: 'h' },

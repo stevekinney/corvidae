@@ -254,10 +254,7 @@
       }
     },
     {
-      "files": [
-        "src/server/authentication/rotating-api-key-store.test.ts",
-        "src/server/package-authorization-scopes.test.ts"
-      ],
+      "files": ["src/server/package-authorization-scopes.test.ts"],
       "rules": {
         "typescript/no-floating-promises": "error"
       }
@@ -276,12 +273,6 @@
     },
     {
       "files": ["src/client/interface.ts", "src/client/local.ts", "src/client/http-client.ts"],
-      "rules": {
-        "typescript/no-unnecessary-type-parameters": "off"
-      }
-    },
-    {
-      "files": ["src/server/operation-catalog/stream-pipeline.ts"],
       "rules": {
         "typescript/no-unnecessary-type-parameters": "off"
       }

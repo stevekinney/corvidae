@@ -86,6 +86,12 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * @default 'Loading'
    */
   loadingLabel?: string;
+  /**
+   * Adds a Cancel button to the loading placeholder's "still loading" line, for a read the person
+   * can give up on. It is called when the button is pressed; the host decides what giving up
+   * means (stop the read, show a "canceled" state). Without it the line has no button.
+   */
+  onLoadingCancel?: () => void;
   /** Detail renderer for the open item. */
   detail: Snippet<[item: T]>;
   /** Rendered in the detail pane while no item is open. A default message is shown when omitted. */

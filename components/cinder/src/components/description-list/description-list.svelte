@@ -31,6 +31,7 @@
     items,
     variant = 'default',
     stack = false,
+    framed = false,
     class: className,
     actions,
     ...rest
@@ -117,9 +118,10 @@
   class={classNames('cinder-description-list', className)}
   data-cinder-variant={variant}
   data-cinder-stacked={stack || undefined}
+  data-cinder-framed={framed || undefined}
 >
   {#each items as item (item.id ?? item.term)}
-    <div class="cinder-description-list__row">
+    <div class="cinder-description-list__row" data-cinder-wide={item.wide || undefined}>
       <dt class={variant === 'narrow' ? 'cinder-sr-only' : 'cinder-_label-text'}>{item.term}</dt>
       <dd class="cinder-_value-text">
         <div class="cinder-description-list__definition">
@@ -142,6 +144,10 @@
             {:else}
               <span class="cinder-description-list__empty">Invalid date</span>
             {/if}
+          {:else if item.definition.type === 'code'}
+            <code class="cinder-description-list__code">{item.definition.value}</code>
+          {:else if item.definition.type === 'empty'}
+            <span class="cinder-description-list__empty">{item.definition.label}</span>
           {:else if item.definition.type === 'identifier'}
             <span class="cinder-description-list__identifier-group">
               <code class="cinder-description-list__identifier" title={item.definition.value}

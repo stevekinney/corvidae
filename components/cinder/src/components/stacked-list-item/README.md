@@ -27,13 +27,13 @@ Single row within a stacked list, typically pairing a label with metadata or an 
 Pass `status` (a [`StatusDot`](../status-dot/README.md) with its word), `time`, and `meta` to draw the row the list pages share:
 
 - **line one**: the status dot and word in a fixed 128px leading column, a bold title, and the time right-aligned at the edge;
-- **line two**: muted `meta`, kind first, then agent, then detail, joined by commas. It starts under the title, not under the status, and ends in an ellipsis rather than wrapping.
+- **line two**: muted `meta`, kind first, then agent, then detail. Its pieces are told apart by a space and a step, never by a comma or a dot, and never as a bare run of words in one weight and one colour: the status word is semibold beside the muted line, and inside the line each piece is its own element (an identifier in a `Text` of `variant="code"`, a reason in a tone) so a piece that stands apart takes a step in face, weight or colour. It starts under the title, not under the status, and ends in an ellipsis rather than wrapping.
 
 The column is the same 128px on every page, so titles start at one x position down the list. The dot and word sit on the baseline of the first line of the title and the time shares that baseline, so both stay beside the first line when a title clamps to two lines with an ellipsis. Pass `tooltip` with the title's text so the full title is the row's tooltip.
 
 ```svelte
 <script lang="ts">
-  import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { DataList, StackedListItem, StatusDot, Text } from '@lostgradient/cinder';
 
   const runs = [
     {
@@ -41,14 +41,18 @@ The column is the same 128px on every page, so titles start at one x position do
       title: 'Refund order 4471',
       status: 'Waiting on you',
       time: '10:42 AM',
-      kind: 'Chat, Tool runner, waiting 4 min',
+      kind: 'Chat',
+      agent: 'tool-runner',
+      wait: 'waiting 4 min',
     },
     {
       id: 'b',
       title: 'Say hello',
       status: 'Done',
       time: '4:12 PM',
-      kind: 'Chat, Assistant, 8 s',
+      kind: 'Chat',
+      agent: 'assistant',
+      wait: '8 s',
     },
   ];
 </script>
@@ -59,11 +63,16 @@ The column is the same 128px on every page, so titles start at one x position do
       {#snippet status()}<StatusDot word={run.status} />{/snippet}
       {#snippet title()}{run.title}{/snippet}
       {#snippet time()}{run.time}{/snippet}
-      {#snippet meta()}{run.kind}{/snippet}
+      <!-- Each piece is its own element, a space apart, and the identifier steps in face. -->
+      {#snippet meta()}{run.kind}
+        <Text as="span" variant="code">{run.agent}</Text>
+        {run.wait}{/snippet}
     </StackedListItem>
   {/snippet}
 </DataList>
 ```
+
+Pieces of line two need a step, never a bare run of words: `Chat tool-runner waiting 4 min` is three pieces, and the middle one is set apart by its monospace face. Words in one weight and one colour with only spaces between them read as one sentence, so give each piece that should read on its own an element of its own and a step.
 
 A row with nothing to report (a workflow, an available agent) keeps the column's width and leaves it empty: pass `statusColumn` on the row, or `statusColumn` on the `DataList` to keep it for every row. A leading visual such as an avatar follows the column.
 
@@ -71,20 +80,20 @@ The status column is optional. A row (or a list) that has nothing to say about s
 
 ### Phone and the chat list
 
-On a phone (a viewport narrower than 640px), and in any row narrower than 448px whatever the viewport (a list in a split pane, a tablet's narrow column), the status moves to line two beside the kind and agent (`Waiting on you, Chat, Tool runner`) and the time stays on line one, so the title keeps the whole first line. The word and dot are unchanged, and a row with no status simply has none.
+On a phone (a row narrower than 640px: its own width, not the viewport's, so a 360px pane in a wide window takes it too, and so does any row narrower than 448px, which is inside that range) the status moves to line two beside the kind and agent (`Waiting on you Chat Tool runner`, told apart by weight and colour) and the time stays on line one, so the title keeps the whole first line. The word and dot are unchanged, and a row with no status simply has none.
 
-The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you, I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
+The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a space, then the preview (`Waiting on you I found order 4471…`, told apart by weight and colour), and the title clamps at two lines (`titleLines={2}`).
 
 ### A third line
 
-Line two ends in an ellipsis, so a reason that must never be cut cannot live there on a narrow screen. Pass `detail` for a third line that wraps and is never cut: a schedule's phone row says what it is on line two (`Active, Workflow, Order refund, Tool runner`) and the reason it will not run first on the third, with the cadence last (`Order refund can't load, won't run until a provider is connected, Mondays at 11:00 AM`). The line starts under the title, or at the left edge under the status on a phone, and a page passes it only where it wants it.
+Line two ends in an ellipsis, so a reason that must never be cut cannot live there on a narrow screen. Pass `detail` for a third line that wraps and is never cut: a schedule's phone row says what it is on line two (the status word `Active`, semibold, then `Workflow`, then the identifier `order-refund` in its monospace face, then `Tool runner`: pieces a space apart, each stepped from the one before) and the reason it will not run first on the third, with the cadence last (`Order refund can't load, won't run until a provider is connected, Mondays at 11:00 AM`). The line starts under the title, or at the left edge under the status on a phone, and a page passes it only where it wants it.
 
 ```svelte
 <StackedListItem href="/schedules/weekly-refund-audit">
   {#snippet status()}<StatusDot word="Active" />{/snippet}
   {#snippet title()}Weekly refund audit{/snippet}
   {#snippet time()}Next today 11:00 AM{/snippet}
-  {#snippet meta()}Workflow, Order refund, Tool runner{/snippet}
+  {#snippet meta()}Workflow <Text as="span" variant="code">order-refund</Text> Tool runner{/snippet}
   {#snippet detail()}Order refund can't load, won't run until a provider is connected, Mondays at
     11:00 AM{/snippet}
 </StackedListItem>
@@ -143,9 +152,9 @@ Pass `leadingTone` to draw `leading` as a 32px rounded tile tinted with that ton
 
 ### Trailing actions
 
-Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each is a secondary small button on a tablet or desktop; below 640px two or more collapse into one menu button ("More actions", drawn at the compact height of a small Button, with a 44px touch target under a coarse pointer) with the same actions, and a single action stays its own compact secondary button, never a menu of one. A disabled action keeps `aria-disabled` and stays focusable, with `disabledReason` as its description and tooltip, in the menu too.
+Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each is a secondary small button on a tablet or desktop; below 640px of row width two or more collapse into one menu button ("More actions", drawn at the compact height of a small Button, with a 44px touch target under a coarse pointer) with the same actions, and a single action stays its own compact secondary button, never a menu of one. A disabled action keeps `aria-disabled` and stays focusable, with `disabledReason` as its description and tooltip, in the menu too.
 
-Trailing actions sit in a fixed column. The trailing region is the row's last grid column and is only as wide as its actions, so they sit against the row's end edge whatever the body holds. A status badge or other metadata in the body can lengthen or shorten the text beside the actions, and it never changes where an action button lands, because the body column takes the slack. Keep it that way: put a badge with the metadata in the content column (`meta`, `description` or the status cell), never inside `trailing` or `actions`, where it would take width from the buttons and move them from one row to the next. Below 448px of row width the trailing region drops under the body, or collapses to one menu button, on every row alike.
+Trailing actions sit in a fixed column. The trailing region is the row's last grid column and is only as wide as its actions, so they sit against the row's end edge whatever the body holds. A status badge or other metadata in the body can lengthen or shorten the text beside the actions, and it never changes where an action button lands, because the body column takes the slack. Keep it that way: put a badge with the metadata in the content column (`meta`, `description` or the status cell), never inside `trailing` or `actions`, where it would take width from the buttons and move them from one row to the next. Below 448px of row width the trailing region drops under the body, or collapses to one menu button, on every row alike; one marked `trailingGlyph`, such as a chevron, stays beside the body.
 
 ## Props
 
@@ -182,9 +191,9 @@ Trailing actions sit in a fixed column. The trailing region is the row's last gr
 | `detail` | `(opaque)` | no | — | A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is ever cut. A schedule row on a phone puts the reason it won't run first and the cadence last on it; the cadence is the part a narrow screen can lose, so it is the last thing the line says. It starts under the title, and is not drawn on a row with `details`. Not expressible in JSON Schema; see the component types for the signature. |
 | `details` | `(opaque)` | no | — | Turns the row into a collapsed group row (the missed runs on Runs): a "Show" / "Hide" button at the right of line one reveals this snippet beneath the row, aligned with the title. A group row is not a link. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Leading visual (avatar, icon, status dot). With a status column it follows the column. Not expressible in JSON Schema; see the component types for the signature. |
-| `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail, joined by commas. It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |
+| `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail. Pieces are told apart by a space and a step, never by a comma or a dot, and never as a bare run of words in one weight and one colour: each piece is its own element, and a piece that stands apart takes a step in face, weight or colour (the status word is semibold beside the muted line; inside the line, an identifier in a `Text` of `variant="code"`, or a reason in a tone). It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetryClick` | `(opaque)` | no | — | Called when the row's "Try again" button is chosen. Without it the error shows no button. Not expressible in JSON Schema; see the component types for the signature. |
-| `status` | `(opaque)` | no | — | The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that every list on every page shares, so titles start at one x position down the list; on a phone it moves to line two, before the meta, followed by a comma unless the snippet drew nothing. The dot and word sit on the first line of the title. The column is optional: a row with no `status` (and no `statusColumn`) reserves none. A dot with its word is the documented row status; a tinted Badge or pill is not. Not expressible in JSON Schema; see the component types for the signature. |
+| `status` | `(opaque)` | no | — | The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that every list on every page shares, so titles start at one x position down the list; on a phone it moves to line two, before the meta, followed by a space unless the snippet drew nothing. The dot and word sit on the first line of the title. The column is optional: a row with no `status` (and no `statusColumn`) reserves none. A dot with its word is the documented row status; a tinted Badge or pill is not. Not expressible in JSON Schema; see the component types for the signature. |
 | `target` | `(opaque)` | no | — | Browsing context for the title anchor (`_blank`, `_self`, `_parent`, `_top`, or a named frame). Not expressible in JSON Schema; see the component types for the signature. |
 | `time` | `(opaque)` | no | — | The time, or the next run, at the right edge of line one, aligned to its top. Pass a `RelativeTime` or a plain string. Not expressible in JSON Schema; see the component types for the signature. |
 | `title` | `(opaque)` | yes | — | Primary label. Required. Not expressible in JSON Schema; see the component types for the signature. |

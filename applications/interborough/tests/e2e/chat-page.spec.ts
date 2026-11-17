@@ -236,7 +236,48 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     );
   });
 
-  test('says "Still loading this chat…" after 10 s with the elapsed time and Cancel, then offers Retry (17y, COR-2285 V2)', async ({
+  test('holds the transcript loading, with no empty state, no Connect state and no prompt, until the chat’s history arrives (COR-2327 B3)', async ({
+    page,
+  }) => {
+    // The chat is read and its header drawn; only the thread (the run to join and the history) is
+    // held. The sample world has no provider key, so an empty transcript would be Connect a model
+    // provider, and with one the agent's first-use prompts, which send.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/ag-ui/threads/**', async (route) => {
+      await gate;
+      await route.fallback().catch(() => undefined);
+    });
+    const providers = page.waitForResponse((response) =>
+      response.url().endsWith('/host/providers'),
+    );
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
+    await providers;
+    // The agents are read: the composer names Tool runner.
+    const open = page.getByRole('region', { name: 'Open chat' });
+    await expect(open.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      'Message Tool runner…',
+    );
+
+    await expect(open.locator('[data-chat-availability="loading"]')).toBeVisible();
+    await expect(open.locator('[data-chat-availability="unconfigured"]')).toHaveCount(0);
+    await expect(open.locator('.chat-empty')).toHaveCount(0);
+    await expect(open.getByRole('group', { name: 'Suggested prompts' })).toHaveCount(0);
+    await expect(open.getByText('Connect a model provider')).toHaveCount(0);
+    await expect(open.getByRole('button', { name: 'Loading…' })).toBeDisabled();
+
+    release();
+    await expect(open.locator('[data-approval-decision]')).toBeVisible();
+    await expect(open.locator('[data-chat-availability="loading"]')).toHaveCount(0);
+  });
+
+  test('says "Still loading this chat…" after 10 s with the elapsed time and Cancel, then offers Try again (17y, COR-2285 V2)', async ({
     page,
     checkA11y,
   }) => {
@@ -288,11 +329,17 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     const canceled = loading.locator('[data-chat-availability="canceled"]');
     await expect(canceled).toContainText('Loading was canceled');
     await expect(page).toHaveURL(new RegExp(`/chats/${SAMPLE_WORLD_THREADS.refund}$`));
-    await expect(canceled.getByRole('button', { name: 'Retry' })).toHaveAttribute(
+    // One label for one job (COR-2327 Q1): Try again, as a failed read and a failing list say it.
+    await expect(canceled.getByRole('button', { name: 'Try again' })).toHaveAttribute(
       'data-cinder-variant',
       'primary',
     );
     await expect(canceled.getByRole('button', { name: 'All conversations' })).toBeVisible();
+    // Said once (COR-2327 B6): no notice over the composer, only the reason beside Send.
+    await expect(loading.locator('[data-chat-composer-drawer]')).toHaveCount(0);
+    await expect(loading.locator('.chat-input-paused-reason')).toHaveText(
+      'Try again to send messages.',
+    );
     await checkA11y('a canceled chat read');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
@@ -302,7 +349,7 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
 
     holding = false;
     release();
-    await canceled.getByRole('button', { name: 'Retry' }).click();
+    await canceled.getByRole('button', { name: 'Try again' }).click();
     await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
     await expect(page.getByTestId('chat-unavailable')).toHaveCount(0);
   });
@@ -454,11 +501,8 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     await expect(newChat).toHaveAttribute('aria-disabled', 'true');
     await newChat.focus();
     await expect(newChat).toBeFocused();
-    // What changes nothing stays live: the Input disclosure, a note, the list's search and links.
-    await expect(approval.getByRole('button', { name: /^Input/ })).not.toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    // What changes nothing stays live: the input in the open, a note, the list's search and links.
+    await expect(approval.getByRole('group', { name: 'Input' })).toBeVisible();
     await expect(approval.getByRole('button', { name: 'Add note' })).toBeEnabled();
     await expect(page.getByRole('searchbox', { name: 'Search chats' })).toBeEnabled();
     await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();

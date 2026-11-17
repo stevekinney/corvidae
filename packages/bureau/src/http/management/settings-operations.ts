@@ -27,7 +27,7 @@ import {
   defineOperation,
   encodeCursor,
   type OperationFault,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { SETTING_LOCK_REASONS } from '../../settings/settings-schema.ts';

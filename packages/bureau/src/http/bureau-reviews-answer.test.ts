@@ -15,7 +15,7 @@ import {
   createOperationHandler,
   createOperationHandlerAuthenticator,
   principalFromApiKey,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

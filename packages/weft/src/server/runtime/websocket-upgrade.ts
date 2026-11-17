@@ -1,14 +1,15 @@
-import type { AuthContext } from '../authentication.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import { authContextToPrincipal } from '../handler.ts';
+import { type AuthorizationScope, authContextToPrincipal } from '@lostgradient/backchannel';
+import {
+  type AuthContext,
+  isAuthenticated,
+  isOriginAllowed,
+  JSON_RPC_PATH,
+  parseOptionalSequenceCursor,
+} from '@lostgradient/backchannel/internals';
 import type { ServeOptions } from '../index.ts';
 import { finalizeWebSocketUpgrade } from '../json-rpc-transport-helpers.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
-import { isAuthenticated } from '../principal.ts';
-import { JSON_RPC_PATH } from '../route-model.ts';
-import { parseOptionalSequenceCursor } from '../sequence-cursor.ts';
 import type { ServerContext } from './context.ts';
-import { isOriginAllowed } from './cors.ts';
 
 export const WORKER_STREAM_RE = /^\/v1\/tasks\/([\w-]+)\/stream$/;
 

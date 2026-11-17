@@ -307,6 +307,24 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: { children: s0(true) },
   },
 
+  // COR-2327: a disabled item says why on a second line under its label, and names it as its
+  // description, in place of a `title` that touch never shows.
+  'dropdown-item': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      itemRole: { optional: true, type_kind: 'TSTypeReference', default: L('menuitem') },
+      checked: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      inset: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      closeOnSelect: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      disabled: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      disabledReason: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+    },
+    snippets: { children: s0(true) },
+  },
+
   'empty-state': {
     kind: 'literal',
     props: {
@@ -528,6 +546,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
+      onLoadingCancel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       backLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Back') },
       backVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: B(true) },
       detailLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Details') },
@@ -659,6 +678,42 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: { children: s0(false), icon: s0(true) },
   },
 
+  'page-header': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      title: { optional: false, type_kind: 'TSUnionType', default: REQUIRED },
+      titleSoft: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      headingLevel: { optional: true, type_kind: 'TSTypeReference', default: L(1) },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      tone: { optional: true, type_kind: 'TSTypeReference', default: L('plain') },
+      eyebrow: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      description: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      overflow: { optional: true, type_kind: 'TSArrayType', default: NO_DEFAULT },
+      overflowLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('More actions') },
+      collapsed: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      collapsedBar: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      createAction: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      inset: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      divider: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      error: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      statusPlacement: { optional: true, type_kind: 'TSTypeReference', default: L('below') },
+      narrowActions: { optional: true, type_kind: 'TSTypeReference', default: L('own-row') },
+      titleText: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {
+      breadcrumbs: s0(true),
+      actions: s0(true),
+      decisions: s0(true),
+      facts: s0(true),
+      media: s0(true),
+      art: s0(true),
+      focal: s0(true),
+      status: s0(true),
+    },
+  },
+
   pagination: {
     kind: 'literal',
     props: {
@@ -725,7 +780,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       action: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       dayBand: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
-      framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      detailLine: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       delay: { optional: true, type_kind: 'TSNumberKeyword', default: L(0) },
       stillLoadingAfter: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },

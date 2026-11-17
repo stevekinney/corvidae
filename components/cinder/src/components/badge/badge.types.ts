@@ -21,7 +21,7 @@ export type BadgeProps =
       monospace?: boolean;
       /**
        * Keeps the badge within the width it is given and ends a long label with an ellipsis, with
-       * the full label in the `title`, for a value of any length such as a tag.
+       * the full label in a tooltip on hover and focus, for a value of any length such as a tag.
        */
       truncate?: boolean;
       class?: string;
@@ -38,7 +38,7 @@ export type BadgeProps =
       monospace?: boolean;
       /**
        * Keeps the badge within the width it is given and ends a long label with an ellipsis, with
-       * the full label in the `title`, for a value of any length such as a tag.
+       * the full label in a tooltip on hover and focus, for a value of any length such as a tag.
        */
       truncate?: boolean;
       class?: string;
@@ -70,7 +70,8 @@ export interface BadgeSchemaProps {
   monospace?: boolean;
   /**
    * Keeps the badge within the width it is given and ends a long label with an ellipsis, with the
-   * full label in the `title`.
+   * full label in a tooltip on hover and focus. Only a label that is actually cut takes a tab stop
+   * and a tooltip; a link inside it takes the stop instead.
    * @default false
    */
   truncate?: boolean;

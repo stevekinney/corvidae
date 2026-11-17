@@ -4,7 +4,7 @@ import {
   createOperationHandler,
   createOperationHandlerAuthenticator,
   principalFromJwtClaims,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@standard-schema/spec": "catalog:",
+    "@lostgradient/backchannel": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",

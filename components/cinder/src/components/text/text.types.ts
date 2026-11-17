@@ -17,15 +17,15 @@ type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
   /** Additional classes merged onto the root element. */
   class?: string;
   /**
-   * Holds the text to this many lines, so a long reply keeps the shape of the page. A "Show all"
+   * Holds the text to this many lines, so a long reply keeps the shape of the page. A "Show more"
    * button appears under it only while the text is actually cut off, and opens the rest in place.
    */
   clamp?: number;
   /** Whether a clamped run is open to its full length. Bindable; ignored without `clamp`. @default false */
   expanded?: boolean;
   /**
-   * Content that sits beside the "Show all" button on the line under a clamped run, separated from
-   * it by a comma, such as a "Show raw payloads" link. Ignored without `clamp`.
+   * Content that sits beside the "Show more" button on the line under a clamped run, separated from
+   * it by a space and a colour step, such as a "Show raw payloads" link. Ignored without `clamp`.
    */
   actions?: Snippet;
   /** With `truncate="middle"`, how many characters at the end of the text stay visible. @default 4 */
@@ -56,7 +56,8 @@ type TextContentProps =
        * Keeps the text on one line and ends it with an ellipsis when it is too long, for a long value
        * in a narrow place: a name above its detail in a table row, an identifier in a list. The line
        * takes the typography of what holds it, so it reads as part of that text, and the full text is
-       * its `title` unless `title` is set. Needs `text`.
+       * a tooltip unless `title` is set (the text takes focus, so a keyboard or touch user reaches
+       * it too). Needs `text`.
        */
       truncate: 'end';
       /** The plain text to end with an ellipsis. */
@@ -73,7 +74,7 @@ export interface TextSchemaProps {
   as?: TextElement;
   /** Additional classes merged onto the root element. */
   class?: string;
-  /** Holds the text to this many lines; a "Show all" button appears only while the text is cut off. */
+  /** Holds the text to this many lines; a "Show more" button appears only while the text is cut off. */
   clamp?: number;
   /** Whether a clamped run is open to its full length. @default false */
   expanded?: boolean;

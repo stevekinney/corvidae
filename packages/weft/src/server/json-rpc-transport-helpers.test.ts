@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it, spyOn } from 'bun:test';
 
+import * as handlerModule from '@lostgradient/backchannel';
+import * as jsonRpcHttpModule from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import * as handlerModule from './handler.ts';
-import * as jsonRpcHttpModule from './json-rpc-http.ts';
 import {
   finalizeWebSocketUpgrade,
   handleJsonRpcHttpRequestSafely,

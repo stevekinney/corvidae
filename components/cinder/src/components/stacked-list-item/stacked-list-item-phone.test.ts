@@ -76,7 +76,7 @@ describe('StackedListItem on a phone', () => {
     );
     expect(stylesheet).toContain("'leading status line line trailing'");
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\][^{]*__status:has\(\*\)::after\s*\{\s*content:\s*','/,
+      /--status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{/,
     );
     cleanup();
     setPhone(false);
@@ -91,10 +91,10 @@ describe('StackedListItem on a phone', () => {
     // The phone rules name the line-two placement as well as the leading one: an auto status track
     // in place of the fixed column, no end padding, and the dot separator after the word.
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
+      /--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*\.cinder-stacked-list-item__status:has\(\*\)::after\s*\{\s*content:\s*','/,
+      /--status-line-two\s*\.cinder-stacked-list-item__status:has\(\*\)\s*\{\s*margin-inline-end:/,
     );
     cleanup();
     setPhone(false);
@@ -174,18 +174,15 @@ describe('StackedListItem on a phone', () => {
     setPhone(false);
   });
 
-  test('a status-first row chooses the phone arrangement by its own width, below 448px of row', () => {
-    // The block names the rows that are not already a phone row, and gives them the phone grid.
-    const block = stylesheet.slice(
-      stylesheet.indexOf('A status-first row chooses its arrangement by its own width'),
+  test('a status-first row narrower than 448px takes the phone arrangement from the 640px container query', () => {
+    // Main's own-width 448px rule is a subset of the 640px one, so it has no block of its own.
+    const phoneBlock = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-stacked-list-item (max-width: 639.98px)'),
     );
-    expect(block).toMatch(/@container cinder-stacked-list-item \(max-width: 448px\)\s*\{/);
-    expect(block).toMatch(
-      /:not\(\s*\[data-cinder-phone\]\s*\)\s*>\s*\.cinder-stacked-list-item__layout/,
-    );
-    expect(block).toContain("'leading title title time trailing'");
-    expect(block).toContain("'leading status line line trailing'");
-    expect(block).toMatch(/--_cinder-status-track:\s*auto;/);
+    expect(phoneBlock).toContain("'leading title title time trailing'");
+    expect(phoneBlock).toContain("'leading status line line trailing'");
+    expect(phoneBlock).toMatch(/--_cinder-status-track:\s*auto;/);
+    expect(stylesheet).not.toMatch(/\[data-cinder-phone\]/);
   });
 
   test('phoneActions="buttons" keeps each action a button, stacked full width under the text', () => {
@@ -286,7 +283,7 @@ describe('StackedListItem on a phone', () => {
       /__detail\s*\{[^}]*grid-row:\s*details;[^}]*overflow-wrap:\s*anywhere/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
+      /--lines:not\(\.cinder-stacked-list-item--band\)\s+\.cinder-stacked-list-item__detail\s*\{[^}]*grid-column:\s*2 \/ 5/,
     );
     // Wrapping, not truncating: the third line carries no ellipsis or nowrap rule.
     const rule = /\.cinder-stacked-list-item__detail\s*\{[^}]*\}/.exec(stylesheet)?.[0] ?? '';

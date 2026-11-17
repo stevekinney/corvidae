@@ -28,7 +28,7 @@ import {
   type InMemoryReplayLiveBackend,
   type ReplayLiveFeed,
   type SequencedEventEnvelope,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 
 import { AgentRunError } from './errors.ts';
 import {

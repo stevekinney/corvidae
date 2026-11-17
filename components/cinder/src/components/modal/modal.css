@@ -156,12 +156,28 @@
     gap: var(--cinder-space-4);
     /* Reserve trailing inline space so the title doesn't run under the
      absolute-positioned close button. */
-    padding-block: var(--cinder-space-4);
+    /* The title sits close to what it introduces: 12px under it plus the body's 12px above, so the
+       gap to the first line reads at about the body's own paragraph rhythm with no rule, and the
+       title has the same room above and below it when the rule is drawn. Unconditional: the rule's
+       presence follows the body's overflow, and padding that followed it could change whether the
+       body scrolls. */
+    padding-block: var(--cinder-space-3);
     padding-inline-start: var(--cinder-space-5);
     padding-inline-end: calc(var(--cinder-space-5) + 2.25rem);
-    border-block-end: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface);
+    /* The rule is drawn only while the body scrolls (below); a short confirmation has nothing to
+       separate from. The border keeps its width so the header does not move when it appears. */
+    border-block-end: 1px solid;
+    border-block-end-color: transparent;
+    background: var(--cinder-surface-raised);
     flex-shrink: 0;
+  }
+
+  .cinder-modal__panel:has(> .cinder-modal__body[data-cinder-scrollable]) .cinder-modal__header {
+    border-block-end-color: var(--cinder-border-muted);
+  }
+
+  .cinder-modal__panel:has(> .cinder-modal__body[data-cinder-scrollable]) .cinder-modal__footer {
+    border-block-start-color: var(--cinder-border-muted);
   }
 
   /* With no close button to keep clear of, a header that carries trailing content uses the same
@@ -208,8 +224,10 @@
     /* Rendered last in DOM order so the close button isn't the first focusable
      element on dialog open — but visually positioned in the header corner. */
     position: absolute;
-    inset-block-start: var(--cinder-space-3);
-    inset-inline-end: var(--cinder-space-3);
+    /* 8px from the corner on both edges: the 36px button's centre then sits on the title's line
+       (12px of header padding plus half the title's line box). */
+    inset-block-start: var(--cinder-space-2);
+    inset-inline-end: var(--cinder-space-2);
 
     display: inline-flex;
     align-items: center;
@@ -267,7 +285,7 @@
  * ---------------------------------------- */
 
   .cinder-modal__body {
-    --_cinder-scroll-fade-color: var(--cinder-surface);
+    --_cinder-scroll-fade-color: var(--cinder-surface-raised);
 
     flex: 1;
     overflow-y: auto;
@@ -275,8 +293,8 @@
        and the footer actions start on one edge (s4#8). No gutter is reserved: a reserved gutter
        made the body's inline-end inset wider than its start whenever the scrollbar is classic,
        even when nothing scrolls. */
-    padding: var(--cinder-space-6) var(--cinder-space-5);
-    background: var(--cinder-surface);
+    padding: var(--cinder-space-3) var(--cinder-space-5) var(--cinder-space-4);
+    background: var(--cinder-surface-raised);
     overscroll-behavior: contain;
     scrollbar-gutter: auto;
     /* The body container is focused on open (tabindex=-1) when the dialog has
@@ -319,8 +337,9 @@
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
-    border-block-start: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface);
+    border-block-start: 1px solid;
+    border-block-start-color: transparent;
+    background: var(--cinder-surface-raised);
     flex-shrink: 0;
   }
 
@@ -367,8 +386,8 @@
  * full width, rounded top corners, a grabber, a height capped so the body scrolls inside the sheet
  * instead of the sheet outgrowing the screen, and a lift above the on-screen keyboard
  * (`--_cinder-keyboard-inset`, published while it is open). The footer's actions stack at full
- * width at the button's painted height (the hit area reaches 44px) with the last one, the
- * confirmation, on top; DOM order is unchanged, so the
+ * actions share one row at the button's painted height (the hit area reaches 44px), the last one,
+ * the confirmation, filling the rest; DOM order is unchanged, so the
  * first action keeps initial focus. Physical properties, as in drawer.css, because the sheet is
  * physically bottom anchored in every writing mode.
  * ---------------------------------------- */
@@ -391,7 +410,7 @@
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel {
     border-width: 1px 0 0;
     border-radius: 1.25rem 1.25rem 0 0;
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
     box-shadow: 0 -0.5rem 1.5rem -0.25rem color-mix(in oklch, black, transparent 80%);
     padding-block-end: max(var(--cinder-space-8), env(safe-area-inset-bottom));
   }
@@ -405,13 +424,28 @@
     background: var(--cinder-border-contrast);
   }
 
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
-    flex-direction: column-reverse;
-    align-items: stretch;
+  /* One footer rule for every docked dialog (COR-2448 AC5): the actions share one row, the
+   * secondary actions at their own width and the last, the confirmation, filling the rest. When
+   * they do not fit one line the confirmation wraps above the others. ConfirmDialog's row of
+   * actions (inside its footer, under the failure region) takes the same rule. A lone action
+   * fills the row. */
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions) {
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    justify-content: stretch;
   }
 
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer > * {
-    inline-size: 100%;
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
+    > * {
+    flex: 1 1 auto;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked']
+    :is(.cinder-modal__footer, .cinder-confirm-dialog__actions)
+    > :not(:last-child) {
+    flex: 0 0 auto;
   }
 
   /* The body's fields are full 44px targets in the sheet. The selector repeats the input's own class

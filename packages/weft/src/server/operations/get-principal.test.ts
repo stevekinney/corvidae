@@ -1,12 +1,20 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  anonymousPrincipal,
+  getPrincipalOperation,
+  principalFromApiKey,
+  principalFromJwtClaims,
+} from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  executeOperation,
+  getPrincipalRestBinding,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
-import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { anonymousPrincipal, principalFromApiKey, principalFromJwtClaims } from '../principal.ts';
-import { getPrincipalOperation, getPrincipalRestBinding } from './get-principal.ts';
 
 function createEngine(): Engine {
   return new Engine({ storage: new MemoryStorage() });

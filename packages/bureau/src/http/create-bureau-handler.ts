@@ -32,6 +32,7 @@ import {
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
+import { encode, type Outbox, VERSION as WEFT_VERSION, weftFaultPolicy } from '@lostgradient/weft';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
@@ -42,13 +43,10 @@ import {
   type OperationHandler,
   type OperationHandlerMount,
   type OperationHandlerAuthenticate,
-  type Outbox,
   type AuthenticatedPrincipal,
   type Principal,
   unauthenticatedLocalAuthContext,
-  VERSION as WEFT_VERSION,
-  weftFaultPolicy,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -102,12 +100,14 @@ import type { BureauContexts } from '../bureau-types/contexts.ts';
 import type { BureauSchedules } from '../bureau-types/schedules.ts';
 import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
-import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
+import {
+  bureauReviewsOperations,
+  type BureauReviewsOperationHost,
+} from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
 import { createAssetsMount } from './assets-mount.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
-import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
 import { createReviewContinuation } from './review-continuation.ts';
 import {
   type BureauAgentModelsOperationHost,
@@ -1570,6 +1570,8 @@ export function createBureauHandler(
     discoveryInfo: { title: 'Bureau', version: WEFT_VERSION },
     // Bureau's operations run on Weft's engine: its error classes and its strict-fault setting.
     faultPolicy: weftFaultPolicy,
+    // `/v1/health` answers MessagePack to a client that asks for it, as it always has.
+    encodeBinary: encode,
   });
   const resourceInventory: BureauResourceInventoryEntry[] = [
     ...BUREAU_HANDLER_OPERATIONS.map((operation): BureauResourceInventoryEntry => ({

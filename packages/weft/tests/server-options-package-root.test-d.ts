@@ -1,3 +1,4 @@
+import { type AuthConfig, type Cursor, type DiscoveryInfo } from '@lostgradient/backchannel';
 import {
   createEngineEventFeedBackend,
   createFleetEventFeed,
@@ -10,9 +11,6 @@ import {
   WorkerRegistry,
   workflow,
   type AlertStateSnapshot,
-  type AuthConfig,
-  type Cursor,
-  type DiscoveryInfo,
   type EventEnvelope,
   type FleetEventEnvelope,
   type FleetEventFeed,

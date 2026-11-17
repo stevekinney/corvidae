@@ -1,6 +1,6 @@
+import { defineOperation } from '@lostgradient/backchannel';
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
-import { defineOperation } from '../operation-registry.ts';
-import { createOperationRegistry } from './registry.ts';
 import { catalogWorkflow } from './workflow-adapter.ts';
 const base = {
   name: 'weft.review.contract',

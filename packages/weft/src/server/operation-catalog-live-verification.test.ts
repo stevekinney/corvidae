@@ -7,17 +7,16 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { signJWT } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
-import type { WorkflowContext, WorkflowState } from '../core/types.ts';
-import { workflow } from '../core/types.ts';
+import { workflow, type WorkflowContext, type WorkflowState } from '../core/types.ts';
 import { KEYS } from '../storage/keys.ts';
 import { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../worker/manifest/types.ts';
 import { resolveWorkflowWorkerStartBinding } from '../worker/versioning-policy.ts';
-import { signJWT } from './authentication.ts';
 import { serve, type WeftServer } from './index.ts';
 import { jsonRecord, propertyRecord, record } from './protocol.test-support.ts';
 import { createLiveOperationRegistry, REST_BINDINGS } from './rest-bindings.ts';
