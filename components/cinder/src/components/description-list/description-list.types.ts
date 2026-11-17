@@ -122,7 +122,7 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    * - `facts`: one row of equal columns, each a muted term above its value, between two quiet
    *   rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the
    *   container narrows.
-   * - `grid`: the pairs flow in as many equal columns as the list's own width fits (about 9rem
+   * - `grid`: the pairs flow in as many equal columns as the list's own width fits (about 6.5rem
    *   each), each a muted term above its value at the column's start edge, with no rules and no
    *   fill: a wide card reads three short pairs on one row, a phone two, a narrow column one. A
    *   `wide` item takes the whole row.

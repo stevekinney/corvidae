@@ -201,7 +201,7 @@
    * list's inline size, never the viewport: a wide card reads three short pairs on one row, a phone
    * card two, and a column narrower than two tracks one. */
   .cinder-description-list[data-cinder-variant='grid'] {
-    --_cinder-description-list-column-min: calc(var(--cinder-space-32) + var(--cinder-space-4));
+    --_cinder-description-list-column-min: calc(var(--cinder-space-24) + var(--cinder-space-2));
 
     display: grid;
     grid-template-columns: repeat(

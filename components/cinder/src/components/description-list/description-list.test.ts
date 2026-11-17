@@ -447,7 +447,7 @@ describe('DescriptionList grid variant', () => {
       /grid-template-columns: repeat\( auto-fill, minmax\(min\(100%, var\(--_cinder-description-list-column-min\)\), 1fr\) \);/,
     );
     expect(grid).toContain(
-      '--_cinder-description-list-column-min: calc(var(--cinder-space-32) + var(--cinder-space-4));',
+      '--_cinder-description-list-column-min: calc(var(--cinder-space-24) + var(--cinder-space-2));',
     );
     expect(grid).toContain('gap: var(--cinder-space-2) var(--cinder-space-3);');
     // No rules and no fill: neither the list nor its rows draw a border or a background.

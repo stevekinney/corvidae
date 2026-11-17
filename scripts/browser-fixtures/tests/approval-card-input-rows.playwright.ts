@@ -76,6 +76,13 @@ test.describe('Approval input grid', () => {
       expect(Math.abs(first.termLeft - read!.title)).toBeLessThanOrEqual(0.5);
       // The value sits under its label: no column of labels beside a column of values.
       expect(first.valueTop).toBeGreaterThanOrEqual(first.termBottom - 0.5);
+      // Even the narrowest phone card fits two pairs to a row: the second shares the first's row,
+      // and the third starts the next.
+      const second = read!.pairs[1]!;
+      const third = read!.pairs[2]!;
+      expect(Math.abs(second.top - first.top)).toBeLessThanOrEqual(0.5);
+      expect(second.termLeft).toBeGreaterThan(first.termLeft);
+      expect(third.top).toBeGreaterThan(first.top);
       await expect(card.getByRole('button', { name: /^Show all/ })).toHaveCount(0);
       await expect(card.getByRole('button', { name: /^Input/ })).toHaveCount(0);
     });

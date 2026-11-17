@@ -361,9 +361,9 @@ export const INPUT_SUMMARY_ROWS = 4;
 
 /**
  * A value longer than this many characters takes the whole row of the input's grid: it would wrap
- * past about two lines in a 9rem column of small text.
+ * past about two lines in a 6.5rem column of small text.
  */
-export const INPUT_WIDE_CHARACTERS = 36;
+export const INPUT_WIDE_CHARACTERS = 28;
 
 /**
  * Reads the arguments preview as the rows the approver reads in the open, one per field: "Order
