@@ -9,6 +9,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { declarationsFor } from '../../test/css.ts';
+
+const sectionHeadingCss = await Bun.file(
+  new URL('../section-heading/section-heading.css', import.meta.url),
+).text();
+
 setupHappyDom();
 
 const { cleanup, render } = await import('@testing-library/svelte/pure');
@@ -26,5 +32,21 @@ describe('ListDetail pane header with actions', () => {
     expect(button.closest('.cinder-list-detail__header')).not.toBeNull();
     expect(button.getAttribute('data-cinder-size')).toBe('xs');
     expect(button.hasAttribute('data-cinder-compact')).toBe(true);
+  });
+
+  test('the action is centred on the title line by a margin, so the row stays one line tall', () => {
+    const { getByRole } = render(Harness, { props: { withActions: true } });
+    const actions = getByRole('button', { name: 'New chat' }).closest(
+      '.cinder-section-heading__actions',
+    );
+    expect(actions).not.toBeNull();
+    expect(actions?.closest('.cinder-list-detail__header')).not.toBeNull();
+    // The rule that produces the height: the compact action's margin is half of the difference
+    // between the title's line and the 24px control, a negative value that cancels the overflow.
+    const rule = declarationsFor(sectionHeadingCss, '.cinder-section-heading__actions');
+    expect(rule.get('margin-block')?.replaceAll(/\s+/g, '')).toBe(
+      'calc((1lh-var(--_cinder-compact-control-height))/2)',
+    );
+    expect(rule.get('line-height')).toBe('var(--cinder-leading-tight)');
   });
 });
