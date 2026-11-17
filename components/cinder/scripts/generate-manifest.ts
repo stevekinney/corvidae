@@ -27,6 +27,11 @@ import { categories, overlapFamilies, statusLevels } from '../src/manifest.meta.
 import { discoverComponentEnhancements } from './lib/component-enhancements.ts';
 import type { A11yMetadata, AvoidWhenEntry, ComponentMetadata } from './lib/component-meta.ts';
 import { extractAllComponentMetadata } from './lib/component-meta.ts';
+import {
+  componentPackage,
+  packageRelative,
+  type ComponentPackage,
+} from './lib/component-package.ts';
 import { parseJsonFile, readJsonFile } from './lib/read-json-file.ts';
 import { readTokenNamespaces } from './token-namespaces.ts';
 
@@ -109,8 +114,24 @@ export type Manifest = {
 const PACKAGE_ROOT = join(import.meta.dir, '..');
 const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
 
-const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+/** Every package's manifest validates against Cinder's manifest schema. */
 const SCHEMA_PATH = join(PACKAGE_ROOT, 'src', 'schemas', 'manifest.schema.json');
+
+/** Where a package's `components.json` is written. */
+export function manifestPathOf(pkg: ComponentPackage): string {
+  return join(pkg.root, 'components.json');
+}
+
+/** The `$schema` a package's manifest names: its own copy of the manifest schema, or Cinder's. */
+function manifestSchemaReference(pkg: ComponentPackage): string {
+  for (const candidate of [
+    join(pkg.root, 'src', 'schemas', 'manifest.schema.json'),
+    join(pkg.root, 'src', 'lib', 'schemas', 'manifest.schema.json'),
+  ]) {
+    if (existsSync(candidate)) return `./${packageRelative(pkg, candidate)}`;
+  }
+  return packageRelative(pkg, SCHEMA_PATH);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -132,9 +153,8 @@ function kebabToPascal(id: string): string {
  * component. We base the manifest flag on the artifact's presence so the
  * manifest cannot advertise an artifact that is absent from the package.
  */
-function hasExamplesArtifact(id: string): boolean {
-  const componentDir = join(COMPONENTS_ROOT, id);
-  return existsSync(join(componentDir, `${id}.examples.json`));
+function hasExamplesArtifact(pkg: ComponentPackage, id: string): boolean {
+  return existsSync(join(pkg.componentsRoot, id, `${id}.examples.json`));
 }
 
 /**
@@ -142,15 +162,18 @@ function hasExamplesArtifact(id: string): boolean {
  * the manifest flag on the artifact, not the source sidecar, for the same
  * reason as `hasExamplesArtifact`.
  */
-function hasConstraintsArtifact(id: string): boolean {
-  const componentDir = join(COMPONENTS_ROOT, id);
-  return existsSync(join(componentDir, `${id}.constraints.json`));
+function hasConstraintsArtifact(pkg: ComponentPackage, id: string): boolean {
+  return existsSync(join(pkg.componentsRoot, id, `${id}.constraints.json`));
 }
 
 /** Paths are local tooling artifacts, independent of the public package entry. */
-function artifactPath(id: string, suffix: string): string {
+function artifactPath(
+  id: string,
+  suffix: string,
+  pkg: ComponentPackage = componentPackage(),
+): string {
   const filename = suffix === 'enhancement' ? `${id}-enhancement.ts` : `${id}.${suffix}.json`;
-  return `src/components/${id}/${filename}`;
+  return packageRelative(pkg, join(pkg.componentsRoot, id, filename));
 }
 
 /** Return the manifest subpath when this component owns a runtime enhancement. */
@@ -159,7 +182,9 @@ export function enhancementArtifactPath(
   componentsRoot: string = COMPONENTS_ROOT,
 ): string | undefined {
   const enhancement = discoverComponentEnhancements([{ name: id }], componentsRoot)[0];
-  return enhancement === undefined ? undefined : artifactPath(id, 'enhancement');
+  return enhancement === undefined
+    ? undefined
+    : `${packageRelative(componentPackage(), componentsRoot)}/${id}/${id}-enhancement.ts`;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,9 +254,10 @@ export function formatDanglingAlternativeMessage(dangling: DanglingAlternative[]
   return `Cannot build manifest — ${dangling.length} @avoidWhen alternative(s) do not match any component id:\n${lines.join('\n')}\n\nUse the kebab-case id of an existing component, or drop the ' | <id>' suffix.`;
 }
 
-export async function buildManifest(): Promise<Manifest> {
+export async function buildManifest(packageRoot: string = PACKAGE_ROOT): Promise<Manifest> {
+  const pkg = componentPackage(packageRoot);
   // 1. Read every component's `<name>.meta.json`, in the manifest's id order.
-  const { metadata, errors } = await extractAllComponentMetadata(PACKAGE_ROOT);
+  const { metadata, errors } = await extractAllComponentMetadata(pkg.root);
 
   if (errors.length > 0) {
     throw new Error(formatExtractionErrorMessage(errors));
@@ -247,21 +273,21 @@ export async function buildManifest(): Promise<Manifest> {
   const componentEntries = await Promise.all(
     metadata.map(async (meta: ComponentMetadata): Promise<ManifestComponent> => {
       const exportName = kebabToPascal(meta.id);
-      const hasExamplesFlag = hasExamplesArtifact(meta.id);
-      const hasConstraintsFlag = hasConstraintsArtifact(meta.id);
+      const hasExamplesFlag = hasExamplesArtifact(pkg, meta.id);
+      const hasConstraintsFlag = hasConstraintsArtifact(pkg, meta.id);
 
       const artifacts: ManifestComponent['artifacts'] = {
-        schema: artifactPath(meta.id, 'schema'),
-        variables: artifactPath(meta.id, 'variables'),
+        schema: artifactPath(meta.id, 'schema', pkg),
+        variables: artifactPath(meta.id, 'variables', pkg),
       };
 
       if (hasExamplesFlag) {
-        artifacts.examples = artifactPath(meta.id, 'examples');
+        artifacts.examples = artifactPath(meta.id, 'examples', pkg);
       }
       if (hasConstraintsFlag) {
-        artifacts.constraints = artifactPath(meta.id, 'constraints');
+        artifacts.constraints = artifactPath(meta.id, 'constraints', pkg);
       }
-      const enhancementArtifact = enhancementArtifactPath(meta.id);
+      const enhancementArtifact = pkg.isCinder ? enhancementArtifactPath(meta.id) : undefined;
       if (enhancementArtifact !== undefined) {
         artifacts.enhancement = enhancementArtifact;
       }
@@ -269,7 +295,7 @@ export async function buildManifest(): Promise<Manifest> {
       return {
         name: exportName,
         id: meta.id,
-        import: '@lostgradient/cinder',
+        import: pkg.name,
         exportName,
         category: meta.category,
         status: meta.status,
@@ -299,10 +325,10 @@ export async function buildManifest(): Promise<Manifest> {
 
   // 5. Assemble the manifest.
   const manifest: Manifest = {
-    $schema: './src/schemas/manifest.schema.json',
+    $schema: manifestSchemaReference(pkg),
     manifestVersion: 1,
     package: {
-      name: '@lostgradient/cinder',
+      name: pkg.name,
       framework: 'svelte',
       frameworkVersionRange,
       classPrefix: 'cinder-',
@@ -317,7 +343,8 @@ export async function buildManifest(): Promise<Manifest> {
     },
     categories,
     statusLevels,
-    overlapFamilies,
+    // The overlap families name Cinder's own components.
+    overlapFamilies: pkg.isCinder ? overlapFamilies : {},
     components: componentEntries,
   };
 
@@ -350,14 +377,22 @@ async function formatJson(content: string, filepath: string): Promise<string> {
   return prettier.format(content, { ...options, filepath, parser: 'json' });
 }
 
+/** The formatted `components.json` of a package (cinder by default). */
+export async function renderManifest(packageRoot: string = PACKAGE_ROOT): Promise<string> {
+  const manifest = await buildManifest(packageRoot);
+  return formatJson(
+    JSON.stringify(manifest, null, 2) + '\n',
+    manifestPathOf(componentPackage(packageRoot)),
+  );
+}
+
 /**
- * Build the manifest and write it to `components/cinder/components.json`.
+ * Build the manifest and write it to the package's `components.json`.
  * Throws if extraction errors exist (never writes a partial manifest).
  */
-export async function writeManifest(): Promise<void> {
-  const manifest = await buildManifest();
-  const content = await formatJson(JSON.stringify(manifest, null, 2) + '\n', MANIFEST_PATH);
-  await Bun.write(MANIFEST_PATH, content);
+export async function writeManifest(packageRoot: string = PACKAGE_ROOT): Promise<void> {
+  const content = await renderManifest(packageRoot);
+  await Bun.write(manifestPathOf(componentPackage(packageRoot)), content);
 }
 
 // ---------------------------------------------------------------------------
@@ -388,18 +423,17 @@ function reportManifestDiff(committed: string, generated: string): void {
 async function main(): Promise<void> {
   const checkMode = process.argv.includes('--check');
 
+  const MANIFEST_PATH = manifestPathOf(componentPackage());
   if (checkMode) {
     // Regenerate into memory, compare against committed file.
-    let manifest: Manifest;
+    let generated: string;
     try {
-      manifest = await buildManifest();
+      generated = await renderManifest();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`manifest:check — build failed:\n${message}\n`);
       process.exit(1);
     }
-
-    const generated = await formatJson(JSON.stringify(manifest, null, 2) + '\n', MANIFEST_PATH);
 
     if (!existsSync(MANIFEST_PATH)) {
       process.stderr.write(

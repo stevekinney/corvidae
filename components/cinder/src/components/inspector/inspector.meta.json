@@ -5,7 +5,7 @@
   "purpose": "Group of quiet property rows for a detail page: a label, a value and an affordance, with each editable row becoming an editor on activation.",
   "tags": ["properties", "detail", "inspector"],
   "useWhen": [
-    "Showing the properties of one record on a detail page as a right rail on a desktop and a grouped section on a phone.",
+    "Showing the properties of one record on a detail page: one tinted rail when its box is wide, a grouped section when narrow.",
     "Letting a person change a property in place instead of through a stack of always-editable fields."
   ],
   "avoidWhen": [

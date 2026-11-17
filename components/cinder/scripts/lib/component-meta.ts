@@ -15,6 +15,7 @@ import { dirname, join, relative } from 'node:path';
 
 import type { CategoryId, StatusLevel } from '../../src/manifest.meta.ts';
 import { categories, statusLevels } from '../../src/manifest.meta.ts';
+import { componentsRootOf } from '../discover-component-directories.ts';
 
 export type { CategoryId, StatusLevel };
 
@@ -101,11 +102,7 @@ export type ExtractResult =
 /** One component that carries metadata: its id, directory and package root. */
 export type MetaComponent = { id: string; directory: string; packageRoot: string };
 
-/** Where a package keeps its component directories (`src/components` or `src/lib/components`). */
-export function componentsRootOf(packageRoot: string): string {
-  const direct = join(packageRoot, 'src', 'components');
-  return existsSync(direct) ? direct : join(packageRoot, 'src', 'lib', 'components');
-}
+export { componentsRootOf };
 
 /**
  * Every component directory of a package: a directory under its components root, not `icons/`

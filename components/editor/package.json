@@ -11,7 +11,7 @@
   },
   "scripts": {
     "types": "bun ../cinder/scripts/emit-declarations.ts",
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts && bun ../cinder/scripts/generate-component-artifacts.ts --package-root . --check",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts' --conditions browser --conditions svelte --parallel=4 src scripts",

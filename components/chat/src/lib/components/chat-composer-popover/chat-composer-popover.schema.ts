@@ -1,4 +1,4 @@
-import type { ComponentSchema } from '../../schema-types.ts';
+import type { ComponentSchema } from '../../schema-types';
 
 const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -98,4 +98,5 @@ const schema = {
   },
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

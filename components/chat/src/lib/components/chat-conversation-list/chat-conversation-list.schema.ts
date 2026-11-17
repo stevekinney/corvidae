@@ -1,4 +1,4 @@
-import type { ComponentSchema } from '../../schema-types.ts';
+import type { ComponentSchema } from '../../schema-types';
 
 const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -55,9 +55,9 @@ const schema = {
           'Conversation summaries to render. Sorts by latest message/update time descending.',
       },
       {
-        name: 'onSelectConversation',
+        name: 'onError',
         reason: 'function-or-snippet',
-        description: 'Called when a conversation is selected.',
+        description: 'Called when `onLoadMore` throws or rejects.',
       },
       {
         name: 'onLoadMore',
@@ -66,12 +66,13 @@ const schema = {
           "Called when the next page of conversations should load, which is when the\nuser scrolls to the end of the list or activates the load-more button.\nProviding it, with `hasMore`, renders Cinder's `LoadMore` after the last\nrow. The host supplies the rows and flips `hasMore` and `loading`.",
       },
       {
-        name: 'onError',
+        name: 'onSelectConversation',
         reason: 'function-or-snippet',
-        description: 'Called when `onLoadMore` throws or rejects.',
+        description: 'Called when a conversation is selected.',
       },
     ],
   },
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

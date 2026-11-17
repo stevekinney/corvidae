@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
@@ -9,6 +9,7 @@ import {
   buildComponentMetaSchema,
   COMPONENT_META_SCHEMA_PATH,
   COMPONENT_PACKAGE_ROOTS,
+  componentsRootOf,
   discoverMetaComponents,
   metaPath,
   parseComponentMeta,
@@ -49,6 +50,28 @@ describe('authored component metadata', () => {
     }
     expect(failures).toEqual([]);
     expect([...validators.keys()]).toEqual([COMPONENT_META_SCHEMA_PATH]);
+  });
+
+  // Six part files outside the component directories (`toolbar/toolbar-group.svelte`, the
+  // underscore-private `_radio`, `_timeline-item`, `_tree-expand-all` and `_tree-select-all`)
+  // carried @cinder tags too. No generator reads them, but they are authored metadata like the
+  // rest, so every meta.json in the four packages is held to the same schema.
+  test('every meta.json in the four packages, part files included, validates against its $schema', () => {
+    const ajv = new Ajv({ allErrors: true, strict: true });
+    const validate = ajv.compile(JSON.parse(readFileSync(COMPONENT_META_SCHEMA_PATH, 'utf8')));
+    const files = COMPONENT_PACKAGE_ROOTS.flatMap((root) =>
+      readdirSync(componentsRootOf(root), { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.meta.json'))
+        .map((entry) => join(entry.parentPath, entry.name)),
+    );
+    expect(files.length).toBeGreaterThan(components.length);
+    const failures = files.flatMap((file) => {
+      const value: Record<string, unknown> = JSON.parse(readFileSync(file, 'utf8'));
+      const schemaPath = resolve(dirname(file), String(value['$schema']));
+      if (schemaPath !== COMPONENT_META_SCHEMA_PATH) return [`${file}: $schema is ${schemaPath}`];
+      return validate(value) ? [] : [`${file}: ${ajv.errorsText(validate.errors)}`];
+    });
+    expect(failures).toEqual([]);
   });
 
   test('the committed schema is the one manifest.meta.ts derives', () => {

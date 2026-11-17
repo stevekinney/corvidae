@@ -19,10 +19,20 @@ export type DiscoveredComponent = {
   name: string;
 };
 
-const COMPONENTS_ROOT = join(import.meta.dir, '..', 'src', 'components');
+/** Cinder's package root, the default for every generator stage. */
+export const CINDER_PACKAGE_ROOT = join(import.meta.dir, '..');
 
 /**
- * Discover every directory-shaped component under `src/components/`.
+ * Where a component package keeps its component directories: `src/components/` in cinder,
+ * `src/lib/components/` in chat, editor and terminal.
+ */
+export function componentsRootOf(packageRoot: string): string {
+  const direct = join(packageRoot, 'src', 'components');
+  return existsSync(direct) ? direct : join(packageRoot, 'src', 'lib', 'components');
+}
+
+/**
+ * Discover every directory-shaped component of a component package (cinder by default).
  *
  * A directory qualifies when it contains both `<name>.svelte` and
  * `<name>.types.ts`. The presence of the `.types.ts` file is the marker that
@@ -33,16 +43,19 @@ const COMPONENTS_ROOT = join(import.meta.dir, '..', 'src', 'components');
  *
  * Returns the list sorted by absolute directory path.
  */
-export async function discoverComponentDirectories(): Promise<DiscoveredComponent[]> {
+export async function discoverComponentDirectories(
+  packageRoot: string = CINDER_PACKAGE_ROOT,
+): Promise<DiscoveredComponent[]> {
   const results: DiscoveredComponent[] = [];
+  const componentsRoot = componentsRootOf(packageRoot);
 
-  for (const entry of await readdir(COMPONENTS_ROOT, { withFileTypes: true })) {
+  for (const entry of await readdir(componentsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith('_')) continue;
 
     if (entry.name === 'icons') continue;
 
-    const directory = join(COMPONENTS_ROOT, entry.name);
+    const directory = join(componentsRoot, entry.name);
     if (!existsSync(join(directory, `${entry.name}.svelte`))) continue;
     if (!existsSync(join(directory, `${entry.name}.types.ts`))) continue;
     results.push({ directory, name: entry.name });

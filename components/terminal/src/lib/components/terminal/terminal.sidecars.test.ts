@@ -60,19 +60,20 @@ describe('terminal.schema', () => {
 
   test('describes exactly the props declared in terminal.types.ts', async () => {
     const { props } = await readTypesSource();
+    const byName = (left: string, right: string) => left.localeCompare(right);
     const described = [
       ...Object.keys(schema.properties),
-      ...schema.metadata.unsupportedProps.map(({ name }) => name),
+      ...(schema.metadata?.unsupportedProps ?? []).map(({ name }) => name),
     ];
-    expect(described.toSorted()).toEqual(props.map(({ name }) => name).toSorted());
+    expect(described.toSorted(byName)).toEqual(props.map(({ name }) => name).toSorted(byName));
     expect(new Set(described).size).toBe(described.length);
   });
 
   test('marks as required exactly the props declared without a question mark', async () => {
     const { props } = await readTypesSource();
     const required = props.filter(({ optional }) => !optional).map(({ name }) => name);
-    expect([...schema.required]).toEqual(required);
-    const unsupportedRequired = schema.metadata.unsupportedProps
+    expect([...(schema.required ?? [])]).toEqual(required);
+    const unsupportedRequired = (schema.metadata?.unsupportedProps ?? [])
       .filter(({ required }) => required === true)
       .map(({ name }) => name);
     expect(unsupportedRequired).toEqual([]);
@@ -99,11 +100,19 @@ describe('terminal.variables', () => {
     expect(await readJson('terminal.variables.json')).toEqual(variables);
   });
 
-  test('lists exactly the custom properties the stylesheet and the theme bridge read', async () => {
-    const css = await read('terminal.css');
-    const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((match) => match[1]!));
-    for (const token of Object.values(THEME_TOKENS)) used.add(token);
-    expect([...variables].toSorted()).toEqual([...used].toSorted());
+  // The component generator lists the custom properties a component declares for a consumer to
+  // override, as it does for every Cinder component. The terminal declares none of its own: the
+  // stylesheet and the theme bridge only read Cinder's tokens.
+  test('lists exactly the custom properties the stylesheet declares', async () => {
+    const source = await read('terminal.css');
+    const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+    const declared = new Set(
+      [...css.matchAll(/(?:^|[;{\s])(--cinder-[a-z0-9-]+)\s*:/g)].map((match) => match[1]!),
+    );
+    expect([...variables]).toEqual(
+      [...declared].toSorted((left, right) => left.localeCompare(right)),
+    );
+    for (const token of Object.values(THEME_TOKENS)) expect(declared.has(token)).toBe(false);
   });
 
   test('is sorted and free of duplicates', () => {
@@ -180,8 +189,11 @@ describe('components.json', () => {
       import: packageJson.name,
       hasExamples: true,
     });
-    for (const artifact of Object.values(component!.artifacts))
-      expect(artifact).toBe(packageJson.name);
+    expect(component!.artifacts).toEqual({
+      schema: 'src/lib/components/terminal/terminal.schema.json',
+      variables: 'src/lib/components/terminal/terminal.variables.json',
+      examples: 'src/lib/components/terminal/terminal.examples.json',
+    });
   });
 
   test('repeats the authored metadata of terminal.meta.json, so the two cannot drift', async () => {

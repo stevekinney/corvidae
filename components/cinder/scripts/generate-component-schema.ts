@@ -60,6 +60,7 @@ export interface PropertySchema {
   anyOf?: PropertySchema[];
   not?: PropertySchema;
   minimum?: number;
+  maximum?: number;
   minItems?: number;
   // Added for Modal's `describedById` restriction (PR #1422 review): the
   // `title`/`aria-label` conditional restrictions elsewhere in this file
@@ -227,7 +228,7 @@ export function generateSchemaForComponent(options: GenerateOptions): GenerateRe
 
     const description = readJsDocDescription(symbol);
     const defaultValue = readJsDocDefault(symbol);
-    const schemaEntry: PropertySchema = { ...converted.schema };
+    const schemaEntry: PropertySchema = applyNumericTags(symbol, { ...converted.schema });
     if (description) schemaEntry.description = description;
     if (defaultValue !== undefined) schemaEntry.default = defaultValue;
     properties[propName] = schemaEntry;
@@ -1041,7 +1042,7 @@ function convertSingleType(type: Type, depth = 0, expandObjectShapes = false): C
           );
       if (converted.kind === 'unsupported') return converted;
 
-      const schemaEntry: PropertySchema = { ...converted.schema };
+      const schemaEntry: PropertySchema = applyNumericTags(property, { ...converted.schema });
       const description = readJsDocDescription(property);
       const defaultValue = readJsDocDefault(property);
       if (description) schemaEntry.description = description;
@@ -1088,8 +1089,11 @@ function isDeclaredInComponentTypesFile(type: Type): boolean {
 
   return declarations.some((declaration) => {
     const filePath = declaration.getSourceFile().getFilePath();
+    // A component types file of any component package: cinder keeps its components in
+    // `src/components/`, chat, editor and terminal in `src/lib/components/`.
     return (
-      filePath.includes('/components/cinder/src/components/') && filePath.endsWith('.types.ts')
+      /\/components\/[^/]+\/src\/(?:lib\/)?components\//.test(filePath) &&
+      filePath.endsWith('.types.ts')
     );
   });
 }
@@ -1348,6 +1352,37 @@ function readJsDocDefault(symbol: MorphSymbol): unknown {
     }
   }
   return undefined;
+}
+
+function readJsDocTagNumber(symbol: MorphSymbol, tagName: string): number | undefined {
+  for (const decl of symbol.getDeclarations()) {
+    if (!Node.isJSDocable(decl)) continue;
+    for (const doc of decl.getJsDocs()) {
+      for (const tag of doc.getTags()) {
+        if (tag.getTagName() !== tagName) continue;
+        const value = Number(tag.getCommentText()?.trim());
+        if (Number.isFinite(value)) return value;
+        throw new Error(`@${tagName} on ${symbol.getName()} needs a finite number`);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Narrow a number prop with `@integer`, `@minimum <n>` and `@maximum <n>` JSDoc tags, the bounds
+ * a TypeScript `number` cannot state.
+ */
+function applyNumericTags(symbol: MorphSymbol, schema: PropertySchema): PropertySchema {
+  if (schema.type !== 'number') return schema;
+  const minimum = readJsDocTagNumber(symbol, 'minimum');
+  const maximum = readJsDocTagNumber(symbol, 'maximum');
+  return {
+    ...schema,
+    ...(hasJsDocTag(symbol, 'integer') ? { type: 'integer' as const } : {}),
+    ...(minimum === undefined ? {} : { minimum }),
+    ...(maximum === undefined ? {} : { maximum }),
+  };
 }
 
 function hasJsDocTag(symbol: MorphSymbol, tagName: string): boolean {

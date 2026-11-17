@@ -15,6 +15,7 @@ import * as prettier from 'prettier';
 import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
 
 import {
+  CINDER_PACKAGE_ROOT,
   discoverComponentDirectories,
   type DiscoveredComponent,
 } from './discover-component-directories.ts';
@@ -150,8 +151,10 @@ export interface DriftIssue {
   reason: 'missing' | 'stale';
 }
 
-export async function checkComponentArtifacts(): Promise<DriftIssue[]> {
-  const components = await discoverComponentDirectories();
+export async function checkComponentArtifacts(
+  packageRoot: string = CINDER_PACKAGE_ROOT,
+): Promise<DriftIssue[]> {
+  const components = await discoverComponentDirectories(packageRoot);
 
   // Sequential on purpose: `generateSchemaForComponent` (called via
   // `generateArtifactsForComponent`) type-checks each component's props

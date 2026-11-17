@@ -1,4 +1,4 @@
-import type { ComponentSchema } from '../../schema-types.ts';
+import type { ComponentSchema } from '../../schema-types';
 
 const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -38,46 +38,6 @@ const schema = {
       description:
         'Show a scroll-driven edge fade on the top and bottom of the message\ntimeline as it overflows. Opt-in and presentation-only — never the sole\nsignal that more messages exist; the jump-to-latest button and unread\ncount remain the authoritative affordances. Only visible when\n`surfaceMode` is `\'default\'`: with `surfaceMode="transparent"` the\ntimeline paints no background of its own, so there is no color the fade\ncould correctly fade toward, and it stays inert rather than painting an\nincorrect opaque band. Default `false`.',
     },
-    answerInComposer: {
-      type: 'boolean',
-      description:
-        'Whether the composer answers an open free-text question. A free-text question then reads "Answer below", the composer\'s placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`.',
-    },
-    composerPlaceholder: {
-      type: 'string',
-      description:
-        "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message…`.",
-    },
-    clearComposerOnSubmit: {
-      type: 'boolean',
-      description:
-        "Whether Send empties the composer's text and files. Default `true`. Set it to `false` while a host must keep what was typed until the message has gone through, such as the first message of a new conversation that is still being started, and empty the box itself with `clearInput()` once it has.",
-    },
-    composerStarting: {
-      type: 'string',
-      description:
-        'Set while the host is starting what the message belongs to, such as the conversation its first message opens: Send reads this word with a spinner and is off, there is no Stop because nothing is running yet, and the typed text and files stay in the box. Left out, Send is Send.',
-    },
-    composerPlacement: {
-      enum: ['docked', 'centered'],
-      description:
-        "Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one.",
-    },
-    composerAnswering: {
-      type: 'boolean',
-      description:
-        "Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`.",
-    },
-    disabled: {
-      type: 'boolean',
-      description:
-        'Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.',
-    },
-    pausedReason: {
-      type: 'string',
-      description:
-        'Why the composer is paused, as muted text beside Send while `disabled` is set, such as "Off until it’s back" while the server is unreachable. Send\'s accessible description includes it. Without it the composer pauses with no visible reason.',
-    },
     density: {
       enum: ['comfortable', 'compact'],
       description:
@@ -87,6 +47,11 @@ const schema = {
       enum: ['bubble', 'flat', 'transcript'],
       description:
         "Visual treatment for message bubbles.\n- `'bubble'` (default): colored backgrounds differentiate user from assistant.\n- `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.\n  Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.\n- `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its\n  tinted bubble, and one muted line under each message carries its time, Copy, Quote and\n  Regenerate (when `onRegenerate` is set) as an icon and a word each, then `messageActions`. A\n  message that was not sent keeps its bubble under a red icon\n  (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued\n  (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).",
+    },
+    composerCompact: {
+      type: 'boolean',
+      description:
+        'A one-line composer for a small surface, such as a test chat in a side panel: the field and Send (or Stop, while a reply streams and the field is disabled) share one row, with no controls, attachments or formatting; the hint stays under it. Default `false`.',
     },
     bottomThreshold: {
       type: 'number',
@@ -165,18 +130,57 @@ const schema = {
       description:
         'Status text while older messages are loading. Default `"Loading earlier messages"`.',
     },
-    maxFileSize: {
-      type: 'number',
+    clearComposerOnSubmit: {
+      type: 'boolean',
       description:
-        'Largest file the composer takes, in bytes. A larger file shows as an `error` attachment and is never uploaded. Default 10 MiB.',
+        "Whether Send empties the composer's text and files. Default `true`. Set it to `false` while a host must keep what was typed until the message has gone through, such as the first message of a new conversation that is still being started, and empty the box itself with `clearInput()` once it has.",
     },
-    acceptedTypes: {
-      type: 'array',
-      items: {
-        type: 'string',
-      },
+    composerStarting: {
+      type: 'string',
       description:
-        "MIME types the composer takes, as exact types or `type/*` families; also the file picker's `accept`. A file of another type shows as an `error` attachment and is never uploaded.",
+        'Set while the host is starting what the message belongs to, such as the conversation its first message opens: Send reads this word with a spinner and is off, there is no Stop because nothing is running yet, and the typed text and files stay in the box. Left out, Send is Send.',
+    },
+    composerPlacement: {
+      enum: ['docked', 'centered'],
+      description:
+        "Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one.",
+    },
+    composerPlaceholder: {
+      type: 'string',
+      description:
+        "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message…`.",
+    },
+    composerAnswering: {
+      type: 'boolean',
+      description:
+        "Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`.",
+    },
+    composerHint: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          const: false,
+        },
+      ],
+      description:
+        'The line of help under the composer while no status shows. Default `Enter to send. Shift and Enter for a new line.`; `false` hides it.',
+    },
+    composerFormattingToolbar: {
+      type: 'boolean',
+      description:
+        "Show a row of Bold, Italic, Code, Link, and List buttons above the composer's text, with the words of their shortcuts at its right, while the composer has focus. Link is Cmd or Ctrl with Shift and K; plain Cmd or Ctrl with K is left to the host. Default `false`.",
+    },
+    composerMarkdownStyling: {
+      type: 'boolean',
+      description:
+        'Style Markdown in place in the composer while it still sends Markdown. Default `true`.',
+    },
+    trailingAskPending: {
+      type: 'boolean',
+      description:
+        "Set while the `trailing` content is a pending ask of the host's own, such as the question a run parked on. The assistant text directly before it is the agent talking to the person, so it keeps its full message line instead of drawing as bare narration. Chat sees an approval or question in its own messages without this. Default `false`.",
     },
     emptyTitle: {
       type: 'string',
@@ -196,6 +200,39 @@ const schema = {
       description:
         'List of suggested starter prompt strings shown as clickable buttons in the default empty state. Clicking a prompt submits it immediately as a user message. Has no effect when a custom `empty` snippet is provided.',
     },
+    answerInComposer: {
+      type: 'boolean',
+      description:
+        'Whether the composer answers an open free-text question. A free-text question then reads\n"Answer below", the composer\'s placeholder reads "Answer", and sending from the composer\ncalls {@link ChatProps.onInputSubmit} with the typed text instead of {@link ChatProps.onSubmit}.\nWithout it (a reviews inbox, which has no composer) a text field is drawn in the question.\nEvery other kind of question is answered in place either way. Default `false`.',
+    },
+    questionPlacement: {
+      enum: ['inline', 'docked'],
+      description:
+        "Where a question that has choices (a choice, a choice with Something else, a yes or no) is\nanswered. `'inline'` (default) draws its controls in its transcript row. On a coarse pointer,\nchoice questions dock so phone users always get the explicit Reply and Answer controls.\n`'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named Question (its legend is visually hidden),\nradio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a\nquiet Reply in chat and a primary Answer, with `Question 2 of 3` and previous and next buttons\nwhen several were asked together. A choice only selects; Answer sends it. Reply in chat gives the\ncomposer back and returns the question to its row. Every other kind of question stays in its\nrow either way. Needs {@link ChatProps.onInputSubmit}.",
+    },
+    disabled: {
+      type: 'boolean',
+      description:
+        'Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.',
+    },
+    pausedReason: {
+      type: 'string',
+      description:
+        'Why the composer is paused, as muted text beside Send while {@link ChatProps.disabled} is set, such as "Off until it’s back" while the server is unreachable. Send\'s accessible description includes it. Without it the composer pauses with no visible reason.',
+    },
+    maxFileSize: {
+      type: 'number',
+      description:
+        'Largest file the composer takes, in bytes. A larger file shows as an `error` attachment and is never uploaded. Default 10 MiB.',
+    },
+    acceptedTypes: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        "MIME types the composer takes, as exact types or `type/*` families; also the file picker's `accept`. A file of another type shows as an `error` attachment and is never uploaded.",
+    },
   },
   additionalProperties: false,
   required: ['id'],
@@ -208,16 +245,16 @@ const schema = {
           'Optional command/transport boundary around `conversation`. Its methods take\nprecedence over the matching callback props (e.g. `sendMessage` over\n`onSubmit`); omit it and Chat behaves exactly as with plain callbacks.',
       },
       {
+        name: 'availability',
+        reason: 'unknown-shape',
+        description:
+          "Set while the conversation cannot be shown as it is: `{ kind: 'loading' }` draws skeleton turns and a status line that counts the seconds, keeps the editor and has Send wait for the history, and once the read is slow adds Cancel (`onCancel`); `{ kind: 'canceled', onRetry }` offers Retry; `{ kind: 'error', cause, onRetry }` replaces the transcript and the composer with Cinder's `ErrorState`, with Try again and `allConversations`; `{ kind: 'deleted', allConversations }` does the same for a conversation that no longer exists; `{ kind: 'unconfigured', onConnect }` says a model provider is missing, in place of the transcript and the composer while the conversation has no message, and with messages keeps them readable and replaces only the composer, with one blocked row and the primary Connect provider. Left out, the conversation shows as usual.",
+      },
+      {
         name: 'capabilities',
         reason: 'unknown-shape',
         description:
           'Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable\nindividual Chat features (attachments, search, copy, editing, retry, quote) as a group\nrather than as six separate boolean props.',
-      },
-      {
-        name: 'labels',
-        reason: 'unknown-shape',
-        description:
-          'Localized labels for the Messages focus affordance, attachment status, attachment actions and approval drawer controls.',
       },
       {
         name: 'composerActions',
@@ -232,6 +269,12 @@ const schema = {
           "Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether to fold (`folded`): the composer is narrower than `COMPOSER_FOLD_WIDTH`, or the controls with their values in full do not fit beside the meter and Send, so a host can draw one Settings control in place of several selects; the footer never wraps and never cuts a value to a stub.",
       },
       {
+        name: 'composerFooter',
+        reason: 'function-or-snippet',
+        description:
+          "Content under the composer, after its hint or status line: the host's own next steps for an empty chat, such as example prompts and other agents to start with. The snippet takes no arguments, and the caller owns the semantics inside it.",
+      },
+      {
         name: 'composerHeader',
         reason: 'function-or-snippet',
         description:
@@ -244,16 +287,16 @@ const schema = {
           "Content above the composer, outside its border and at its width, after the transcript: the host's own note on where the conversation comes from, such as a chip that says a new chat was started from another page. It is drawn whether the composer is live or blocked. The snippet takes no arguments, and the caller owns the semantics inside it.",
       },
       {
-        name: 'composerFooter',
-        reason: 'function-or-snippet',
-        description:
-          "Content under the composer, after its hint or status line: the host's own next steps for an empty chat, such as example prompts and other agents to start with. The snippet takes no arguments, and the caller owns the semantics inside it.",
-      },
-      {
-        name: 'composerHint',
+        name: 'composerStatus',
         reason: 'unknown-shape',
         description:
-          'The line of help under the composer while no status shows. Default `Enter to send. Shift and Enter for a new line.`; `false` hides it.',
+          "The line under the composer, such as a reconnect, queued follow-ups or the host's own note; or, with `kind: 'blocked'`, the whole composer: one compact row that says why sending is off, in place of the text box and the controls. When omitted, the composer shows its hint.",
+      },
+      {
+        name: 'composerToolbar',
+        reason: 'function-or-snippet',
+        description:
+          "Toolbar slot at the start of the composer footer, given a `format` command for the composer's selection.",
       },
       {
         name: 'conversation',
@@ -267,14 +310,20 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'formatAttachmentError',
+        reason: 'function-or-snippet',
+        description:
+          'The words shown for an attachment in the `error` state (too large, a type not accepted, or a failed upload). Defaults to plain English messages.',
+      },
+      {
         name: 'header',
         reason: 'function-or-snippet',
       },
       {
-        name: 'trailing',
-        reason: 'function-or-snippet',
+        name: 'labels',
+        reason: 'unknown-shape',
         description:
-          'Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation.',
+          "The composer's attachment and approval-drawer words, any of which the host can replace.",
       },
       {
         name: 'markdownNode',
@@ -319,16 +368,34 @@ const schema = {
           "Override or supplement the suggestion list for a message. Called\nper-message; return an array of label strings to show suggestion chips,\n`undefined` to fall back to `message.metadata['cinder:suggestions']`. An\nempty array suppresses suggestions.",
       },
       {
+        name: 'messageTurnState',
+        reason: 'function-or-snippet',
+        description:
+          'Where each assistant turn stands, as the host knows it (COR-2283). Called per assistant\nmessage; return a {@link ChatTurnState} to draw the turn\'s outcome on the turn itself, or\n`undefined` to leave it streaming while text arrives and complete after. `reconnecting`\nmutes the partial text and drops its caret, and draws the warning "Connection lost.\nReconnecting, attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the\nnext try by the composer, where the connection is felt, not under the partial text;\n`stopped` draws a neutral card with Discard and Continue; `failed` a danger alert that says the\nanswer is incomplete, why, and what Retry keeps, with Retry; `empty` a neutral row with the\nturn\'s time and Retry in place of its line. `advanceTurnState` moves a state on as the run\nreports what happened. A callback that throws or returns something else draws the turn as\nChat sees it.',
+      },
+      {
+        name: 'noteAction',
+        reason: 'function-or-snippet',
+        description:
+          'With `variant="transcript"`, drawn at the end of a run\'s note line, such as a Retry beside a failed run\'s stop note. Receives the note.',
+      },
+      {
+        name: 'notSent',
+        reason: 'unknown-shape',
+        description:
+          'With `variant="transcript"`, the words of the "Not sent" popover on a message that was not delivered, and whether its Retry works now.',
+      },
+      {
         name: 'onAdapterError',
         reason: 'function-or-snippet',
         description:
           'Called when an adapter command fails — either a rejected promise or a synchronous throw from the method.',
       },
       {
-        name: 'onArtifactOpen',
+        name: 'onApprovalRequestAgain',
         reason: 'function-or-snippet',
         description:
-          "Overrides Chat's built-in artifact panel. When supplied, Chat calls this\nonce with the resolved artifact and does not open its local panel.",
+          'Asks the host to retry the interrupted turn with a fresh approval for this tool call.',
       },
       {
         name: 'onApprovalResolve',
@@ -337,28 +404,10 @@ const schema = {
           'Called when the user resolves an action-required approval. The complete\nresolution payload is forwarded unchanged. When an adapter is also wired,\nChat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and\nuses this callback only when the adapter does not implement that method.',
       },
       {
-        name: 'onApprovalRequestAgain',
+        name: 'onArtifactOpen',
         reason: 'function-or-snippet',
         description:
-          'Asks the host to retry an interrupted turn with a fresh approval for an expired tool call. Receives the tool call id.',
-      },
-      {
-        name: 'onInputSubmit',
-        reason: 'function-or-snippet',
-        description:
-          "Called when the user answers an action-required tool result that requests\ninput. Chat draws the action's JSON Schema as the control that fits it\n(buttons for a choice, a field for a text, number, date, rating, secret or\nfile, Cinder's `SchemaForm` for an object) and calls this only with an answer\nthat passed validation. A rejected promise keeps the question open so the user\ncan try again; reject with `ChatQuestionAnswerError` to show the host's\nreasons on the fields they name. Without this callback, Chat shows the\nrequest's message but no control.",
-      },
-      {
-        name: 'uploadAttachment',
-        reason: 'function-or-snippet',
-        description:
-          "Uploads each file the person attaches, as soon as it is attached. The attachment shows `uploading`, Send waits for every upload, and the hook's reference rides on the submitted attachment.",
-      },
-      {
-        name: 'formatAttachmentError',
-        reason: 'function-or-snippet',
-        description:
-          'The words shown for an attachment in the `error` state: too large, a type not accepted, or a failed upload.',
+          "Overrides Chat's built-in artifact panel. When supplied, Chat calls this\nonce with the resolved artifact and does not open its local panel.",
       },
       {
         name: 'onAttachmentAdd',
@@ -396,7 +445,18 @@ const schema = {
         description:
           'Called after pointer or selection activity may have moved the composer\ncaret without changing text. Overlay primitives can resync their active\ntoken from the textarea selection.',
       },
-
+      {
+        name: 'onContinueTurn',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set.",
+      },
+      {
+        name: 'onDiscardTurn',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation.",
+      },
       {
         name: 'onEdit',
         reason: 'function-or-snippet',
@@ -404,6 +464,12 @@ const schema = {
       {
         name: 'onExpandedChange',
         reason: 'function-or-snippet',
+      },
+      {
+        name: 'onInputSubmit',
+        reason: 'function-or-snippet',
+        description:
+          "Called when the user answers an action-required tool result that requests\ninput. Chat draws the action's JSON Schema as the control that fits it\n(buttons for a choice, a field for a text, number, date, rating, secret or\nfile, Cinder's `SchemaForm` for an object) and calls this only with an answer\nthat passed validation. A rejected promise keeps the question open so the user\ncan try again; reject with `ChatQuestionAnswerError` to show the host's\nreasons on the fields they name. Without this callback, Chat shows the\nrequest's message but no control.",
       },
       {
         name: 'onJumpToLatest',
@@ -430,11 +496,35 @@ const schema = {
         name: 'onRegenerate',
         reason: 'function-or-snippet',
         description:
-          'Called with the id of the latest assistant message, once it is finished, when the reader chooses Regenerate. The action is drawn on that message only when this is set; regenerating rewrites the answer and runs no tool again.',
+          'Called with the id of the latest assistant message, once it is finished, when the reader\nchooses Regenerate. Chat draws a Regenerate action beside Copy and Quote on that message only\nwhen this is set, because only the host knows how to write an answer again. Regenerating rewrites the answer itself: the tool results\nand approvals earlier in the turn stay, and no tool runs again.',
+      },
+      {
+        name: 'onRemoveQueued',
+        reason: 'function-or-snippet',
+        description:
+          'With `variant="transcript"`, called when the person removes a queued follow-up, when the adapter has no `removeRunInput` (which Chat calls instead). Remove shows only when one of them is set, because only the host knows whether a message it has sent can still be taken back.',
       },
       {
         name: 'onRetry',
         reason: 'function-or-snippet',
+      },
+      {
+        name: 'onRetryConnection',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set.",
+      },
+      {
+        name: 'onRetryStep',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a failed tool call's id when the person chooses Retry under it. The button shows only when this is set; Copy error always shows.",
+      },
+      {
+        name: 'onRetryTurn',
+        reason: 'function-or-snippet',
+        description:
+          "Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Retry. Each shows only when this is set.",
       },
       {
         name: 'onRollback',
@@ -471,6 +561,11 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'questionLabels',
+        reason: 'unknown-shape',
+        description: 'The words of the docked question, any of which the host can replace.',
+      },
+      {
         name: 'readReceipts',
         reason: 'unknown-shape',
         description:
@@ -489,10 +584,28 @@ const schema = {
           'The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link.',
       },
       {
+        name: 'trailing',
+        reason: 'function-or-snippet',
+        description:
+          'Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation.',
+      },
+      {
+        name: 'turnLabels',
+        reason: 'unknown-shape',
+        description:
+          "The words of a turn's outcome and of the steps under it, any of which the host can replace.",
+      },
+      {
         name: 'typingParticipants',
         reason: 'unknown-shape',
         description:
           'Participants who are currently typing. Out-of-band UI state — NOT stored on\n`Message`. Pass an array of {@link TypingParticipant} objects; the component\nrenders a per-participant typing indicator above the input. While defined,\nincluding as an empty array, this prop determines the visible indicator instead\nof adapter-derived state. Adapter events still call `onTypingChange`, and their\nderived state may continue updating and become visible if this prop later becomes\n`undefined`. Omit the prop or pass `undefined` to show adapter-derived state.\nDefault `undefined` (indicator hidden until adapter state is available).',
+      },
+      {
+        name: 'uploadAttachment',
+        reason: 'function-or-snippet',
+        description:
+          "Uploads each file the person attaches, as soon as it is attached. The composer shows the\nattachment as `uploading` (`data-state` on its preview), keeps Send disabled until every\nupload has settled, and hands back the hook's reference on the attachment it submits as\n`ChatAttachment.reference`. A rejection puts the attachment in the `error` state, shown with\n{@link ChatProps.formatAttachmentError}'s words. A file refused for its size or type never\nreaches the hook. The signal aborts when the person removes the attachment.",
       },
       {
         name: 'viewportAttachment',
@@ -502,4 +615,5 @@ const schema = {
   },
 } satisfies ComponentSchema;
 
+/** JSON Schema describing the props of this component. */
 export default schema as ComponentSchema;

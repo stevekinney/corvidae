@@ -6,13 +6,33 @@ import { join, relative } from 'node:path';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 
 import type { Manifest } from './generate-manifest.ts';
+import {
+  componentPackage,
+  packageRelative,
+  type ComponentPackage,
+} from './lib/component-package.ts';
 import { readJsonFile } from './lib/read-json-file.ts';
 
-const PACKAGE_ROOT = join(import.meta.dir, '..');
-const COMPONENTS_ROOT = join(PACKAGE_ROOT, 'src', 'components');
-const MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
-const SCHEMA_PATH = join(PACKAGE_ROOT, 'src', 'schemas', 'examples.schema.json');
-const PUBLIC_ROOT_IMPORT = '@lostgradient/cinder';
+/** Every package's examples validate against Cinder's examples schema. */
+const SCHEMA_PATH = join(import.meta.dir, '..', 'src', 'schemas', 'examples.schema.json');
+
+/**
+ * The package `checkCommittedExamples` is checking (cinder unless it was given another root). The
+ * check runs one package at a time, so the helpers below read it instead of threading it through.
+ */
+let active: ComponentPackage = componentPackage();
+let PACKAGE_ROOT = active.root;
+let COMPONENTS_ROOT = active.componentsRoot;
+let MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+let PUBLIC_ROOT_IMPORT = active.name;
+
+function activate(pkg: ComponentPackage): void {
+  active = pkg;
+  PACKAGE_ROOT = pkg.root;
+  COMPONENTS_ROOT = pkg.componentsRoot;
+  MANIFEST_PATH = join(PACKAGE_ROOT, 'components.json');
+  PUBLIC_ROOT_IMPORT = pkg.name;
+}
 
 export type ExampleArtifact = {
   component: string;
@@ -48,7 +68,10 @@ async function componentLocations(): Promise<ComponentLocation[]> {
 }
 
 function artifactPath(location: ComponentLocation): string {
-  return `src/components/${location.id}/${location.id}.examples.json`;
+  return packageRelative(
+    active,
+    join(COMPONENTS_ROOT, location.id, `${location.id}.examples.json`),
+  );
 }
 
 function readManifest(): Promise<Manifest> {
@@ -126,7 +149,9 @@ function validateArtifactMetadata(
   }
   if (
     value.examples.some((example) =>
-      /(?:from|import)\s+['"]@lostgradient\/cinder\//.test(example.code),
+      new RegExp(`(?:from|import)\\s+['"]${PUBLIC_ROOT_IMPORT.replaceAll('/', '\\/')}\\/`).test(
+        example.code,
+      ),
     )
   ) {
     issues.push(
@@ -175,7 +200,8 @@ async function validateLocation(
 }
 
 /** Return every committed example-sidecar issue; an empty array means valid. */
-export async function checkCommittedExamples(): Promise<string[]> {
+export async function checkCommittedExamples(packageRoot?: string): Promise<string[]> {
+  activate(componentPackage(packageRoot));
   const [locations, manifest, schema] = await Promise.all([
     componentLocations(),
     readManifest(),

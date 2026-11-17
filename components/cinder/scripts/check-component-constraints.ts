@@ -320,9 +320,9 @@ export function checkConstraintsDocument(
 }
 
 /** Every problem with the authored constraints of the package's components; empty when none. */
-export async function checkComponentConstraints(): Promise<ConstraintIssue[]> {
+export async function checkComponentConstraints(packageRoot?: string): Promise<ConstraintIssue[]> {
   const issues: ConstraintIssue[] = [];
-  for (const component of await discoverComponentDirectories()) {
+  for (const component of await discoverComponentDirectories(packageRoot)) {
     const file = `${component.name}.constraints.json`;
     const path = join(component.directory, file);
     if (!existsSync(path)) continue;

@@ -1,11 +1,10 @@
 {
-  "$schema": "./dist/schemas/manifest.schema.json",
+  "$schema": "./src/lib/schemas/manifest.schema.json",
   "manifestVersion": 1,
   "package": {
     "name": "@lostgradient/chat",
-    "version": "0.14.0",
     "framework": "svelte",
-    "frameworkVersionRange": ">=5.56.0 <6",
+    "frameworkVersionRange": "^5.56.7",
     "classPrefix": "cinder-",
     "cssVarPrefix": "--cinder-",
     "tokenNamespaces": [
@@ -24,6 +23,7 @@
       "content",
       "control",
       "data-table",
+      "density",
       "ease",
       "feed-event",
       "file-upload",
@@ -32,6 +32,7 @@
       "gap",
       "kanban-board",
       "leading",
+      "list",
       "marquee",
       "modal",
       "motion",
@@ -46,6 +47,7 @@
       "severity",
       "shadow",
       "side-navigation",
+      "skeleton",
       "space",
       "spinner",
       "statistic",
@@ -61,7 +63,9 @@
       "tracking",
       "tree",
       "type",
+      "type-role",
       "virtual-list",
+      "week-schedule",
       "z"
     ],
     "stylesEntry": "@lostgradient/cinder",
@@ -114,7 +118,10 @@
   "overlapFamilies": {},
   "components": [
     {
+      "name": "Chat",
       "id": "chat",
+      "import": "@lostgradient/chat",
+      "exportName": "Chat",
       "category": "domain",
       "status": "domain-suite",
       "purpose": "Opinionated conversation surface bundling message list, composer, attachments, and scroll affordances for AI or support transcripts.",
@@ -133,67 +140,19 @@
         }
       ],
       "related": ["markdown-editor"],
-      "name": "Chat",
-      "import": "@lostgradient/chat",
-      "exportName": "Chat",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@lostgradient/chat",
-        "variables": "@lostgradient/chat",
-        "examples": "@lostgradient/chat"
+        "schema": "src/lib/components/chat/chat.schema.json",
+        "variables": "src/lib/components/chat/chat.variables.json",
+        "examples": "src/lib/components/chat/chat.examples.json"
       }
     },
     {
-      "id": "chat-navigation-rail",
-      "category": "navigation",
-      "status": "stable",
-      "purpose": "Navigates user-authored transcript turns with keyboard and pointer scrubbing.",
-      "tags": ["chat", "navigation"],
-      "useWhen": ["A long transcript needs direct navigation between user turns."],
-      "avoidWhen": [
-        {
-          "reason": "The transcript is short enough to scan without an auxiliary navigation surface."
-        }
-      ],
-      "related": ["chat"],
-      "name": "ChatNavigationRail",
-      "import": "@lostgradient/chat",
-      "exportName": "ChatNavigationRail",
-      "hasConstraints": false,
-      "hasExamples": true,
-      "artifacts": {
-        "schema": "@lostgradient/chat",
-        "variables": "@lostgradient/chat",
-        "examples": "@lostgradient/chat"
-      }
-    },
-    {
-      "id": "chat-sub-session",
-      "category": "data-display",
-      "status": "stable",
-      "purpose": "Renders a reduced nested conversation transcript inside a parent chat turn.",
-      "tags": ["chat", "transcript"],
-      "useWhen": ["A tool or delegated session needs to expose its child transcript inline."],
-      "avoidWhen": [
-        {
-          "reason": "The child conversation should be a separate full-size Chat surface."
-        }
-      ],
-      "related": ["chat"],
-      "name": "ChatSubSession",
-      "import": "@lostgradient/chat",
-      "exportName": "ChatSubSession",
-      "hasConstraints": false,
-      "hasExamples": true,
-      "artifacts": {
-        "schema": "@lostgradient/chat",
-        "variables": "@lostgradient/chat",
-        "examples": "@lostgradient/chat"
-      }
-    },
-    {
+      "name": "ChatComposerPopover",
       "id": "chat-composer-popover",
+      "import": "@lostgradient/chat",
+      "exportName": "ChatComposerPopover",
       "category": "overlay",
       "status": "beta",
       "purpose": "Chat composer-bound slash-command and mention listbox primitive.",
@@ -211,6 +170,13 @@
         }
       ],
       "related": ["chat", "command-menu", "command-item", "command-palette"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/lib/components/chat-composer-popover/chat-composer-popover.schema.json",
+        "variables": "src/lib/components/chat-composer-popover/chat-composer-popover.variables.json",
+        "examples": "src/lib/components/chat-composer-popover/chat-composer-popover.examples.json"
+      },
       "a11y": {
         "pattern": "WAI-ARIA Combobox with Listbox Popup",
         "keyboard": [
@@ -234,20 +200,13 @@
         "notes": [
           "Passes combobox role and aria-expanded, aria-controls, aria-activedescendant, and aria-autocomplete through to ChatInput's composer overlay API."
         ]
-      },
-      "name": "ChatComposerPopover",
-      "import": "@lostgradient/chat",
-      "exportName": "ChatComposerPopover",
-      "hasConstraints": false,
-      "hasExamples": true,
-      "artifacts": {
-        "schema": "@lostgradient/chat",
-        "variables": "@lostgradient/chat",
-        "examples": "@lostgradient/chat"
       }
     },
     {
+      "name": "ChatConversationHeader",
       "id": "chat-conversation-header",
+      "import": "@lostgradient/chat",
+      "exportName": "ChatConversationHeader",
       "category": "domain",
       "status": "domain-suite",
       "purpose": "Header primitive for the active Chat conversation, composed as a sibling above Chat rather than inside it.",
@@ -265,19 +224,19 @@
         }
       ],
       "related": ["chat", "chat-conversation-list"],
-      "name": "ChatConversationHeader",
-      "import": "@lostgradient/chat",
-      "exportName": "ChatConversationHeader",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@lostgradient/chat",
-        "variables": "@lostgradient/chat",
-        "examples": "@lostgradient/chat"
+        "schema": "src/lib/components/chat-conversation-header/chat-conversation-header.schema.json",
+        "variables": "src/lib/components/chat-conversation-header/chat-conversation-header.variables.json",
+        "examples": "src/lib/components/chat-conversation-header/chat-conversation-header.examples.json"
       }
     },
     {
+      "name": "ChatConversationList",
       "id": "chat-conversation-list",
+      "import": "@lostgradient/chat",
+      "exportName": "ChatConversationList",
       "category": "domain",
       "status": "domain-suite",
       "purpose": "Conversation navigation list for switching among Chat transcripts without embedding the list inside Chat.",
@@ -295,15 +254,60 @@
         }
       ],
       "related": ["chat", "chat-conversation-header", "side-navigation"],
-      "name": "ChatConversationList",
-      "import": "@lostgradient/chat",
-      "exportName": "ChatConversationList",
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
-        "schema": "@lostgradient/chat",
-        "variables": "@lostgradient/chat",
-        "examples": "@lostgradient/chat"
+        "schema": "src/lib/components/chat-conversation-list/chat-conversation-list.schema.json",
+        "variables": "src/lib/components/chat-conversation-list/chat-conversation-list.variables.json",
+        "examples": "src/lib/components/chat-conversation-list/chat-conversation-list.examples.json"
+      }
+    },
+    {
+      "name": "ChatNavigationRail",
+      "id": "chat-navigation-rail",
+      "import": "@lostgradient/chat",
+      "exportName": "ChatNavigationRail",
+      "category": "navigation",
+      "status": "stable",
+      "purpose": "Navigates user-authored transcript turns with keyboard and pointer scrubbing.",
+      "tags": ["chat", "navigation"],
+      "useWhen": ["A long transcript needs direct navigation between user turns."],
+      "avoidWhen": [
+        {
+          "reason": "The transcript is short enough to scan without an auxiliary navigation surface."
+        }
+      ],
+      "related": ["chat"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/lib/components/chat-navigation-rail/chat-navigation-rail.schema.json",
+        "variables": "src/lib/components/chat-navigation-rail/chat-navigation-rail.variables.json",
+        "examples": "src/lib/components/chat-navigation-rail/chat-navigation-rail.examples.json"
+      }
+    },
+    {
+      "name": "ChatSubSession",
+      "id": "chat-sub-session",
+      "import": "@lostgradient/chat",
+      "exportName": "ChatSubSession",
+      "category": "data-display",
+      "status": "stable",
+      "purpose": "Renders a reduced nested conversation transcript inside a parent chat turn.",
+      "tags": ["chat", "transcript"],
+      "useWhen": ["A tool or delegated session needs to expose its child transcript inline."],
+      "avoidWhen": [
+        {
+          "reason": "The child conversation should be a separate full-size Chat surface."
+        }
+      ],
+      "related": ["chat"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/lib/components/chat-sub-session/chat-sub-session.schema.json",
+        "variables": "src/lib/components/chat-sub-session/chat-sub-session.variables.json",
+        "examples": "src/lib/components/chat-sub-session/chat-sub-session.examples.json"
       }
     }
   ]
