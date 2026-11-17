@@ -163,8 +163,8 @@ async function main(): Promise<number> {
 
   step('tokens');
   const tokens = buildTokens({
-    light: readJson<ResolvedContext>(join(cinderRoot, 'src/tokens/resolved/light.json')),
-    dark: readJson<ResolvedContext>(join(cinderRoot, 'src/tokens/resolved/dark.json')),
+    light: readJson<ResolvedContext>(join(cinderRoot, '../tokens/src/tokens/resolved/light.json')),
+    dark: readJson<ResolvedContext>(join(cinderRoot, '../tokens/src/tokens/resolved/dark.json')),
     // The tokens are Cinder's, so their component namespaces come from Cinder's manifest alone.
     manifest: cinderSource.manifest,
     sha,

@@ -5,7 +5,7 @@ import { readCorpusVariables, resolveRegistryPath } from './generate-component-v
 describe('component variable corpus lookup', () => {
   test('resolves the component registry', () => {
     expect(resolveRegistryPath('/workspace/components/core/src/components/button')).toBe(
-      '/workspace/components/core/src/tokens/registry.generated.json',
+      '/workspace/components/tokens/src/tokens/registry.generated.json',
     );
   });
 

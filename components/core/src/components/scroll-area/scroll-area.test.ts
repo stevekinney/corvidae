@@ -286,7 +286,7 @@ describe('ScrollArea attribute precedence', () => {
 
 describe('ScrollArea scrollbar tokens', () => {
   test('scrollbar tokens are declared in tokens-base.css', async () => {
-    const tokensPath = new URL('../../styles/tokens-base.css', import.meta.url);
+    const tokensPath = new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url);
     const source = await Bun.file(tokensPath).text();
     // Use a colon anchor so `--cinder-scrollbar-thumb` does not also match
     // `--cinder-scrollbar-thumb-hover` (prefix overlap).

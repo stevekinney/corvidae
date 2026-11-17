@@ -9,8 +9,12 @@ import {
   bg,
   surface,
   surfaceRaised,
-} from '../../styles/check-token-contrast-test-values.ts';
-import { NON_TEXT, contrastRatio, wcagLuminance } from '../../tokens/runtime/contrast/index.ts';
+} from '@lostgradient/tokens/styles/check-token-contrast-test-values.ts';
+import {
+  NON_TEXT,
+  contrastRatio,
+  wcagLuminance,
+} from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
 setupHappyDom();
 

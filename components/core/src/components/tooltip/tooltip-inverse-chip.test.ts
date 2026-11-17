@@ -5,7 +5,9 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-const tokens = await Bun.file(new URL('../../styles/tokens-base.css', import.meta.url)).text();
+const tokens = await Bun.file(
+  new URL('../../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 
 describe('tooltip inverse chip tokens', () => {
   test('surface-inverse is the text ink in both themes, never the raised surface', () => {

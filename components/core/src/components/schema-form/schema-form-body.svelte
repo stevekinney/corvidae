@@ -9,7 +9,7 @@
   import { tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
-  import { ownEntry } from '../../_internal/own-entry.ts';
+  import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';

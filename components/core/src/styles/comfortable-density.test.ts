@@ -23,10 +23,12 @@ import {
   contrastRatio,
   wcagLuminance,
   type OklchColor,
-} from '../tokens/runtime/contrast/index.ts';
+} from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
 const foundation = await Bun.file(new URL('./foundation.css', import.meta.url)).text();
-const tokens = await Bun.file(new URL('./tokens-base.css', import.meta.url)).text();
+const tokens = await Bun.file(
+  new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 const cardCss = await Bun.file(new URL('../components/card/card.css', import.meta.url)).text();
 
 const COMFORTABLE_SELECTOR = ":where([data-density='comfortable'])";

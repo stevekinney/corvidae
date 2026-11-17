@@ -1,8 +1,8 @@
 /**
  * GENERATED FILE. Do not edit by hand.
  *
- * Source: the DTCG token corpus under components/core/src/tokens/.
- * Regenerate: bun run --filter=@lostgradient/cinder tokens:generate
+ * Source: the DTCG token corpus under components/tokens/src/tokens/.
+ * Regenerate: bun run --filter=@lostgradient/tokens tokens:generate
  */
 
 import registry from './registry.generated.json' with { type: 'json' };

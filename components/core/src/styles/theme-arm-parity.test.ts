@@ -19,7 +19,9 @@
 import { describe, expect, test } from 'bun:test';
 import { parse, type Rule } from 'postcss';
 
-const css = await Bun.file(new URL('./tokens-base.css', import.meta.url)).text();
+const css = await Bun.file(
+  new URL('../../../tokens/src/styles/tokens-base.css', import.meta.url),
+).text();
 
 function declarations(selector: string): Map<string, string> {
   const values = new Map<string, string>();

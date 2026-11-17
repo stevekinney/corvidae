@@ -15,7 +15,7 @@ export const registryModulePath = join(tokenRoot, 'registry.generated.ts');
 export const authoringCataloguePath = join(runtimeDirectory, 'authoring-catalogue.generated.ts');
 export const tokenIndexPath = join(tokenRoot, 'index.json');
 export const tokensDocPath = join(packageRoot, 'documentation', 'tokens.md');
-export const REGENERATE_COMMAND = 'bun run --filter=@lostgradient/cinder tokens:generate';
+export const REGENERATE_COMMAND = 'bun run --filter=@lostgradient/tokens tokens:generate';
 export const PRETTIER_OPTIONS = {
   singleQuote: true,
   tabWidth: 2,

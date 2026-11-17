@@ -153,7 +153,7 @@ const ROLE_SAMPLES: Record<string, string> = {
   'section-title': 'Recent runs',
   body: 'Cinder is the component library behind Interborough.',
   secondary: 'Updated 4 minutes ago',
-  code: 'bun run --filter=@lostgradient/cinder tokens:check',
+  code: 'bun run --filter=@lostgradient/tokens tokens:check',
 };
 
 function lookup<T>(record: Record<string, T>, key: string): T | undefined {

@@ -18,7 +18,7 @@ const registryCache = new Map<string, Promise<RegistryEntry[]>>();
 
 export function resolveRegistryPath(componentDirectory: string): string {
   const packageRoot = join(componentDirectory, '..', '..', '..');
-  return join(packageRoot, 'src', 'tokens', 'registry.generated.json');
+  return join(packageRoot, '..', 'tokens', 'src', 'tokens', 'registry.generated.json');
 }
 
 /**

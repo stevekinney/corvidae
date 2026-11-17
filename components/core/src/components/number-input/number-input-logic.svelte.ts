@@ -1,4 +1,4 @@
-import { ownEntry } from '../../_internal/own-entry.ts';
+import { ownEntry } from '@lostgradient/tokens/_internal/own-entry.ts';
 import { parseLocaleNumber } from '../../utilities/parse-locale-number.ts';
 
 export type CommitSource = 'typed' | 'delta' | 'reset';

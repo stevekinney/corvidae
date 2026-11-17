@@ -60,7 +60,7 @@ async function buildTokenRegistryModule(): Promise<string> {
   const source = `/**
  * GENERATED FILE. Do not edit by hand.
  *
- * Source: the DTCG token corpus under components/core/src/tokens/.
+ * Source: the DTCG token corpus under components/tokens/src/tokens/.
  * Regenerate: ${REGENERATE_COMMAND}
  */
 

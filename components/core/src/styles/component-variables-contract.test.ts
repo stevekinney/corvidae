@@ -25,7 +25,16 @@ import { describe, expect, test } from 'bun:test';
 import { discoverComponentDirectories } from '@lostgradient/component-tooling/scripts/discover-component-directories.ts';
 import { readComponentVariables } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 
-const TOKEN_REGISTRY = join(import.meta.dir, '..', 'tokens', 'registry.generated.json');
+const TOKEN_REGISTRY = join(
+  import.meta.dir,
+  '..',
+  '..',
+  '..',
+  'tokens',
+  'src',
+  'tokens',
+  'registry.generated.json',
+);
 
 const FILE_UPLOAD_PROGRESS_COLOR_VARIABLES = [
   { component: 'file-upload', variable: '--cinder-file-upload-progress-background' },

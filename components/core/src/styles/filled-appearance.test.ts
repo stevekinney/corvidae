@@ -14,14 +14,14 @@ import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
-import { NON_TEXT, type OklchColor } from '../tokens/runtime/contrast/index.ts';
 import {
   borderContrast,
   borderControl,
   borderStrong,
   surfaceInset,
   translucentContrastOn,
-} from './check-token-contrast-test-values.ts';
+} from '@lostgradient/tokens/styles/check-token-contrast-test-values.ts';
+import { NON_TEXT, type OklchColor } from '@lostgradient/tokens/tokens/runtime/contrast/index.ts';
 
 setupHappyDom();
 

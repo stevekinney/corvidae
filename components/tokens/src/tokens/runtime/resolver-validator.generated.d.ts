@@ -1,9 +1,9 @@
 /**
  * GENERATED FILE. Do not edit by hand.
  *
- * Types for the standalone format validator generated from
- * scripts/tokens/schemas/dtcg-format-2025-10.json.
- * Regenerate: bun run --filter=@lostgradient/cinder tokens:generate
+ * Types for the standalone resolver validator generated from
+ * scripts/tokens/schemas/dtcg-resolver-2025-10.json.
+ * Regenerate: bun run --filter=@lostgradient/tokens tokens:generate
  */
 
 import type { ErrorObject } from 'ajv';

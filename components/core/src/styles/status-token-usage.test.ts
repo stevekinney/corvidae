@@ -105,7 +105,10 @@ describe('status token usage', () => {
   });
 
   test('derived status tiers retain the polarity-aware relative-color formula', async () => {
-    const tokens = await readFile(join(import.meta.dir, 'tokens-base.css'), 'utf-8');
+    const tokens = await readFile(
+      join(import.meta.dir, '../../../tokens/src/styles/tokens-base.css'),
+      'utf-8',
+    );
     for (const status of ['info', 'success', 'warning', 'danger']) {
       const muted = declarationValue(tokens, `--cinder-status-${status}-muted`);
       const subtle = declarationValue(tokens, `--cinder-status-${status}-subtle`);
