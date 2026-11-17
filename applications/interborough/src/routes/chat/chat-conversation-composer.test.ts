@@ -16,7 +16,7 @@ import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { installFakePluginHost } from '../settings/plugins/plugins-host.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { AGENT, bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -198,6 +198,57 @@ describe('the draft store (COR-2284 C7)', () => {
 
     await waitFor(() => expect(drawer()).toBeNull());
     expect(window.localStorage.getItem(KEY)).toBe('');
+  });
+
+  test('forgets a draft once it is sent, so the chat opens with no draft-restored drawer', async () => {
+    // A run that starts and answers at once, so the message is sent.
+    const runs: string[] = [];
+    const served = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [RUNNER, AGENT] }),
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
+      },
+      (url, init) => {
+        if (url.endsWith('/host/providers')) return provider(true);
+        if (!url.includes('/agents/')) return thread(false)(url);
+        runs.push(url);
+        const input: { threadId: string; runId: string } = JSON.parse(
+          typeof init?.body === 'string' ? init.body : '{}',
+        );
+        const frames = [
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ];
+        return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(''), {
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+    const first = mountAs();
+    const box = await loadedComposer(first.container);
+    await fireEvent.input(box, { target: { value: 'Send this one' } });
+    expect(window.localStorage.getItem(KEY)).not.toBe('');
+
+    await fireEvent.keyDown(box, { key: 'Enter' });
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    await waitFor(() => expect(window.localStorage.getItem(KEY)).toBe(''));
+    first.unmount();
+    const again = mountAs();
+    await loadedComposer(again.container);
+    expect(again.container.querySelector('[data-chat-composer-drawer="draft-restored"]')).toBe(
+      null,
+    );
+    expect(composer(again.container)?.value).toBe('');
   });
 });
 

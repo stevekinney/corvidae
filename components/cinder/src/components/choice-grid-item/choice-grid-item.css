@@ -251,6 +251,7 @@
   .cinder-choice-grid-item[data-cinder-variant='row'] {
     --_cinder-choice-card-indicator-size: 1rem;
 
+    position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: start;
@@ -274,10 +275,6 @@
     inset-inline: var(--cinder-space-2);
     border-block-start: 1px solid var(--cinder-border-muted);
     pointer-events: none;
-  }
-
-  .cinder-choice-grid-item[data-cinder-variant='row'] {
-    position: relative;
   }
 
   @media (hover: hover) {

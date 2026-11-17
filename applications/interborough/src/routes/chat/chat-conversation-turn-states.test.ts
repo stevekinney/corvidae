@@ -3,7 +3,8 @@
  * was reading drops, the turn is `reconnecting`, so Chat says by the composer which try comes next,
  * of how many, and when, with a Retry that reads the run again at once.
  */
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import ChatConversation from './chat-conversation.svelte';
@@ -22,16 +23,27 @@ const TURNS = [
   { id: 'a1', role: 'assistant', content: 'Here is a first' },
 ];
 
+/** A read that never answers, until the page gives it up. */
+function hanging(init: RequestInit | undefined): Promise<Response> {
+  return new Promise((_, reject) => {
+    init?.signal?.addEventListener('abort', () =>
+      reject(new DOMException('The read was given up.', 'AbortError')),
+    );
+  });
+}
+
 /**
- * A Bureau whose run stream sends the run's start and its rows, then drops; every later read of
- * the stream fails as a network failure does. Counts the reads.
+ * A Bureau whose run stream sends the run's start and its rows, then drops. The first try to read
+ * it again never answers, so the page stays on its first scheduled try; the read Retry starts fails
+ * as a network failure does, and every read after that never answers. Counts the reads.
  */
 function droppingStream(): { reads: () => number } {
   let reads = 0;
-  restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+  restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
     if (url.includes('/threads/')) {
       reads += 1;
-      if (reads > 1) return Promise.reject(new TypeError('Failed to fetch'));
+      if (reads === 3) return Promise.reject(new TypeError('Failed to fetch'));
+      if (reads > 1) return hanging(init);
       // The frames are read first, then the next read finds the connection gone.
       let pulls = 0;
       return new Response(
@@ -71,19 +83,24 @@ describe('a run whose stream dropped', () => {
     } as never);
 
     const notice = () => container.querySelector<HTMLElement>('.chat-connection-notice');
-    await waitFor(() => expect(notice()).not.toBeNull(), { timeout: 10_000 });
+    await waitUntil(() => notice() !== null, { message: 'the reconnect notice' });
     expect(notice()?.textContent).toMatch(
-      /Connection lost\. Reconnecting, attempt \d+ of 7\. Next try in \d+s\./,
+      /Connection lost\. Reconnecting, attempt 1 of 7\. Next try in \d+s\./,
     );
     // One notice: the composer's own reconnect status is not drawn a second time.
     expect(container.querySelector('[data-chat-composer-drawer="reconnecting"]')).toBeNull();
 
-    const before = stream.reads();
+    await waitUntil(() => stream.reads() === 2, { message: 'the first try to read again' });
     const retry = [...notice()!.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === 'Retry',
     )!;
     await fireEvent.click(retry);
 
-    await waitFor(() => expect(stream.reads()).toBeGreaterThan(before));
+    // Retry reads again at once; that read fails too, and the turn still says the run's stream
+    // dropped, with the count started over.
+    await waitUntil(() => stream.reads() >= 3, { message: 'the read Retry starts' });
+    await waitUntil(() => notice()?.textContent?.includes('attempt 1 of 7') === true, {
+      message: 'the reconnect notice after Retry',
+    });
   });
 });

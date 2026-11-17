@@ -308,6 +308,12 @@ export class ChatSessionState {
   #retryGeneration = 0;
   #retryFailures = 0;
   #attachedRun = false;
+  /**
+   * Whether the stream that is being read again was a run's, so a turn is left partway. It holds
+   * through every failed try and a manual reconnect, and clears once a frame arrives, the run ends,
+   * or Stop ends the reconnect.
+   */
+  #runDropped = false;
   /** The schema of each question the page has been shown, by the key its answer's row shares. */
   readonly #questionSchemas = new Map<string, Readonly<Record<string, unknown>>>();
   /**
@@ -354,11 +360,13 @@ export class ChatSessionState {
         options.onRunStarted?.();
       },
       onFrame: () => {
+        this.#runDropped = false;
         this.#setRetryFailures(0);
         this.disconnected = false;
       },
       onTerminal: () => {
         this.#attachedRun = false;
+        this.#runDropped = false;
       },
       ...(options.onGrantNotLoosened === undefined
         ? {}
@@ -987,6 +995,7 @@ export class ChatSessionState {
         this.historySettled = true;
         this.readFailed = false;
         this.#attachedRun = false;
+        this.#runDropped = false;
         return false;
       }
       this.restore(restored);
@@ -1109,13 +1118,14 @@ export class ChatSessionState {
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     const generation = ++this.#retryGeneration;
     const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
+    // A later failed try keeps what the first said: the run it was reading is still the one.
+    this.#runDropped ||= this.#attachedRun;
     this.reconnectSchedule = {
       attempt: this.#retryFailures,
       attempts: RECONNECT_TRIES,
       wait: delay,
       nextTryAt: Date.now() + delay,
-      // A later failed try keeps what the first said: the run it was reading is still the one.
-      runDropped: this.#attachedRun || this.reconnectSchedule?.runDropped === true,
+      runDropped: this.#runDropped,
     };
     // poll-reason: timer
     this.#retryTimer = setTimeout(() => {
@@ -1137,6 +1147,7 @@ export class ChatSessionState {
     this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
+    this.#runDropped = false;
     this.#setRetryFailures(0);
     this.stopping = true;
     try {
