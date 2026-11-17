@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -91,6 +92,30 @@ describe('DropdownTrigger', () => {
 
     expect(trigger.style.getPropertyValue('margin-top')).toBe('4px');
     expect(trigger.style.getPropertyValue('anchor-name')).toBe('--actions-menu-menu');
+  });
+
+  // COR-2489: on the run page at 375 the "More actions" trigger was drawn 44px tall on touch, in a
+  // row of 32px buttons. It is drawn at a Button's painted height and reaches 44px through a hit
+  // area that takes no layout space.
+  test('on a coarse pointer the trigger is drawn compact and its hit area is extended, not drawn 44px', () => {
+    const css = readFileSync(new URL('../dropdown/dropdown.css', import.meta.url), 'utf8');
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    const face = /\.cinder-dropdown-trigger:not\(\.cinder-button\) \{([^}]*)\}/.exec(coarse)?.[1];
+    expect(face).toContain('min-block-size: var(--_cinder-painted-height-md);');
+    expect(face).toContain('position: relative;');
+    const hitArea = /\.cinder-dropdown-trigger:not\(\.cinder-button\)::before \{([^}]*)\}/.exec(
+      coarse,
+    )?.[1];
+    expect(hitArea).toContain('position: absolute;');
+    expect(hitArea).toContain(
+      'inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
+    );
+    // The painted height is not the coarse control height, which rises to 44px.
+    const foundation = readFileSync(
+      new URL('../../styles/foundation.css', import.meta.url),
+      'utf8',
+    );
+    expect(foundation).toContain('--_cinder-painted-height-md: 2rem;');
   });
 
   test('the internal anchor-name declaration wins when a consumer style redeclares it', () => {
