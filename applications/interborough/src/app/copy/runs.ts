@@ -390,6 +390,19 @@ export const RUN_DETAIL_COPY = {
       `Step ${String(at)}${name === undefined ? '' : `, ${name}`}`,
     /** The block's heading for the reason, and the sentence that follows the reason. */
     whyItFailed: 'Why it failed',
+    /**
+     * Said after the reason when the failure was not the person's (row 14t): every failure of a
+     * step except a cancellation, which a person asked for.
+     */
+    notYourFault: 'It wasn’t anything you did.',
+    /** The actions inside the failure block (row 14t), beside the header's own. */
+    inBlock: {
+      retry: (at: number): string => `Retry from step ${String(at)}`,
+      runsOn: (version: string): string => `runs on ${version}`,
+      runAgain: 'Run again',
+      openStep: (at: number): string => `Open step ${String(at)}`,
+      errorDetails: 'Show the error details',
+    },
     /** The sentence under the reason: where to look when it keeps failing, with Health as a link. */
     checkHealth: { before: 'If it keeps failing, check ', link: 'Health', after: '.' },
     /** The Version row: which version the run ran, and where it stands against the current one. */

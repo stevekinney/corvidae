@@ -890,6 +890,12 @@
               failure={instanceFailed ? (workflow?.error ?? record?.error ?? undefined) : undefined}
               triesTook={stepTries?.took}
               retryVersion={retryAction === undefined ? undefined : instance.version?.ran}
+              retry={retryAction}
+              runAgain={runAgainAction}
+              onOpenStep={() => {
+                howOverride = true;
+                howTab = 'steps';
+              }}
             />
           {/if}
           {#if task.data !== undefined}

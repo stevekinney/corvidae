@@ -203,6 +203,14 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(block.textContent).toContain('GitHub did not answer (HTTP 503)');
     // What the step said, never the error's JSON (row 55b).
     expect(block.textContent).not.toContain('{');
+    // Row 14t: the block says it was not the person's doing, and carries its own actions.
+    expect(block.textContent).toContain('It wasn’t anything you did.');
+    const actions = block.querySelector('[data-run-failure-actions]');
+    expect(actions?.textContent).toContain('Retry from step 2');
+    expect(actions?.textContent).toContain('runs on 1.2.0');
+    expect(actions?.textContent).toContain('Run again');
+    expect(actions?.textContent).toContain('Open step 2');
+    expect(block.textContent).not.toContain('Show full stack trace');
     // The failure is told once, on the step, and no banner repeats it.
     expect(view.container.querySelectorAll('.weft-overview-tab__failure')).toHaveLength(1);
     await waitFor(() => {
