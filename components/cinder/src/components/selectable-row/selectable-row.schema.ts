@@ -9,6 +9,12 @@ const schema = {
       description: 'Density token surfaced as `data-cinder-density`.',
       default: 'comfortable',
     },
+    clampDescription: {
+      type: 'boolean',
+      description:
+        'Holds the description to two lines with an ellipsis, so a long one does not make the row grow. Set `false` to show the whole description.',
+      default: true,
+    },
     selected: {
       type: 'boolean',
       description: 'Whether the primary action represents the selected or current row.',

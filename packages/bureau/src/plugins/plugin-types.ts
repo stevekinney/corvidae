@@ -211,14 +211,28 @@ export type PluginProblem =
     }
   | {
       /**
-       * A formatter lists an event kind that is not in `BUREAU_EVENT_CATALOG`, so it would never
-       * format anything; the plugin is `skipped` and the host starts.
+       * A formatter lists an event kind no Bureau publishes: not in `BUREAU_EVENT_CATALOG` and not
+       * declared in the plugin's own `events`, so it would never format anything; the plugin is
+       * `skipped` and the host starts.
        */
       readonly code: 'formatter-unknown-kind';
       /** The formatter's name within the plugin. */
       readonly formatter: string;
       /** The kind no event carries. */
       readonly kind: string;
+    }
+  | {
+      /**
+       * A formatter lists a kind another plugin declares: only the publisher formats its own
+       * kinds (COR-2225). The plugin is `skipped` and the host starts.
+       */
+      readonly code: 'formatter-foreign-kind';
+      /** The formatter's name within the plugin. */
+      readonly formatter: string;
+      /** The kind the other plugin declares. */
+      readonly kind: string;
+      /** The plugin that declares it. */
+      readonly owner: string;
     }
   | {
       /**

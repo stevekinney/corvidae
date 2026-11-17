@@ -384,3 +384,16 @@ describe('the list on a phone and a modified click', () => {
     }
   });
 });
+
+describe('the rows hold no middle dot (COR-2388)', () => {
+  test('no rendered text in the chat rows contains U+00B7', async () => {
+    serveChats();
+    landAt('/chats');
+
+    const { region } = await list();
+
+    const rows = region.querySelectorAll('[data-chat]');
+    expect(rows).toHaveLength(4);
+    for (const row of rows) expect(row.textContent).not.toContain(String.fromCodePoint(0xb7));
+  });
+});

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Narrow collapse to a select';
   export const description =
-    'Below collapseBelow (640px by default) a horizontal tab bar becomes one full-width select reading "Tab: Access". The tabs stay mounted, hidden, so the panels keep their names. This example sets collapseBelow wide enough to show the narrow form at any width.';
+    'A horizontal tab bar that does not fit its container becomes one full-width select reading "Tab: Access". The tabs stay mounted, hidden, so the panels keep their names. This example sets collapseBelow wide enough to show the select form at any width.';
 </script>
 
 <script lang="ts">

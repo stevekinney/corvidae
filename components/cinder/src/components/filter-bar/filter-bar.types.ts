@@ -137,10 +137,11 @@ export type FilterSegment = {
 
 /**
  * How the bar is drawn. `wide` shows the segments, the facet chips and the search field in one
- * row. `medium` collapses the segments to a select and the search field to an icon button.
- * `narrow` shows only the select and a Filter menu that holds every facet and the search.
+ * row. `search-folded` folds the search field to an icon button first and keeps the segments.
+ * `medium` also collapses the segments to a select. `narrow` shows only the select and a Filter
+ * menu that holds every facet and the search. Search folds away before the segments do.
  */
-export type FilterBarLayout = 'wide' | 'medium' | 'narrow';
+export type FilterBarLayout = 'wide' | 'search-folded' | 'medium' | 'narrow';
 
 /**
  * Props for the FilterBar component.

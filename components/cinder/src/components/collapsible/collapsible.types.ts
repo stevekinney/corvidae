@@ -52,6 +52,13 @@ export type CollapsibleProps = Omit<
    */
   variant?: CollapsibleVariant;
   /**
+   * Keeps the frame of a Collapsible that sits inside another Collapsible's panel. Nested, a
+   * disclosure is flat by default (a box inside a box reads as clutter); set this to keep the
+   * bordered card. It changes nothing for a Collapsible that is not nested.
+   * @default false
+   */
+  framed?: boolean;
+  /**
    * Whether opening and closing uses the slide transition.
    * @default true
    */
@@ -110,6 +117,13 @@ export interface CollapsibleSchemaProps {
    * @default 'default'
    */
   variant?: CollapsibleVariant;
+  /**
+   * Keeps the frame of a Collapsible that sits inside another Collapsible's panel. Nested, a
+   * disclosure is flat by default (a box inside a box reads as clutter); set this to keep the
+   * bordered card. It changes nothing for a Collapsible that is not nested.
+   * @default false
+   */
+  framed?: boolean;
   /**
    * Whether opening and closing uses the slide transition.
    * @default true

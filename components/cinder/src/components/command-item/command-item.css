@@ -123,10 +123,13 @@
     min-inline-size: 0;
   }
 
-  /* The secondary text of the label's own line: "Approval, waiting", muted, after the label. */
+  /* The secondary text of the label's own line, after the label. The label and its meta are told
+     apart by a space and the colour step (muted, smaller), with no glyph drawn between them: no
+     comma and no dot. */
   .cinder-command-item__meta {
     flex: none;
     max-inline-size: 60%;
+    margin-inline-start: var(--cinder-space-1-5);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -134,12 +137,7 @@
     font-size: var(--cinder-text-xs);
   }
 
-  .cinder-command-item__meta::before {
-    content: ',';
-    margin-inline-end: var(--cinder-space-1-5);
-  }
-
-  /* A row whose meta has nothing to say has no separator to hang from the label. */
+  /* A row whose meta has nothing to say has no gap to hang from the label. */
   .cinder-command-item__meta:empty {
     display: none;
   }
