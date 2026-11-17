@@ -13,7 +13,10 @@ import type { Page } from '@playwright/test';
 import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { STATUS_WORDS } from '../../src/lib/status.ts';
-import { STARTED_BY_KINDS } from '../../src/routes/workflows/runs/started-by.ts';
+import {
+  STARTED_BY_FILTER_LABELS,
+  STARTED_BY_KINDS,
+} from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';

@@ -228,7 +228,7 @@ describe('a run of a workflow file the engine does not hold', () => {
     const view = mount(id);
 
     const lineage = await view.findByTestId('run-lineage');
-    await waitFor(() => expect(lineage.innerHTML).toContain('data-started-run'), { timeout: 2000 });
+    await waitFor(() => expect(lineage.innerHTML).toContain('data-started-run'));
     const rows = [...lineage.querySelectorAll('li')].map((row) =>
       (row.textContent ?? '').replaceAll(/\s+/g, ' ').trim(),
     );
