@@ -379,10 +379,8 @@ function taskPathErrors(task: TaskSnapshot): string[] {
   }
   const oracle = normalizedTaskPath(task.oraclePath);
   if (oracle === undefined || !files.has(oracle)) errors.push(`${task.id} has no oracle file.`);
-  for (const argument of task.oracleArgv) {
-    if (normalizedTaskPath(argument) === undefined)
-      errors.push(`${task.id} has unsafe oracle argv: ${argument}.`);
-  }
+  if (oracle !== undefined && (task.oracleArgv.length !== 1 || task.oracleArgv[0] !== oracle))
+    errors.push(`${task.id} must execute only its oracle: ${task.oraclePath}.`);
   return errors;
 }
 

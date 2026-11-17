@@ -133,6 +133,86 @@ describe('outcome accounting', () => {
     expect(result.incompleteUsage.length).toBeGreaterThan(0);
   });
 
+  test('keeps a valid Codex call incomplete when a later cumulative counter is invalid', () => {
+    const price = {
+      'gpt-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    };
+    const valid = codex(11, 10, 1, '2026-11-17T20:58:08.000Z');
+    for (const mutate of [
+      (entry: ReturnType<typeof codex>) =>
+        delete (entry.payload.info.total_token_usage as Partial<{ total_tokens: number }>)[
+          'total_tokens'
+        ],
+      (entry: ReturnType<typeof codex>) => (entry.payload.info.total_token_usage.total_tokens = -1),
+      (entry: ReturnType<typeof codex>) =>
+        (entry.payload.info.last_token_usage.cached_input_tokens = 11),
+    ]) {
+      const invalid = structuredClone(valid);
+      invalid.timestamp = '2026-11-17T20:58:09.000Z';
+      mutate(invalid);
+      const result = accountOutcome(
+        outcome(
+          write(`mixed-${JSON.stringify(invalid.payload.info)}.jsonl`, [
+            { type: 'session_meta', payload: {} },
+            { type: 'turn_context', payload: { model: 'gpt-test' } },
+            valid,
+            invalid,
+          ]),
+        ),
+        price,
+      );
+      expect(result.tokens).toEqual({ uncachedInput: 10, cacheRead: 0, cacheWrite: 0, output: 1 });
+      expect(result.incompleteUsage.length).toBeGreaterThan(0);
+      expect(result.cost).toBe('unknown');
+    }
+    expect(
+      accountOutcome(
+        outcome(
+          write('codex-valid.jsonl', [
+            { type: 'session_meta', payload: {} },
+            { type: 'turn_context', payload: { model: 'gpt-test' } },
+            valid,
+          ]),
+        ),
+        price,
+      ).cost,
+    ).toBeCloseTo(0.000011);
+  });
+
+  test('does not price a valid Claude call complete after malformed Claude messages', () => {
+    const price = {
+      'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
+    };
+    const usage = { input_tokens: 10, output_tokens: 1 };
+    const result = accountOutcome(
+      outcome(
+        write('claude-mixed.jsonl', [
+          {
+            type: 'assistant',
+            timestamp: '2026-11-17T20:58:08.000Z',
+            message: { id: 'valid', model: 'claude-test', usage },
+          },
+          { type: 'assistant', timestamp: '2026-11-17T20:58:09.000Z' },
+          { type: 'assistant', timestamp: '2026-11-17T20:58:10.000Z', message: 'invalid' },
+          {
+            type: 'assistant',
+            timestamp: '2026-11-17T20:58:11.000Z',
+            message: { id: 'nonstring-model', model: 42, usage },
+          },
+        ]),
+      ),
+      price,
+    );
+    expect(result.tokens).toEqual({ uncachedInput: 10, cacheRead: 0, cacheWrite: 0, output: 1 });
+    expect(result.incompleteUsage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'Model call message is not an object.' }),
+        expect.objectContaining({ message: 'Model call has no string model.' }),
+      ]),
+    );
+    expect(result.cost).toBe('unknown');
+  });
+
   test('keeps malformed Claude token fields incomplete while pricing a valid control', () => {
     const price = {
       'claude-test': { asOf: '2026-11-17', input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
@@ -207,6 +287,13 @@ describe('outcome accounting', () => {
   test('freezes two tasks in every family with one held out', async () => {
     const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text());
     expect(verifyTaskBank(bank)).toEqual([]);
+  });
+
+  test('rejects a writable candidate as an oracle entrypoint before materialization', async () => {
+    const bank = JSON.parse(await Bun.file('scripts/chef/fixtures/sdlc-task-bank.json').text());
+    const invalid = structuredClone(bank);
+    invalid.tasks[0].oracleArgv = ['candidate.ts'];
+    expect(verifyTaskBank(invalid)).toContain('local-01 must execute only its oracle: oracle.ts.');
   });
 
   test('rejects malformed and mismatched frozen policy source hashes before Git reads', async () => {

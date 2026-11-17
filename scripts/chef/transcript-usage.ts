@@ -111,6 +111,54 @@ function hasNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+type UsageIssue = Omit<UsageProblem, 'line'>;
+
+function recordAt(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** The Codex call and its cumulative counter are one accounting record. */
+function codexUsageIssues(info: unknown): UsageIssue[] {
+  const infoRecord = recordAt(info);
+  const usage = recordAt(infoRecord?.['last_token_usage']);
+  if (usage === undefined) return [{ kind: 'missing-usage', message: 'Model call has no usage.' }];
+  const issues: UsageIssue[] = [];
+  const total = recordAt(infoRecord?.['total_token_usage'])?.['total_tokens'];
+  if (!hasNumber(total))
+    issues.push({
+      kind: total === undefined ? 'missing-usage' : 'malformed-usage',
+      message: 'Model call has no numeric total_tokens.',
+    });
+  for (const field of [
+    'input_tokens',
+    'output_tokens',
+    'cached_input_tokens',
+    'cache_write_input_tokens',
+  ]) {
+    const value = usage[field];
+    if (
+      ((field === 'input_tokens' || field === 'output_tokens') && !hasNumber(value)) ||
+      (value !== undefined && !hasNumber(value))
+    )
+      issues.push({
+        kind: value === undefined ? 'missing-usage' : 'malformed-usage',
+        message: `Model call has no numeric ${field}.`,
+      });
+  }
+  if (
+    hasNumber(usage['cached_input_tokens']) &&
+    hasNumber(usage['input_tokens']) &&
+    usage['cached_input_tokens'] > usage['input_tokens']
+  )
+    issues.push({
+      kind: 'malformed-usage',
+      message: 'Model call has cached_input_tokens greater than input_tokens.',
+    });
+  return issues;
+}
+
 function parseLines(text: string): Record<string, unknown>[] {
   const entries: Record<string, unknown>[] = [];
   for (const line of text.split('\n')) {
@@ -143,18 +191,35 @@ export function usageProblems(text: string, provider: Provider): UsageProblem[] 
       problems.push({ kind: 'malformed-line', line: index + 1, message: 'Invalid JSON.' });
       continue;
     }
-    const message = entry['message'] as Record<string, unknown> | undefined;
+    const message = recordAt(entry['message']);
     const payload = entry['payload'] as Record<string, unknown> | undefined;
-    const claimsClaudeCall =
-      provider === 'claude-code' &&
-      entry['type'] === 'assistant' &&
-      message?.['model'] !== '<synthetic>';
+    const claimsClaudeCall = provider === 'claude-code' && entry['type'] === 'assistant';
     const claimsCodexCall =
       provider === 'codex' && entry['type'] === 'event_msg' && payload?.['type'] === 'token_count';
     if (!claimsClaudeCall && !claimsCodexCall) continue;
-    const usage = claimsClaudeCall
-      ? message?.['usage']
-      : (payload?.['info'] as Record<string, unknown> | undefined)?.['last_token_usage'];
+    if (claimsCodexCall) {
+      for (const issue of codexUsageIssues(payload?.['info']))
+        problems.push({ ...issue, line: index + 1 });
+      continue;
+    }
+    if (message === undefined) {
+      problems.push({
+        kind: entry['message'] === undefined ? 'missing-usage' : 'malformed-usage',
+        line: index + 1,
+        message: 'Model call message is not an object.',
+      });
+      continue;
+    }
+    if (message['model'] === '<synthetic>') continue;
+    if (typeof message['model'] !== 'string') {
+      problems.push({
+        kind: message['model'] === undefined ? 'missing-usage' : 'malformed-usage',
+        line: index + 1,
+        message: 'Model call has no string model.',
+      });
+      continue;
+    }
+    const usage = message?.['usage'];
     if (usage === undefined) {
       problems.push({
         kind: 'missing-usage',
@@ -219,13 +284,18 @@ export function claudeCodeCalls(entries: Record<string, unknown>[]): ModelCall[]
   const toolIds = new Map<string, Set<string>>();
   for (const entry of entries) {
     if (entry['type'] !== 'assistant') continue;
-    const message = entry['message'] as Record<string, unknown> | undefined;
+    const message = recordAt(entry['message']);
     const usage = message?.['usage'] as Record<string, unknown> | undefined;
     const id = message?.['id'];
     if (usage === undefined || typeof id !== 'string') continue;
     // Claude Code writes `<synthetic>` entries for messages no model produced (an interrupted
     // turn, for example); they carry no usage and are not calls.
-    if (message?.['model'] === '<synthetic>') continue;
+    if (
+      message === undefined ||
+      typeof message['model'] !== 'string' ||
+      message['model'] === '<synthetic>'
+    )
+      continue;
     if (
       !hasNumber(usage['input_tokens']) ||
       !hasNumber(usage['output_tokens']) ||
@@ -270,23 +340,12 @@ export function codexCalls(entries: Record<string, unknown>[]): ModelCall[] {
     if (entry['type'] === 'turn_context' && typeof payload?.['model'] === 'string')
       model = payload['model'];
     if (entry['type'] !== 'event_msg' || payload?.['type'] !== 'token_count') continue;
-    const info = payload['info'] as Record<string, unknown> | null | undefined;
-    const last = info?.['last_token_usage'] as Record<string, unknown> | undefined;
-    const total = (info?.['total_token_usage'] as Record<string, unknown> | undefined)?.[
-      'total_tokens'
-    ];
-    if (
-      last === undefined ||
-      !hasNumber(last['input_tokens']) ||
-      !hasNumber(last['output_tokens']) ||
-      !hasNumber(total) ||
-      ['cached_input_tokens', 'cache_write_input_tokens'].some(
-        (field) => last[field] !== undefined && !hasNumber(last[field]),
-      ) ||
-      total <= lastTotal ||
-      (hasNumber(last['cached_input_tokens']) && last['cached_input_tokens'] > last['input_tokens'])
-    )
-      continue;
+    const info = payload['info'];
+    if (codexUsageIssues(info).length > 0) continue;
+    const infoRecord = recordAt(info)!;
+    const last = recordAt(infoRecord['last_token_usage'])!;
+    const total = recordAt(infoRecord['total_token_usage'])!['total_tokens'] as number;
+    if (total <= lastTotal) continue;
     lastTotal = total;
     const cached = numberAt(last['cached_input_tokens']);
     calls.push({
