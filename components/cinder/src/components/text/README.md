@@ -1,6 +1,6 @@
 # Text
 
-A run of text in one of the typography variants `h1` to `h5`, `caption`, and `body`. Color is inherited from the container.
+A run of text in one of the typography variants `h1` to `h5`, `caption`, `body` and `code`. Color is inherited from the container.
 
 ## Usage
 
@@ -12,6 +12,18 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, and `bo
 <Text variant="h2">Release notes</Text>
 <Text>Body text renders a paragraph.</Text>
 <Text variant="h1" as="h2">Styled as h1, rendered as h2</Text>
+```
+
+## An identifier in a line of text
+
+`variant="code"` renders an inline `<code>` in the monospace face (`--cinder-font-mono`). It takes the size, weight and leading of the text around it, with no em scaling, so an identifier sits on the type scale beside the words instead of a step off it. Use it for an id, a name the person typed or a value no one would say aloud.
+
+```svelte
+<script lang="ts">
+  import { Text } from '@lostgradient/cinder';
+</script>
+
+<Text variant="caption">Acme audit, <Text variant="code">acme-audit:redact-secrets</Text></Text>
 ```
 
 ## Clamping a long run
@@ -35,7 +47,7 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, and `bo
 
 ## Cutting an identifier in the middle
 
-`truncate="middle"` keeps the end of a long identifier visible, because the end is what tells one from another: "payments-worker-eu-w…3a68". It takes the plain string as `text` (so it has no children), keeps the last `tailLength` characters (4 by default), and gives the head an ellipsis only when the line is too narrow, and measures the cut so the ellipsis sits against the tail with no gap. The full text is a Cinder tooltip unless `title` is set, and the cut text takes focus, so a keyboard or touch user can reach the whole value too. The whole string stays in the DOM for assistive technology and copying.
+`truncate="middle"` keeps the end of a long identifier visible, because the end is what tells one from another: "payments-worker-eu-w…3a68". It takes the plain string as `text` (so it has no children), keeps the last `tailLength` characters (4 by default), and gives the head an ellipsis only when the line is too narrow, and measures the cut so the ellipsis sits against the tail with no gap. The full text is a Cinder tooltip unless `title` is set, and the cut text takes focus, so a keyboard or touch user can reach the whole value too. The whole string stays in the DOM for assistive technology and copying. `truncate="end"` does the same for a cut at the end, but only while the value is actually cut: a value that fits has no tab stop and no tooltip, and a cut one takes focus and opens its whole value in a tooltip (or the `title` you set), except inside a page's own Tooltip, which speaks instead.
 
 ```svelte
 <script lang="ts">
@@ -51,14 +63,14 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, and `bo
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `as` | `"object"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"a"` \| `"abbr"` \| `"address"` \| `"article"` \| `"aside"` \| `"audio"` \| `"b"` \| `"bdi"` \| `"bdo"` \| `"blockquote"` \| `"button"` \| `"canvas"` \| `"cite"` \| `"code"` \| `"data"` \| `"datalist"` \| `"dd"` \| `"del"` \| `"details"` \| `"dfn"` \| `"dialog"` \| `"div"` \| `"dl"` \| `"dt"` \| `"em"` \| `"fieldset"` \| `"figcaption"` \| `"figure"` \| `"footer"` \| `"form"` \| `"h6"` \| `"header"` \| `"hgroup"` \| `"i"` \| `"iframe"` \| `"ins"` \| `"kbd"` \| `"label"` \| `"legend"` \| `"li"` \| `"main"` \| `"map"` \| `"mark"` \| `"menu"` \| `"meter"` \| `"nav"` \| `"ol"` \| `"output"` \| `"p"` \| `"picture"` \| `"pre"` \| `"progress"` \| `"q"` \| `"rp"` \| `"rt"` \| `"ruby"` \| `"s"` \| `"samp"` \| `"search"` \| `"section"` \| `"select"` \| `"slot"` \| `"small"` \| `"span"` \| `"strong"` \| `"sub"` \| `"summary"` \| `"sup"` \| `"table"` \| `"tbody"` \| `"td"` \| `"template"` \| `"textarea"` \| `"tfoot"` \| `"th"` \| `"thead"` \| `"time"` \| `"tr"` \| `"u"` \| `"ul"` \| `"var"` \| `"video"` | no | — | Element tag that overrides the variant's default element. |
+| `as` | `"object"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"code"` \| `"a"` \| `"abbr"` \| `"address"` \| `"article"` \| `"aside"` \| `"audio"` \| `"b"` \| `"bdi"` \| `"bdo"` \| `"blockquote"` \| `"button"` \| `"canvas"` \| `"cite"` \| `"data"` \| `"datalist"` \| `"dd"` \| `"del"` \| `"details"` \| `"dfn"` \| `"dialog"` \| `"div"` \| `"dl"` \| `"dt"` \| `"em"` \| `"fieldset"` \| `"figcaption"` \| `"figure"` \| `"footer"` \| `"form"` \| `"h6"` \| `"header"` \| `"hgroup"` \| `"i"` \| `"iframe"` \| `"ins"` \| `"kbd"` \| `"label"` \| `"legend"` \| `"li"` \| `"main"` \| `"map"` \| `"mark"` \| `"menu"` \| `"meter"` \| `"nav"` \| `"ol"` \| `"output"` \| `"p"` \| `"picture"` \| `"pre"` \| `"progress"` \| `"q"` \| `"rp"` \| `"rt"` \| `"ruby"` \| `"s"` \| `"samp"` \| `"search"` \| `"section"` \| `"select"` \| `"slot"` \| `"small"` \| `"span"` \| `"strong"` \| `"sub"` \| `"summary"` \| `"sup"` \| `"table"` \| `"tbody"` \| `"td"` \| `"template"` \| `"textarea"` \| `"tfoot"` \| `"th"` \| `"thead"` \| `"time"` \| `"tr"` \| `"u"` \| `"ul"` \| `"var"` \| `"video"` | no | — | Element tag that overrides the variant's default element. |
 | `clamp` | `number` | no | — | Holds the text to this many lines; a "Show all" button appears only while the text is cut off. |
 | `class` | `string` | no | — | Additional classes merged onto the root element. |
 | `expanded` | `boolean` | no | `false` | Whether a clamped run is open to its full length. |
 | `tailLength` | `number` | no | `4` | With `truncate="middle"`, how many characters at the end of the text stay visible. |
 | `text` | `string` | no | — | The plain text to cut with `truncate`. |
 | `truncate` | `"middle"` \| `"end"` | no | — | Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`. |
-| `variant` | `"display"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"body"` | no | `"body"` | Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. |
+| `variant` | `"display"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"body"` \| `"code"` | no | `"body"` | Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs, and `code` renders an inline `code` element in the monospace face that takes the size of the text around it, for an identifier. |
 | `actions` | `(opaque)` | no | — | Content that sits beside the "Show all" button on the line under a clamped run, separated from it by a comma, such as a "Show raw payloads" link. Ignored without `clamp`. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Required text content. Not expressible in JSON Schema; see the component types for the signature. |
 

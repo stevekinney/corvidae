@@ -39,6 +39,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.tasks.list', 'runs:read'],
   ['bureau.tasks.get', 'runs:read'],
   ['bureau.tasks.inspect', 'runs:read'],
+  // COR-2113: every check result links to the run or goal it judged, so the list is a read of runs.
+  ['bureau.checks.list', 'runs:read'],
   ['bureau.workflows.start', 'runs:write'],
   ['bureau.workflows.signal', 'runs:write'],
   ['bureau.tasks.cancel', 'runs:write'],
@@ -75,6 +77,8 @@ export const BUREAU_METHOD_SCOPES: ReadonlyMap<string, ApiScope> = new Map<strin
   ['bureau.hooks.draft.test', 'hooks:write'],
   ['bureau.hooks.deliveries.retry', 'hooks:write'],
   ['bureau.settings.update', 'settings:write'],
+  // COR-2188: cancelling the embedding switch changes what `memory.embedder` asked for.
+  ['bureau.memory.embedding.cancel', 'settings:write'],
 ]);
 
 /** The Bureau's JSON-RPC path, with the `/bureau` prefix removed. */

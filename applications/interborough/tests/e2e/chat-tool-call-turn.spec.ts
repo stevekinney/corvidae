@@ -25,6 +25,7 @@ import {
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -193,10 +194,12 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
   }) => {
     await openLongTurn(page, request);
     const list = chatList(page);
-    const box = await list.boundingBox();
-    expect(box?.width).toBe(LIST_WIDTH);
-    const conversation = await openChat(page).boundingBox();
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((conversation?.x ?? 0) + 1);
+    const { box, conversation } = await readBoxes(page, {
+      box: list,
+      conversation: openChat(page),
+    });
+    expect(box.width).toBe(LIST_WIDTH);
+    expect(box.x + box.width).toBeLessThanOrEqual(conversation.x + 1);
 
     await expect(list.getByRole('searchbox', { name: 'Search chats' })).toBeVisible();
     // At 250px the three status segments no longer fit on one line, so the frame draws none.
@@ -313,12 +316,12 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     await expect(panel).toContainText('SMTP timeout after 10s');
     await expect(panel).toContainText('smtp-timeout');
     // Docked beside the conversation: about 340px wide, to the right of it, and the rail's row tinted.
-    const box = await panel.boundingBox();
-    expect(Math.round(box?.width ?? 0)).toBe(340);
-    const conversation = await openChat(page).boundingBox();
-    expect(box?.x ?? 0).toBeGreaterThanOrEqual(
-      (conversation?.x ?? 0) + (conversation?.width ?? 0) - 400,
-    );
+    const { box, conversation } = await readBoxes(page, {
+      box: panel,
+      conversation: openChat(page),
+    });
+    expect(Math.round(box.width)).toBe(340);
+    expect(box.x).toBeGreaterThanOrEqual(conversation.x + conversation.width - 400);
     await expect(rowOf(page, 'Send email')).toHaveAttribute('aria-pressed', 'true');
     // The rows stay one line each: nothing in the rail opened under a row.
     await expect(rail(page).locator('.ib-tool__details')).toHaveCount(0);
@@ -344,7 +347,8 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     await expect(rail(page).locator('.cinder-tool-call-rail__more[aria-expanded]')).toHaveCount(1);
     await expect(railRows(page).and(page.locator('[aria-expanded]'))).toHaveCount(0);
     await rowOf(page, 'Send email').click();
-    await expect(rail(page).locator('dl')).toHaveCount(0);
+    // A waiting approval's own input rows are a list; no call's details are.
+    await expect(rail(page).locator('dl:not(.cinder-approval-card__input-rows)')).toHaveCount(0);
     await expect(rail(page)).not.toContainText('Template');
     // Opening the fold lists every call, all thirty, in the order they ran, still one line each.
     await rail(page).locator('.cinder-tool-call-rail__more').click();

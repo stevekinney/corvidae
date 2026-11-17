@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import {
+  type OperationFault,
+  defineOperation,
+  principalFromApiKey,
+} from '@lostgradient/backchannel';
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import type { ReviewRequest } from '../../core/review/index.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { handleRequest } from '../handler.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { storeHistoricalReviewDecisionWithoutRequestMetadata } from '../review-test-support.test-support.ts';
 import { listReviewsOperation, listReviewsRestBinding } from './list-reviews.ts';
 

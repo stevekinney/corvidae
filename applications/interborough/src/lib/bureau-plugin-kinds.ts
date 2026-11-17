@@ -16,6 +16,11 @@ const triggerKindSchema = z.object({
   id: z.string(),
   description: z.string(),
   version: z.string(),
+  /**
+   * Whether the kind receives requests (COR-2168): a file whose trigger is one is sent its deliveries
+   * at `/triggers/<workflow-id>`, which the workflow page shows with a copy control (COR-2171).
+   */
+  receives: z.boolean(),
   configuration: configurationSchema,
 });
 
@@ -24,6 +29,8 @@ const hookActionKindSchema = z.object({
   kind: z.string(),
   description: z.string(),
   version: z.string(),
+  /** Whether `hooks.test` can call the kind's `dryRun`: a hook of a kind without one cannot be tested. */
+  dryRun: z.boolean(),
   configuration: configurationSchema,
 });
 

@@ -6,9 +6,9 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { Webhook } from 'standardwebhooks';
 
+import { canonicalJson } from '@lostgradient/backchannel/internals';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Outbox } from '../core/outbox.ts';
-import { canonicalJson } from '../server/openapi-canonical-json.ts';
 import {
   callContext,
   contextWithHeaders,

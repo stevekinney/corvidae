@@ -389,12 +389,9 @@ describe('Chat — scrollFadeVisible', () => {
     expect(timeline?.classList.contains('cinder-_scroll-fade-start')).toBe(true);
   });
 
-  test('still adds the fade classes in surfaceMode="transparent" (CSS scopes the color, not the JS)', () => {
-    // The classes are unconditional on scrollFadeVisible; it's the
-    // --_cinder-scroll-fade-color declaration (chat.css, scoped to
-    // [data-surface-mode='default']) and the JS attachment gate
-    // (timelineScrollFadeAttachment) that stay inert in transparent mode —
-    // see chat.types.ts for the full rationale.
+  test('in surfaceMode="transparent" it masks the edges instead of drawing an opaque overlay', () => {
+    // A transparent timeline paints no background, so there is no colour an overlay could fade
+    // toward; it takes the mask fade, which lets the host's own background show through.
     const conversation = createConversation({ id: 'conversation-fade-transparent' });
     const { container } = render(Chat, {
       props: {
@@ -405,16 +402,61 @@ describe('Chat — scrollFadeVisible', () => {
       },
     });
     const timeline = container.querySelector('.chat-timeline');
-    expect(timeline?.classList.contains('cinder-_scroll-fade')).toBe(true);
+    expect(timeline?.classList.contains('cinder-_scroll-fade')).toBe(false);
+    expect(timeline?.classList.contains('chat-timeline-mask-fade')).toBe(true);
   });
 
-  test('container/chat.svelte scopes --_cinder-scroll-fade-color to default surface mode', async () => {
+  test('the reminder is drawn only from a settled arrival placement, which one rule owns', async () => {
     const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
-    const source = await Bun.file(chatSveltePath).text();
-    expect(source).toMatch(
-      /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\.cinder-_scroll-fade\s*\{\s*--_cinder-scroll-fade-color:\s*var\(--_cinder-chat-shared-surface\)/,
+    const text = await Bun.file(chatSveltePath).text();
+    const source = text.replace(/\s+/g, ' ');
+    // The reminder takes room from the transcript, so it waits for the placement to settle.
+    expect(source).toContain(
+      '{#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}',
     );
-    expect(source).not.toMatch(/mask-image/);
+    // The placement is judged against the transcript without the reminder, by one rule, and runs
+    // again on the transcript's, the card's and the fonts' layout changes, never on a timer.
+    expect(source).toContain('const viewportBox = approvalArrivalBox(scroller);');
+    expect(source).toContain('const shift = approvalArrivalShift(cardBox, viewportBox);');
+    expect(source).toContain('resizes?.observe(card);');
+    expect(source).toContain('fonts?.ready.then(');
+    // The lift leaves a waiting approval to that placement.
+    expect(source).toContain(
+      'if (untrack(() => approvalWaiting) && target.matches(PENDING_APPROVAL_CARD_SELECTOR)) return;',
+    );
+  });
+
+  test('the approval reminder stands one --cinder-space-3 gap clear of the row under it', async () => {
+    const drawerPath = new URL('./container/chat-approval-drawer.svelte', import.meta.url);
+    const text = await Bun.file(drawerPath).text();
+    const source = text.replace(/\s+/g, ' ');
+    expect(source).toContain(
+      ':global(.chat-approval-drawer) { margin-block: var(--cinder-space-1) var(--cinder-space-3); }',
+    );
+  });
+
+  test('the mask fades an edge only while content lies past it, and never in default mode', async () => {
+    const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
+    const text = await Bun.file(chatSveltePath).text();
+    const source = text.replace(/\s+/g, ' ');
+    expect(source).toMatch(
+      /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\.cinder-_scroll-fade \{ --_cinder-scroll-fade-color: var\(--_cinder-chat-shared-surface\)/,
+    );
+    // The mask is the transparent surface's alone: every mask-image sits in its own rules.
+    const masks = source.match(/[^{}]*\{[^{}]*mask-image[^{}]*\}/g) ?? [];
+    expect(masks.length).toBeGreaterThan(0);
+    for (const rule of masks) expect(rule).toContain('.chat-timeline-mask-fade');
+    // Each edge's band is 0 until the overflow attributes say content lies past it.
+    expect(source).toContain('--_chat-timeline-fade-start: 0px; --_chat-timeline-fade-end: 0px;');
+    expect(source).toContain(
+      '.chat-timeline-mask-fade[data-cinder-overflows-start] { --_chat-timeline-fade-start: var(--_chat-timeline-fade-size); }',
+    );
+    expect(source).toContain(
+      '.chat-timeline-mask-fade[data-cinder-overflows] { --_chat-timeline-fade-end: var(--_chat-timeline-fade-size); }',
+    );
+    expect(source).toMatch(
+      /@media \(prefers-reduced-transparency: reduce\), \(forced-colors: active\) \{ \.chat-timeline-mask-fade \{ mask-image: none; \} \}/,
+    );
   });
 
   test('the shared transcript ground differs from the inset in both themes (COR-2287)', async () => {

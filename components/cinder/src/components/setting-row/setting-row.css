@@ -60,6 +60,22 @@
     max-inline-size: 100%;
   }
 
+  /* `controlAlign="stretch"`: the control fills its column instead of sitting at the end. */
+  .cinder-setting-row[data-cinder-control-align='stretch']
+    .cinder-setting-row__field
+    > :not(
+      .cinder-form-field__label,
+      .cinder-form-field__label-row,
+      .cinder-form-field__description,
+      .cinder-form-field__note,
+      .cinder-form-field__warning,
+      .cinder-form-field__managed,
+      .cinder-form-field__error,
+      .cinder-setting-row__status
+    ) {
+    justify-self: stretch;
+  }
+
   .cinder-setting-row__field .cinder-form-field__label {
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);

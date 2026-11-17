@@ -296,6 +296,40 @@ describe('the list', () => {
   });
 });
 
+describe('while the plugins load (COR-2513)', () => {
+  test('the placeholder is the loaded page’s frame, with a list pane beside a detail pane, announced once', async () => {
+    let release: () => void = () => undefined;
+    const holdReads = new Promise<void>((resolve) => (release = resolve));
+    const { container } = open('linear', undefined, { holdReads });
+
+    const placeholder = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-testid="plugins-loading"]');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    // The same frame the loaded page draws, holding a list pane and a detail pane.
+    expect(placeholder.classList.contains('ib-plugins__frame')).toBe(true);
+    expect(placeholder.querySelector('.cinder-list-detail__list')).not.toBeNull();
+    expect(placeholder.querySelector('.cinder-list-detail__detail')).not.toBeNull();
+    // One card of lines across the page's width is the old placeholder.
+    expect(placeholder.querySelector('.cinder-skeleton-card')).toBeNull();
+    // Announced once, with the page's loading label, however many rows the placeholder draws. The
+    // only other live region is the still-loading line, which says nothing until ten seconds pass.
+    await waitFor(() => {
+      const statuses = within(placeholder)
+        .getAllByRole('status')
+        .map((node) => node.textContent);
+      expect(statuses.filter((text) => text === PLUGINS_COPY.loading.label)).toHaveLength(1);
+      expect(statuses.filter((text) => text !== PLUGINS_COPY.loading.label)).toEqual(['']);
+    });
+
+    release();
+    await loaded(container, 'linear');
+    expect(container.querySelector('[data-testid="plugins-loading"]')).toBeNull();
+    expect(container.querySelectorAll('.ib-plugins__frame')).toHaveLength(1);
+  });
+});
+
 describe('a plugin', () => {
   test('shows its name, version and description, its switch, where it came from, and what it adds under human names', async () => {
     const { container, getByRole } = open('linear');
@@ -535,7 +569,7 @@ describe('a plugin’s configuration', () => {
 
     const failure = await waitFor(() => {
       const found = container.querySelector<HTMLElement>(
-        '[data-testid="plugin-configuration-failed"]',
+        '[data-testid="plugin-configuration"] .cinder-form-actions__error',
       );
       expect(found).not.toBeNull();
       return found!;
@@ -576,7 +610,7 @@ describe('a plugin’s configuration', () => {
         'Team key must be capital letters.',
       ),
     );
-    expect(container.querySelector('[data-testid="plugin-configuration-failed"]')).toBeNull();
+    expect(container.querySelector('.cinder-form-actions__error')).toBeNull();
     expect(bannerText(container)).toBeNull();
   });
 

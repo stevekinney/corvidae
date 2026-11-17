@@ -66,12 +66,11 @@ import {
  * @module ag-ui-mount
  */
 
-import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { type RuntimeServices, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type AgentSession, sessionArchivedAtOf } from '@lostgradient/operative';
 import { type RunAgentInput } from '@ag-ui/core';
 import { RunAgentInputSchema } from '@ag-ui/core/schemas';
-import type { OperationHandlerMount } from '@lostgradient/weft';
+import type { OperationHandlerMount } from '@lostgradient/backchannel';
 import { createConversationHistory } from 'conversationalist';
 
 import { AssetNotFoundError } from '../assets/errors.ts';

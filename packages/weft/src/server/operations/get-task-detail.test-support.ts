@@ -1,8 +1,12 @@
+import { type AuthorizationScope, principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  type DispatchResult,
+  createOperationRegistry,
+  executeOperation,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import {
-  encodeRemoteTaskRecord,
-  taskLedgerKey,
   type RemoteTaskCancelling,
   type RemoteTaskCompleting,
   type RemoteTaskDeadLettered,
@@ -12,17 +16,14 @@ import {
   type RemoteTaskTerminalCancelled,
   type RemoteTaskTerminalResolved,
   type RemoteTaskTerminalRetryExhausted,
+  encodeRemoteTaskRecord,
+  taskLedgerKey,
 } from '../../core/task-ledger/task-ledger.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import type { DispatchResult } from '../operation-catalog.ts';
-import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import {
+  type GetTaskDetailOutput,
   getTaskDetailOperation,
   getTaskDetailOutputSchema,
-  type GetTaskDetailOutput,
 } from './get-task-detail.ts';
 
 function emptyAsyncIterable<T>(): AsyncIterable<T> {

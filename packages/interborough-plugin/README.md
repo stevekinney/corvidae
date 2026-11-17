@@ -6,10 +6,16 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
 | `defineTrigger` | Declares a trigger kind and types `start`'s `configuration` with what the kind's schema parses to. |
+| `verifyHmacSignature` | Whether a `sha256=<hex>` signature is the HMAC-SHA-256 of a body under a secret; a `receive` calls it with the bytes it read and the signature header. Constant time through Web Crypto, and `false`, never a throw, for a missing or malformed signature or an empty secret. |
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
-| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`, `publish` (publishes an event the plugin declared as `<plugin>:<name>`, with the payload checked against its schema; rejects with `PluginHostDisposedError` once the Bureau is disposed, and publishes nothing). |
+| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`, `publish` (publishes an event the plugin declared as `<plugin>:<name>`, with the payload checked against its schema; rejects with `PluginHostDisposedError` once the Bureau is disposed, and publishes nothing), and `decisions.decide` (asks a model a question as the plugin; see [Ask a decision](#ask-a-decision)). |
+| `PluginDecideOptions` | The options of `host.decisions.decide`: `signal`, `taskId` and `requireKinds`. |
+| `decisionScorer` | Builds a scorer that asks a decision about each sampled run; `determinism: 'stochastic'`. See [Ask a decision](#ask-a-decision). |
+| `decisionValidator` | Builds a goal validator that asks a decision under the goal run's id; `determinism: 'stochastic'`. See [Ask a decision](#ask-a-decision). |
+| `PluginDecisionScorerOptions`, `PluginDecisionValidatorOptions`, `DecisionScorerContent` | The options of `decisionScorer` and `decisionValidator`, and the `content` a scorer reads (`'final'` or `'transcript'`). |
+| `PluginScoredRun` | What a scorer's `score` is told beside the run and the signal: `{ runId }`. |
 | `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, events, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
@@ -99,12 +105,47 @@ The descriptor's members:
 | `triggers` | New external sources that start work. |
 | `reactions` | New things a hook can do when its event happens. |
 | `providers` | Model providers, each with the catalog rows of its models (a row with `decisions: { kinds, only: true }` answers those decision kinds natively through the provider's `decide` and runs no agent, as the `typesafe` plugin's does) and, optionally, the `secretKey` of the declared secret that holds its API key (see [Provider keys](#provider-keys)). |
-| `embedders` | Embedders the `memory.embedder` setting can name. |
-| `scorers` | Scorers that score a sample of completed runs: `score(run, signal)` returns a `PluginScore` (`outcome`, `message`, optional `score` from 0 to 1) and may declare `determinism`. The signal aborts on shutdown and after 30 seconds. |
+| `embedders` | Embedders the `memory.embedder` setting can name, each `{ name, model, dimensions, embed }`. `model` names the model the embedder runs (never blank), which memory records in the embedding profile beside the embedder's id and dimension: an embedder reconfigured to another model under the same `plugin:name` is a different embedding, the active profile reports `embedder-unavailable` until memory re-embeds under it, and writing the setting again starts that switch. An embedder takes the plugin's version, and its identity records `{ dimensions, model }`. Renaming a plugin or an embedder orphans the active profile, which names its embedder by `plugin:name`; that is accepted while Corvidae is pre-release. |
+| `scorers` | Scorers that score a sample of completed runs: `score(run, signal, { runId })` returns a `PluginScore` (`outcome`, `message`, optional `score` from 0 to 1) and may declare `determinism`. The signal aborts on shutdown and after 30 seconds, and `runId` is the id a scorer files its own records under. |
 | `panels` | Interface panels. |
 | `formatters` | Titles and bodies for the activity views, and optionally a `tier` (`critical`, `warning` or `info`, which is also what the view gets when a formatter names none), an `icon` (a Lucide icon name) and a `link` (a router-relative path starting with one `/` and holding no whitespace or control character; the host drops any other value, a URL, a `//host` path or a path with a tab or line break among them). A formatter formats from the event alone, synchronously: `format(event)` is handed nothing else and returns no promise. The host keeps a `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000, cutting a longer one rather than refusing it, and drops a `body` that is not a string with a `warn` diagnostic. A formatter that lists one kind twice, or a kind another plugin's formatter holds, skips the plugin with `name-clash`. |
 | `events` | Event kinds the plugin declares, `{ name, description, payload, version? }` (`PluginEventDeclaration`). The kind is `plugin:name`; see [Declared events](#declared-events). |
 | `agents` | Agents defined in code. Each may carry a `title` (its listing's label), a `visibility` (`'chat'` by default; `'hidden'` keeps it in `bureau.agents.list`, which marks it `visibility: "hidden"`, and Chat does not offer it, while workflows, children and a direct start still run it by `plugin:name`) and a `version` (a run pins it in place of the plugin's version; a run recovered under a different one settles failed with `definition-drifted`). |
+
+### Receiving a request
+
+A trigger kind defines `start`, `receive` or both, and a kind with neither, or with a `start` or `receive` that is present but not a function, is refused when the plugin loads: the plugin is skipped with a `setup-failed` problem, as for any other malformed contribution. `receive(request, context)` answers one inbound request for a workflow file of the kind: it gets the `Request` as the host was given it, unread, and the context `start` gets (`configuration`, `workflowId`, `storage`, `fire`, `signal`). It authenticates the sender itself, calls `context.fire(payload, { idempotencyKey })` for each run the request starts, and resolves the `Response` the sender is answered with. The host reads no header, applies no key of its own and puts no limit on the body in this call. `signal` aborts when the request does and when the host closes, and a `fire` after that resolves `skipped`. A paused file still calls `receive`, and its `fire` resolves `skipped: 'paused'`. A kind that has only `receive` has no listener, and its files report the listener state `ready`. A plugin that declares a secret it has not been given makes `receive` reject with `PluginNeedsSetupError` before it runs.
+
+The host's `POST /triggers/<workflow-id>` route reads the body as bytes (at most 4 MiB), builds a fresh `Request` over them, and calls `receive`; nothing else authenticates the sender, so `receive` does. `verifyHmacSignature` checks the usual webhook signature:
+
+```ts
+import { defineTrigger, verifyHmacSignature } from '@lostgradient/interborough-plugin';
+import { z } from 'zod';
+
+export const inbox = defineTrigger({
+  name: 'inbox',
+  description: 'Receives a signed delivery.',
+  configuration: z.object({}),
+  async receive(request, { fire }) {
+    const body = new Uint8Array(await request.arrayBuffer());
+    const signature = request.headers.get('x-hub-signature-256');
+    if (
+      !(await verifyHmacSignature({ secret: process.env['INBOX_SECRET'] ?? '', body, signature }))
+    ) {
+      return new Response(null, { status: 401 });
+    }
+    // The key comes from the signed bytes, so a replay cannot change it: here, their digest.
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', body));
+    const idempotencyKey = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join(
+      '',
+    );
+    await fire(JSON.parse(new TextDecoder().decode(body)), { idempotencyKey });
+    return new Response(null, { status: 202 });
+  },
+});
+```
+
+The check is over the bytes, not a re-encoded string, and it has no timestamp window: a signature proves the sender signed these bytes, not when, so a captured delivery verifies again however late it is sent. Replay protection is the `idempotencyKey` `fire` is given, and the key must come from data the signature covers: a field of the verified body (an event identifier the sender put in it) or a digest of its bytes, as above. A key taken from a header the signature does not cover, such as `X-Delivery`, lets a replay carry a new key, or none, and start a second run.
 
 ### Trigger state
 
@@ -176,7 +217,7 @@ export const newIssues = defineTrigger({
 A plugin declares the event kinds it will publish with `events: [{ name, description, payload }]`, where `payload` is a Zod object. The kind is `<plugin>:<name>`, `name` follows the contribution name grammar, and `version` is optional and defaults to the plugin's.
 
 - **Kinds and clashes.** Because the kind carries the plugin's name, no plugin holds another's, and none holds a kind Bureau itself publishes (those have no `:`). A plugin that declares one name twice, or whose kind a host option already holds as an event kind, is `skipped` with `name-clash`.
-- **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload, wrappers and getter reads included; a payload that needs more, such as one whose getter builds a new schema on every read, is refused with `event-payload-content` at the path where the count ran out.
+- **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload: every schema it visits, every wrapper layer, and every getter read, which is charged before the getter runs. A payload that needs more, such as one whose getter builds a new schema on every read or a plain object of thousands of keys, is refused with `event-payload-content` at the path where the count ran out; that problem carries a `message` saying the budget ran out and no content was found there, and a refusal for content carries none.
 - **Formatting.** Only the publisher formats its own kinds: a formatter may list a kind Bureau publishes or one its own plugin declares. A formatter that lists a kind another plugin declares skips the plugin with `formatter-foreign-kind`, naming the kind and the owner; one that lists any other kind, such as an undeclared `<plugin>:<name>`, skips it with `formatter-unknown-kind`.
 - **Listing.** `bureau.events.catalog` lists each running plugin's declared kinds after Bureau's own, with the payload fields, `origin: 'unattributed'`, no scopes and `source: '<plugin>'`.
 - **Publishing.** `host.publish(name, payload)` publishes `<plugin>:<name>` with `source: '<plugin>'`, so a plugin can publish only under its own name. It rejects, and publishes nothing, with a `TypeError` naming the full kind (`<plugin>:<name>`) for an undeclared name, a `TypeError` for a payload the declared schema refuses, the needs-setup error while a secret the plugin declared is not set, and `PluginHostDisposedError` once the Bureau is disposed. A published event replays after a `bureau.events` reconnect like any other, and a subscription's `kinds` filter accepts a kind a loaded plugin declares.
@@ -309,6 +350,10 @@ A reaction that rejects fails that attempt, and its delivery is tried again unti
 
 The `signal` a reaction's `run` receives aborts when the host shuts down, when the reaction's `timeoutMilliseconds` have passed, and when its hook is disabled or deleted; pass it to whatever `run` waits on. The attempt ends when the signal aborts even if `run` ignores it. A shutdown leaves the delivery to be resumed; a timeout ends the attempt in error (`The reaction timed out after N ms`) and it is tried again; a disabled or deleted hook ends the delivery `aborted`. `timeoutMilliseconds` is a positive safe integer, and a reaction that sets none gets the host's webhook request timeout (10 seconds by default).
 
+A reaction's context also carries `hookId`, `owner` (the principal that owns the hook) and `attempt` (1-based: an attempt a restart interrupted counts, and an attempt dropped because the plugin needs setup does not). `maxAttempts` sets how many attempts a new delivery of the reaction may make, an integer from 1 to 20, where a reaction that sets none gets the host's own limit; the host skips a plugin whose reaction sets another value (a `setup-failed` problem). A delivery keeps the limit it was made with.
+
+A reaction can also give a `dryRun(context)` with the same context as `run`: what `hooks.test` calls, with one attempt that is not retried (a person can retry it by hand; an attempt a shutdown interrupted still counts as the one, so a restart does not call it again, and a test whose plugin needed setup makes its attempt once the plugin is set up), and never `run`. Do everything `run` does except the effect that cannot be taken back. Without a `dryRun`, a hook of the reaction cannot be tested, and the Test button stays off. `bureau.plugins.contributions` says which reactions have one.
+
 A reaction's configuration can hold a secret without storing it. Mark the field with `.meta({ secret: true })`, as in `token: z.string().meta({ secret: true })`: a hook then keeps `{ "$secret": "<key>" }` in that field, where the key names a secret the workspace has published, and a plain value in the field is refused when the hook is written. Each attempt resolves the key to the value published then and passes it to `run` as the string the schema declares. An attempt whose key has no value fails and is tried again; it never falls back to another value. Mark only fields reached through an object's properties (optional or not); a marker under an array or a record, and a marked field that is a union, are refused, because a reference has no single place to be kept there. A `.nullable()` field is a union, so `.meta({ secret: true }).nullable()` and `.nullable().meta({ secret: true })` are both refused: hold the secret in a field that is always a string, and make the field optional instead. A `{ secret: true }` inside a `default` or an `examples` value is data, never a marker. While the plugin itself needs setup (a secret it declared is missing), a delivery of its reactions waits, without making an attempt, until the secret is saved.
 
 An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, within a range of at most 999: a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them, and a number above 999 is lowered to it, because the host adds a tier's band to a priority and bands are 1000 apart, so a higher one would sort the plugin's hook ahead of the host's own invariants. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
@@ -356,7 +401,7 @@ export default definePlugin({
 });
 ```
 
-An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
+An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. A `name-clash` skips the whole plugin, never just the panel: none of its contributions register. Every `allowedTools` entry begins `bureau.`, and setup refuses a panel that lists any other name. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
 
 ```ts
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
@@ -379,9 +424,27 @@ export default definePlugin({
 });
 ```
 
+Every `PluginPanel` field:
+
+| Field | Required | What it holds |
+| --- | --- | --- |
+| `name` | yes | The panel's name, unique within the plugin. |
+| `version` | no | The panel's own version; a record that pins it uses the plugin's version without one. |
+| `title` | yes | The panel's title, which the host shows wherever it names the panel. |
+| `description` | no | What the panel shows. |
+| `uri` | yes | The `ui://<plugin>/…` resource the page is served at. Unique across plugins; a clash skips the whole plugin. |
+| `entry` | yes | The browser entry module (a `URL`) the host bundles into the page. |
+| `styles` | no | CSS inlined into the page's `<style>` element. |
+| `allowedTools` | yes | The Bureau tools the panel may call, every one beginning `bureau.`. |
+| `hostOnlyTools` | no | Operations only a host panel may call. Each is one of `allowedTools` and one the Bureau lists as open to host panels; setup refuses any other. |
+| `placements` | no | Where the panel appears: `page`, `run` or `chat-tool` (below). |
+| `opensFromTool` | no | The one `allowedTools` entry a client runs to open the page; unique across plugins. |
+
+A panel that renders Cinder components imports `mountPanel` from `@lostgradient/cinder/panel` and mounts its Svelte component with it. The kit carries Cinder's stylesheet and reads the host's theme: each `--cinder-*` token the MCP Apps spec maps is `var(--color-…, <Cinder default>)`, so the panel follows the owner's light or dark theme inside Interborough, adapts to another host that sends a different palette, and looks like Cinder where the host sends none. The panel build resolves `svelte` and `@lostgradient/cinder` from the host's own install, never from the plugin's, so list Cinder as a `devDependency` only and the version always matches the application. A panel is a document in a sandboxed frame, and three limits follow from that. Dialogs, popovers and toasts render inside the frame and never above the host's own interface. Keyboard focus does not flow between the host and the panel: a person tabs out of the frame as they would out of any embedded document. Navigation, links, resizing and notifications go through the MCP Apps bridge, and Interborough's bridge refuses `ui/message` everywhere, so a panel cannot post a message into the conversation, and it refuses `ui/open-link` too except on a panel's own page (a `page` placement), where a link that stays inside Interborough opens in the same tab and any other address is blocked.
+
 A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
 
-- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.
+- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router, at `/plugins/<plugin>/<path>`. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`. The host draws the page's header (the panel's `title` and "From" the plugin's title) and fills the rest of the page with your app, so do not repeat the title in the app. The entry sits after the group's built-in entries, in load order, labelled with the panel's `title` and marked "Plugin"; it has no keyboard shortcut. `icon` is one of `puzzle`, `plug`, `blocks`, `chart-line`, `list-checks`, `bell`, `workflow` and `book-open`, and any other name draws `puzzle`. A page with no `sidebar` entry is reachable from the command palette and its address. When a plugin is disabled its pages are gone, and its address says the plugin is disabled.
 - `{ kind: 'run' }`: the panel shows on a run's page. Two plugins can both place a panel there.
 - `{ kind: 'chat-tool', agentTool }`: Chat opens the panel inline when the agent tool `agentTool` is called. A Bureau given its agent tools refuses an id it does not hold, except the workflow tools it adds itself.
 
@@ -508,6 +571,43 @@ Without `secretKey`, a plugin that declares exactly one secret uses it as the ke
 
 `setup`'s `storage` is confined to the key prefix `plugin:<name>:`, so a plugin cannot read another's records.
 
+## Ask a decision
+
+`host.decisions.decide(request, options?)` asks a model a typed question (`boolean`, `choice`, `scale` or `structured`) and answers a `Decision`. It is bound to the plugin: the host records the call as the principal `plugin:<name>`, hands that principal to the model, and ignores any `principal` or `routingId` the caller passes, so a plugin cannot decide as another principal. The call is available on the host `setup` receives too, where it rejects until the host has started, so a helper can be built during `setup`.
+
+- **Options.** `taskId` files the `decision.made` audit record under that task (the run a scorer judges, the goal a validator checks) and names it on the event; without one the record is filed under `decision:<uuid>`. `signal` cancels the call. `requireKinds` lists the kinds a model must serve natively: a call is then answered only by a registered model, or a catalog row whose built model serves every listed kind, and never by the language-model fallback or a row's own `generate`.
+- **Refusals.** A `taskId` that is not a non-empty string, a `signal` that is not an `AbortSignal`, and `requireKinds` that is not a non-empty list of decision kinds reject `BAD_REQUEST`. A call after the Bureau is disposed rejects `PluginHostDisposedError`, a signal already aborted rejects with its reason, and the plugin's needs-setup error rejects while a secret it declared is not set. A refused call asks no model and records nothing. When no model can answer, or `requireKinds` is not met, the call rejects `NOT_CONFIGURED` and its record is `refused`.
+- **No deadline.** The host adds no deadline and no concurrency limit, and a call is also aborted when the Bureau shuts down. Pass a `signal` to bound a call.
+
+`decisionScorer(host.decisions, options)` and `decisionValidator(host.decisions, options)` turn a decision into a scorer or a goal validator. Both declare `determinism: 'stochastic'` and map a rejection the same way, and never throw it: an abort is `canceled`, `NOT_CONFIGURED` or a model-policy denial is `unavailable`, and anything else is an `error`. The text of a failure is fixed and names a code (`Decision failed: PROVIDER_DOWN`), never the provider's message, because the validator's error code reaches `goal.failed` and both texts are read back.
+
+- **`decisionScorer`** takes `{ name, version, question, verdict, content?, requireKinds?, alertThreshold? }`. `question` is a decision request without its `context`, which the helper sets from the run: the final reply by default (`content: 'final'`), or the whole conversation as Markdown with `content: 'transcript'`, an explicit opt-in. Any other `content` throws a `TypeError` when the scorer is built. It asks under `taskId: context.runId`, and the score lists the decision's provider, model and usage in `decisions`.
+- **`decisionValidator`** takes `{ name, version, request, verdict, requireKinds? }`, and asks under `taskId: input.goalRunId`. A decision that is `unavailable` lets a goal whose `retryOn` includes `validator-unavailable` retry; its error code is `DECISION_UNAVAILABLE` or `DECISION_FAILED`.
+
+```ts
+import { decisionScorer, definePlugin } from '@lostgradient/interborough-plugin';
+
+export default definePlugin({
+  name: 'helpfulness',
+  version: '1.0.0',
+  description: 'Scores whether a reply answered the request.',
+  setup: ({ host }) => ({
+    scorers: [
+      decisionScorer(host.decisions, {
+        name: 'helpful',
+        version: '1',
+        question: { kind: 'boolean', question: 'Did the reply answer the request?' },
+        requireKinds: ['boolean'],
+        verdict: (decision) =>
+          decision.value === true
+            ? { outcome: 'pass', message: 'Answered', score: 1 }
+            : { outcome: 'fail', message: 'Did not answer', score: 0 },
+      }),
+    ],
+  }),
+});
+```
+
 ## Do work after Bureau starts
 
 `start` runs once, after Bureau has been built, with the host API and the same context `setup` received, `secrets` and `storage` included. It runs even when a secret is missing. A rejection marks the plugin with a `start-failed` problem and leaves its contributions registered.
@@ -559,7 +659,7 @@ export default definePlugin({
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |
-| `event-payload-content` | `skipped` | A declared event's payload has a field that could carry content, such as a string not marked `.meta({ identifier: true })` and not a `z.enum`. `event`, `field`. |
+| `event-payload-content` | `skipped` | A declared event's payload has a field that could carry content, such as a string not marked `.meta({ identifier: true })` and not a `z.enum`, or a payload larger than the 1,000-schema budget. `event`, `field`, and a `message` only when the budget ran out. |
 | `provider-secret-unknown` | `skipped` | A provider's `secretKey` is not one of the plugin's declared `secrets`. `provider`, `key`. |
 | `provider-secret-ambiguous` | `skipped` | A provider has no `secretKey` and the plugin declares several secrets. `provider`, `secrets`. |
 | `provider-empty` | `running` | A provider gave no `rows` under a name Operative's static catalog has no rows for, so it contributes no model. `provider`. |

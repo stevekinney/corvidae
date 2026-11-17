@@ -1,4 +1,4 @@
-import type { PackageAuthorizationScope } from '@lostgradient/weft';
+import type { PackageAuthorizationScope } from '@lostgradient/backchannel';
 
 /**
  * Every authorization scope Bureau's catalog operations declare, in one list.
@@ -36,7 +36,7 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * The three memory scopes are the exception to the rule above (COR-1546, COR-1809).
  * `bureau.memory:read`, `bureau.memory:write` and `bureau.memory:govern` do not grant cross-owner
  * access: a caller reaches `bureau.memory.*` only with the scope its operation needs, and then only
- * its own memory. `govern` serves the legal hold alone, and no other memory scope implies it. Memory is the one kind a
+ * its own memory. `govern` serves the legal hold, the release of a quarantined memory, and `bureau.memory.list` with `state: 'quarantined'` (COR-2195), and no other memory scope implies it. Memory is the one kind a
  * principal may not reach by owning it, because what an agent remembers is not something a
  * credential may be handed by default.
  */

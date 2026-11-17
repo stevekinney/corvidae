@@ -21,6 +21,7 @@ import type {
   JSONValue,
   GenerateFunction,
   OperativeHookMap,
+  OnStepHook,
   BureauChildInvariants,
   GuardrailsOptions,
   StopCondition,
@@ -47,7 +48,7 @@ import type { ConditionalTextValueStore, Storage } from '@lostgradient/storage';
 import type { AnyToolbox, ToolRequestContext } from 'armorer';
 import type { FileAgentBinding } from './agent-file-catalog';
 import type { GoalAttemptFence, GoalAttemptTarget } from './goal-attempt-fence';
-import type { MissedFireBuffer } from './bureau-event-forwarders';
+import type { MissedFireBuffer, WorkflowVersionMismatchBuffer } from './bureau-event-forwarders';
 import type {
   SessionTaintPublication,
   SessionTaintSource,
@@ -184,6 +185,12 @@ export type CatalogAgentRunOptionsResolution =
    */
   | { status: 'not-durable-capable' }
   | { status: 'resolver-failed'; error: unknown };
+/**
+ * The `onStep` hook that records the tool approvals a step of `runId` leaves pending on its session
+ * `sessionId` (`bureau:pending-approval-persist`). Wired by `createBureau`, which holds the state it
+ * writes, for the runs a composition rebuilds after a restart: a run it starts registers the same hook.
+ */
+export type PendingApprovalPersistHookFactory = (runId: string, sessionId: string) => OnStepHook;
 export type CatalogAgentRunOptionsResolver = (
   agentName: string,
   input: AgentInput,
@@ -501,6 +508,12 @@ export interface DurableComposition {
    */
   missedFires: MissedFireBuffer;
   /**
+   * COR-2097 — the engine's `workflow.version-mismatch` observations, held from the moment recovery
+   * can report one and delivered to the first listener, for the same reason as {@link missedFires}:
+   * recovery reports from a callback, before the Bureau's event emitter exists.
+   */
+  versionMismatches: WorkflowVersionMismatchBuffer;
+  /**
    * COR-1811 — the Weft log store behind the engine's persisted `ctx.log` lines, present only when
    * the composition was asked for one (`RuntimeCompositionDependencies.workflowLogs`).
    * `createBureau` prunes it on each maintenance pass.
@@ -641,6 +654,22 @@ export interface RuntimeComposition {
    * Bureau's default runtime composition.
    */
   setCatalogAgentRunOptionsResolver(resolver: CatalogAgentRunOptionsResolver | undefined): void;
+  /**
+   * Wired by `createBureau` before it wires the catalog resolver, so that a run rebuilt after a
+   * restart registers the pending-approval persist hook a started run does
+   * ({@link RuntimeComposition.withPendingApprovalPersist}).
+   */
+  setPendingApprovalPersistHook(factory: PendingApprovalPersistHookFactory | undefined): void;
+  /**
+   * The Bureau tier of a run rebuilt after a restart, with `bureau:pending-approval-persist`
+   * registered after the rest, as a started run's is. A composition whose Bureau wired no hook
+   * (one built without `createBureau`) returns `hooks` as it was given.
+   */
+  withPendingApprovalPersist(
+    hooks: HookRegistry<OperativeHookMap>,
+    runId: string,
+    sessionId: string,
+  ): HookRegistry<OperativeHookMap>;
   /**
    * COR-1586 — the resolver will never be wired, because the Bureau failed while it was being
    * built. Every reader waiting for it, and every later one, is answered as unavailable with

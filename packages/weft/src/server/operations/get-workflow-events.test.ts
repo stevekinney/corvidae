@@ -4,15 +4,13 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import { createOperationRegistry } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { EventLog } from '../../core/event-log.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
 import { getWorkflowEventsOperation, getWorkflowEventsRestBinding } from './get-workflow-events.ts';
 import { waitForWorkflowStatus } from './operation-test-helpers.test-support.ts';
 

@@ -15,6 +15,7 @@ import {
   editorSentence,
   editorTitle,
   latestDelivery,
+  pluginTestOutcome,
   statusAnswer,
   summaryOf,
   testOutcome,
@@ -232,11 +233,12 @@ describe('what a test event came to', () => {
       test: true,
     });
     expect(testOutcome(sent, PAGER, true)).toEqual({
-      ok: true,
+      tone: 'success',
+      link: 'payload',
       text: 'Test event sent. events.pagerduty.com answered 200 OK in 312 ms.',
     });
     expect(testOutcome(sent, 'https://hooks.example.com/receive', false)).toEqual({
-      ok: true,
+      tone: 'success',
       text: `Test event sent. hooks.example.com answered 200 OK in 312 ms. ${copy.testSentUnsaved}`,
     });
   });
@@ -244,7 +246,7 @@ describe('what a test event came to', () => {
   test('a test the receiver refused names the status and says to check the address', () => {
     const refused = delivery('exhausted', [attempt({ status: 410 })], { test: true });
     expect(testOutcome(refused, PAGER, true)).toEqual({
-      ok: false,
+      tone: 'danger',
       text: 'Test event failed. events.pagerduty.com answered 410 Gone. Check the URL, then send another test.',
     });
   });
@@ -256,9 +258,34 @@ describe('what a test event came to', () => {
       { test: true },
     );
     expect(testOutcome(silent, PAGER, true)).toEqual({
-      ok: false,
+      tone: 'danger',
       text: 'Test event failed. events.pagerduty.com didn’t answer. Check the URL, then send another test.',
     });
-    expect(testOutcome(delivery('pending', []), PAGER, true).ok).toBe(false);
+    expect(testOutcome(delivery('pending', []), PAGER, true).tone).toBe('danger');
+  });
+
+  test('a test of a plugin action draws each result in its own tone, and a waiting test is a warning', () => {
+    const ran = pluginTestOutcome(
+      delivery('delivered', [attempt({})], { test: true }),
+      'pager',
+      'page',
+    );
+    expect(ran).toEqual({
+      tone: 'success',
+      link: 'log',
+      text: 'Test ran. page checked the event without doing it; nothing was sent.',
+    });
+    expect(pluginTestOutcome(delivery('pending', [], { test: true }), 'pager', 'page')).toEqual({
+      tone: 'warning',
+      link: 'log',
+      text: 'pager needs setup before this test can run. It runs once setup is done.',
+    });
+    for (const status of ['exhausted', 'failed', 'aborted'] as const) {
+      expect(pluginTestOutcome(delivery(status, [], { test: true }), 'pager', 'page')).toEqual({
+        tone: 'danger',
+        link: 'log',
+        text: 'Test failed. The action couldn’t check the event.',
+      });
+    }
   });
 });

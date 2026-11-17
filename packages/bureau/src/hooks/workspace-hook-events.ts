@@ -38,6 +38,8 @@ export function workspaceHookEvents(
     for (const [field, kind] of [
       ['runId', 'run'],
       ['taskId', 'run'],
+      // COR-2097: a child run's events are about the run that dispatched it.
+      ['parentRunId', 'run'],
       ['sessionId', 'session'],
       ['goalRunId', 'goal'],
       ['scheduleId', 'schedule'],

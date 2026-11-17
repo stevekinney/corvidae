@@ -20,8 +20,11 @@
    * Save hook is never held back by what is missing: pressing it names each problem beside its field,
    * moves focus to the first, and keeps everything typed. Send a test event is a real request that
    * posts one signed test message to the web address, and it works before the first save and saves
-   * nothing. Only a webhook can send one, because the Bureau refuses the other actions (a test would
-   * start a real workflow or write a real notification).
+   * nothing. A saved hook that runs a plugin's action can be tested too when the action offers a
+   * test: the action checks the event without doing what it does, so nothing is sent. A start-
+   * workflow or notify hook cannot, because the Bureau refuses them (a test would start a real
+   * workflow or write a real notification). When Send a test event is off, one sentence under it
+   * says why, and the button names it with `aria-describedby`; the button stays focusable.
    *
    * A hook that changed since the page read it is refused when saved, and the page says so and reads
    * it again. A home that keeps hooks off says so in place of the editor (`hooks-unavailable.svelte`).
@@ -89,6 +92,8 @@
     editorTitle,
     hookWriteReason,
     latestDelivery,
+    isNeedsSetupRefusal,
+    pluginTestOutcome,
     testOutcome,
     thenSummary,
     whenSummary,
@@ -181,13 +186,14 @@
   /**
    * The action kinds running plugins contribute. A host that cannot say offers the built-in
    * actions alone: the answer only ever adds choices. Only a new hook chooses one, because the
-   * kind of action is fixed once a hook is made.
+   * kind of action is fixed once a hook is made; a saved plugin hook reads it for whether its kind
+   * has a dry run, which decides whether it can be tested (COR-2183).
    */
   const contributed = createQuery(
     () => ({
       queryKey: queryKeys.pluginKinds(),
       queryFn: ({ signal }: { signal: AbortSignal }) => listContributedKinds({ signal }),
-      enabled: isNew,
+      enabled: isNew || existing.data?.action.type === 'plugin',
       retry: false,
     }),
     undefined,
@@ -582,6 +588,19 @@
         const address = form.url.trim();
         return testOutcome(await testHookDraft({ url: address }), address, false);
       }
+      if (hook.action.type === 'plugin') {
+        const { plugin, kind } = hook.action;
+        try {
+          return pluginTestOutcome(await testHook(hook.id), plugin, kind);
+        } catch (error) {
+          // The listing does not say a plugin needs setup, so the Bureau's refusal does: it is said
+          // in the editor's words, and as a wait, not a failure.
+          if (isNeedsSetupRefusal(error)) {
+            return { tone: 'warning', text: copy.check.testPluginNeedsSetup(plugin) };
+          }
+          throw error;
+        }
+      }
       const address = hook.action.type === 'webhook' ? hook.action.url : '';
       return testOutcome(await testHook(hook.id), address, true);
     },
@@ -592,7 +611,7 @@
       testResult = outcome;
     },
     onError: (error: unknown) => {
-      testResult = { ok: false, text: `${copy.check.testFailed} ${hookWriteReason(error)}` };
+      testResult = { tone: 'danger', text: `${copy.check.testFailed} ${hookWriteReason(error)}` };
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['hooks'] }),
   }));
@@ -612,15 +631,49 @@
 
   /** The address a saved webhook sends to, or `undefined` for any other action. */
   const webhookAddress = $derived(hook?.action.type === 'webhook' ? hook.action.url : undefined);
-  /** Whether Send a test event can be pressed: only a webhook sends one. */
+  /**
+   * The contributed kind a saved plugin hook runs, as the Bureau lists it now; `undefined` for any
+   * other hook, and for a plugin hook whose kind is not listed (its plugin is off).
+   */
+  const savedKind = $derived(
+    hook?.action.type === 'plugin'
+      ? contributedKinds.find(
+          (kind) =>
+            hook.action.type === 'plugin' &&
+            kind.plugin === hook.action.plugin &&
+            kind.kind === hook.action.kind,
+        )
+      : undefined,
+  );
+  /**
+   * Why Send a test event is off, in one sentence for each cause, or `undefined` when nothing is
+   * said: it is on, or the answer that decides it has not come yet. A hook that is not saved can
+   * send a webhook test and nothing else.
+   */
+  const testReason = $derived.by((): string | undefined => {
+    if (isNew) {
+      if (form.effectiveType === 'webhook') return undefined;
+      if (form.contributedKind === null) return copy.check.testWebhookOnly;
+      if (chosenKind === undefined) return undefined;
+      return chosenKind.dryRun ? copy.check.testSaveFirst : copy.check.testNotOffered;
+    }
+    if (hook === undefined || hook.action.type === 'webhook') return undefined;
+    if (hook.action.type !== 'plugin') return copy.check.testWebhookOnly;
+    // The Bureau lists the kinds a running plugin contributes: one that is not listed is off.
+    if (contributed.isPending) return undefined;
+    if (contributed.isError) return copy.check.testPluginUnknown;
+    if (savedKind === undefined) return copy.check.testPluginOff(hook.action.plugin);
+    return savedKind.dryRun ? undefined : copy.check.testNotOffered;
+  });
+  /** Whether Send a test event can be pressed: a webhook sends one, and a saved plugin action that offers a test runs it. */
   const canTest = $derived(
-    !testing.isPending && (isNew ? form.effectiveType === 'webhook' : webhookAddress !== undefined),
+    !testing.isPending &&
+      testReason === undefined &&
+      (isNew
+        ? form.effectiveType === 'webhook'
+        : webhookAddress !== undefined || savedKind?.dryRun === true),
   );
-  const testHint = $derived(
-    form.effectiveType === 'webhook' && (isNew || webhookAddress !== undefined)
-      ? undefined
-      : copy.check.testWebhookOnly,
-  );
+  const TEST_REASON_ID = 'ib-hook-test-reason';
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -948,10 +1001,13 @@
               <Button type="submit" variant="primary" disabled={saving.isPending}
                 >{isNew ? copy.check.create : copy.check.save}</Button
               >
+              <!-- Off is `aria-disabled`, not `disabled`: the button stays in the tab order, so the
+                   reason below it can be read from the button itself, and Cinder ignores the press. -->
               <Button
                 data-changes
                 variant="secondary"
-                disabled={!canTest}
+                aria-disabled={canTest ? undefined : 'true'}
+                aria-describedby={testReason === undefined ? undefined : TEST_REASON_ID}
                 onclick={() => void sendTest()}
               >
                 {#snippet leadingIcon()}<Play aria-hidden="true" />{/snippet}
@@ -959,17 +1015,26 @@
               </Button>
             </div>
             {#if testResult !== null}
-              <Alert variant={testResult.ok ? 'success' : 'danger'} data-testid="hook-test-result">
+              <!-- The actions are passed only for a result with a link: Cinder draws its actions box
+                   for any snippet, and an empty one wraps to a line of its own on a narrow phone. -->
+              {@const link = isNew ? undefined : testResult.link}
+              {#snippet resultLink()}
+                <Link href={`#${LOG_ID}`} underline="always" onclick={jumpToLog}
+                  >{link === 'payload' ? copy.webhook.seePayload : copy.header.jumpToLog}</Link
+                >
+              {/snippet}
+              <Alert
+                variant={testResult.tone}
+                data-testid="hook-test-result"
+                {...link === undefined ? {} : { actions: resultLink }}
+              >
                 {testResult.text}
-                {#if testResult.ok && !isNew}
-                  <Link href={`#${LOG_ID}`} underline="always" onclick={jumpToLog}
-                    >{copy.webhook.seePayload}</Link
-                  >
-                {/if}
               </Alert>
             {/if}
-            {#if testHint !== undefined}
-              <p class="ib-hook-editor__hint">{testHint}</p>
+            {#if testReason !== undefined}
+              <p class="ib-hook-editor__hint" id={TEST_REASON_ID} data-testid="hook-test-reason">
+                {testReason}
+              </p>
             {/if}
           </section>
         </form>

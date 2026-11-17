@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { anonymousPrincipal } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { anonymousPrincipal } from '../server/principal.ts';
 import { readMcpResource } from './resources.ts';
 
 const engines: Engine[] = [];

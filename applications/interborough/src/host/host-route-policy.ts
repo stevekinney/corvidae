@@ -5,6 +5,15 @@ import { ENGINE_PATH_PREFIXES } from './engine-proxy.ts';
 import type { HostAuthority } from './host-authority.ts';
 import type { HostSocketData } from './host-websocket.ts';
 
+/** The admissions that skip the workspace's authorize and release. */
+export type HostRouteAdmission = 'durable-oauth-callback' | 'trigger-receive';
+
+/** The admission a route key declares, when it declares one. */
+const routeAdmissions: Readonly<Record<string, HostRouteAdmission>> = {
+  'GET /host/oauth/callback/:id': 'durable-oauth-callback',
+  'POST /triggers/:workflow': 'trigger-receive',
+};
+
 /** A live registered route and its policy; delegated routes enumerate their own child catalog. */
 export interface HostRouteInventoryEntry {
   /** Registered HTTP method and path, or a named delegated relay. */
@@ -17,8 +26,14 @@ export interface HostRouteInventoryEntry {
   readonly pathPrefixes?: readonly string[];
   /** Whether authorization is applied by the child protocol handler. */
   readonly delegated: boolean;
-  /** OAuth redirects prove authority through durable state and current initiating membership. */
-  readonly admission?: 'durable-oauth-callback';
+  /**
+   * How a route is admitted when it is not by the workspace's membership. An OAuth redirect proves
+   * authority through durable state and current initiating membership. A trigger delivery
+   * (`trigger-receive`, COR-2169) is sent by an external sender with no session and no key: the
+   * trigger's own `receive` authenticates it, so authorize and release are skipped, and the
+   * public-origin guard, which also admits the proxy's `Host` for this one path, checks it.
+   */
+  readonly admission?: HostRouteAdmission;
   /** Wire transports reachable through this registered entry. */
   readonly transports: readonly ('http' | 'sse' | 'websocket')[];
 }
@@ -45,6 +60,7 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /host/plugins': 'administrator-shared',
   'PUT /host/plugins/:name': 'administrator-shared',
   'PUT /host/plugins/:name/secrets/:key': 'administrator-shared',
+  'DELETE /host/plugins/:name/secrets/:key': 'administrator-shared',
   'GET /host/clean-up': 'deployment-operator',
   'POST /host/clean-up': 'deployment-operator',
   'GET /host/panels': 'member-shared-read',
@@ -69,6 +85,9 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /host/storage/summary': 'deployment-operator',
   'GET /host/paths': 'deployment-operator',
   'GET /__dev/reload': 'deployment-operator',
+  // A trigger delivery (COR-2169): the one route an external sender calls with no session. It is
+  // `deployment-operator` for the inventory, and admitted by `trigger-receive` below.
+  'POST /triggers/:workflow': 'deployment-operator',
 };
 
 type HostHandler = (
@@ -76,23 +95,29 @@ type HostHandler = (
   server: Bun.Server<HostSocketData>,
 ) => Promise<Response | undefined>;
 
-/** Guard the actual registered handlers with the same inventory used by conformance tests. */
+/**
+ * Guard the actual registered handlers with the same inventory used by conformance tests. A route
+ * admitted by `trigger-receive` is checked by `refusePublic`, the guard that also admits a public
+ * origin's `Host`, and not by `refuse`; no other route is.
+ */
 export function authorizeHostRoutes(
   routes: Readonly<Record<string, unknown>>,
   authority: HostAuthority,
   refuse: (request: Request) => Response | undefined,
+  refusePublic: (request: Request) => Response | undefined = refuse,
 ): Record<string, HostHandler | Record<string, HostHandler>> {
   const inventory = inventoryHostRoutes(routes);
   const guarded: Record<string, HostHandler | Record<string, HostHandler>> = {};
   const wrap = (
     handler: unknown,
     classification: WorkspaceOperationClass | null,
-    admission?: 'durable-oauth-callback',
+    admission?: HostRouteAdmission,
   ): HostHandler => {
     if (typeof handler !== 'function') throw new TypeError('Host routes require handlers');
+    const guard = admission === 'trigger-receive' ? refusePublic : refuse;
     return async (request, server) => {
       if (classification !== null) {
-        const refusal = refuse(request);
+        const refusal = guard(request);
         if (refusal !== undefined) return refusal;
       }
       if (
@@ -166,9 +191,7 @@ export function inventoryHostRoutes(
           key,
           resourceClass,
           delegated: false,
-          ...(key === 'GET /host/oauth/callback/:id'
-            ? { admission: 'durable-oauth-callback' as const }
-            : {}),
+          ...(Object.hasOwn(routeAdmissions, key) ? { admission: routeAdmissions[key] } : {}),
           transports: Object.freeze(
             path === '/__dev/reload' ? (['sse'] as const) : (['http'] as const),
           ),

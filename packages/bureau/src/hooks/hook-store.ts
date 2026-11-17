@@ -17,6 +17,7 @@ import { type AnswerEncryptionKeys, openSealedAnswer, sealValue } from '../secre
 import {
   HookError,
   type HookAction,
+  type HookDeclaredBy,
   type HookDeliveryRecord,
   type HookRecord,
   type HookScope,
@@ -127,13 +128,32 @@ function parseScope(value: unknown): HookScope | undefined {
  * another action has no `url`, so it is not readable there (see `documentation/hooks.md`).
  */
 function serializedHook(record: HookRecord): string {
-  // A scoped record is written as version 2, so a release that predates scopes refuses to read it
-  // (it reads only version 1) instead of firing it for the whole Bureau. Clearing the scope writes
-  // version 1 again.
-  const versioned = { ...record, version: record.scope === undefined ? 1 : 2 };
+  // A default hook (COR-2179) is written as version 3, whatever its scope, so a release that
+  // predates them refuses it instead of firing a hook its owner turned off. A scoped record is
+  // written as version 2, so a release that predates scopes refuses to read it (it reads only
+  // version 1) instead of firing it for the whole Bureau. Clearing the scope writes version 1 again.
+  const version = record.declaredBy !== undefined ? 3 : record.scope === undefined ? 1 : 2;
+  const versioned = { ...record, version };
   return JSON.stringify(
     record.action.type === 'webhook' ? { ...versioned, url: record.action.url } : versioned,
   );
+}
+
+/**
+ * The origin a stored `declaredBy` names, or `undefined` when it is not one: a plugin name, and the
+ * two marks present only as `true`.
+ */
+function parseDeclaredBy(value: unknown): HookDeclaredBy | undefined {
+  if (!isRecord(value)) return undefined;
+  const { plugin, ownerDisabled, withdrawn } = value;
+  if (typeof plugin !== 'string' || plugin === '') return undefined;
+  if (ownerDisabled !== undefined && ownerDisabled !== true) return undefined;
+  if (withdrawn !== undefined && withdrawn !== true) return undefined;
+  return {
+    plugin,
+    ...(ownerDisabled === true ? { ownerDisabled: true as const } : {}),
+    ...(withdrawn === true ? { withdrawn: true as const } : {}),
+  };
 }
 
 function parseHook(raw: string): HookRecord | undefined {
@@ -143,9 +163,15 @@ function parseHook(raw: string): HookRecord | undefined {
   } catch {
     return undefined;
   }
+  if (!isRecord(value)) return undefined;
+  // `declaredBy` belongs to version 3 and to no other: a version 3 record without a valid one, and
+  // a version 1 or 2 record that carries one, are refused rather than read as an owner's hook.
+  const version = value['version'];
+  const storedDeclaredBy = value['declaredBy'];
+  const declaredBy = version === 3 ? parseDeclaredBy(storedDeclaredBy) : undefined;
+  if (version === 3 ? declaredBy === undefined : storedDeclaredBy !== undefined) return undefined;
   if (
-    !isRecord(value) ||
-    (value['version'] !== 1 && value['version'] !== 2) ||
+    (version !== 1 && version !== 2 && version !== 3) ||
     typeof value['id'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
     (value['workspaceAuthority'] !== undefined &&
@@ -158,9 +184,14 @@ function parseHook(raw: string): HookRecord | undefined {
   }
   const action = parseAction(value);
   if (action === undefined) return undefined;
-  const { url: _legacyUrl, scope: storedScope, ...rest } = value;
+  const { url: _legacyUrl, scope: storedScope, declaredBy: _stored, ...rest } = value;
   const scope = parseScope(storedScope);
-  return { ...rest, ...(scope === undefined ? {} : { scope }), action } as unknown as HookRecord;
+  return {
+    ...rest,
+    ...(scope === undefined ? {} : { scope }),
+    ...(declaredBy === undefined ? {} : { declaredBy }),
+    action,
+  } as unknown as HookRecord;
 }
 
 function parseDelivery(raw: string): HookDeliveryRecord | undefined {

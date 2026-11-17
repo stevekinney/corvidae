@@ -95,7 +95,6 @@ export const WORKER_COPY = {
     forget: 'Forget this worker',
     drain: 'Drain this worker',
     resume: 'Resume this worker',
-    copy: 'Copy',
     copyLabel: 'Copy the worker ID',
     copied: 'Copied',
     status: {

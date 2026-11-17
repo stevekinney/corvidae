@@ -46,6 +46,14 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
+  /* A ghost text button in the header draws at the compact height, but keeps the side padding of
+   * the `sm` step it is asked for, so its icon and label stay on the column's text inset rather
+   * than stepping left by the difference between the two paddings (COR-2388). */
+  .cinder-list-detail__header
+    .cinder-button[data-cinder-compact][data-cinder-variant='ghost']:not([data-cinder-icon-only]) {
+    padding-inline: var(--cinder-button-padding-x-sm);
+  }
+
   /* A list with no header of its own holds the toggle alone, at the header's end. */
   .cinder-list-detail__header[data-cinder-list-toggle] {
     align-items: flex-end;
@@ -125,6 +133,22 @@
   }
 
   .cinder-list-detail__row:not(:has(+ .cinder-list-detail__row)) {
+    padding-block-end: var(--cinder-space-2);
+  }
+
+  /* The footer sits under the rows, or under the empty state. What it wraps is a row of its own
+   * (a link, a list item) that already carries the rows' inset, so the footer adds block space
+   * only, and no inline padding of its own on top of that inset (COR-2195). */
+  .cinder-list-detail__footer {
+    padding-block: var(--cinder-space-2);
+    padding-inline: 0;
+  }
+
+  /* Under the empty state the footer follows the empty state's own bottom padding (1.5rem), which
+   * already is a gap, so the empty state gives up most of it and the footer takes its usual space. */
+  .cinder-list-detail__rows
+    > .cinder-data-list:has(+ .cinder-list-detail__footer)
+    > .cinder-data-list-empty {
     padding-block-end: var(--cinder-space-2);
   }
 

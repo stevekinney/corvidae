@@ -57,6 +57,8 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
+    approvalArrivalBox,
+    approvalArrivalShift,
     Chat,
     ChatNote,
     ChatQuestion,
@@ -138,6 +140,7 @@
   } from './chat-export.ts';
   import ChatDetails from './chat-details.svelte';
   import { approvalHoldsChat } from './chat-waiting.ts';
+  import { panelResultText } from './tool-call-panel-result.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
   import { examplePrompts } from './new-chat.ts';
   import { takeFirstMessage } from './new-chat-handoff.ts';
@@ -351,11 +354,21 @@
     return Number.isNaN(milliseconds) ? null : milliseconds;
   }
   // The last breadcrumb names the chat and opens its details (`chat-details.svelte`). A new chat has
-  // no session to name yet, and a chat that is gone has no details to give.
+  // no session to name yet. A chat that is gone keeps the title it was last read with, or reads
+  // "This chat", never its identifier, and has no details to give (COR-2327 B5).
   const crumbPath = $derived(chatSessionPath(sessionId));
-  const hasCrumb = $derived(!choosing && !gone);
-  usePageLabel(() => ({ path: crumbPath, label: hasCrumb ? displayTitle : undefined }));
-  usePageDetails(() => ({ path: crumbPath, content: hasCrumb ? detailsPopover : undefined }));
+  const crumbLabel = $derived(
+    choosing
+      ? undefined
+      : gone
+        ? (context.data?.title ?? title ?? CHAT_COPY.load.crumb)
+        : displayTitle,
+  );
+  usePageLabel(() => ({ path: crumbPath, label: crumbLabel }));
+  usePageDetails(() => ({
+    path: crumbPath,
+    content: choosing || gone ? undefined : detailsPopover,
+  }));
 
   /** Reads the session again, for the settings' controls, and says whether it could. */
   async function reloadContext(): Promise<boolean> {
@@ -580,10 +593,22 @@
         },
       };
     }
+    // Until the first read of the thread settles, an empty transcript is not an empty chat: it is
+    // still loading, in the words the stand-in used before the chat was read (`index.svelte`).
+    if (!session.historySettled) {
+      return {
+        kind: 'loading',
+        labels: { loading: CHAT_COPY.load.loading, slow: CHAT_COPY.load.stillLoading },
+      };
+    }
     // An archived chat's bar outranks the missing provider: nothing can be sent until it is
     // unarchived, and Unarchive is the way back.
     if (noProvider && composerStatus?.kind !== 'blocked' && composerStatus?.kind !== 'archived') {
-      return { kind: 'unconfigured', onConnect: () => router.navigate('/settings/models') };
+      return {
+        kind: 'unconfigured',
+        onConnect: () => router.navigate('/settings/models'),
+        labels: { unconfiguredDescription: CHAT_COPY.composer.unconfiguredDescription },
+      };
     }
     return undefined;
   });
@@ -597,6 +622,11 @@
   );
   const emptyPrompts = $derived(
     listedAgent === undefined ||
+      // Until a read of the thread has succeeded the chat may hold history, and a waiting decision a
+      // prompt would send past: the first read is out, or the last one failed and no read has
+      // succeeded since.
+      !session.historySettled ||
+      session.readFailed ||
       composerStatus?.kind === 'blocked' ||
       composerStatus?.kind === 'archived' ||
       noProvider ||
@@ -762,6 +792,27 @@
     }
   });
 
+  /**
+   * Brings a waiting approval into view (COR-2327) by Chat's arrival rule: the whole card while it
+   * fits the transcript without the reminder, and otherwise its bottom, where Deny and Approve are,
+   * on the transcript's bottom with Chat's clearance to spare, its top free to scroll off.
+   */
+  function bringApprovalIntoView(row: HTMLElement): void {
+    const transcript = row.closest<HTMLElement>('.chat-timeline');
+    if (transcript !== null) {
+      const card = row.getBoundingClientRect();
+      // Chat's own rule against Chat's own box, the transcript without the reminder, so this and
+      // Chat's arrival placement agree and the reminder cannot move the card (COR-2327).
+      const box = approvalArrivalBox(transcript);
+      // A layout not yet measured (zero-sized boxes) says nothing about fit: centre the card.
+      if (card.height > 0 && box.bottom - box.top > 0) {
+        transcript.scrollTop += approvalArrivalShift(card, box);
+        return;
+      }
+    }
+    row.scrollIntoView?.({ block: 'center' });
+  }
+
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
     let focused = false;
@@ -778,7 +829,7 @@
         const lost =
           active === null || active === document.body || (active !== row && active.contains(row));
         if (!focused || lost) {
-          row.scrollIntoView?.({ block: 'center' });
+          bringApprovalIntoView(row);
           row.focus({ preventScroll: true });
           focused = true;
         } else if (!row.isConnected || document.activeElement !== row) {
@@ -1356,19 +1407,30 @@
       },
     }),
   );
+  // Whether an approval holds the chat on its person, for the status and for what holds Archive.
+  const approvalWaits = $derived(
+    approvalHoldsChat(
+      [...activity.groups.values()].flatMap((group) => group.entries),
+      context.data?.activity,
+    ),
+  );
   // The chat's state beside its title, in the shared status words: a person's turn first, then a
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (endedByRestart) return CHAT_COPY.status.ended;
-    const hasPendingApproval = approvalHoldsChat(
-      [...activity.groups.values()].flatMap((group) => group.entries),
-      context.data?.activity,
-    );
-    if (hasPendingApproval || shownRequests.length > 0) return CHAT_COPY.status.waiting;
+    if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
     if (runGoing) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
+  });
+  // What holds Archive back in the More menu, in the order and the words of the status: the
+  // person's turn first (an approval, or else a question), then a run going. The Bureau refuses to
+  // archive a chat in either state, so the menu says why before it is pressed.
+  const archiveBlock = $derived.by<'approval' | 'question' | 'running' | undefined>(() => {
+    if (chatStatus === CHAT_COPY.status.waiting) return approvalWaits ? 'approval' : 'question';
+    if (runGoing) return 'running';
+    return undefined;
   });
   // The call whose panel is open, with where it falls in its turn. A call that is gone (the page
   // moved to another chat, or the turn was read again without it) has no panel.
@@ -1546,30 +1608,21 @@
     observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
   });
-  const workflowRevisionPanels = $derived(
-    (panels.data ?? []).filter((panel) =>
-      chatToolsOf(panel).includes('bureau:workflows-propose-update'),
-    ),
+  // Every panel with a `chat-tool` placement, for any agent tool a plugin names (COR-2214).
+  const chatToolPanels = $derived(
+    (panels.data ?? []).filter((panel) => chatToolsOf(panel).length > 0),
   );
-  const revisionProposalText = (entry: ToolCallEntry): string | undefined => {
-    const serialized =
-      typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result);
-    if (serialized === undefined) return undefined;
-    try {
-      const parsed = JSON.parse(serialized) as unknown;
-      return typeof parsed === 'object' &&
-        parsed !== null &&
-        !Array.isArray(parsed) &&
-        Reflect.get(parsed, 'status') === 'ok' &&
-        typeof Reflect.get(parsed, 'id') === 'string' &&
-        typeof Reflect.get(parsed, 'baseHash') === 'string' &&
-        typeof Reflect.get(parsed, 'proposedText') === 'string'
-        ? serialized
-        : undefined;
-    } catch {
-      return undefined;
-    }
-  };
+  /** The panel placed on this call's agent tool, whether the call arrives as `plugin:name` or `plugin__name`. */
+  const chatToolPanelFor = (entry: ToolCallEntry) =>
+    chatToolPanels.find(
+      (candidate) =>
+        chatToolsOf(candidate).includes(entry.name) ||
+        chatToolsOf(candidate).includes(entry.name.replace('__', ':')),
+    );
+  // A finished call's result as the panel receives it: a plain JSON object that did not fail
+  // (`tool-call-panel-result.ts`), so an invalid or stale proposal opens no panel.
+  const structuredResultText = (entry: ToolCallEntry): string | undefined =>
+    panelResultText(entry.result);
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -1935,6 +1988,7 @@
     {branching}
     canExport={hasExportableText(shown)}
     archived={archivedAt !== null}
+    {archiveBlock}
     onBranch={(messageId) => void branchThrough(messageId)}
     onExport={exportChat}
     onArchive={(archive) => void setArchived(archive, false)}
@@ -1949,69 +2003,80 @@
     bind:this={route}
   >
     {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
-    <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
-       contrast, and the shared restart preset says what is happening above the heading (row 20e):
-       no action while the restart is asked for, Retry now once the host stopped answering. A
-       restart that never came back is the shared failed dialog below (`RestartDialog`). -->
-    {#if restart.running}
-      <Banner
-        preset={restart.phase === 'starting' ? 'reconnecting' : 'restarting'}
-        attempt={restart.attempt === 0 ? undefined : restart.attempt}
-        retryInSeconds={restart.retryInSeconds}
-        onRetry={() => restart.retryNow()}
-        data-testid="chat-restart-banner"
-      />
-    {/if}
-    <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
-    {#if !choosing}
-      <PageHeader
-        data-testid="chat-header"
-        title={markdownTitle}
-        headingLevel={1}
-        {...context.data?.parentContextId ? { description: details } : {}}
-        actions={headerActions}
-        status={headerStatus}
-        statusPlacement="inline"
-      />
-    {/if}
-    <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
-    {#if !choosing && !endedByRestart}
-      <SessionTasks {sessionId} streaming={session.streaming} />
-    {/if}
-
-    {#if session.failure !== undefined && !failureShownInTranscript && !choosing}
-      <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
-        <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
-        <p class="weft-chat-approval__message">{session.failure}</p>
-      </Alert>
-    {/if}
-
-    <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
-       stream gets no banner of its own (design row 18e). -->
-    {#if session.disconnected && !connection.unreachable}
-      <Alert variant="warning">
-        <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
-        <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
-        <Button
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.disconnected.reconnect}
-          onclick={() => void session.reconnect()}
+    <!-- The header, the runs line and the alerts sit in the conversation's own column, at the
+         transcript's inset, so the title, each line under it, the transcript and the composer share
+         one left edge at every width (COR-2327 B4). -->
+    <div class="weft-chat-head">
+      <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
+         contrast, and the shared restart preset says what is happening above the heading (row 20e):
+         no action while the restart is asked for, Retry now once the host stopped answering. A
+         restart that never came back is the shared failed dialog below (`RestartDialog`). -->
+      {#if restart.running}
+        <Banner
+          preset={restart.phase === 'starting' ? 'reconnecting' : 'restarting'}
+          attempt={restart.attempt === 0 ? undefined : restart.attempt}
+          retryInSeconds={restart.retryInSeconds}
+          onRetry={() => restart.retryNow()}
+          data-testid="chat-restart-banner"
         />
-      </Alert>
-    {/if}
+      {/if}
+      <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
+      {#if !choosing}
+        <PageHeader
+          data-testid="chat-header"
+          title={markdownTitle}
+          headingLevel={1}
+          flush
+          narrowActions="beside-status"
+          {...context.data?.parentContextId ? { description: details } : {}}
+          {...gone ? {} : { actions: headerActions }}
+          {...gone || chatStatus === undefined ? {} : { status: headerStatus }}
+          statusPlacement="inline"
+        />
+      {/if}
+      <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
+      {#if !choosing && !endedByRestart}
+        <SessionTasks
+          {sessionId}
+          streaming={session.streaming}
+          headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
+        />
+      {/if}
 
-    {#if branchFailure !== undefined}
-      <Alert
-        variant="danger"
-        dismissible
-        onDismiss={() => {
-          branchFailure = undefined;
-        }}
-      >
-        <p class="weft-chat-approval__message">{branchFailure}</p>
-      </Alert>
-    {/if}
+      {#if session.failure !== undefined && !failureShownInTranscript && !choosing}
+        <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
+          <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
+          <p class="weft-chat-approval__message">{session.failure}</p>
+        </Alert>
+      {/if}
+
+      <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
+       stream gets no banner of its own (design row 18e). -->
+      {#if session.disconnected && !connection.unreachable}
+        <Alert variant="warning">
+          <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
+          <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            label={CHAT_COPY.disconnected.reconnect}
+            onclick={() => void session.reconnect()}
+          />
+        </Alert>
+      {/if}
+
+      {#if branchFailure !== undefined}
+        <Alert
+          variant="danger"
+          dismissible
+          onDismiss={() => {
+            branchFailure = undefined;
+          }}
+        >
+          <p class="weft-chat-approval__message">{branchFailure}</p>
+        </Alert>
+      {/if}
+    </div>
 
     <!-- A decision made on another page, said once to a screen reader; the row itself changes in place. -->
     <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
@@ -2056,6 +2121,7 @@
         streaming={session.streaming && !choosing}
         trailingAskPending={!session.streaming && session.humanRequests.length > 0}
         surfaceMode="transparent"
+        scrollFadeVisible
         variant="transcript"
         notSent={connection.unreachable
           ? {
@@ -2200,6 +2266,8 @@
               decided={decisionContext}
               selectedId={selectedCallId}
               onSelect={selectCall}
+              opensPanel={(entry) =>
+                chatToolPanelFor(entry) !== undefined && structuredResultText(entry) !== undefined}
               endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
               duration={group.durationMilliseconds === undefined
                 ? undefined
@@ -2221,7 +2289,7 @@
                       unavailableReason={agentUnavailable
                         ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
                         : undefined}
-                      providerNote={noProvider
+                      providerNote={noProvider && availability?.kind !== 'unconfigured'
                         ? CHAT_COPY.approval.continuesOnProvider(agentShown)
                         : undefined}
                       requestedAt={asked?.requestedAt}
@@ -2244,13 +2312,9 @@
                 {/if}
               {/snippet}
               {#snippet mcpApp(entry)}
-                {@const panel = workflowRevisionPanels.find(
-                  (candidate) =>
-                    chatToolsOf(candidate).includes(entry.name) ||
-                    chatToolsOf(candidate).includes(entry.name.replace('__', ':')),
-                )}
-                {@const proposalText = revisionProposalText(entry)}
-                {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                {@const panel = chatToolPanelFor(entry)}
+                {@const resultText = structuredResultText(entry)}
+                {#if panel !== undefined && entry.state === 'done' && resultText !== undefined}
                   {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
                   {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
                   <McpApp
@@ -2263,7 +2327,7 @@
                     toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
                     toolResult={{
                       content: [],
-                      structuredContent: proposalText,
+                      structuredContent: resultText,
                     }}
                   />
                 {/if}
@@ -2442,7 +2506,9 @@
       description={CHAT_COPY.composer.enableDialog.description}
       confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
       onConfirm={() =>
-        void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
+        void restart.run([{ name: pluginName, enabled: true }], false, {
+          changes: [pluginTitle],
+        })}
     />
     <RestartDialog flow={restart} failedOnly />
   </section>

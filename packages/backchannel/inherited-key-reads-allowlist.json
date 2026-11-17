@@ -1,0 +1,29 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/openapi.ts",
+      "expression": "paths[openApiPath]",
+      "count": 4,
+      "reason": "the key is an OpenAPI path, which always begins with `/`; no inherited name does"
+    },
+    {
+      "file": "src/operation-catalog/pipeline-stages.ts",
+      "expression": "key in parsed",
+      "count": 1,
+      "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
+    },
+    {
+      "file": "src/operation-catalog/pipeline-stages.ts",
+      "expression": "rawInput[key]",
+      "count": 1,
+      "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
+    },
+    {
+      "file": "src/operation-fault.ts",
+      "expression": "(fault.data as Record<string, unknown>)[field]",
+      "count": 1,
+      "reason": "the field is a key from Object.entries(fault.data), so it is an own key of the same object"
+    }
+  ]
+}

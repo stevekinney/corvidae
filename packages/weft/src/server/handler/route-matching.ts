@@ -1,5 +1,8 @@
-import { MalformedRouteParameterError } from '../rest-binding.ts';
-import { DIRECT_HTTP_ROUTES, toRegex } from '../route-model.ts';
+import {
+  DIRECT_HTTP_ROUTES,
+  MalformedRouteParameterError,
+  toRegex,
+} from '@lostgradient/backchannel/internals';
 
 /** Union of all handler names derived from the shared direct-route model. */
 export type DirectRouteHandlerName = (typeof DIRECT_HTTP_ROUTES)[number]['handler'];

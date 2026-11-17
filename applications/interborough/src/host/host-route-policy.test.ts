@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createAgentSchedule, listBureauSchedules } from '../lib/bureau-schedules.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
-import { inventoryHostRoutes } from './host-route-policy.ts';
+import { authorizeHostRoutes, inventoryHostRoutes } from './host-route-policy.ts';
 import { startHost } from './host.ts';
 
 test('new host methods and routes require explicit classification', () => {
@@ -18,6 +18,98 @@ test('new host methods and routes require explicit classification', () => {
   expect(() => inventoryHostRoutes({ '/host/providers': { PATCH: () => new Response() } })).toThrow(
     'Unclassified',
   );
+});
+
+test('a trigger delivery is deployment-operator with the trigger-receive admission, and only as a POST (COR-2169)', () => {
+  const [entry, ...others] = inventoryHostRoutes({
+    '/triggers/:workflow': { POST: () => new Response() },
+  });
+  expect(others).toEqual([]);
+  expect(entry).toMatchObject({
+    key: 'POST /triggers/:workflow',
+    resourceClass: 'deployment-operator',
+    admission: 'trigger-receive',
+    delegated: false,
+  });
+  // The class is the route's, so removing it fails the inventory (AC3).
+  expect(() =>
+    inventoryHostRoutes({ '/triggers/:workflow': { GET: () => new Response() } }),
+  ).toThrow('Unclassified');
+  expect(() =>
+    inventoryHostRoutes({ '/triggers/:workflow': { PUT: () => new Response() } }),
+  ).toThrow('Unclassified');
+  expect(() => inventoryHostRoutes({ '/triggers/:name': { POST: () => new Response() } })).toThrow(
+    'Unclassified',
+  );
+});
+
+test('a trigger-receive route takes the public-origin guard and skips authorize and release, and no other route does', async () => {
+  const calls: string[] = [];
+  const authority = {
+    authenticate: () => {
+      throw new Error('not called');
+    },
+    mutation: () => {
+      throw new Error('not called');
+    },
+    authorize: async (_request: Request, classification: string) => {
+      calls.push(`authorize ${classification}`);
+      return undefined;
+    },
+    release: async (_request: Request, classification: string, response: Response) => {
+      calls.push(`release ${classification}`);
+      return response;
+    },
+  };
+  const guarded = authorizeHostRoutes(
+    {
+      '/triggers/:workflow': { POST: () => new Response('delivered') },
+      '/host/status': { GET: () => new Response('status') },
+    },
+    authority,
+    (request) => {
+      calls.push(`loopback ${new URL(request.url).pathname}`);
+      return undefined;
+    },
+    (request) => {
+      calls.push(`public ${new URL(request.url).pathname}`);
+      return undefined;
+    },
+  );
+  const call = async (path: string, method: string) => {
+    const handler = (guarded[path] as Record<string, (r: Request, s: never) => Promise<Response>>)[
+      method
+    ];
+    return handler!(new Request(`http://127.0.0.1${path}`, { method }), undefined as never);
+  };
+  const delivered = await call('/triggers/:workflow', 'POST');
+  expect(await delivered.text()).toBe('delivered');
+  expect(calls).toEqual(['public /triggers/:workflow']);
+  calls.length = 0;
+  await call('/host/status', 'GET');
+  expect(calls).toEqual([
+    'loopback /host/status',
+    'authorize deployment-operator',
+    'release deployment-operator',
+  ]);
+
+  // A refusal of the public guard is the answer, and nothing runs after it.
+  calls.length = 0;
+  const refused = authorizeHostRoutes(
+    { '/triggers/:workflow': { POST: () => new Response('delivered') } },
+    authority,
+    () => undefined,
+    () => new Response(null, { status: 403 }),
+  );
+  const refusedHandler = (
+    refused['/triggers/:workflow'] as Record<string, (r: Request, s: never) => Promise<Response>>
+  )['POST']!;
+  const refusal = await refusedHandler(
+    new Request('http://127.0.0.1/triggers/x', { method: 'POST' }),
+    undefined as never,
+  );
+  expect(refusal.status).toBe(403);
+  expect(calls).toEqual([]);
 });
 
 test('fully composed host captures its routes and its engine discovery catalog', async () => {
@@ -45,7 +137,14 @@ test('fully composed host captures its routes and its engine discovery catalog',
         admission: 'durable-oauth-callback',
         resourceClass: 'administrator-shared',
       },
+      {
+        key: 'POST /triggers/:workflow',
+        admission: 'trigger-receive',
+        resourceClass: 'deployment-operator',
+      },
     ]);
+    // The only route a public origin reaches without a credential: no other `/triggers` route.
+    expect(keys.filter((key) => key.includes('/triggers'))).toEqual(['POST /triggers/:workflow']);
     expect(keys).toContain('POST /host/restart');
     expect(
       host.routeInventory.find((entry) => entry.key === 'GET /host/status')?.resourceClass,
@@ -53,7 +152,7 @@ test('fully composed host captures its routes and its engine discovery catalog',
     expect(keys).toContain('* /bureau/*');
     const bureauRoute = host.routeInventory.find((entry) => entry.key === '* /bureau/*');
     expect(bureauRoute?.resourceClass).toBeNull();
-    expect(bureauRoute?.children?.filter((entry) => entry.kind === 'operation')).toHaveLength(128);
+    expect(bureauRoute?.children?.filter((entry) => entry.kind === 'operation')).toHaveLength(132);
     expect(bureauRoute?.children?.every((entry) => entry.workspaceClass !== undefined)).toBe(true);
     expect(bureauRoute?.children?.some((entry) => entry.key === '/ag-ui')).toBe(true);
     expect(host.routeInventory.find((entry) => entry.key === '* /bureau/*')?.transports).toContain(

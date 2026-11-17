@@ -1,4 +1,4 @@
-import type { WorkspaceIdentity } from '@lostgradient/weft';
+import type { WorkspaceIdentity } from '@lostgradient/backchannel';
 import { expect, test } from 'bun:test';
 import { createHostMutationContext, parseHostMutationInput } from './host-mutation-context.ts';
 

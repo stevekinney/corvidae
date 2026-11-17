@@ -12,7 +12,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module diagnostics-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauDiagnostics } from '../../bureau-types/facade.ts';

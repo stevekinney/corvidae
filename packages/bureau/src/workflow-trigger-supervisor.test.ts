@@ -51,6 +51,7 @@ import {
   type ListenerCode,
   type ListenerState,
   type ListenerStatus,
+  type TriggerEventRecord,
   type TriggerFireRequest,
   type WorkflowTriggerSupervisor,
 } from './workflow-trigger-supervisor';
@@ -2867,11 +2868,356 @@ describe('the listener state of a contributed trigger (COR-2165 outcome matrix)'
     },
   ];
 
-  for (const { row, run } of [...rows, ...retryRows, ...inFlightRows]) {
+  /**
+   * COR-2168 — a kind without a `start`, which only receives. Titled `M<row>` by its row of
+   * `tmp/chef/briefs/COR-2168-matrix.md`; the rows that call `receiveTrigger` are in
+   * `workflow-trigger-receive.test.ts`.
+   */
+  const receiveOnly = (kind: PluginTrigger): PluginTrigger => {
+    const { start: _start, ...rest } = kind;
+    return { ...rest, receive: async () => new Response(null, { status: 204 }) };
+  };
+
+  /** A rig over the kind that only receives, with its secret `x-token` set or missing. */
+  async function gatedReceiveRig(initially: 'missing' | 'set') {
+    const secrets = secretStore();
+    if (initially === 'set') secrets.save();
+    const secretGate = await createPluginSecretGate('x', [SECRET_KEY], secrets.reader);
+    cleanups.push(secretGate.watch());
+    const rig = listenerRig(
+      (trigger) =>
+        gatedContributions(
+          { triggers: [receiveOnly(trigger)] },
+          secretGate,
+          (name) => `x:${name}`,
+          () => undefined,
+        ).triggers[0]!,
+    );
+    return { rig, secrets };
+  }
+
+  const receiveRows: readonly ListenerRow[] = [
+    {
+      row: 'M5: a receive-only file is ready from none: no start, no timer, no problem, and a fire noted by id sets lastFiredAt',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.calls).toEqual([]);
+        await rig.passTime(3_000);
+        rig.supervisor.noteFired('a', KIND);
+        expect(rig.status()).toEqual(status('ready', ORIGIN, null, at(3)));
+        // The kind named is the entry's: another kind's fire writes nothing.
+        rig.supervisor.noteFired('a', 'x:other');
+        rig.supervisor.noteFired('b', KIND);
+        expect(rig.status()).toEqual(status('ready', ORIGIN, null, at(3)));
+      },
+    },
+    {
+      row: 'M6: a paused receive-only file is stopped, with nothing started',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: { paused: true } });
+        expect(rig.status()).toEqual(status('stopped', ORIGIN));
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'M7: a receive-only file is ready, never waiting-for-secret, with its secret missing, and a save or a removal changes nothing',
+      run: async () => {
+        const { rig, secrets } = await gatedReceiveRig('missing');
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        await rig.passTime(2_000);
+        secrets.save();
+        await quietFor(10);
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        secrets.remove();
+        await quietFor(10);
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.calls).toEqual([]);
+      },
+    },
+    {
+      row: 'M8: a receive-only file whose configuration the kind refuses is failed configuration-refused with no timer, and ready once an edit passes',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: { account: 5 } });
+        expect(rig.status()).toEqual(status('failed', ORIGIN, 'configuration-refused'));
+        expect(rig.pendingTimers()).toEqual([]);
+        expect(rig.calls).toEqual(['report x/a']);
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: {} });
+        expect(rig.status()).toEqual(status('ready', at(1)));
+        expect(rig.calls).toEqual(['report x/a', 'clear x/a']);
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'M8: a receive-only file whose storage cannot be made is failed start-failed with the backoff, and a problem',
+      run: async () => {
+        const rig = listenerRig();
+        const kind: VersionedCatalogEntry<PluginTrigger> = {
+          kind: 'trigger',
+          name: 'Bad_Plugin:watch',
+          version: '1',
+          id: 'Bad_Plugin:watch@1',
+          source: { name: 'Bad_Plugin', version: '1' },
+          value: receiveOnly(baseKind(rig)),
+        };
+        await rig.supervisor.reconcile(
+          new Map([['a', { kind, trigger: { kind: kind.name } }]]),
+          new Set(),
+        );
+        expect(rig.supervisor.listener('a', 'Bad_Plugin:watch')).toEqual(
+          status('failed', ORIGIN, 'start-failed', null, at(1)),
+        );
+        expect(rig.calls).toEqual(['report Bad_Plugin/a']);
+        expect(rig.pendingTimers()).toHaveLength(1);
+      },
+    },
+    {
+      row: 'M9: a receive-only file follows main’s transitions: an edit that stays ready keeps since, a pause is stopped, an unpause is ready, a deletion drops the status',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: { account: 'one' } });
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { account: 'two', paused: true } });
+        expect(rig.status()).toEqual(status('stopped', at(2)));
+        await rig.passTime(1_000);
+        await rig.reconcile({ a: { account: 'two' } });
+        expect(rig.status()).toEqual(status('ready', at(3)));
+        await rig.reconcile({});
+        expect(rig.status()).toBeUndefined();
+        expect(rig.starts).toEqual([]);
+      },
+    },
+    {
+      row: 'M11: retry on a ready receive-only listener is a no-op that answers it',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: {} });
+        await rig.passTime(5_000);
+        expect(await rig.retry()).toEqual(status('ready', ORIGIN));
+        expect(rig.starts).toEqual([]);
+        expect(rig.pendingTimers()).toEqual([]);
+      },
+    },
+    {
+      row: 'M13: close retires a ready receive-only entry with nothing to stop and no timer, and a fire noted after it writes nothing',
+      run: async () => {
+        const rig = listenerRig(receiveOnly);
+        await rig.reconcile({ a: {} });
+        await rig.supervisor.close();
+        expect(rig.pendingTimers()).toEqual([]);
+        rig.supervisor.noteFired('a', KIND);
+        expect(rig.status()).toEqual(status('ready', ORIGIN));
+        expect(rig.stops).toEqual([]);
+      },
+    },
+  ];
+
+  for (const { row, run } of [...rows, ...retryRows, ...inFlightRows, ...receiveRows]) {
     it(row, async () => {
       rigsOfTheRow.length = 0;
       await run();
       for (const rig of rigsOfTheRow) expectRetryAtToMatchTheTimers(rig);
     });
   }
+});
+
+describe('the trigger events a supervisor publishes (COR-2250)', () => {
+  /** A supervisor over a kind whose `start` does what `onStart` says, publishing into `events`. */
+  function publishing(answer: (request: TriggerFireRequest) => Promise<PluginTriggerOutcome>) {
+    const events: TriggerEventRecord[] = [];
+    const contexts: PluginTriggerContext[] = [];
+    const behaviour = { fail: false };
+    const kind: VersionedCatalogEntry<PluginTrigger> = {
+      kind: 'trigger',
+      name: 'x:watch',
+      version: '2.1.0',
+      id: 'x:watch@2.1.0',
+      source: { name: 'x', version: '1' },
+      value: {
+        name: 'watch',
+        description: 'Watches.',
+        configuration: z.object({ account: z.string().optional() }),
+        start: async (context) => {
+          contexts.push(context);
+          if (behaviour.fail) throw new Error('the source refused sk-live-0123456789');
+          return () => undefined;
+        },
+      },
+    };
+    const supervisor = createWorkflowTriggerSupervisor({
+      fire: answer,
+      diagnose: () => undefined,
+      storage: new MemoryStorage(),
+      ...unobserved,
+      publish: (event) => void events.push(event),
+    });
+    cleanups.push(() => supervisor.close());
+    const reconcile = (files: Record<string, { account?: string; paused?: boolean }>) =>
+      supervisor.reconcile(
+        new Map(
+          Object.entries(files).map(([id, { paused, ...rest }]) => [
+            id,
+            { kind, trigger: { kind: kind.name, ...rest }, paused } satisfies DesiredTrigger,
+          ]),
+        ),
+        new Set(),
+      );
+    return { events, contexts, behaviour, reconcile };
+  }
+
+  const BASE = { workflowId: 'a', trigger: 'x:watch', version: '2.1.0' };
+
+  it('publishes trigger.fired refused with the code for a fire that rejects, and starts nothing (AC3)', async () => {
+    const rig = publishing(async (request) => {
+      throw new WorkflowInputInvalidError(request.workflowId, [
+        { path: 'secret', message: 'the payload held sk-live-0123456789' },
+      ] as never);
+    });
+    await rig.reconcile({ a: {} });
+    rig.events.length = 0;
+    const thrown = await rejectionOf(
+      rig.contexts[0]!.fire({ token: 'sk-live' }, { idempotencyKey: 'k' }),
+    );
+    expect(thrown).toBeInstanceOf(WorkflowInputInvalidError);
+    expect(rig.events).toEqual([
+      { kind: 'trigger.fired', ...BASE, outcome: 'refused', errorCode: 'INPUT_INVALID' },
+    ]);
+  });
+
+  it('names a refusal by the code the runtime gives it, an identifier, never the error text', async () => {
+    const events: TriggerEventRecord[] = [];
+    const contexts: PluginTriggerContext[] = [];
+    const kind = stateKind(contexts);
+    const supervisor = createWorkflowTriggerSupervisor({
+      fire: async () => {
+        throw Object.assign(new Error('free text sk-live-0123456789'), { code: 'BAD_REQUEST' });
+      },
+      diagnose: () => undefined,
+      storage: new MemoryStorage(),
+      ...unobserved,
+      publish: (event) => void events.push(event),
+    });
+    cleanups.push(() => supervisor.close());
+    await supervisor.reconcile(wantedKind(kind, { a: {} }), new Set());
+    await rejectionOf(contexts[0]!.fire({}));
+    expect(events.at(-1)).toEqual({
+      kind: 'trigger.fired',
+      workflowId: 'a',
+      trigger: kind.name,
+      version: '1',
+      outcome: 'refused',
+      errorCode: 'BAD_REQUEST',
+    });
+    expect(JSON.stringify(events)).not.toContain('sk-live');
+  });
+
+  for (const [name, thrown, code] of [
+    [
+      'a failed apply',
+      new WorkflowApplyError(new Error('the engine sk-live-0123')),
+      'WORKFLOW_APPLY_FAILED',
+    ],
+    [
+      'a code that is free text',
+      Object.assign(new Error('boom'), { code: 'not an identifier sk-live-0123' }),
+      'INTERNAL_ERROR',
+    ],
+    ['an error with no code', new Error('no code sk-live-0123'), 'INTERNAL_ERROR'],
+    ['a thrown value that is not an error', 'sk-live-0123', 'INTERNAL_ERROR'],
+  ] as const) {
+    it(`names ${name} as ${code}`, async () => {
+      const events: TriggerEventRecord[] = [];
+      const contexts: PluginTriggerContext[] = [];
+      const kind = stateKind(contexts);
+      const supervisor = createWorkflowTriggerSupervisor({
+        fire: async () => {
+          throw thrown;
+        },
+        diagnose: () => undefined,
+        storage: new MemoryStorage(),
+        ...unobserved,
+        publish: (event) => void events.push(event),
+      });
+      cleanups.push(() => supervisor.close());
+      await supervisor.reconcile(wantedKind(kind, { a: {} }), new Set());
+      await rejectionOf(contexts[0]!.fire({}));
+      expect(events.at(-1)).toMatchObject({ outcome: 'refused', errorCode: code });
+      expect(JSON.stringify(events)).not.toContain('sk-live');
+    });
+  }
+
+  it('carries exactly workflowId, trigger, version, outcome, runId and errorCode: never the payload or the idempotency key (AC2)', async () => {
+    let answer: PluginTriggerOutcome = { outcome: 'started', runId: 'run-1' };
+    const rig = publishing(async () => answer);
+    await rig.reconcile({ a: {} });
+    await rig.contexts[0]!.fire({ secret: 'payload-text' }, { idempotencyKey: 'delivery-key' });
+    answer = { outcome: 'duplicate', runId: 'run-1' };
+    await rig.contexts[0]!.fire({ secret: 'payload-text' }, { idempotencyKey: 'delivery-key' });
+    answer = { outcome: 'skipped', reason: 'paused' };
+    await rig.contexts[0]!.fire({});
+    const fired = rig.events.filter((event) => event.kind === 'trigger.fired');
+    expect(fired).toEqual([
+      { kind: 'trigger.fired', ...BASE, outcome: 'started', runId: 'run-1' },
+      { kind: 'trigger.fired', ...BASE, outcome: 'duplicate', runId: 'run-1' },
+      { kind: 'trigger.fired', ...BASE, outcome: 'skipped' },
+    ]);
+    for (const event of rig.events) {
+      for (const key of Object.keys(event)) {
+        expect([
+          'kind',
+          'workflowId',
+          'trigger',
+          'version',
+          'outcome',
+          'runId',
+          'errorCode',
+        ]).toContain(key);
+      }
+    }
+    expect(JSON.stringify(rig.events)).not.toContain('payload-text');
+    expect(JSON.stringify(rig.events)).not.toContain('delivery-key');
+  });
+
+  it('publishes a fire the supervisor answers itself, after a stop, as skipped', async () => {
+    const rig = publishing(async () => ({ outcome: 'started', runId: 'run-1' }));
+    await rig.reconcile({ a: {} });
+    await rig.reconcile({ a: { paused: true } });
+    rig.events.length = 0;
+    expect(await rig.contexts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+    expect(rig.events).toEqual([{ kind: 'trigger.fired', ...BASE, outcome: 'skipped' }]);
+  });
+
+  it('publishes started into a running state, stopped out of it, and failed with the listener’s code; an edit publishes nothing', async () => {
+    const rig = publishing(async () => ({ outcome: 'started', runId: 'run-1' }));
+    await rig.reconcile({ a: {} });
+    expect(rig.events).toEqual([{ kind: 'trigger.started', ...BASE }]);
+    await rig.reconcile({ a: { account: 'edited' } });
+    expect(rig.events).toHaveLength(1);
+    await rig.reconcile({ a: { account: 'edited', paused: true } });
+    expect(rig.events.at(-1)).toEqual({ kind: 'trigger.stopped', ...BASE });
+    rig.behaviour.fail = true;
+    await rig.reconcile({ a: { account: 'failing' } });
+    expect(rig.events.at(-1)).toEqual({
+      kind: 'trigger.failed',
+      ...BASE,
+      errorCode: 'START_FAILED',
+    });
+    rig.behaviour.fail = false;
+    await rig.reconcile({ a: { account: 'again' } });
+    expect(rig.events.at(-1)).toEqual({ kind: 'trigger.started', ...BASE });
+    await rig.reconcile({});
+    expect(rig.events.at(-1)).toEqual({ kind: 'trigger.stopped', ...BASE });
+    expect(JSON.stringify(rig.events)).not.toContain('sk-live');
+  });
 });

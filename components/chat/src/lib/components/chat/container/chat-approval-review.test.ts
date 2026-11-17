@@ -16,9 +16,12 @@ import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
+  approvalArrivalBox,
+  approvalArrivalShift,
   approvalCardFitsViewport,
   approvalReviewBox,
   approvalRowVisible,
+  approvalTallerThanTranscript,
   approvalVisibleBox,
   findPendingApprovalMessageId,
   focusPendingApproval,
@@ -72,7 +75,8 @@ function withDeadline(messages: readonly Message[], expiresAt: string): readonly
 
 describe('approval drawer words', () => {
   test('say exactly what is waiting and what the action does', () => {
-    expect(APPROVAL_DRAWER_TEXT).toBe('Waiting for your approval.');
+    // Short enough to sit on one line beside Review on a 320px phone (COR-2327).
+    expect(APPROVAL_DRAWER_TEXT).toBe('Approval needed.');
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
     expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
   });
@@ -242,7 +246,22 @@ describe('pendingApprovalCard', () => {
 
     expect(pendingApprovalCard(root, 'waiting')?.id).toBe('waiting-card');
     expect(pendingApprovalCard(root, 'older')?.id).toBe('older-card');
-    expect(pendingApprovalCard(root, 'missing')).toBeNull();
+  });
+
+  test('falls back to the first pending card when the waiting message draws none of its own (COR-2327 B1)', () => {
+    // A host that folds a step's calls into the step's reply draws the card under that reply, not
+    // under the call's own message, which has no article.
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <article data-message-id="reply">
+        <div class="cinder-approval-card" data-cinder-state="approved" id="decided"></div>
+        <article class="cinder-approval-card" data-cinder-state="pending" id="host-card"></article>
+      </article>
+    `;
+
+    expect(pendingApprovalCard(root, 'call-row')?.id).toBe('host-card');
+    expect(pendingApprovalCard(document.createElement('div'), 'call-row')).toBeNull();
+    expect(pendingApprovalCard(null, 'call-row')).toBeNull();
   });
 });
 
@@ -263,6 +282,82 @@ describe('approval action row shift', () => {
 
   test('does nothing when the row cannot fit the viewport with its inset', () => {
     expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('the box an arriving approval is placed against (COR-2327)', () => {
+  /** A rectangle that reads as `top` to `bottom`, whatever the DOM implementation measures. */
+  function stubBox(element: Element, top: number, bottom: number): void {
+    element.getBoundingClientRect = () =>
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 320,
+        x: 0,
+        y: top,
+        width: 320,
+        height: bottom - top,
+      }) as DOMRect;
+  }
+
+  test('is the transcript without the reminder, so the reminder cannot move the card it is about', () => {
+    const container = document.createElement('div');
+    container.className = 'chat-container';
+    const transcript = document.createElement('div');
+    container.append(transcript);
+    document.body.append(container);
+    stubBox(transcript, 160, 380);
+
+    // No reminder drawn: the transcript's own box.
+    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 160, bottom: 380 });
+
+    // A reminder 46px tall with 4px and 12px margins takes 62px from the transcript; the box the
+    // card is placed against is the same one either way.
+    const reminder = document.createElement('div');
+    reminder.setAttribute('data-chat-approval-drawer', '');
+    reminder.style.marginTop = '4px';
+    reminder.style.marginBottom = '12px';
+    container.append(reminder);
+    stubBox(reminder, 322, 368);
+    stubBox(transcript, 160, 318);
+    expect(approvalArrivalBox(transcript)).toMatchObject({ top: 160, bottom: 380 });
+    container.remove();
+  });
+});
+
+describe('where a waiting approval lands when it opens (COR-2327)', () => {
+  // A transcript 286px tall, as on a 320 by 640 phone, and the 12px clearance under a card.
+  const viewport = { top: 100, bottom: 386 };
+
+  test('a card that fits is shown whole: scrolled down until its bottom and the clearance show', () => {
+    const card = { top: 300, bottom: 540 };
+    expect(approvalTallerThanTranscript(card, viewport)).toBe(false);
+    expect(approvalArrivalShift(card, viewport)).toBe(540 + APPROVAL_BOTTOM_CLEARANCE - 386);
+  });
+
+  test('a card that fits with its top above the transcript scrolls up to its top', () => {
+    expect(approvalArrivalShift({ top: 40, bottom: 200 }, viewport)).toBe(-60);
+  });
+
+  test('a card that fits and is in view stays where it is', () => {
+    expect(approvalArrivalShift({ top: 120, bottom: 360 }, viewport)).toBe(0);
+  });
+
+  test('a card taller than the transcript has its actions aligned to the bottom, its top off', () => {
+    const below = { top: 200, bottom: 585 };
+    expect(approvalTallerThanTranscript(below, viewport)).toBe(true);
+    expect(approvalArrivalShift(below, viewport)).toBe(585 + APPROVAL_BOTTOM_CLEARANCE - 386);
+    // Shown from its top (as a lift would), it scrolls down until the bottom is at the bottom.
+    const fromTop = { top: 108, bottom: 493 };
+    expect(approvalArrivalShift(fromTop, viewport)).toBe(493 + APPROVAL_BOTTOM_CLEARANCE - 386);
+    // Already aligned, it stays.
+    expect(approvalArrivalShift({ top: -11, bottom: 374 }, viewport)).toBe(0);
+  });
+
+  test('the clearance counts: a card exactly the transcript tall is taller with it', () => {
+    expect(approvalTallerThanTranscript({ top: 100, bottom: 386 }, viewport)).toBe(true);
+    expect(approvalTallerThanTranscript({ top: 100, bottom: 374 }, viewport)).toBe(false);
   });
 });
 

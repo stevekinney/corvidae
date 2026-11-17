@@ -27,6 +27,7 @@ import AgentDetail from './agent-detail.svelte';
 import FramedMemory from './agent-memory-frame.test-harness.svelte';
 import MemoryToasts from './agent-memory-toasts.test-harness.svelte';
 import AgentMemory from './agent-memory.svelte';
+import { excerpt } from './memory-presentation.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -117,15 +118,37 @@ type Answers = Record<string, BureauHandler>;
 const textOf = (element: Element | null | undefined): string =>
   (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
-/** The server for one test: an agent with memories, and whatever a test overrides. */
+/** The list handlers that answer the quarantined memories themselves, which `bureau` leaves alone. */
+const quarantineAware = new WeakSet<BureauHandler>();
+
+/** A list handler that answers `state: 'quarantined'` itself, as the server does. */
+function listing(handler: BureauHandler): BureauHandler {
+  quarantineAware.add(handler);
+  return handler;
+}
+
+/**
+ * The server for one test: an agent with memories, and whatever a test overrides. A list a test
+ * overrides without caring for quarantine lists no quarantined memory, as a server with none does.
+ */
 function bureau(answers: Answers = {}): BureauStub {
+  const list = answers['bureau.memory.list'];
   stub = installBureauStub({
     'bureau.agents.list': () => ({ agents: [AGENT] }),
-    'bureau.memory.list': () => ({ memories: [AISLE, WINDOW], nextOffset: null }),
+    'bureau.memory.list': (params) =>
+      params['state'] === 'quarantined'
+        ? { memories: [], nextOffset: null }
+        : { memories: [AISLE, WINDOW], nextOffset: null },
     'bureau.memory.search': () => ({ hits: [] }),
     'bureau.memory.get': (params) => detailOf_(params['id'] === WINDOW.id ? WINDOW : AISLE),
     'bureau.contexts.get': () => ({ ...CONTEXT, title: CHAT_TITLE }),
     ...answers,
+    ...(list === undefined || quarantineAware.has(list)
+      ? {}
+      : {
+          'bureau.memory.list': (params: Record<string, unknown>) =>
+            params['state'] === 'quarantined' ? { memories: [], nextOffset: null } : list(params),
+        }),
   });
   return stub;
 }
@@ -264,9 +287,13 @@ describe('the list', () => {
     await fireEvent.click(getByRole('button', { name: MEMORY_COPY.loadMore }));
 
     await findByText(WINDOW.content);
-    expect(served.callsTo('bureau.memory.list').map((call) => call.params['offset'])).toEqual([
-      0, 1,
-    ]);
+    // The quarantined probe asks for one memory of its own, and is not a page of this list.
+    expect(
+      served
+        .callsTo('bureau.memory.list')
+        .filter((call) => call.params['state'] === undefined)
+        .map((call) => call.params['offset']),
+    ).toEqual([0, 1]);
     expect(queryByRole('button', { name: MEMORY_COPY.loadMore })).toBeNull();
   });
 
@@ -1985,11 +2012,15 @@ describe('quarantining a memory', () => {
     return { served, view, detail, dialog };
   }
 
-  test('names the memory, says it cannot be undone, and needs a reason', async () => {
+  test('names the memory, says what releasing it does, and needs a reason', async () => {
     const { served, dialog } = await quarantineDialog();
 
     expect(dialog.textContent).toContain(AISLE.content.slice(0, 20));
-    expect(dialog.textContent).toContain('This cannot be undone.');
+    expect(dialog.textContent).not.toContain('cannot be undone');
+    expect(dialog.textContent).toContain('It stays stored, and you can forget it.');
+    expect(dialog.textContent).toContain(
+      'Release brings this memory back, not ones derived from it, if it passes the checks a new memory passes.',
+    );
     const confirm = within(dialog).getByRole('button', {
       name: MEMORY_COPY.govern.quarantine.dialog.confirm,
     });
@@ -2009,7 +2040,9 @@ describe('quarantining a memory', () => {
       within(dialog).getByRole('button', { name: MEMORY_COPY.govern.quarantine.dialog.confirm }),
     );
 
-    const title = await view.findByText(MEMORY_COPY.govern.quarantine.outcome.done.title);
+    const title = await view.findByText(
+      MEMORY_COPY.govern.quarantine.outcome.done.title(excerpt(AISLE.content)),
+    );
     expect(title).not.toBeNull();
     expect(view.container.textContent).toContain(
       MEMORY_COPY.govern.quarantine.outcome.done.description(2),
@@ -2038,7 +2071,9 @@ describe('quarantining a memory', () => {
       within(dialog).getByRole('button', { name: MEMORY_COPY.govern.quarantine.dialog.confirm }),
     );
 
-    await view.findByText(MEMORY_COPY.govern.quarantine.outcome.already.title);
+    await view.findByText(
+      MEMORY_COPY.govern.quarantine.outcome.already.title(excerpt(AISLE.content)),
+    );
   });
 
   test('words a memory that is not there', async () => {
@@ -2059,6 +2094,684 @@ describe('quarantining a memory', () => {
     await view.findByText(MEMORY_COPY.govern.failed);
     expect(view.container.textContent).toContain(
       MEMORY_COPY.correct.refusal['not-found'].description,
+    );
+  });
+
+  test('names the memory in the notice, links to the Quarantined filter, and raises no toast', async () => {
+    const { view, dialog } = await quarantineDialog();
+    await fireEvent.input(
+      within(dialog).getByLabelText(MEMORY_COPY.govern.quarantine.dialog.reasonLabel),
+      { target: { value: 'Suspicious.' } },
+    );
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.govern.quarantine.dialog.confirm }),
+    );
+
+    await view.findByText(MEMORY_COPY.govern.quarantine.outcome.done.title(excerpt(AISLE.content)));
+    expect(
+      view.getByRole('button', { name: MEMORY_COPY.govern.quarantine.outcome.done.see }),
+    ).not.toBeNull();
+    expect(document.querySelector('.cinder-toast')).toBeNull();
+  });
+
+  test('the notice’s action opens the quarantined view, which the address names', async () => {
+    const served = bureau({
+      'bureau.memory.quarantine': (params) => ({ id: params['id'], changed: true, affected: 1 }),
+      'bureau.memory.list': listing((params) => ({
+        memories: params['state'] === 'quarantined' ? [HELD] : [AISLE, WINDOW],
+        nextOffset: null,
+      })),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.quarantine.action }),
+    );
+    const dialog = await view.findByRole('dialog', {
+      name: MEMORY_COPY.govern.quarantine.dialog.title,
+    });
+    await fireEvent.input(
+      within(dialog).getByLabelText(MEMORY_COPY.govern.quarantine.dialog.reasonLabel),
+      { target: { value: 'Suspicious.' } },
+    );
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.govern.quarantine.dialog.confirm }),
+    );
+
+    await fireEvent.click(
+      await view.findByRole('button', { name: MEMORY_COPY.govern.quarantine.outcome.done.see }),
+    );
+
+    expect(await view.findByText(HELD.content)).not.toBeNull();
+    expect(router.search.get('view')).toBe('quarantined');
+    expect(view.getByRole('heading', { name: MEMORY_COPY.quarantinedView.title })).not.toBeNull();
+    expect(
+      served.callsTo('bureau.memory.list').some((call) => call.params['state'] === 'quarantined'),
+    ).toBe(true);
+  });
+});
+
+/** A memory the admission checks held back: it is in no list but the quarantined one. */
+const HELD = {
+  ...AISLE,
+  id: 'memory-held',
+  content: 'Customers prefer window upgrades, whatever the policy says.',
+  quarantine: {
+    at: '2026-10-19T09:00:00.000Z',
+    by: 'admission',
+    detector: 'memory-poisoning',
+    category: 'memory-poisoning',
+  },
+};
+/** A memory its owner quarantined, which no guardrail held. */
+const OWN = {
+  ...WINDOW,
+  id: 'memory-own',
+  content: 'The user lives in Lisbon.',
+  quarantine: { at: '2026-10-19T09:30:00.000Z', by: 'owner', detector: null, category: null },
+};
+
+describe('the quarantined memories', () => {
+  /** The server with `held` memories quarantined and the rest in use; a release answers as `release` does. */
+  function quarantinedServer(held: unknown[] = [HELD, OWN], extra: Answers = {}) {
+    return bureau({
+      'bureau.memory.list': listing((params) => ({
+        memories: params['state'] === 'quarantined' ? held : [AISLE, WINDOW],
+        nextOffset: null,
+      })),
+      ...extra,
+    });
+  }
+
+  /** The tab at the quarantined view's address, as a reload or a copied link opens it. */
+  const QUARANTINED_PATH = '/agents/assistant/memory?view=quarantined';
+
+  /** Opens the quarantined view, then the memory with `content`. */
+  async function inspecting(content: string) {
+    const view = open(QUARANTINED_PATH);
+    const text = await view.findByText(content);
+    const opener = text.closest('button');
+    if (opener === null) throw new Error(`No row holds "${content}".`);
+    await fireEvent.click(opener);
+    const detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    await waitFor(() => expect(detail.querySelector('[data-memory-quarantined]')).not.toBeNull());
+    return { view, detail };
+  }
+
+  test('ends the list with a Quarantined memories row that opens the view, and Back returns', async () => {
+    const served = quarantinedServer();
+    const view = open();
+    await view.findByText(AISLE.content);
+    expect(view.queryByText(HELD.content)).toBeNull();
+    expect(view.container.querySelector('[aria-label="Status"]')).toBeNull();
+
+    const entry = await view.findByRole('link', { name: MEMORY_COPY.quarantinedView.title });
+    // The chevron is a glyph, so in a narrow pane it stays beside the title (COR-2195).
+    expect(
+      entry.closest('li')?.classList.contains('cinder-stacked-list-item--trailing-glyph'),
+    ).toBe(true);
+    await fireEvent.click(entry);
+
+    await view.findByText(HELD.content);
+    expect(router.search.get('view')).toBe('quarantined');
+    expect(view.getByRole('heading', { name: MEMORY_COPY.quarantinedView.title })).not.toBeNull();
+    expect(view.getByText(OWN.content)).not.toBeNull();
+    expect(view.queryByText(AISLE.content)).toBeNull();
+    // Every row here is quarantined, so no row says so again.
+    expect(view.container.querySelectorAll('[data-memory]')).toHaveLength(2);
+    expect(view.container.querySelector('[data-quarantined]')).toBeNull();
+    expect(
+      view.getByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel }).textContent,
+    ).toContain(MEMORY_COPY.quarantinedView.back);
+    // The way back has the focus, and the row that led here is not in this view.
+    await waitFor(() =>
+      expect(document.activeElement?.hasAttribute('data-memory-view-back')).toBe(true),
+    );
+    const request = served
+      .callsTo('bureau.memory.list')
+      .find((call) => call.params['state'] === 'quarantined' && call.params['limit'] === 20);
+    expect(request?.params).toMatchObject({ agentId: 'assistant', state: 'quarantined' });
+
+    await fireEvent.click(view.getByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel }));
+    await view.findByText(AISLE.content);
+    expect(router.search.get('view')).toBeNull();
+    expect(view.queryByText(HELD.content)).toBeNull();
+  });
+
+  test('draws no row when nothing is quarantined', async () => {
+    quarantinedServer([]);
+    const empty = open();
+    await empty.findByText(AISLE.content);
+    expect(empty.queryByRole('link', { name: MEMORY_COPY.quarantinedView.title })).toBeNull();
+  });
+
+  test('draws no row when viewing the quarantined is refused', async () => {
+    bureau({
+      'bureau.memory.list': listing((params) => {
+        if (params['state'] === 'quarantined') throw new StubFault('Forbidden', 403, 'No scope.');
+        return { memories: [AISLE, WINDOW], nextOffset: null };
+      }),
+    });
+    const refused = open();
+    await refused.findByText(AISLE.content);
+    expect(refused.queryByRole('link', { name: MEMORY_COPY.quarantinedView.title })).toBeNull();
+  });
+
+  describe('the Quarantined memories entry is the list’s footer, not one of its rows', () => {
+    /** The entry's link, or `null`. */
+    const entryLink = (view: ReturnType<typeof open>) =>
+      view.container.querySelector<HTMLAnchorElement>('[data-memory-quarantined-entry] a[href]');
+
+    test('shows below the first-use empty state when nothing is in use and one memory is quarantined', async () => {
+      bureau({
+        'bureau.memory.list': listing((params) => ({
+          memories: params['state'] === 'quarantined' ? [HELD] : [],
+          nextOffset: null,
+        })),
+      });
+      const view = open();
+
+      await view.findByText(MEMORY_COPY.nothing.title);
+      expect(view.getByRole('button', { name: MEMORY_COPY.add.action })).not.toBeNull();
+      const entry = await waitFor(() => {
+        const link = entryLink(view);
+        expect(link === null).toBe(false);
+        return link!;
+      });
+      const empty = view.getByText(MEMORY_COPY.nothing.title);
+      expect(empty.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    test('shows below “No memory matches” and Show all memories for a search with no match', async () => {
+      quarantinedServer();
+      const view = open();
+      await view.findByText(AISLE.content);
+
+      await fireEvent.input(view.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }), {
+        target: { value: 'zzz' },
+      });
+
+      await view.findByText(MEMORY_COPY.noMatch.title('zzz'));
+      expect(view.getByRole('button', { name: MEMORY_COPY.clearMatch })).not.toBeNull();
+      expect(entryLink(view) === null).toBe(false);
+    });
+
+    test('is a link in the tab order, not a selectable row, and J and K never land on it', async () => {
+      quarantinedServer();
+      const view = open();
+      await view.findByText(AISLE.content);
+      const link = await waitFor(() => {
+        const found = entryLink(view);
+        expect(found === null).toBe(false);
+        return found!;
+      });
+
+      expect(link.tabIndex).toBeGreaterThanOrEqual(0);
+      expect(link.closest('li[data-cinder-list-detail-key]')).toBeNull();
+      expect(link.closest('[data-memory]')).toBeNull();
+      // J walks the rows and stops at the last: the entry is never the cursor.
+      const first = view.container.querySelector<HTMLElement>(
+        '[data-memory] button, button[data-memory]',
+      );
+      first?.focus();
+      for (let step = 0; step < 6; step += 1) {
+        await fireEvent.keyDown(document.activeElement ?? document.body, { key: 'j' });
+      }
+      expect(document.activeElement?.closest('[data-memory-quarantined-entry]') ?? null).toBeNull();
+      // Enter on it opens no memory, and following the link is what opens the view.
+      await fireEvent.keyDown(link, { key: 'Enter' });
+      expect(router.search.get('selected')).toBeNull();
+      expect(router.search.get('view')).toBeNull();
+      await fireEvent.click(link);
+      await view.findByText(HELD.content);
+      expect(router.search.get('view')).toBe('quarantined');
+    });
+  });
+
+  test('names the two Back controls for what they are, and the detail’s Back inside the view', async () => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    // ListDetail measures its own width, and happy-dom has no layout, so it is given a phone's.
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        width: 500,
+        height: 800,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 500,
+        bottom: 800,
+      }) as DOMRect;
+    try {
+      quarantinedServer();
+      const inView = open(`${QUARANTINED_PATH}&selected=${HELD.id}`);
+      await inView.findByRole('button', { name: MEMORY_COPY.quarantinedView.detailBackLabel });
+      expect(inView.queryByRole('button', { name: MEMORY_COPY.backToList })).toBeNull();
+      cleanup();
+      stub?.restore();
+
+      quarantinedServer();
+      const ordinary = open(`/agents/assistant/memory?selected=${AISLE.id}`);
+      await ordinary.findByRole('button', { name: MEMORY_COPY.backToList });
+      expect(
+        ordinary.queryByRole('button', { name: MEMORY_COPY.quarantinedView.detailBackLabel }),
+      ).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = measure;
+    }
+    expect(MEMORY_COPY.quarantinedView.backLabel).toBe('Back to Memory');
+    expect(MEMORY_COPY.quarantinedView.backLabel).toContain(MEMORY_COPY.quarantinedView.back);
+    expect(MEMORY_COPY.quarantinedView.detailBackLabel).toBe('Back to quarantined memories');
+  });
+
+  test('says when nothing is quarantined in the view itself, with its way back', async () => {
+    quarantinedServer([]);
+    const view = open(QUARANTINED_PATH);
+
+    await view.findByText(MEMORY_COPY.quarantinedView.empty.title);
+    // The header's Back, and the empty view's own action, both go back to the memories.
+    const backs = view.getAllByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel });
+    expect(backs).toHaveLength(2);
+    expect(backs.map((back) => back.textContent?.trim()).toSorted()).toEqual(
+      [MEMORY_COPY.quarantinedView.back, MEMORY_COPY.quarantinedView.empty.back].toSorted(),
+    );
+    // Nothing is listed and nothing narrows it, so there is nothing to search or filter.
+    expect(view.queryByRole('searchbox', { name: MEMORY_COPY.searchLabel })).toBeNull();
+    expect(view.queryByLabelText(MEMORY_COPY.filter.kindLabel)).toBeNull();
+    expect(view.queryByLabelText(MEMORY_COPY.filter.writerLabel)).toBeNull();
+    const actionBack = backs.find(
+      (back) => back.textContent?.trim() === MEMORY_COPY.quarantinedView.empty.back,
+    );
+    await fireEvent.click(actionBack!);
+    await view.findByText(AISLE.content);
+    expect(router.search.get('view')).toBeNull();
+  });
+
+  test('says viewing them takes the permission releasing them does, rather than an empty list', async () => {
+    bureau({
+      'bureau.memory.list': listing((params) => {
+        if (params['state'] === 'quarantined') throw new StubFault('Forbidden', 403, 'No scope.');
+        return { memories: [AISLE, WINDOW], nextOffset: null };
+      }),
+    });
+    const view = open(QUARANTINED_PATH);
+
+    await view.findByText(MEMORY_COPY.quarantinedView.forbiddenTitle);
+    expect(view.container.textContent).toContain(MEMORY_COPY.govern.refusal.forbidden.description);
+    expect(MEMORY_COPY.govern.refusal.forbidden.description).toContain('viewing quarantined');
+    expect(view.queryByText(MEMORY_COPY.quarantinedView.empty.title)).toBeNull();
+  });
+
+  test('reopens a quarantined memory after a reload of its address, and Back keeps the view', async () => {
+    quarantinedServer();
+    const view = open(`${QUARANTINED_PATH}&selected=${HELD.id}`);
+
+    const detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    await waitFor(() => expect(detail.querySelector('[data-memory-quarantined]')).not.toBeNull());
+    expect(detail.textContent).toContain(HELD.content);
+    expect(view.queryByText(MEMORY_COPY.detail.notFound.title)).toBeNull();
+    expect(router.search.get('view')).toBe('quarantined');
+    expect(router.search.get('selected')).toBe(HELD.id);
+  });
+
+  test('says a sentence that is true for an id the view does not hold: not quarantined', async () => {
+    quarantinedServer([OWN]);
+    const view = open(`${QUARANTINED_PATH}&selected=${AISLE.id}`);
+
+    await view.findByText(MEMORY_COPY.quarantinedView.notHere.absent);
+    expect(view.queryByText(MEMORY_COPY.quarantinedView.notHere.unread)).toBeNull();
+  });
+
+  test('says a sentence that is true for an id the view has not read yet', async () => {
+    bureau({
+      'bureau.memory.list': listing((params) => ({
+        memories: params['state'] === 'quarantined' ? [OWN] : [AISLE, WINDOW],
+        nextOffset: params['state'] === 'quarantined' && params['limit'] === 20 ? 20 : null,
+      })),
+    });
+    const view = open(`${QUARANTINED_PATH}&selected=${HELD.id}`);
+
+    await view.findByText(MEMORY_COPY.quarantinedView.notHere.unread);
+    expect(view.queryByText(MEMORY_COPY.quarantinedView.notHere.absent)).toBeNull();
+  });
+
+  test('says in the ordinary view that a quarantined memory opens from the quarantined ones', async () => {
+    quarantinedServer([HELD], {
+      // `get` does not serve a quarantined memory.
+      'bureau.memory.get': () => {
+        throw new StubFault('NotFound', 404, 'No memory.');
+      },
+    });
+    const view = open(`/agents/assistant/memory?selected=${HELD.id}`);
+
+    await view.findByText(MEMORY_COPY.detail.notFound.title);
+    expect(view.container.textContent).toContain(
+      'A quarantined memory opens from Quarantined memories.',
+    );
+  });
+
+  test('says the list is not complete while quarantined pages are unread, and never that nothing matches', async () => {
+    bureau({
+      'bureau.memory.list': listing((params) => ({
+        memories: params['state'] === 'quarantined' ? [OWN] : [AISLE, WINDOW],
+        nextOffset: params['state'] === 'quarantined' && params['limit'] === 20 ? 20 : null,
+      })),
+    });
+    const view = open(QUARANTINED_PATH);
+    await view.findByText(OWN.content);
+
+    // A search that the pages read hold no word of: the note still says more pages are unread.
+    await fireEvent.input(view.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }), {
+      target: { value: 'zzz' },
+    });
+    const note = await view.findByTestId('memory-kind-note');
+    expect(note.textContent).toBe(MEMORY_COPY.filter.note(0, 1, true));
+    expect(note.textContent).toContain('Load more to look further.');
+    expect(view.queryByText(MEMORY_COPY.noFiltered.title)).toBeNull();
+    expect(view.getByRole('button', { name: MEMORY_COPY.loadMore })).not.toBeNull();
+
+    // A filter says the same, from the quarantined list's own paging and not the ordinary list's.
+    await fireEvent.input(view.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }), {
+      target: { value: '' },
+    });
+    await fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.kindLabel), {
+      target: { value: 'how-to' },
+    });
+    const filterNote = await view.findByTestId('memory-kind-note');
+    expect(filterNote.textContent).toBe(MEMORY_COPY.filter.note(0, 1, true));
+  });
+
+  test('narrows the quarantined view by a search and says so when every page is read', async () => {
+    quarantinedServer();
+    const view = open(QUARANTINED_PATH);
+    await view.findByText(HELD.content);
+
+    await fireEvent.input(view.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }), {
+      target: { value: 'lisbon' },
+    });
+
+    await waitFor(() => expect(view.queryByText(HELD.content)?.outerHTML ?? null).toBeNull());
+    // The word searched for is marked, so the text is read whole.
+    expect(view.container.querySelector('[data-memory="memory-own"]')?.textContent).toContain(
+      OWN.content,
+    );
+    const searchNote = await view.findByTestId('memory-kind-note');
+    expect(searchNote.textContent).toBe(MEMORY_COPY.filter.note(1, 2, false));
+  });
+
+  test('clearing the filters stays in the quarantined view', async () => {
+    quarantinedServer();
+    const view = open(QUARANTINED_PATH);
+    await view.findByText(HELD.content);
+    await fireEvent.input(view.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }), {
+      target: { value: 'zzz' },
+    });
+
+    await fireEvent.click(await view.findByRole('button', { name: MEMORY_COPY.clearMatch }));
+
+    await view.findByText(HELD.content);
+    expect(router.search.get('view')).toBe('quarantined');
+    expect(view.queryByText(AISLE.content)).toBeNull();
+  });
+
+  test('shows why a memory was quarantined, in plain words, under a real heading, with one action', async () => {
+    quarantinedServer();
+    const { detail } = await inspecting(HELD.content);
+
+    expect(
+      within(detail).getByRole('heading', { name: MEMORY_COPY.govern.release.detail.heading }),
+    ).not.toBeNull();
+    expect(detail.textContent).toContain(
+      MEMORY_COPY.govern.release.detail.how.admission(
+        MEMORY_COPY.govern.release.detail.detectors['memory-poisoning'],
+        MEMORY_COPY.govern.release.detail.categories['memory-poisoning'],
+      ),
+    );
+    // The held text is labelled, set in a muted note, and drawn as text.
+    const flagged = within(detail).getByRole('note', {
+      name: MEMORY_COPY.govern.release.detail.flaggedText,
+    });
+    expect(flagged.textContent).toContain(HELD.content);
+    expect(detail.querySelector('h2[data-memory-text]')).toBeNull();
+    // No identifier is quoted on screen.
+    expect(detail.textContent).not.toContain('“memory-poisoning”');
+    const release = within(detail).getByRole('button', {
+      name: MEMORY_COPY.govern.release.action,
+    });
+    expect(release.closest('details')).toBeNull();
+    expect(
+      within(detail).queryByRole('button', { name: MEMORY_COPY.govern.share.action }),
+    ).toBeNull();
+    expect(MEMORY_COPY.govern.release.action).not.toBe(MEMORY_COPY.govern.hold.release);
+  });
+
+  test('drops the Quarantined row when the ledger does not explain the memory', async () => {
+    quarantinedServer([{ ...HELD, quarantine: undefined }]);
+    const { detail } = await inspecting(HELD.content);
+
+    expect(within(detail).queryByText(MEMORY_COPY.govern.release.detail.quarantinedRow)).toBeNull();
+    expect(within(detail).getAllByText(MEMORY_COPY.govern.release.detail.how.unknown)).toHaveLength(
+      1,
+    );
+  });
+
+  test('says an owner quarantined it when the owner did', async () => {
+    quarantinedServer();
+    const { detail } = await inspecting(OWN.content);
+
+    expect(detail.textContent).toContain(MEMORY_COPY.govern.release.detail.how.owner);
+  });
+
+  test('releases that memory, shows progress on the action, and refuses a second press', async () => {
+    let finish: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const served = quarantinedServer([HELD], {
+      'bureau.memory.quarantine.release': async (params) => {
+        await gate;
+        return { id: params['id'], changed: true };
+      },
+    });
+    const { view, detail } = await inspecting(HELD.content);
+    const release = within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action });
+
+    release.focus();
+    await fireEvent.click(release);
+    await waitFor(() => expect(release.getAttribute('aria-busy')).toBe('true'));
+    // Cinder's loading contract: aria-disabled, never the native attribute, so the focus stays on it.
+    expect(release.hasAttribute('disabled')).toBe(false);
+    expect(release.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement === release).toBe(true);
+    await fireEvent.click(release);
+    finish();
+
+    await view.findByText(MEMORY_COPY.govern.release.outcome.done.title(excerpt(HELD.content)));
+    expect(served.callsTo('bureau.memory.quarantine.release')).toHaveLength(1);
+    expect(served.callsTo('bureau.memory.quarantine.release')[0]?.params).toEqual({
+      agentId: 'assistant',
+      id: HELD.id,
+    });
+    expect(document.querySelector('.cinder-toast')).toBeNull();
+  });
+
+  test('moves a released memory out of the quarantined list and into the normal one', async () => {
+    let released = false;
+    bureau({
+      'bureau.memory.list': listing((params) => ({
+        memories:
+          params['state'] === 'quarantined'
+            ? released
+              ? []
+              : [HELD]
+            : released
+              ? [AISLE, { ...HELD, quarantine: undefined }]
+              : [AISLE],
+        nextOffset: null,
+      })),
+      'bureau.memory.quarantine.release': (params) => {
+        released = true;
+        return { id: params['id'], changed: true };
+      },
+    });
+    const { view, detail } = await inspecting(HELD.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action }),
+    );
+
+    await view.findByText(MEMORY_COPY.quarantinedView.empty.title);
+    expect(view.queryByText(HELD.content)).toBeNull();
+    await fireEvent.click(
+      view.getAllByRole('link', { name: MEMORY_COPY.quarantinedView.backLabel })[0]!,
+    );
+    await view.findByText(HELD.content);
+  });
+
+  test('moves the focus to the next quarantined memory after a release, and to the notice when none is left', async () => {
+    let released = false;
+    bureau({
+      'bureau.memory.list': listing((params) => ({
+        memories: params['state'] === 'quarantined' ? (released ? [OWN] : [HELD, OWN]) : [AISLE],
+        nextOffset: null,
+      })),
+      'bureau.memory.quarantine.release': (params) => {
+        released = true;
+        return { id: params['id'], changed: true };
+      },
+    });
+    const { view, detail } = await inspecting(HELD.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action }),
+    );
+
+    // The next quarantined memory opens, and its row has the focus: the detail that held it is gone.
+    await waitFor(() => expect(router.search.get('selected')).toBe(OWN.id));
+    await waitFor(() =>
+      expect(document.activeElement?.closest('[data-memory]')?.getAttribute('data-memory')).toBe(
+        OWN.id,
+      ),
+    );
+    expect(document.activeElement === document.body).toBe(false);
+    await waitFor(() => expect(view.queryByText(HELD.content)?.outerHTML ?? null).toBeNull());
+  });
+
+  test('moves the focus to the outcome notice when the last quarantined memory is released', async () => {
+    let released = false;
+    bureau({
+      'bureau.memory.list': listing((params) => ({
+        memories: params['state'] === 'quarantined' ? (released ? [] : [HELD]) : [AISLE],
+        nextOffset: null,
+      })),
+      'bureau.memory.quarantine.release': (params) => {
+        released = true;
+        return { id: params['id'], changed: true };
+      },
+    });
+    const { view, detail } = await inspecting(HELD.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action }),
+    );
+
+    const outcome = await view.findByText(
+      MEMORY_COPY.govern.release.outcome.done.title(excerpt(HELD.content)),
+    );
+    // A boolean, not the element: a failed match would print the whole page, which takes seconds.
+    await waitFor(() => expect(document.activeElement === outcome).toBe(true));
+    expect(router.search.get('selected')).toBeNull();
+  });
+
+  test('says when it was already in use, from a release that changed nothing', async () => {
+    quarantinedServer([HELD], {
+      'bureau.memory.quarantine.release': (params) => ({ id: params['id'], changed: false }),
+    });
+    const { view, detail } = await inspecting(HELD.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action }),
+    );
+
+    await view.findByText(MEMORY_COPY.govern.release.outcome.already.title(excerpt(HELD.content)));
+  });
+
+  for (const reason of [
+    'verification-failed',
+    'derived-record',
+    'deletion-pending',
+    'superseded',
+    'tampered',
+  ] as const) {
+    test(`shows a release refused as ${reason} in the details, with its own title and description`, async () => {
+      quarantinedServer([HELD], {
+        'bureau.memory.quarantine.release': () => {
+          throw new StubFault('Unprocessable', 422, 'free text from the server', {
+            reason: `memory-${reason}`,
+          });
+        },
+      });
+      const { view, detail } = await inspecting(HELD.content);
+
+      await fireEvent.click(
+        within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action }),
+      );
+
+      const words = MEMORY_COPY.govern.release.refusal[reason];
+      await within(detail).findByText(words.title);
+      expect(detail.textContent).toContain(words.description);
+      expect(detail.querySelector(`[data-release-refusal="${reason}"]`)).not.toBeNull();
+      // Said here, where Release was pressed, and not in the page's own notice.
+      expect(view.queryByText(MEMORY_COPY.govern.failed)).toBeNull();
+      expect(view.container.textContent).not.toContain('free text from the server');
+      // The memory is still quarantined and still open, and Release can be pressed again.
+      expect(
+        within(detail)
+          .getByRole('button', { name: MEMORY_COPY.govern.release.action })
+          .hasAttribute('disabled'),
+      ).toBe(false);
+    });
+  }
+
+  test('words a release refused for want of bureau.memory:govern in the details', async () => {
+    quarantinedServer([HELD], {
+      'bureau.memory.quarantine.release': () => {
+        throw new StubFault('Forbidden', 403, 'The server’s own words.');
+      },
+    });
+    const { detail } = await inspecting(HELD.content);
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.govern.release.action }),
+    );
+
+    await within(detail).findByText(MEMORY_COPY.govern.refusal.forbidden.title);
+    expect(detail.textContent).toContain(MEMORY_COPY.govern.refusal.forbidden.description);
+    expect(MEMORY_COPY.govern.refusal.forbidden.description).toContain('releasing one');
+    expect(detail.textContent).not.toContain('The server’s own words.');
+  });
+
+  test('offers Forget on a quarantined memory, which is what a flagged one is left to', async () => {
+    quarantinedServer([HELD], {
+      'bureau.memory.forget': () => ({
+        id: HELD.id,
+        deletion: 'completed',
+        receipt: { ...RECEIPT, open: false },
+      }),
+    });
+    const { detail } = await inspecting(HELD.content);
+
+    expect(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    ).not.toBeNull();
+    // The copy names the button the way its accessible label does.
+    for (const reason of ['verification-failed', 'tampered'] as const) {
+      expect(MEMORY_COPY.govern.release.refusal[reason].description).toContain(
+        MEMORY_COPY.forget.iconLabel,
+      );
+    }
+    expect(MEMORY_COPY.govern.release.refusal['derived-record'].description).not.toContain(
+      'It stays quarantined',
     );
   });
 });
@@ -2477,7 +3190,9 @@ describe('what a governance note claims', () => {
         name: MEMORY_COPY.govern.quarantine.dialog.confirm,
       }),
     );
-    await view.findByText(MEMORY_COPY.govern.quarantine.outcome.already.title);
+    await view.findByText(
+      MEMORY_COPY.govern.quarantine.outcome.already.title(excerpt(AISLE.content)),
+    );
     expect(view.container.textContent).not.toContain(MEMORY_COPY.govern.recorded);
   });
 

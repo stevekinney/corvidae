@@ -22,6 +22,23 @@
  * never retried. Every attempt, a timer's, a manual retry's and a reconcile's, runs under the
  * runtime's serialization lock, so none interleaves with another.
  *
+ * COR-2168 — a kind that only receives has no `start`: its file is `ready` once the configuration
+ * parses and the storage can be made, `stopped` when paused, and `failed` as any file is when
+ * either step fails. The entry stays, with nothing to stop, so `noteFired` can record the runs its
+ * `receive` started.
+ *
+ * COR-2167 — with a `lease`, a listener runs in one of the Bureaus sharing the store: an attempt
+ * takes the listener lease immediately before `start` (see `workflow-trigger-lease.ts`), and one
+ * that cannot is `standby`, starting nothing. Each renewal of the process lease is a tick, which
+ * queues one pass under the serialization lock: a standby is attempted again, and a holder whose
+ * record names another process goes standby and is stopped. Every fire reads the record first and
+ * answers `skipped: 'stopped'` when this process no longer holds it. A holder's listener that stops
+ * gives its record back, after the stop, in one chain of lease writes per workflow. With a lease or
+ * without one, the listeners of one workflow never overlap in this process: no attempt calls
+ * `start` until every earlier attempt's `start` has settled and every listener it produced has
+ * finished `stop`. The lease fences fires, not a plugin's trigger storage: a listener another
+ * process took over keeps running until its next tick or fence finds the record no longer names it.
+ *
  * @module workflow-trigger-supervisor
  */
 
@@ -32,8 +49,12 @@ import type {
   PluginTriggerOutcome,
 } from '@lostgradient/interborough-plugin';
 import type { Storage } from '@lostgradient/storage';
+import { z } from 'zod';
 
+import type { TriggerEventKind, TriggerFireOutcome } from './events';
+import { publishableErrorCode } from './published-error-names';
 import type { VersionedCatalogEntry } from './versioned-catalog';
+import type { WorkflowTriggerLease } from './workflow-trigger-lease';
 import { createTriggerStorage } from './workflow-trigger-state';
 import { type ListenerReport, listenForReports } from './workflow-trigger-reports';
 
@@ -53,8 +74,14 @@ export interface DesiredTrigger {
   readonly paused?: boolean | undefined;
 }
 
-/** What a listener is doing. */
-export type ListenerState = 'listening' | 'waiting-for-secret' | 'failed' | 'stopped';
+/**
+ * What a listener is doing. `ready` is a kind that only receives (COR-2168): it has no listener to
+ * run, and its file is ready for `receive` whatever its secrets, until the file is paused.
+ * `standby` (COR-2167) is a listener another process sharing the store runs, or may run: this
+ * process does not start it, and takes it over at a renewal tick once that process is gone.
+ */
+export type ListenerState =
+  'listening' | 'waiting-for-secret' | 'failed' | 'stopped' | 'ready' | 'standby';
 
 /** Why a listener is `failed`. */
 export type ListenerCode = 'start-failed' | 'configuration-refused';
@@ -92,12 +119,21 @@ export interface WorkflowTriggerSupervisor {
    * Start the failed listener of workflow `id` at once, with the backoff cleared, and answer what
    * it is doing once the attempt has settled; the attempt runs under the serialization lock. An
    * attempt already in flight, or already queued for its timer, is not repeated: its result is the
-   * answer. A listener that is listening, waiting for a secret or stopped is left as it is. A
+   * answer. A listener that is listening, waiting for a secret, stopped or `standby` is left as it
+   * is, and an attempt that finds another process holding the lease answers `standby`. A
    * listener whose configuration the kind refuses is parsed again, and stays failed without a
    * timer when it is refused again. `undefined` when the workflow has no listener, which is also
    * what it answers after the supervisor is closed.
    */
   retry(id: string): Promise<ListenerStatus | undefined>;
+  /**
+   * A `receive` of kind `kind` for workflow `id` started a run: record when, on the entry that is
+   * the workflow's now, whatever state it is in, as a started fire of its own `start` does
+   * (COR-2168). Nothing is written when the workflow has no entry yet or any more, when its entry
+   * is of another kind, or after the supervisor closed. The state, `since` and `retryAt` are left as
+   * they are.
+   */
+  noteFired(id: string, kind: string): void;
   /** Stop every trigger, cancel every retry, and refuse to start another. */
   close(): Promise<void>;
 }
@@ -153,6 +189,86 @@ export interface WorkflowTriggerSupervisorOptions {
   readonly reportFailure: (plugin: string, workflow: string, message: string) => void;
   /** The listener of `workflow` is no longer failed, or its file is gone. */
   readonly clearFailure: (plugin: string, workflow: string) => void;
+  /**
+   * COR-2167 — which process runs each listener when several share the store. Absent for a Bureau
+   * whose store dies with its process: every listener runs, and no fire reads anything first.
+   */
+  readonly lease?: WorkflowTriggerLease | undefined;
+  /**
+   * COR-2250 — told what a listener did (started, stopped, failed) and what became of each fire of
+   * a listener's `fire`, for the Bureau to publish. Never given a payload, a key or error text.
+   */
+  readonly publish?: ((event: TriggerEventRecord) => void) | undefined;
+}
+
+/** COR-2250 — one trigger event, as the supervisor and the runtime hand it to the Bureau. */
+export interface TriggerEventRecord {
+  readonly kind: TriggerEventKind;
+  readonly workflowId: string;
+  /** The contributed kind, `plugin:name`. */
+  readonly trigger: string;
+  readonly version: string;
+  readonly outcome?: TriggerFireOutcome | undefined;
+  readonly runId?: string | undefined;
+  /** An identifier, never text. */
+  readonly errorCode?: string | undefined;
+}
+
+/** The code a `trigger.failed` event names, for each {@link ListenerCode}. */
+const LISTENER_ERROR_CODES: Readonly<Record<ListenerCode, string>> = {
+  'start-failed': 'START_FAILED',
+  'configuration-refused': 'CONFIGURATION_REFUSED',
+};
+
+/** The states in which a listener is running in this process, as `trigger.started` counts them. */
+const RUNNING_STATES: ReadonlySet<ListenerState> = new Set([
+  'listening',
+  'waiting-for-secret',
+  'ready',
+]);
+
+/** The `trigger.fired` record of a fire the host or the supervisor answered. */
+export function triggerFiredRecord(
+  base: Pick<TriggerEventRecord, 'workflowId' | 'trigger' | 'version'>,
+  outcome: PluginTriggerOutcome,
+): TriggerEventRecord {
+  return {
+    kind: 'trigger.fired',
+    ...base,
+    outcome: outcome.outcome,
+    ...(outcome.outcome === 'skipped' ? {} : { runId: outcome.runId }),
+  };
+}
+
+/** The `trigger.fired` record of a fire that rejected, named by `errorCode` alone. */
+export function triggerRefusedRecord(
+  base: Pick<TriggerEventRecord, 'workflowId' | 'trigger' | 'version'>,
+  errorCode: string,
+): TriggerEventRecord {
+  return { kind: 'trigger.fired', ...base, outcome: 'refused', errorCode };
+}
+
+/**
+ * The identifiers of the refusals the host's `fire` makes with a code that is not one: a payload
+ * the `inputSchema` refuses (`WorkflowInputInvalidError`) and a failed apply (`WorkflowApplyError`).
+ */
+const REFUSAL_CODES: ReadonlyMap<string, string> = new Map([
+  ['input-invalid', 'INPUT_INVALID'],
+  ['workflow-apply-failed', 'WORKFLOW_APPLY_FAILED'],
+]);
+
+/**
+ * COR-2250 — the identifier a `trigger.fired` event names for a fire that rejected: a known
+ * refusal by its own name, a code that is an identifier already (a `BureauError`'s `BAD_REQUEST`),
+ * and `INTERNAL_ERROR` for anything else, so no error text reaches the feed.
+ */
+export function triggerRefusalCode(error: unknown): string {
+  const code =
+    error !== null && typeof error === 'object' && Object.hasOwn(error, 'code')
+      ? (error as { readonly code: unknown }).code
+      : undefined;
+  const known = typeof code === 'string' ? REFUSAL_CODES.get(code) : undefined;
+  return known ?? publishableErrorCode(code, 'INTERNAL_ERROR');
 }
 
 interface RunningTrigger {
@@ -192,6 +308,19 @@ interface RunningTrigger {
   retryAt?: string | undefined;
   /** The attempt a timer or a caller queued behind the serialization lock for this entry. */
   queued?: Promise<void> | undefined;
+  /**
+   * COR-2167 — whether this attempt took the listener lease and has not given it back: set when
+   * its acquire answers `held`, cleared when its record is deleted or found to name another.
+   */
+  holding: boolean;
+  /** COR-2167 — whether this entry is `standby`: another process runs, or may run, the listener. */
+  standby: boolean;
+  /**
+   * COR-2167 — the workflow's listener lifecycle as it was when this attempt was created: every
+   * earlier attempt and every stop begun before it. Its `start` waits for it. Absent when nothing
+   * was pending.
+   */
+  readonly predecessors: Promise<void> | undefined;
 }
 
 /** What the supervisor knows about one file's listener. */
@@ -200,6 +329,8 @@ interface ListenerRecord {
   readonly plugin: string;
   /** The kind, `plugin:name`. */
   readonly kind: string;
+  /** The kind's version as of the listener that wrote the status, for its events. */
+  readonly version: string;
   readonly status: ListenerStatus;
 }
 
@@ -212,6 +343,24 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Stands in for a payload that was not JSON when `fire` was called: a symbol is never JSON, so the
+ * runtime refuses it, at its own place in the order of checks, however the plugin changes its
+ * object while the fence awaits.
+ */
+const NOT_JSON_PAYLOAD = Symbol('a payload that was not JSON');
+
+/**
+ * What a fire's payload is once it has been read, before the fence awaits: a copy when it is JSON,
+ * since the plugin still owns it, and {@link NOT_JSON_PAYLOAD} otherwise, so the JSON or not-JSON
+ * decision is taken at the call and cannot change afterwards. No payload stays no payload, which
+ * the runtime starts with `null`, as it does a fire with no lease.
+ */
+function snapshotOf(payload: unknown): unknown {
+  if (payload === undefined) return undefined;
+  return z.json().safeParse(payload).success ? structuredClone(payload) : NOT_JSON_PAYLOAD;
+}
+
 /** Build a supervisor. */
 export function createWorkflowTriggerSupervisor(
   options: WorkflowTriggerSupervisorOptions,
@@ -219,6 +368,81 @@ export function createWorkflowTriggerSupervisor(
   const running = new Map<string, RunningTrigger>();
   const listeners = new Map<string, ListenerRecord>();
   let closed = false;
+  const { lease } = options;
+  /**
+   * COR-2167 — the lease writes of each workflow, one after another: an acquire waits for the
+   * delete of the attempt before it, so no attempt runs on a record its predecessor then deletes.
+   * Separate from the serialization lock, and never taken by a fire.
+   */
+  const leaseTails = new Map<string, Promise<void>>();
+  /**
+   * COR-2167 — the invariant: for one workflow, no attempt calls `start` until every earlier
+   * attempt's `start` has settled and every listener it produced has finished `stop`. This is each
+   * workflow's listener lifecycle, joined by every attempt when it is created (until it has
+   * settled, its stale-settle stop included) and by every stop of a listener when it begins. An
+   * attempt that will call `start` first waits for the lifecycle as it was before it joined, so it
+   * never waits on itself; a stop joins and waits for nothing, so a stop cannot queue behind a
+   * start. Never taken by a fire.
+   */
+  const lifecycles = new Map<string, Promise<void>>();
+  /** Whether a tick's pass is queued behind the serialization lock and has not begun. */
+  let tickQueued = false;
+  const unsubscribeTick = lease?.onTick(() => onTick());
+
+  /** Run `work` after every lease write of workflow `id` queued before it. */
+  function chained<T>(id: string, work: () => Promise<T>): Promise<T> {
+    const result = (leaseTails.get(id) ?? Promise.resolve()).then(work);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    leaseTails.set(id, tail);
+    void tail.then(() => {
+      if (leaseTails.get(id) === tail) leaseTails.delete(id);
+      return undefined;
+    });
+    return result;
+  }
+
+  /** Add `work`, an attempt or a listener's stop, to workflow `id`'s listener lifecycle. */
+  function joinLifecycle(id: string, work: Promise<unknown>): void {
+    const done = work.then(
+      () => undefined,
+      () => undefined,
+    );
+    const prior = lifecycles.get(id);
+    const tail = prior === undefined ? done : Promise.all([prior, done]).then(() => undefined);
+    lifecycles.set(id, tail);
+    void tail.then(() => {
+      if (lifecycles.get(id) === tail) lifecycles.delete(id);
+      return undefined;
+    });
+  }
+
+  /** Stop a listener of workflow `id`, as part of its lifecycle: the next `start` waits for it. */
+  function stopListener(id: string, stop: (() => void | Promise<void>) | undefined): Promise<void> {
+    const stopping = stopQuietly(id, stop);
+    joinLifecycle(id, stopping);
+    return stopping;
+  }
+
+  /**
+   * Give back the record `entry` holds, once `after` (its listener's stop) has settled: a delete by
+   * compare-and-swap on this process's value, queued now in the workflow's lease writes. Nothing
+   * for an entry that holds none.
+   */
+  function releaseHeld(
+    id: string,
+    entry: RunningTrigger,
+    after: Promise<void> = Promise.resolve(),
+  ): Promise<void> {
+    if (lease === undefined || !entry.holding) return after;
+    entry.holding = false;
+    return chained(id, async () => {
+      await after;
+      await lease.release(id);
+    });
+  }
 
   /** Whether `entry` is still the trigger of `id`, so that what it settles with counts. */
   function isCurrent(id: string, entry: RunningTrigger): boolean {
@@ -270,10 +494,17 @@ export function createWorkflowTriggerSupervisor(
     if (next.state === 'failed' && !alreadyReported) {
       options.reportFailure(entry.plugin, id, next.message ?? '');
     }
-    if (next.state === 'listening' || next.state === 'waiting-for-secret') entry.failures = 0;
+    if (
+      next.state === 'listening' ||
+      next.state === 'waiting-for-secret' ||
+      next.state === 'ready'
+    ) {
+      entry.failures = 0;
+    }
     listeners.set(id, {
       plugin: entry.plugin,
       kind: entry.kind,
+      version: entry.desired.kind.version,
       status: {
         state: next.state,
         since: sameState ? prior.status.since : options.nowISO(),
@@ -282,6 +513,8 @@ export function createWorkflowTriggerSupervisor(
         retryAt: next.retryAt ?? null,
       },
     });
+    // Published once the status is written, so a listener of the event reads the new state.
+    publishTransition(id, entry, prior, next.state, next.code);
   }
 
   /** Forget `id`'s listener, and the problem it had. */
@@ -290,6 +523,57 @@ export function createWorkflowTriggerSupervisor(
     if (prior === undefined) return;
     if (prior.status.state === 'failed') options.clearFailure(prior.plugin, id);
     listeners.delete(id);
+    if (RUNNING_STATES.has(prior.status.state)) publishStopped(id, prior);
+  }
+
+  /** Hand `event` to the Bureau; a publisher that throws is diagnosed, and changes nothing here. */
+  function publish(event: TriggerEventRecord): void {
+    if (options.publish === undefined) return;
+    try {
+      options.publish(event);
+    } catch (error) {
+      options.diagnose(
+        `Could not publish "${event.kind}" for workflow "${event.workflowId}".`,
+        error,
+      );
+    }
+  }
+
+  function publishStopped(id: string, prior: ListenerRecord): void {
+    publish({
+      kind: 'trigger.stopped',
+      workflowId: id,
+      trigger: prior.kind,
+      version: prior.version,
+    });
+  }
+
+  /**
+   * COR-2250 — the events a change of `id`'s state is: `trigger.started` into a running state
+   * from any other, `trigger.stopped` from a running state to `stopped` or `standby`, and
+   * `trigger.failed` into `failed`. A status written for another kind ends the old one first.
+   */
+  function publishTransition(
+    id: string,
+    entry: RunningTrigger,
+    prior: ListenerRecord | undefined,
+    next: ListenerState,
+    code: ListenerCode | null,
+  ): void {
+    let priorState = prior?.status.state;
+    if (prior !== undefined && prior.kind !== entry.kind) {
+      if (RUNNING_STATES.has(prior.status.state)) publishStopped(id, prior);
+      priorState = undefined;
+    }
+    const base = { workflowId: id, trigger: entry.kind, version: entry.desired.kind.version };
+    const wasRunning = priorState !== undefined && RUNNING_STATES.has(priorState);
+    if (RUNNING_STATES.has(next) && !wasRunning) publish({ kind: 'trigger.started', ...base });
+    if (wasRunning && (next === 'stopped' || next === 'standby')) {
+      publish({ kind: 'trigger.stopped', ...base });
+    }
+    if (next === 'failed' && priorState !== 'failed' && code !== null) {
+      publish({ kind: 'trigger.failed', ...base, errorCode: LISTENER_ERROR_CODES[code] });
+    }
   }
 
   /**
@@ -335,8 +619,61 @@ export function createWorkflowTriggerSupervisor(
     trigger.retired = true;
     cancelTimer(id, trigger);
     trigger.controller.abort();
-    await trigger.stopping;
-    await stopQuietly(id, trigger.stop);
+    const stopped = (async () => {
+      await trigger.stopping;
+      await stopQuietly(id, trigger.stop);
+    })();
+    joinLifecycle(id, stopped);
+    if (lease === undefined || !trigger.holding) {
+      await stopped;
+      return;
+    }
+    // A holder's listener that stops gives its record back once it has stopped, whether or not
+    // the entry is still current: `close` retires every entry first (COR-2167). A `start` still
+    // pending may yet bring a listener up, which its attempt stops when it settles, so the record
+    // waits for the attempt too: no peer acquires while this process's listener can still run.
+    const settled = (async () => {
+      await stopped;
+      try {
+        await trigger.attempt;
+      } catch {
+        // The attempt diagnoses its own failures; only that it has settled counts here.
+      }
+    })();
+    await releaseHeld(id, trigger, settled);
+  }
+
+  /**
+   * COR-2167 — `entry` is `standby`: it holds no record, its controller is aborted so a `fire` it
+   * captured answers `skipped: 'stopped'`, and no timer is armed for it. Its status says so.
+   */
+  function standbyOf(id: string, entry: RunningTrigger): void {
+    entry.standby = true;
+    entry.controller.abort();
+    cancelTimer(id, entry);
+    record(id, entry, { state: 'standby', code: null });
+  }
+
+  /**
+   * COR-2167 — a holder found its record no longer names this process, at a fire or at a tick: it
+   * is `standby`, writes no record, and its listener stops in the background, held as the entry's
+   * `stopping` so the next stop of the workflow awaits it, and in the workflow's lifecycle so the
+   * next `start` of it, and `close`, await it. A `start` still in flight is stopped by its attempt
+   * when it settles. Only the current entry, once, does any of this.
+   */
+  function lostLease(id: string, entry: RunningTrigger): void {
+    if (!isCurrent(id, entry) || entry.standby) return;
+    entry.holding = false;
+    standbyOf(id, entry);
+    if (!entry.settled) return;
+    const stop = entry.stop;
+    entry.stop = undefined;
+    const prior = entry.stopping;
+    entry.stopping = (async () => {
+      await prior;
+      await stopQuietly(id, stop);
+    })();
+    joinLifecycle(id, entry.stopping);
   }
 
   /** A fire that started a run: remember when, on the listener and on its record. */
@@ -366,7 +703,8 @@ export function createWorkflowTriggerSupervisor(
     const stop = entry.stop;
     entry.stop = undefined;
     fail(id, entry, 'start-failed', messageOf(report.error));
-    entry.stopping = stopQuietly(id, stop);
+    entry.stopping = stopListener(id, stop);
+    void releaseHeld(id, entry, entry.stopping);
   }
 
   /**
@@ -393,9 +731,13 @@ export function createWorkflowTriggerSupervisor(
       retired: false,
       settled: false,
       failures,
+      holding: false,
+      standby: false,
+      predecessors: lifecycles.get(id),
     };
     running.set(id, entry);
     entry.attempt = attemptOf(id, entry);
+    joinLifecycle(id, entry.attempt);
     return entry.attempt;
   }
 
@@ -432,6 +774,55 @@ export function createWorkflowTriggerSupervisor(
       fail(id, entry, 'start-failed', messageOf(error));
       return;
     }
+    // A kind that only receives has no listener to run: it is ready once its configuration and its
+    // storage are, whatever its secrets, and its entry stays so a fire noted by `receive` finds it.
+    if (kind.value.start === undefined) {
+      entry.settled = true;
+      record(id, entry, { state: 'ready', code: null });
+      return;
+    }
+    // COR-2167 — the one place `start` is reached, so every attempt, a reconcile's, a tick's, a
+    // timer's and a retry's, obeys the invariant: nothing starts until every earlier listener of
+    // this workflow is over. The wait comes before the lease, so this process holds no record it
+    // cannot use yet, and a close during it starts nothing. Only `close` can land here: every
+    // attempt that waits holds the serialization lock, so no reconcile replaces it meanwhile.
+    if (entry.predecessors !== undefined) {
+      await entry.predecessors;
+      if (!isCurrent(id, entry)) {
+        entry.settled = true;
+        return;
+      }
+    }
+    // COR-2167 — the lease is taken last, immediately before `start`: a paused file, a refused
+    // configuration and storage that cannot be made read and write no record.
+    if (lease !== undefined) {
+      let acquired: 'held' | 'standby';
+      try {
+        acquired = await chained(id, () => lease.acquire(id));
+      } catch (error) {
+        // Another process may run the listener, so this is `standby`, not `failed`: no backoff
+        // beside the tick, which tries again. A compare-and-swap that threw may have committed,
+        // and the next acquire then finds the record naming this process.
+        options.diagnose(
+          `Could not read or take the listener lease of workflow "${id}"; it is in standby, and is tried again at the next renewal.`,
+          error,
+        );
+        acquired = 'standby';
+      }
+      if (acquired === 'held') entry.holding = true;
+      // Closed, or replaced, while the lease was being taken: give it back, and start nothing.
+      if (!isCurrent(id, entry)) {
+        entry.settled = true;
+        await releaseHeld(id, entry);
+        return;
+      }
+      if (acquired === 'standby') {
+        entry.settled = true;
+        standbyOf(id, entry);
+        return;
+      }
+    }
+    const fired = { workflowId: id, trigger: kind.name, version };
     const context: PluginTriggerContext = {
       configuration: parsed.data,
       workflowId: id,
@@ -441,28 +832,52 @@ export function createWorkflowTriggerSupervisor(
         // The plugin owns `fireOptions`: read the key once, before anything awaits. Closed is
         // checked before aborted, because `close` aborts every listener and that is not a stop.
         const idempotencyKey: unknown = fireOptions?.idempotencyKey;
-        if (closed) return Promise.resolve<PluginTriggerOutcome>(skipped('closed'));
-        if (controller.signal.aborted) {
-          return Promise.resolve<PluginTriggerOutcome>(skipped('stopped'));
-        }
-        return options
-          .fire({
-            workflowId: id,
-            kind: kind.name,
-            version,
-            payload,
-            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-          })
-          .then((outcome) => {
-            if (outcome.outcome === 'started') noteFired(id, entry);
-            return outcome;
-          });
+        // COR-2250: every fire is published once, with its outcome, or `refused` and a code.
+        const answered = (outcome: PluginTriggerOutcome): PluginTriggerOutcome => {
+          publish(triggerFiredRecord(fired, outcome));
+          return outcome;
+        };
+        const refused = (error: unknown): never => {
+          publish(triggerRefusedRecord(fired, triggerRefusalCode(error)));
+          throw error;
+        };
+        if (closed) return Promise.resolve(answered(skipped('closed')));
+        if (controller.signal.aborted) return Promise.resolve(answered(skipped('stopped')));
+        const forward = (given: unknown): Promise<PluginTriggerOutcome> =>
+          options
+            .fire({
+              workflowId: id,
+              kind: kind.name,
+              version,
+              payload: given,
+              ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+            })
+            .then((outcome) => {
+              if (outcome.outcome === 'started') noteFired(id, entry);
+              return answered(outcome);
+            }, refused);
+        // No lease, no read: the host is called in this turn, as before COR-2167.
+        if (lease === undefined) return forward(payload);
+        // The fence: the record is read before the host is called, and the plugin's payload is
+        // copied before that read awaits. A read that throws rejects the fire, starting nothing.
+        const snapshot = snapshotOf(payload);
+        return lease
+          .holds(id)
+          .then((holds): PluginTriggerOutcome | Promise<PluginTriggerOutcome> => {
+            if (closed) return answered(skipped('closed'));
+            if (controller.signal.aborted) return answered(skipped('stopped'));
+            if (!holds) {
+              lostLease(id, entry);
+              return answered(skipped('stopped'));
+            }
+            return forward(snapshot);
+          }, refused);
       },
     };
     // What a gated kind says about its own listener reaches the entry, not the status: it is held
-    // until `start` settles, and ignored once the entry is stale.
+    // until `start` settles, and ignored once the entry is stale or `standby`.
     listenForReports(context, (report) => {
-      if (!isCurrent(id, entry)) return;
+      if (!isCurrent(id, entry) || entry.standby) return;
       if (entry.settled) applyReport(id, entry, report);
       else entry.pendingReport = report;
     });
@@ -474,14 +889,19 @@ export function createWorkflowTriggerSupervisor(
         `Could not start the "${kind.name}" trigger of workflow "${id}"; it is failed, and starts again with a growing delay.`,
         error,
       );
-      // A start that fails after its listener was stopped says nothing about the listener now.
-      if (isCurrent(id, entry)) fail(id, entry, 'start-failed', messageOf(error));
+      // A start that fails after its listener was stopped, or lost its lease, says nothing about
+      // the listener now. A failed start gives its record back, so a peer starts it at its tick.
+      if (isCurrent(id, entry) && !entry.standby) fail(id, entry, 'start-failed', messageOf(error));
+      await releaseHeld(id, entry);
       return;
     }
     entry.settled = true;
-    // Stopped while `start` was still resolving: it listens for nothing now, and says nothing.
-    if (!isCurrent(id, entry)) {
-      await stopQuietly(id, entry.stop);
+    // Stopped, or its lease lost, while `start` was still resolving: it listens for nothing now,
+    // and says nothing.
+    if (!isCurrent(id, entry) || entry.standby) {
+      const stop = entry.stop;
+      entry.stop = undefined;
+      await stopListener(id, stop);
       return;
     }
     const report = entry.pendingReport;
@@ -491,9 +911,10 @@ export function createWorkflowTriggerSupervisor(
   }
 
   /**
-   * Start `id`'s failed listener again, in place of `entry`, which is over: the new attempt is the
-   * trigger of `id` from the first line, and the old status stays until it settles. The serialization
-   * lock is the caller's.
+   * Start `id`'s failed or `standby` listener again, in place of `entry`, which is over: the new
+   * attempt is the trigger of `id` from the first line, and the old status stays until it settles.
+   * Its `start` waits for `entry`'s listener to have stopped, as every `start` waits for the
+   * workflow's earlier listeners (see `lifecycles`). The serialization lock is the caller's.
    */
   async function replaceAttempt(
     id: string,
@@ -502,9 +923,7 @@ export function createWorkflowTriggerSupervisor(
   ): Promise<void> {
     entry.retired = true;
     cancelTimer(id, entry);
-    const next = startTrigger(id, entry.desired, entry.key, failures);
-    await entry.stopping;
-    await next;
+    await startTrigger(id, entry.desired, entry.key, failures);
   }
 
   /** The retry timer of `entry` fired: queue the attempt, unless something else already did. */
@@ -522,6 +941,57 @@ export function createWorkflowTriggerSupervisor(
       .catch((error: unknown) => {
         options.diagnose(`Could not retry the trigger of workflow "${id}".`, error);
       });
+  }
+
+  /**
+   * COR-2167 — a renewal of this process's lease: queue one pass under the serialization lock,
+   * unless one is queued and has not begun. Nothing once closed.
+   */
+  function onTick(): void {
+    if (closed || tickQueued) return;
+    tickQueued = true;
+    options
+      .exclusive(async () => {
+        tickQueued = false;
+        await tickPass();
+      })
+      .catch((error: unknown) => {
+        options.diagnose('Could not check the listener leases at a renewal.', error);
+      });
+  }
+
+  /**
+   * One pass over the listeners at a tick. A `standby` listener is attempted again, with no
+   * failures behind it, and that attempt's acquire decides whether it starts. A holder reads its
+   * record, and one whose record no longer names this process goes `standby` and its listener is
+   * stopped before the pass goes on. A read that throws leaves the listener as it is. Every other
+   * listener (failed, stopped, ready, or not yet settled) is left as it is.
+   */
+  async function tickPass(): Promise<void> {
+    if (lease === undefined) return;
+    // A replaced attempt is set under the same key, which the iteration does not visit again.
+    for (const [id, entry] of running) {
+      if (closed) return;
+      if (!isCurrent(id, entry) || !entry.settled) continue;
+      if (entry.standby) {
+        await replaceAttempt(id, entry, 0);
+        continue;
+      }
+      if (!entry.holding) continue;
+      let holds: boolean;
+      try {
+        holds = await lease.holds(id);
+      } catch (error) {
+        options.diagnose(
+          `Could not read the listener lease of workflow "${id}"; it is left as it is until the next renewal.`,
+          error,
+        );
+        continue;
+      }
+      if (holds) continue;
+      lostLease(id, entry);
+      await entry.stopping;
+    }
   }
 
   return {
@@ -579,9 +1049,24 @@ export function createWorkflowTriggerSupervisor(
       return listeners.get(id)?.status;
     },
 
+    noteFired(id, kind) {
+      const entry = running.get(id);
+      if (entry !== undefined && entry.kind === kind) noteFired(id, entry);
+    },
+
     async close() {
       closed = true;
-      for (const [id, trigger] of running) await stopTrigger(id, trigger);
+      unsubscribeTick?.();
+      // Every listener is stopped at once: a `start` that never settles, and ignores its signal,
+      // holds `close`, but no other listener, and no other record.
+      await Promise.all(Array.from(running, ([id, trigger]) => stopTrigger(id, trigger)));
+      // Every record this process gives back is deleted before `close` resolves, so before the
+      // process lease is released: an attempt that took one as `close` landed queues its delete.
+      // Every stop and every `start` this process began has settled by then too, a fenced stop of
+      // an entry that a later attempt replaced included.
+      while (leaseTails.size > 0 || lifecycles.size > 0) {
+        await Promise.all([...leaseTails.values(), ...lifecycles.values()]);
+      }
     },
   };
 }

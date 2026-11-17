@@ -86,12 +86,25 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    * @default 'Loading'
    */
   loadingLabel?: string;
+  /**
+   * Adds a Cancel button to the loading placeholder's "still loading" line, for a read the person
+   * can give up on. It is called when the button is pressed; the host decides what giving up
+   * means (stop the read, show a "canceled" state). Without it the line has no button.
+   */
+  onLoadingCancel?: () => void;
   /** Detail renderer for the open item. */
   detail: Snippet<[item: T]>;
   /** Rendered in the detail pane while no item is open. A default message is shown when omitted. */
   empty?: Snippet;
   /** Rendered in the list when `items` is empty. */
   listEmpty?: Snippet;
+  /**
+   * Drawn at the end of the list pane, after the rows or after `listEmpty`, and outside `items`: it
+   * is not a row, so it never stops `listEmpty` from drawing, is not selectable, and J and K never
+   * land on it. Use it for a link to a related list that has no place among the rows, such as the
+   * archived or quarantined ones. It is not drawn while the list is loading.
+   */
+  listFooter?: Snippet;
   /**
    * List header, above the rows: the title, the count, the create action, the search and the
    * filter. Put the title and the create action on their own row and the filter below at full

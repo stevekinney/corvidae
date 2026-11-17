@@ -8,7 +8,7 @@ Individual link within a side navigation, supporting nesting and active highligh
 
 ## Rows, counts and the collapsed rail
 
-A row is one 30px control (44px under a coarse pointer): hover, focus and the active fill paint the whole row. Default text is secondary with no fill; hover gives a lighter neutral tint and primary text; the active row is a raised white pill with the hairline shadow, default text, semibold weight and `aria-current="page"` and takes no hover change, because the accent is for actions and links; keyboard focus draws the quiet ring around the whole row.
+A row is one 30px control (44px under a coarse pointer): hover, focus and the active fill paint the whole row. Default text is secondary with no fill; hover gives a lighter neutral tint and primary text; the active row is a flat soft accent-tinted fill with no shadow, default text, semibold weight and `aria-current="page"` and takes no hover change, because accent text is for actions and links; keyboard focus draws the quiet ring around the whole row.
 
 ```svelte
 <SideNavigation.Item href="/reviews" label="Reviews" count={2} countLabel="need you">
@@ -28,6 +28,7 @@ A row is one 30px control (44px under a coarse pointer): hover, focus and the ac
 ```
 
 - **Count**: a count is plain, muted, 13px text at the trailing edge of the row, never a badge. On the icon rail it becomes a small dot on the icon's corner.
+- **Badge**: `badge="Plugin"` marks the kind of entry with a neutral extra-small `Badge` at the trailing edge, where the count sits. It is mutually exclusive with `count` and `dot`: a row with a badge reports neither. The label ends in an ellipsis on one line before the badge, which is never cut, and the row keeps its height. The badge joins the accessible name and tooltip in lower case (`"Reports, plugin"`), and a collapsed row draws no badge, since its tooltip says the same.
 - **Accessible name**: with `label` and a non-zero `count`, the link is named `"Health, 3 need attention"` or `"Reviews, 2 need you"`. The count and the dot are hidden from assistive technology, so colour is never the only signal.
 - **Tooltip**: a row with a count shows its name as a tooltip on hover and focus (`"Health, 3 need attention"`). A collapsed row shows `"Reviews, 2 need you"`, or the label alone when there is no count.
 - **Collapsed rail**: inside a `Sidebar` a row follows the sidebar's collapsed state on its own (pass `collapsed` to override). A row with an `icon` becomes a 40px target: the label is clipped but stays in the accessible name, and the count or dot moves onto the icon's corner. A row without `icon` is unchanged.
@@ -40,6 +41,7 @@ A row is one 30px control (44px under a coarse pointer): hover, focus and the ac
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `active` | `boolean` | no | — | Marks this item as the currently active destination; emits `aria-current` and applies active visual styling. |
+| `badge` | `string` | no | — | A short word that marks the row as a kind of entry ("Plugin"), drawn as a neutral extra-small `Badge` at the trailing edge where the count sits. It is not a count: a row that sets `badge` ignores `count` and `dot`. It joins the accessible name and tooltip in lower case ("Reports, plugin"), the label ends in an ellipsis before the badge, which is never cut, and a collapsed row draws no badge (its tooltip carries the word). |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-navigation-item` root element. |
 | `collapsed` | `boolean` | no | — | Whether the row is drawn as an icon-rail entry. Defaults to the enclosing `Sidebar`'s collapsed state, so a row follows its sidebar without being told. |
 | `count` | `number` | no | — | A count of things that want attention. Zero, a negative number and `undefined` show nothing. Shown as plain, muted, right-aligned text at the trailing edge of the row (never a badge), or as a small dot on the icon when collapsed, unless `dot` is set; always part of the accessible name when `label` is given. |

@@ -33,10 +33,10 @@
  *      does not buffer" verification through the public SW entry point
  *      rather than a direct `handleRequest` call.
  */
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { IndexedDBStorage } from '@lostgradient/storage-indexeddb';
 import {
   createFleetEventFeed,
-  principalFromApiKey,
   setupServiceWorker,
   workflow,
   type FleetEventFeed,

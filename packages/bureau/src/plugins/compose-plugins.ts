@@ -57,6 +57,7 @@ import {
   createAgentContributions,
   guardrailContractFault,
 } from '../agent-contributions';
+import { REACTION_MAXIMUM_ATTEMPTS, isReactionMaxAttempts } from '../hooks/hook-types';
 import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
 import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
@@ -68,7 +69,11 @@ import {
   type VersionedCatalog,
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
-import { eventPayloadContent, isEventPayload } from './plugin-event-payload';
+import {
+  EVENT_PAYLOAD_NODE_BUDGET,
+  isEventPayload,
+  judgeEventPayload,
+} from './plugin-event-payload';
 import { lateHostApi, type PluginRecord } from './plugin-registry';
 import {
   createPluginSecretGate,
@@ -76,6 +81,7 @@ import {
   type PluginSecretGate,
 } from './plugin-secret-gate';
 import { pluginTool } from './plugin-tools';
+import { assertTriggerKindShape } from '../trigger-kind-shape';
 import type {
   BureauPluginEntry,
   BureauPluginSettings,
@@ -423,7 +429,12 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
+  for (const kind of contributions.triggers ?? []) {
+    // A malformed kind is the plugin's `setup-failed`, not a listener that retries forever, a 503
+    // for every request, or an error that stops the Bureau (COR-2168).
+    assertTriggerKindShape(formatToolId({ namespace: plugin, name: kind.name }), kind);
+    contribute('trigger', kind.name);
+  }
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
@@ -475,6 +486,14 @@ function planOf(
         `setup returned the embedder "${embedder.name}" with dimension ${String(embedder.dimensions)}, which is not a positive integer.`,
       );
     }
+    // Memory records the model in the profile it embeds with, and its registry refuses a blank one
+    // inside the host's `memory` factory, where it would fail construction instead of skipping the
+    // plugin.
+    if (typeof embedder.model !== 'string' || embedder.model.trim() === '') {
+      throw new TypeError(
+        `setup returned the embedder "${embedder.name}" with a blank model: an embedder names the model it runs.`,
+      );
+    }
     contribute('embedder', embedder.name);
   }
   for (const detector of contributions.guardrails?.memory ?? []) {
@@ -505,6 +524,15 @@ function planOf(
         `setup returned the panel "${app.name}" with the URI "${app.uri}", which is outside the plugin's namespace: a panel URI begins ui://${plugin}/.`,
       );
     }
+    // A panel calls Bureau operations through the host, so every tool it may call is a Bureau tool.
+    // Refusing the entry here fails setup once, rather than every call it would have refused.
+    for (const tool of app.allowedTools) {
+      if (!tool.startsWith('bureau.')) {
+        throw new TypeError(
+          `setup returned the panel "${app.name}" with the tool "${tool}" in allowedTools, which is not a Bureau tool: every allowedTools entry begins bureau.`,
+        );
+      }
+    }
     // A page panel declares a placement and needs no MCP opener, so the tool link is optional.
     if (app.opensFromTool !== undefined && !app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
@@ -526,7 +554,8 @@ function planOf(
       }
     }
     for (const placement of app.placements ?? []) checkPlacement(app, placement, agentTools);
-    contribute('panel', app.name);
+    // The title names the panel wherever a person reads it, as a workflow's title does.
+    contribute('panel', app.name, undefined, app.title);
     claims.push({ space: 'panel-uri', name: app.uri });
     // A tool links to one page, so the host cannot serve two apps opened from the same tool. A
     // placement takes no claim: a page path or a chat tool names no tool another plugin holds, and
@@ -714,6 +743,11 @@ class Contributed {
     [];
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
+  readonly scorerSources: {
+    plugin: string;
+    version: string;
+    scorer: NonNullable<PluginContributions['scorers']>[number];
+  }[] = [];
   readonly agents: Record<string, unknown> = {};
   readonly agentDetails: Record<string, CodeAgentDetails> = {};
   readonly memory: {
@@ -773,11 +807,16 @@ class Contributed {
     }
     for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
-      this.scorers.push({
+      const contributed: NonNullable<PluginContributions['scorers']>[number] = {
         ...judge,
         name: id(judge.name),
-        score: (run, signal) => judge.score(run, signal),
-      });
+        // The run's id (COR-2204) is the third argument: a wrapper that drops it leaves a plugin
+        // scorer unable to file a decision under the run it scores.
+        score: (run, signal, context) => judge.score(run, signal, context),
+      };
+      this.scorers.push(contributed);
+      // COR-2200: the scorer catalog names each scorer's plugin and its version.
+      this.scorerSources.push({ plugin, version, scorer: contributed });
     }
     for (const item of result.agents ?? []) {
       this.agents[id(item.name)] = item.agent;
@@ -815,6 +854,7 @@ class Contributed {
         id: id(embedder.name),
         embedder: embedder.embed,
         dimension: embedder.dimensions,
+        model: embedder.model,
         // COR-1898: `memory.embedder` may name it only while its plugin's secrets are set.
         ...(gate === undefined
           ? {}
@@ -861,8 +901,9 @@ function catalogWith(
   host: VersionedCatalog | undefined,
   contributed: Contributed['activities'],
   validators: Contributed['validatorSources'],
+  scorers: Contributed['scorerSources'],
 ): VersionedCatalog | undefined {
-  if (contributed.length === 0 && validators.length === 0) return host;
+  if (contributed.length === 0 && validators.length === 0 && scorers.length === 0) return host;
   const catalog = createVersionedCatalog();
   for (const kind of VERSIONED_CATALOG_KINDS) {
     for (const entry of host?.entries(kind) ?? []) catalog.register(entry);
@@ -886,6 +927,28 @@ function catalogWith(
       name: validator.identity.name,
       version: validator.identity.version,
       value: validator,
+      source: { name: plugin, version },
+    });
+  }
+  // COR-2200: a plugin's scorers record who contributed them, which the sampler reads back as who
+  // judged each score.
+  for (const { plugin, version, scorer } of scorers) {
+    // An identity the catalog refuses is left out, as a validator's is: the scorer still runs, and
+    // its record then names no plugin.
+    if (
+      typeof scorer.name !== 'string' ||
+      scorer.name.length === 0 ||
+      typeof scorer.version !== 'string' ||
+      scorer.version.length === 0 ||
+      scorer.version.includes('@')
+    ) {
+      continue;
+    }
+    catalog.register({
+      kind: 'scorer',
+      name: scorer.name,
+      version: scorer.version,
+      value: scorer,
       source: { name: plugin, version },
     });
   }
@@ -970,6 +1033,7 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     options.contributionCatalog,
     contributed.activities,
     contributed.validatorSources,
+    contributed.scorerSources,
   );
   const agentContributions = agentContributionsWith(
     options.agentContributions,
@@ -1087,6 +1151,14 @@ async function setUp(
     // A reaction's timeout builds its delivery's lease, so a value that is not a positive safe
     // integer skips this plugin here, and never reaches `createHooks`, which would fail the Bureau.
     for (const reaction of returned.reactions ?? []) {
+      // The same for its own attempt limit (COR-2183): an integer from 1 to 20, and not a value the
+      // host would refuse in `createHooks`, which fails the Bureau.
+      const { maxAttempts } = reaction;
+      if (maxAttempts !== undefined && !isReactionMaxAttempts(maxAttempts)) {
+        throw new Error(
+          `The reaction "${reaction.name}" has a maxAttempts of ${String(maxAttempts)}, which is not an integer from 1 to ${REACTION_MAXIMUM_ATTEMPTS}`,
+        );
+      }
       const { timeoutMilliseconds } = reaction;
       if (
         timeoutMilliseconds !== undefined &&
@@ -1244,13 +1316,21 @@ function eventPayloadProblems(
   redact: (message: string) => string,
 ): PluginProblem[] {
   try {
-    return (contributions.events ?? []).flatMap((declaration) =>
-      eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
+    return (contributions.events ?? []).flatMap((declaration) => {
+      const { fields, budgetExhausted } = judgeEventPayload(declaration.payload);
+      return fields.map((field): PluginProblem => ({
         code: 'event-payload-content',
         event: declaration.name,
         field,
-      })),
-    );
+        ...(budgetExhausted
+          ? {
+              message: redact(
+                `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
+              ),
+            }
+          : {}),
+      }));
+    });
   } catch (error) {
     // A schema that throws when read (a getter that fails) skips its plugin; it never rejects the host.
     return [

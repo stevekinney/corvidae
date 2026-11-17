@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { MODELS_COPY } from '../../../app/copy/models.ts';
 import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
+import type { EmbeddingJob } from '../../../lib/bureau-embedding.ts';
 import {
   catalogModelFixture,
   type BureauStub,
@@ -20,11 +21,13 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import {
+  contribution,
   installFakePluginHost,
   type FakePluginHost,
   type PluginFixture,
 } from '../plugins/plugins-host.test-support.ts';
 import {
+  hashingEmbeddingStatus,
   installSettingsBureau,
   servedSettings,
   type SettingsServed,
@@ -69,6 +72,12 @@ function open(
     listedModels?: Record<string, string[]>;
     /** Makes the Bureau refuse to describe an agent, as when it does not answer. */
     agentsUnreadable?: boolean;
+    /** What the Bureau reports of the embedding memory uses; memory on the built-in embedder when left out. */
+    embedding?: Record<string, unknown>;
+    /** Makes the Bureau fail to report the embedding. */
+    embeddingUnreadable?: boolean;
+    /** The providers the running plugins contribute; the three the page knows, each from a plugin of its name, when left out. */
+    contributedProviders?: { plugin: string; name: string }[];
   } = {},
 ) {
   const agents = options.agents ?? {};
@@ -78,6 +87,18 @@ function open(
       tools: [],
     }),
     'bureau.decisions.models': () => ({ rows: [] }),
+    'bureau.memory.embedding': () => {
+      if (options.embeddingUnreadable === true) throw new Error('The Bureau did not answer.');
+      return options.embedding ?? hashingEmbeddingStatus();
+    },
+    'bureau.plugins.contributions': () => ({
+      providers: (
+        options.contributedProviders ??
+        ['anthropic', 'openai', 'gemini'].map((name) => ({ plugin: name, name }))
+      ).map((provider) => ({ ...provider, configuration: null })),
+      triggers: [],
+      reactions: [],
+    }),
     'bureau.agents.list': () => ({
       agents: Object.keys(agents).map((name) => ({
         name,
@@ -259,7 +280,7 @@ describe('the models', () => {
     ...container.querySelectorAll<HTMLElement>('tbody tr'),
   ];
   const cells = (row: HTMLElement) =>
-    [...row.querySelectorAll('td')].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
+    [...row.children].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
 
   test('are a table of Model, Abilities, Context and Allowed for the connected providers’ models', async () => {
     const { container } = open();
@@ -267,12 +288,12 @@ describe('the models', () => {
     await waitFor(() => expect(table(container)).not.toBeNull());
 
     expect(
-      [...table(container)!.querySelectorAll('th')].map((th) => th.textContent?.trim()),
+      [...table(container)!.querySelectorAll('thead th')].map((th) => th.textContent?.trim()),
     ).toEqual(['Model', 'Abilities', 'Context', 'Allowed']);
     expect(container.textContent).toContain(MODELS_COPY.models.description);
     expect(rowOf(container, 'openai/gpt-5')).toBeNull();
     expect(cells(rowOf(container, 'anthropic/claude-sonnet-5')!)).toEqual([
-      'Claude Sonnet 5 claude-sonnet-5',
+      'Claude Sonnet 5claude-sonnet-5',
       'Tools',
       '200K',
       'Allowed',
@@ -287,7 +308,7 @@ describe('the models', () => {
 
     const row = rowOf(container, 'anthropic/claude-sonnet-5')!;
     expect(row.querySelector('code')?.textContent).toBe('claude-sonnet-5');
-    expect(row.querySelector('[data-layout="stacked"]')).not.toBeNull();
+    expect(row.querySelector('th .ib-models__identifier')).not.toBeNull();
     expect(row.querySelector('[data-cinder-status="success"]')).not.toBeNull();
   });
 
@@ -917,7 +938,13 @@ describe('removing a provider’s key', () => {
     });
   }
   const providerName = (name: string) =>
-    name === 'anthropic' ? 'Anthropic' : name === 'openai' ? 'OpenAI' : 'Gemini';
+    name === 'anthropic'
+      ? 'Anthropic'
+      : name === 'openai'
+        ? 'OpenAI'
+        : name === 'gemini'
+          ? 'Gemini'
+          : name;
   const confirm = (dialog: HTMLElement) =>
     within(dialog).getByRole('button', { name: copy.confirm });
 
@@ -1019,15 +1046,150 @@ describe('removing a provider’s key', () => {
     expect(within(dialog).queryByTestId('provider-remove-embedder')).toBeNull();
   });
 
-  test('flags the memory embedder for a provider that offers one', async () => {
-    const { container } = open({ keys: { anthropic: true, openai: true, gemini: false } });
-    await loaded(container);
+  describe('and memory search (EM6-22)', () => {
+    /** Memory on the built-in embedder, or on `embedder`, with the plugins that contribute embedders. */
+    const embeddingOn = (embedder: string, job?: EmbeddingJob) => ({
+      active: { embedder, dimension: 256, model: 'm' },
+      problem: null,
+      job: job ?? null,
+      embedders: [
+        { id: 'hashing', dimension: 256, availability: 'available' },
+        { id: 'openai:embedder', dimension: 256, availability: 'available' },
+        { id: 'gemini:embedder', dimension: 256, availability: 'available' },
+      ],
+    });
+    const PROVIDER_PLUGINS: PluginFixture[] = [
+      { name: 'anthropic', title: 'Anthropic' },
+      {
+        name: 'openai',
+        title: 'OpenAI',
+        contributions: [contribution('embedder', 'openai:embedder')],
+      },
+      {
+        name: 'gemini',
+        title: 'Gemini',
+        contributions: [contribution('embedder', 'gemini:embedder')],
+      },
+    ];
+    const KEYS = { anthropic: true, openai: true, gemini: true };
 
-    const dialog = await ask(container, 'openai');
+    test('says what removing the key does to search when memory uses an embedder the provider’s plugin adds', async () => {
+      const { container } = open({
+        keys: KEYS,
+        plugins: PROVIDER_PLUGINS,
+        embedding: embeddingOn('openai:embedder'),
+      });
+      await loaded(container);
 
-    expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toContain(
-      copy.embedderNote,
-    );
+      const dialog = await ask(container, 'openai');
+
+      await waitFor(() =>
+        expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toBe(
+          'Memory search uses OpenAI from this provider. Removing the key stops it, so search matches words only until you add a key or switch embedders.',
+        ),
+      );
+    });
+
+    test('says it for the embedder a running switch moves to, and only then', async () => {
+      const { container } = open({
+        keys: KEYS,
+        plugins: PROVIDER_PLUGINS,
+        embedding: embeddingOn('hashing', {
+          target: 'gemini:embedder',
+          state: 'running',
+          done: 1,
+          total: 5,
+          error: null,
+        }),
+      });
+      await loaded(container);
+
+      const dialog = await ask(container, 'gemini');
+
+      await waitFor(() =>
+        expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toContain(
+          'Memory search uses Gemini from this provider.',
+        ),
+      );
+    });
+
+    test('says nothing about embedders for a provider memory does not use, or when memory uses the built-in one', async () => {
+      const { container } = open({
+        keys: KEYS,
+        plugins: PROVIDER_PLUGINS,
+        embedding: embeddingOn('gemini:embedder'),
+      });
+      await loaded(container);
+
+      const dialog = await ask(container, 'openai');
+      await waitFor(() => expect(dialog.textContent).toContain('stops answering'));
+      expect(within(dialog).queryByTestId('provider-remove-embedder')).toBeNull();
+      expect(dialog.textContent).not.toMatch(/embedder|memory search/iu);
+    });
+
+    test('says nothing when the switch to the provider’s embedder failed or was canceled, which memory is not moving to', async () => {
+      const { container } = open({
+        keys: KEYS,
+        plugins: PROVIDER_PLUGINS,
+        embedding: embeddingOn('hashing', {
+          target: 'openai:embedder',
+          state: 'failed',
+          done: 1,
+          total: 5,
+          error: 'embedder-failed',
+        }),
+      });
+      await loaded(container);
+
+      const dialog = await ask(container, 'openai');
+      await waitFor(() => expect(dialog.textContent).toContain('stops answering'));
+      expect(within(dialog).queryByTestId('provider-remove-embedder')).toBeNull();
+    });
+
+    test('finds a provider that offers an embedder from the plugins’ contributions, so a provider no list names is found too', async () => {
+      const { container } = open({
+        keys: { anthropic: true, openai: false, gemini: false, voyage: true },
+        plugins: [
+          ...PROVIDER_PLUGINS,
+          {
+            name: 'voyage',
+            title: 'Voyage',
+            contributions: [contribution('embedder', 'voyage:embedder')],
+          },
+        ],
+        contributedProviders: [{ plugin: 'voyage', name: 'voyage' }],
+        embedding: {
+          ...embeddingOn('voyage:embedder'),
+          embedders: [
+            { id: 'hashing', dimension: 256, availability: 'available' },
+            { id: 'voyage:embedder', dimension: 256, availability: 'available' },
+          ],
+        },
+      });
+      await waitFor(() => expect(providerOf(container, 'voyage')).not.toBeNull());
+
+      const dialog = await ask(container, 'voyage');
+
+      await waitFor(() =>
+        expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toContain(
+          'Memory search uses Voyage from this provider.',
+        ),
+      );
+    });
+
+    test('says nothing when memory’s embedding cannot be read', async () => {
+      const { container } = open({
+        keys: KEYS,
+        plugins: PROVIDER_PLUGINS,
+        embeddingUnreadable: true,
+      });
+      await loaded(container);
+
+      const dialog = await ask(container, 'openai');
+
+      await waitFor(() => expect(dialog.textContent).toContain('stops answering'));
+      expect(within(dialog).queryByTestId('provider-remove-embedder')).toBeNull();
+    });
   });
 
   test('says which agents are unknown when they cannot be read, and still lets the person remove the key', async () => {

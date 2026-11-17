@@ -3,6 +3,7 @@ import { createTool } from 'armorer';
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
+import type { PluginPanel } from '../contributions.ts';
 import { definePlugin } from '../define-plugin.ts';
 import { catalogRow } from './catalog-row.test-support.ts';
 import { canonicalJson, pluginIdentities, schemaDigest } from './plugin-identities.ts';
@@ -436,5 +437,132 @@ describe('a declared event (COR-2223)', () => {
     expect(await digestOf(z.object({ greetingId: z.number() }))).not.toBe(before);
     expect(await digestOf(z.object({ greetingId: z.string() }))).not.toBe(before);
     expect(await digestOf(z.object({ greetingId: z.enum(['a']) }))).not.toBe(before);
+  });
+});
+
+describe('a contributed panel (COR-2207)', () => {
+  const entry = new URL('file:///panel/app.ts');
+  type Panel = Partial<PluginPanel>;
+  const reference: Panel = {
+    uri: 'ui://example/panel/v1',
+    allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.events'],
+    hostOnlyTools: ['bureau.workflows.update'],
+    opensFromTool: 'bureau.tasks.inspect',
+    placements: [{ kind: 'run' }, { kind: 'chat-tool', agentTool: 'bureau:one' }],
+  };
+  function panelPlugin(panel: Partial<Panel> = {}) {
+    return definePlugin({
+      ...base,
+      setup: () => ({
+        panels: [
+          {
+            name: 'panel',
+            title: 'Panel',
+            entry,
+            ...reference,
+            ...panel,
+          } as PluginPanel,
+        ],
+      }),
+    });
+  }
+  const digestOf = async (panel?: Partial<Panel>) => {
+    const identities = await pluginIdentities(panelPlugin(panel));
+    return identities.entries.find(({ kind }) => kind === 'panel');
+  };
+
+  test('is a panel entry named plugin:name, at the plugin version', async () => {
+    expect(await digestOf()).toEqual({
+      kind: 'panel',
+      id: 'example:panel',
+      version: '1.2.0',
+      schema: expect.stringMatching(/^sha256:/),
+    });
+  });
+
+  test.each([
+    ['uri', { uri: 'ui://example/panel/v2' }],
+    ['allowedTools', { allowedTools: ['bureau.tasks.inspect'] }],
+    ['hostOnlyTools', { hostOnlyTools: [] }],
+    ['opensFromTool', { opensFromTool: 'bureau.tasks.events' }],
+    ['opensFromTool removed', { opensFromTool: undefined }],
+    ['a placement kind', { placements: [{ kind: 'page', path: 'reviews' }] }],
+    [
+      'a chat-tool agentTool',
+      { placements: [{ kind: 'run' }, { kind: 'chat-tool', agentTool: 'bureau:two' }] },
+    ],
+    [
+      'a page path',
+      {
+        placements: [
+          { kind: 'page', path: 'reviews' },
+          { kind: 'chat-tool', agentTool: 'bureau:one' },
+        ],
+      },
+    ],
+    ['placements removed', { placements: undefined }],
+  ] as const)('changes the digest when %s changes', async (_name, change) => {
+    const before = await digestOf();
+    expect(await digestOf(reference)).toEqual(before);
+    const after = await digestOf(change as Partial<Panel>);
+    expect(after?.schema).not.toBe(before?.schema);
+  });
+
+  test('changes with the page path of a page placement', async () => {
+    const page = (path: string) =>
+      digestOf({ placements: [{ kind: 'page', path, sidebar: { group: 'work' } }] });
+    const reviews = await page('reviews');
+    const queue = await page('queue');
+    expect(reviews?.schema).not.toBe(queue?.schema);
+  });
+
+  test('ignores the order of the tool lists but keeps the order of the placements', async () => {
+    const before = await digestOf();
+    const reordered = await digestOf({
+      allowedTools: ['bureau.tasks.events', 'bureau.tasks.inspect'],
+    });
+    expect(reordered?.schema).toBe(before?.schema);
+    const swapped = await digestOf({
+      placements: [{ kind: 'chat-tool', agentTool: 'bureau:one' }, { kind: 'run' }],
+    });
+    expect(swapped?.schema).not.toBe(before?.schema);
+  });
+
+  test('leaves out the presentation: title, description and styles', async () => {
+    const before = await digestOf();
+    const retitled = await digestOf({ title: 'Other', description: 'More', styles: 'a{}' });
+    expect(retitled?.schema).toBe(before?.schema);
+  });
+});
+
+describe('a contributed embedder (COR-2184)', () => {
+  const embedderPlugin = (model: string, dimensions = 4) =>
+    definePlugin({
+      ...base,
+      setup: () => ({
+        embedders: [{ name: 'embed', model, dimensions, embed: async () => [] }],
+      }),
+    });
+  const digestOf = async (model: string, dimensions?: number) => {
+    const identities = await pluginIdentities(embedderPlugin(model, dimensions));
+    return identities.entries.find(({ kind }) => kind === 'embedder');
+  };
+
+  test('is an embedder entry named plugin:name, at the plugin version', async () => {
+    expect(await digestOf('model-a')).toEqual({
+      kind: 'embedder',
+      id: 'example:embed',
+      version: '1.2.0',
+      schema: expect.stringMatching(/^sha256:/),
+    });
+  });
+
+  test('digests the model with the dimensions, so a changed model changes the digest', async () => {
+    const before = await digestOf('model-a');
+    expect(await digestOf('model-a')).toEqual(before);
+    const otherModel = await digestOf('model-b');
+    expect(otherModel?.schema).not.toBe(before?.schema);
+    const otherDimensions = await digestOf('model-a', 8);
+    expect(otherDimensions?.schema).not.toBe(before?.schema);
   });
 });

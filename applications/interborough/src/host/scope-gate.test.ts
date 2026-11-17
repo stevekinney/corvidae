@@ -77,6 +77,28 @@ describe('bureauScopeRefusal', () => {
     expect(await refusal?.json()).toMatchObject({ error: { data: { scope: 'schedules:write' } } });
   });
 
+  test('refuses the checks list to a session without runs:read, and sends it on to one that holds it (COR-2113)', async () => {
+    expect(BUREAU_METHOD_SCOPES.get('bureau.checks.list')).toBe('runs:read');
+    const refusal = await bureauScopeRefusal(
+      jsonRpc(call('bureau.checks.list', 3)),
+      lacking('runs:read'),
+    );
+    expect(refusal?.status).toBe(200);
+    expect(await refusal?.json()).toMatchObject({
+      id: 3,
+      error: { data: { scope: 'runs:read', weftCode: 'Forbidden', httpStatus: 403 } },
+    });
+    // A batch is refused for the one entry that needs the scope, whatever the others hold.
+    const batch = await bureauScopeRefusal(
+      jsonRpc([call('bureau.goals.list', 1), call('bureau.checks.list', 2)]),
+      lacking('runs:read'),
+    );
+    expect(batch).toBeDefined();
+    expect(
+      await bureauScopeRefusal(jsonRpc(call('bureau.checks.list')), lacking('hooks:write')),
+    ).toBeUndefined();
+  });
+
   test('sends a method on, unread, to a session holding its scope', async () => {
     const request = jsonRpc(call('bureau.schedules.create'));
     expect(await bureauScopeRefusal(request, lacking('hooks:write'))).toBeUndefined();

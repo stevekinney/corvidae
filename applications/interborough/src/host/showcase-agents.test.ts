@@ -20,9 +20,11 @@ import {
   createShowcaseIssueRefundTool,
   createShowcaseLookupOrderTool,
   createShowcaseTriageRefundsTool,
+  createShowcaseValidators,
   orderNamedIn,
   SHOWCASE_AGENT_IDENTIFIERS,
   SHOWCASE_ASSISTANT_REPLY,
+  SHOWCASE_GOAL_CHECKS,
   SHOWCASE_HUMAN_INPUT,
   SHOWCASE_MODEL_AGENT_MODEL,
   SHOWCASE_ORDERS,
@@ -351,6 +353,53 @@ describe('the showcase built-in agents', () => {
       'issue-refund': 'always',
       'triage-refunds': 'on-changes',
     });
+  });
+});
+
+describe('the showcase goal checks (COR-2117)', () => {
+  const [validator] = createShowcaseValidators();
+  const input = (content: string, configuration: unknown) =>
+    ({
+      goalRunId: 'goal',
+      attemptId: 'goal:a0',
+      attemptIndex: 0,
+      result: { content },
+      history: [],
+      configuration,
+    }) as never;
+
+  test('are one contains-phrase validator, configured with the phrase the goal looks for', async () => {
+    expect(validator?.identity).toEqual({ name: 'contains-phrase', version: '1' });
+    const signal = new AbortController().signal;
+
+    expect(
+      await validator?.validate(
+        input('The notes mention the Staging Fix.', SHOWCASE_GOAL_CHECKS.stagingFix.configuration),
+        signal,
+      ),
+    ).toMatchObject({ kind: 'pass' });
+    expect(
+      await validator?.validate(
+        input('Nothing about it.', SHOWCASE_GOAL_CHECKS.stagingFix.configuration),
+        signal,
+      ),
+    ).toMatchObject({ kind: 'fail', retryable: true });
+  });
+
+  test('wait on their pacing with the phrase and the attempt they judge', async () => {
+    const moments: unknown[] = [];
+    const [paced] = createShowcaseValidators({
+      check: (moment) => {
+        moments.push(moment);
+      },
+    });
+    await paced?.validate(
+      input('hello there', SHOWCASE_GOAL_CHECKS.sayHello.configuration),
+      new AbortController().signal,
+    );
+    expect(moments).toEqual([
+      { check: 'contains-phrase', phrase: 'hello', attemptIndex: 0, passed: true },
+    ]);
   });
 });
 

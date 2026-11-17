@@ -48,9 +48,16 @@ export interface HarnessOptions {
   /** Shared by two harnesses, so a restart sees the same moment. */
   readonly clock?: { milliseconds: number };
   readonly run?: RunBehavior;
+  /** What a reaction's `dryRun` does; with none, the reaction has no `dryRun`. `call` counts its calls. */
+  readonly dryRun?: RunBehavior;
+  /** The engine's `maxAttempts`. */
   readonly maxAttempts?: number;
+  /** The reaction's own `maxAttempts` (COR-2183); with none, it sets none. */
+  readonly reactionMaxAttempts?: number;
   /** The wait before the next attempt. */
   readonly backoff?: number;
+  /** The wait after attempt `attempt`, as the notifier's schedule gives it; defaults to the constant `backoff`. */
+  readonly backoffFor?: (attempt: number) => number;
   /**
    * What a wait of more than zero does: `held` keeps it until the test releases it (or a shutdown
    * ends it, as the notifier's wait ends); `advance` moves the clock by it and ends it at once, so a
@@ -75,6 +82,40 @@ export interface HarnessOptions {
   readonly configuration?: z.ZodType;
   /** Reads the secrets a stored `{ "$secret": key }` names. */
   readonly configurationSecrets?: HooksDependencies['configurationSecrets'];
+  /** The workspace the hooks capture their owner's authority from. */
+  readonly workspace?: HooksDependencies['workspace'];
+  /** The records a hook's scope is matched against. */
+  readonly subjects?: HooksDependencies['subjects'];
+  /** What publishing a delivery event does (COR-2099); the harness captures every one either way. */
+  readonly publish?: (event: Event) => void;
+}
+
+/** One `hook.delivery.*` event as a test reads it: the kind and the payload fields it carries. */
+export interface PublishedDeliveryEvent {
+  readonly kind: string;
+  readonly [field: string]: unknown;
+}
+
+/** The kind and payload of a published delivery event, whichever class carries it (COR-2099). */
+export function deliveryEventShape(event: Event): PublishedDeliveryEvent {
+  const fields = event as unknown as Record<string, unknown>;
+  const { type } = event;
+  if (type === 'hook.delivery.failed') {
+    return {
+      kind: type,
+      hookId: fields['hookId'],
+      deliveryId: fields['deliveryId'],
+      attempt: fields['attempt'],
+      outcome: fields['outcome'],
+      ...(fields['status'] === undefined ? {} : { status: fields['status'] }),
+    };
+  }
+  return {
+    kind: type,
+    hookId: fields['hookId'],
+    deliveryId: fields['deliveryId'],
+    attempts: fields['attempts'],
+  };
 }
 
 /** What a plugin's secret gate tells the hooks: whether its secrets are set, and when that changes. */
@@ -116,6 +157,13 @@ export function harness(options: HarnessOptions = {}) {
   const notices: string[] = [];
   const diagnostics: string[] = [];
   const audits: string[] = [];
+  const published: PublishedDeliveryEvent[] = [];
+  const auditEntries: Array<{
+    readonly runId: string;
+    readonly type: string;
+    readonly principal?: string;
+    readonly detail: unknown;
+  }> = [];
   const calls: PluginReactionContext[] = [];
   const backoff = options.backoff ?? 0;
   const engine: WebhookDeliveryEngine = {
@@ -124,7 +172,7 @@ export function harness(options: HarnessOptions = {}) {
       ((() => Promise.reject(new Error('no request is made'))) as unknown as typeof fetch),
     now: () => clock.milliseconds,
     maxAttempts: options.maxAttempts ?? 3,
-    backoffMilliseconds: () => backoff,
+    backoffMilliseconds: (attempt) => options.backoffFor?.(attempt) ?? backoff,
     wait: (milliseconds) => {
       if (milliseconds <= 0) return Promise.resolve();
       if (options.waits === 'advance') {
@@ -149,6 +197,14 @@ export function harness(options: HarnessOptions = {}) {
     calls.push(context);
     return run(context, calls.length);
   };
+  const dryRunCalls: PluginReactionContext[] = [];
+  const dryRunBehavior = options.dryRun;
+  const executeDryRun = (context: PluginReactionContext): Promise<void> => {
+    dryRunCalls.push(context);
+    return dryRunBehavior === undefined
+      ? Promise.resolve()
+      : dryRunBehavior(context, dryRunCalls.length);
+  };
   // The timeouts the deliveries asked for, each ended by the test (`fire`), never by a clock.
   const timeouts: Array<{ readonly milliseconds: number; fire(): void }> = [];
   const registrations = options.registrations?.(execute) ?? [
@@ -161,6 +217,10 @@ export function harness(options: HarnessOptions = {}) {
         description: 'Posts the event to a channel.',
         configuration: options.configuration ?? CONFIGURATION,
         run: execute,
+        ...(options.dryRun === undefined ? {} : { dryRun: executeDryRun }),
+        ...(options.reactionMaxAttempts === undefined
+          ? {}
+          : { maxAttempts: options.reactionMaxAttempts }),
         ...(options.timeoutMilliseconds === undefined
           ? {}
           : { timeoutMilliseconds: options.timeoutMilliseconds }),
@@ -176,6 +236,7 @@ export function harness(options: HarnessOptions = {}) {
     newId: (kind) => `${kind}-${++next}`,
     audit: (entry) => {
       audits.push(entry.type);
+      auditEntries.push(entry);
       return Promise.resolve();
     },
     diagnose: (message) => {
@@ -183,6 +244,10 @@ export function harness(options: HarnessOptions = {}) {
     },
     notice: (message) => {
       notices.push(message);
+    },
+    publish: (event: Event) => {
+      published.push(deliveryEventShape(event));
+      options.publish?.(event);
     },
     actionKinds: registrations,
     timeoutSignal: (milliseconds) => {
@@ -201,6 +266,8 @@ export function harness(options: HarnessOptions = {}) {
     ...(options.configurationSecrets === undefined
       ? {}
       : { configurationSecrets: options.configurationSecrets }),
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+    ...(options.subjects === undefined ? {} : { subjects: options.subjects }),
   });
   const view = {
     kv,
@@ -208,11 +275,16 @@ export function harness(options: HarnessOptions = {}) {
     hooks: created.hooks,
     created,
     calls,
+    /** The contexts `dryRun` was called with. */
+    dryRunCalls,
     held,
     timeouts,
     notices,
     diagnostics,
     audits,
+    auditEntries,
+    /** The `hook.delivery.*` events the hooks published, in order. */
+    published,
     tracked,
     /** Stops the process under its deliveries, as a shutdown does. */
     shutdown(): void {
@@ -223,14 +295,21 @@ export function harness(options: HarnessOptions = {}) {
       await created.resume();
     },
     /** Publishes an event and returns without waiting for its deliveries. */
-    dispatch(extra: { readonly kind?: string; readonly source?: string } = {}): void {
+    dispatch(
+      extra: {
+        readonly kind?: string;
+        readonly source?: string;
+        /** The event's payload; a run event names run `r1` by default. */
+        readonly payload?: Readonly<Record<string, unknown>>;
+      } = {},
+    ): void {
       created.dispatch({
         sequence: 0,
         cursor: '0',
         bureauId: 'matrix-bureau',
         kind: extra.kind ?? 'run.settled',
         emittedAtMs: START,
-        payload: { runId: 'r1' },
+        payload: extra.payload ?? { runId: 'r1' },
         ...(extra.source === undefined ? {} : { source: extra.source }),
       } satisfies BureauEventEnvelope);
     },

@@ -56,6 +56,8 @@ describe('the controls', () => {
       'decisions.model': 'choice',
       'decisions.fallbackModel': 'choice',
       'decisions.maximumPerTask': 'number',
+      'scorers.sampleRate': 'number',
+      'scorers.dailyBudget': 'number',
       'context.summarizerModel': 'choice',
       'retention.audit': 'form',
       'retention.runs': 'form',
@@ -64,7 +66,7 @@ describe('the controls', () => {
       'retention.tasks': 'form',
       'retention.receipts': 'form',
       'retention.memory': 'form',
-      'memory.embedder': 'text',
+      'memory.embedder': 'choice',
       'retention.logs': 'form',
       'retention.notifications': 'form',
       'retention.hookDeliveries': 'form',
@@ -160,6 +162,12 @@ describe('the controls', () => {
     }
   });
 
+  test('give the embedder memory uses a choice of embedders, never a text field that takes an identifier (EM6-01)', () => {
+    expect(
+      controlFor('memory.embedder', published.properties['memory.embedder'] as SchemaNode),
+    ).toEqual({ kind: 'choice', source: 'embedders' });
+  });
+
   test('fall to the JSON editor for a shape nothing more specific reads, and never to an unsupported one', () => {
     const json = controlFor('a', { type: 'array' });
     expect(json).toEqual({ kind: 'json' });
@@ -189,13 +197,32 @@ describe('the sections', () => {
         key !== MODEL_POLICY_KEY &&
         !key.startsWith('decisions.') &&
         !key.startsWith('a2a.') &&
-        !key.startsWith('retention.'),
+        !key.startsWith('retention.') &&
+        !key.startsWith('scorers.'),
     )) {
       expect(inSection(key, 'general'), key).toBe(true);
       expect(inSection(key, 'retention'), key).toBe(false);
       expect(inSection(key, 'allowed-models'), key).toBe(false);
       expect(inSection(key, 'decisions'), key).toBe(false);
       expect(inSection(key, 'a2a'), key).toBe(false);
+    }
+  });
+
+  test('give the scorer settings no section: no control is drawn for them yet (COR-2202, COR-2205)', () => {
+    const scorers = SETTING_KEYS.filter((key) => key.startsWith('scorers.'));
+    expect(scorers).toEqual(['scorers.sampleRate', 'scorers.dailyBudget']);
+    for (const key of scorers) {
+      for (const section of [
+        'general',
+        'allowed-models',
+        'decisions',
+        'a2a',
+        'retention',
+        'plugins',
+        'api-reference',
+      ] as const) {
+        expect(inSection(key, section), `${key} in ${section}`).toBe(false);
+      }
     }
   });
 
@@ -254,6 +281,8 @@ describe('the groups', () => {
       'engine',
       'durability',
       'a2a',
+      // No section draws it, so the group is only the key's own name.
+      'scorers',
     ]);
     // A group the page does not know comes after the ones it does, so a new key is not dropped.
     expect(groupsOf(['zeta.key', 'tools.wakeup'])).toEqual(['tools', 'zeta']);

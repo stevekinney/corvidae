@@ -14,6 +14,12 @@
  * @module server/rest-bindings
  */
 
+import {
+  createOperationRegistry,
+  type OperationRegistry,
+  type RegistrableOperation,
+  type UnknownRestBinding,
+} from '@lostgradient/backchannel/internals';
 import type { Storage } from '@lostgradient/storage';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { RegistryAgnosticEngine } from '../core/engine.ts';
@@ -21,11 +27,6 @@ import type { RemoteTaskQueued } from '../core/task-ledger/task-ledger-types.ts'
 import type { MetricsCollector } from '../observability/metrics.ts';
 import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
-import {
-  createOperationRegistry,
-  type OperationRegistry,
-  type RegistrableOperation,
-} from './operation-catalog.ts';
 import {
   createListConformanceTargetsOperation,
   createRunConformanceReportOperation,
@@ -102,23 +103,8 @@ import {
   drainWorkerOperation,
 } from './operations/worker-drain.ts';
 import { createWorkerStartOverridePreviewOperation } from './operations/worker-start-override-preview.ts';
-import type { RestBinding } from './rest-binding.ts';
 import type { TaskQueue } from './task-queue.ts';
-
-/**
- * The router stores heterogeneous bindings whose `Input`/`Output` pairs
- * all differ. `RestBinding<Input, Output>` is strictly-typed at the
- * author boundary (so `defineOperation` + binding factories catch
- * mistakes), but at the router level those generics are irrelevant —
- * every binding produces a `Response` regardless of its output type.
- *
- * `RestBinding<any, any>` is the idiomatic way to express "a binding
- * with SOME Input/Output pair the router doesn't care about." A stricter
- * `unknown, unknown` form fails under `exactOptionalPropertyTypes`
- * because `shapeSuccess: (Output) => Response` cannot be safely widened
- * to `(unknown) => Response` (function parameters are contravariant).
- */
-export type UnknownRestBinding = RestBinding<any, any>;
+import { weftFaultPolicy } from './weft-fault-policy.ts';
 
 /**
  * Static REST bindings for all operations that do not need per-server
@@ -397,31 +383,34 @@ export function createLiveOperationRegistry(
   options?: LiveOperationRegistryOptions,
 ): OperationRegistry {
   const resolved: LiveOperationRegistryOptions = options ?? {};
-  return createOperationRegistry<RegistryAgnosticEngine>([
-    ...STATIC_OPERATIONS.map((operation) =>
-      operation.name === 'weft.workflows.start'
-        ? buildStartWorkflowOperationForRegistry(resolved)
-        : operation.name === 'weft.workflows.startorsignal'
-          ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
-          : operation.name === 'weft.worker.startoverrides.preview'
-            ? buildWorkerStartOverridePreviewOperation(resolved)
-            : operation.name === 'weft.tasks.deadletters.retry'
-              ? buildRetryTaskDeadLetterOperationForRegistry(resolved)
-              : operation,
-    ),
-    buildTaskDiagnosticsOperationForRegistry(resolved),
-    buildSystemMetricsOperation(resolved),
-    buildListWorkersOperationForRegistry(resolved),
-    buildDrainWorkerOperationForRegistry(resolved),
-    buildClearWorkerDrainOperationForRegistry(resolved),
-    buildForgetWorkerOperationForRegistry(resolved),
-    buildDrainDeploymentOperationForRegistry(resolved),
-    buildClearDeploymentDrainOperationForRegistry(resolved),
-    buildListTaskQueuesOperationForRegistry(resolved),
-    buildWorkerDiagnosticsOperationForRegistry(resolved),
-    buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
-    ...buildWorkerDeploymentRoutingOperations(resolved),
-    ...buildConformanceOperations(resolved),
-    ...(resolved.additionalOperations ?? []),
-  ]);
+  return createOperationRegistry<RegistryAgnosticEngine>(
+    [
+      ...STATIC_OPERATIONS.map((operation) =>
+        operation.name === 'weft.workflows.start'
+          ? buildStartWorkflowOperationForRegistry(resolved)
+          : operation.name === 'weft.workflows.startorsignal'
+            ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
+            : operation.name === 'weft.worker.startoverrides.preview'
+              ? buildWorkerStartOverridePreviewOperation(resolved)
+              : operation.name === 'weft.tasks.deadletters.retry'
+                ? buildRetryTaskDeadLetterOperationForRegistry(resolved)
+                : operation,
+      ),
+      buildTaskDiagnosticsOperationForRegistry(resolved),
+      buildSystemMetricsOperation(resolved),
+      buildListWorkersOperationForRegistry(resolved),
+      buildDrainWorkerOperationForRegistry(resolved),
+      buildClearWorkerDrainOperationForRegistry(resolved),
+      buildForgetWorkerOperationForRegistry(resolved),
+      buildDrainDeploymentOperationForRegistry(resolved),
+      buildClearDeploymentDrainOperationForRegistry(resolved),
+      buildListTaskQueuesOperationForRegistry(resolved),
+      buildWorkerDiagnosticsOperationForRegistry(resolved),
+      buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
+      ...buildWorkerDeploymentRoutingOperations(resolved),
+      ...buildConformanceOperations(resolved),
+      ...(resolved.additionalOperations ?? []),
+    ],
+    { faultPolicy: weftFaultPolicy },
+  );
 }

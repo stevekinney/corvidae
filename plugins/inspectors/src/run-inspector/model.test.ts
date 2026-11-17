@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import { buildInspectorModel, foldEvents, isStaleInspection, type Inspection } from './model.ts';
+import {
+  buildInspectorModel,
+  describeChange,
+  foldEvents,
+  isStaleInspection,
+  type Inspection,
+} from './model.ts';
 
 function inspection(overrides: Partial<Inspection> = {}): Inspection {
   return {
@@ -111,5 +117,29 @@ describe('the run inspector model', () => {
     expect(buildInspectorModel(inspection({ canCancel: false }), []).abort.available).toBe(false);
     expect(buildInspectorModel(inspection(), [], false).abort.available).toBe(false);
     expect(buildInspectorModel(inspection(), []).abort.available).toBe(true);
+  });
+
+  it('announces a lifecycle change and nothing for an identical model', () => {
+    const before = buildInspectorModel(inspection(), []);
+    const after = buildInspectorModel(
+      inspection({ task: { ...inspection().task, status: 'completed' } }),
+      [],
+    );
+    expect(describeChange(before, after)).toBe('Run is now completed.');
+    expect(describeChange(before, before)).toBeNull();
+    expect(describeChange(undefined, before)).toBeNull();
+  });
+
+  it('announces an abort state change and a stream change, in that order of importance', () => {
+    const before = buildInspectorModel(inspection(), []);
+    const aborting = buildInspectorModel(
+      inspection({ task: { ...inspection().task, cleanup: 'cancel-requested' } }),
+      [],
+    );
+    expect(describeChange(before, aborting)).toBe('Abort: cancel-requested.');
+    const gapped = buildInspectorModel(inspection(), [
+      { kind: 'task.gap', requestedCursor: 'a', firstRetainedCursor: 'b' },
+    ]);
+    expect(describeChange(before, gapped)).toBe('Event stream: gap.');
   });
 });

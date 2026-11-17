@@ -28,6 +28,10 @@
     score: number | null;
     /** True for the open memory the list or search does not hold, which leads the list. */
     pinned?: boolean;
+    /** True in the Quarantined view, whose memories `get` does not serve, so the row never reads one. */
+    quarantined?: boolean;
+    /** True for the open memory the quarantined list was read without: its row says it is not found. */
+    unavailable?: boolean;
     selected: boolean;
     onOpen: () => void;
   };
@@ -40,6 +44,8 @@
     query,
     score,
     pinned = false,
+    quarantined = false,
+    unavailable = false,
     selected,
     onOpen,
   }: Props = $props();
@@ -48,7 +54,8 @@
     () => ({
       queryKey: queryKeys.memory.detail(agentId, id),
       queryFn: ({ signal }) => getMemory(agentId, id, { signal }),
-      enabled: memory === undefined,
+      // A quarantined memory is read from its list: `get` does not serve it.
+      enabled: memory === undefined && !quarantined,
       retry: false,
     }),
     undefined,
@@ -66,6 +73,8 @@
               >{segment.text}</mark
             >{:else}{segment.text}{/if}{/each}</span
       >
+    {:else if unavailable}
+      <span class="ib-memory__content">{MEMORY_COPY.detail.notFound.title}</span>
     {:else if read.isError}
       <span class="ib-memory__content">{MEMORY_COPY.detail.failed}</span>
     {:else}

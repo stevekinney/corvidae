@@ -78,6 +78,7 @@ export type {
   MemoryDeletionPropagator,
   MemoryDeletionResult,
   MemoryEmbedderAvailability,
+  MemoryEmbedderListing,
   MemoryEmbeddingAdvanceOptions,
   MemoryEmbeddingJobStatus,
   MemoryEmbeddingProblem,
@@ -104,6 +105,7 @@ export type {
   MemoryRecallStageReport,
   MemoryRecallStageScores,
   MemoryRecordLocator,
+  MemoryReleaseRejection,
   MemoryRetentionCandidate,
   MemoryRetentionSweep,
   MemorySupersessionNotice,
@@ -263,6 +265,7 @@ export {
 export {
   EmbedderRegistryError,
   HASHING_EMBEDDER_ID,
+  HASHING_EMBEDDER_MODEL,
   createEmbedderRegistry,
 } from './embedder-registry';
 export type {
@@ -275,12 +278,14 @@ export type {
 export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 export {
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
+  MEMORY_EMBEDDING_FAILURES,
   MemoryVectorDimensionError,
   MemoryVectorProfileMissingError,
   createMemoryVectorStore,
 } from './memory-vector-store';
 export type {
   CreateMemoryVectorStoreOptions,
+  MemoryEmbeddingFailure,
   MemoryEmbeddingJob,
   MemoryEmbeddingJobState,
   MemoryEmbeddingProfile,
@@ -305,6 +310,7 @@ export {
   renderMemoryEvidence,
 } from './governance/evidence';
 export { createGovernedMemory } from './governance/governed-memory';
+export { MEMORY_RELEASE_REJECTIONS } from './governance/governed-memory-types';
 export { createGovernedMemoryTools } from './governance/governed-tools';
 export { createMemoryGovernanceLedger } from './governance/ledger';
 export {

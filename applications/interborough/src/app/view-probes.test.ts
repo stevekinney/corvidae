@@ -12,7 +12,8 @@ import {
   StubFault,
   type BureauStub,
 } from '../lib/bureau-stub.test-support.ts';
-import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
+import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
+import { probeFor, RUNS_RECHECK_MS, type ViewProbeFault } from './view-probes.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -193,6 +194,173 @@ describe('the agents probe', () => {
         probe(new HttpClient({ baseUrl: 'http://localhost/api' }), new QueryClient()),
       ),
     ).toMatchObject({ status: 404 });
+  });
+});
+
+describe('the plugin page probe (COR-2213)', () => {
+  const PANEL = {
+    plugin: 'acme',
+    app: 'queue',
+    title: 'Review queue',
+    uri: 'ui://acme/queue/v1',
+    placements: [{ kind: 'page', path: 'reviews/queue' }],
+  };
+
+  /** A host that lists `panels`, and `plugins` by name, title and status; a plugin read can be made to fail. */
+  function host(options: {
+    panels: readonly unknown[];
+    plugins?: readonly { name: string; title: string; status: string }[];
+    pluginsFail?: boolean;
+    pageFails?: boolean;
+  }): { restore: () => void; reads: string[] } {
+    const reads: string[] = [];
+    const restore = installFetchImplementation(async (input) => {
+      const text =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(text, 'http://localhost').pathname;
+      reads.push(path);
+      if (path === '/host/panels') return Response.json({ apps: options.panels });
+      if (/^\/host\/plugins\/[^/]+\/apps\/[^/]+$/.test(path)) {
+        return options.pageFails === true
+          ? new Response('no', { status: 500 })
+          : Response.json({ html: '<div id="root"></div>', ui: {} });
+      }
+      if (path === '/host/plugins') {
+        if (options.pluginsFail === true) return new Response('no', { status: 500 });
+        return Response.json({
+          configurationRevision: null,
+          unloaded: [],
+          plugins: (options.plugins ?? []).map(({ name, title, status }) => ({
+            descriptor: {
+              name,
+              title,
+              version: '1.0.0',
+              description: '',
+              required: false,
+              enabledByDefault: true,
+            },
+            source: 'package',
+            location: name,
+            status,
+            problems: [],
+            contributions: [],
+            enabled: status !== 'disabled',
+            configuration: {},
+            configurationSchema: null,
+            running: { enabled: status !== 'disabled', configuration: {} },
+            secrets: [],
+            restartRequired: false,
+          })),
+        });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    return { restore, reads };
+  }
+
+  async function probe(plugin: string, path: string) {
+    const run = probeFor('plugin-page', { plugin, '*': path }, '/plugins/:plugin/*');
+    if (run === undefined) throw new Error('A plugin page has a probe.');
+    return run(new HttpClient({ baseUrl: 'http://localhost/api' }), new QueryClient());
+  }
+
+  test('finds a page a listed panel places, however many segments its path has, loads it, and reads no plugin', async () => {
+    const served = host({ panels: [PANEL] });
+    try {
+      const queryClient = new QueryClient();
+      const run = probeFor('plugin-page', { plugin: 'acme', '*': 'reviews/queue' });
+      if (run === undefined) throw new Error('A plugin page has a probe.');
+      expect(await run(new HttpClient({ baseUrl: 'http://localhost/api' }), queryClient)).toEqual({
+        empty: false,
+      });
+      expect(served.reads).toEqual(['/host/panels', '/host/plugins/acme/apps/queue']);
+      // The page reads the answer from the cache under its own key instead of asking again.
+      expect(queryClient.getQueryData(['host', 'panels', 'page', 'acme', 'queue'])).toMatchObject({
+        html: '<div id="root"></div>',
+      });
+    } finally {
+      served.restore();
+    }
+  });
+
+  test('fails when the page the panel serves cannot be read, which is the frame’s failed state, not a missing page', async () => {
+    const served = host({ panels: [PANEL], pageFails: true });
+    try {
+      const fault = await rejectionOf(probe('acme', 'reviews/queue'));
+      expect(fault).toBeInstanceOf(Error);
+      expect(fault).not.toMatchObject({ status: 404 });
+      expect(served.reads).toEqual(['/host/panels', '/host/plugins/acme/apps/queue']);
+    } finally {
+      served.restore();
+    }
+  });
+
+  test('has no probe without the plugin and the path the route captures', () => {
+    expect(probeFor('plugin-page', {}, '/plugins/:plugin/*')).toBeUndefined();
+    expect(probeFor('plugin-page', { plugin: 'acme' }, '/plugins/:plugin/*')).toBeUndefined();
+  });
+
+  test('is not found, with no words of its own, for an address no panel places a page at', async () => {
+    const served = host({
+      panels: [PANEL],
+      plugins: [{ name: 'acme', title: 'Acme', status: 'running' }],
+    });
+    try {
+      const fault = await rejectionOf(probe('acme', 'elsewhere'));
+      expect(fault).toMatchObject({ status: 404 });
+      expect((fault as ViewProbeFault).words).toBeUndefined();
+      // A page of another plugin at the same path is not this plugin's.
+      expect(await rejectionOf(probe('other', 'reviews/queue'))).toMatchObject({ status: 404 });
+    } finally {
+      served.restore();
+    }
+  });
+
+  test('says the plugin is disabled, in its words, when the host lists it as disabled', async () => {
+    const served = host({
+      panels: [],
+      plugins: [{ name: 'acme', title: 'Acme reports', status: 'disabled' }],
+    });
+    try {
+      const fault = (await rejectionOf(probe('acme', 'reviews/queue'))) as ViewProbeFault;
+      expect(fault.status).toBe(404);
+      expect(fault.words).toEqual({
+        title: 'Acme reports is disabled',
+        description: 'Its pages come back when you enable it and restart.',
+        back: { label: 'Open Acme reports in Settings', href: '/settings/plugins?plugin=acme' },
+      });
+    } finally {
+      served.restore();
+    }
+  });
+
+  test('is only not found for a plugin the host lists as running with no such page, or cannot list at all', async () => {
+    const running = host({
+      panels: [],
+      plugins: [{ name: 'acme', title: 'Acme', status: 'running' }],
+    });
+    try {
+      expect(((await rejectionOf(probe('acme', 'x'))) as ViewProbeFault).words).toBeUndefined();
+    } finally {
+      running.restore();
+    }
+    const failing = host({ panels: [], pluginsFail: true });
+    try {
+      const fault = (await rejectionOf(probe('acme', 'x'))) as ViewProbeFault;
+      expect(fault.status).toBe(404);
+      expect(fault.words).toBeUndefined();
+    } finally {
+      failing.restore();
+    }
+  });
+
+  test('lets a host that cannot list its panels fail the probe, which the page words itself', async () => {
+    const restore = installFetchImplementation(async () => new Response('no', { status: 500 }));
+    try {
+      expect(await rejectionOf(probe('acme', 'reviews/queue'))).toBeInstanceOf(Error);
+    } finally {
+      restore();
+    }
   });
 });
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Engine } from '../../core/engine.ts';
@@ -14,8 +16,6 @@ import {
   manifestForActivities,
   TEST_ACCEPTED_MANIFEST_DIGEST,
 } from '../../worker/registry-fixtures.test-support.ts';
-import { executeOperation } from '../operation-catalog.ts';
-import { principalFromApiKey } from '../principal.ts';
 import { buildServerContext, resolveNetworkConfig } from '../serve-internals.ts';
 import { FailingTerminalCommitStorage } from './server-context.test-support.ts';
 import { dispatchTaskImpl } from './task-dispatch.ts';

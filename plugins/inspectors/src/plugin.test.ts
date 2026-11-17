@@ -13,9 +13,9 @@ describe('the inspectors plugin', () => {
     const host = await createPluginTestHost(inspectors);
     try {
       expect(host.plugins.panels()).toEqual([
-        { plugin: 'inspectors', version: '1.0.0', app: runInspector },
-        { plugin: 'inspectors', version: '1.0.0', app: pendingReview },
-        { plugin: 'inspectors', version: '1.0.0', app: workflowRevisionReview },
+        { plugin: 'inspectors', version: '1.0.1', app: runInspector },
+        { plugin: 'inspectors', version: '1.0.1', app: pendingReview },
+        { plugin: 'inspectors', version: '1.0.1', app: workflowRevisionReview },
       ]);
     } finally {
       await host.dispose();
@@ -47,7 +47,8 @@ describe('the inspectors plugin', () => {
       [workflowRevisionReview, 'workflow-revision'],
     ] as const) {
       const named = new Set<string>();
-      for await (const file of new Bun.Glob(`${folder}/*.ts`).scan(directory)) {
+      // The page's script and its components (`.svelte`): a tool a component calls is listed too.
+      for await (const file of new Bun.Glob(`${folder}/*.{ts,svelte}`).scan(directory)) {
         if (file.endsWith('.test.ts')) continue;
         const source = await Bun.file(join(directory, file)).text();
         for (const [tool] of source.matchAll(/\bbureau\.[a-z]+\.[a-z]+\b/g)) named.add(tool);

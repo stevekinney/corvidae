@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { buildRelease } from './build-release.ts';
+import { digestOf } from '../src/host/panel-build.ts';
+import { prebuiltPanelSchema } from '../src/host/panel-mounts.ts';
+import { buildRelease, workspacePanels } from './build-release.ts';
 
 describe('the signed release archive', () => {
   // load-proof: real signed archive build deterministically verifies relocated host artifacts.
@@ -30,6 +32,35 @@ describe('the signed release archive', () => {
         ),
       ).exports as Record<string, string>;
       expect(exportsMap).toEqual({ '.': './index.js', './testing': './testing/index.js' });
+      // `buildRelease` has already started the relocated executable with `PATH` empty and had it
+      // build a folder plugin's Cinder panel (a Svelte component through `@lostgradient/cinder/panel`)
+      // from the staged runtime, and refused the release otherwise (COR-2217). What it built from is
+      // staged here, and every workspace plugin's panels are prebuilt pages the host accepts.
+      const runtime = join(
+        output,
+        'interborough',
+        'share/interborough/plugin-runtime/node_modules',
+      );
+      for (const file of [
+        'svelte/compiler/index.js',
+        'svelte/package.json',
+        '@lostgradient/cinder/src/panel/index.ts',
+        '@lostgradient/cinder/src/panel/panel.css',
+        '@modelcontextprotocol/ext-apps/package.json',
+      ]) {
+        expect(await Bun.file(join(runtime, file)).exists(), file).toBe(true);
+      }
+      const panels = await workspacePanels();
+      expect(panels.length).toBeGreaterThan(0);
+      for (const { plugin, app } of panels) {
+        const prebuilt = prebuiltPanelSchema.parse(
+          await Bun.file(
+            join(output, 'interborough', 'share/interborough/panels', `${app.name}.json`),
+          ).json(),
+        );
+        expect(prebuilt.uri, `${plugin}: ${app.name}`).toBe(app.uri);
+        expect(digestOf(prebuilt.html), `${plugin}: ${app.name}`).toBe(prebuilt.contentDigest);
+      }
     } finally {
       await rm(output, { recursive: true, force: true });
     }

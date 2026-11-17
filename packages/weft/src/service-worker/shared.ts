@@ -6,8 +6,8 @@
  * @module service-worker/shared
  */
 
-import type { AuthContext } from '../server/authentication.ts';
-import { unauthenticatedLocalAuthContext } from '../server/handler.ts';
+import { unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
+import type { AuthContext } from '@lostgradient/backchannel/internals';
 
 const DEFAULT_PATH_PREFIX = '/weft/';
 

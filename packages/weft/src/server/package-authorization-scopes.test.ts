@@ -11,30 +11,31 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import {
+  authContextToPrincipal,
+  createAuthenticator,
+  createRotatingApiKeyStore,
+  defineOperation,
+  getPrincipalOperation,
+  principalFromApiKey,
+  principalFromStdioLocal,
+  type AuthResult,
+  type PackageAuthorizationScope,
+  type Principal,
+} from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  executeOperation,
+  generateOpenRpcDocument,
+  isAuthenticated,
+  signJWT,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ClientOperationTypes } from '../client/generated/operation-client.generated.ts';
 import { Engine } from '../core/engine.ts';
-import {
-  createAuthenticator,
-  createRotatingApiKeyStore,
-  signJWT,
-  type AuthResult,
-} from './authentication.ts';
-import type { PackageAuthorizationScope } from './authorization-scope.ts';
-import { authContextToPrincipal } from './handler.ts';
 import { serve, type WeftServer } from './index.ts';
 import { openWebSocket, waitForMessage } from './json-rpc-websocket-client.test-support.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
-import { defineOperation } from './operation-registry.ts';
-import { getPrincipalOperation } from './operations/get-principal.ts';
-import {
-  isAuthenticated,
-  principalFromApiKey,
-  principalFromStdioLocal,
-  type Principal,
-} from './principal.ts';
 
 const SECRET = 'package-scope-secret-at-least-32-chars!';
 const API_KEY = 'weft_key_package_scopes';

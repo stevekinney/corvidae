@@ -20,6 +20,9 @@
 
   import { classNames } from '../../utilities/class-names.ts';
 
+  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
+  import { createCutText } from '../../_internal/cut-text.svelte.ts';
+  import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import Tooltip from '../tooltip/tooltip.svelte';
   import { fitMiddleHead } from './text-middle.ts';
   import type { TextElement, TextProps, TextVariant } from './text.types.ts';
@@ -49,6 +52,7 @@
     h5: 'h5',
     caption: 'p',
     body: 'p',
+    code: 'code',
   } as const satisfies Record<TextVariant, TextElement>;
 
   const element = $derived(as ?? defaultElements[variant]);
@@ -58,6 +62,16 @@
     typeof clamp === 'number' && Number.isFinite(clamp) && clamp >= 1
       ? Math.floor(clamp)
       : undefined,
+  );
+  // A text cut at its end is focusable and opens a tooltip with the whole value, like the middle cut,
+  // so a keyboard or touch user reaches it too. Inside a page's own Tooltip the text is only the
+  // trigger: that tooltip speaks, so the text draws no second one and carries no `title`.
+  const insideTooltip = getTooltipTriggerContext() !== undefined;
+  // Only a value that is actually cut takes a tab stop and a tooltip, and a cut link inside it is the
+  // one stop, so the tooltip anchors to the link and the wrapper stays out of the tab order.
+  const endCut = createCutText();
+  const endText = $derived(
+    typeof rest.title === 'string' && rest.title !== '' ? rest.title : (text ?? ''),
   );
   const isMiddle = $derived(truncate === 'middle' && typeof text === 'string');
   const rootId = $derived(typeof rest.id === 'string' && rest.id !== '' ? rest.id : generatedId);
@@ -126,14 +140,20 @@
 </script>
 
 {#if truncate === 'end' && typeof text === 'string'}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole value. -->
   <svelte:element
     this={element}
+    tabindex={endCut.tabbable || insideTooltip ? 0 : undefined}
     {...rest}
-    title={typeof rest.title === 'string' && rest.title !== '' ? rest.title : text}
+    title={undefined}
     class={classNames('cinder-text', className)}
     data-cinder-variant={variant}
-    data-cinder-truncate="end">{text}</svelte:element
-  >
+    data-cinder-truncate="end"
+    {@attach endCut.attach}>{text}</svelte:element
+  >{#if !insideTooltip && endCut.cut}<FullTextTooltip
+      text={endText}
+      triggerRef={endCut.trigger}
+    />{/if}
 {:else if middleParts !== undefined}
   <!-- The cut text is focusable, so a keyboard or touch user reaches the whole value in the tooltip. -->
   <Tooltip

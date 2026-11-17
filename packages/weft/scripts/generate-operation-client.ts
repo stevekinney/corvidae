@@ -8,12 +8,9 @@ import packageJson from '../package.json' with { type: 'json' };
 
 import { format, resolveConfig } from 'prettier';
 
-import { compareStrings } from '../src/server/json-schema-utilities.ts';
-import type {
-  CatalogOperationSnapshot,
-  CatalogSnapshot,
-} from '../src/server/operation-catalog-snapshot.ts';
-import { createCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
+import type { CatalogOperationSnapshot, CatalogSnapshot } from '@lostgradient/backchannel';
+import { compareStrings } from '@lostgradient/backchannel/internals';
+import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 
 import { renderAliasDeclarations, selectAliases } from './operation-client-aliases.ts';
 import {

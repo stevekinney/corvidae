@@ -254,7 +254,10 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.memory.hold', 'owner'],
       ['bureau.memory.hold.release', 'owner'],
       ['bureau.memory.quarantine', 'owner'],
+      ['bureau.memory.quarantine.release', 'owner'],
       ['bureau.memory.export', 'owner-collection'],
+      ['bureau.memory.embedding', 'administrator'],
+      ['bureau.memory.embedding.cancel', 'administrator'],
     ],
   },
   {
@@ -274,6 +277,12 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     inputFixture: 'Private execution trail plus secret-bearing shared configuration record',
     sentinel: 'PRIVATE-AUDIT-INPUT-b2ed',
     operations: [['bureau.audit.query', 'audit']],
+  },
+  {
+    testFile: 'management/checks-operations.test.ts',
+    inputFixture: 'Guardrail rows of an owned run beside a goal row of another owner',
+    sentinel: 'PRIVATE-CHECK-INPUT-5d1e',
+    operations: [['bureau.checks.list', 'owner-collection']],
   },
   {
     testFile: 'workspace-settings-privacy.test.ts',

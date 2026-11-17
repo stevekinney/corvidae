@@ -74,7 +74,7 @@ import {
   type RuntimeServices,
   type RuntimeTimers,
 } from '@lostgradient/lifecycle';
-import type { Principal } from '@lostgradient/weft';
+import type { Principal } from '@lostgradient/backchannel';
 import { A2APushConfigurationConflictError, requestSignalOf } from '@lostgradient/weft/a2a';
 
 import { installPushConfiguration } from './a2a-push-install.ts';

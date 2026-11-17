@@ -490,6 +490,27 @@ describe('the open event', () => {
       principal: 'system:host',
       detail: null,
     });
+    // happy-dom does no layout: this stands in for the browser, where the 2,000 characters are cut.
+    const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const original = Object.getOwnPropertyDescriptor(prototype, 'scrollWidth');
+    Object.defineProperty(prototype, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('cinder-table__cell-text') ? 4000 : 0;
+      },
+    });
+    try {
+      await auditTargetIsOneLineAndWhole(key, deleted);
+    } finally {
+      if (original === undefined) delete prototype['scrollWidth'];
+      else Object.defineProperty(prototype, 'scrollWidth', original);
+    }
+  });
+
+  async function auditTargetIsOneLineAndWhole(
+    key: string,
+    deleted: ReturnType<typeof record>,
+  ): Promise<void> {
     const { container, findByTestId } = open({ records: [deleted], nextCursor: null });
 
     const detail = await findByTestId('audit-target');
@@ -500,15 +521,15 @@ describe('the open event', () => {
     expect(detail.querySelector('button')?.textContent?.trim()).toBe(AUDIT_COPY.copyKey);
     // The whole value is shown once, under its heading, and not again as a fact.
     expect(detail.querySelectorAll('dl')).toHaveLength(0);
-    // The table cell keeps the full text in its title and ends it with an ellipsis, on one line.
+    // The table cell keeps the full text, reachable by focus, and ends it with an ellipsis, on one line.
     const cell = container.querySelector(
       'tbody td:last-child, tbody tr[data-cinder-row-id] td:last-child',
     );
     expect(cell?.textContent).toContain('Storage › ');
-    expect(cell?.querySelector('.cinder-table__cell-text')?.getAttribute('title')).toBe(
-      `Storage › ${key}`,
-    );
-  });
+    const cutText = cell?.querySelector('.cinder-table__cell-text');
+    expect(cutText?.textContent?.trim()).toBe(`Storage › ${key}`);
+    await waitFor(() => expect(cutText?.getAttribute('tabindex')).toBe('0'));
+  }
 
   test('the pane says to select an event when none is open, after the filters change', async () => {
     const { container, findByTestId, findByText, getByLabelText } = open((params) =>
@@ -1146,8 +1167,8 @@ describe('what the page looks up to word an event', () => {
         }),
       },
     );
-    await view.findByText('“prefers long summaries”');
-    await view.findByText('Daily summary');
+    await view.findAllByText('“prefers long summaries”');
+    await view.findAllByText('Daily summary');
     // A schedule with no name is a schedule, not an identifier.
     expect(view.getAllByText('A schedule').length).toBeGreaterThan(0);
   });
@@ -1201,8 +1222,8 @@ describe('what the page looks up to word an event', () => {
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get')).toHaveLength(chats.length));
     expect(most).toBe(AUDIT_LOOKUPS_IN_FLIGHT);
     // Every chat was read, so none of them reads as deleted.
-    await view.findByText('Chat › Title of chat-39');
-    await view.findByText('Chat › Title of chat-0');
+    await view.findAllByText('Chat › Title of chat-39');
+    await view.findAllByText('Chat › Title of chat-0');
   });
 });
 

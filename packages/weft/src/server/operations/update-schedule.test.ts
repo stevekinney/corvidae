@@ -1,17 +1,18 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { principalFromUnauthenticatedLocal } from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { decode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic-source-errors.ts';
 import { WorkflowRevisionUnavailableError } from '../../core/engine/revision-errors.ts';
-import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { type WorkflowContext, workflow } from '../../core/types.ts';
 import { KEYS } from '../../storage/keys.ts';
-import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
-import { principalFromUnauthenticatedLocal } from '../principal.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
 import { updateScheduleOperation, updateScheduleRestBinding } from './update-schedule.ts';
 

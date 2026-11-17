@@ -11,6 +11,7 @@ import { defineTrigger } from './define-trigger.ts';
 import type {
   PluginAgent,
   PluginContributions,
+  PluginEmbedder,
   PluginFormatter,
   PluginGuardrailFactory,
   PluginGuardrails,
@@ -275,6 +276,64 @@ export const typedTriggers: PluginContributions = {
       },
     }),
   ],
+};
+
+declare const embedder: PluginEmbedder['embed'];
+
+// An embedder names the model it runs (COR-2184).
+export const modeledEmbedder: PluginContributions = {
+  embedders: [{ name: 'embed', model: 'nomic-embed-text', dimensions: 768, embed: embedder }],
+};
+
+export const unmodeledEmbedder: PluginContributions = {
+  // @ts-expect-error -- an embedder without a `model` is refused
+  embedders: [{ name: 'embed', dimensions: 768, embed: embedder }],
+};
+
+export const versionedEmbedder: PluginContributions = {
+  // @ts-expect-error -- an embedder has no version of its own: it takes its plugin's
+  embedders: [{ name: 'embed', model: 'm', version: '1.0.0', dimensions: 768, embed: embedder }],
+};
+
+// COR-2168 — a kind may define `start`, `receive` or both. `receive` reads the configuration as
+// the schema parses it too, and answers a `Response`.
+export const receiveOnlyTrigger = defineTrigger({
+  name: 'inbox',
+  description: 'Receives a delivery.',
+  configuration: z.object({ path: z.string() }),
+  async receive(request, { configuration }) {
+    const path: string = configuration.path;
+    // @ts-expect-error -- the schema declares no `minutes`
+    const minutes: unknown = configuration.minutes;
+    return new Response(`${request.method} ${path}`, { status: minutes === undefined ? 202 : 200 });
+  },
+});
+
+export const listeningAndReceiving: PluginContributions = {
+  triggers: [
+    receiveOnlyTrigger,
+    defineTrigger({
+      name: 'both',
+      description: 'Listens and receives.',
+      configuration: z.object({}),
+      async start() {
+        return () => undefined;
+      },
+      async receive() {
+        return new Response(null, { status: 204 });
+      },
+    }),
+  ],
+};
+
+export const badReceive: PluginTrigger = {
+  name: 'bad',
+  description: 'Answers something that is not a Response.',
+  configuration: z.object({}),
+  // @ts-expect-error -- `receive` resolves a `Response`, not a string
+  async receive() {
+    return 'accepted';
+  },
 };
 
 // A kind written without the helper keeps an untyped `configuration`.

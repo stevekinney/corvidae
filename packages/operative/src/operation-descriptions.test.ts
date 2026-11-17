@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { findUndescribedOperations } from '@lostgradient/weft';
+import { findUndescribedOperations } from '@lostgradient/backchannel';
 
 import * as operative from './index.ts';
 import { runEventsSubscriptionOperation } from './index.ts';

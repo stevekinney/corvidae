@@ -59,6 +59,14 @@ function hostAnswer(path: string, init: RequestInit | undefined): Response | und
     if (!panelsListed) return new Response('Not found', { status: 404 });
     return Response.json({
       apps: [
+        // Listed first, but ordered last: plugin names sort ahead of the order the host lists them in.
+        {
+          plugin: 'zebra',
+          app: 'summary',
+          title: 'Zebra summary',
+          uri: 'ui://zebra/summary/v1',
+          placements: [{ kind: 'run' }],
+        },
         {
           plugin: 'inspectors',
           app: 'run-inspector',
@@ -75,10 +83,33 @@ function hostAnswer(path: string, init: RequestInit | undefined): Response | und
           opensFromTool: 'bureau.reviews.list',
           placements: [],
         },
+        // The same plugin's second run panel, which opens from no tool at all.
+        {
+          plugin: 'inspectors',
+          app: 'run-notes',
+          title: 'Run notes',
+          uri: 'ui://inspectors/run-notes/v1',
+          placements: [{ kind: 'page', path: 'notes' }, { kind: 'run' }],
+        },
+        // Opens from the run inspector's tool, but declares no run placement: not on the page.
+        {
+          plugin: 'inspectors',
+          app: 'legacy-inspector',
+          title: 'Legacy inspector',
+          uri: 'ui://inspectors/legacy-inspector/v1',
+          opensFromTool: 'bureau.tasks.inspect',
+          placements: [{ kind: 'chat-tool', agentTool: 'bureau:legacy' }],
+        },
       ],
     });
   }
-  if (path === APP) return Response.json({ html: PAGE_HTML, ui: {} });
+  if (
+    path.startsWith('/host/plugins/') &&
+    path.includes('/apps/') &&
+    !path.endsWith('/tool-calls')
+  ) {
+    return Response.json({ html: PAGE_HTML, ui: {} });
+  }
   if (path === `${APP}/tool-calls`) {
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : 'null') as {
       name: string;
@@ -221,11 +252,53 @@ describe('the run inspector on a run’s page', () => {
     expect(panel.textContent).toContain(RUN_PAGE_COPY.panelFromPlugin('inspectors'));
   });
 
-  test('shows only the panels that open from the run inspector’s tool', async () => {
+  test('shows every panel with a run placement, ordered by plugin name and then declaration order', async () => {
     const view = openRun();
     await panelFrame(view);
-    expect(view.container.querySelectorAll('[data-section="plugin-panel"]')).toHaveLength(1);
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('[data-section="plugin-panel"] iframe')).toHaveLength(
+        3,
+      ),
+    );
+    const sections = [
+      ...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]'),
+    ];
+    expect(sections.map((section) => section.dataset['plugin'])).toEqual([
+      'inspectors',
+      'inspectors',
+      'zebra',
+    ]);
+    expect(
+      sections.map((section) => section.querySelector('h2')?.firstChild?.textContent?.trim()),
+    ).toEqual(['Run inspector', 'Run notes', 'Zebra summary']);
+    // A panel with no run placement stays off the page, whatever tool it opens from.
     expect(view.container.textContent).not.toContain('Pending reviews');
+    expect(view.container.textContent).not.toContain('Legacy inspector');
+  });
+
+  test('renders a fixture plugin’s second run panel next to the run inspector, each sent the run', async () => {
+    const view = openRun();
+    await panelFrame(view);
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('[data-section="plugin-panel"] iframe')).toHaveLength(
+        3,
+      ),
+    );
+    const titles = [...view.container.querySelectorAll('[data-section="plugin-panel"] iframe')].map(
+      (frame) => frame.getAttribute('title'),
+    );
+    expect(titles).toEqual(['Run inspector', 'Run notes', 'Zebra summary']);
+    for (const frame of view.container.querySelectorAll<HTMLIFrameElement>(
+      '[data-section="plugin-panel"] iframe',
+    )) {
+      await initialize(frame.contentWindow as object);
+    }
+    const toolInputs = () =>
+      framePayloads.filter((message) => message.method === 'ui/notifications/tool-input');
+    await waitFor(() => expect(toolInputs()).toHaveLength(3));
+    for (const input of toolInputs()) {
+      expect(input['params']).toMatchObject({ arguments: { taskId: 'run-1' } });
+    }
   });
 
   test('opens the panel on the run, and loads the run’s data through bureau.tasks.inspect', async () => {

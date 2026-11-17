@@ -42,8 +42,9 @@ import {
  * reach the port, which is why the hostname is not an option. The one credential the host knows is
  * the operator's A2A key (COR-1904, `a2a-authentication.ts`): once it is stored, A2A requires it,
  * and it is the only way a request from beyond loopback, through a reverse proxy serving the public
- * origin `INTERBOROUGH_A2A_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`
- * and `/bureau/assets/*`.
+ * origin `INTERBOROUGH_PUBLIC_ORIGIN` names, reaches anything, and then only `/bureau/a2a/*`,
+ * `/bureau/assets/*` and `POST /triggers/<workflow-id>` (COR-2169), the one route that needs no
+ * credential, because the trigger's own `receive` authenticates the sender (`trigger-routes.ts`).
  *
  * Weft's server would report its own shared `unauthenticated-local` caller for a request with no
  * credential, so it listens on a second, private loopback port that answers only a per-process
@@ -56,6 +57,9 @@ import {
  *   `/api/reviews/<review>/decision`, their description at `/api/openapi.json`, and `/host/session`:
  *   Interborough's own API over the Bureau, each operation checked against the session's scopes
  *   (`api-routes.ts`, `api-description.ts`).
+ * - `POST /triggers/<workflow-id>`: a delivery to a workflow file whose trigger kind defines
+ *   `receive` (COR-2169). No session and no key; the trigger authenticates the sender, the body is
+ *   capped at 4 MiB, and the public origin reaches this route too (`trigger-routes.ts`).
  * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
  *   documents: Weft's engine operations, relayed to its server. `POST /jsonrpc` also answers a
  *   Bureau method, and `rpc.discover` over both catalogs, itself (`composed-json-rpc.ts`, COR-2269):
@@ -138,6 +142,7 @@ import {
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
+import type { SkillCatalogChange } from '@lostgradient/bureau/skills';
 import {
   type GenerateFunction,
   type PeerCallJournal,
@@ -187,8 +192,8 @@ import {
 import {
   DEFAULT_BUILD_DIRECTORY,
   processEnvironment,
-  resolveA2aPublicOrigin,
   resolvePort,
+  resolvePublicOrigin,
 } from './environment-configuration.ts';
 import {
   HOST_DEPENDENCIES,
@@ -198,6 +203,7 @@ import {
 } from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
+import { createHostEvents } from './host-events.ts';
 import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
 import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
@@ -211,10 +217,12 @@ import { resolveLaunchCommand } from './launch-command.ts';
 import {
   claimWorkspaceBinding,
   createAgentSource,
+  createGuardrailSource,
   createHostStorage,
   createPluginAgentSource,
   createPluginSkillSource,
   createPluginWorkflowSource,
+  createValidatorSource,
   createWorkflowSource,
   DEFAULT_CONTENT_KINDS,
   DEFAULT_DATABASE_KINDS,
@@ -231,10 +239,15 @@ import {
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
 import {
+  hostPanelMountOptions,
+  panelCacheDirectoryOf,
+  reportPanelFallbacks,
+} from './panel-mount-options.ts';
+import {
   commitPanelDigests,
-  PANEL_PREBUILT_DIRECTORY_VARIABLE,
   panelMounts,
   reportPanelChanges,
+  type PanelMountOptions,
 } from './panel-mounts.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
@@ -245,17 +258,23 @@ import { providerAttention } from './provider-attention.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
-import { allowedHosts, createRequestGuard } from './request-guard.ts';
+import { allowedHosts, createRequestGuard, rawPathOf } from './request-guard.ts';
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
 import { isShellNavigation } from './shell-request.ts';
-import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
+import {
+  createSkillManager,
+  discoverFirstSkills,
+  type SkillManager,
+  type SkillManagerOptions,
+} from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
 import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
 import { TOOL_SOURCE_SECRET_PREFIX } from './tool-source-vault.ts';
+import { TRIGGER_ROUTE, triggerRoutes } from './trigger-routes.ts';
 import { createWorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
@@ -340,6 +359,19 @@ export const AGENT_DIRECTORY_NAME = 'agents';
  */
 export const WORKFLOW_DIRECTORY_NAME = 'workflows';
 
+/**
+ * The directory of validator files under the Interborough home: `staging-notes.json` is the
+ * validator `staging-notes`, which a goal may name by that name and the digest of what the file
+ * says (COR-2119).
+ */
+export const VALIDATOR_DIRECTORY_NAME = 'validators';
+
+/**
+ * The directory of guardrail files under the Interborough home: `no-secrets.json` is the guardrail
+ * `no-secrets`, which an agent file lists in `guardrails` by that name (COR-2120).
+ */
+export const GUARDRAIL_DIRECTORY_NAME = 'guardrails';
+
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
 
@@ -422,6 +454,12 @@ export type HostOptions = {
   readonly createConsoleEngine?: (
     storage: Storage,
   ) => RegistryAgnosticEngine | Promise<RegistryAgnosticEngine>;
+  /**
+   * Replaces how the host builds a panel's page and how long it waits (COR-2219), for a test that
+   * counts, stalls or times a build without a real one. The defaults are `buildPanelPage` and the
+   * platform's timers, with the deadline `PANEL_BUILD_DEADLINE_MILLISECONDS`.
+   */
+  readonly panelBuild?: Pick<PanelMountOptions, 'build' | 'clock'>;
   /** The few Weft server settings a host may tune for the engine API it relays. */
   readonly engineServer?: Pick<
     ServeOptions,
@@ -707,10 +745,54 @@ async function delegationSecret(bungalow: Bungalow): Promise<string> {
   return created;
 }
 
-/** Where the `/bureau` prefix comes off a request before the Bureau handler sees it. */
-function withoutBureauPrefix(request: Request): Request {
+/**
+ * The guards the two public surfaces get: with no public origin, the loopback guard itself; with
+ * one, a guard that also admits that origin's `Host` for the paths of its own surface only, so no
+ * allowlist decides for a route that did not ask for an entry.
+ */
+/**
+ * The addresses `/host/paths` reports under `origin`, the one a caller reaches: the A2A directory
+ * card, and where a trigger that receives is sent its deliveries (`/triggers/`, then the workflow's
+ * identifier; COR-2171).
+ */
+function reachableAddresses(origin: string): {
+  readonly a2aDirectoryUrl: string;
+  readonly triggersUrl: string;
+} {
+  return {
+    a2aDirectoryUrl: `${origin}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
+    triggersUrl: `${origin}${TRIGGER_ROUTE.slice(0, TRIGGER_ROUTE.indexOf(':'))}`,
+  };
+}
+
+function publicOriginGuards(
+  port: () => number,
+  publicOrigin: URL | undefined,
+  loopback: (request: Request) => Response | undefined,
+): {
+  readonly bureau: (request: Request) => Response | undefined;
+  readonly trigger: (request: Request) => Response | undefined;
+} {
+  if (publicOrigin === undefined) return { bureau: loopback, trigger: loopback };
+  return {
+    bureau: createRequestGuard(port, publicOrigin),
+    trigger: createRequestGuard(port, publicOrigin, ['triggers']),
+  };
+}
+
+/**
+ * Where the `/bureau` prefix comes off a request before the Bureau handler sees it, or `undefined`
+ * for a path that does not literally start with the prefix, which it never cuts a fixed number of
+ * characters off. It refuses nothing else: an identifier a client percent-encodes into a path (a
+ * thread id `team/standup` is `team%2Fstandup`) is the Bureau's to decode, for the local owner as
+ * before. A request through the public origin with an ambiguous path never gets here: the guard of
+ * `/bureau/*` refuses it first (`request-guard.ts`).
+ */
+function withoutBureauPrefix(request: Request): Request | undefined {
+  const raw = rawPathOf(request);
+  if (raw !== BUREAU_PATH_PREFIX && !raw.startsWith(`${BUREAU_PATH_PREFIX}/`)) return undefined;
   const url = new URL(request.url);
-  url.pathname = url.pathname.slice(BUREAU_PATH_PREFIX.length) || '/';
+  url.pathname = raw.slice(BUREAU_PATH_PREFIX.length) || '/';
   return new Request(url, request);
 }
 
@@ -786,6 +868,20 @@ function applicationRoutes(
  * one is in flight changes nothing. A failure is reported and clears the request, so the person
  * can ask again; the entry's callback exits the process itself.
  */
+/**
+ * How the skill manager watches its directories (COR-2100): the host's own choice for the agent and
+ * workflow files, its warning sink and its runtime, each only when the host was given one.
+ */
+function skillWatchOptions(
+  options: Pick<HostOptions, 'directoryWatch' | 'warn' | 'runtime'>,
+): Pick<SkillManagerOptions, 'watch' | 'warn' | 'runtime'> {
+  return {
+    ...(options.directoryWatch === undefined ? {} : { watch: options.directoryWatch }),
+    ...(options.warn === undefined ? {} : { warn: options.warn }),
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+  };
+}
+
 function restartHandler(restart: () => void | Promise<void>): () => Response {
   let requested = false;
   return () => {
@@ -836,9 +932,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const packagePlugins = [...(options.plugins ?? workspacePlugins())];
   const developmentPlugins = [...(options.developmentPlugins ?? [])];
   const log = options.log ?? ((message: string) => console.info(message));
-  // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
-  // and a malformed one stops the host before anything opens.
-  const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
+  // The public origin (COR-1904, COR-2169) is read from the caller's environment before it can
+  // change, and a malformed one, or the name it had before it was renamed, stops the host before
+  // anything opens.
+  const a2aPublicOrigin = resolvePublicOrigin(environment);
   // The tables are copied before the first await, like the other caller-owned options, so a later
   // change to the caller's objects cannot reach a lookup. The claimed Postgres storage below still
   // comes from the built-in Postgres factory, as the callback always did.
@@ -919,6 +1016,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
     // A folder that cannot load is reported and skipped, never a reason to stop the host.
     const content = bungalow.content(PLUGIN_FOLDER_NAME);
+    // Where built panel pages are kept between starts: the home's own directory, or none for a remote one.
+    const panelCacheDirectory = panelCacheDirectoryOf(bungalow, contentKinds, log);
     // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
     const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
@@ -937,8 +1036,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const isProviderPlugin = (plugin: string): boolean =>
       held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
+    // What the plugin manager reports of the writes it commits (COR-2098), and the port the Bureau
+    // hears it through: a secret stored or removed, a plugin's choices written, a status changed.
+    const hostEvents = createHostEvents();
     const pluginManager = await createPluginManager({
       workspaceSecrets,
+      events: hostEvents,
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
       },
@@ -1088,6 +1191,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
+    const validatorContent = bungalow.content(VALIDATOR_DIRECTORY_NAME);
+    const guardrailContent = bungalow.content(GUARDRAIL_DIRECTORY_NAME);
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
     // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
     // both run every task. The other restart-applied settings that overlap depends on are held too
@@ -1114,6 +1219,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return source === undefined ? [] : [source];
         }),
     });
+    // Who hears a skill change: the Bureau subscribes at construction, and the manager, created after
+    // the Bureau, reports into the set (the `agentSkillCatalog` arrangement, in the other direction).
+    const skillChangeListeners = new Set<(change: SkillCatalogChange) => void>();
     const peerToolNames = new Set(Object.keys(peerTools));
     const sourceTools = toolSources.tools();
     const directoryOptions: LocalDirectoryOptions =
@@ -1191,6 +1299,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       plugins: pluginManager.loadable().filter((entry) => entry.source !== 'built-in'),
       pluginConfiguration: pluginManager.settings(),
       pluginSecrets: pluginManager.secrets,
+      hostEvents: hostEvents.port,
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
@@ -1226,6 +1335,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         contentKinds,
       ),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
+      // The skill changes the manager reports once it is created (COR-2100): the Bureau publishes
+      // each as `definitions.changed` with `catalog: 'skills'`.
+      skillChanges: {
+        onChange(listener) {
+          skillChangeListeners.add(listener);
+          return () => {
+            skillChangeListeners.delete(listener);
+          };
+        },
+      },
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: (plugin, shipped) =>
         createPluginAgentSource(plugin, shipped, directoryOptions),
@@ -1249,10 +1368,31 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
       pluginWorkflowSource: (plugin, shipped) =>
         createPluginWorkflowSource(plugin, shipped, directoryOptions),
+      // Validator files: JSON files in Bungalow's `validators/` directory say when a goal is done
+      // (COR-2119), watched as the agent and workflow files are.
+      validatorSource: createValidatorSource(
+        bungalow,
+        validatorContent,
+        directoryOptions,
+        contentKinds,
+      ),
+      // Guardrail files: JSON files in Bungalow's `guardrails/` directory are guardrails an agent
+      // file lists by name (COR-2120), watched as the agent files are.
+      guardrailSource: createGuardrailSource(
+        bungalow,
+        guardrailContent,
+        directoryOptions,
+        contentKinds,
+      ),
       ...(settings === undefined ? {} : { settings }),
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.capabilities),
+      // Scorers plugins contribute (COR-2202): passing the option is what registers them, so they
+      // are listed at once. No run is scored by any of them until the `scorers.sampleRate` setting,
+      // which defaults to 0, is raised: at 0 every scorer is off, whatever rate it asks for itself.
+      // There is no Settings control for it yet.
+      scorers: { list: [], sampleRate: 0 },
       ...(options.hookFetch === undefined
         ? {}
         : { webhooks: { targets: [], fetch: options.hookFetch } }),
@@ -1296,6 +1436,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const skills = await createSkillManager({
       bungalow,
       configurationQueue,
+      // The skill directories are watched like the agent files are, and a change is reported to the Bureau.
+      ...skillWatchOptions(options),
+      onChange: (change) => {
+        for (const listener of skillChangeListeners) listener(change);
+      },
       // The skills a running plugin ships (COR-1977): its `content/skills`, read each time the catalog is discovered.
       pluginSources: async () => {
         const listed = await bureau.plugins.list();
@@ -1348,8 +1493,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const mcpMounts = await panelMounts(
       bureau.plugins.panels(),
       storage,
-      environment[PANEL_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
+      hostPanelMountOptions({
+        environment,
+        cacheDirectory: panelCacheDirectory,
+        log,
+        ...(options.panelBuild === undefined ? {} : { overrides: options.panelBuild }),
+      }),
     );
+    // A prebuilt page the host could not use is built at start instead, and a person sees why.
+    reportPanelFallbacks(mcpMounts.fallbacks, log);
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
     // never stops the host from starting.
     for (const failure of mcpMounts.failures) {
@@ -1377,11 +1529,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<HostSocketData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
-    // `/bureau/*` alone also answers the public origin, and only for its A2A paths (COR-1904).
-    const refuseBureau =
-      a2aExposure.publicOrigin === undefined
-        ? refuse
-        : createRequestGuard(() => listening?.port ?? 0, a2aExposure.publicOrigin);
+    // `/bureau/*` and the trigger route alone also answer the public origin, each with a guard of
+    // its own surface: the A2A and asset paths (COR-1904), and `/triggers/<workflow>` (COR-2169).
+    const { bureau: refuseBureau, trigger: refuseTrigger } = publicOriginGuards(
+      () => listening?.port ?? 0,
+      a2aExposure.publicOrigin,
+      refuse,
+    );
     // Who a request to Interborough's own operations acts as: the local person, holding every scope
     // of Interborough's API, unless the host was started with another (`scope-gate.ts`).
     const apiPrincipal = options.apiPrincipal ?? (() => localApiPrincipal(ANONYMOUS_LOCAL_OWNER));
@@ -1432,6 +1586,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return new Response('The Bureau is not serving yet.', { status: 503 });
         }
         const bureauRequest = withoutBureauPrefix(request);
+        if (bureauRequest === undefined) {
+          return new Response('Forbidden: this path is not accepted.', { status: 403 });
+        }
         // The scopes of Interborough's API, on the operations its pages call (`scope-gate.ts`).
         const forbidden = await bureauScopeRefusal(bureauRequest, apiPrincipal(request));
         if (forbidden !== undefined) return forbidden;
@@ -1443,6 +1600,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         }
         return bureauHandler(bureauRequest);
       },
+      // A trigger delivery (COR-2169): `POST /triggers/<workflow-id>`, from an external sender with
+      // no session. The route policy admits it as `trigger-receive`, checked by the public-origin
+      // guard alone; the trigger's own `receive` authenticates the sender (`trigger-routes.ts`).
+      ...triggerRoutes({ bureau, warn: options.warn, runtime: options.runtime }),
       // Whether the host can restart, and the command it was launched with (COR-2009), and the
       // restart request itself. The guard answers first, so a page on another origin cannot
       // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
@@ -1550,9 +1711,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
                 .providers.flatMap(({ name, secretKey }) =>
                   secretKey === undefined ? [] : [{ name, secretKey }],
                 ),
-              // The directory of the agents shared over A2A, at the address a caller reaches: the
-              // public origin when one is set (COR-1904), else this host's own.
-              `${a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
+              // The directory of the agents shared over A2A, and the trigger route (COR-2171), at
+              // the address a caller reaches: the public origin when one is set (COR-1904,
+              // COR-2169), else this host's own.
+              reachableAddresses(
+                a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
+              ),
               { database: databaseKinds, content: contentKinds },
             ),
           ),
@@ -1566,10 +1730,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // streams that are quiet for longer: the engine's event feed pings every 15 seconds, and a
       // chat run waiting on a person's answer sends nothing at all. A stream cut that way ends
       // without its terminating chunk, and Chromium logs `ERR_INCOMPLETE_CHUNKED_ENCODING` for each
-      // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
-      // that stays open costs nothing a timeout would save.
+      // one (COR-1643). The listener binds loopback, but a reverse proxy forwards a public origin's
+      // paths to it. The one route a stranger may call with no credential, `POST
+      // /triggers/<workflow>`, therefore has a total deadline on reading its body
+      // (`trigger-routes.ts`, 30 seconds): at the deadline its handler, its buffered bytes and its
+      // timer are released and it answers 408. The host does not close the socket, which this
+      // timeout being off leaves open, as on every route; the A2A paths the public origin also
+      // reaches need the A2A key before they hold anything.
       idleTimeout: 0,
-      routes: authorizeHostRoutes(publicRoutes, authority, refuse),
+      // A route admitted as `trigger-receive` is checked by the guard that also admits the public
+      // origin's `Host`; every other route, and every path no route names, by the loopback one.
+      routes: authorizeHostRoutes(publicRoutes, authority, refuse, refuseTrigger),
       async fetch(request, listener) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;

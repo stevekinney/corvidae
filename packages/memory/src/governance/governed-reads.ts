@@ -203,7 +203,9 @@ export async function listRecords(
   const readable = await candidatesFor(context, authority, 'list', options);
   const listed = readable.filter(
     (candidate) =>
-      candidate.redaction === 'privileged' || candidate.read.governance.invalidatedAt === undefined,
+      (candidate.redaction === 'privileged' ||
+        candidate.read.governance.invalidatedAt === undefined) &&
+      (options.state === undefined || candidate.read.governance.state === options.state),
   );
   const candidates = listed.toSorted(
     (left, right) => right.record.createdAt - left.record.createdAt,

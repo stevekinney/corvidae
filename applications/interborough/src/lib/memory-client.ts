@@ -6,7 +6,7 @@
  *
  * The operations serve the caller's own memory under one agent. The caller is the host's one local
  * principal and is never a parameter. Reading needs `bureau.memory:read` and changing needs
- * `bureau.memory:write`; a legal hold needs `bureau.memory:govern`. A caller without the scope is
+ * `bureau.memory:write`; a legal hold, releasing a quarantined memory, and listing the quarantined (`list` with `state: 'quarantined'`) need `bureau.memory:govern`. A caller without the scope is
  * answered `Forbidden` whatever it owns.
  */
 import { HttpClientError } from '@lostgradient/weft';
@@ -41,6 +41,19 @@ export const memorySchema = z.object({
   createdAt: z.string(),
   /** The chat that produced it, or `null` for a memory no chat wrote. */
   sessionId: z.string().nullable(),
+  /** Why it is quarantined: present only on a memory the quarantined list returned. */
+  quarantine: z
+    .object({
+      /** When it was quarantined. */
+      at: z.string(),
+      /** What quarantined it: the checks it was written through, its owner, or a recall guardrail. */
+      by: z.enum(['admission', 'owner', 'recall']),
+      /** The guardrail that held it, or `null` when its owner quarantined it. */
+      detector: z.string().nullable(),
+      /** The category that guardrail reported, or `null` when its owner quarantined it. */
+      category: z.string().nullable(),
+    })
+    .optional(),
 });
 
 /**
@@ -66,7 +79,12 @@ export const MEMORY_PAGE_SIZE = 20;
 /** One page of what the agent remembers of the caller's chats, newest first. */
 export async function listMemories(
   agentId: string,
-  page: { readonly limit?: number; readonly offset?: number } = {},
+  page: {
+    readonly limit?: number;
+    readonly offset?: number;
+    /** `quarantined` lists the quarantined memories instead, each with why. */
+    readonly state?: 'quarantined';
+  } = {},
   options?: Options,
 ): Promise<MemoryPage> {
   return memoryPageSchema.parse(
@@ -279,7 +297,10 @@ const quarantineSchema = transitionSchema.extend({ affected: z.number().int() })
 /** What quarantining a memory answers: whether it changed, and how many records it reached. */
 export type QuarantineResult = z.infer<typeof quarantineSchema>;
 
-/** Takes one memory, and what was derived from it, out of use. There is no way back from here. */
+/**
+ * Takes one memory, and what was derived from it, out of use. {@link releaseQuarantine} is the way
+ * back for the memory itself, never for what was derived from it.
+ */
 export async function quarantineMemory(
   agentId: string,
   id: string,
@@ -288,6 +309,23 @@ export async function quarantineMemory(
 ): Promise<QuarantineResult> {
   return quarantineSchema.parse(
     await callBureau('bureau.memory.quarantine', { agentId, id, reason }, options),
+  );
+}
+
+/** What releasing a quarantined memory answers: whether it changed, which is `false` for one already in use. */
+export type ReleaseResult = z.infer<typeof transitionSchema>;
+
+/**
+ * Returns one quarantined memory to use, when the checks a new memory passes pass it again. A
+ * memory the checks hold, or one that cannot be released, is refused as a `not-released` fault.
+ */
+export async function releaseQuarantine(
+  agentId: string,
+  id: string,
+  options?: Options,
+): Promise<ReleaseResult> {
+  return transitionSchema.parse(
+    await callBureau('bureau.memory.quarantine.release', { agentId, id }, options),
   );
 }
 
@@ -309,6 +347,18 @@ export async function exportMemories(agentId: string, options?: Options): Promis
   return exportSchema.parse(await callBureau('bureau.memory.export', { agentId }, options));
 }
 
+/** Why a quarantined memory was not released: the reasons the server names, as `memory-<reason>`. */
+export const MEMORY_RELEASE_REFUSALS = [
+  'verification-failed',
+  'derived-record',
+  'deletion-pending',
+  'superseded',
+  'tampered',
+] as const;
+
+/** One of {@link MEMORY_RELEASE_REFUSALS}. */
+export type MemoryReleaseRefusal = (typeof MEMORY_RELEASE_REFUSALS)[number];
+
 /** What a thrown memory operation came to, sorted into what the page words. */
 export type MemoryFault =
   | { readonly kind: 'forbidden' }
@@ -321,6 +371,8 @@ export type MemoryFault =
   | { readonly kind: 'not-admitted' }
   /** A memory was shared with its own owner, or with no one. */
   | { readonly kind: 'invalid-grantee' }
+  /** A quarantined memory was not released, for one of the reasons the server names. */
+  | { readonly kind: 'not-released'; readonly reason: MemoryReleaseRefusal }
   /** Any other failure, with the status the server answered it with when it answered. */
   | { readonly kind: 'other'; readonly message: string; readonly status?: number };
 
@@ -347,6 +399,9 @@ export function memoryFaultOf(error: unknown): MemoryFault {
         return { kind: 'successor-not-admitted' };
       }
       if (data['reason'] === 'memory-not-admitted') return { kind: 'not-admitted' };
+      for (const reason of MEMORY_RELEASE_REFUSALS) {
+        if (data['reason'] === `memory-${reason}`) return { kind: 'not-released', reason };
+      }
       return data['reason'] === 'memory-invalid-grantee'
         ? { kind: 'invalid-grantee' }
         : { kind: 'other', message: error.message, status: error.status };

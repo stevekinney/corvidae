@@ -23,6 +23,7 @@
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
+  import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { armWriteGuard } from '../../lib/write-guard.ts';
@@ -60,7 +61,7 @@
   import { holdChangingActions } from './changing-actions.ts';
   import CommandPaletteLauncher from './command-palette.svelte';
   import CriticalAlertStrip from './critical-alert-strip.svelte';
-  import { registerShellShortcuts } from './destinations.ts';
+  import { pluginPaletteActions, registerShellShortcuts } from './destinations.ts';
   import PluginProblemsBanner from './plugin-problems-banner.svelte';
   import RouteOutlet from './route-outlet.svelte';
   import ShortcutMap from './shortcut-map.svelte';
@@ -103,6 +104,12 @@
   principalStore.setPrincipal(resolvedPrincipal);
 
   const queryClient = useQueryClient();
+
+  // The pages plugins add are in the palette as "Go to" rows, with no keys (COR-2213).
+  const plugins = usePluginPages();
+  const pluginActions = $derived(
+    pluginPaletteActions(plugins.pages(), plugins.pluginTitle, (path) => router.navigate(path)),
+  );
 
   // Whether the server answers. Every request that gets no answer says so, the browser's own
   // offline event says so, and the probe of `/v1/health` that the monitor makes while it is down
@@ -372,6 +379,7 @@
   {client}
   store={notifications}
   registry={shortcuts}
+  {pluginActions}
   scheduleReadGate={scopeGate(principalStore, ['schedules:read'])}
   workflowReadGate={scopeGate(principalStore, ['workflows:read'])}
   reviewReadGate={scopeGate(principalStore, ['reviews:read'])}

@@ -93,7 +93,9 @@
   {/if}
 
   {#if payload.kind === 'none'}
-    <p class="ib-hook-delivery__muted" data-testid="hook-delivery-payload">{copy.noPayload}</p>
+    <p class="ib-hook-delivery__muted" data-testid="hook-delivery-payload">
+      {delivery.test && delivery.actionType === 'plugin' ? copy.noPayloadTest : copy.noPayload}
+    </p>
   {:else if payload.kind === 'text'}
     <div data-testid="hook-delivery-payload">
       <PayloadInspector label={copy.payloadLabel} value={payload.value} plain />

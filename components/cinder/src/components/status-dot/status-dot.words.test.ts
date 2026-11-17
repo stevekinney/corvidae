@@ -52,9 +52,22 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Connected', 'success'],
   ['Draining', 'neutral'],
   ['Disconnected', 'warning'],
+  ['Listening', 'success'],
+  ['Ready', 'success'],
+  ['Standby', 'pending'],
+  ['Waiting for a secret', 'warning'],
   ['Live', 'info'],
   ['Live, last event 1 s ago', 'info'],
   ['Reconnecting…', 'pending'],
+  ['Check met', 'success'],
+  ["Couldn't check", 'danger'],
+  ['No verdict', 'neutral'],
+  ['Blocked', 'neutral'],
+  ['Warned', 'neutral'],
+  ['Sanitized', 'neutral'],
+  ['Redacted', 'neutral'],
+  ['Tripped', 'danger'],
+  ['Flagged', 'neutral'],
 ];
 
 function rootOf(container: HTMLElement): HTMLElement {
@@ -90,7 +103,7 @@ describe('statusForStatusDotWord', () => {
     expect(statusForStatusDotWord('toString, x')).toBeUndefined();
   });
 
-  test('red is reserved for six words and amber for five', () => {
+  test('red is reserved for eight words and amber for six', () => {
     const entries = Object.entries(statusDotWordTones);
     expect(entries.filter(([, tone]) => tone === 'danger').map(([word]) => word)).toEqual([
       'Failed',
@@ -99,6 +112,8 @@ describe('statusForStatusDotWord', () => {
       "Can't load",
       "Can't find workflow",
       'Not loaded',
+      "Couldn't check",
+      'Tripped',
     ]);
     expect(entries.filter(([, tone]) => tone === 'warning').map(([word]) => word)).toEqual([
       'Waiting on you',
@@ -106,7 +121,16 @@ describe('statusForStatusDotWord', () => {
       'Needs attention',
       'Needs sign-in',
       'Disconnected',
+      'Waiting for a secret',
     ]);
+  });
+
+  test('only "Check met" among the check outcomes is green, and a guardrail action or a flag is never coloured', () => {
+    expect(statusForStatusDotWord('Check met')).toBe('success');
+    for (const word of ['Blocked', 'Warned', 'Sanitized', 'Redacted', 'Flagged', 'No verdict']) {
+      expect(statusForStatusDotWord(word)).toBe('neutral');
+    }
+    expect(statusForStatusDotWord('Couldn’t check')).toBe('danger');
   });
 
   test('"Needs you" is never a row word, only a section, a count and a badge', () => {

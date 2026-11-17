@@ -17,7 +17,7 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';

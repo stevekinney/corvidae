@@ -20,7 +20,7 @@
  * @module tasks-respond-operation
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { BureauError, TaskRespondError } from '../../bureau-errors.ts';

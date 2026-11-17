@@ -35,7 +35,7 @@
 import type { Artifact, Part, StreamResponse, Task, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
 import type { RuntimeTimeoutHandle, RuntimeTimers } from '@lostgradient/lifecycle';
-import { decodeCursor, encodeCursor } from '@lostgradient/weft';
+import { decodeCursor, encodeCursor } from '@lostgradient/backchannel';
 import { withStreamEventCursor } from '@lostgradient/weft/a2a';
 
 import type { DurableEventEnvelope } from '@lostgradient/operative';

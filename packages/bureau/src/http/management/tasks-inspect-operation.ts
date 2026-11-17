@@ -12,7 +12,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module tasks-inspect-operation
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import type { BureauTasks } from '../../bureau-types/tasks.ts';
@@ -177,6 +177,39 @@ const stepSchema = z.object({
   /** `null` unless the call names one `step` that kept an effective context. */
   effectiveContext: effectiveContextSchema.nullable(),
 });
+const hooksSchema = z.object({
+  /**
+   * The hook plan of a run that is still going: each registration’s identity, hook point, who
+   * registered it, priority and replay classification, redacted (no handler, no error closure).
+   * `null` for a run that has ended and for a plan that cannot be read; an empty list for a live run
+   * whose plan holds no hook. After a restart, the plan the recovered run holds.
+   */
+  plan: z
+    .array(
+      z.object({
+        id: z.string(),
+        hookPoint: z.string(),
+        source: z.string().nullable(),
+        priority: z.number(),
+        replay: z.enum(['safe', 'effectful']),
+      }),
+    )
+    .nullable(),
+  /**
+   * The registrations of the run’s plan that threw, one entry each, latest failure first, for a
+   * live run and an ended one. Never the error’s text: it stays on the audit record.
+   */
+  failed: z.array(
+    z.object({
+      hookId: z.string(),
+      hookPoint: z.string(),
+      source: z.string().nullable(),
+      count: z.number().int().min(1),
+      lastFailedAt: z.string(),
+    }),
+  ),
+});
+
 const inspectOutput = z.object({
   schemaVersion: z.literal(TASK_INSPECTION_SCHEMA_VERSION),
   taskId: z.string(),
@@ -197,6 +230,8 @@ const inspectOutput = z.object({
   ),
   /** The reply details of the run’s steps, oldest first: why each ran on its model and what it saw. */
   steps: z.array(stepSchema),
+  /** The run’s hook plan while it is live, and the hooks that threw (COR-2115). */
+  hooks: hooksSchema,
 });
 
 export const tasksInspectOperation = defineOperation<
@@ -209,7 +244,7 @@ export const tasksInspectOperation = defineOperation<
   mcpExposable: true,
   summary: 'Inspect one task',
   description:
-    'Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one. `effectiveContext` is returned only when `step` names one step, because a record runs to 256 KiB and this snapshot is polled; the list form carries `hasEffectiveContext` in its place. A run that seals no context epochs records an `effectiveContext` with no `epochId`. The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.',
+    'Returns a versioned snapshot of one of the caller’s own tasks for the run inspector: the task, its liveness (status, assessment, reachability, progress, the declared wait and its reason, semantic progress, and the evidence entries by source and time), and the children it owns with each one’s assessment. `liveness` is `null` when this process holds no live run for the task. Transport heartbeat evidence is reported as its own source and is never semantic progress. `steps` carries each step’s reply details: `planReason` (why it ran on its model: a code, one line, and the models passed over) and `effectiveContext` (what the model saw, as source digests and message ids, never message content; capped at 256 KiB, newest messages kept, `truncated` when older ones were left out), each `null` for a step recorded without one. `effectiveContext` is returned only when `step` names one step, because a record runs to 256 KiB and this snapshot is polled; the list form carries `hasEffectiveContext` in its place. A run that seals no context epochs records an `effectiveContext` with no `epochId`. `hooks` carries the run’s hook plan while it is live (`plan`: each registration’s `id`, `hookPoint`, `source`, `priority` and `replay`, redacted, `null` once the run has ended or when the plan cannot be read) and the registrations of its plan that threw (`failed`: `hookId`, `hookPoint`, `source`, how many times (`count`) and when last (`lastFailedAt`), never the error’s text). The snapshot carries no transcript, prompt, tool argument, result, or checkpoint: read the answer and any gap on `bureau.tasks.events`, and cancel with `bureau.tasks.cancel`. A caller holding `bureau.tasks:read` inspects any owner’s; another owner’s task answers as a missing one does.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: inspectInput,
@@ -243,6 +278,25 @@ export const tasksInspectOperation = defineOperation<
         revision: child.revision,
         assessment: child.liveness?.assessment ?? null,
       })),
+      hooks: {
+        plan:
+          inspection.hooks.plan === null
+            ? null
+            : inspection.hooks.plan.map((hook) => ({
+                id: hook.id,
+                hookPoint: hook.hookPoint,
+                source: hook.source,
+                priority: hook.priority,
+                replay: hook.replay,
+              })),
+        failed: inspection.hooks.failed.map((hook) => ({
+          hookId: hook.hookId,
+          hookPoint: hook.hookPoint,
+          source: hook.source,
+          count: hook.count,
+          lastFailedAt: hook.lastFailedAt,
+        })),
+      },
       steps: inspection.steps.map((entry) => ({
         step: entry.step,
         messageId: entry.messageId,

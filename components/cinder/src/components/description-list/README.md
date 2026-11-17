@@ -27,6 +27,34 @@ The `two-column` variant sets a muted term on the left and the value on the righ
 
 `DescriptionList` is how a record shows its label and value metadata: an owner, a created date, a price. Do not draw those pairs as a row of `Badge` or `Chip` pills; pills are for a status or a short tag. The `two-column`, `fields` and `facts` variants set the label and the value side by side, so labels line up down the page and the values read as text. For a few typed facts that each take an icon and a value, such as a kind, a neighbourhood and a price band, use [`KeyFacts`](../key-facts/README.md).
 
+### Pairs that fit their space
+
+The `grid` variant lays the pairs out in as many equal columns as the list's own width fits, about 6.5rem each (`--cinder-space-24` plus `--cinder-space-2`), with each muted term above its value at the column's start edge. The columns come from the list's inline size, never the viewport, so the same list reads three short pairs on one row in a wide card, two on a phone card and one in a narrow column. It draws no rules and no fill. An item with `wide: true` takes the whole row: give it to a value that would wrap past about two lines in a column, runs over several lines, or is code. `wide` works in the `facts` variant too. Reading order is the order of `items`.
+
+```svelte
+<script lang="ts">
+  import { DescriptionList } from '@lostgradient/cinder';
+  import type { DescriptionListItem } from '@lostgradient/cinder';
+
+  const items: DescriptionListItem[] = [
+    { term: 'Order ID', definition: '4471' },
+    { term: 'Cents', definition: '4200' },
+    { term: 'Reason', definition: 'Arrived damaged' },
+    {
+      term: 'Items',
+      definition: { type: 'code', value: '[{"sku":"A-1","quantity":2}]' },
+      wide: true,
+    },
+  ];
+</script>
+
+<DescriptionList {items} variant="grid" />
+```
+
+### A note under a value
+
+Give an item a `note` for a muted second line under its definition: what the value is called elsewhere, such as a check read in words with its name and version beneath (`Contains phrase`, then `contains-phrase, version 1`). The note is plain text, read with the definition, and is left out when empty. Use it instead of a second row that states the same fact twice.
+
 ### Formatted values
 
 A definition can be a value the list formats, so every list shows timestamps, IDs and tags the same way:
@@ -34,6 +62,8 @@ A definition can be a value the list formats, so every list shows timestamps, ID
 - `{ type: 'timestamp', value }`: a readable date and time, with the exact time (full date, seconds and zone) on hover.
 - `{ type: 'identifier', value }`: an ID or hash, shortened and set in small monospace, with an icon-only copy button that copies the whole value.
 - `{ type: 'tags', tags, systemTagCount, onAddTag }`: read-only tags, with system tags counted instead of listed and an _Add a tag_ action that calls `onAddTag`.
+- `{ type: 'code', value }`: text in the code font, shown whole and broken anywhere, such as a command or a value written as JSON.
+- `{ type: 'empty', label }`: a field that holds nothing, written as a quiet word such as "None", so it never reads as a typed value.
 
 ```svelte
 <script lang="ts">
@@ -69,7 +99,7 @@ A definition can be a value the list formats, so every list shows timestamps, ID
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-description-list` root element. |
 | `stack` | `boolean` | no | `false` | Puts every term above its value at any width. The `two-column` variant already stacks once its own container is narrower than 28rem; `stack` stacks it regardless, for a list whose page has already chosen its phone layout. Has no effect on `narrow`, whose terms stay visually hidden. |
-| `variant` | `"default"` \| `"striped"` \| `"two-column"` \| `"narrow"` \| `"facts"` \| `"fields"` | no | — | Controls the visual layout: - `default`: stacked rows with visible terms. - `striped`: alternating row backgrounds. - `two-column`: a muted term on the left and the value on the right, with no row dividers; collapses to stacked at narrow widths. - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when surrounding context already labels the value. NOT a general compact mode. - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text; stacks below 28rem. - `facts`: one row of equal columns, each a muted term above its value, between two quiet rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the container narrows. |
+| `variant` | `"default"` \| `"striped"` \| `"two-column"` \| `"narrow"` \| `"facts"` \| `"fields"` \| `"grid"` | no | — | Controls the visual layout: - `default`: stacked rows with visible terms. - `striped`: alternating row backgrounds. - `two-column`: a muted term on the left and the value on the right, with no row dividers; collapses to stacked at narrow widths. - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when surrounding context already labels the value. NOT a general compact mode. - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text; stacks below 28rem. - `facts`: one row of equal columns, each a muted term above its value, between two quiet rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the container narrows. - `grid`: the pairs flow in as many equal columns as the list's own width fits (about 6.5rem each), each a muted term above its value at the column's start edge, with no rules and no fill: a wide card reads three short pairs on one row, a phone two, a narrow column one. A `wide` item takes the whole row. |
 | `actions` | `(opaque)` | no | — | Optional snippet rendered once per row. Receives the full `DescriptionListItem` so consumers can build disambiguated `aria-label` strings (e.g. `aria-label="Edit ${item.term}"`). Any interactive element in `actions` MUST set an unambiguous `aria-label`. Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | A prop whose shape is not captured by the JSON schema; see the component types for the exact signature. |
 

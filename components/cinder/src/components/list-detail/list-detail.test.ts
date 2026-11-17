@@ -159,6 +159,64 @@ describe('ListDetail', () => {
     expect(getByText('Pick a chat')).toBeTruthy();
   });
 
+  describe('listFooter', () => {
+    test('is drawn after the rows, outside them, and is not a row', () => {
+      const { container, getByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), withFooter: true },
+      });
+
+      const link = getByRole('link', { name: 'Archived chats' });
+      const footer = link.closest('.cinder-list-detail__footer');
+      expect(footer).not.toBeNull();
+      expect(footer?.closest('li')).toBeNull();
+      expect(container.querySelectorAll('li[data-cinder-list-detail-key]')).toHaveLength(3);
+      expect(footer?.hasAttribute('data-cinder-list-detail-key')).toBe(false);
+      // After the last row in the document, inside the rows region.
+      const lastRow = rowOf(container, 'gamma');
+      expect(lastRow.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(footer?.parentElement?.classList.contains('cinder-list-detail__rows')).toBe(true);
+    });
+
+    test('is drawn after the list empty state, which it does not replace', () => {
+      const { getByRole, getByText } = render(ListDetailFixture, {
+        props: { items: [], selectionLocation: memoryLocation(), withFooter: true },
+      });
+
+      const empty = getByText('No chats yet');
+      const link = getByRole('link', { name: 'Archived chats' });
+      expect(empty.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    test('is not drawn without one, or while the list is loading', () => {
+      const without = render(ListDetailFixture, { props: { selectionLocation: memoryLocation() } });
+      expect(without.container.querySelector('.cinder-list-detail__footer')).toBeNull();
+      without.unmount();
+
+      const loading = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), withFooter: true, loading: true },
+      });
+      expect(loading.container.querySelector('.cinder-list-detail__footer')).toBeNull();
+    });
+
+    test('J and K never land on it, and Enter on it opens no row', async () => {
+      const onSelectedKeyChange = mock();
+      const { container, getByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), withFooter: true, onSelectedKeyChange },
+      });
+
+      await fireEvent.keyDown(primaryOf(container, 'alpha'), { key: 'j' });
+      await fireEvent.keyDown(document.activeElement!, { key: 'j' });
+      await fireEvent.keyDown(document.activeElement!, { key: 'j' });
+      await fireEvent.keyDown(document.activeElement!, { key: 'j' });
+      await fireEvent.keyDown(document.activeElement!, { key: 'j' });
+      await tick();
+      expect(document.activeElement).toBe(primaryOf(container, 'gamma'));
+
+      await fireEvent.keyDown(getByRole('link', { name: 'Archived chats' }), { key: 'Enter' });
+      expect(onSelectedKeyChange).not.toHaveBeenCalled();
+    });
+  });
+
   test('the list region declares the keys LIST_DETAIL_SHORTCUTS describes', () => {
     const { getByRole } = render(ListDetailFixture, {
       props: { selectionLocation: memoryLocation() },
@@ -964,6 +1022,35 @@ describe('ListDetail', () => {
         ).toBe('true');
         // The header stays live while the rows load.
         expect(container.querySelector('input[aria-label="Search chats"]')).not.toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('puts a Cancel on the still-loading line only when onLoadingCancel is given, and calls it', () => {
+      jest.useFakeTimers();
+      try {
+        const canceled: string[] = [];
+        const without = render(ListDetailFixture, {
+          props: { selectionLocation: memoryLocation(), loading: true },
+        });
+        jest.advanceTimersByTime(10_300);
+        flushSync();
+        expect(without.container.textContent).toContain('Still loading');
+        expect(without.queryByRole('button', { name: 'Cancel' })).toBeNull();
+        cleanup();
+
+        const withCancel = render(ListDetailFixture, {
+          props: {
+            selectionLocation: memoryLocation(),
+            loading: true,
+            onLoadingCancel: () => canceled.push('canceled'),
+          },
+        });
+        jest.advanceTimersByTime(10_300);
+        flushSync();
+        withCancel.getByRole('button', { name: 'Cancel' }).click();
+        expect(canceled).toEqual(['canceled']);
       } finally {
         jest.useRealTimers();
       }

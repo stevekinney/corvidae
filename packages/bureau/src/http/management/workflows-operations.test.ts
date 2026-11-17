@@ -589,6 +589,33 @@ describe('results', () => {
     expect(builtIn.result).toMatchObject({ listener: null });
   });
 
+  it('M12: shows a receive-only trigger as ready on workflows.list and workflows.get, and the schema names the state (COR-2168)', async () => {
+    const served = await serveWorkflows(cleanups, {
+      plugins: [watchPlugin({ receive: true }).entry],
+      runtime: createManualRuntimeServices(),
+      onDiagnostic: () => undefined,
+    });
+    await served.bureau.workflows!.create('receiver', {
+      trigger: { kind: 'x:hook' },
+      steps: [AGENT_STEP],
+    });
+    const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'receiver' });
+    expect(got.result?.['listener']).toMatchObject({
+      state: 'ready',
+      code: null,
+      retryAt: null,
+      lastFiredAt: null,
+    });
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    expect(listOf(listed, 'workflows').find((entry) => entry.id === 'receiver')).toMatchObject({
+      listener: got.result?.['listener'],
+    });
+    const operation = bureauWorkflowsOperations.find(
+      (entry) => entry.name === 'bureau.workflows.get',
+    );
+    expect(JSON.stringify(operation?.description)).toContain('`ready`');
+  });
+
   it('pages the list with limit and offset', async () => {
     const served = await serve();
     for (const id of ['a-flow', 'b-flow', 'c-flow']) {

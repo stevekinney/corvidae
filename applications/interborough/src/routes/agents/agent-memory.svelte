@@ -5,8 +5,12 @@
    * as Chats and Reviews), under the agent's header and tab bar. The open memory is in the address
    * (`?selected=`), so it can be linked and reloaded; choosing one replaces the address in place
    * (the tab stays mounted, with what was typed). The list's header holds Add a memory
-   * (`memory-add.svelte`) as a "+", a search that runs as you type, the two filters ("Kind: All" and
-   * "Written by: Anyone") and Export, which is hidden until there is something to export; the tab's
+   * (`memory-add.svelte`) as a "+", a search that runs as you type, the three filters ("Kind: All",
+   * "Written by: Anyone" and "Status: In use") and Export, which is hidden until there is something
+   * to export. "Status: Quarantined" lists the memories taken out of use instead (the list operation's
+   * `state`), each opening in `memory-quarantined.svelte` with why it was held and the one action,
+   * "Release from quarantine"; a quarantined memory is in no other list, so this is where it is
+   * inspected, released or forgotten, and the notice after a quarantine links here. The tab's
    * name is the tab bar's, so the list repeats no heading of its own. A memory opens beside the
    * list with Correct and Forget on its context line, its label/value rows and the governance
    * actions under "More options" (`memory-detail.svelte`). Forgetting a memory opens the one after
@@ -20,19 +24,22 @@
    * memories that hold a word of the query. The filters work over the pages read so far, and say so
    * while there are more.
    */
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
 
   import {
     Alert,
     Button,
+    DataList,
     EmptyState,
     ListDetail,
     SearchField,
     Select,
     Skeleton,
+    StackedListItem,
+    Tooltip,
   } from '@lostgradient/cinder';
-  import { Download, Plus } from '@lucide/svelte';
+  import { ChevronLeft, ChevronRight, Download, Plus, ShieldAlert } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
@@ -44,6 +51,7 @@
   import { combinePages } from '../../lib/combine-pages.ts';
   import {
     listMemories,
+    memoryFaultOf,
     MEMORY_PAGE_SIZE,
     searchMemories,
     type Memory,
@@ -55,6 +63,7 @@
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
   import MemoryGovernance from './memory-governance.svelte';
+  import MemoryQuarantined from './memory-quarantined.svelte';
   import {
     matchesKind,
     matchesQuery,
@@ -68,6 +77,10 @@
 
   /** The most memories a search ranks: the server's own ceiling, so a match is rarely left out. */
   const SEARCH_LIMIT = 100;
+  /** The value of the address's `view` that names the quarantined memories. */
+  const QUARANTINED_VIEW = 'quarantined';
+  /** The one item of the entry's own list, which is not an item of the memory list. */
+  const QUARANTINED_ENTRY = '__quarantined-memories__';
   const agentId = untrack(() => router.current.params['agent'] ?? '');
 
   /** What is typed: a search runs as it changes, and a blank one lists. */
@@ -75,6 +88,17 @@
   const applied = $derived(typed.trim());
   let kindFilter = $state<KindFilter>('all');
   let writerFilter = $state<WriterFilter>('all');
+  /**
+   * Whether the tab shows the quarantined memories, which can be inspected and released. It is a
+   * view of the tab named in the address (`?view=quarantined`), as the archived chats are of
+   * Chats, so a reload, Back or a copied link opens the same list and the same open memory.
+   */
+  const quarantinedView = $derived(router.search.get('view') === QUARANTINED_VIEW);
+  /** The memory being released, and what refused the last release, for its details to show. */
+  let releasing = $state<string | undefined>(undefined);
+  let releaseFault = $state<{ readonly id: string; readonly fault: MemoryFault } | undefined>(
+    undefined,
+  );
   /** The open memory: the one the address names, so a link and a reload open it. */
   const selectedId = $derived(router.search.get('selected'));
   /** What the last change said above the list: only a correction that landed. */
@@ -112,6 +136,40 @@
     undefined,
   );
 
+  /**
+   * Whether anything is quarantined, and whether this caller may see it: one quarantined memory is
+   * asked for. It decides whether the Quarantined memories row is drawn at the end of the list; a
+   * caller that may not view them (a refusal) gets no row.
+   */
+  const quarantineProbe = createQuery(
+    () => ({
+      queryKey: queryKeys.memory.quarantinedAny(agentId),
+      queryFn: ({ signal }) =>
+        listMemories(agentId, { limit: 1, state: 'quarantined' }, { signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const anyQuarantined = $derived((quarantineProbe.data?.memories.length ?? 0) > 0);
+
+  /** The quarantined memories, read only while their view is shown. */
+  const quarantinedListing = createInfiniteQuery(
+    () => ({
+      queryKey: queryKeys.memory.quarantined(agentId),
+      queryFn: ({ pageParam, signal }) =>
+        listMemories(
+          agentId,
+          { limit: MEMORY_PAGE_SIZE, offset: pageParam, state: 'quarantined' },
+          { signal },
+        ),
+      initialPageParam: 0,
+      getNextPageParam: (last) => last.nextOffset ?? undefined,
+      enabled: quarantinedView,
+      retry: false,
+    }),
+    undefined,
+  );
+
   const search = createQuery(
     () => ({
       queryKey: queryKeys.memory.search(agentId, applied),
@@ -137,9 +195,18 @@
   /** The key of the row that loads the next page, which is a row so J and K reach it. */
   const MORE_KEY = '__load-more__';
 
-  const active = $derived(applied === '' ? listing : search);
+  const active = $derived(quarantinedView ? quarantinedListing : applied === '' ? listing : search);
   /** Every memory the list or the search holds, before the kind filter. */
   const base = $derived.by<MemoryRowData[]>(() => {
+    if (quarantinedView) {
+      // Every quarantined memory read so far: the server does not search them, so what is typed
+      // narrows these pages the way the filters do (`shown`).
+      return combinePages(
+        quarantinedListing.data?.pages,
+        (page) => page.memories,
+        (memory) => memory.id,
+      ).map((memory) => ({ kind: 'memory', id: memory.id, memory, score: null, pinned: false }));
+    }
     if (applied === '') {
       return combinePages(
         listing.data?.pages,
@@ -161,11 +228,20 @@
   });
   /** Whether a filter narrows the list, which works over the pages read so far. */
   const filtered = $derived(kindFilter !== 'all' || writerFilter !== 'all');
+  /** Whether the open list has another page: the quarantined one, or the ordinary one. */
+  const hasMore = $derived(
+    quarantinedView ? quarantinedListing.hasNextPage : applied === '' && listing.hasNextPage,
+  );
+  /** Whether what is typed narrows the pages read so far: in the quarantined view, which has no search. */
+  const searchNarrows = $derived(quarantinedView && applied !== '');
+  /** Whether the filters or the search narrow what the pages read so far hold. */
+  const narrowed = $derived(filtered || searchNarrows);
   const shown = $derived(
-    filtered
+    narrowed
       ? base.filter(
           (row) =>
             row.memory !== undefined &&
+            (!searchNarrows || matchesQuery(row.memory.content, applied)) &&
             matchesKind(row.memory, kindFilter) &&
             matchesWriter(row.memory, writerFilter),
         )
@@ -173,17 +249,30 @@
   );
   /**
    * The open memory when the list does not hold it: one a correction replaced, one the address
-   * names, or one the search or the kind filter hides. It leads the list so it stays visible.
+   * names, or one the search or the kind filter hides. It leads the list so it stays visible. In
+   * the quarantined view a memory the pages read do not hold still leads it, so its details can
+   * say whether more pages are unread or it is not quarantined.
    */
   const pinned = $derived.by<MemoryRowData[]>(() => {
     if (selectedId === null || shown.some((row) => row.id === selectedId)) return [];
     const known = base.find((row) => row.id === selectedId);
     return [{ kind: 'memory', id: selectedId, memory: known?.memory, score: null, pinned: true }];
   });
+  /**
+   * Whether the search and the filters are drawn: not in a quarantined view that lists nothing and
+   * is narrowed by nothing, where there is nothing to search and the way back is the action.
+   */
+  const showControls = $derived(
+    !quarantinedView || base.length > 0 || narrowed || quarantinedListing.isPending,
+  );
+  /** The Quarantined memories entry after the list, drawn only when the caller may view some and one exists. */
+  const showEntry = $derived(
+    !quarantinedView && anyQuarantined && !listing.isPending && !listing.isError,
+  );
   const items = $derived<ListRow[]>([
     ...pinned,
     ...shown,
-    ...(applied === '' && listing.hasNextPage ? [{ kind: 'more' as const, id: MORE_KEY }] : []),
+    ...(hasMore ? [{ kind: 'more' as const, id: MORE_KEY }] : []),
   ]);
 
   /** What the agent remembers, from the pages read so far. */
@@ -228,10 +317,66 @@
     return writerOptions.find((option) => option.value === value)?.value ?? 'all';
   }
 
+  /** Clears the search and the filters, and stays in the view they were cleared in. */
   function clearAll(): void {
     typed = '';
     kindFilter = 'all';
     writerFilter = 'all';
+  }
+
+  /** The tab's address in the quarantined view or out of it, with the memory `id` open when one is named. */
+  function viewPath(into: boolean, id?: string): string {
+    return agentMemoryPath(agentId, id, into ? QUARANTINED_VIEW : undefined);
+  }
+
+  /** The list pane, where the focus is put after a change of view. */
+  let pane = $state<HTMLElement | undefined>();
+
+  /**
+   * Goes into the quarantined view or back out of it, as Chats goes into its archived chats: a
+   * plain click stays in the application and pushes the address, so Back returns, and the focus
+   * lands where the person is going on (the way back once in, the Quarantined memories row once
+   * out). The open memory belongs to the list it was opened from, so it is closed. A modified
+   * click is left to the browser.
+   */
+  async function switchView(event: MouseEvent | undefined, into: boolean): Promise<void> {
+    if (
+      event !== undefined &&
+      (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
+    ) {
+      return;
+    }
+    event?.preventDefault();
+    typed = '';
+    kindFilter = 'all';
+    writerFilter = 'all';
+    notice = undefined;
+    router.navigate(viewPath(into));
+    await tick();
+    const target = into
+      ? pane?.querySelector<HTMLElement>('[data-memory-view-back]')
+      : pane?.querySelector<HTMLElement>('[data-memory-quarantined-entry] a[href]');
+    target?.focus();
+  }
+
+  /**
+   * A memory was released: it left the quarantined list. Open the memory after it (the one before
+   * when it was the last) and put the focus on its row, the way a forget goes on to the next; when
+   * none is left, close the details and put the focus on the outcome notice, which says what
+   * happened. The detail the person was pressing in is gone, so the focus would be nowhere.
+   */
+  async function released(id: string): Promise<void> {
+    notice = undefined;
+    const at = shown.findIndex((row) => row.id === id);
+    const next = at === -1 ? undefined : (shown[at + 1] ?? shown[at - 1]);
+    select(next?.id ?? null);
+    await tick();
+    if (next === undefined) {
+      await governance?.focusOutcome();
+      return;
+    }
+    const row = pane?.querySelector<HTMLElement>(`[data-memory="${CSS.escape(next.id)}"]`);
+    (row?.closest('button') ?? row)?.focus();
   }
 
   /** A memory is gone from the list: close its details if it was the open one, and drop the note about the last change. */
@@ -286,18 +431,21 @@
   }
 
   function open(id: string | null): void {
+    // The rows that are not memories (load more, the quarantined memories) open nothing.
+    if (id === MORE_KEY) return;
     notice = undefined;
     resume = undefined;
     select(id);
   }
 
   /**
-   * Opens a memory, or the list alone for `null`, in the address. It replaces the entry and keeps
-   * the tab mounted: the address names what the tab already shows, so what was typed stays typed.
+   * Opens a memory, or the list alone for `null`, in the address, in the view that is shown. It
+   * replaces the entry and keeps the tab mounted: the address names what the tab already shows, so
+   * what was typed stays typed.
    */
   function select(id: string | null): void {
     if (id === selectedId) return;
-    router.navigate(agentMemoryPath(agentId, id ?? undefined), { replace: true, keep: true });
+    router.navigate(viewPath(quarantinedView, id ?? undefined), { replace: true, keep: true });
   }
 </script>
 
@@ -311,7 +459,7 @@
   updatedAt={listing.dataUpdatedAt}
   onRetry={() => void listing.refetch()}
 >
-  <div class="ib-memory" data-agent={agentId}>
+  <div class="ib-memory" data-agent={agentId} bind:this={pane}>
     {#if notice !== undefined}
       <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
         <p class="ib-memory__alert-title">{MEMORY_COPY.correct.saved.title}</p>
@@ -340,7 +488,13 @@
       </Alert>
     {/if}
 
-    {#if active.isError && (applied !== '' || listing.data !== undefined)}
+    {#if quarantinedView && quarantinedListing.isError && memoryFaultOf(quarantinedListing.error).kind === 'forbidden'}
+      <!-- Viewing the quarantined takes the permission releasing them does: say so, not "none". -->
+      <Alert variant="danger" data-quarantined-forbidden>
+        <p class="ib-memory__alert-title">{MEMORY_COPY.quarantinedView.forbiddenTitle}</p>
+        <p class="ib-memory__alert-body">{MEMORY_COPY.govern.refusal.forbidden.description}</p>
+      </Alert>
+    {:else if active.isError && (applied !== '' || listing.data !== undefined)}
       <Alert variant="danger">
         <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
         <Button variant="secondary" size="sm" onclick={() => void active.refetch()}
@@ -363,7 +517,11 @@
       {holds}
       bind:pending={governancePending}
       bind:exporting
+      bind:releasing
+      bind:releaseFault
       onQuarantined={closed}
+      onReleased={(id) => void released(id)}
+      onSeeQuarantined={() => void switchView(undefined, true)}
     />
     <MemoryAdd bind:this={adding} {agentId} {agentName} onAdded={added} onUndone={closed} />
 
@@ -376,7 +534,25 @@
         </div>
       {:else if active.isError}
         <!-- The fault is reported above the list, so this is not read as an empty agent. -->
-      {:else if filtered && (applied === '' || base.length > 0)}
+      {:else if quarantinedView && base.length === 0}
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={2}
+          title={MEMORY_COPY.quarantinedView.empty.title}
+          description={MEMORY_COPY.quarantinedView.empty.description}
+        >
+          {#snippet action()}
+            <Button
+              variant="secondary"
+              size="sm"
+              href={router.href(viewPath(false))}
+              onclick={(event: MouseEvent) => void switchView(event, false)}
+              >{MEMORY_COPY.quarantinedView.empty.back}</Button
+            >
+          {/snippet}
+        </EmptyState>
+      {:else if narrowed && (applied === '' || base.length > 0)}
         <EmptyState
           kind="filtered"
           size="compact"
@@ -413,13 +589,47 @@
       {/if}
     {/snippet}
 
+    <!-- The way to the quarantined memories is the list's footer, not one of its rows, so an empty
+         list still says it is empty above it, J and K never land on it, and it is not selectable.
+         It is drawn only while one is quarantined and the caller may view it. Cinder's row draws the
+         link, so its click is read where it lands, as Chats' archived row's is. -->
+    {#snippet quarantinedEntry()}
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div
+        class="ib-memory__entry"
+        data-memory-quarantined-entry
+        onclick={(event) => {
+          if (event.target instanceof Element && event.target.closest('a[href]') !== null) {
+            void switchView(event, true);
+          }
+        }}
+      >
+        <DataList
+          items={[QUARANTINED_ENTRY]}
+          key={(entry: string) => entry}
+          aria-label={MEMORY_COPY.quarantinedView.title}
+        >
+          {#snippet children()}
+            <StackedListItem href={router.href(viewPath(true))} trailingGlyph>
+              {#snippet leading()}<ShieldAlert aria-hidden="true" size={16} />{/snippet}
+              {#snippet title()}{MEMORY_COPY.quarantinedView.title}{/snippet}
+              {#snippet trailing()}<ChevronRight aria-hidden="true" size={16} />{/snippet}
+            </StackedListItem>
+          {/snippet}
+        </DataList>
+      </div>
+    {/snippet}
+
     <div class="ib-memory__frame" data-shortcut-region="list-detail">
       <ListDetail
         {items}
+        {...showEntry ? { listFooter: quarantinedEntry } : {}}
         key={(row: ListRow) => row.id}
         label={MEMORY_COPY.listLabel}
         detailLabel={MEMORY_COPY.detail.heading}
-        backLabel={MEMORY_COPY.backToList}
+        backLabel={quarantinedView
+          ? MEMORY_COPY.quarantinedView.detailBackLabel
+          : MEMORY_COPY.backToList}
         emptyTitle={MEMORY_COPY.nothingOpen.title}
         emptyDescription={MEMORY_COPY.nothingOpen.description}
         selectedKey={selectedId}
@@ -428,49 +638,72 @@
         storageKey="interborough-memory"
       >
         {#snippet header()}
-          <div class="ib-memory__search-row">
-            <div class="ib-memory__search">
-              <SearchField
-                id="ib-memory-search"
-                aria-label={MEMORY_COPY.searchLabel}
-                placeholder={MEMORY_COPY.searchPlaceholder}
-                bind:value={typed}
-                onClear={() => (typed = '')}
+          {#if quarantinedView}
+            <!-- The quarantined view's way back to the memories, above its title, as Chats' archived view has. -->
+            <div class="ib-memory__back-row">
+              <Tooltip text={MEMORY_COPY.quarantinedView.backLabel}>
+                <Button
+                  data-memory-view-back
+                  href={router.href(viewPath(false))}
+                  variant="ghost"
+                  size="sm"
+                  aria-label={MEMORY_COPY.quarantinedView.backLabel}
+                  onclick={(event: MouseEvent) => void switchView(event, false)}
+                >
+                  <ChevronLeft aria-hidden="true" size={16} />
+                  {MEMORY_COPY.quarantinedView.back}
+                </Button>
+              </Tooltip>
+            </div>
+            <h2 class="ib-memory__view-title" data-memory-view-title>
+              {MEMORY_COPY.quarantinedView.title}
+            </h2>
+          {/if}
+          {#if showControls}
+            <div class="ib-memory__search-row">
+              <div class="ib-memory__search">
+                <SearchField
+                  id="ib-memory-search"
+                  aria-label={MEMORY_COPY.searchLabel}
+                  placeholder={MEMORY_COPY.searchPlaceholder}
+                  bind:value={typed}
+                  onClear={() => (typed = '')}
+                />
+              </div>
+              {#if !firstUse && !quarantinedView}
+                <Button
+                  data-changes
+                  variant="secondary"
+                  size="sm"
+                  iconOnly
+                  title={MEMORY_COPY.add.action}
+                  aria-label={MEMORY_COPY.add.action}
+                  onclick={() => adding?.ask()}
+                >
+                  <Plus aria-hidden="true" size={16} />
+                </Button>
+              {/if}
+            </div>
+            <div class="ib-memory__filters">
+              <Select
+                id="ib-memory-kind"
+                aria-label={MEMORY_COPY.filter.kindLabel}
+                size="sm"
+                options={kindOptions}
+                value={kindFilter}
+                onchange={(event) => (kindFilter = kindNamed(event.currentTarget.value))}
+              />
+              <Select
+                id="ib-memory-writer"
+                aria-label={MEMORY_COPY.filter.writerLabel}
+                size="sm"
+                options={writerOptions}
+                value={writerFilter}
+                onchange={(event) => (writerFilter = writerNamed(event.currentTarget.value))}
               />
             </div>
-            {#if !firstUse}
-              <Button
-                data-changes
-                variant="secondary"
-                size="sm"
-                iconOnly
-                title={MEMORY_COPY.add.action}
-                aria-label={MEMORY_COPY.add.action}
-                onclick={() => adding?.ask()}
-              >
-                <Plus aria-hidden="true" size={16} />
-              </Button>
-            {/if}
-          </div>
-          <div class="ib-memory__filters">
-            <Select
-              id="ib-memory-kind"
-              aria-label={MEMORY_COPY.filter.kindLabel}
-              size="sm"
-              options={kindOptions}
-              value={kindFilter}
-              onchange={(event) => (kindFilter = kindNamed(event.currentTarget.value))}
-            />
-            <Select
-              id="ib-memory-writer"
-              aria-label={MEMORY_COPY.filter.writerLabel}
-              size="sm"
-              options={writerOptions}
-              value={writerFilter}
-              onchange={(event) => (writerFilter = writerNamed(event.currentTarget.value))}
-            />
-          </div>
-          {#if loaded > 0}
+          {/if}
+          {#if loaded > 0 && !quarantinedView}
             <div>
               <Button
                 data-changes
@@ -487,29 +720,26 @@
           {#if pinned.length > 0 && shown.length === 0}
             <div data-testid="memory-pinned-status">{@render emptiness()}</div>
           {/if}
-          {#if applied !== '' && base.length > 0}
+          {#if applied !== '' && base.length > 0 && !quarantinedView}
             <p class="ib-memory__count" role="status" data-testid="memory-match-count">
               {MEMORY_COPY.matchCount(base.length, total, searchFilled)}
             </p>
           {/if}
-          {#if filtered && base.length > 0}
+          {#if narrowed && base.length > 0}
             <p class="ib-memory__count" data-testid="memory-kind-note">
-              {MEMORY_COPY.filter.note(
-                shown.length,
-                base.length,
-                applied === '' && listing.hasNextPage,
-              )}
+              {MEMORY_COPY.filter.note(shown.length, base.length, hasMore)}
             </p>
           {/if}
         {/snippet}
         {#snippet list(row, context)}
           {#if row.kind === 'more'}
+            {@const paging = quarantinedView ? quarantinedListing : listing}
             <div class="ib-memory__more">
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={listing.isFetchingNextPage}
-                onclick={() => void listing.fetchNextPage()}>{MEMORY_COPY.loadMore}</Button
+                disabled={paging.isFetchingNextPage}
+                onclick={() => void paging.fetchNextPage()}>{MEMORY_COPY.loadMore}</Button
               >
             </div>
           {:else}
@@ -521,6 +751,10 @@
               query={applied}
               score={row.score}
               pinned={row.pinned}
+              quarantined={quarantinedView}
+              unavailable={quarantinedView &&
+                row.memory === undefined &&
+                quarantinedListing.data !== undefined}
               selected={context.selected}
               onOpen={context.open}
             />
@@ -531,22 +765,40 @@
         {/snippet}
         {#snippet detail(row)}
           {#key row.id}
-            <MemoryDetail
-              {agentId}
-              {agentName}
-              id={row.id}
-              hold={holds.get(row.id)}
-              {forgetPending}
-              {governancePending}
-              onOpen={open}
-              onForget={(memory) => changes?.askToForget(memory)}
-              onCorrected={corrected}
-              onCorrectionFailed={correctionFailed}
-              resume={resume?.id === row.id ? resume.content : undefined}
-              onShare={(memory) => governance?.askToShare(memory)}
-              onHold={(id, change) => governance?.changeHold(id, change)}
-              onQuarantine={(memory) => governance?.askToQuarantine(memory)}
-            />
+            {#if quarantinedView}
+              <MemoryQuarantined
+                id={row.id}
+                {agentName}
+                memory={row.kind === 'memory' ? row.memory : undefined}
+                missing={quarantinedListing.data === undefined
+                  ? undefined
+                  : quarantinedListing.hasNextPage
+                    ? 'unread'
+                    : 'absent'}
+                {governancePending}
+                releasing={releasing === row.id}
+                fault={releaseFault?.id === row.id ? releaseFault.fault : undefined}
+                onRelease={(memory) => governance?.releaseMemory(memory)}
+                onForget={(memory) => changes?.askToForget(memory)}
+              />
+            {:else}
+              <MemoryDetail
+                {agentId}
+                {agentName}
+                id={row.id}
+                hold={holds.get(row.id)}
+                {forgetPending}
+                {governancePending}
+                onOpen={open}
+                onForget={(memory) => changes?.askToForget(memory)}
+                onCorrected={corrected}
+                onCorrectionFailed={correctionFailed}
+                resume={resume?.id === row.id ? resume.content : undefined}
+                onShare={(memory) => governance?.askToShare(memory)}
+                onHold={(id, change) => governance?.changeHold(id, change)}
+                onQuarantine={(memory) => governance?.askToQuarantine(memory)}
+              />
+            {/if}
           {/key}
         {/snippet}
       </ListDetail>
@@ -570,6 +822,18 @@
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     overflow: hidden;
+  }
+
+  /* The quarantined view's way back sits above its title, its chevron lined up with the title's start. */
+  .ib-memory__back-row {
+    display: flex;
+    margin-inline-start: calc(-1 * var(--cinder-space-2));
+  }
+
+  .ib-memory__view-title {
+    margin: 0;
+    font-size: var(--cinder-text-lg);
+    font-weight: 600;
   }
 
   /* The search takes the row, with the "+" that adds a memory at its end. */

@@ -27,7 +27,7 @@ import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { type ConditionalTextValueStore, MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   buildWorkflowDocumentManifest,
   checkWorkflowCompatibility,
@@ -44,7 +44,12 @@ import {
   type WorkflowStatus,
 } from '@lostgradient/weft';
 import { sha256HexSync } from '@lostgradient/cryptography';
-import type { PluginTriggerOutcome } from '@lostgradient/interborough-plugin';
+import type {
+  PluginTrigger,
+  PluginTriggerContext,
+  PluginTriggerOutcome,
+} from '@lostgradient/interborough-plugin';
+import type { VersionedCatalogEntry } from './versioned-catalog';
 import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
@@ -91,9 +96,15 @@ import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
   type ListenerStatus,
+  type TriggerEventRecord,
   type TriggerFireRequest,
+  triggerFiredRecord,
+  triggerRefusalCode,
+  triggerRefusedRecord,
 } from './workflow-trigger-supervisor';
-import { sweepTriggerState } from './workflow-trigger-state';
+import { createTriggerStorage, sweepTriggerState } from './workflow-trigger-state';
+import { createWorkflowTriggerLease } from './workflow-trigger-lease';
+import type { ProcessLease } from './process-lease';
 import { formatVersionedId } from './versioned-catalog';
 import {
   acceptContributedTriggers,
@@ -179,9 +190,11 @@ function codeInputIssues(schema: unknown, input: unknown): readonly WorkflowSche
 /**
  * What a file's contributed trigger is doing (COR-2165): `listening` once its `start` resolved,
  * `waiting-for-secret` while a secret its plugin declares is missing, `failed` with a `code` when
- * its `start` threw or its kind refused the configuration, and `stopped` for a paused file.
- * `since` is when the state last changed and `lastFiredAt` when a fire last started a run. It is
- * kept in memory: a restart starts it again.
+ * its `start` threw or its kind refused the configuration, and `stopped` for a paused file. A kind
+ * that only defines `receive` (COR-2168) is `ready` instead of `listening`, and one whose listener
+ * another Bureau sharing the store runs is `standby` (COR-2167). `since` is when the
+ * state last changed and `lastFiredAt` when a fire last started a run, one of a `receive` too. It
+ * is kept in memory: a restart starts it again.
  */
 export type WorkflowListener = ListenerStatus;
 
@@ -524,6 +537,26 @@ export interface BureauWorkflows {
    */
   readonly retryTrigger: (id: string) => Promise<WorkflowTriggerRetry | undefined>;
   /**
+   * Hand `request` to the `receive` of workflow `id`'s contributed trigger kind (COR-2168) and
+   * resolve the `Response` it answers, the same object. The call is in process: the caller has
+   * authenticated nothing, and the trigger's `receive` authenticates the sender.
+   *
+   * Bureau answers a `Response` of its own, with a `null` body, in four cases, and calls `receive`
+   * in none of them: 404 for an id that is not an applied, ready file (an unknown id, a code
+   * workflow, an `invalid` or unreadable file, one not applied yet, one removed); 405 for a file
+   * whose trigger is a built-in kind, a contributed kind that is not loaded, or one with no
+   * `receive`; 503 for a file whose configuration its kind now refuses or whose storage cannot be
+   * made, and for every call once the Bureau began to close. It reads and limits no body and no
+   * header, and a paused file still calls `receive`, whose `fire` answers `skipped: 'paused'`.
+   *
+   * A rejection of `receive`, the secret gate's `PluginNeedsSetupError` among them, or a
+   * `receive` that resolves something that is not a `Response` (a `TypeError` naming only the
+   * kind), rejects with it as it is: it changes no listener state and is reported to no plugin
+   * problem, diagnostic or event, and mapping it to a status without its text is the caller's. The
+   * call is a caller's request, as a fire is: `close` aborts its signal and does not wait for it.
+   */
+  readonly receiveTrigger: (id: string, request: Request) => Promise<Response>;
+  /**
    * The revisions of `id` that have run, newest first, each with its compatibility verdict against
    * the workflow's current revision; `undefined` when there is no such workflow.
    */
@@ -806,6 +839,22 @@ export interface WorkflowRuntimeOptions {
     ((plugin: string, workflow: string, message: string) => void) | undefined;
   /** COR-2165 — told when that listener is no longer failed, or its file is gone. */
   readonly onTriggerRecovered?: ((plugin: string, workflow: string) => void) | undefined;
+  /**
+   * COR-2167 — this process's lease and the key-value store it is kept in, which decide which of
+   * the Bureaus sharing the store runs each contributed trigger's listener. Absent, or a lease that
+   * holds nothing (memory storage), and every listener runs.
+   */
+  readonly listenerLease?:
+    | {
+        readonly processLease: ProcessLease;
+        readonly kv: ConditionalTextValueStore | undefined;
+      }
+    | undefined;
+  /**
+   * COR-2250 — told what each contributed trigger's listener did (started, stopped, failed) and
+   * what became of each fire, its `start`'s and a `receive`'s alike, for the Bureau to publish.
+   */
+  readonly onTriggerEvent?: ((event: TriggerEventRecord) => void) | undefined;
   readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT') => Error;
   /**
    * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
@@ -849,6 +898,11 @@ function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefine
     input: trigger['input'] ?? undefined,
     paused: file.paused,
   };
+}
+
+/** An answer Bureau authors for a `receive`: a status and nothing else, no body and no text. */
+function statusResponse(status: 404 | 405 | 503): Response {
+  return new Response(null, { status });
 }
 
 /** A contributed trigger's fire that started nothing, and why. */
@@ -917,6 +971,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   /** Stamps of a revision's runs that have not finished being written. */
   const pendingStamps = new Set<Promise<unknown>>();
   let closed = false;
+  /** Aborted as the first step of `close`: the part of every `receive` signal that follows it. */
+  const closing = new AbortController();
   let started = false;
 
   const catalog: WorkflowFileCatalog = createWorkflowFileCatalog({
@@ -1134,8 +1190,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * fires with one key start one run. The key is not given to Weft: its own key mapping outlives
    * the run record, and a key lives exactly as long as the run it started. Only a fire that
    * starts a run takes its key; a skipped or failed one leaves it free for the redelivery. Two
-   * Bureaus over one storage can both look up before either has started a run, and start two; the
-   * listener lease does not close that for a `receive`-only trigger.
+   * Bureaus over one storage can both look up before either has started a run, and start two: the
+   * listener lease (COR-2167) fences a fire against the record before it gets here, but a fire that
+   * passed the old holder's fence and the new holder's fire of the same key, in the window of a
+   * handover, can both start one. A redelivery after the handover finds the first run's tag.
    */
   async function fireTrigger(request: TriggerFireRequest): Promise<PluginTriggerOutcome> {
     const { workflowId: id, kind, version, idempotencyKey } = request;
@@ -1193,6 +1251,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     });
   }
 
+  /** COR-2250 — hand a trigger event to the Bureau; one that throws is diagnosed. */
+  function publishTriggerEvent(event: TriggerEventRecord): void {
+    try {
+      options.onTriggerEvent?.(event);
+    } catch (error) {
+      options.diagnose(
+        `Could not publish "${event.kind}" for workflow "${event.workflowId}".`,
+        error,
+      );
+    }
+  }
+
   const triggerStorage = options.storage ?? new MemoryStorage();
   const triggers = createWorkflowTriggerSupervisor({
     fire: fireTrigger,
@@ -1216,6 +1286,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     reportFailure: (plugin, workflow, message) =>
       options.onTriggerFailed?.(plugin, workflow, message),
     clearFailure: (plugin, workflow) => options.onTriggerRecovered?.(plugin, workflow),
+    publish: publishTriggerEvent,
+    lease:
+      options.listenerLease === undefined
+        ? undefined
+        : createWorkflowTriggerLease({
+            kv: options.listenerLease.kv,
+            processLease: options.listenerLease.processLease,
+            now: () => options.runtime.clock.now(),
+            diagnose: options.diagnose,
+          }),
   });
 
   /** What the contributed trigger of `listing` is doing; `null` unless it is a ready file's. */
@@ -2259,6 +2339,89 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       return listener === undefined ? { outcome: 'no-listener' } : { outcome: 'retried', listener };
     },
+    async receiveTrigger(id, request) {
+      if (closed) return statusResponse(503);
+      // The caller owns `request`: read its signal before anything awaits.
+      const signal = AbortSignal.any([request.signal, closing.signal]);
+      // One synchronous step under the registration lock, which holds nothing of the trigger: the
+      // applied file, its kind, the version the kind has now, its configuration and its storage.
+      // Nothing here queues an apply or waits for one, and the lock is released before `receive`.
+      const resolved = await withRegistration(
+        async (): Promise<
+          | { readonly status: 404 | 405 | 503 }
+          | {
+              readonly kind: VersionedCatalogEntry<PluginTrigger>;
+              readonly receive: NonNullable<PluginTrigger['receive']>;
+              readonly version: string;
+              readonly configuration: unknown;
+              readonly storage: Storage;
+            }
+        > => {
+          const file = appliedFiles.get(id);
+          if (file === undefined || catalog.find(id) === undefined) return { status: 404 };
+          const kind = contributions.triggers.get(file.document.trigger.kind);
+          if (kind === undefined || kind.value.receive === undefined) return { status: 405 };
+          const { kind: _kind, ...configuration } = file.document.trigger;
+          const parsed = kind.value.configuration.safeParse(configuration);
+          if (!parsed.success) return { status: 503 };
+          try {
+            const storage = createTriggerStorage(triggerStorage, kind.name, id);
+            return {
+              kind,
+              receive: kind.value.receive.bind(kind.value),
+              version: kind.version,
+              configuration: parsed.data,
+              storage,
+            };
+          } catch {
+            return { status: 503 };
+          }
+        },
+      );
+      if (closed) return statusResponse(503);
+      if ('status' in resolved) return statusResponse(resolved.status);
+      const { kind, receive, version, configuration, storage } = resolved;
+      const context: PluginTriggerContext = {
+        configuration,
+        workflowId: id,
+        storage,
+        signal,
+        fire: (payload, fireOptions) => {
+          // The plugin owns `fireOptions`: read the key once, before anything awaits. Closed is
+          // checked before aborted, because `close` aborts the signal and that is not a stop.
+          const idempotencyKey: unknown = fireOptions?.idempotencyKey;
+          // COR-2250: every fire is published once, with its outcome, or `refused` and a code.
+          const fired = { workflowId: id, trigger: kind.name, version };
+          const answered = (outcome: PluginTriggerOutcome): PluginTriggerOutcome => {
+            publishTriggerEvent(triggerFiredRecord(fired, outcome));
+            return outcome;
+          };
+          if (closed) return Promise.resolve(answered(skippedFire('closed')));
+          if (signal.aborted) return Promise.resolve(answered(skippedFire('stopped')));
+          return fireTrigger({
+            workflowId: id,
+            kind: kind.name,
+            version,
+            payload,
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          }).then(
+            (outcome) => {
+              if (outcome.outcome === 'started') triggers.noteFired(id, kind.name);
+              return answered(outcome);
+            },
+            (error: unknown) => {
+              publishTriggerEvent(triggerRefusedRecord(fired, triggerRefusalCode(error)));
+              throw error;
+            },
+          );
+        },
+      };
+      const answer: unknown = await receive(request, context);
+      if (!(answer instanceof Response)) {
+        throw new TypeError(`The "${kind.name}" trigger's receive did not return a Response.`);
+      }
+      return answer;
+    },
     pause: (id, guard) =>
       write(
         'workflow.paused',
@@ -2878,6 +3041,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     async close() {
       closed = true;
+      closing.abort();
       stopListening?.();
       await triggers.close();
       await catalog.close();

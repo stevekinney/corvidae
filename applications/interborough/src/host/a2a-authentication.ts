@@ -14,20 +14,22 @@
  * text) it sees and can name only the agents that opt into A2A, and `bureau.deployment.get` refuses
  * it. Every caller that holds the key owns its tasks as that one principal.
  *
- * The public origin (`INTERBOROUGH_A2A_PUBLIC_ORIGIN`, `environment-configuration.ts`) lets a
- * reverse proxy's `Host` through the request guard for `/bureau/a2a/*` and, with a credential,
- * `/bureau/assets/*` only, and needs the key: a public origin without one would hand A2A to anyone
- * as the owner, so the host does not start.
+ * The public origin (`INTERBOROUGH_PUBLIC_ORIGIN`, `environment-configuration.ts`) lets a
+ * reverse proxy's `Host` through the request guard for `/bureau/a2a/*`, with a credential
+ * `/bureau/assets/*`, and a trigger's `POST /triggers/<workflow>` (COR-2169), which needs no
+ * credential because the trigger's `receive` authenticates the sender, and nothing else. It needs
+ * the key: a public origin without one would hand A2A to anyone as the owner, so the host does not
+ * start.
  *
  * @module a2a-authentication
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 
+import { principalFromApiKey, type AuthConfig } from '@lostgradient/backchannel';
 import { type Bungalow } from '@lostgradient/bungalow';
-import { principalFromApiKey, type AuthConfig } from '@lostgradient/weft';
 
-import { A2A_PUBLIC_ORIGIN_VARIABLE } from './environment-configuration.ts';
+import { PUBLIC_ORIGIN_VARIABLE } from './environment-configuration.ts';
 
 /** The Bungalow secret that holds the operator's A2A key. */
 export const A2A_API_KEY_SECRET_KEY = 'a2a-api-key';
@@ -50,7 +52,7 @@ export type A2aExposure = {
 };
 
 /**
- * Reads the operator's key, beside the public origin `resolveA2aPublicOrigin` read. A key that is blank once trimmed, and a public
+ * Reads the operator's key, beside the public origin `resolvePublicOrigin` read. A key that is blank once trimmed, and a public
  * origin without a key, stop the host: either would leave A2A open where the operator meant to close
  * it. Refusals are reported through `warn`, without the key or anything derived from it.
  */
@@ -69,7 +71,7 @@ export async function resolveA2aExposure(
   if (key === undefined) {
     if (publicOrigin !== undefined) {
       throw new Error(
-        `${A2A_PUBLIC_ORIGIN_VARIABLE} is set but ${bungalow.deploymentSecrets.location(A2A_API_KEY_SECRET_KEY)} is not. A public origin needs the A2A key every remote caller presents.`,
+        `${PUBLIC_ORIGIN_VARIABLE} is set but ${bungalow.deploymentSecrets.location(A2A_API_KEY_SECRET_KEY)} is not. A public origin needs the A2A key every remote caller presents.`,
       );
     }
     return {};

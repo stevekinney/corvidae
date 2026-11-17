@@ -76,6 +76,10 @@ export const queryKeys = {
     /** Every query of one agent's memory, for the invalidation a forget or a correction needs. */
     all: (agentId: string) => ['memory', agentId] as const,
     list: (agentId: string) => ['memory', agentId, 'list'] as const,
+    /** The agent's quarantined memories, which `bureau.memory.list` answers for `state: 'quarantined'`. */
+    quarantined: (agentId: string) => ['memory', agentId, 'quarantined'] as const,
+    /** Whether the agent has any quarantined memory, which decides if the tab offers their view. */
+    quarantinedAny: (agentId: string) => ['memory', agentId, 'quarantined-any'] as const,
     search: (agentId: string, query: string) => ['memory', agentId, 'search', query] as const,
     detail: (agentId: string, id: string) => ['memory', agentId, 'detail', id] as const,
   },
@@ -157,9 +161,16 @@ export const queryKeys = {
     detail: (goalRunId: string) => ['goals', 'detail', goalRunId] as const,
     /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
     runs: () => ['goals', 'runs'] as const,
+    /** The checks a goal may name (`bureau.validators.list`), read by the goal form. */
+    validators: () => ['goals', 'validators'] as const,
+    /** One attempt's verdict (`bureau.goals.verdict`), read when its panel is opened. */
+    verdict: (goalRunId: string, attemptIndex: number) =>
+      ['goals', 'verdict', goalRunId, attemptIndex] as const,
   },
   /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.contributions`). */
   pluginKinds: () => ['plugin-kinds'] as const,
+  /** The embedding memory uses, the switch to another and the embedders registered (`bureau.memory.embedding`). */
+  memoryEmbedding: () => ['embedding', 'status'] as const,
   /** The catalog rows that can answer decisions, with their availability and the row that answers (`bureau.decisions.models`). */
   decisionModels: () => ['decisions', 'models'] as const,
   /** The model providers running plugins contribute, with their plugins' configuration schemas (`bureau.plugins.contributions`). */
@@ -189,6 +200,12 @@ export const queryKeys = {
     anyEvent: () => ['audit', 'any-event'] as const,
     /** The schedules' names, which the events of a schedule are worded with. */
     schedules: () => ['audit', 'schedules'] as const,
+  },
+  /** The check results, under the filter the address holds as its query string (`bureau.checks.list`). */
+  checks: {
+    list: (filter: string) => ['checks', 'list', filter] as const,
+    /** The agents the Agent chip offers, which the catalog names besides the rows' own. */
+    agents: () => ['checks', 'agents'] as const,
   },
   /** The Bureau's runtime settings: their values (`bureau.settings.get`) and their schema (`bureau.settings.schema`). */
   settings: {
@@ -275,6 +292,8 @@ export const queryKeys = {
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
     /** One step's reply details (`bureau.tasks.inspect` with `step`). */
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
+    /** One run's hook plan and the hooks that threw (`bureau.tasks.inspect`, COR-2115). */
+    hooks: (taskId: string) => ['bureau-tasks', 'hooks', taskId] as const,
     /** How many runs are running now: working or not yet started, never waiting on a person. */
     running: () => ['bureau-tasks', 'running'] as const,
     /**
@@ -343,6 +362,8 @@ export const queryKeys = {
   hostPluginRuns: (plugin: string) => ['host', 'plugins', 'runs', plugin] as const,
   /** The plugin panels the host serves, which the run page mounts (`/host/panels`). */
   hostPanels: () => ['host', 'panels'] as const,
+  /** One panel's page and its security metadata, which a plugin's page mounts (`/host/plugins/<plugin>/apps/<app>`). */
+  hostPanelPage: (plugin: string, app: string) => ['host', 'panels', 'page', plugin, app] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */

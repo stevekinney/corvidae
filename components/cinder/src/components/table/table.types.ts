@@ -40,10 +40,16 @@ export type TableContext = {
   /** Mirror of Table.selectable. Set synchronously at construction time. */
   readonly selectionEnabled?: boolean;
   /**
-   * Called by a cell that holds a control while it is mounted. The table stacks its rows only
-   * while at least one cell is registered. Returns the function that withdraws the registration.
+   * Called by a cell that holds a control while it is mounted. A table that is not `fit` stacks
+   * its rows only while at least one cell is registered. `fill` is false for a control that keeps
+   * its own size (`controls="fit"`): a `fit` table draws cards unless a control fills its cell.
+   * Returns the function that withdraws the registration.
    */
-  registerControls?: () => () => void;
+  registerControls?: (fill?: boolean) => () => void;
+  /** True while the table draws its rows as cards (a stacked `fit` table). Cells read it. */
+  readonly stackCard?: boolean;
+  /** True for a `fit` table. Its row header holds to two lines, stacked or not. */
+  readonly fit?: boolean;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
@@ -115,8 +121,14 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * Fits the table to its container's width so a long value never makes it scroll sideways. The
    * columns share the width (a fixed table layout: set a column's width on its header cell or a
    * `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full
-   * text in the `title`, and any other cell wraps its text. Leave it off for a table whose columns
+   * text in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns
    * should keep their natural widths and scroll when they do not fit.
+   *
+   * A `fit` table also stacks below `stackBelow`, as a list of flat rows: the `as="th"` cell (or the
+   * first cell with text) is the title, a cell with `stack="end"` sits at its inline end, a cell
+   * with `stack="status"` starts the second line, and every other cell is a line of its column's
+   * header text and its value. A table with a `controls` cell that fills its cell keeps the control
+   * layout instead.
    * @default false
    */
   fit?: boolean;
@@ -129,13 +141,18 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   scrollContainerProps?: TableScrollContainerProps;
   /**
-   * Width of the table's own container below which a table whose cells hold controls stacks. Each
-   * body row becomes a card: the name and its muted detail on the first line, the controls full
-   * width at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width
+   * Width of the table's own container below which a table whose cells hold controls, or a `fit`
+   * table, stacks. With controls, each body row becomes a card: the name and its muted detail on
+   * the first line, the controls full width at 44px beneath. A `fit` table stacks into flat rows
+   * (see `fit`). A table that is neither `fit` nor holds a `controls` cell never stacks; it
+   * scrolls. The width
    * is the container's (the scroll box, or the parent when `scrollable` is false), not the
    * window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as
    * `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit
-   * falls back to the viewport. `false` keeps the table layout at every width.
+   * falls back to the viewport. `false` keeps the table layout at every width. A `fit` table that
+   * stacks as flat rows (no cell holds a control that fills it) stacks only below `'26rem'`
+   * (416px) by default, because flat rows read well in a narrow column; the control layout keeps
+   * 640px.
    * @default "640px"
    */
   stackBelow?: string | false;

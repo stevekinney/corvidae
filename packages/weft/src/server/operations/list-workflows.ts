@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
+import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import { WorkflowListScanCapExceededError } from '../../core/engine/workflow-indexes.ts';
 import { ListFilterValidationError } from '../../core/list-filter-validation-error.ts';
 import {
@@ -9,9 +11,6 @@ import {
 } from '../../core/list-filter-validation.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
 import type { ListFilter, PaginatedResult, WorkflowSummary } from '../../core/types.ts';
-import type { OperationFault } from '../operation-fault.ts';
-import { defineOperation } from '../operation-registry.ts';
-import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { extractListFilterFromQuery } from './list-filter-query-extractor.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
 

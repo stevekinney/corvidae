@@ -17,7 +17,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * @module plugin-kinds-operations
  */
 
-import { defineOperation } from '@lostgradient/weft';
+import { defineOperation } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
 import { type BureauEventFormatter, FORMATTED_EVENT_TIERS } from '../../bureau-event-formatting.ts';
@@ -58,6 +58,11 @@ const kindsOutput = z.object({
           .describe(
             'The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.',
           ),
+        receives: z
+          .boolean()
+          .describe(
+            'Whether the kind receives requests: a file whose trigger is one is sent its deliveries at `POST /triggers/<workflow-id>` on the host.',
+          ),
         configuration: configurationSchema,
       }),
     )
@@ -69,6 +74,11 @@ const kindsOutput = z.object({
         kind: z.string().describe('The kind’s name within the plugin: the `kind` of the action.'),
         description: z.string().describe('What the action does.'),
         version: z.string().describe('The version a delivery of the kind pins.'),
+        dryRun: z
+          .boolean()
+          .describe(
+            'Whether the kind has a `dryRun`, which `bureau.hooks.test` calls instead of the action: a hook of a kind without one cannot be tested.',
+          ),
         configuration: configurationSchema,
       }),
     )

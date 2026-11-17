@@ -11,6 +11,7 @@ import { pageWidth, VIEW_NAMES } from '../../src/app/views.ts';
 import { approveThroughMount, conversation, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 /** A chat is a transcript of one user message, tool calls, and one reply: nothing needs more. */
 const TRANSCRIPT_HEIGHT = 400;
@@ -210,10 +211,11 @@ test.describe('a chat', () => {
     await expect(page.locator('[data-cinder-tool-call-row]').first()).toBeVisible();
 
     const timeline = page.locator('.chat-timeline');
-    const first = await timeline.locator('> *').first().boundingBox();
     const messages = timeline.locator('.chat-message-wrapper');
-    const last = await messages.last().boundingBox();
-    if (first === null || last === null) throw new Error('The transcript has no entries.');
+    const { first, last } = await readBoxes(page, {
+      first: timeline.locator('> *').first(),
+      last: messages.last(),
+    });
     expect(last.y + last.height - first.y).toBeLessThanOrEqual(TRANSCRIPT_HEIGHT);
   });
 });

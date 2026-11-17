@@ -5,28 +5,39 @@
 
 import { join } from 'node:path';
 
-import { generateAsyncApiDocument } from './asyncapi.ts';
+import {
+  generateAsyncApiDocument,
+  generateOpenApiDocument,
+  generateOpenRpcDocument,
+} from '@lostgradient/backchannel/internals';
 import {
   formatGoldenJson,
   withGoldenVersion,
   writeGoldenDirectory,
-} from './golden-files.test-support.ts';
-import { generateOpenApiDocument } from './openapi.ts';
-import { generateOpenRpcDocument } from './openrpc.ts';
-import { createCatalogSnapshot } from './operation-catalog-snapshot.ts';
-import { createLiveOperationRegistry } from './rest-bindings.ts';
+} from '@lostgradient/backchannel/testing';
+import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
+import { createCatalogSnapshot } from './weft-catalog-snapshot.ts';
+import { weftDiscoveryInfo } from './weft-documents.ts';
 
 export const WIRE_GOLDEN_DIRECTORY = join(import.meta.dir, '__fixtures__', 'wire-golden');
 
 /** The golden files, keyed by file name. */
 export function buildWireGolden(): Record<string, string> {
   const registry = createLiveOperationRegistry();
+  const restBindings = createLiveRestBindings();
+  const discoveryInfo = weftDiscoveryInfo(undefined);
   return {
-    'openapi.json': formatGoldenJson(withGoldenVersion(generateOpenApiDocument())),
-    'openrpc.json': formatGoldenJson(
-      withGoldenVersion(generateOpenRpcDocument({ registry, transports: ['http', 'websocket'] })),
+    'openapi.json': formatGoldenJson(
+      withGoldenVersion(generateOpenApiDocument({ registry, restBindings, discoveryInfo })),
     ),
-    'asyncapi.json': formatGoldenJson(withGoldenVersion(generateAsyncApiDocument({ registry }))),
+    'openrpc.json': formatGoldenJson(
+      withGoldenVersion(
+        generateOpenRpcDocument({ registry, transports: ['http', 'websocket'], discoveryInfo }),
+      ),
+    ),
+    'asyncapi.json': formatGoldenJson(
+      withGoldenVersion(generateAsyncApiDocument({ registry, restBindings, discoveryInfo })),
+    ),
     'catalog-snapshot.json': formatGoldenJson(createCatalogSnapshot()),
   };
 }

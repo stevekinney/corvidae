@@ -317,13 +317,27 @@ export const HOOKS_COPY = {
       create: 'Save hook',
       test: 'Send a test event',
       testWebhookOnly:
-        'A test event is sent only by a hook that sends a webhook. Other actions would start a real workflow or write a real notification.',
+        'This action would start a real workflow or write a real notification, so it has no test.',
+      /** Why Send a test event is off, one sentence for each cause of a hook that runs a plugin's action. */
+      testPluginOff: (plugin: string): string =>
+        `Turn on ${plugin} in Settings to test this action.`,
+      testPluginUnknown: 'Couldn’t check whether this action can be tested.',
+      testSaveFirst: 'Save hook, then send a test.',
+      testNotOffered: 'A test of this action would do what it does for real, so it has no test.',
+      testPluginNeedsSetup: (plugin: string): string =>
+        `${plugin} needs setup before this action can be tested.`,
       /** The result under the buttons: what answered, how, and that nothing was saved when it was not. */
       testSent: (host: string, answer: string, milliseconds: number | undefined): string =>
         `Test event sent. ${host} answered ${answer}${
           milliseconds === undefined ? '' : ` in ${String(milliseconds)} ms`
         }.`,
       testSentUnsaved: 'Nothing was saved.',
+      /** The result of a plugin action's test, which checks the event without doing what the action does. */
+      testPluginRan: (kind: string): string =>
+        `Test ran. ${kind} checked the event without doing it; nothing was sent.`,
+      testPluginWaiting: (plugin: string): string =>
+        `${plugin} needs setup before this test can run. It runs once setup is done.`,
+      testPluginFailed: 'Test failed. The action couldn’t check the event.',
       testFailed: 'Test event failed.',
       testFailedAnswered: (host: string, answer: string): string =>
         `${host} answered ${answer}. Check the URL, then send another test.`,
@@ -399,6 +413,8 @@ export const HOOKS_COPY = {
       payloadLabel: 'Payload sent',
       /** What the inspector says for a delivery that sent no request. */
       noPayload: 'This delivery sent no payload.',
+      /** The same for a test of a plugin action, which sends nothing by design. */
+      noPayloadTest: 'This test sends nothing, by design.',
       /** The Event field of the payload's Fields view: the event in words, and its kind. */
       eventField: (words: string, kind: string): string => `${words} (${kind})`,
       facts: { event: 'Event', sentTo: 'Sent to', lastResponse: 'Last response' },
@@ -435,9 +451,8 @@ export const HOOKS_COPY = {
       /** The buttons that send a delivery again. */
       retry: 'Retry delivery',
       retryNow: 'Retry now',
-      /** The line beside Retry now: when the next try is due, from `nextTryWords`. */
+      /** The line beside Retry now: when the next try is due, from `nextTryWords` (`lib/format/next-try.ts`). */
       nextTry: (when: string): string => `Next try in ${when}`,
-      nextTryDue: 'a moment',
       retried: {
         delivered: 'Retried. The delivery went through.',
         waiting: 'Retried. It will try again soon.',

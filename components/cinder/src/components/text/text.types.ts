@@ -3,13 +3,14 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
 
-export type TextVariant = 'display' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body';
+export type TextVariant =
+  'display' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body' | 'code';
 
 /** Element tags valid for the `as` prop: visible, non-void content elements. */
 export type TextElement = NonMetadataHTMLElementTagName;
 
 type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
-  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. @default 'body' */
+  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs, and `code` renders an inline `code` element in the monospace face that takes the size of the text around it, for an identifier. @default 'body' */
   variant?: TextVariant;
   /** Element tag that overrides the variant's default element. */
   as?: TextElement;
@@ -55,7 +56,8 @@ type TextContentProps =
        * Keeps the text on one line and ends it with an ellipsis when it is too long, for a long value
        * in a narrow place: a name above its detail in a table row, an identifier in a list. The line
        * takes the typography of what holds it, so it reads as part of that text, and the full text is
-       * its `title` unless `title` is set. Needs `text`.
+       * a tooltip unless `title` is set (the text takes focus, so a keyboard or touch user reaches
+       * it too). Needs `text`.
        */
       truncate: 'end';
       /** The plain text to end with an ellipsis. */
@@ -66,7 +68,7 @@ type TextContentProps =
 export type TextProps = TextBaseProps & TextContentProps;
 
 export interface TextSchemaProps {
-  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. @default "body" */
+  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs, and `code` renders an inline `code` element in the monospace face that takes the size of the text around it, for an identifier. @default "body" */
   variant?: TextVariant;
   /** Element tag that overrides the variant's default element. */
   as?: TextElement;

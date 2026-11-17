@@ -8,7 +8,7 @@ import {
   AUTHORIZATION_SCOPES,
   type OperationHandlerMount,
   principalFromApiKey,
-} from '@lostgradient/weft';
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from '../assets/storage';
@@ -584,6 +584,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.assets.uploads.complete',
         'bureau.assets.uploads.create',
         'bureau.audit.query',
+        'bureau.checks.list',
         'bureau.contexts.archive',
         'bureau.contexts.delete',
         'bureau.contexts.forgetgrants',
@@ -627,6 +628,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.hooks.test',
         'bureau.hooks.update',
         'bureau.memory.correct',
+        'bureau.memory.embedding',
+        'bureau.memory.embedding.cancel',
         'bureau.memory.export',
         'bureau.memory.forget',
         'bureau.memory.get',
@@ -634,6 +637,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.memory.hold.release',
         'bureau.memory.list',
         'bureau.memory.quarantine',
+        'bureau.memory.quarantine.release',
         'bureau.memory.remember',
         'bureau.memory.search',
         'bureau.memory.share',
